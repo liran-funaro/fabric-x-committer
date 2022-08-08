@@ -1,0 +1,16 @@
+
+syntax = "proto3";
+
+option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/token";
+
+package token;
+
+message Tx {
+    repeated bytes serial_numbers = 1;
+    bytes signature = 2;
+}
+
+message Block {
+    uint64 number = 1;
+    repeated Tx txs = 2;
+}
