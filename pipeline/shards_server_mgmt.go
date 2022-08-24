@@ -11,17 +11,24 @@ import (
 	"google.golang.org/grpc"
 )
 
-type shardsServerMgr struct {
-	phaseOneStreams map[int]shardsservice.Server_StartPhaseOneStreamClient
-	phaseTwoStreams map[int]shardsservice.Server_StartPhaseTwoStreamClient
-	numShards       uint16
-}
-
-type shardsServerConfig struct {
+type shardsServerMgrConfig struct {
 	ShardsServersToNumShards map[string]int
 }
 
-func newShardsServerMgr(c *shardsServerConfig) (*shardsServerMgr, error) {
+type shardsServerMgr struct {
+	phaseOneStreams map[int]shardsservice.Server_StartPhaseOneStreamClient
+	phaseTwoStreams map[int]shardsservice.Server_StartPhaseTwoStreamClient
+
+	shardIdToServer map[int]*shardServer
+	numShards       uint16
+}
+
+type shardServer struct {
+	phaseOneStream shardsservice.Server_StartPhaseOneStreamClient
+	phaseTwoStream shardsservice.Server_StartPhaseTwoStreamClient
+}
+
+func newShardsServerMgr(c *shardsServerMgrConfig) (*shardsServerMgr, error) {
 	phaseOneStreams := map[int]shardsservice.Server_StartPhaseOneStreamClient{}
 	phaseTwoStreams := map[int]shardsservice.Server_StartPhaseTwoStreamClient{}
 
@@ -52,8 +59,48 @@ func newShardsServerMgr(c *shardsServerConfig) (*shardsServerMgr, error) {
 	}, nil
 }
 
-func (m *shardsServerMgr) computeShardId(key []byte) int {
-	return int(binary.BigEndian.Uint16(key[0:2]) % m.numShards)
+type phaseOneReq struct {
+	m map[txSeqNum]*shardsservice.PhaseOneRequest
+}
+
+func (m *shardsServerMgr) processTxs(txs map[txSeqNum][][]byte) {
+	phaseOneReqs := map[*shardServer]*phaseOneReq{}
+	for txSeq, sns := range txs {
+		for _, sn := range sns {
+			shardID := m.computeShardId(sn)
+			shardServer := m.shardIdToServer[shardID]
+
+			reqs, ok := phaseOneReqs[shardServer]
+			if !ok {
+				reqs = &phaseOneReq{
+					m: map[txSeqNum]*shardsservice.PhaseOneRequest{},
+				}
+				phaseOneReqs[shardServer] = reqs
+			}
+
+			req, ok := reqs.m[txSeq]
+			if !ok {
+				req = &shardsservice.PhaseOneRequest{
+					BlockNum:               txSeq.blkNum,
+					TxNum:                  txSeq.txNum,
+					ShardidToSerialNumbers: map[uint32]*shardsservice.SerialNumbers{},
+				}
+				reqs.m[txSeq] = req
+			}
+
+			serialNums, ok := req.ShardidToSerialNumbers[uint32(shardID)]
+			if !ok {
+				serialNums = &shardsservice.SerialNumbers{}
+				req.ShardidToSerialNumbers[uint32(shardID)] = serialNums
+			}
+			serialNums.SerialNumbers = append(serialNums.SerialNumbers, sn)
+		}
+	}
+
+}
+
+func (m *shardsServerMgr) computeShardId(sn []byte) int {
+	return int(binary.BigEndian.Uint16(sn[0:2]) % m.numShards)
 }
 
 func initShardsServerStreams(serverAddr string, firstShardNum, lastShardNum int) (

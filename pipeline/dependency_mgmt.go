@@ -11,11 +11,11 @@ const maxSerialNumbersEntries = 1000000
 type dependencyMgr struct {
 	c         *sync.Cond
 	snToNodes map[string]map[*node]struct{}
-	nodes     map[blkNumTxNum]*node
+	nodes     map[txSeqNum]*node
 }
 
 type node struct {
-	blkNumTxNum   *blkNumTxNum
+	txID          *txSeqNum
 	serialNumbers [][]byte
 	dependents    map[*node]struct{}
 	dependsOn     map[*node]struct{}
@@ -25,7 +25,7 @@ func newDependencyMgr() *dependencyMgr {
 	return &dependencyMgr{
 		c:         sync.NewCond(&sync.Mutex{}),
 		snToNodes: map[string]map[*node]struct{}{},
-		nodes:     map[blkNumTxNum]*node{},
+		nodes:     map[txSeqNum]*node{},
 	}
 }
 
@@ -38,13 +38,13 @@ func (m *dependencyMgr) processBlock(block *token.Block) {
 	}
 
 	for i, tx := range block.Txs {
-		blkNumTxNum := blkNumTxNum{
+		blkNumTxNum := txSeqNum{
 			blkNum: block.Number,
 			txNum:  uint64(i),
 		}
 
 		newNode := &node{
-			blkNumTxNum:   &blkNumTxNum,
+			txID:          &blkNumTxNum,
 			serialNumbers: tx.SerialNumbers,
 			dependents:    map[*node]struct{}{},
 			dependsOn:     map[*node]struct{}{},
@@ -68,12 +68,12 @@ func (m *dependencyMgr) processBlock(block *token.Block) {
 	}
 }
 
-func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []blkNumTxNum) (map[blkNumTxNum][][]byte, []blkNumTxNum) {
+func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []txSeqNum) (map[txSeqNum][][]byte, []txSeqNum) {
 	m.c.L.Lock()
 	defer m.c.L.Unlock()
 
-	dependencyFreeTxs := map[blkNumTxNum][][]byte{}
-	dependentOrNotYetSeenTxs := []blkNumTxNum{}
+	dependencyFreeTxs := map[txSeqNum][][]byte{}
+	dependentOrNotYetSeenTxs := []txSeqNum{}
 
 	for _, e := range enquirySet {
 		node, ok := m.nodes[e]
@@ -86,16 +86,16 @@ func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []blkNumT
 	return dependencyFreeTxs, dependentOrNotYetSeenTxs
 }
 
-func (m *dependencyMgr) processValidatedTxs(toUpdate []*txValidationStatus) []*txValidationStatus {
+func (m *dependencyMgr) processValidatedTxs(toUpdate []*txStatus) []*txStatus {
 	m.c.L.Lock()
 	defer func() {
 		m.c.Signal()
 		m.c.L.Unlock()
 	}()
 
-	notYetSeenTxs := []*txValidationStatus{}
+	notYetSeenTxs := []*txStatus{}
 	for _, u := range toUpdate {
-		node, ok := m.nodes[u.blkNumTxNum]
+		node, ok := m.nodes[u.txSeqNum]
 		if !ok {
 			// This can happen only when sigverifier invalidates the transaction
 			notYetSeenTxs = append(notYetSeenTxs, u)
@@ -107,7 +107,7 @@ func (m *dependencyMgr) processValidatedTxs(toUpdate []*txValidationStatus) []*t
 }
 
 func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool) {
-	delete(m.nodes, *node.blkNumTxNum)
+	delete(m.nodes, *node.txID)
 	for _, sn := range node.serialNumbers {
 		delete(m.snToNodes[string(sn)], node)
 	}

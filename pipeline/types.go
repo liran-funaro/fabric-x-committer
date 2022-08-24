@@ -2,15 +2,17 @@ package pipeline
 
 import "fmt"
 
-type blkNumTxNum struct {
+const defaultChannelBufferSize = 10
+
+type txSeqNum struct {
 	blkNum, txNum uint64
 }
 
-type txValidationStatus struct {
-	blkNumTxNum blkNumTxNum
-	isValid     bool
+type txStatus struct {
+	txSeqNum txSeqNum
+	isValid  bool
 }
 
-func (b blkNumTxNum) String() string {
-	return fmt.Sprintf("Block:%d, Tx:%d", b.blkNum, b.txNum)
+func (n txSeqNum) String() string {
+	return fmt.Sprintf("txSeq:%d:%d", n.blkNum, n.txNum)
 }
