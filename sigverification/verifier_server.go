@@ -10,10 +10,13 @@ import (
 
 type verifierServer struct {
 	verificationKey *Key
+	executor        ParallelExecutor
 }
 
-func NewVerifierServer() *verifierServer {
-	return &verifierServer{}
+func NewVerifierServer(config *ParallelExecutionConfig) *verifierServer {
+	s := &verifierServer{}
+	s.executor = NewParallelExecutor(s.verifyRequest, config)
+	return s
 }
 
 func (s *verifierServer) SetVerificationKey(context context.Context, publicKey *Key) (*Empty, error) {
@@ -24,6 +27,8 @@ func (s *verifierServer) SetVerificationKey(context context.Context, publicKey *
 	return &Empty{}, nil
 }
 func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
+	go s.handleOutputs(stream)
+
 	for {
 		//TODO: Add cancel
 		requestBatch, err := stream.Recv()
@@ -32,26 +37,22 @@ func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
 			return err
 		}
 
-		responses := s.verifyRequests(requestBatch.Requests)
-		err = stream.Send(&ResponseBatch{Responses: responses})
+		s.executor.Submit(requestBatch.Requests)
+	}
+}
+
+func (s *verifierServer) handleOutputs(stream Verifier_StartStreamServer) {
+	for {
+		outputs := <-s.executor.Outputs()
+		err := stream.Send(&ResponseBatch{Responses: outputs})
 		if err != nil {
 			//TODO: Replace panics with error handling
-			//TODO: Add logging
 			panic(err)
 		}
 	}
 }
 
-func (s *verifierServer) verifyRequests(requests []*Request) []*Response {
-	responses := make([]*Response, len(requests))
-	//TODO: Parallelize
-	for i, request := range requests {
-		responses[i] = s.verifyRequest(request)
-	}
-	return responses
-}
-
-func (s *verifierServer) verifyRequest(request *Request) *Response {
+func (s *verifierServer) verifyRequest(request *Request) (*Response, error) {
 	response := &Response{
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
@@ -61,7 +62,7 @@ func (s *verifierServer) verifyRequest(request *Request) *Response {
 	} else {
 		response.IsValid = true
 	}
-	return response
+	return response, nil
 }
 
 func (s *verifierServer) verifySignature(tx *token.Tx) error {
