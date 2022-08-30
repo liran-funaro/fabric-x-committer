@@ -4,29 +4,33 @@ import (
 	"context"
 	"errors"
 	"log"
-
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 type verifierServer struct {
 	verificationKey *Key
 	executor        ParallelExecutor
+	verifier        TxVerifier
 }
 
-func NewVerifierServer(config *ParallelExecutionConfig) *verifierServer {
+func NewVerifierServer(config *ParallelExecutionConfig, verificationScheme Scheme) *verifierServer {
 	s := &verifierServer{}
 	s.executor = NewParallelExecutor(s.verifyRequest, config)
+	s.verifier = NewTxVerifier(verificationScheme)
 	return s
 }
 
-func (s *verifierServer) SetVerificationKey(context context.Context, publicKey *Key) (*Empty, error) {
-	if len(publicKey.SerializedBytes) == 0 {
+func (s *verifierServer) SetVerificationKey(context context.Context, verificationKey *Key) (*Empty, error) {
+	if !s.verifier.IsVerificationKeyValid(verificationKey) {
 		return nil, errors.New("invalid public key")
 	}
-	s.verificationKey = publicKey
+	s.verificationKey = verificationKey
 	return &Empty{}, nil
 }
 func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
+	if !s.verifier.IsVerificationKeyValid(s.verificationKey) {
+		return errors.New("no verification key set")
+	}
+
 	go s.handleOutputs(stream)
 
 	for {
@@ -57,17 +61,12 @@ func (s *verifierServer) verifyRequest(request *Request) (*Response, error) {
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
 	}
-	if err := s.verifySignature(request.Tx); err != nil {
+	if err := s.verifier.VerifyTx(s.verificationKey, request.Tx); err != nil {
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true
 	}
 	return response, nil
-}
-
-func (s *verifierServer) verifySignature(tx *token.Tx) error {
-	// TODO: Impl
-	return nil
 }
 
 func (s *verifierServer) mustEmbedUnimplementedVerifierServer() {}

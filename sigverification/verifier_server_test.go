@@ -24,10 +24,13 @@ type testState struct {
 	client     sigverification.VerifierClient
 	stopClient func() error
 	stopServer func()
+
+	signer sigverification.TxSigner
 }
 
 var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT})
 var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT}}
+var verificationScheme = sigverification.Ecdsa
 
 func (s *testState) setUp() {
 	RegisterFailHandler(func(message string, callerSkip ...int) {
@@ -38,13 +41,15 @@ func (s *testState) setUp() {
 	s.client = sigverification.NewVerifierClient(clientConnection)
 	s.stopClient = clientConnection.Close
 
-	server := sigverification.NewVerifierServer(s.parallelExecutionConfig)
+	server := sigverification.NewVerifierServer(s.parallelExecutionConfig, verificationScheme)
 	go func() {
 		utils.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server) {
 			s.stopServer = grpcServer.GracefulStop
 			sigverification.RegisterVerifierServer(grpcServer, server)
 		})
 	}()
+
+	s.signer = sigverification.NewTxSigner(verificationScheme)
 }
 
 func (s *testState) tearDown() {
@@ -62,13 +67,34 @@ var parallelExecutionConfig = &sigverification.ParallelExecutionConfig{
 	ChannelBufferSize: 1,
 }
 
+func TestNoVerificationKeySet(t *testing.T) {
+	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
+	c.setUp()
+
+	stream, err := c.client.StartStream(context.Background())
+	Expect(err).To(BeNil())
+
+	err = stream.Send(&sigverification.RequestBatch{})
+	Expect(err).To(BeNil())
+
+	_, err = stream.Recv()
+	Expect(err).NotTo(BeNil())
+
+	c.tearDown()
+}
+
 func TestNoInput(t *testing.T) {
 	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
 	c.setUp()
 
+	verificationKey, _ := c.signer.NewKeys()
+
+	_, err := c.client.SetVerificationKey(context.Background(), verificationKey)
+	Expect(err).To(BeNil())
+
 	stream, _ := c.client.StartStream(context.Background())
 
-	err := stream.Send(&sigverification.RequestBatch{})
+	err = stream.Send(&sigverification.RequestBatch{})
 	Expect(err).To(BeNil())
 
 	output := channel(stream)
@@ -82,11 +108,16 @@ func TestMinimalInput(t *testing.T) {
 	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
 	c.setUp()
 
+	verificationKey, signingKey := c.signer.NewKeys()
+
+	_, err := c.client.SetVerificationKey(context.Background(), verificationKey)
+	Expect(err).To(BeNil())
+
 	stream, _ := c.client.StartStream(context.Background())
 
-	err := stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
-		{BlockNum: 1, TxNum: 1, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
-		{BlockNum: 1, TxNum: 2, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
+	err = stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
+		{BlockNum: 1, TxNum: 1, Tx: c.signedTx([][]byte{}, signingKey)},
+		{BlockNum: 1, TxNum: 2, Tx: c.signedTx([][]byte{}, signingKey)},
 		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
 	}})
 	Expect(err).To(BeNil())
@@ -96,6 +127,12 @@ func TestMinimalInput(t *testing.T) {
 	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(batchWithResponses(HaveLen(3))))
 
 	c.tearDown()
+}
+
+func (t *testState) signedTx(serialNumbers []sigverification.SerialNumber, signingKey *sigverification.Key) *token.Tx {
+	signature, err := t.signer.SignTx(signingKey, serialNumbers)
+	Expect(err).To(BeNil())
+	return &token.Tx{SerialNumbers: serialNumbers, Signature: signature}
 }
 
 func batchWithResponses(matcher types.GomegaMatcher) types.GomegaMatcher {
