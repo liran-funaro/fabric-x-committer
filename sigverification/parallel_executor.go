@@ -1,10 +1,9 @@
 package sigverification
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logger"
-	"go.uber.org/zap"
 	"time"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 type Input = Request
@@ -47,7 +46,6 @@ type parallelExecutor struct {
 	executor            executorFunc
 	batchSizeCutoff     int
 	batchTimeCutoff     time.Duration
-	log                 *zap.SugaredLogger
 }
 
 func NewParallelExecutor(executor executorFunc, config *ParallelExecutionConfig) ParallelExecutor {
@@ -66,7 +64,6 @@ func NewParallelExecutor(executor executorFunc, config *ParallelExecutionConfig)
 		executor:            executor,
 		batchSizeCutoff:     config.BatchSizeCutoff,
 		batchTimeCutoff:     config.BatchTimeCutoff,
-		log:                 logger.NewLogger("Parallel Executor"),
 	}
 
 	go e.handleTimeManualCutoff()
@@ -74,7 +71,7 @@ func NewParallelExecutor(executor executorFunc, config *ParallelExecutionConfig)
 		go e.handleChannelInput(ch, i)
 	}
 
-	e.log.Infof("Was created and initialized with:\n\tParallelism:\t\t%d\n\tBatchSizeCutoff:\t%d\n\tBatchTimeCutoff:\t%v\n\tChannelBufferSize:\t%d",
+	logger.Infof("Was created and initialized with:\n\tParallelism:\t\t%d\n\tBatchSizeCutoff:\t%d\n\tBatchTimeCutoff:\t%v\n\tChannelBufferSize:\t%d",
 		config.Parallelism, config.BatchSizeCutoff, config.BatchTimeCutoff, config.ChannelBufferSize)
 	return e
 }
@@ -82,13 +79,13 @@ func NewParallelExecutor(executor executorFunc, config *ParallelExecutionConfig)
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		e.log.Debugf("Received request %v in channel %d. Sending for execution.", input, idx)
+		logger.Debugf("Received request %v in channel %d. Sending for execution.", input, idx)
 		output, err := e.executor(input)
 		if err != nil {
-			e.log.Debugf("Received error from executor %d.", idx)
+			logger.Debugf("Received error from executor %d.", idx)
 			e.errorCh <- err
 		} else {
-			e.log.Debugf("Received output from executor %d: %v", idx, output)
+			logger.Debugf("Received output from executor %d: %v", idx, output)
 			e.outputAggregationCh <- output
 		}
 	}
@@ -99,13 +96,13 @@ func (e *parallelExecutor) handleTimeManualCutoff() {
 	for {
 		select {
 		case <-e.batchManualCutoffCh:
-			e.log.Debugf("Attempts to cut a batch, because it was requested manually. (Buffer size: %d)", len(outputBuffer))
+			logger.Debugf("Attempts to cut a batch, because it was requested manually. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case <-time.After(e.batchTimeCutoff):
-			e.log.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
+			logger.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case output := <-e.outputAggregationCh:
-			e.log.Debugf("Attempts to emit a batch, because a go routine finished a calculation. (Buffer size: %d)", len(outputBuffer)+1)
+			logger.Debugf("Attempts to emit a batch, because a go routine finished a calculation. (Buffer size: %d)", len(outputBuffer)+1)
 			outputBuffer = e.cutBatch(append(outputBuffer, output), e.batchSizeCutoff)
 		}
 	}
@@ -116,7 +113,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 		return buffer
 	}
 	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
-	e.log.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
+	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	e.outputCh <- buffer[:batchSize]
 	return buffer[batchSize:]
 }
@@ -130,10 +127,10 @@ func (e *parallelExecutor) Errors() <-chan error {
 }
 
 func (e *parallelExecutor) Submit(inputs []*Input) {
-	e.log.Debugf("Will submit %d requests for execution.", len(inputs))
+	logger.Debugf("Will submit %d requests for execution.", len(inputs))
 	for _, input := range inputs {
 		e.nextInputCh() <- input
-		e.log.Debugf("Added a new requests on channel %d.", e.currentInputChIdx)
+		logger.Debugf("Added a new requests on channel %d.", e.currentInputChIdx)
 	}
 }
 

@@ -1,4 +1,4 @@
-package logger
+package logging
 
 import (
 	"go.uber.org/zap"
@@ -12,6 +12,6 @@ func init() {
 	logger.Infof("Initialized logger...")
 }
 
-func NewLogger(name string) *zap.SugaredLogger {
+func New(name string) *zap.SugaredLogger {
 	return logger.Named(name)
 }
