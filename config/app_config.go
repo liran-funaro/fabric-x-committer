@@ -38,8 +38,10 @@ type GlobalConfig struct {
 	Network NetworkConfig
 }
 type LoggingConfig struct {
-	Enabled bool
-	Level   LoggingLevel
+	Enabled     bool
+	Level       LoggingLevel
+	Caller      bool
+	Development bool
 }
 type NetworkConfig struct {
 	DefaultGrpcPort int
@@ -50,10 +52,10 @@ var AppConfig *GlobalConfig
 func init() {
 	env := os.Getenv(DeploymentEnvKey)
 	configFile := filepath.Join(utils.CurrentDir(), configFiles[env])
-	AppConfig = NewAppConfig(configFile)
+	AppConfig = newAppConfig(configFile)
 }
 
-func NewAppConfig(filename string) *GlobalConfig {
+func newAppConfig(filename string) *GlobalConfig {
 	appConfig, err := readConfig(filename)
 	if err != nil {
 		panic(err)

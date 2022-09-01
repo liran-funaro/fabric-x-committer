@@ -3,7 +3,6 @@ package sigverification
 import (
 	"context"
 	"errors"
-	"log"
 )
 
 type verifierServer struct {
@@ -21,9 +20,11 @@ func NewVerifierServer(config *ParallelExecutionConfig, verificationScheme Schem
 
 func (s *verifierServer) SetVerificationKey(context context.Context, verificationKey *Key) (*Empty, error) {
 	if !s.verifier.IsVerificationKeyValid(verificationKey) {
+		logger.Info("Attempted to set an empty verification key.")
 		return nil, errors.New("invalid public key")
 	}
 	s.verificationKey = verificationKey
+	logger.Info("Set a new verification key.")
 	return &Empty{}, nil
 }
 func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
@@ -37,9 +38,10 @@ func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
 		//TODO: Add cancel
 		requestBatch, err := stream.Recv()
 		if err != nil {
-			log.Printf("failed to serve request: %v", err)
+			logger.Infof("failed to serve request: %v", err)
 			return err
 		}
+		logger.Debugf("Received %d requests from client: %v", len(requestBatch.Requests), requestBatch)
 
 		s.executor.Submit(requestBatch.Requests)
 	}
@@ -48,11 +50,14 @@ func (s *verifierServer) StartStream(stream Verifier_StartStreamServer) error {
 func (s *verifierServer) handleOutputs(stream Verifier_StartStreamServer) {
 	for {
 		outputs := <-s.executor.Outputs()
+		logger.Debugf("Received %d responses from parallel executor: %v", len(outputs), outputs)
 		err := stream.Send(&ResponseBatch{Responses: outputs})
 		if err != nil {
+			logger.Infof("Failed to send %d responses to client.", len(outputs))
 			//TODO: Replace panics with error handling
 			panic(err)
 		}
+		logger.Debugf("Forwarded %d responses to client.", len(outputs))
 	}
 }
 

@@ -1,5 +1,7 @@
 logging:
   enabled: true
   level: DEBUG
+  development: true
+  caller: true
 network:
   defaultgrpcport: 5000
