@@ -1,4 +1,4 @@
-package sigverification_test
+package verifierserver_test
 
 import (
 	"context"
@@ -7,9 +7,11 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/types"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"google.golang.org/grpc"
@@ -18,38 +20,28 @@ import (
 const testTimeout = 3 * time.Second
 
 type testState struct {
-	testing                 *testing.T
-	parallelExecutionConfig *sigverification.ParallelExecutionConfig
+	parallelExecutionConfig *parallelexecutor.Config
 
 	client     sigverification.VerifierClient
 	stopClient func() error
 	stopServer func()
-
-	signer sigverification.TxSigner
 }
 
 var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT})
 var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT}}
-var verificationScheme = sigverification.Ecdsa
 
-func (s *testState) setUp() {
-	RegisterFailHandler(func(message string, callerSkip ...int) {
-		s.testing.Fatalf(message)
-	})
-
+func (s *testState) setUp(verificationScheme signature.Scheme) {
 	clientConnection, _ := utils.Connect(clientConnectionConfig)
 	s.client = sigverification.NewVerifierClient(clientConnection)
 	s.stopClient = clientConnection.Close
 
-	server := sigverification.NewVerifierServer(s.parallelExecutionConfig, verificationScheme)
+	server := verifierserver.New(s.parallelExecutionConfig, verificationScheme)
 	go func() {
 		utils.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server) {
 			s.stopServer = grpcServer.GracefulStop
 			sigverification.RegisterVerifierServer(grpcServer, server)
 		})
 	}()
-
-	s.signer = sigverification.NewTxSigner(verificationScheme)
 }
 
 func (s *testState) tearDown() {
@@ -60,7 +52,7 @@ func (s *testState) tearDown() {
 	s.stopServer()
 }
 
-var parallelExecutionConfig = &sigverification.ParallelExecutionConfig{
+var parallelExecutionConfig = &parallelexecutor.Config{
 	BatchSizeCutoff:   3,
 	BatchTimeCutoff:   1 * time.Hour,
 	Parallelism:       3,
@@ -68,8 +60,9 @@ var parallelExecutionConfig = &sigverification.ParallelExecutionConfig{
 }
 
 func TestNoVerificationKeySet(t *testing.T) {
-	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
-	c.setUp()
+	registerFailHandler(t)
+	c := &testState{parallelExecutionConfig: parallelExecutionConfig}
+	c.setUp(signature.Ecdsa)
 
 	stream, err := c.client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -84,12 +77,13 @@ func TestNoVerificationKeySet(t *testing.T) {
 }
 
 func TestNoInput(t *testing.T) {
-	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
-	c.setUp()
+	registerFailHandler(t)
+	c := &testState{parallelExecutionConfig: parallelExecutionConfig}
+	c.setUp(signature.Ecdsa)
 
-	verificationKey, _ := c.signer.NewKeys()
+	_, verificationKey := signature.NewSignerVerifier(signature.Ecdsa)
 
-	_, err := c.client.SetVerificationKey(context.Background(), verificationKey)
+	_, err := c.client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
 
 	stream, _ := c.client.StartStream(context.Background())
@@ -105,49 +99,49 @@ func TestNoInput(t *testing.T) {
 }
 
 func TestMinimalInput(t *testing.T) {
-	c := &testState{testing: t, parallelExecutionConfig: parallelExecutionConfig}
-	c.setUp()
+	registerFailHandler(t)
+	c := &testState{parallelExecutionConfig: parallelExecutionConfig}
+	c.setUp(signature.Ecdsa)
 
-	verificationKey, signingKey := c.signer.NewKeys()
+	sign, verificationKey := signature.NewSignerVerifier(signature.Ecdsa)
 
-	_, err := c.client.SetVerificationKey(context.Background(), verificationKey)
+	_, err := c.client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
 
 	stream, _ := c.client.StartStream(context.Background())
 
 	err = stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
-		{BlockNum: 1, TxNum: 1, Tx: c.signedTx([][]byte{}, signingKey)},
-		{BlockNum: 1, TxNum: 2, Tx: c.signedTx([][]byte{}, signingKey)},
+		{BlockNum: 1, TxNum: 1, Tx: sign([][]byte{})},
+		{BlockNum: 1, TxNum: 2, Tx: sign([][]byte{})},
 		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
 	}})
 	Expect(err).To(BeNil())
 
 	output := channel(stream)
 	Expect(err).To(BeNil())
-	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(batchWithResponses(HaveLen(3))))
+	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(HaveLen(3)))
 
 	c.tearDown()
 }
 
-func (t *testState) signedTx(serialNumbers []sigverification.SerialNumber, signingKey *sigverification.Key) *token.Tx {
-	signature, err := t.signer.SignTx(signingKey, serialNumbers)
-	Expect(err).To(BeNil())
-	return &token.Tx{SerialNumbers: serialNumbers, Signature: signature}
-}
-
-func batchWithResponses(matcher types.GomegaMatcher) types.GomegaMatcher {
-	return Satisfy(func(response *sigverification.ResponseBatch) bool {
-		match, _ := matcher.Match(response.Responses)
-		return match
+func registerFailHandler(t *testing.T) {
+	RegisterFailHandler(func(message string, callerSkip ...int) {
+		t.Fatalf(message)
 	})
 }
 
-func channel(stream sigverification.Verifier_StartStreamClient) <-chan *sigverification.ResponseBatch {
-	output := make(chan *sigverification.ResponseBatch)
+func channel(stream sigverification.Verifier_StartStreamClient) <-chan []*sigverification.Response {
+	output := make(chan []*sigverification.Response)
 	go func() {
+		defer close(output)
 		for {
 			response, _ := stream.Recv()
-			output <- response
+			if response == nil || response.Responses == nil {
+				return
+			}
+			if len(response.Responses) > 0 {
+				output <- response.Responses
+			}
 		}
 	}()
 	return output

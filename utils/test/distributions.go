@@ -4,8 +4,17 @@ import "math/rand"
 
 type Percentage = float64
 
+var Always Percentage = 1
+var Never Percentage = 0
+
 type Distribution interface {
 	Generate() float64
+}
+
+type ConstantDistribution struct{ Value float64 }
+
+func (d *ConstantDistribution) Generate() float64 {
+	return d.Value
 }
 
 type NormalDistribution struct{ Mean, Std float64 }
@@ -27,4 +36,12 @@ func Volatile(mean int64) *NormalDistribution {
 }
 func Stable(mean int64) *NormalDistribution {
 	return &NormalDistribution{Mean: float64(mean), Std: float64(mean) / 100}
+}
+
+func Constant(value int64) *ConstantDistribution {
+	return &ConstantDistribution{Value: float64(value)}
+}
+
+func Uniform(min, max int64) *UniformDistribution {
+	return &UniformDistribution{Min: float64(min), Max: float64(max)}
 }

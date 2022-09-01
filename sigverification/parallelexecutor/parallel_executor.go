@@ -1,17 +1,20 @@
-package sigverification
+package parallelexecutor
 
 import (
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
-type Input = Request
-type Output = Response
+type Input = sigverification.Request
+type Output = sigverification.Response
+type ExecutorFunc = func(*Input) (*Output, error)
 
-type executorFunc = func(*Input) (*Output, error)
+var logger = logging.New("parallel_executor")
 
-type ParallelExecutionConfig struct {
+type Config struct {
 	//Parallelism How many parallel go routines will be launched
 	Parallelism int
 	//BatchSizeCutoff The minimum amount of responses we need to collect before emitting a response
@@ -43,12 +46,12 @@ type parallelExecutor struct {
 	batchManualCutoffCh chan struct{}
 	outputAggregationCh chan *Output
 	outputBuffer        []*Output
-	executor            executorFunc
+	executor            ExecutorFunc
 	batchSizeCutoff     int
 	batchTimeCutoff     time.Duration
 }
 
-func NewParallelExecutor(executor executorFunc, config *ParallelExecutionConfig) ParallelExecutor {
+func New(executor ExecutorFunc, config *Config) ParallelExecutor {
 	inputChs := make([]chan *Input, config.Parallelism)
 	for i := 0; i < config.Parallelism; i++ {
 		inputChs[i] = make(chan *Input, config.ChannelBufferSize)
