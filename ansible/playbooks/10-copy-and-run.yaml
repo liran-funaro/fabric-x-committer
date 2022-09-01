@@ -1,0 +1,21 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Copy shardservice and sigverification executables to machine and run 
+    hosts: all
+    tasks:
+      - name: Copy sigverification executable to remote machine
+        copy:
+          src: ../../bin/sigverification
+          dest: ~/
+          mode: a+x
+      - name: Copy shardsservice executable to remote machine
+        copy:
+          src: ../../bin/shardsservice
+          dest: ~/
+          mode: a+x
+      - name: Run sigverification executable
+        shell: ./sigverification
+      - name: Run shardsservice executable
+        shell: ./shardsservice

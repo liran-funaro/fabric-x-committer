@@ -1,0 +1,7 @@
+all:
+  hosts:
+    machine1:
+      ansible_connection: ssh
+      ansible_host: "IP ADDRESS GOES HERE"
+      ansible_user: "root"
+      ansible_ssh_pass: "SSH PASSWORD GOES HERE"
