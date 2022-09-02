@@ -6,10 +6,20 @@ import (
 )
 
 func Min(a int, b int) int {
+	min, _ := sorted(a, b)
+	return min
+}
+
+func Max(a, b int) int {
+	_, max := sorted(a, b)
+	return max
+}
+
+func sorted(a, b int) (int, int) {
 	if a < b {
-		return a
+		return a, b
 	}
-	return b
+	return b, a
 }
 
 func CurrentDir() string {
