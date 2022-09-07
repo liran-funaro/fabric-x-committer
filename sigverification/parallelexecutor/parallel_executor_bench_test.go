@@ -1,6 +1,7 @@
 package parallelexecutor_test
 
 import (
+	"log"
 	"testing"
 	"time"
 
@@ -45,7 +46,8 @@ func BenchmarkParallelExecutor(b *testing.B) {
 					requestsSent(len(batch.Requests))
 				}
 			})
-			wait()
+			rate := wait()
+			log.Printf("Rate: %d Reqs/sec for config %s", rate, config.name)
 		})
 	}
 

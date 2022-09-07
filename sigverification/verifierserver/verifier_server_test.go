@@ -91,7 +91,7 @@ func TestNoInput(t *testing.T) {
 	err = stream.Send(&sigverification.RequestBatch{})
 	Expect(err).To(BeNil())
 
-	output := channel(stream)
+	output := outputChannel(stream)
 	Expect(err).To(BeNil())
 	Eventually(output).WithTimeout(testTimeout).ShouldNot(Receive())
 
@@ -117,7 +117,7 @@ func TestMinimalInput(t *testing.T) {
 	}})
 	Expect(err).To(BeNil())
 
-	output := channel(stream)
+	output := outputChannel(stream)
 	Expect(err).To(BeNil())
 	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(HaveLen(3)))
 
@@ -130,10 +130,20 @@ func registerFailHandler(t *testing.T) {
 	})
 }
 
-func channel(stream sigverification.Verifier_StartStreamClient) <-chan []*sigverification.Response {
+func inputChannel(stream sigverification.Verifier_StartStreamClient) chan<- *sigverification.RequestBatch {
+	channel := make(chan *sigverification.RequestBatch)
+	go func() {
+		for {
+			batch := <-channel
+			stream.Send(batch)
+		}
+	}()
+	return channel
+}
+
+func outputChannel(stream sigverification.Verifier_StartStreamClient) <-chan []*sigverification.Response {
 	output := make(chan []*sigverification.Response)
 	go func() {
-		defer close(output)
 		for {
 			response, _ := stream.Recv()
 			if response == nil || response.Responses == nil {

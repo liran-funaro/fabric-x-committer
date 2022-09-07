@@ -2,6 +2,7 @@ package verifierserver_test
 
 import (
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -33,33 +34,37 @@ var benchmarkConfigs = []struct {
 				TxSize:           test.Stable(20),
 				SerialNumberSize: test.Constant(10),
 			},
-			BatchSize: test.Volatile(100),
+			BatchSize: test.Constant(100),
 		},
 	},
 }}
 
 func BenchmarkVerifierServer(b *testing.B) {
-	for _, benchmarkConfig := range benchmarkConfigs {
-		b.Run(benchmarkConfig.name, func(b *testing.B) {
-			g := NewInputGenerator(benchmarkConfig.inputGeneratorParams)
-			c := &testState{parallelExecutionConfig: benchmarkConfig.parallelExecutionConfig}
+	for _, config := range benchmarkConfigs {
+		b.Run(config.name, func(b *testing.B) {
+			g := NewInputGenerator(config.inputGeneratorParams)
+			c := &testState{parallelExecutionConfig: config.parallelExecutionConfig}
 			defer c.tearDown()
-			c.setUp(benchmarkConfig.inputGeneratorParams.requestBatch.Tx.Scheme)
+			c.setUp(config.inputGeneratorParams.requestBatch.Tx.Scheme)
 			c.client.SetVerificationKey(context.Background(), g.PublicKey())
 			stream, _ := c.client.StartStream(context.Background())
+			send := inputChannel(stream)
 
-			requestsSent, wait := testutils.Track(channel(stream))
+			requestsSent, wait := testutils.Track(outputChannel(stream))
 			b.ResetTimer()
-			//TODO: RunParallel
-			for n := 0; n < b.N; n++ {
-				g.NextInputDelay()
-				batch := g.NextRequestBatch()
-				stream.Send(batch)
-				requestsSent(len(batch.Requests))
-			}
-			wait()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					g.NextInputDelay()
+					batch := g.NextRequestBatch()
+					send <- batch
+					requestsSent(len(batch.Requests))
+				}
+			})
+			rate := wait()
+			log.Printf("Rate: %d TX/sec for config %s", rate, config.name)
 		})
 	}
+
 }
 
 // Input generator

@@ -6,6 +6,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"time"
 )
 
 // Tx
@@ -137,10 +138,12 @@ func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 
 // Tracker
 
-func Track(outputReceived <-chan []*sigverification.Response) (func(int), func()) {
+func Track(outputReceived <-chan []*sigverification.Response) (func(int), func() int) {
 	requestsSubmitted := make(chan int)
 	stopSending := make(chan struct{})
-	done := make(chan struct{})
+	done := make(chan int)
+	totalSent := 0
+	start := time.Now()
 	go func() {
 		pending := 0
 		stillSubmitting := true
@@ -150,25 +153,31 @@ func Track(outputReceived <-chan []*sigverification.Response) (func(int), func()
 				stillSubmitting = false
 			case inputBatchSize := <-requestsSubmitted:
 				pending += inputBatchSize
+				totalSent += inputBatchSize
 			case outputBatch := <-outputReceived:
 				pending -= len(outputBatch)
 				if pending == 0 && !stillSubmitting {
-					done <- struct{}{}
+					done <- requestsPerSecond(totalSent, time.Now().Sub(start))
 					return
 				}
 			}
 		}
 	}()
 
-	wait := func() {
+	wait := func() int {
 		stopSending <- struct{}{}
-		<-done
+		outputRate := <-done
 		close(stopSending)
 		close(requestsSubmitted)
+		return outputRate
 	}
 	submitRequests := func(requests int) {
 		requestsSubmitted <- requests
 	}
 
 	return submitRequests, wait
+}
+
+func requestsPerSecond(total int, duration time.Duration) int {
+	return int(float64(time.Second) * float64(total) / float64(duration))
 }
