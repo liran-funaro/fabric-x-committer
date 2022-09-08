@@ -2,6 +2,7 @@ package signature_test
 
 import (
 	"testing"
+	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
@@ -9,32 +10,53 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-var benchmarkConfigs = []struct {
-	name                 string
-	inputGeneratorParams *inputGeneratorParams
-}{{
-	name: "basic",
-	inputGeneratorParams: &inputGeneratorParams{&testutils.TxGeneratorParams{
+type benchmarkConfig struct {
+	Name                 string
+	InputGeneratorParams *inputGeneratorParams
+}
+
+var baseConfig = benchmarkConfig{
+	Name: "basic",
+	InputGeneratorParams: &inputGeneratorParams{&testutils.TxGeneratorParams{
 		Scheme:           signature.Ecdsa,
 		ValidSigRatio:    test.Always,
-		TxSize:           test.Uniform(1, 10),
+		TxSize:           test.Constant(1),
 		SerialNumberSize: test.Constant(64),
 	}},
-}}
+}
 
 func BenchmarkTxVerifier(b *testing.B) {
-	for _, config := range benchmarkConfigs {
-		b.Run(config.name, func(b *testing.B) {
-			g := NewInputGenerator(config.inputGeneratorParams)
-			txVerifier := signature.NewTxVerifier(config.inputGeneratorParams.Scheme)
+	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+		{Header: "Valid Sig Ratio", Formatter: test.NoFormatting},
+		{Header: "Throughput", Formatter: test.NoFormatting},
+		{Header: "Memory", Formatter: test.NoFormatting},
+	}})
+	defer output.Close()
+	var stats testutils.SyncTrackerStats
+	var iConfig benchmarkConfig
+	for i := test.NewBenchmarkIterator(baseConfig, "InputGeneratorParams.ValidSigRatio", test.Never, 0.5, test.Always); i.HasNext(); i.Next() {
+		i.Read(&iConfig)
+		totalSigs := 0
+		b.Run(iConfig.Name, func(b *testing.B) {
+			g := NewInputGenerator(iConfig.InputGeneratorParams)
+			t := testutils.NewSyncTracker(1 * time.Millisecond)
+			txVerifier := signature.NewTxVerifier(iConfig.InputGeneratorParams.Scheme)
 			publicKey := g.PublicKey()
 
+			t.Start()
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				txVerifier.VerifyTx(publicKey, g.NextTx())
+				b.StopTimer()
+				tx := g.NextTx()
+				b.StartTimer()
+
+				txVerifier.VerifyTx(publicKey, tx)
 			}
+			totalSigs = b.N
+			stats = t.Stop()
 		})
+		output.Record(iConfig.InputGeneratorParams.ValidSigRatio, float64(totalSigs)*float64(time.Second)/float64(stats.TotalTime), stats.TotalMemory)
 	}
 }
 

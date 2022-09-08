@@ -25,7 +25,13 @@ func New(config *parallelexecutor.Config, verificationScheme signature.Scheme) *
 	s.verifier = signature.NewTxVerifier(verificationScheme)
 
 	executor := parallelexecutor.New(s.verifyRequest, config)
-	s.streamHandler = streamhandler.OfExecutor(executor)
+	s.streamHandler = streamhandler.New(
+		func(batch *sigverification.RequestBatch) {
+			executor.Submit(batch.Requests)
+		},
+		func() streamhandler.Output {
+			return &sigverification.ResponseBatch{Responses: <-executor.Outputs()}
+		})
 	return s
 }
 

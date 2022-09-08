@@ -2,7 +2,6 @@ package streamhandler
 
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -20,14 +19,10 @@ type StreamHandler struct {
 	OutputPublisher func() Output
 }
 
-func OfExecutor(executor parallelexecutor.ParallelExecutor) *StreamHandler {
+func New(inputSubscriber func(Input), outputPublisher func() Output) *StreamHandler {
 	return &StreamHandler{
-		InputSubscriber: func(batch *sigverification.RequestBatch) {
-			executor.Submit(batch.Requests)
-		},
-		OutputPublisher: func() Output {
-			return &sigverification.ResponseBatch{Responses: <-executor.Outputs()}
-		},
+		InputSubscriber: inputSubscriber,
+		OutputPublisher: outputPublisher,
 	}
 }
 

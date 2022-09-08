@@ -2,7 +2,6 @@ package streamhandler_test
 
 import (
 	"context"
-	"log"
 	"testing"
 	"time"
 
@@ -11,67 +10,76 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-var benchmarkConfigs = []struct {
-	name                 string
-	inputGeneratorParams *inputGeneratorParams
-}{{
-	name: "basic",
-	inputGeneratorParams: &inputGeneratorParams{
-		requestBatchSize: test.Constant(1),
-		clientDelay:      test.Stable(int64(10 * time.Microsecond)),
-		serverDelay:      test.NoDelay,
+type benchmarkConfig struct {
+	Name                 string
+	InputGeneratorParams *inputGeneratorParams
+}
+
+var baseConfig = benchmarkConfig{
+	Name: "basic",
+	InputGeneratorParams: &inputGeneratorParams{
+		ClientDelay: test.NoDelay,
+		ServerDelay: test.Stable(int64(time.Second / 635)),
 	},
-}}
+}
 
 func BenchmarkStreamHandler(b *testing.B) {
-	for _, config := range benchmarkConfigs {
-		b.Run(config.name, func(b *testing.B) {
-			g := NewInputGenerator(config.inputGeneratorParams)
+	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
+		{Header: "Throughput", Formatter: test.NoFormatting},
+		{Header: "Memory", Formatter: test.NoFormatting},
+	}})
+	defer output.Close()
+	var stats testutils.AsyncTrackerStats
+	var iConfig benchmarkConfig
+	for i := test.NewBenchmarkIterator(baseConfig, "InputGeneratorParams.ServerDelay", test.Constant(int64(time.Second/635))); i.HasNext(); i.Next() {
+		i.Read(&iConfig)
+		b.Run(iConfig.Name, func(b *testing.B) {
+			g := NewInputGenerator(iConfig.InputGeneratorParams)
 			s := testutils.NewTestState(g.VerifierServer())
+			t := testutils.NewAsyncTracker(testutils.NoSampling)
 			defer s.TearDown()
 			stream, _ := s.Client.StartStream(context.Background())
 			send := testutils.InputChannel(stream)
 
-			requestsSent, wait := testutils.Track(testutils.OutputChannel(stream))
+			t.Start(testutils.OutputChannel(stream))
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					batch := g.NextRequestBatch()
-					requestsSent(len(batch.Requests))
+					t.SubmitRequests(len(batch.Requests))
+
 					send <- batch
 				}
 			})
-			rate := wait()
-			log.Printf("Rate: %d Reqs (batches)/sec for config %s", rate, config.name)
+			stats = t.WaitUntilDone()
 		})
+		output.Record(iConfig.InputGeneratorParams.ServerDelay, stats.RequestsPer(time.Second), stats.TotalMemory)
 	}
-
 }
 
 // Input generator
 
 type inputGeneratorParams struct {
-	requestBatchSize test.Distribution
-	clientDelay      test.Distribution
-	serverDelay      test.Distribution
+	ClientDelay test.Distribution
+	ServerDelay test.Distribution
 }
 type inputGenerator struct {
-	verifierServer        sigverification.VerifierServer
-	requestBatchGenerator *testutils.EmptyRequestBatchGenerator
-	clientDelayGenerator  *test.DelayGenerator
+	verifierServer       sigverification.VerifierServer
+	clientDelayGenerator *test.DelayGenerator
+	requestBatch         *sigverification.RequestBatch
 }
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		verifierServer:        testutils.NewDummyVerifierServer(p.serverDelay),
-		requestBatchGenerator: testutils.NewEmptyRequestBatchGenerator(p.requestBatchSize),
-		clientDelayGenerator:  test.NewDelayGenerator(p.clientDelay, 30),
+		verifierServer:       testutils.NewDummyVerifierServer(p.ServerDelay),
+		requestBatch:         &sigverification.RequestBatch{Requests: []*sigverification.Request{{}}},
+		clientDelayGenerator: test.NewDelayGenerator(p.ClientDelay, 30),
 	}
 }
 
 func (c *inputGenerator) NextRequestBatch() *sigverification.RequestBatch {
-	c.clientDelayGenerator.Next()
-	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
+	return c.requestBatch
 }
 
 func (c *inputGenerator) VerifierServer() sigverification.VerifierServer {

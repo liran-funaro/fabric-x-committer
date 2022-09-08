@@ -1,7 +1,6 @@
 package parallelexecutor_test
 
 import (
-	"log"
 	"testing"
 	"time"
 
@@ -11,58 +10,75 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-var benchmarkConfigs = []struct {
-	name                    string
-	parallelExecutionConfig *parallelexecutor.Config
-	inputGeneratorParams    *inputGeneratorParams
-}{{
-	name: "basic",
-	parallelExecutionConfig: &parallelexecutor.Config{
-		BatchSizeCutoff:   30,
+type benchmarkConfig struct {
+	Name                    string
+	ParallelExecutionConfig parallelexecutor.Config
+	InputGeneratorParams    inputGeneratorParams
+}
+
+var baseConfig = benchmarkConfig{
+	Name: "basic",
+	ParallelExecutionConfig: parallelexecutor.Config{
+		BatchSizeCutoff:   100,
 		BatchTimeCutoff:   1 * time.Second,
-		Parallelism:       3,
+		Parallelism:       6,
 		ChannelBufferSize: 1,
 	},
-	inputGeneratorParams: &inputGeneratorParams{
-		inputDelay:    test.Volatile(int64(1 * time.Millisecond)),
-		batchSize:     test.Constant(100),
-		executorDelay: test.Stable(int64(150 * time.Microsecond)),
+	InputGeneratorParams: inputGeneratorParams{
+		InputDelay:    test.NoDelay,
+		BatchSize:     test.Constant(100),
+		ExecutorDelay: test.Stable(int64(time.Second / 10_000)),
 	},
-}}
+}
 
 func BenchmarkParallelExecutor(b *testing.B) {
-	for _, config := range benchmarkConfigs {
-		b.Run(config.name, func(b *testing.B) {
-			g := NewInputGenerator(config.inputGeneratorParams)
-			e := parallelexecutor.New(g.Executor(), config.parallelExecutionConfig)
+	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+		{Header: "Parallelism", Formatter: test.NoFormatting},
+		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
+		{Header: "Throughput", Formatter: test.NoFormatting},
+		{Header: "Memory", Formatter: test.NoFormatting},
+	}})
+	defer output.Close()
+	var stats testutils.AsyncTrackerStats
+	var iConfig benchmarkConfig
+	for i := test.NewBenchmarkIterator(baseConfig, "ParallelExecutionConfig.Parallelism", 2, 4); i.HasNext(); i.Next() {
+		i.Read(&iConfig)
+		var jConfig benchmarkConfig
+		for j := test.NewBenchmarkIterator(iConfig, "InputGeneratorParams.BatchSize", test.Constant(200), test.Constant(300)); j.HasNext(); j.Next() {
+			j.Read(&jConfig)
+			b.Run(jConfig.Name, func(b *testing.B) {
+				g := NewInputGenerator(&jConfig.InputGeneratorParams)
+				e := parallelexecutor.New(g.Executor(), &jConfig.ParallelExecutionConfig)
+				t := testutils.NewAsyncTracker(testutils.NoSampling)
 
-			requestsSent, wait := testutils.Track(e.Outputs())
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					batch := g.NextRequestBatch()
-					requestsSent(len(batch.Requests))
-					e.Submit(batch.Requests)
-				}
+				t.Start(e.Outputs())
+				b.ResetTimer()
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						batch := g.NextRequestBatch()
+						t.SubmitRequests(len(batch.Requests))
+
+						e.Submit(batch.Requests)
+					}
+				})
+				stats = t.WaitUntilDone()
 			})
-			rate := wait()
-			log.Printf("Rate: %d Reqs/sec for config %s", rate, config.name)
-		})
+			output.Record(jConfig.ParallelExecutionConfig.Parallelism, jConfig.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
+		}
 	}
-
 }
 
 // Input generator
 
 type inputGeneratorParams struct {
-	inputDelay, batchSize, executorDelay test.Distribution
+	InputDelay, BatchSize, ExecutorDelay test.Distribution
 }
 
 func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		inputDelayGenerator:    test.NewDelayGenerator(params.inputDelay, 30),
-		requestBatchGenerator:  testutils.NewEmptyRequestBatchGenerator(params.batchSize),
-		executorDelayGenerator: test.NewDelayGenerator(params.executorDelay, 30),
+		inputDelayGenerator:    test.NewDelayGenerator(params.InputDelay, 30),
+		requestBatchGenerator:  testutils.NewEmptyRequestBatchGenerator(params.BatchSize),
+		executorDelayGenerator: test.NewDelayGenerator(params.ExecutorDelay, 30),
 	}
 }
 

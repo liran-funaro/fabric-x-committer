@@ -2,8 +2,6 @@ package testutils
 
 import (
 	"context"
-	"time"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
@@ -161,55 +159,6 @@ func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 	return batch
 }
 
-// Tracker
-
-func Track(outputReceived <-chan []*sigverification.Response) (func(int), func() int) {
-	requestsSubmitted := make(chan int)
-	stopSending := make(chan struct{})
-	done := make(chan int)
-	totalSent := 0
-	start := time.Now()
-	go func() {
-		pending := 0
-		stillSubmitting := true
-		for {
-			select {
-			case <-stopSending:
-				stillSubmitting = false
-			case inputBatchSize := <-requestsSubmitted:
-				pending += inputBatchSize
-				totalSent += inputBatchSize
-			case outputBatch := <-outputReceived:
-				pending -= len(outputBatch)
-				if pending < 0 {
-					panic("negative pending")
-				}
-				if pending == 0 && !stillSubmitting {
-					done <- requestsPerSecond(totalSent, time.Now().Sub(start))
-					return
-				}
-			}
-		}
-	}()
-
-	wait := func() int {
-		stopSending <- struct{}{}
-		outputRate := <-done
-		close(stopSending)
-		close(requestsSubmitted)
-		return outputRate
-	}
-	submitRequests := func(requests int) {
-		requestsSubmitted <- requests
-	}
-
-	return submitRequests, wait
-}
-
-func requestsPerSecond(total int, duration time.Duration) int {
-	return int(float64(time.Second) * float64(total) / float64(duration))
-}
-
 // Dummy parallel executor for benchmarking purposes
 // For each request, the executor responds with an equally-sized response after the specified delay
 type dummyParallelExecutorParams struct {
@@ -219,23 +168,19 @@ type dummyParallelExecutorParams struct {
 type dummyParallelExecutor struct {
 	outputs                chan []*parallelexecutor.Output
 	executorDelayGenerator *test.DelayGenerator
-	responseBatchGenerator *FastOutputArrayGenerator
+	responseBatch          []*parallelexecutor.Output
 }
 
 func newDummyParallelExecutor(params *dummyParallelExecutorParams) parallelexecutor.ParallelExecutor {
-	valueGen := func() *sigverification.Response {
-		return &sigverification.Response{}
-	}
 	return &dummyParallelExecutor{
 		outputs:                make(chan []*parallelexecutor.Output),
 		executorDelayGenerator: test.NewDelayGenerator(params.executorDelay, 30),
-		responseBatchGenerator: NewFastOutputSliceGenerator(valueGen, 10),
+		responseBatch:          []*sigverification.Response{{}},
 	}
 }
 
 func (e *dummyParallelExecutor) Submit(input []*parallelexecutor.Input) {
-	e.executorDelayGenerator.Next()
-	e.outputs <- e.responseBatchGenerator.NextWithSize(len(input))
+	e.outputs <- e.responseBatch
 }
 func (e *dummyParallelExecutor) Outputs() <-chan []*parallelexecutor.Output {
 	return e.outputs
@@ -252,7 +197,13 @@ type dummyVerifierServer struct {
 
 func NewDummyVerifierServer(executorDelay test.Distribution) sigverification.VerifierServer {
 	executor := newDummyParallelExecutor(&dummyParallelExecutorParams{executorDelay: executorDelay})
-	streamHandler := streamhandler.OfExecutor(executor)
+	streamHandler := streamhandler.New(
+		func(batch *sigverification.RequestBatch) {
+			executor.Submit(batch.Requests)
+		},
+		func() streamhandler.Output {
+			return &sigverification.ResponseBatch{Responses: <-executor.Outputs()}
+		})
 	return &dummyVerifierServer{streamHandler: streamHandler}
 }
 

@@ -2,7 +2,6 @@ package verifierserver_test
 
 import (
 	"context"
-	"log"
 	"testing"
 	"time"
 
@@ -14,21 +13,23 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-var benchmarkConfigs = []struct {
-	name                    string
-	parallelExecutionConfig *parallelexecutor.Config
-	inputGeneratorParams    *inputGeneratorParams
-}{{
-	name: "basic",
-	parallelExecutionConfig: &parallelexecutor.Config{
+type benchmarkConfig struct {
+	Name                    string
+	ParallelExecutionConfig *parallelexecutor.Config
+	InputGeneratorParams    *inputGeneratorParams
+}
+
+var baseConfig = benchmarkConfig{
+	Name: "basic",
+	ParallelExecutionConfig: &parallelexecutor.Config{
 		BatchSizeCutoff:   100,
 		BatchTimeCutoff:   1 * time.Second,
 		Parallelism:       3,
 		ChannelBufferSize: 1,
 	},
-	inputGeneratorParams: &inputGeneratorParams{
-		inputDelay: test.Stable(int64(10 * time.Microsecond)),
-		requestBatch: &testutils.RequestBatchGeneratorParams{
+	InputGeneratorParams: &inputGeneratorParams{
+		InputDelay: test.Stable(int64(10 * time.Microsecond)),
+		RequestBatch: &testutils.RequestBatchGeneratorParams{
 			Tx: &testutils.TxGeneratorParams{
 				Scheme:           signature.Ecdsa,
 				ValidSigRatio:    0.8,
@@ -38,30 +39,41 @@ var benchmarkConfigs = []struct {
 			BatchSize: test.Constant(100),
 		},
 	},
-}}
+}
 
 func BenchmarkVerifierServer(b *testing.B) {
-	for _, config := range benchmarkConfigs {
-		b.Run(config.name, func(b *testing.B) {
-			g := NewInputGenerator(config.inputGeneratorParams)
-			c := testutils.NewTestState(verifierserver.New(config.parallelExecutionConfig, config.inputGeneratorParams.requestBatch.Tx.Scheme))
+	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+		{Header: "Parallelism", Formatter: test.NoFormatting},
+		{Header: "Throughput", Formatter: test.NoFormatting},
+		{Header: "Memory", Formatter: test.NoFormatting},
+	}})
+	defer output.Close()
+	var stats testutils.AsyncTrackerStats
+	var iConfig benchmarkConfig
+	for i := test.NewBenchmarkIterator(baseConfig, "ParallelExecutionConfig.Parallelism", 2, 4); i.HasNext(); i.Next() {
+		i.Read(&iConfig)
+		b.Run(iConfig.Name, func(b *testing.B) {
+			g := NewInputGenerator(iConfig.InputGeneratorParams)
+			c := testutils.NewTestState(verifierserver.New(iConfig.ParallelExecutionConfig, iConfig.InputGeneratorParams.RequestBatch.Tx.Scheme))
+			t := testutils.NewAsyncTracker(testutils.NoSampling)
 			defer c.TearDown()
 			c.Client.SetVerificationKey(context.Background(), g.PublicKey())
 			stream, _ := c.Client.StartStream(context.Background())
 			send := testutils.InputChannel(stream)
 
-			requestsSent, wait := testutils.Track(testutils.OutputChannel(stream))
+			t.Start(testutils.OutputChannel(stream))
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					batch := g.NextRequestBatch()
-					requestsSent(len(batch.Requests))
+					t.SubmitRequests(len(batch.Requests))
+
 					send <- batch
 				}
 			})
-			rate := wait()
-			log.Printf("Rate: %d TX/sec for config %s", rate, config.name)
+			stats = t.WaitUntilDone()
 		})
+		output.Record(iConfig.ParallelExecutionConfig.Parallelism, stats.RequestsPer(time.Second), stats.TotalMemory)
 	}
 
 }
@@ -69,8 +81,8 @@ func BenchmarkVerifierServer(b *testing.B) {
 // Input generator
 
 type inputGeneratorParams struct {
-	inputDelay   *test.NormalDistribution
-	requestBatch *testutils.RequestBatchGeneratorParams
+	InputDelay   test.Distribution
+	RequestBatch *testutils.RequestBatchGeneratorParams
 }
 type inputGenerator struct {
 	inputDelayGenerator   *test.DelayGenerator
@@ -79,8 +91,8 @@ type inputGenerator struct {
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		inputDelayGenerator:   test.NewDelayGenerator(p.inputDelay, 30),
-		requestBatchGenerator: testutils.NewRequestBatchGenerator(p.requestBatch, 30),
+		inputDelayGenerator:   test.NewDelayGenerator(p.InputDelay, 30),
+		requestBatchGenerator: testutils.NewRequestBatchGenerator(p.RequestBatch, 30),
 	}
 }
 

@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/pkg/errors"
 )
 
 func Min(a int, b int) int {
@@ -25,6 +28,30 @@ func sorted(a, b int) (int, int) {
 func CurrentDir() string {
 	_, b, _, _ := runtime.Caller(1)
 	return filepath.Dir(b)
+}
+
+func ResultDir() string {
+	_, currentDir, _, _ := runtime.Caller(0)
+	resultDir, _ := filepath.Abs(filepath.Dir(currentDir) + "/../generated")
+	err := os.Remove(resultDir)
+	_ = err
+	os.MkdirAll(resultDir, 0755)
+	return resultDir
+}
+
+func OverwriteFile(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to open %s", path)
+	}
+	return file, nil
+}
+
+func MemoryAllocation() uint64 {
+	var memory runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&memory)
+	return memory.TotalAlloc
 }
 
 func Must(err error) {
