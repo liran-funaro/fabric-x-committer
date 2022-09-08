@@ -24,7 +24,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{
 			SigVerifierServers: []string{"localhost"},
-			BatchCutConfig: &BatchCutConfig{
+			BatchCutConfig: &SigVerifiedBatchConfig{
 				BatchSize:     2,
 				TimeoutMillis: 20000,
 			},
@@ -37,7 +37,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 	b := g.generateNextBlock(2)
 	m.processBlockAsync(b)
 
-	txSeqNums := <-m.verificationResults.validsCh
+	txSeqNums := <-m.outputChanValids
 	require.Equal(t, 2, len(txSeqNums))
 	require.Equal(t, txSeqNum{blkNum: 0, txNum: 0}, txSeqNums[0])
 	require.Equal(t, txSeqNum{blkNum: 0, txNum: 1}, txSeqNums[1])

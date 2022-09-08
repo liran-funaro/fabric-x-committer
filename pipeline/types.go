@@ -2,7 +2,7 @@ package pipeline
 
 import "fmt"
 
-const defaultChannelBufferSize = 10
+const defaultChannelBufferSize = 1000
 
 type txSeqNum struct {
 	blkNum, txNum uint64
