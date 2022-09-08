@@ -6,6 +6,7 @@ type Percentage = float64
 
 var Always Percentage = 1
 var Never Percentage = 0
+var NoDelay = Constant(0)
 
 type Distribution interface {
 	Generate() float64

@@ -1,0 +1,69 @@
+package testutils
+
+import (
+	"log"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"google.golang.org/grpc"
+)
+
+type TestState struct {
+	Client     sigverification.VerifierClient
+	StopClient func() error
+	StopServer func()
+}
+
+var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier})
+var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}
+
+func NewTestState(server sigverification.VerifierServer) *TestState {
+	s := &TestState{}
+	clientConnection, _ := utils.Connect(clientConnectionConfig)
+	s.Client = sigverification.NewVerifierClient(clientConnection)
+	s.StopClient = clientConnection.Close
+
+	go func() {
+		utils.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server) {
+			s.StopServer = grpcServer.GracefulStop
+			sigverification.RegisterVerifierServer(grpcServer, server)
+		})
+	}()
+	return s
+}
+
+func (s *TestState) TearDown() {
+	err := s.StopClient()
+	if err != nil {
+		log.Fatalf("failed to close connection: %v", err)
+	}
+	s.StopServer()
+}
+
+func InputChannel(stream sigverification.Verifier_StartStreamClient) chan<- *sigverification.RequestBatch {
+	channel := make(chan *sigverification.RequestBatch)
+	go func() {
+		for {
+			batch := <-channel
+			stream.Send(batch)
+		}
+	}()
+	return channel
+}
+
+func OutputChannel(stream sigverification.Verifier_StartStreamClient) <-chan []*sigverification.Response {
+	output := make(chan []*sigverification.Response)
+	go func() {
+		for {
+			response, _ := stream.Recv()
+			if response == nil || response.Responses == nil {
+				return
+			}
+			if len(response.Responses) > 0 {
+				output <- response.Responses
+			}
+		}
+	}()
+	return output
+}

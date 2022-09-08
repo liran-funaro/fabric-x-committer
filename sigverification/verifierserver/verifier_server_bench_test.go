@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -43,21 +44,19 @@ func BenchmarkVerifierServer(b *testing.B) {
 	for _, config := range benchmarkConfigs {
 		b.Run(config.name, func(b *testing.B) {
 			g := NewInputGenerator(config.inputGeneratorParams)
-			c := &testState{parallelExecutionConfig: config.parallelExecutionConfig}
-			defer c.tearDown()
-			c.setUp(config.inputGeneratorParams.requestBatch.Tx.Scheme)
-			c.client.SetVerificationKey(context.Background(), g.PublicKey())
-			stream, _ := c.client.StartStream(context.Background())
-			send := inputChannel(stream)
+			c := testutils.NewTestState(verifierserver.New(config.parallelExecutionConfig, config.inputGeneratorParams.requestBatch.Tx.Scheme))
+			defer c.TearDown()
+			c.Client.SetVerificationKey(context.Background(), g.PublicKey())
+			stream, _ := c.Client.StartStream(context.Background())
+			send := testutils.InputChannel(stream)
 
-			requestsSent, wait := testutils.Track(outputChannel(stream))
+			requestsSent, wait := testutils.Track(testutils.OutputChannel(stream))
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					g.NextInputDelay()
 					batch := g.NextRequestBatch()
-					send <- batch
 					requestsSent(len(batch.Requests))
+					send <- batch
 				}
 			})
 			rate := wait()
@@ -86,11 +85,8 @@ func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 }
 
 func (c *inputGenerator) NextRequestBatch() *sigverification.RequestBatch {
-	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
-}
-
-func (c *inputGenerator) NextInputDelay() {
 	c.inputDelayGenerator.Next()
+	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
 }
 
 func (c *inputGenerator) PublicKey() *sigverification.Key {

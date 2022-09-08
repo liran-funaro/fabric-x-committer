@@ -40,10 +40,9 @@ func BenchmarkParallelExecutor(b *testing.B) {
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					g.NextInputDelay()
 					batch := g.NextRequestBatch()
-					e.Submit(batch.Requests)
 					requestsSent(len(batch.Requests))
+					e.Submit(batch.Requests)
 				}
 			})
 			rate := wait()
@@ -74,11 +73,8 @@ type inputGenerator struct {
 }
 
 func (c *inputGenerator) NextRequestBatch() *sigverification.RequestBatch {
-	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
-}
-
-func (c *inputGenerator) NextInputDelay() {
 	c.inputDelayGenerator.Next()
+	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
 }
 
 func (c *inputGenerator) Executor() parallelexecutor.ExecutorFunc {

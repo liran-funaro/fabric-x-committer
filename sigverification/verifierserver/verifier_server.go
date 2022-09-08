@@ -7,6 +7,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -15,14 +16,16 @@ var logger = logging.New("verifierserver")
 type verifierServer struct {
 	sigverification.UnimplementedVerifierServer
 	verificationKey *sigverification.Key
-	executor        parallelexecutor.ParallelExecutor
+	streamHandler   *streamhandler.StreamHandler
 	verifier        signature.TxVerifier
 }
 
 func New(config *parallelexecutor.Config, verificationScheme signature.Scheme) *verifierServer {
 	s := &verifierServer{}
-	s.executor = parallelexecutor.New(s.verifyRequest, config)
 	s.verifier = signature.NewTxVerifier(verificationScheme)
+
+	executor := parallelexecutor.New(s.verifyRequest, config)
+	s.streamHandler = streamhandler.OfExecutor(executor)
 	return s
 }
 
@@ -39,34 +42,8 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 	if s.verificationKey == nil || !s.verifier.IsVerificationKeyValid(s.verificationKey.SerializedBytes) {
 		return errors.New("no verification key set")
 	}
-
-	go s.handleOutputs(stream)
-
-	for {
-		//TODO: Add cancel
-		requestBatch, err := stream.Recv()
-		if err != nil {
-			logger.Infof("failed to serve request: %v", err)
-			return err
-		}
-		logger.Debugf("Received %d requests from client: %v", len(requestBatch.Requests), requestBatch)
-
-		s.executor.Submit(requestBatch.Requests)
-	}
-}
-
-func (s *verifierServer) handleOutputs(stream sigverification.Verifier_StartStreamServer) {
-	for {
-		outputs := <-s.executor.Outputs()
-		logger.Debugf("Received %d responses from parallel executor: %v", len(outputs), outputs)
-		err := stream.Send(&sigverification.ResponseBatch{Responses: outputs})
-		if err != nil {
-			logger.Infof("Failed to send %d responses to client.", len(outputs))
-			//TODO: Replace panics with error handling
-			panic(err)
-		}
-		logger.Debugf("Forwarded %d responses to client.", len(outputs))
-	}
+	s.streamHandler.HandleStream(stream)
+	return nil
 }
 
 func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigverification.Response, error) {

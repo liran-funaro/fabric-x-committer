@@ -1,8 +1,9 @@
 package test
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"time"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 type PositiveIntGenerator struct {
@@ -85,8 +86,7 @@ var ConstantByteGenerator = func() S {
 //it is calculated by concatenating the sample the necessary times to achieve the target size.
 //The size of the sample is a tradeoff between the randomness of the values of the generated array and the memory footprint.
 type FastByteArrayGenerator struct {
-	sample             []S
-	batchSizeGenerator *PositiveIntGenerator
+	sample []S
 }
 
 func NewFastByteArrayGenerator(valueGenerator func() S, batchSize Distribution, sampleSize int) *FastByteArrayGenerator {
@@ -94,14 +94,7 @@ func NewFastByteArrayGenerator(valueGenerator func() S, batchSize Distribution, 
 	for i := 0; i < sampleSize; i++ {
 		sample[i] = valueGenerator()
 	}
-	return &FastByteArrayGenerator{
-		sample:             sample,
-		batchSizeGenerator: NewPositiveIntGenerator(batchSize, 30),
-	}
-}
-
-func (g *FastByteArrayGenerator) Next() []S {
-	return g.NextWithSize(g.batchSizeGenerator.Next())
+	return &FastByteArrayGenerator{sample: sample}
 }
 
 func (g *FastByteArrayGenerator) NextWithSize(targetSize int) []S {
