@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -8,10 +10,9 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"google.golang.org/grpc"
-	"time"
 )
 
-var defaultConfig = &utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT}}
+var defaultConfig = &utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}
 var defaultParallelExecutorConfig = &parallelexecutor.Config{
 	Parallelism:       3,
 	BatchTimeCutoff:   1 * time.Millisecond,

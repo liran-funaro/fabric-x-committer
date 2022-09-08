@@ -22,9 +22,9 @@ func TestSigVerifiersMgr(t *testing.T) {
 	defer s.stop()
 
 	m, err := newSigVerificationMgr(
-		&SigVerifierMgrConfig{
+		&config.SigVerifierMgrConfig{
 			SigVerifierServers: []string{"localhost"},
-			BatchCutConfig: &SigVerifiedBatchConfig{
+			BatchCutConfig: &config.BatchConfig{
 				BatchSize:     2,
 				TimeoutMillis: 20000,
 			},
@@ -51,7 +51,7 @@ type testSigVerifierServer struct {
 }
 
 func (s *testSigVerifierServer) start() {
-	address := fmt.Sprintf("localhost:%d", config.GRPC_PORT)
+	address := fmt.Sprintf("localhost:%d", config.DefaultGRPCPortSigVerifier)
 	s.grpcServer = grpc.NewServer()
 	go func() {
 

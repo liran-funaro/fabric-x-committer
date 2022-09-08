@@ -13,18 +13,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type SigVerifierMgrConfig struct {
-	SigVerifierServers []string
-	BatchCutConfig     *SigVerifiedBatchConfig
-}
-
-type SigVerifiedBatchConfig struct {
-	BatchSize     int
-	TimeoutMillis int
-}
-
 type sigVerifierMgr struct {
-	config       *SigVerifierMgrConfig
+	config       *config.SigVerifierMgrConfig
 	verifiers    []*sigVerifier
 	nextVerifier int
 
@@ -36,7 +26,7 @@ type sigVerifierMgr struct {
 	stopWg       sync.WaitGroup
 }
 
-func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
+func newSigVerificationMgr(c *config.SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}
@@ -149,7 +139,7 @@ type sigVerifier struct {
 
 func newSigVerifier(host string, responseCollectionChan chan<- *sigverification.ResponseBatch) (*sigVerifier, error) {
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s:%d", host, config.GRPC_PORT),
+		fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortSigVerifier),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

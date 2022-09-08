@@ -27,8 +27,8 @@ type testState struct {
 	stopServer func()
 }
 
-var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT})
-var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.GRPC_PORT}}
+var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier})
+var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}
 
 func (s *testState) setUp(verificationScheme signature.Scheme) {
 	clientConnection, _ := utils.Connect(clientConnectionConfig)

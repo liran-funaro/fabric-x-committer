@@ -14,17 +14,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type ShardsServerMgrConfig struct {
-	ShardsServersToNumShards    map[string]int
-	PhaseOneVerifiedBatchConfig *PhaseTwoBatchConfig
-	CleanupShards               bool
-}
-
-type PhaseTwoBatchConfig struct {
-	BatchSize     int
-	TimeoutMillis int
-}
-
 type dbInflightTxs struct {
 	phaseOnePendingTxs       *phaseOnePendingTxs
 	phaseOneProcessedTxsChan chan []*phaseOneProcessedTx
@@ -32,7 +21,7 @@ type dbInflightTxs struct {
 
 ///////////////////////////////////////  shardsServerMgr  ////////////////////////////////
 type shardsServerMgr struct {
-	config          *ShardsServerMgrConfig
+	config          *config.ShardsServerMgrConfig
 	shardServers    []*shardsServer
 	shardIdToServer map[int]*shardsServer
 	numShards       uint16
@@ -44,7 +33,7 @@ type shardsServerMgr struct {
 	stopWg       sync.WaitGroup
 }
 
-func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
+func newShardsServerMgr(c *config.ShardsServerMgrConfig) (*shardsServerMgr, error) {
 	shardsServerMgr := &shardsServerMgr{
 		config:          c,
 		shardServers:    []*shardsServer{},
@@ -155,8 +144,8 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[txSeqNum][][]byte) {
 }
 
 func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
-	timeoutMillis := time.Duration(m.config.PhaseOneVerifiedBatchConfig.TimeoutMillis * int(time.Millisecond))
-	batchSize := m.config.PhaseOneVerifiedBatchConfig.BatchSize
+	timeoutMillis := time.Duration(m.config.BatchConfig.TimeoutMillis * int(time.Millisecond))
+	batchSize := m.config.BatchConfig.BatchSize
 	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
 	writeToOutputChansAndSendPhaseTwoMessages := func() {
@@ -242,7 +231,7 @@ func newShardServer(host string,
 
 	if cleanupShards {
 		conn, err := grpc.Dial(
-			fmt.Sprintf("%s:%d", host, config.GRPC_PORT),
+			fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 
@@ -308,7 +297,7 @@ type phaseOneComm struct {
 
 func newPhaseOneComm(host string) (*phaseOneComm, error) {
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s:%d", host, config.GRPC_PORT),
+		fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -408,7 +397,7 @@ type phaseTwoComm struct {
 
 func newPhaseTwoComm(host string) (*phaseTwoComm, error) {
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s:%d", host, config.GRPC_PORT),
+		fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
