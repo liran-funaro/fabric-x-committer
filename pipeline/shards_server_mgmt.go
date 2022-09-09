@@ -152,7 +152,17 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		status := []*txStatus{}
 		phaseTwoMessages := map[*shardsServer]*shardsservice.PhaseTwoRequestBatch{}
 
-		for _, t := range phaseOneProcessedTxs {
+		size := len(phaseOneProcessedTxs)
+		if size == 0 {
+			return
+		}
+		if size > batchSize {
+			size = batchSize
+		}
+		b := phaseOneProcessedTxs[:size]
+		phaseOneProcessedTxs = phaseOneProcessedTxs[size:]
+
+		for _, t := range b {
 			for s := range t.shardServers {
 				reqBatch, ok := phaseTwoMessages[s]
 				if !ok {
