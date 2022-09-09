@@ -1,0 +1,8 @@
+build: build-blockgen build-client
+
+build-blockgen:
+    go build -o blockgen ./cmd/generator
+
+build-client:
+    # TODO maybe merge client and generator in a single tool?
+    go build -o workload ./cmd/client

@@ -26,3 +26,9 @@ func CurrentDir() string {
 	_, b, _, _ := runtime.Caller(1)
 	return filepath.Dir(b)
 }
+
+func Must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}

@@ -1,0 +1,23 @@
+name: profile1
+
+description: some text
+
+# block configuration
+block:
+  # number of blocks we generate
+  count: 100000
+  # number of transactions per block
+  size: 100
+
+# transaction configuration
+transaction:
+  serialnumber:
+    # number of serial numbers per transaction
+    count: 1
+    # length in bytes
+    length: 32
+  signature:
+    # signature scheme
+    type: ecdsa
+    #
+    validityratio: 1.0
