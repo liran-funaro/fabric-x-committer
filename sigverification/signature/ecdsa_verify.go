@@ -1,26 +1,52 @@
 package signature
 
 import (
+	"crypto/ecdsa"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/crypto"
 )
 
-type ecdsaTxSignerVerifier struct{}
+// ECDSA Factory
 
-func (v *ecdsaTxSignerVerifier) newKeys() (PublicKey, PrivateKey) {
-	publicKey, privateKey, _ := crypto.NewECDSAKeys()
-	return publicKey, privateKey
+type ecdsaFactory struct{}
+
+func (f *ecdsaFactory) newSignerVerifier() (TxSigner, TxVerifier, error) {
+	privateKey, err := crypto.NewECDSAKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &ecdsaTxSigner{signingKey: privateKey}, &ecdsaTxVerifier{verificationKey: &privateKey.PublicKey}, nil
 }
 
-func (v *ecdsaTxSignerVerifier) signTx(signingKey PrivateKey, inputs []SerialNumber) (Signature, error) {
-	return crypto.SignMessage(signingKey, signatureData(inputs))
+func (f *ecdsaFactory) newVerifier(verificationKey []byte) (TxVerifier, error) {
+	ecdsaVerificationKey, err := crypto.ParseVerificationKey(verificationKey)
+	if err != nil {
+		return nil, err
+	}
+	return &ecdsaTxVerifier{verificationKey: ecdsaVerificationKey}, nil
 }
 
-func (v *ecdsaTxSignerVerifier) IsVerificationKeyValid(key PublicKey) bool {
-	//TODO: Check that it is a valid ECDSA key
-	return len(key) > 0
+// ECDSA Verifier
+
+type ecdsaTxVerifier struct {
+	verificationKey *ecdsa.PublicKey
 }
 
-func (v *ecdsaTxSignerVerifier) VerifyTx(verificationKey PublicKey, tx *token.Tx) error {
-	return crypto.VerifyMessage(verificationKey, signatureData(tx.GetSerialNumbers()), tx.GetSignature())
+func (v *ecdsaTxVerifier) publicKey() []byte {
+	key, _ := crypto.SerializeVerificationKey(v.verificationKey)
+	return key
+}
+
+func (v *ecdsaTxVerifier) VerifyTx(tx *token.Tx) error {
+	return crypto.VerifyMessage(v.verificationKey, signatureData(tx.GetSerialNumbers()), tx.GetSignature())
+}
+
+// ECDSA Signer
+
+type ecdsaTxSigner struct {
+	signingKey *ecdsa.PrivateKey
+}
+
+func (s *ecdsaTxSigner) SignTx(inputs []SerialNumber) (Signature, error) {
+	return crypto.SignMessage(s.signingKey, signatureData(inputs))
 }

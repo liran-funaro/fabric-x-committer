@@ -44,7 +44,7 @@ func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
 	c := testutils.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
 
-	_, verificationKey := signature.NewSignerVerifier(signature.Ecdsa)
+	_, verificationKey := signature.NewSignerPubKey(signature.Ecdsa)
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
@@ -65,16 +65,17 @@ func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
 	c := testutils.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
 
-	sign, verificationKey := signature.NewSignerVerifier(signature.Ecdsa)
+	txSigner, verificationKey := signature.NewSignerPubKey(signature.Ecdsa)
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
 
 	stream, _ := c.Client.StartStream(context.Background())
-
+	var emptyData []signature.SerialNumber
+	emptyDataSig, _ := txSigner.SignTx(emptyData)
 	err = stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
-		{BlockNum: 1, TxNum: 1, Tx: sign([][]byte{})},
-		{BlockNum: 1, TxNum: 2, Tx: sign([][]byte{})},
+		{BlockNum: 1, TxNum: 1, Tx: &token.Tx{Signature: emptyDataSig, SerialNumbers: emptyData}},
+		{BlockNum: 1, TxNum: 2, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
 		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
 	}})
 	Expect(err).To(BeNil())

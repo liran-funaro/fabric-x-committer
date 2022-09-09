@@ -89,7 +89,7 @@ type FastByteArrayGenerator struct {
 	sample []S
 }
 
-func NewFastByteArrayGenerator(valueGenerator func() S, batchSize Distribution, sampleSize int) *FastByteArrayGenerator {
+func NewFastByteArrayGenerator(valueGenerator func() S, sampleSize int) *FastByteArrayGenerator {
 	sample := make([]S, sampleSize)
 	for i := 0; i < sampleSize; i++ {
 		sample[i] = valueGenerator()

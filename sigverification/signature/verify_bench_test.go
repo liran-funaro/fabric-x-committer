@@ -13,16 +13,19 @@ import (
 type benchmarkConfig struct {
 	Name                 string
 	InputGeneratorParams *inputGeneratorParams
+	VerificationScheme   signature.Scheme
 }
 
 var baseConfig = benchmarkConfig{
 	Name: "basic",
-	InputGeneratorParams: &inputGeneratorParams{&testutils.TxGeneratorParams{
-		Scheme:           signature.Ecdsa,
-		ValidSigRatio:    test.Always,
-		TxSize:           test.Constant(1),
-		SerialNumberSize: test.Constant(64),
-	}},
+	InputGeneratorParams: &inputGeneratorParams{
+		TxInputGeneratorParams: &testutils.TxInputGeneratorParams{
+			TxSize:           test.Constant(1),
+			SerialNumberSize: test.Constant(64),
+		},
+		ValidSigRatio: test.Always,
+	},
+	VerificationScheme: signature.Ecdsa,
 }
 
 func BenchmarkTxVerifier(b *testing.B) {
@@ -40,18 +43,21 @@ func BenchmarkTxVerifier(b *testing.B) {
 		b.Run(iConfig.Name, func(b *testing.B) {
 			g := NewInputGenerator(iConfig.InputGeneratorParams)
 			t := testutils.NewSyncTracker(1 * time.Millisecond)
-			txVerifier := signature.NewTxVerifier(iConfig.InputGeneratorParams.Scheme)
-			publicKey := g.PublicKey()
+			txSigner, txVerifier := signature.NewSignerVerifier(iConfig.VerificationScheme)
 
 			t.Start()
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
 				b.StopTimer()
-				tx := g.NextTx()
+				tx := &token.Tx{SerialNumbers: g.NextTxInput()}
+				isValid := g.NextValid()
+				if isValid {
+					tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers)
+				}
 				b.StartTimer()
 
-				txVerifier.VerifyTx(publicKey, tx)
+				txVerifier.VerifyTx(tx)
 			}
 			totalSigs = b.N
 			stats = t.Stop()
@@ -63,22 +69,25 @@ func BenchmarkTxVerifier(b *testing.B) {
 // Input generator
 
 type inputGeneratorParams struct {
-	*testutils.TxGeneratorParams
+	*testutils.TxInputGeneratorParams
+	ValidSigRatio test.Percentage
 }
 type inputGenerator struct {
-	txGenerator testutils.TxGenerator
+	txInputGenerator *testutils.TxInputGenerator
+	validGenerator   *test.BooleanGenerator
 }
 
 func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		txGenerator: *testutils.NewTxGenerator(params.TxGeneratorParams),
+		txInputGenerator: testutils.NewTxInputGenerator(params.TxInputGeneratorParams),
+		validGenerator:   test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 30),
 	}
 }
 
-func (g *inputGenerator) PublicKey() signature.PublicKey {
-	return g.txGenerator.PublicKey
+func (g *inputGenerator) NextTxInput() []signature.SerialNumber {
+	return g.txInputGenerator.Next()
 }
 
-func (g *inputGenerator) NextTx() *token.Tx {
-	return g.txGenerator.Next()
+func (g *inputGenerator) NextValid() bool {
+	return g.validGenerator.Next()
 }

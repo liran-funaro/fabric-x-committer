@@ -1,6 +1,9 @@
 package signature
 
-import "github.ibm.com/distributed-trust-research/scalable-committer/token"
+import (
+	"github.com/pkg/errors"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+)
 
 type Message = []byte
 type SerialNumber = []byte
@@ -15,39 +18,43 @@ const (
 	Ecdsa
 )
 
-//txSigner is used only for testing purposes
-type txSigner interface {
-	//NewKeys generates a set of public/private keys based on the scheme implemented (e.g. RSA)
-	newKeys() (PublicKey, PrivateKey)
+type cryptoFactory interface {
+	newSignerVerifier() (TxSigner, TxVerifier, error)
+	newVerifier([]byte) (TxVerifier, error)
+}
 
+//TxSigner is used only for testing purposes
+type TxSigner interface {
 	//SignTx signs a message and returns the signature
-	signTx(PrivateKey, []SerialNumber) (Signature, error)
+	SignTx([]SerialNumber) (Signature, error)
 }
 
 type TxVerifier interface {
-	//IsVerificationKeyValid checks if a verification key is non-empty and valid, according to the scheme implemented (e.g. RSA)
-	IsVerificationKeyValid(PublicKey) bool
+	//publicKey returns the serialized verification key for testing purposes only
+	publicKey() []byte
+	//VerifyTx verifies a signature of a transaction as signed by SignTx
+	VerifyTx(*token.Tx) error
+}
 
-	//VerifyTx verifies a signature of a transaction as signed by signTx
-	VerifyTx(PublicKey, *token.Tx) error
+var cryptoFactories = map[Scheme]cryptoFactory{
+	Ecdsa:    &ecdsaFactory{},
+	NoScheme: &dummyFactory{},
 }
 
 //NewTxVerifier creates a new TX verifier according to the implementation scheme
-func NewTxVerifier(scheme Scheme) TxVerifier {
-	return newTxSignerVerifier(scheme)
+func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
+	if factory, ok := cryptoFactories[scheme]; ok {
+		return factory.newVerifier(key)
+	} else {
+		return nil, errors.New("scheme not supported")
+	}
 }
 
-func newTxSignerVerifier(scheme Scheme) interface {
-	TxVerifier
-	txSigner
-} {
-	switch scheme {
-	case Ecdsa:
-		return &ecdsaTxSignerVerifier{}
-	case NoScheme:
-		return &dummyTxSignerVerifier{}
-	default:
-		panic("scheme not supported")
+func newTxSignerVerifier(scheme Scheme) (TxSigner, TxVerifier, error) {
+	if factory, ok := cryptoFactories[scheme]; ok {
+		return factory.newSignerVerifier()
+	} else {
+		return nil, nil, errors.New("scheme not supported")
 	}
 }
 

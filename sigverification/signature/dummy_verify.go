@@ -2,20 +2,30 @@ package signature
 
 import "github.ibm.com/distributed-trust-research/scalable-committer/token"
 
-type dummyTxSignerVerifier struct{}
+// Dummy Factory
 
-func (v *dummyTxSignerVerifier) newKeys() (PublicKey, PrivateKey) {
-	return []byte{}, []byte{}
+type dummyFactory struct{}
+
+func (f *dummyFactory) newSignerVerifier() (TxSigner, TxVerifier, error) {
+	return &dummyTxSignerVerifier{}, &dummyTxSignerVerifier{}, nil
 }
 
-func (v *dummyTxSignerVerifier) signTx(PrivateKey, []SerialNumber) (Signature, error) {
+func (f *dummyFactory) newVerifier(key []byte) (TxVerifier, error) {
+	return &dummyTxSignerVerifier{}, nil
+}
+
+// Dummy signer/verifier
+
+type dummyTxSignerVerifier struct{}
+
+func (v *dummyTxSignerVerifier) publicKey() []byte {
+	return nil
+}
+
+func (v *dummyTxSignerVerifier) SignTx([]SerialNumber) (Signature, error) {
 	return []byte{}, nil
 }
 
-func (v *dummyTxSignerVerifier) IsVerificationKeyValid(PublicKey) bool {
-	return true
-}
-
-func (v *dummyTxSignerVerifier) VerifyTx(PublicKey, *token.Tx) error {
+func (v *dummyTxSignerVerifier) VerifyTx(*token.Tx) error {
 	return nil
 }

@@ -14,13 +14,11 @@ import (
 // Tx
 
 type TxGenerator struct {
-	signTx    func([]signature.SerialNumber) *token.Tx
+	txSigner  signature.TxSigner
 	PublicKey signature.PublicKey
 
-	txSizeGenerator           *test.PositiveIntGenerator
-	serialNumberSizeGenerator *test.PositiveIntGenerator
-	serialNumberGenerator     *test.FastByteArrayGenerator
-	validSigRatioGenerator    *test.BooleanGenerator
+	txInputGenerator       *TxInputGenerator
+	validSigRatioGenerator *test.BooleanGenerator
 }
 
 type TxGeneratorParams struct {
@@ -31,32 +29,48 @@ type TxGeneratorParams struct {
 }
 
 func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
-	signTx, verificationKey := signature.NewSignerVerifier(params.Scheme)
+	txSigner, verificationKey := signature.NewSignerPubKey(params.Scheme)
 	return &TxGenerator{
-		signTx:                    signTx,
-		PublicKey:                 verificationKey,
-		txSizeGenerator:           test.NewPositiveIntGenerator(params.TxSize, 50),
-		serialNumberGenerator:     test.NewFastByteArrayGenerator(test.ConstantByteGenerator, params.SerialNumberSize, 60),
-		serialNumberSizeGenerator: test.NewPositiveIntGenerator(params.SerialNumberSize, 30),
-		validSigRatioGenerator:    test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
+		txSigner:               txSigner,
+		PublicKey:              verificationKey,
+		txInputGenerator:       NewTxInputGenerator(&TxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
+		validSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
 }
 
 func (g *TxGenerator) Next() *token.Tx {
-	serialNumbers := g.nextSerialNumbers()
+	tx := &token.Tx{SerialNumbers: g.txInputGenerator.Next()}
 	if g.validSigRatioGenerator.Next() {
-		return g.signTx(serialNumbers)
+		tx.Signature, _ = g.txSigner.SignTx(tx.SerialNumbers)
 	}
-	return &token.Tx{SerialNumbers: serialNumbers}
+	return tx
 }
 
-func (g *TxGenerator) nextSerialNumbers() []signature.SerialNumber {
-	txSize := g.txSizeGenerator.Next()
-	serialNumbers := make([]signature.SerialNumber, txSize)
-	for i := 0; i < txSize; i++ {
-		serialNumbers[i] = g.serialNumberGenerator.NextWithSize(g.serialNumberSizeGenerator.Next())
+type TxInputGeneratorParams struct {
+	TxSize           test.Distribution
+	SerialNumberSize test.Distribution
+}
+
+type TxInputGenerator struct {
+	serialNumberGenerator *FastTxInputSliceGenerator
+	txSizeGenerator       *test.PositiveIntGenerator
+}
+
+func NewTxInputGenerator(params *TxInputGeneratorParams) *TxInputGenerator {
+	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
+	serialNumberGenerator := test.NewFastByteArrayGenerator(test.ConstantByteGenerator, 60)
+	txInputValueGenerator := func() signature.SerialNumber {
+		return serialNumberGenerator.NextWithSize(serialNumberSizeGenerator.Next())
 	}
-	return serialNumbers
+
+	return &TxInputGenerator{
+		serialNumberGenerator: NewFastTxInputSliceGenerator(txInputValueGenerator, 100),
+		txSizeGenerator:       test.NewPositiveIntGenerator(params.TxSize, 50),
+	}
+}
+
+func (g *TxInputGenerator) Next() []signature.SerialNumber {
+	return g.serialNumberGenerator.NextWithSize(g.txSizeGenerator.Next())
 }
 
 // TX request batch
@@ -153,6 +167,29 @@ func NewFastInputSliceGenerator(valueGenerator func() S, sampleSize int) *FastIn
 
 func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 	var batch []S
+	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
+		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
+	}
+	return batch
+}
+
+type R = signature.SerialNumber
+
+// Code identical to test.FastByteArrayGenerator
+type FastTxInputSliceGenerator struct {
+	sample []R
+}
+
+func NewFastTxInputSliceGenerator(valueGenerator func() R, sampleSize int) *FastTxInputSliceGenerator {
+	sample := make([]R, sampleSize)
+	for i := 0; i < sampleSize; i++ {
+		sample[i] = valueGenerator()
+	}
+	return &FastTxInputSliceGenerator{sample: sample}
+}
+
+func (g *FastTxInputSliceGenerator) NextWithSize(targetSize int) []R {
+	var batch []R
 	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
 		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
 	}

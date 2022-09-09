@@ -10,82 +10,53 @@ import (
 	"github.com/pkg/errors"
 )
 
-func NewECDSAKeys() (publicKey []byte, privateKey []byte, err error) {
-
-	// use secp256r1 (prime256v1)
+func NewECDSAKey() (*ecdsa.PrivateKey, error) {
 	curve := elliptic.P256()
 
 	// create ecdsa private key
-	pri, err := ecdsa.GenerateKey(curve, rand.Reader)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "cannot generate ecdsa key with curve %v", curve)
-	}
-
-	// serialize
-	x509encodedPri, err := x509.MarshalECPrivateKey(pri)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "cannot serialize private key")
-	}
-
-	privateKey = pem.EncodeToMemory(&pem.Block{
-		Type:  "EC PRIVATE KEY",
-		Bytes: x509encodedPri,
-	})
-
-	x509encodedPub, err := x509.MarshalPKIXPublicKey(pri.Public())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	publicKey = pem.EncodeToMemory(&pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: x509encodedPub,
-	})
-
-	return publicKey, privateKey, nil
+	return ecdsa.GenerateKey(curve, rand.Reader)
 }
 
-func VerifyMessage(publicKey []byte, message []byte, signature []byte) error {
-
-	// hash
+func VerifyMessage(verificationKey *ecdsa.PublicKey, message []byte, signature []byte) error {
 	hash := sha256.Sum256(message)
 
-	block, _ := pem.Decode(publicKey)
-	if block == nil || block.Type != "PUBLIC KEY" {
-		return errors.Errorf("failed to decode PEM block containing public key, got %v", block)
-	}
-
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return errors.Wrap(err, "cannot parse public key")
-	}
-
-	valid := ecdsa.VerifyASN1(pub.(*ecdsa.PublicKey), hash[:], signature)
+	valid := ecdsa.VerifyASN1(verificationKey, hash[:], signature)
 	if !valid {
 		return errors.New("failed to verify signature")
 	}
 	return nil
 }
 
-func SignMessage(privateKey []byte, message []byte) ([]byte, error) {
-
-	// hash
-	hash := sha256.Sum256(message)
-
-	// convert key
-	block, _ := pem.Decode(privateKey)
-	if block == nil || block.Type != "EC PRIVATE KEY" {
-		return nil, errors.Errorf("failed to decode PEM block containing private key, got %v", block)
+func ParseVerificationKey(key []byte) (*ecdsa.PublicKey, error) {
+	block, _ := pem.Decode(key)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, errors.Errorf("failed to decode PEM block containing public key, got %v", block)
 	}
 
-	priv, err := x509.ParseECPrivateKey(block.Bytes)
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot parse public key")
+	}
+
+	return pub.(*ecdsa.PublicKey), nil
+}
+
+func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
+	x509encodedPub, err := x509.MarshalPKIXPublicKey(key)
 	if err != nil {
 		return nil, err
 	}
 
-	// sign
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: x509encodedPub,
+	}), nil
+}
 
-	sig, err := ecdsa.SignASN1(rand.Reader, priv, hash[:])
+func SignMessage(privateKey *ecdsa.PrivateKey, message []byte) ([]byte, error) {
+	hash := sha256.Sum256(message)
+
+	sig, err := ecdsa.SignASN1(rand.Reader, privateKey, hash[:])
 	if err != nil {
 		return nil, err
 	}
