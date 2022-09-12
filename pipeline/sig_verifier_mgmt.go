@@ -14,7 +14,7 @@ import (
 )
 
 type sigVerifierMgr struct {
-	config       *config.SigVerifierMgrConfig
+	config       *SigVerifierMgrConfig
 	verifiers    []*sigVerifier
 	nextVerifier int
 
@@ -26,7 +26,7 @@ type sigVerifierMgr struct {
 	stopWg       sync.WaitGroup
 }
 
-func newSigVerificationMgr(c *config.SigVerifierMgrConfig) (*sigVerifierMgr, error) {
+func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}

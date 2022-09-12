@@ -1,10 +1,8 @@
-package config
-
-const DefaultGRPCPortSigVerifier = 5000
-const DefaultGRPCPortShardsServer = 5001
+package pipeline
 
 type Config struct {
-	SigVerifierMgrConfig *SigVerifierMgrConfig
+	SigVerifierMgrConfig  *SigVerifierMgrConfig
+	ShardsServerMgrConfig *ShardsServerMgrConfig
 }
 
 type SigVerifierMgrConfig struct {

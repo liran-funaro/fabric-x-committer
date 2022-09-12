@@ -22,9 +22,9 @@ func TestSigVerifiersMgr(t *testing.T) {
 	defer s.stop()
 
 	m, err := newSigVerificationMgr(
-		&config.SigVerifierMgrConfig{
+		&SigVerifierMgrConfig{
 			SigVerifierServers: []string{"localhost"},
-			BatchCutConfig: &config.BatchConfig{
+			BatchCutConfig: &BatchConfig{
 				BatchSize:     2,
 				TimeoutMillis: 20000,
 			},

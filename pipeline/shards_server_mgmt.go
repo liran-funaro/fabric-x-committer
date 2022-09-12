@@ -21,7 +21,7 @@ type dbInflightTxs struct {
 
 ///////////////////////////////////////  shardsServerMgr  ////////////////////////////////
 type shardsServerMgr struct {
-	config          *config.ShardsServerMgrConfig
+	config          *ShardsServerMgrConfig
 	shardServers    []*shardsServer
 	shardIdToServer map[int]*shardsServer
 	numShards       uint16
@@ -33,7 +33,7 @@ type shardsServerMgr struct {
 	stopWg       sync.WaitGroup
 }
 
-func newShardsServerMgr(c *config.ShardsServerMgrConfig) (*shardsServerMgr, error) {
+func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 	shardsServerMgr := &shardsServerMgr{
 		config:          c,
 		shardServers:    []*shardsServer{},
