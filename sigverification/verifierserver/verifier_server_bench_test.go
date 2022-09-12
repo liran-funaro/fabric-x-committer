@@ -2,6 +2,7 @@ package verifierserver_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,17 +25,17 @@ var baseConfig = benchmarkConfig{
 	ParallelExecutionConfig: &parallelexecutor.Config{
 		BatchSizeCutoff:   100,
 		BatchTimeCutoff:   1 * time.Second,
-		Parallelism:       3,
+		Parallelism:       4,
 		ChannelBufferSize: 1,
 	},
 	InputGeneratorParams: &inputGeneratorParams{
-		InputDelay: test.Stable(int64(10 * time.Microsecond)),
+		InputDelay: test.NoDelay,
 		RequestBatch: &testutils.RequestBatchGeneratorParams{
 			Tx: &testutils.TxGeneratorParams{
 				Scheme:           signature.Ecdsa,
 				ValidSigRatio:    0.8,
-				TxSize:           test.Stable(20),
-				SerialNumberSize: test.Constant(10),
+				TxSize:           test.Constant(1),
+				SerialNumberSize: test.Constant(64),
 			},
 			BatchSize: test.Constant(100),
 		},
@@ -42,40 +43,45 @@ var baseConfig = benchmarkConfig{
 }
 
 func BenchmarkVerifierServer(b *testing.B) {
-	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+	var output = test.Open("server", &test.ResultOptions{Columns: []*test.ColumnConfig{
 		{Header: "Parallelism", Formatter: test.NoFormatting},
+		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
 		{Header: "Memory", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
 	var stats testutils.AsyncTrackerStats
-	var iConfig benchmarkConfig
-	for i := test.NewBenchmarkIterator(baseConfig, "ParallelExecutionConfig.Parallelism", 2, 4); i.HasNext(); i.Next() {
-		i.Read(&iConfig)
-		b.Run(iConfig.Name, func(b *testing.B) {
-			g := NewInputGenerator(iConfig.InputGeneratorParams)
-			c := testutils.NewTestState(verifierserver.New(iConfig.ParallelExecutionConfig, iConfig.InputGeneratorParams.RequestBatch.Tx.Scheme))
-			t := testutils.NewAsyncTracker(testutils.NoSampling)
-			defer c.TearDown()
-			c.Client.SetVerificationKey(context.Background(), g.PublicKey())
-			stream, _ := c.Client.StartStream(context.Background())
-			send := testutils.InputChannel(stream)
+	config := baseConfig
+	for _, parallelism := range []int{1, 2, 3} {
+		config.ParallelExecutionConfig.Parallelism = parallelism
+		for _, batchSize := range []int64{10, 20, 30, 40, 50, 100, 200} {
+			config.InputGeneratorParams.RequestBatch.BatchSize = test.Constant(batchSize)
+			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
+				g := NewInputGenerator(config.InputGeneratorParams)
+				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme)
+				c := testutils.NewTestState(server)
+				t := testutils.NewAsyncTracker(testutils.NoSampling)
+				defer c.TearDown()
+				c.Client.SetVerificationKey(context.Background(), g.PublicKey())
+				stream, _ := c.Client.StartStream(context.Background())
+				send := testutils.InputChannel(stream)
 
-			t.Start(testutils.OutputChannel(stream))
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					batch := g.NextRequestBatch()
-					t.SubmitRequests(len(batch.Requests))
+				t.Start(testutils.OutputChannel(stream))
+				b.ResetTimer()
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						batch := g.NextRequestBatch()
+						t.SubmitRequests(len(batch.Requests))
 
-					send <- batch
-				}
+						send <- batch
+					}
+				})
+				stats = t.WaitUntilDone()
+				b.StopTimer()
 			})
-			stats = t.WaitUntilDone()
-		})
-		output.Record(iConfig.ParallelExecutionConfig.Parallelism, stats.RequestsPer(time.Second), stats.TotalMemory)
+			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.RequestBatch.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
+		}
 	}
-
 }
 
 // Input generator

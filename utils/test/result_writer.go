@@ -2,10 +2,12 @@ package test
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type ValueFormatter = func(interface{}) interface{}
@@ -49,11 +51,14 @@ type ResultOutput struct {
 	file    *os.File
 }
 
-func Open(filename string, options *ResultOptions) *ResultOutput {
+const fileTimeFormat = "2006-01-02 15:04:05"
+
+func Open(name string, options *ResultOptions) *ResultOutput {
 	err := options.validate()
 	if err != nil {
 		panic(err)
 	}
+	filename := fmt.Sprintf("%s-%s.txt", name, time.Now().Format(fileTimeFormat))
 	file, err := utils.OverwriteFile(filepath.Join(utils.ResultDir(), filename))
 	if err != nil {
 		panic(err)
@@ -89,6 +94,9 @@ func (o *ResultOutput) Record(values ...interface{}) error {
 	return o.record(results...)
 
 }
+
+const valueSeparator = ", "
+const dataPointSeparator = "\n"
 
 func (o *ResultOutput) record(values ...interface{}) error {
 	var data []byte

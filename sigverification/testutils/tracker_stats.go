@@ -97,6 +97,11 @@ func (t *AsyncRequestTracker) trackRequests(outputReceived <-chan []*sigverifica
 		select {
 		case <-t.stopSending:
 			stillSubmitting = false
+			if pending == 0 {
+				t.done <- struct{}{}
+				t.Stop()
+				return
+			}
 		case inputBatchSize := <-t.requestsSubmitted:
 			pending += inputBatchSize
 			t.totalRequests += inputBatchSize

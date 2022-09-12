@@ -205,19 +205,21 @@ type dummyParallelExecutorParams struct {
 type dummyParallelExecutor struct {
 	outputs                chan []*parallelexecutor.Output
 	executorDelayGenerator *test.DelayGenerator
-	responseBatch          []*parallelexecutor.Output
+	responseBatchGenerator *FastOutputArrayGenerator
 }
 
 func newDummyParallelExecutor(params *dummyParallelExecutorParams) parallelexecutor.ParallelExecutor {
+	responseGenerator := func() *sigverification.Response { return &sigverification.Response{} }
 	return &dummyParallelExecutor{
 		outputs:                make(chan []*parallelexecutor.Output),
 		executorDelayGenerator: test.NewDelayGenerator(params.executorDelay, 30),
-		responseBatch:          []*sigverification.Response{{}},
+		responseBatchGenerator: NewFastOutputSliceGenerator(responseGenerator, 200),
 	}
 }
 
 func (e *dummyParallelExecutor) Submit(input []*parallelexecutor.Input) {
-	e.outputs <- e.responseBatch
+	e.executorDelayGenerator.Next()
+	e.outputs <- e.responseBatchGenerator.NextWithSize(len(input))
 }
 func (e *dummyParallelExecutor) Outputs() <-chan []*parallelexecutor.Output {
 	return e.outputs

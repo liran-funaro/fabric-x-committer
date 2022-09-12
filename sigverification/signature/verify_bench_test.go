@@ -1,6 +1,7 @@
 package signature_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -29,21 +30,21 @@ var baseConfig = benchmarkConfig{
 }
 
 func BenchmarkTxVerifier(b *testing.B) {
-	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+	var output = test.Open("signature", &test.ResultOptions{Columns: []*test.ColumnConfig{
 		{Header: "Valid Sig Ratio", Formatter: test.NoFormatting},
 		{Header: "Throughput", Formatter: test.NoFormatting},
 		{Header: "Memory", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
 	var stats testutils.SyncTrackerStats
-	var iConfig benchmarkConfig
-	for i := test.NewBenchmarkIterator(baseConfig, "InputGeneratorParams.ValidSigRatio", test.Never, 0.5, test.Always); i.HasNext(); i.Next() {
-		i.Read(&iConfig)
+	config := baseConfig
+	for _, ratio := range []test.Percentage{test.Never, 0.5, test.Always} {
+		config.InputGeneratorParams.ValidSigRatio = ratio
 		totalSigs := 0
-		b.Run(iConfig.Name, func(b *testing.B) {
-			g := NewInputGenerator(iConfig.InputGeneratorParams)
+		b.Run(fmt.Sprintf("%s-r%f", config.Name, ratio), func(b *testing.B) {
+			g := NewInputGenerator(config.InputGeneratorParams)
 			t := testutils.NewSyncTracker(1 * time.Millisecond)
-			txSigner, txVerifier := signature.NewSignerVerifier(iConfig.VerificationScheme)
+			txSigner, txVerifier := signature.NewSignerVerifier(config.VerificationScheme)
 
 			t.Start()
 			b.ResetTimer()
@@ -62,7 +63,7 @@ func BenchmarkTxVerifier(b *testing.B) {
 			totalSigs = b.N
 			stats = t.Stop()
 		})
-		output.Record(iConfig.InputGeneratorParams.ValidSigRatio, float64(totalSigs)*float64(time.Second)/float64(stats.TotalTime), stats.TotalMemory)
+		output.Record(config.InputGeneratorParams.ValidSigRatio, float64(totalSigs)*float64(time.Second)/float64(stats.TotalTime), stats.TotalMemory)
 	}
 }
 

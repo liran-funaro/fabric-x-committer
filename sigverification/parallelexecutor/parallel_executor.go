@@ -110,7 +110,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	e.outputCh <- buffer[:batchSize]
-	return buffer[batchSize:]
+	return e.cutBatch(buffer[batchSize:], minBatchSize)
 }
 
 func (e *parallelExecutor) Outputs() <-chan []*Output {

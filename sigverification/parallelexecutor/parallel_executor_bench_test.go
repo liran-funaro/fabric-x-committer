@@ -1,6 +1,7 @@
 package parallelexecutor_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,12 +28,12 @@ var baseConfig = benchmarkConfig{
 	InputGeneratorParams: inputGeneratorParams{
 		InputDelay:    test.NoDelay,
 		BatchSize:     test.Constant(100),
-		ExecutorDelay: test.Stable(int64(time.Second / 10_000)),
+		ExecutorDelay: test.Constant(int64(time.Second / 10_000)),
 	},
 }
 
 func BenchmarkParallelExecutor(b *testing.B) {
-	var output = test.Open("results.txt", &test.ResultOptions{Columns: []*test.ColumnConfig{
+	var output = test.Open("pe", &test.ResultOptions{Columns: []*test.ColumnConfig{
 		{Header: "Parallelism", Formatter: test.NoFormatting},
 		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
@@ -40,15 +41,14 @@ func BenchmarkParallelExecutor(b *testing.B) {
 	}})
 	defer output.Close()
 	var stats testutils.AsyncTrackerStats
-	var iConfig benchmarkConfig
-	for i := test.NewBenchmarkIterator(baseConfig, "ParallelExecutionConfig.Parallelism", 2, 4); i.HasNext(); i.Next() {
-		i.Read(&iConfig)
-		var jConfig benchmarkConfig
-		for j := test.NewBenchmarkIterator(iConfig, "InputGeneratorParams.BatchSize", test.Constant(200), test.Constant(300)); j.HasNext(); j.Next() {
-			j.Read(&jConfig)
-			b.Run(jConfig.Name, func(b *testing.B) {
-				g := NewInputGenerator(&jConfig.InputGeneratorParams)
-				e := parallelexecutor.New(g.Executor(), &jConfig.ParallelExecutionConfig)
+	config := baseConfig
+	for _, parallelism := range []int{2, 4} {
+		config.ParallelExecutionConfig.Parallelism = parallelism
+		for _, batchSize := range []int64{200, 300} {
+			config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
+			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
+				g := NewInputGenerator(&config.InputGeneratorParams)
+				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig)
 				t := testutils.NewAsyncTracker(testutils.NoSampling)
 
 				t.Start(e.Outputs())
@@ -64,7 +64,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 				stats = t.WaitUntilDone()
 				b.StopTimer()
 			})
-			output.Record(jConfig.ParallelExecutionConfig.Parallelism, jConfig.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
+			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
 		}
 	}
 }
