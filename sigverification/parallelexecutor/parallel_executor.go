@@ -39,39 +39,31 @@ type ParallelExecutor interface {
 
 //TODO: A channel-closing mechanism may be necessary for the future
 type parallelExecutor struct {
-	currentInputChIdx   int
-	inputChs            []chan *Input
+	inputCh             chan *Input
 	outputCh            chan []*Output
 	errorCh             chan error
 	batchManualCutoffCh chan struct{}
 	outputAggregationCh chan *Output
-	outputBuffer        []*Output
 	executor            ExecutorFunc
 	batchSizeCutoff     int
 	batchTimeCutoff     time.Duration
 }
 
 func New(executor ExecutorFunc, config *Config) ParallelExecutor {
-	inputChs := make([]chan *Input, config.Parallelism)
-	for i := 0; i < config.Parallelism; i++ {
-		inputChs[i] = make(chan *Input, config.ChannelBufferSize)
-	}
 	e := &parallelExecutor{
-		currentInputChIdx:   0,
-		inputChs:            inputChs,
+		inputCh:             make(chan *Input, config.ChannelBufferSize*config.Parallelism),
 		outputCh:            make(chan []*Output),
 		errorCh:             make(chan error, config.Parallelism),
 		batchManualCutoffCh: make(chan struct{}),
 		outputAggregationCh: make(chan *Output, config.ChannelBufferSize*config.Parallelism),
-		outputBuffer:        []*Output{},
 		executor:            executor,
 		batchSizeCutoff:     config.BatchSizeCutoff,
 		batchTimeCutoff:     config.BatchTimeCutoff,
 	}
 
 	go e.handleTimeManualCutoff()
-	for i, ch := range e.inputChs {
-		go e.handleChannelInput(ch, i)
+	for i := 0; i < config.Parallelism; i++ {
+		go e.handleChannelInput(e.inputCh, i)
 	}
 
 	logger.Infof("Was created and initialized with:\n\tParallelism:\t\t%d\n\tBatchSizeCutoff:\t%d\n\tBatchTimeCutoff:\t%v\n\tChannelBufferSize:\t%d",
@@ -82,7 +74,7 @@ func New(executor ExecutorFunc, config *Config) ParallelExecutor {
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		logger.Debugf("Received request %v in channel %d. Sending for execution.", input, idx)
+		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
 		output, err := e.executor(input)
 		if err != nil {
 			logger.Debugf("Received error from executor %d.", idx)
@@ -132,18 +124,11 @@ func (e *parallelExecutor) Errors() <-chan error {
 func (e *parallelExecutor) Submit(inputs []*Input) {
 	logger.Debugf("Will submit %d requests for execution.", len(inputs))
 	for _, input := range inputs {
-		e.nextInputCh() <- input
-		logger.Debugf("Added a new requests on channel %d.", e.currentInputChIdx)
+		e.inputCh <- input
 	}
 }
 
 //CutBatch cuts a new batch regardless of the size (if not empty)
 func (e *parallelExecutor) CutBatch() {
 	e.batchManualCutoffCh <- struct{}{}
-}
-
-func (e *parallelExecutor) nextInputCh() chan *Input {
-	next := e.inputChs[e.currentInputChIdx]
-	e.currentInputChIdx = (e.currentInputChIdx + 1) % len(e.inputChs)
-	return next
 }

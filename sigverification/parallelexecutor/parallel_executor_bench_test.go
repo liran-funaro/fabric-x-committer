@@ -62,6 +62,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 					}
 				})
 				stats = t.WaitUntilDone()
+				b.StopTimer()
 			})
 			output.Record(jConfig.ParallelExecutionConfig.Parallelism, jConfig.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
 		}
