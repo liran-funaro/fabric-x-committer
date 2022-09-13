@@ -1,8 +1,10 @@
 package signature
 
 import (
+	"encoding/asn1"
 	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
 type Message = []byte
@@ -10,6 +12,8 @@ type SerialNumber = []byte
 type Signature = []byte
 type PublicKey = []byte
 type PrivateKey = []byte
+
+var log = logging.New("verifier")
 
 type Scheme = int
 
@@ -59,13 +63,10 @@ func newTxSignerVerifier(scheme Scheme) (TxSigner, TxVerifier, error) {
 }
 
 func signatureData(inputs []SerialNumber) Message {
-	if len(inputs) == 0 {
+	data, err := asn1.Marshal(inputs)
+	if err != nil {
+		log.Error("failed to serialize the inputs")
 		return []byte{}
-	}
-	var data Message
-	for _, input := range inputs {
-		//TODO:adc Should we add separators between the inputs?
-		data = append(data, input...)
 	}
 	return data
 }
