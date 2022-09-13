@@ -2,20 +2,49 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-  - name: Copy shardservice and sigverification executables to machine and run 
-    hosts: all
+  - name: Copy shardservice to remote machines and run
+    hosts: shardsservices
     tasks:
-      - name: Copy sigverification executable to remote machine
-        copy:
-          src: ../../bin/sigverification
-          dest: ~/
-          mode: a+x
+      - name: Create directory for shardsservice
+        file:
+          path: ~/shardsservice
+          state: directory
       - name: Copy shardsservice executable to remote machine
         copy:
           src: ../../bin/shardsservice
-          dest: ~/
+          dest: ~/shardsservice/
+          owner: root
+          group: root
           mode: a+x
-      - name: Run sigverification executable
-        shell: ./sigverification
+      - name: Copy config to remote machine
+        copy:
+          src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+rw
       - name: Run shardsservice executable
-        shell: ./shardsservice
+        shell: ./shardsservice/shardsservice '{{ arg }}'
+  - name: Copy sigverificationservice to remote machines and run
+    hosts: sigverificationservices
+    tasks:
+      - name: Create directory for sigverificationservice
+        file:
+          path: ~/sigverificationservice
+          state: directory
+      - name: Copy sigverificationservice executable and config to remote machine
+        copy:
+          src: ../../bin/sigverificationservice
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+x
+      - name: Copy config to remote machine
+        copy:
+          src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+rw
+      - name: Run sigverificationservice executable
+        shell: ./sigverificationservice/sigverificationservice '{{ arg }}'

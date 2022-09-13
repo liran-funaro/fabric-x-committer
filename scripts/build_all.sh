@@ -1,12 +1,23 @@
 #!/bin/bash
 
-binDir="bin"
-COORDINATOR_MAIN="PATH TO COORDINATOR MAIN.GO"
+rootDir="scalable-committer"
+
+workingDir="$(basename "$(pwd)")"
+while [ "$workingDir" != "$rootDir" ]
+do
+    cd ..
+    workingDir="$(basename "$(pwd)")"
+done
+
+rootDir="$(pwd)"
+
+binDir="${rootDir}/bin"
+COORDINATOR_MAIN="${rootDir}/pipeline/cmd/server/main.go"
 COORDINATOR_BIN="coordinator"
-SHARDSSERVICE_MAIN="PATH TO SHARDSSERVICE MAIN.GO"
+SHARDSSERVICE_MAIN="${rootDir}/shardsservice/cmd/server/main.go"
 SHARDSSERVICE_BIN="shardsservice"
-SIGVERIFICATION_MAIN="PATH TO SIGVERIFICATION MAIN.GO"
-SIGVERIFICATION_BIN="sigverification"
+SIGVERIFICATION_MAIN="${rootDir}/sigverification/cmd/server/main.go"
+SIGVERIFICATION_BIN="sigverificationservice"
 
 mkdir -p ${binDir}
 
