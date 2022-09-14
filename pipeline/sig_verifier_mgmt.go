@@ -14,16 +14,15 @@ import (
 )
 
 type sigVerifierMgr struct {
-	config       *SigVerifierMgrConfig
-	verifiers    []*sigVerifier
-	nextVerifier int
+	config    *SigVerifierMgrConfig
+	verifiers []*sigVerifier
 
+	inputChan              chan *token.Block
 	responseCollectionChan chan *sigverification.ResponseBatch
-	outputChanValids       chan []txSeqNum
-	outputChanInvalids     chan []txSeqNum
+	outputChanValids       chan []TxSeqNum
+	outputChanInvalids     chan []TxSeqNum
 
 	stopSignalCh chan struct{}
-	stopWg       sync.WaitGroup
 }
 
 func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
@@ -41,30 +40,42 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	m := &sigVerifierMgr{
 		config:                 c,
 		verifiers:              verifiers,
+		inputChan:              make(chan *token.Block, defaultChannelBufferSize),
 		responseCollectionChan: responseCollectionChan,
-		outputChanValids:       make(chan []txSeqNum, defaultChannelBufferSize),
-		outputChanInvalids:     make(chan []txSeqNum, defaultChannelBufferSize),
+		outputChanValids:       make(chan []TxSeqNum, defaultChannelBufferSize),
+		outputChanInvalids:     make(chan []TxSeqNum, defaultChannelBufferSize),
 		stopSignalCh:           make(chan struct{}),
 	}
+	m.startBlockReceiverRoutine()
 	m.startOutputBatchCutterRoutine()
 	return m, nil
 }
 
-func (m *sigVerifierMgr) processBlockAsync(b *token.Block) {
-	v := m.verifiers[m.nextVerifier]
-	if m.nextVerifier == len(m.verifiers)-1 {
-		m.nextVerifier = 0
-	} else {
-		m.nextVerifier++
-	}
-	v.sendCh <- b
+func (m *sigVerifierMgr) startBlockReceiverRoutine() {
+	go func() {
+		i := 0
+		for {
+			v := m.verifiers[i]
+			if i == len(m.verifiers)-1 {
+				i = 0
+			} else {
+				i++
+			}
+			select {
+			case <-m.stopSignalCh:
+				return
+			case b := <-m.inputChan:
+				v.sendCh <- b
+			}
+		}
+	}()
 }
 
 func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 	timeoutMillis := time.Duration(m.config.BatchCutConfig.TimeoutMillis * int(time.Millisecond))
 	batchSize := m.config.BatchCutConfig.BatchSize
 	responsesChan := m.responseCollectionChan
-	valids := []txSeqNum{}
+	valids := []TxSeqNum{}
 
 	cutBatchOfValids := func() {
 		size := len(valids)
@@ -83,17 +94,15 @@ func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 		for {
 			select {
 			case <-m.stopSignalCh:
-				for len(valids) > 0 {
-					cutBatchOfValids()
-				}
-				m.stopWg.Done()
+				close(m.outputChanValids)
+				close(m.outputChanInvalids)
 				return
 			case responseBatch := <-responsesChan:
-				invalids := []txSeqNum{}
+				invalids := []TxSeqNum{}
 				for _, res := range responseBatch.Responses {
-					n := txSeqNum{
-						blkNum: res.BlockNum,
-						txNum:  res.TxNum,
+					n := TxSeqNum{
+						BlkNum: res.BlockNum,
+						TxNum:  res.TxNum,
 					}
 					if res.IsValid {
 						valids = append(valids, n)
@@ -112,17 +121,11 @@ func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 	}()
 }
 
-func (m *sigVerifierMgr) stopOutputBatchCutterRoutine() {
-	m.stopWg.Add(1)
-	m.stopSignalCh <- struct{}{}
-	m.stopWg.Wait()
-}
-
 func (m *sigVerifierMgr) stop() {
 	for _, v := range m.verifiers {
 		v.stop()
 	}
-	m.stopOutputBatchCutterRoutine()
+	close(m.stopSignalCh)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -216,7 +219,7 @@ func (v *sigVerifier) startResponseRecieverRoutine(c chan<- *sigverification.Res
 
 func (v *sigVerifier) stopRequestSenderRoutine() {
 	v.stopWG.Add(1)
-	v.stopSignalCh <- struct{}{}
+	close(v.stopSignalCh)
 	v.stopWG.Wait()
 }
 

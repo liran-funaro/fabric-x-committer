@@ -9,27 +9,47 @@ import (
 const maxSerialNumbersEntries = 1000000
 
 type dependencyMgr struct {
-	c         *sync.Cond
-	snToNodes map[string]map[*node]struct{}
-	nodes     map[txSeqNum]*node
+	inputChan             chan *token.Block
+	inputChanStatusUpdate chan []*TxStatus
+	c                     *sync.Cond
+	snToNodes             map[string]map[*node]struct{}
+	nodes                 map[TxSeqNum]*node
+	stopSignalCh          chan struct{}
 }
 
 type node struct {
-	txID          *txSeqNum
+	txID          *TxSeqNum
 	serialNumbers [][]byte
 	dependents    map[*node]struct{}
 	dependsOn     map[*node]struct{}
 }
 
 func newDependencyMgr() *dependencyMgr {
-	return &dependencyMgr{
-		c:         sync.NewCond(&sync.Mutex{}),
-		snToNodes: map[string]map[*node]struct{}{},
-		nodes:     map[txSeqNum]*node{},
+	m := &dependencyMgr{
+		inputChan:             make(chan *token.Block, defaultChannelBufferSize),
+		inputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
+		c:                     sync.NewCond(&sync.Mutex{}),
+		snToNodes:             map[string]map[*node]struct{}{},
+		nodes:                 map[TxSeqNum]*node{},
+		stopSignalCh:          make(chan struct{}),
 	}
+	m.startBlockRecieverRoutine()
+	m.startStatusUpdateProcessorRoutine()
+	return m
 }
 
-func (m *dependencyMgr) processBlock(block *token.Block) {
+func (m *dependencyMgr) startBlockRecieverRoutine() {
+	go func() {
+		select {
+		case <-m.stopSignalCh:
+			return
+		case b := <-m.inputChan:
+			m.updateGraphWithNewBlock(b)
+		}
+	}()
+}
+
+func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 	m.c.L.Lock()
 	defer m.c.L.Unlock()
 
@@ -37,10 +57,10 @@ func (m *dependencyMgr) processBlock(block *token.Block) {
 		m.c.Wait()
 	}
 
-	for i, tx := range block.Txs {
-		blkNumTxNum := txSeqNum{
-			blkNum: block.Number,
-			txNum:  uint64(i),
+	for i, tx := range b.Txs {
+		blkNumTxNum := TxSeqNum{
+			BlkNum: b.Number,
+			TxNum:  uint64(i),
 		}
 
 		newNode := &node{
@@ -68,12 +88,24 @@ func (m *dependencyMgr) processBlock(block *token.Block) {
 	}
 }
 
-func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []txSeqNum) (map[txSeqNum][][]byte, []txSeqNum) {
+func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
+	notYetSeenTxs := []*TxStatus{}
+	go func() {
+		select {
+		case <-m.stopSignalCh:
+			return
+		case u := <-m.inputChanStatusUpdate:
+			notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
+		}
+	}()
+}
+
+func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNum) (map[TxSeqNum][][]byte, []TxSeqNum) {
 	m.c.L.Lock()
 	defer m.c.L.Unlock()
 
-	dependencyFreeTxs := map[txSeqNum][][]byte{}
-	dependentOrNotYetSeenTxs := []txSeqNum{}
+	dependencyFreeTxs := map[TxSeqNum][][]byte{}
+	dependentOrNotYetSeenTxs := []TxSeqNum{}
 
 	for _, e := range enquirySet {
 		node, ok := m.nodes[e]
@@ -86,22 +118,22 @@ func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []txSeqNu
 	return dependencyFreeTxs, dependentOrNotYetSeenTxs
 }
 
-func (m *dependencyMgr) processValidatedTxs(toUpdate []*txStatus) []*txStatus {
+func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxStatus {
 	m.c.L.Lock()
 	defer func() {
 		m.c.Signal()
 		m.c.L.Unlock()
 	}()
 
-	notYetSeenTxs := []*txStatus{}
+	notYetSeenTxs := []*TxStatus{}
 	for _, u := range toUpdate {
-		node, ok := m.nodes[u.txSeqNum]
+		node, ok := m.nodes[u.TxSeqNum]
 		if !ok {
 			// This can happen only when sigverifier invalidates the transaction
 			notYetSeenTxs = append(notYetSeenTxs, u)
 			continue
 		}
-		m.removeNodeUnderAcquiredLock(node, u.isValid)
+		m.removeNodeUnderAcquiredLock(node, u.IsValid)
 	}
 	return notYetSeenTxs
 }
@@ -132,4 +164,8 @@ func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool) {
 	for d := range node.dependents {
 		m.removeNodeUnderAcquiredLock(d, false)
 	}
+}
+
+func (m *dependencyMgr) stop() {
+	close(m.stopSignalCh)
 }

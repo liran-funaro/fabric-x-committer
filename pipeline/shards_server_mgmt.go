@@ -24,13 +24,13 @@ type shardsServerMgr struct {
 	config          *ShardsServerMgrConfig
 	shardServers    []*shardsServer
 	shardIdToServer map[int]*shardsServer
-	numShards       uint16
+	numShards       int
 
+	inputChan        chan map[TxSeqNum][][]byte
 	twoPCInflightTxs *dbInflightTxs
-	outputChan       chan []*txStatus
+	outputChan       chan []*TxStatus
 
 	stopSignalCh chan struct{}
-	stopWg       sync.WaitGroup
 }
 
 func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
@@ -41,12 +41,12 @@ func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 
 		twoPCInflightTxs: &dbInflightTxs{
 			phaseOnePendingTxs: &phaseOnePendingTxs{
-				m: map[txSeqNum]*phaseOnePendingTx{},
+				m: map[TxSeqNum]*phaseOnePendingTx{},
 			},
 			phaseOneProcessedTxsChan: make(chan []*phaseOneProcessedTx, defaultChannelBufferSize),
 		},
-
-		outputChan:   make(chan []*txStatus, defaultChannelBufferSize),
+		inputChan:    make(chan map[TxSeqNum][][]byte, defaultChannelBufferSize),
+		outputChan:   make(chan []*TxStatus, defaultChannelBufferSize),
 		stopSignalCh: make(chan struct{}),
 	}
 
@@ -74,23 +74,33 @@ func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 		firstShardNum = lastShardNum + 1
 	}
 
-	shardsServerMgr.numShards = uint16(firstShardNum - 1)
+	shardsServerMgr.numShards = firstShardNum
+	shardsServerMgr.startInputRecieverRoutine()
 	shardsServerMgr.startPhaseTwoProcessingRoutine()
 
 	return shardsServerMgr, nil
 }
 
 func (m *shardsServerMgr) computeShardId(sn []byte) int {
-	return int(binary.BigEndian.Uint16(sn[0:2]) % m.numShards)
+	return int(binary.BigEndian.Uint16(sn[0:2]) % uint16(m.numShards))
 }
 
-func (m *shardsServerMgr) validateAndCommitAsync(txs map[txSeqNum][][]byte) {
-	m.sendPhaseOneMessages(txs)
+func (m *shardsServerMgr) startInputRecieverRoutine() {
+	go func() {
+		for {
+			select {
+			case <-m.stopSignalCh:
+				return
+			case txs := <-m.inputChan:
+				m.sendPhaseOneMessages(txs)
+			}
+		}
+	}()
 }
 
-func (m *shardsServerMgr) sendPhaseOneMessages(txs map[txSeqNum][][]byte) {
+func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 	reqBatchByServer := map[*shardsServer]*shardsservice.PhaseOneRequestBatch{}
-	pendingTxs := map[txSeqNum]*phaseOnePendingTx{}
+	pendingTxs := map[TxSeqNum]*phaseOnePendingTx{}
 
 	for txSeq, sns := range txs {
 		reqByServer := map[*shardsServer]*shardsservice.PhaseOneRequest{}
@@ -101,8 +111,9 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[txSeqNum][][]byte) {
 			req, ok := reqByServer[shardServer]
 			if !ok {
 				req = &shardsservice.PhaseOneRequest{
-					BlockNum: txSeq.blkNum,
-					TxNum:    txSeq.txNum,
+					BlockNum:               txSeq.BlkNum,
+					TxNum:                  txSeq.TxNum,
+					ShardidToSerialNumbers: map[uint32]*shardsservice.SerialNumbers{},
 				}
 				reqByServer[shardServer] = req
 			}
@@ -130,6 +141,7 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[txSeqNum][][]byte) {
 			batch, ok := reqBatchByServer[shardServer]
 			if !ok {
 				batch = &shardsservice.PhaseOneRequestBatch{}
+				reqBatchByServer[shardServer] = batch
 			}
 			batch.Requests = append(batch.Requests, req)
 			pendingTx.shardServers[shardServer] = struct{}{}
@@ -149,7 +161,7 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
 	writeToOutputChansAndSendPhaseTwoMessages := func() {
-		status := []*txStatus{}
+		status := []*TxStatus{}
 		phaseTwoMessages := map[*shardsServer]*shardsservice.PhaseTwoRequestBatch{}
 
 		size := len(phaseOneProcessedTxs)
@@ -172,9 +184,9 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 					phaseTwoMessages[s] = reqBatch
 				}
 				status = append(status,
-					&txStatus{
-						txSeqNum: t.txSeqNum,
-						isValid:  t.isValid,
+					&TxStatus{
+						TxSeqNum: t.txSeqNum,
+						IsValid:  t.isValid,
 					},
 				)
 				instruction := shardsservice.PhaseTwoRequest_COMMIT
@@ -183,8 +195,8 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 				}
 				reqBatch.Requests = append(reqBatch.Requests,
 					&shardsservice.PhaseTwoRequest{
-						BlockNum:    t.txSeqNum.blkNum,
-						TxNum:       t.txSeqNum.txNum,
+						BlockNum:    t.txSeqNum.BlkNum,
+						TxNum:       t.txSeqNum.TxNum,
 						Instruction: instruction,
 					})
 			}
@@ -197,36 +209,29 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		m.outputChan <- status
 	}
 
-	for {
-		select {
-		case <-m.stopSignalCh:
-			for len(phaseOneProcessedTxs) > 0 {
+	go func() {
+		for {
+			select {
+			case <-m.stopSignalCh:
+				close(m.outputChan)
+				return
+			case t := <-m.twoPCInflightTxs.phaseOneProcessedTxsChan:
+				phaseOneProcessedTxs = append(phaseOneProcessedTxs, t...)
+				if len(phaseOneProcessedTxs) >= batchSize {
+					writeToOutputChansAndSendPhaseTwoMessages()
+				}
+			case <-time.After(timeoutMillis):
 				writeToOutputChansAndSendPhaseTwoMessages()
 			}
-			m.stopWg.Done()
-			return
-		case t := <-m.twoPCInflightTxs.phaseOneProcessedTxsChan:
-			phaseOneProcessedTxs = append(phaseOneProcessedTxs, t...)
-			if len(phaseOneProcessedTxs) >= batchSize {
-				writeToOutputChansAndSendPhaseTwoMessages()
-			}
-		case <-time.After(timeoutMillis):
-			writeToOutputChansAndSendPhaseTwoMessages()
 		}
-	}
+	}()
 }
 
 func (m *shardsServerMgr) stop() {
 	for _, s := range m.shardServers {
 		s.stop()
 	}
-	m.stopPhaseTwoProcessingRoutine()
-}
-
-func (m *shardsServerMgr) stopPhaseTwoProcessingRoutine() {
-	m.stopWg.Add(1)
-	m.stopSignalCh <- struct{}{}
-	m.stopWg.Wait()
+	close(m.stopSignalCh)
 }
 
 ///////////////////////////////////////  shardsServer  ////////////////////////////////
@@ -368,15 +373,15 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 				panic(fmt.Sprintf("Error while reaading sig verification response batch on stream: %s", err))
 			}
 
-			phaseOneValidationResults := map[txSeqNum]bool{}
+			phaseOneValidationResults := map[TxSeqNum]bool{}
 			for _, response := range responseBatch.Responses {
 				isValid := false
 				if response.Status != shardsservice.PhaseOneResponse_CANNOT_COMMITTED {
 					isValid = true
 				}
-				phaseOneValidationResults[txSeqNum{
-					blkNum: response.BlockNum,
-					txNum:  response.TxNum,
+				phaseOneValidationResults[TxSeqNum{
+					BlkNum: response.BlockNum,
+					TxNum:  response.TxNum,
 				}] = isValid
 			}
 			phaseOneProcessedTxsChan <- phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
@@ -465,10 +470,10 @@ type phaseOnePendingTx struct {
 
 type phaseOnePendingTxs struct {
 	mu sync.Mutex
-	m  map[txSeqNum]*phaseOnePendingTx
+	m  map[TxSeqNum]*phaseOnePendingTx
 }
 
-func (t *phaseOnePendingTxs) add(txs map[txSeqNum]*phaseOnePendingTx) {
+func (t *phaseOnePendingTxs) add(txs map[TxSeqNum]*phaseOnePendingTx) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for txSeqNum, pendingTx := range txs {
@@ -477,7 +482,7 @@ func (t *phaseOnePendingTxs) add(txs map[txSeqNum]*phaseOnePendingTx) {
 }
 
 func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
-	shardServer *shardsServer, validationStatus map[txSeqNum]bool) []*phaseOneProcessedTx {
+	shardServer *shardsServer, validationStatus map[TxSeqNum]bool) []*phaseOneProcessedTx {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -501,7 +506,7 @@ func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
 }
 
 type phaseOneProcessedTx struct {
-	txSeqNum      txSeqNum
+	txSeqNum      TxSeqNum
 	shardServers  map[*shardsServer]struct{}
 	isValid       bool
 	invalidatedBy *shardsServer

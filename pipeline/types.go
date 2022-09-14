@@ -4,15 +4,15 @@ import "fmt"
 
 const defaultChannelBufferSize = 1000
 
-type txSeqNum struct {
-	blkNum, txNum uint64
+type TxSeqNum struct {
+	BlkNum, TxNum uint64
 }
 
-type txStatus struct {
-	txSeqNum txSeqNum
-	isValid  bool
+type TxStatus struct {
+	TxSeqNum TxSeqNum
+	IsValid  bool
 }
 
-func (n txSeqNum) String() string {
-	return fmt.Sprintf("txSeq:%d:%d", n.blkNum, n.txNum)
+func (n TxSeqNum) String() string {
+	return fmt.Sprintf("txSeq:%d:%d", n.BlkNum, n.TxNum)
 }
