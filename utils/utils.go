@@ -8,6 +8,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ConfigDir = topLevelDir("config")
+
 func Min(a int, b int) int {
 	min, _ := sorted(a, b)
 	return min
@@ -31,12 +33,16 @@ func CurrentDir() string {
 }
 
 func ResultDir() string {
-	_, currentDir, _, _ := runtime.Caller(0)
-	resultDir, _ := filepath.Abs(filepath.Dir(currentDir) + "/../generated")
+	resultDir := topLevelDir("generated")
 	err := os.Remove(resultDir)
 	_ = err
 	os.MkdirAll(resultDir, 0755)
 	return resultDir
+}
+
+func topLevelDir(dir string) string {
+	currentDir, _ := os.Getwd()
+	return filepath.Join(currentDir, dir)
 }
 
 func OverwriteFile(path string) (*os.File, error) {
