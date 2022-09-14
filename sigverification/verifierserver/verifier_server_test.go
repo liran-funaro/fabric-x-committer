@@ -9,7 +9,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
@@ -26,7 +26,7 @@ var parallelExecutionConfig = &parallelexecutor.Config{
 
 func TestNoVerificationKeySet(t *testing.T) {
 	test.FailHandler(t)
-	c := testutils.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
 
 	stream, err := c.Client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -42,9 +42,9 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
-	c := testutils.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
 
-	_, verificationKey := signature.NewSignerPubKey(signature.Ecdsa)
+	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
@@ -54,7 +54,7 @@ func TestNoInput(t *testing.T) {
 	err = stream.Send(&sigverification.RequestBatch{})
 	Expect(err).To(BeNil())
 
-	output := testutils.OutputChannel(stream)
+	output := sigverification_test.OutputChannel(stream)
 	Expect(err).To(BeNil())
 	Eventually(output).WithTimeout(testTimeout).ShouldNot(Receive())
 
@@ -63,9 +63,10 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
-	c := testutils.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
-
-	txSigner, verificationKey := signature.NewSignerPubKey(signature.Ecdsa)
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
+	signingKey, verificationKey := factory.NewKeys()
+	txSigner, _ := factory.NewSigner(signingKey)
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	Expect(err).To(BeNil())
@@ -80,7 +81,7 @@ func TestMinimalInput(t *testing.T) {
 	}})
 	Expect(err).To(BeNil())
 
-	output := testutils.OutputChannel(stream)
+	output := sigverification_test.OutputChannel(stream)
 	Expect(err).To(BeNil())
 	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(HaveLen(3)))
 

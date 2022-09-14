@@ -3,16 +3,16 @@ package workload
 import (
 	"bufio"
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
 func Generate(profilePath, outputPath string) {
@@ -20,13 +20,13 @@ func Generate(profilePath, outputPath string) {
 	pp := LoadProfileFromYaml(profilePath)
 
 	// configure our transaction generator
-	p := &testutils.TxGeneratorParams{
+	p := &sigverification_test.TxGeneratorParams{
 		Scheme:           signature.Ecdsa,
 		ValidSigRatio:    test.Percentage(pp.Transaction.Signature.ValidityRatio),
 		TxSize:           test.Constant(pp.Transaction.SerialNumber.Count),
 		SerialNumberSize: test.Constant(pp.Transaction.SerialNumber.Length),
 	}
-	g := testutils.NewTxGenerator(p)
+	g := sigverification_test.NewTxGenerator(p)
 
 	blockCount := pp.Block.Count
 	blockSize := pp.Block.Size

@@ -53,6 +53,28 @@ func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
 	}), nil
 }
 
+func ParseSigningKey(key []byte) (*ecdsa.PrivateKey, error) {
+	block, _ := pem.Decode(key)
+	if block == nil || block.Type != "EC PRIVATE KEY" {
+		return nil, errors.Errorf("failed to decode PEM block containing private key, got %v", block)
+	}
+
+	return x509.ParseECPrivateKey(block.Bytes)
+}
+
+func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
+	x509encodedPri, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot serialize private key")
+	}
+
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: x509encodedPri,
+	}), nil
+
+}
+
 func SignMessage(privateKey *ecdsa.PrivateKey, message []byte) ([]byte, error) {
 	hash := sha256.Sum256(message)
 

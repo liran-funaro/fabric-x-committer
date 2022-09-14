@@ -1,6 +1,7 @@
 package test
 
 import (
+	"crypto/rand"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
@@ -89,11 +90,9 @@ type FastByteArrayGenerator struct {
 	sample []S
 }
 
-func NewFastByteArrayGenerator(valueGenerator func() S, sampleSize int) *FastByteArrayGenerator {
+func NewFastByteArrayGenerator(sampleSize int) *FastByteArrayGenerator {
 	sample := make([]S, sampleSize)
-	for i := 0; i < sampleSize; i++ {
-		sample[i] = valueGenerator()
-	}
+	rand.Read(sample)
 	return &FastByteArrayGenerator{sample: sample}
 }
 

@@ -7,7 +7,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -37,19 +37,18 @@ func BenchmarkParallelExecutor(b *testing.B) {
 		{Header: "Parallelism", Formatter: test.NoFormatting},
 		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
-		{Header: "Memory", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats testutils.AsyncTrackerStats
+	var stats sigverification_test.AsyncTrackerStats
 	config := baseConfig
-	for _, parallelism := range []int{2, 4} {
+	for _, parallelism := range []int{4} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
-		for _, batchSize := range []int64{200, 300} {
+		for _, batchSize := range []int64{100} {
 			config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
 				g := NewInputGenerator(&config.InputGeneratorParams)
 				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig)
-				t := testutils.NewAsyncTracker(testutils.NoSampling)
+				t := sigverification_test.NewAsyncTracker()
 
 				t.Start(e.Outputs())
 				b.ResetTimer()
@@ -64,7 +63,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 				stats = t.WaitUntilDone()
 				b.StopTimer()
 			})
-			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second), stats.TotalMemory)
+			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second))
 		}
 	}
 }
@@ -78,14 +77,14 @@ type inputGeneratorParams struct {
 func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
 		inputDelayGenerator:    test.NewDelayGenerator(params.InputDelay, 30),
-		requestBatchGenerator:  testutils.NewEmptyRequestBatchGenerator(params.BatchSize),
+		requestBatchGenerator:  sigverification_test.NewEmptyRequestBatchGenerator(params.BatchSize),
 		executorDelayGenerator: test.NewDelayGenerator(params.ExecutorDelay, 30),
 	}
 }
 
 type inputGenerator struct {
 	inputDelayGenerator    *test.DelayGenerator
-	requestBatchGenerator  *testutils.EmptyRequestBatchGenerator
+	requestBatchGenerator  *sigverification_test.EmptyRequestBatchGenerator
 	executorDelayGenerator *test.DelayGenerator
 }
 

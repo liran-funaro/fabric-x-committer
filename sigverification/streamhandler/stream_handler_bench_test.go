@@ -8,7 +8,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -31,24 +31,23 @@ func BenchmarkStreamHandler(b *testing.B) {
 		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Server delay", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
-		{Header: "Memory", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats testutils.AsyncTrackerStats
+	var stats sigverification_test.AsyncTrackerStats
 	config := baseConfig
-	for _, batchSize := range []int64{10, 20, 30, 40, 50, 100, 200} {
+	for _, batchSize := range []int64{20} {
 		config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
 		for _, serverDelay := range []int64{0, int64(time.Second) * batchSize / 20_000} {
 			config.InputGeneratorParams.ServerDelay = test.Constant(serverDelay)
 			b.Run(fmt.Sprintf("%s-b%d-d%v", config.Name, batchSize, time.Duration(serverDelay)), func(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
-				s := testutils.NewTestState(g.VerifierServer())
-				t := testutils.NewAsyncTracker(testutils.NoSampling)
+				s := sigverification_test.NewTestState(g.VerifierServer())
+				t := sigverification_test.NewAsyncTracker()
 				defer s.TearDown()
 				stream, _ := s.Client.StartStream(context.Background())
-				send := testutils.InputChannel(stream)
+				send := sigverification_test.InputChannel(stream)
 
-				t.Start(testutils.OutputChannel(stream))
+				t.Start(sigverification_test.OutputChannel(stream))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 					for pb.Next() {
@@ -60,7 +59,7 @@ func BenchmarkStreamHandler(b *testing.B) {
 				})
 				stats = t.WaitUntilDone()
 			})
-			output.Record(config.InputGeneratorParams.BatchSize, config.InputGeneratorParams.ServerDelay, stats.RequestsPer(time.Second), stats.TotalMemory)
+			output.Record(config.InputGeneratorParams.BatchSize, config.InputGeneratorParams.ServerDelay, stats.RequestsPer(time.Second))
 		}
 	}
 }
@@ -79,8 +78,8 @@ type inputGenerator struct {
 }
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
-	batchGen := testutils.NewRequestBatchGenerator(&testutils.RequestBatchGeneratorParams{
-		Tx: &testutils.TxGeneratorParams{
+	batchGen := sigverification_test.NewRequestBatchGenerator(&sigverification_test.RequestBatchGeneratorParams{
+		Tx: &sigverification_test.TxGeneratorParams{
 			Scheme:           signature.Ecdsa,
 			ValidSigRatio:    test.Always,
 			TxSize:           test.Constant(1),
@@ -89,7 +88,7 @@ func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 		BatchSize: p.BatchSize,
 	}, 100)
 	return &inputGenerator{
-		verifierServer:       testutils.NewDummyVerifierServer(p.ServerDelay),
+		verifierServer:       sigverification_test.NewDummyVerifierServer(p.ServerDelay),
 		requestBatch:         &sigverification.RequestBatch{Requests: batchGen.Next()},
 		clientDelayGenerator: test.NewDelayGenerator(p.ClientDelay, 30),
 	}

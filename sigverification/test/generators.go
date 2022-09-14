@@ -1,7 +1,8 @@
-package testutils
+package sigverification_test
 
 import (
 	"context"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
@@ -14,7 +15,7 @@ import (
 // Tx
 
 type TxGenerator struct {
-	txSigner  signature.TxSigner
+	txSigner  TxSigner
 	PublicKey signature.PublicKey
 
 	txInputGenerator       *TxInputGenerator
@@ -29,10 +30,12 @@ type TxGeneratorParams struct {
 }
 
 func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
-	txSigner, verificationKey := signature.NewSignerPubKey(params.Scheme)
+	factory := GetSignatureFactory(params.Scheme)
+	privateKey, publicKey := factory.NewKeys()
+	txSigner, _ := factory.NewSigner(privateKey)
 	return &TxGenerator{
 		txSigner:               txSigner,
-		PublicKey:              verificationKey,
+		PublicKey:              publicKey,
 		txInputGenerator:       NewTxInputGenerator(&TxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
 		validSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
@@ -57,8 +60,9 @@ type TxInputGenerator struct {
 }
 
 func NewTxInputGenerator(params *TxInputGeneratorParams) *TxInputGenerator {
+
 	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
-	serialNumberGenerator := test.NewFastByteArrayGenerator(test.ConstantByteGenerator, 60)
+	serialNumberGenerator := test.NewFastByteArrayGenerator(60)
 	txInputValueGenerator := func() signature.SerialNumber {
 		return serialNumberGenerator.NextWithSize(serialNumberSizeGenerator.Next())
 	}
@@ -252,4 +256,29 @@ func (s *dummyVerifierServer) SetVerificationKey(context.Context, *sigverificati
 func (s *dummyVerifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {
 	s.streamHandler.HandleStream(stream)
 	return nil
+}
+
+type InputGeneratorParams struct {
+	InputDelay   test.Distribution
+	RequestBatch *RequestBatchGeneratorParams
+}
+type InputGenerator struct {
+	inputDelayGenerator   *test.DelayGenerator
+	requestBatchGenerator *RequestBatchGenerator
+}
+
+func NewInputGenerator(p *InputGeneratorParams) *InputGenerator {
+	return &InputGenerator{
+		inputDelayGenerator:   test.NewDelayGenerator(p.InputDelay, 30),
+		requestBatchGenerator: NewRequestBatchGenerator(p.RequestBatch, 30),
+	}
+}
+
+func (c *InputGenerator) NextRequestBatch() *sigverification.RequestBatch {
+	c.inputDelayGenerator.Next()
+	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
+}
+
+func (c *InputGenerator) PublicKey() *sigverification.Key {
+	return &sigverification.Key{SerializedBytes: c.requestBatchGenerator.PublicKey}
 }

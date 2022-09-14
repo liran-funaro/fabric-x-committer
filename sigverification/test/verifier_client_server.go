@@ -1,25 +1,24 @@
-package testutils
+package sigverification_test
 
 import (
 	"log"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"google.golang.org/grpc"
 )
 
-type TestState struct {
+type State struct {
 	Client     sigverification.VerifierClient
 	StopClient func() error
 	StopServer func()
 }
 
-var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier})
-var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}
+var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: 5001})
+var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: 5001}}
 
-func NewTestState(server sigverification.VerifierServer) *TestState {
-	s := &TestState{}
+func NewTestState(server sigverification.VerifierServer) *State {
+	s := &State{}
 	clientConnection, _ := utils.Connect(clientConnectionConfig)
 	s.Client = sigverification.NewVerifierClient(clientConnection)
 	s.StopClient = clientConnection.Close
@@ -33,7 +32,7 @@ func NewTestState(server sigverification.VerifierServer) *TestState {
 	return s
 }
 
-func (s *TestState) TearDown() {
+func (s *State) TearDown() {
 	err := s.StopClient()
 	if err != nil {
 		log.Fatalf("failed to close connection: %v", err)

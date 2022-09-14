@@ -3,10 +3,9 @@ package signature_test
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/testutils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
@@ -20,7 +19,7 @@ type benchmarkConfig struct {
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
-		TxInputGeneratorParams: &testutils.TxInputGeneratorParams{
+		TxInputGeneratorParams: &sigverification_test.TxInputGeneratorParams{
 			TxSize:           test.Constant(1),
 			SerialNumberSize: test.Constant(64),
 		},
@@ -30,23 +29,16 @@ var baseConfig = benchmarkConfig{
 }
 
 func BenchmarkTxVerifier(b *testing.B) {
-	var output = test.Open("signature", &test.ResultOptions{Columns: []*test.ColumnConfig{
-		{Header: "Valid Sig Ratio", Formatter: test.NoFormatting},
-		{Header: "Throughput", Formatter: test.NoFormatting},
-		{Header: "Memory", Formatter: test.NoFormatting},
-	}})
-	defer output.Close()
-	var stats testutils.SyncTrackerStats
 	config := baseConfig
-	for _, ratio := range []test.Percentage{test.Never, 0.5, test.Always} {
+	for _, ratio := range []test.Percentage{0.5, test.Always} {
 		config.InputGeneratorParams.ValidSigRatio = ratio
-		totalSigs := 0
 		b.Run(fmt.Sprintf("%s-r%f", config.Name, ratio), func(b *testing.B) {
 			g := NewInputGenerator(config.InputGeneratorParams)
-			t := testutils.NewSyncTracker(1 * time.Millisecond)
-			txSigner, txVerifier := signature.NewSignerVerifier(config.VerificationScheme)
+			factory := sigverification_test.GetSignatureFactory(config.VerificationScheme)
+			privateKey, publicKey := factory.NewKeys()
+			txSigner, _ := factory.NewSigner(privateKey)
+			txVerifier, _ := factory.NewVerifier(publicKey)
 
-			t.Start()
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
@@ -60,27 +52,24 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 				txVerifier.VerifyTx(tx)
 			}
-			totalSigs = b.N
-			stats = t.Stop()
 		})
-		output.Record(config.InputGeneratorParams.ValidSigRatio, float64(totalSigs)*float64(time.Second)/float64(stats.TotalTime), stats.TotalMemory)
 	}
 }
 
 // Input generator
 
 type inputGeneratorParams struct {
-	*testutils.TxInputGeneratorParams
+	*sigverification_test.TxInputGeneratorParams
 	ValidSigRatio test.Percentage
 }
 type inputGenerator struct {
-	txInputGenerator *testutils.TxInputGenerator
+	txInputGenerator *sigverification_test.TxInputGenerator
 	validGenerator   *test.BooleanGenerator
 }
 
 func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		txInputGenerator: testutils.NewTxInputGenerator(params.TxInputGeneratorParams),
+		txInputGenerator: sigverification_test.NewTxInputGenerator(params.TxInputGeneratorParams),
 		validGenerator:   test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 30),
 	}
 }
