@@ -12,16 +12,34 @@ import (
 	"google.golang.org/grpc"
 )
 
-var defaultConfig = &utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}
-var defaultParallelExecutorConfig = &parallelexecutor.Config{
-	Parallelism:       3,
-	BatchTimeCutoff:   1 * time.Millisecond,
-	BatchSizeCutoff:   5,
-	ChannelBufferSize: 2,
+type ServerConfig struct {
+	Connection         *utils.ServerConfig
+	Executor           *parallelexecutor.Config
+	VerificationScheme signature.Scheme
+}
+
+var defaultServerConfig = &ServerConfig{
+	Connection: &utils.ServerConfig{
+		Endpoint: utils.Endpoint{
+			Host: "localhost",
+			Port: config.DefaultGRPCPortSigVerifier,
+		},
+		PrometheusEnabled: true,
+	},
+	Executor: &parallelexecutor.Config{
+		Parallelism:       3,
+		BatchTimeCutoff:   1 * time.Millisecond,
+		BatchSizeCutoff:   100,
+		ChannelBufferSize: 2,
+	},
+	VerificationScheme: signature.Ecdsa,
 }
 
 func main() {
-	utils.RunServerMain(defaultConfig, func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(defaultParallelExecutorConfig, signature.Ecdsa))
+	config := defaultServerConfig
+	//TODO: Overwrite default config with flags
+
+	utils.RunServerMain(config.Connection, func(grpcServer *grpc.Server) {
+		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(config.Executor, config.VerificationScheme))
 	})
 }

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -15,7 +17,8 @@ type Host = string
 
 type ServerConfig struct {
 	Endpoint
-	Opts []grpc.ServerOption
+	PrometheusEnabled bool
+	Opts              []grpc.ServerOption
 }
 
 const grpcProtocol = "tcp"
@@ -31,6 +34,10 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
 	grpcServer := grpc.NewServer(serverConfig.Opts...)
 	register(grpcServer)
 
+	if serverConfig.PrometheusEnabled {
+		go launchPrometheus()
+	}
+
 	err = grpcServer.Serve(listener)
 	if err != nil {
 		log.Fatalf("failed to serve: %v", err)
@@ -42,14 +49,14 @@ type DialConfig struct {
 	Credentials credentials.TransportCredentials
 }
 
-func NewDialConfig(endpoint Endpoint) DialConfig {
-	return DialConfig{
+func NewDialConfig(endpoint Endpoint) *DialConfig {
+	return &DialConfig{
 		Endpoint:    endpoint,
 		Credentials: insecure.NewCredentials(),
 	}
 }
 
-func Connect(config DialConfig) (*grpc.ClientConn, error) {
+func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(config.Credentials)}
 
 	conn, err := grpc.Dial(config.Endpoint.Address(), opts...)
@@ -67,4 +74,12 @@ type Endpoint struct {
 
 func (e *Endpoint) Address() string {
 	return fmt.Sprintf("%s:%d", e.Host, e.Port)
+}
+
+func launchPrometheus() {
+	http.Handle("/metrics", promhttp.Handler())
+	err := http.ListenAndServe(":2112", nil)
+	if err != nil {
+		panic(err)
+	}
 }
