@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )

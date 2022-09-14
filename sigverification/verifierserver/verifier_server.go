@@ -3,9 +3,10 @@ package verifierserver
 import (
 	"context"
 	"errors"
-
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
@@ -20,16 +21,25 @@ type verifierServer struct {
 	verifier           signature.TxVerifier
 }
 
-func New(config *parallelexecutor.Config, verificationScheme signature.Scheme) *verifierServer {
+func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme) *verifierServer {
 	s := &verifierServer{verificationScheme: verificationScheme}
 
-	executor := parallelexecutor.New(s.verifyRequest, config)
+	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig)
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
+			if config.AppConfig.Prometheus.Enabled {
+				performance.TxsReceived.Add(float64(len(batch.Requests)))
+				performance.BatchesReceived.Inc()
+			}
 			executor.Submit(batch.Requests)
 		},
 		func() streamhandler.Output {
-			return &sigverification.ResponseBatch{Responses: <-executor.Outputs()}
+			outputs := <-executor.Outputs()
+			if config.AppConfig.Prometheus.Enabled {
+				performance.TxsSent.Add(float64(len(outputs)))
+				performance.BatchesSent.Inc()
+			}
+			return &sigverification.ResponseBatch{Responses: outputs}
 		})
 	return s
 }
@@ -52,7 +62,12 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 	if s.verifier == nil {
 		return errors.New("no verification key set")
 	}
+	if config.AppConfig.Prometheus.Enabled {
+		performance.ActiveStreams.Inc()
+		defer performance.ActiveStreams.Dec()
+	}
 	s.streamHandler.HandleStream(stream)
+	logger.Debug("Interrupted stream.")
 	return nil
 }
 

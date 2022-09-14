@@ -34,8 +34,9 @@ const (
 )
 
 type GlobalConfig struct {
-	Logging LoggingConfig
-	Network NetworkConfig
+	Logging    LoggingConfig
+	Network    NetworkConfig
+	Prometheus PrometheusConfig
 }
 type LoggingConfig struct {
 	Enabled     bool
@@ -45,6 +46,9 @@ type LoggingConfig struct {
 }
 type NetworkConfig struct {
 	DefaultGrpcPort int
+}
+type PrometheusConfig struct {
+	Enabled bool
 }
 
 var AppConfig *GlobalConfig
@@ -86,6 +90,7 @@ func readConfig(absolutePath string) (*GlobalConfig, error) {
 }
 
 func overwriteEnvVars(config *GlobalConfig) error {
+	config.Prometheus.Enabled = true
 	// TODO: Overwrite config with env vars
 
 	return nil
