@@ -403,9 +403,8 @@ func (oc *phaseOneComm) stopResponseRecieverRoutine() {
 
 //////////////////////////////////// phaseTwoComm ////////////////////////////////////
 type phaseTwoComm struct {
-	stream shardsservice.Server_StartPhaseTwoStreamClient
-	sendCh chan *shardsservice.PhaseTwoRequestBatch
-
+	stream       shardsservice.Server_StartPhaseTwoStreamClient
+	sendCh       chan *shardsservice.PhaseTwoRequestBatch
 	stopSignalCh chan struct{}
 	stopWG       sync.WaitGroup
 }
@@ -420,12 +419,10 @@ func newPhaseTwoComm(host string) (*phaseTwoComm, error) {
 	}
 
 	client := shardsservice.NewServerClient(conn)
-	cancelableContext, cancel := context.WithCancel(context.Background())
-	stream, err := client.StartPhaseTwoStream(cancelableContext)
+	stream, err := client.StartPhaseTwoStream(context.Background())
 
 	if err != nil {
-		cancel()
-		return nil, err
+		panic(fmt.Sprintf("Error while starting phase two stream: %s", err))
 	}
 
 	return &phaseTwoComm{
@@ -465,7 +462,6 @@ func (o *phaseTwoComm) stopRequestSenderRoutine() {
 type phaseOnePendingTx struct {
 	shardServers        map[*shardsServer]struct{}
 	pendingResponseNums int
-	invalidatedBy       *shardsServer
 }
 
 type phaseOnePendingTxs struct {
