@@ -29,8 +29,8 @@ var baseConfig = benchmarkConfig{
 	},
 	InputGeneratorParams: &sigverification_test.InputGeneratorParams{
 		InputDelay: test.NoDelay,
-		RequestBatch: &sigverification_test.RequestBatchGeneratorParams{
-			Tx: &sigverification_test.TxGeneratorParams{
+		RequestBatch: sigverification_test.RequestBatchGeneratorParams{
+			Tx: sigverification_test.TxGeneratorParams{
 				Scheme:           signature.Ecdsa,
 				ValidSigRatio:    0.8,
 				TxSize:           test.Constant(1),

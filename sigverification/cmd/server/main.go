@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
@@ -13,33 +14,28 @@ import (
 )
 
 type ServerConfig struct {
-	Connection         *utils.ServerConfig
-	Executor           *parallelexecutor.Config
+	Connection         utils.ServerConfig
+	Executor           parallelexecutor.Config
 	VerificationScheme signature.Scheme
 }
 
-var defaultServerConfig = &ServerConfig{
-	Connection: &utils.ServerConfig{
-		Endpoint: utils.Endpoint{
-			Host: "localhost",
-			Port: config.DefaultGRPCPortSigVerifier,
-		},
-		PrometheusEnabled: true,
-	},
-	Executor: &parallelexecutor.Config{
-		Parallelism:       3,
-		BatchTimeCutoff:   1 * time.Millisecond,
-		BatchSizeCutoff:   100,
-		ChannelBufferSize: 2,
-	},
-	VerificationScheme: signature.Ecdsa,
-}
+var serverConfig ServerConfig
 
 func main() {
-	config := defaultServerConfig
-	//TODO: Overwrite default config with flags
+	flag.StringVar(&serverConfig.Connection.Host, "host", "localhost", "Server host to connect to")
+	flag.IntVar(&serverConfig.Connection.Port, "port", config.DefaultGRPCPortSigVerifier, "Server port to connect to")
+	flag.BoolVar(&serverConfig.Connection.PrometheusEnabled, "prometheus", true, "Enable prometheus metrics to be kept")
 
-	utils.RunServerMain(config.Connection, func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(config.Executor, config.VerificationScheme))
+	flag.IntVar(&serverConfig.Executor.Parallelism, "parallelism", 1, "Executor parallelism")
+	flag.DurationVar(&serverConfig.Executor.BatchTimeCutoff, "batch-time-cutoff", 10*time.Millisecond, "Batch time cutoff limit")
+	flag.IntVar(&serverConfig.Executor.BatchSizeCutoff, "batch-size-cutoff", 100, "Batch size cutoff limit")
+	flag.IntVar(&serverConfig.Executor.ChannelBufferSize, "channel-buffer-size", 2, "Channel buffer size for the executor")
+
+	signature.SchemeVar(&serverConfig.VerificationScheme, "scheme", signature.Ecdsa, "Verification scheme")
+
+	flag.Parse()
+
+	utils.RunServerMain(&serverConfig.Connection, func(grpcServer *grpc.Server) {
+		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverConfig.Executor, serverConfig.VerificationScheme))
 	})
 }

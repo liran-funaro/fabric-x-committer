@@ -79,7 +79,7 @@ type inputGenerator struct {
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 	batchGen := sigverification_test.NewRequestBatchGenerator(&sigverification_test.RequestBatchGeneratorParams{
-		Tx: &sigverification_test.TxGeneratorParams{
+		Tx: sigverification_test.TxGeneratorParams{
 			Scheme:           signature.Ecdsa,
 			ValidSigRatio:    test.Always,
 			TxSize:           test.Constant(1),

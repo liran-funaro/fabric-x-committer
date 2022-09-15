@@ -80,7 +80,7 @@ func (g *TxInputGenerator) Next() []signature.SerialNumber {
 // TX request batch
 
 type RequestBatchGeneratorParams struct {
-	Tx        *TxGeneratorParams
+	Tx        TxGeneratorParams
 	BatchSize test.Distribution
 }
 type RequestBatchGenerator struct {
@@ -90,7 +90,7 @@ type RequestBatchGenerator struct {
 }
 
 func NewRequestBatchGenerator(params *RequestBatchGeneratorParams, sampleSize int) *RequestBatchGenerator {
-	txGenerator := NewTxGenerator(params.Tx)
+	txGenerator := NewTxGenerator(&params.Tx)
 	valueGen := func() *sigverification.Request {
 		return &sigverification.Request{
 			BlockNum: 0,
@@ -260,7 +260,7 @@ func (s *dummyVerifierServer) StartStream(stream sigverification.Verifier_StartS
 
 type InputGeneratorParams struct {
 	InputDelay   test.Distribution
-	RequestBatch *RequestBatchGeneratorParams
+	RequestBatch RequestBatchGeneratorParams
 }
 type InputGenerator struct {
 	inputDelayGenerator   *test.DelayGenerator
@@ -270,7 +270,7 @@ type InputGenerator struct {
 func NewInputGenerator(p *InputGeneratorParams) *InputGenerator {
 	return &InputGenerator{
 		inputDelayGenerator:   test.NewDelayGenerator(p.InputDelay, 30),
-		requestBatchGenerator: NewRequestBatchGenerator(p.RequestBatch, 30),
+		requestBatchGenerator: NewRequestBatchGenerator(&p.RequestBatch, 30),
 	}
 }
 

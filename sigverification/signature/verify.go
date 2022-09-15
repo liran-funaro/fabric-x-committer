@@ -2,6 +2,7 @@ package signature
 
 import (
 	"encoding/asn1"
+	"flag"
 
 	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
@@ -21,6 +22,22 @@ const (
 	NoScheme Scheme = iota
 	Ecdsa
 )
+
+var schemeMap = map[string]Scheme{
+	"ECDSA": Ecdsa,
+	"NONE":  NoScheme,
+}
+
+func SchemeVar(p *Scheme, name string, defaultValue Scheme, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(input string) error {
+		if scheme, ok := schemeMap[input]; ok {
+			*p = scheme
+			return nil
+		}
+		return errors.New("scheme not found")
+	})
+}
 
 type VerifierFactory interface {
 	NewVerifier(key PublicKey) (TxVerifier, error)

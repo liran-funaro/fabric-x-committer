@@ -3,7 +3,13 @@ package test
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
+	"github.com/pkg/errors"
 	"math/rand"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type Percentage = float64
@@ -20,7 +26,7 @@ const (
 	uniform
 )
 
-type Distribution = *distributionHolder
+type Distribution = distributionHolder
 
 type distribution interface {
 	Generate() float64
@@ -57,7 +63,7 @@ func (d *distributionHolder) UnmarshalJSON(b []byte) error {
 }
 
 func newConstantDistribution(value float64) Distribution {
-	return &distributionHolder{
+	return distributionHolder{
 		Type:     constant,
 		Delegate: &constantDistribution{Value: value},
 	}
@@ -72,7 +78,7 @@ func (d *constantDistribution) Generate() float64 {
 }
 
 func newNormalDistribution(mean, std float64) Distribution {
-	return &distributionHolder{
+	return distributionHolder{
 		Type:     normal,
 		Delegate: &normalDistribution{Mean: mean, Std: std},
 	}
@@ -87,7 +93,7 @@ func (d *normalDistribution) Generate() float64 {
 }
 
 func newUniformDistribution(min, max float64) Distribution {
-	return &distributionHolder{
+	return distributionHolder{
 		Type:     uniform,
 		Delegate: &uniformDistribution{Min: min, Max: max},
 	}
@@ -116,4 +122,79 @@ func Constant(value int64) Distribution {
 
 func Uniform(min, max int64) Distribution {
 	return newUniformDistribution(float64(min), float64(max))
+}
+
+func DistributionVar(p *Distribution, name string, defaultValue Distribution, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(input string) error {
+		result, err := parseDistributionFlag(input)
+		if err != nil {
+			return err
+		}
+		*p = *result
+		return nil
+	})
+}
+
+func parseDistributionFlag(input string) (*Distribution, error) {
+	flagValues := strings.Split(input, " ")
+	if len(flagValues) < 2 {
+		return nil, errors.New("insufficient arguments (valid examples: constant 1s, stable 5, uniform 1 10)")
+	}
+	distributionType := flagValues[0]
+	values := make([]int64, len(flagValues)-1)
+	for i, flagValue := range flagValues[1:] {
+		value, err := parseValue(flagValue)
+		if err != nil {
+			return nil, err
+		}
+		values[i] = value
+	}
+	result, err := parseDistribution(distributionType, values...)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+var durationFormat = regexp.MustCompile(`.*[a-z]+`)
+
+func parseValue(value string) (int64, error) {
+	if !durationFormat.MatchString(value) {
+		return strconv.ParseInt(value, 10, 64)
+	}
+	duration, err := time.ParseDuration(value)
+	return int64(duration), err
+}
+
+func parseDistribution(distributionType string, values ...int64) (*Distribution, error) {
+	var result Distribution
+	switch distributionType {
+	case "constant":
+		if len(values) != 1 {
+			return nil, errors.New("only 1 value allowed")
+		}
+		result = Constant(values[0])
+	case "stable":
+		if len(values) != 1 {
+			return nil, errors.New("only 1 value allowed")
+		}
+		result = Stable(values[0])
+	case "volatile":
+		if len(values) != 1 {
+			return nil, errors.New("only 1 value allowed")
+		}
+		result = Volatile(values[0])
+	case "uniform":
+		if len(values) != 2 {
+			return nil, errors.New("only 2 values allowed")
+		}
+		if values[0] >= values[1] {
+			return nil, errors.New("wrong order: min < max")
+		}
+		result = Uniform(values[0], values[1])
+	default:
+		return nil, errors.New("distribution type not found")
+	}
+	return &result, nil
 }
