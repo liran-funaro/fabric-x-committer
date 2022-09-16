@@ -9,10 +9,12 @@ import (
 )
 
 func TestShardsServerMgr(t *testing.T) {
-	s := testutil.NewShardsServer(
-		t, testutil.DefaultPhaseOneBehavior, config.DefaultGRPCPortShardsServer,
+	shardsServer, err := testutil.NewShardsServer(
+		testutil.DefaultPhaseOneBehavior,
+		config.DefaultGRPCPortShardsServer,
 	)
-	defer s.Stop()
+	require.NoError(t, err)
+	defer shardsServer.Stop()
 
 	m, err := newShardsServerMgr(
 		&ShardsServerMgrConfig{

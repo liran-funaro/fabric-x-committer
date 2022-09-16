@@ -40,11 +40,13 @@ func newDependencyMgr() *dependencyMgr {
 
 func (m *dependencyMgr) startBlockRecieverRoutine() {
 	go func() {
-		select {
-		case <-m.stopSignalCh:
-			return
-		case b := <-m.inputChan:
-			m.updateGraphWithNewBlock(b)
+		for {
+			select {
+			case <-m.stopSignalCh:
+				return
+			case b := <-m.inputChan:
+				m.updateGraphWithNewBlock(b)
+			}
 		}
 	}()
 }

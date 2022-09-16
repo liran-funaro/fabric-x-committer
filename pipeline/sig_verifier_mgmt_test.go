@@ -11,10 +11,12 @@ import (
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
-	s := testutil.NewSigVerifierGrpcServer(
-		t, testutil.DefaultSigVerifierBehavior, config.DefaultGRPCPortSigVerifier,
+	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(
+		testutil.DefaultSigVerifierBehavior,
+		config.DefaultGRPCPortSigVerifier,
 	)
-	defer s.Stop()
+	require.NoError(t, err)
+	defer sigVerifierServer.Stop()
 
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{

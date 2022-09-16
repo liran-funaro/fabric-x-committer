@@ -3,9 +3,7 @@ package testutil
 import (
 	"context"
 	"io"
-	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	"google.golang.org/grpc"
 )
@@ -23,29 +21,27 @@ var DefaultPhaseOneBehavior = func(requestBatch *shardsservice.PhaseOneRequestBa
 }
 
 type ShardsServer struct {
-	t          *testing.T
 	grpcServer *grpc.Server
 }
 
 func NewShardsServer(
-	t *testing.T,
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
 	port int,
-) *ShardsServer {
+) (*ShardsServer, error) {
 	grpcServer := grpc.NewServer()
 	shardsservice.RegisterServerServer(grpcServer,
 		&shardsServerImpl{
-			t:                t,
 			phaseOneBehavior: phaseOneBehavior,
 		},
 	)
 
-	startGrpcServer(t, port, grpcServer)
+	if err := startGrpcServer(port, grpcServer); err != nil {
+		return nil, err
+	}
 
 	return &ShardsServer{
-		t:          t,
 		grpcServer: grpcServer,
-	}
+	}, nil
 
 }
 
@@ -55,7 +51,6 @@ func (s *ShardsServer) Stop() {
 
 type shardsServerImpl struct {
 	shardsservice.UnimplementedServerServer
-	t                *testing.T
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch
 }
 
@@ -74,10 +69,12 @@ func (s *shardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_Start
 			if err == io.EOF {
 				return nil
 			}
-			require.NoError(s.t, err)
+			return err
 		}
 		responseBatch := s.phaseOneBehavior(requestBatch)
-		require.NoError(s.t, stream.Send(responseBatch))
+		if err := stream.Send(responseBatch); err != nil {
+			return err
+		}
 	}
 }
 
@@ -88,7 +85,7 @@ func (s *shardsServerImpl) StartPhaseTwoStream(stream shardsservice.Server_Start
 			if err == io.EOF {
 				return nil
 			}
-			require.NoError(s.t, err)
+			return err
 		}
 	}
 }

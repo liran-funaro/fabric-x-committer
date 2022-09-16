@@ -11,14 +11,18 @@ import (
 )
 
 func TestCoordinator(t *testing.T) {
-	sigVerifierServer := testutil.NewSigVerifierGrpcServer(
-		t, testutil.DefaultSigVerifierBehavior, config.DefaultGRPCPortSigVerifier,
+	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(
+		testutil.DefaultSigVerifierBehavior,
+		config.DefaultGRPCPortSigVerifier,
 	)
+	require.NoError(t, err)
 	defer sigVerifierServer.Stop()
 
-	shardsServer := testutil.NewShardsServer(
-		t, testutil.DefaultPhaseOneBehavior, config.DefaultGRPCPortShardsServer,
+	shardsServer, err := testutil.NewShardsServer(
+		testutil.DefaultPhaseOneBehavior,
+		config.DefaultGRPCPortShardsServer,
 	)
+	require.NoError(t, err)
 	defer shardsServer.Stop()
 
 	c := &pipeline.Config{

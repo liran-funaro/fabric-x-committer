@@ -34,7 +34,8 @@ func (g *BlockGenerator) Stop() {
 }
 
 func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock int, serialNumPerTx int) {
-	nextBlockNum := uint64(0)
+	blockNum := uint64(0)
+	uniqueSerialNum := 0
 	go func() {
 		for {
 			select {
@@ -43,12 +44,13 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock int, serialNumPerTx 
 				return
 			default:
 				b := &token.Block{
-					Number: nextBlockNum,
+					Number: blockNum,
 				}
 				for i := 0; i < numTxPerBlock; i++ {
 					serialNums := make([][]byte, serialNumPerTx)
 					for j := 0; j < serialNumPerTx; j++ {
-						sn := sha256.Sum256([]byte(fmt.Sprintf("%d", i*numTxPerBlock+j)))
+						sn := sha256.Sum256([]byte(fmt.Sprintf("%d", uniqueSerialNum)))
+						uniqueSerialNum++
 						serialNums[j] = sn[:]
 					}
 					b.Txs = append(b.Txs,
@@ -58,6 +60,7 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock int, serialNumPerTx 
 					)
 				}
 				g.outputChan <- b
+				blockNum++
 			}
 		}
 	}()

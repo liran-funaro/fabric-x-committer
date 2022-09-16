@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"google.golang.org/grpc"
 )
@@ -26,30 +24,28 @@ var DefaultSigVerifierBehavior = func(requestBatch *sigverification.RequestBatch
 }
 
 type SigVerifierGrpcServer struct {
-	t          *testing.T
 	grpcServer *grpc.Server
 }
 
 func NewSigVerifierGrpcServer(
-	t *testing.T,
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
 	port int,
-) *SigVerifierGrpcServer {
+) (*SigVerifierGrpcServer, error) {
 
 	grpcServer := grpc.NewServer()
 	sigverification.RegisterVerifierServer(grpcServer,
 		&sigVerifierImpl{
-			t:        t,
 			behavior: behavior,
 		},
 	)
 
-	startGrpcServer(t, port, grpcServer)
+	if err := startGrpcServer(port, grpcServer); err != nil {
+		return nil, err
+	}
 
 	return &SigVerifierGrpcServer{
-		t:          t,
 		grpcServer: grpcServer,
-	}
+	}, nil
 }
 
 func (s *SigVerifierGrpcServer) Stop() {
@@ -57,7 +53,6 @@ func (s *SigVerifierGrpcServer) Stop() {
 }
 
 type sigVerifierImpl struct {
-	t *testing.T
 	sigverification.UnimplementedVerifierServer
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch
 }
@@ -73,32 +68,40 @@ func (s *sigVerifierImpl) StartStream(stream sigverification.Verifier_StartStrea
 			if err == io.EOF {
 				return nil
 			}
-			require.NoError(s.t, err)
+			return err
 		}
 		responseBatch := s.behavior(requestBatch)
-		require.NoError(s.t, stream.Send(responseBatch))
+		if err := stream.Send(responseBatch); err != nil {
+			return err
+		}
 	}
 }
 
-func startGrpcServer(t *testing.T, port int, grpcServer *grpc.Server) {
+func startGrpcServer(port int, grpcServer *grpc.Server) error {
 	//bufconn.Listen(1024 * 1024)
 	address := fmt.Sprintf("localhost:%d", port)
 	go func() {
 		lis, err := net.Listen("tcp", address)
-		require.NoError(t, err)
-		require.NoError(t, grpcServer.Serve(lis))
+		if err != nil {
+			panic(fmt.Sprintf("Error while starting test grpc server: %s", err))
+		}
+
+		err = grpcServer.Serve(lis)
+		if err != nil {
+			panic(fmt.Sprintf("Error while starting test grpc server: %s", err))
+		}
 	}()
 
 	for i := 0; i < 10; i++ {
 		conn, err := net.DialTimeout("tcp", address, 1*time.Second)
 		if err != nil {
 			if i == 9 {
-				t.Fatal(err)
+				return err
 			}
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		require.NoError(t, conn.Close())
-		break
+		return conn.Close()
 	}
+	return nil
 }
