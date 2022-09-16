@@ -1,4 +1,0 @@
-logging:
-  enabled: false
-network:
-  defaultgrpcport: 5000

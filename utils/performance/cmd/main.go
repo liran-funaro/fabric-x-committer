@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/performance"
 )
@@ -72,5 +72,5 @@ func main() {
 }
 
 func configFile(filename string) string {
-	return filepath.Join(utils.ConfigDir, filename)
+	return filepath.Join(config.DirPath, filename)
 }

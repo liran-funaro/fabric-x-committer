@@ -1,5 +1,0 @@
-logging:
-  enabled: true
-  level: INFO
-network:
-  defaultgrpcport: 5000

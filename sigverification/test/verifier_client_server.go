@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -14,17 +14,17 @@ type State struct {
 	StopServer func()
 }
 
-var clientConnectionConfig = utils.NewDialConfig(utils.Endpoint{Host: "localhost", Port: 5001})
-var serverConnectionConfig = utils.ServerConfig{Endpoint: utils.Endpoint{Host: "localhost", Port: 5001}}
+var clientConnectionConfig = connection.NewDialConfig(connection.Endpoint{Host: "localhost", Port: 5001})
+var serverConnectionConfig = connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost", Port: 5001}}
 
 func NewTestState(server sigverification.VerifierServer) *State {
 	s := &State{}
-	clientConnection, _ := utils.Connect(clientConnectionConfig)
+	clientConnection, _ := connection.Connect(clientConnectionConfig)
 	s.Client = sigverification.NewVerifierClient(clientConnection)
 	s.StopClient = clientConnection.Close
 
 	go func() {
-		utils.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server) {
+		connection.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server) {
 			s.StopServer = grpcServer.GracefulStop
 			sigverification.RegisterVerifierServer(grpcServer, server)
 		})

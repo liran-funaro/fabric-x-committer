@@ -6,19 +6,25 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var logger *zap.SugaredLogger
+var logger AppLogger
+
+type AppLogger struct {
+	*zap.SugaredLogger
+}
 
 func init() {
-
-	logger = zap.Must(createLogger(config.AppConfig.Logging)).Sugar()
-
-	logger.Infof("Initialized logger...")
+	updateLogger()
+	config.OnConfigUpdated(updateLogger)
 }
 
 var logLevelMap = map[config.LoggingLevel]zapcore.Level{
 	config.Debug: zap.DebugLevel,
 	config.Info:  zap.InfoLevel,
 	config.Error: zap.ErrorLevel,
+}
+
+func updateLogger() {
+	logger.SugaredLogger = zap.Must(createLogger(config.AppConfig.Logging)).Sugar()
 }
 
 func createLogger(c config.LoggingConfig) (*zap.Logger, error) {
@@ -39,6 +45,6 @@ func createLogger(c config.LoggingConfig) (*zap.Logger, error) {
 	return zap.NewProduction(options...)
 }
 
-func New(name string) *zap.SugaredLogger {
-	return logger.Named(name)
+func New(name string) *AppLogger {
+	return &logger
 }

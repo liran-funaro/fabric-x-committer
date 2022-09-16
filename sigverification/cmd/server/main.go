@@ -9,12 +9,12 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
 type ServerConfig struct {
-	Connection         utils.ServerConfig
+	Connection         connection.ServerConfig
 	Executor           parallelexecutor.Config
 	VerificationScheme signature.Scheme
 }
@@ -24,7 +24,7 @@ var serverConfig ServerConfig
 func main() {
 	flag.StringVar(&serverConfig.Connection.Host, "host", "localhost", "Server host to connect to")
 	flag.IntVar(&serverConfig.Connection.Port, "port", config.DefaultGRPCPortSigVerifier, "Server port to connect to")
-	flag.BoolVar(&serverConfig.Connection.PrometheusEnabled, "prometheus", true, "Enable prometheus metrics to be kept")
+	flag.Bool("prometheus", config.AppConfig.Prometheus.Enabled, "Enable prometheus metrics to be kept")
 
 	flag.IntVar(&serverConfig.Executor.Parallelism, "parallelism", 1, "Executor parallelism")
 	flag.DurationVar(&serverConfig.Executor.BatchTimeCutoff, "batch-time-cutoff", 10*time.Millisecond, "Batch time cutoff limit")
@@ -33,9 +33,9 @@ func main() {
 
 	signature.SchemeVar(&serverConfig.VerificationScheme, "scheme", signature.Ecdsa, "Verification scheme")
 
-	flag.Parse()
+	config.ParseFlags("prometheus", "prometheus.enabled")
 
-	utils.RunServerMain(&serverConfig.Connection, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(&serverConfig.Connection, func(grpcServer *grpc.Server) {
 		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverConfig.Executor, serverConfig.VerificationScheme))
 	})
 }

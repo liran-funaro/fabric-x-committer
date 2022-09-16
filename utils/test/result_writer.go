@@ -3,11 +3,13 @@ package test
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.ibm.com/distributed-trust-research/scalable-committer/generated"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 type ValueFormatter = func(interface{}) interface{}
@@ -59,7 +61,7 @@ func Open(name string, options *ResultOptions) *ResultOutput {
 		panic(err)
 	}
 	filename := fmt.Sprintf("%s-%s.txt", name, time.Now().Format(fileTimeFormat))
-	file, err := utils.OverwriteFile(filepath.Join(utils.ResultDir(), filename))
+	file, err := utils.OverwriteFile(filepath.Join(generated.DirPath, filename))
 	if err != nil {
 		panic(err)
 	}

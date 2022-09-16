@@ -1,4 +1,4 @@
-package utils
+package connection
 
 import (
 	"flag"
@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -34,7 +35,7 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
 	grpcServer := grpc.NewServer(serverConfig.Opts...)
 	register(grpcServer)
 
-	if serverConfig.PrometheusEnabled {
+	if config.AppConfig.Prometheus.Enabled {
 		go launchPrometheus()
 	}
 

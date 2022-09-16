@@ -7,7 +7,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc/credentials/insecure"
@@ -16,7 +16,7 @@ import (
 var logger = logging.New("sigverification-client")
 
 type ClientConfig struct {
-	Connection utils.DialConfig
+	Connection connection.DialConfig
 	Input      sigverification_test.InputGeneratorParams
 }
 
@@ -35,12 +35,12 @@ func main() {
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.TxSize, "tx-size", test.Constant(1), "How many serial numbers are in each TX")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", test.Constant(64), "How many bytes contains each serial number")
 
-	flag.Parse()
+	config.ParseFlags()
 
 	//TODO: Read key from file, so that multiple clients use the same keys for signing
 	inputGenerator := sigverification_test.NewInputGenerator(&clientConfig.Input)
 
-	clientConnection, _ := utils.Connect(&clientConfig.Connection)
+	clientConnection, _ := connection.Connect(&clientConfig.Connection)
 	client := sigverification.NewVerifierClient(clientConnection)
 
 	_, err := client.SetVerificationKey(context.Background(), inputGenerator.PublicKey())

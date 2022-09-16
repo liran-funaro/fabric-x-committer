@@ -3,5 +3,5 @@ logging:
   level: DEBUG
   development: true
   caller: true
-network:
-  defaultgrpcport: 5000
+prometheus:
+  enabled: true
