@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice";
+
+package coordinatorservice;
+
+import "token/token.proto";
+import "sigverification/verifier.proto";
+
+service Coordinator {
+    rpc SetVerificationKey(sigverification.Key) returns (Empty);
+    rpc BlockProcessing(stream token.Block) returns (stream TxValidationStatusBatch);
+}
+
+message Empty {
+}
+
+message TxValidationStatusBatch {
+    repeated TxValidationStatus txs_validation_status = 1;
+}
+
+message TxValidationStatus{
+    uint64 block_num = 1;
+    uint64 tx_num = 2;
+    bool is_valid = 3;
+}

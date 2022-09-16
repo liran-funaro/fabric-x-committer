@@ -51,6 +51,16 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	return m, nil
 }
 
+func (m *sigVerifierMgr) setVerificationKey(k *sigverification.Key) error {
+	for _, v := range m.verifiers {
+		_, err := v.client.SetVerificationKey(context.Background(), k)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 	go func() {
 		i := 0
@@ -131,6 +141,7 @@ func (m *sigVerifierMgr) stop() {
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 type sigVerifier struct {
+	client              sigverification.VerifierClient
 	stream              sigverification.Verifier_StartStreamClient
 	streamContext       context.Context
 	streamContextCancel func()

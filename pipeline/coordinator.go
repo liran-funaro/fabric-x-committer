@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
@@ -12,7 +13,7 @@ type Coordinator struct {
 	stopSignalCh    chan struct{}
 }
 
-func NewCordinator(config *Config) (*Coordinator, error) {
+func NewCoordinator(config *Config) (*Coordinator, error) {
 	sigVerifierMgr, err := newSigVerificationMgr(config.SigVerifierMgrConfig)
 	if err != nil {
 		return nil, err
@@ -31,6 +32,10 @@ func NewCordinator(config *Config) (*Coordinator, error) {
 	c.startTxProcessingRoutine()
 	c.startTxValidationProcessorRoutine()
 	return c, nil
+}
+
+func (c *Coordinator) SetSigVerificationKey(k *sigverification.Key) error {
+	return c.sigVerifierMgr.setVerificationKey(k)
 }
 
 func (c *Coordinator) ProcessBlockAsync(block *token.Block) {

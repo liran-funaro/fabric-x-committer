@@ -1,0 +1,6 @@
+sig_verification:
+  servers: "machine1 machine2"
+shards_service:
+  servers: "machine3 machine4"
+  num_shards_per_server: 4
+  delete_existing_shards: true
