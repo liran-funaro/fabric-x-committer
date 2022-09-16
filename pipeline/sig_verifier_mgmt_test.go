@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
@@ -27,13 +28,20 @@ func TestSigVerifiersMgr(t *testing.T) {
 	assert.NoError(t, err)
 	defer m.stop()
 
-	g := testutil.NewBlockGenerator(2, 1)
-	defer g.Stop()
+	m.inputChan <- &token.Block{
+		Number: uint64(0),
+		Txs: []*token.Tx{
+			{SerialNumbers: [][]byte{[]byte("00"), []byte("01")}},
+			{SerialNumbers: [][]byte{[]byte("12"), []byte("13")}},
+		},
+	}
 
-	m.inputChan <- <-g.OutputChan()
 	txSeqNums := <-m.outputChanValids
-
-	require.Equal(t, 2, len(txSeqNums))
-	require.Equal(t, TxSeqNum{BlkNum: 0, TxNum: 0}, txSeqNums[0])
-	require.Equal(t, TxSeqNum{BlkNum: 0, TxNum: 1}, txSeqNums[1])
+	require.ElementsMatch(t,
+		txSeqNums,
+		[]TxSeqNum{
+			{BlkNum: 0, TxNum: 0},
+			{BlkNum: 0, TxNum: 1},
+		},
+	)
 }

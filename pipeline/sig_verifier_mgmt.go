@@ -120,7 +120,11 @@ func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 						invalids = append(invalids, n)
 					}
 				}
-				m.outputChanInvalids <- invalids
+
+				if len(invalids) > 0 {
+					m.outputChanInvalids <- invalids
+				}
+
 				if len(valids) >= batchSize {
 					cutBatchOfValids()
 				}
