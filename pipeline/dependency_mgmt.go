@@ -93,13 +93,16 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 	notYetSeenTxs := []*TxStatus{}
 	go func() {
-		select {
-		case <-m.stopSignalCh:
-			return
-		case u := <-m.inputChanStatusUpdate:
-			notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
+		for {
+			select {
+			case <-m.stopSignalCh:
+				return
+			case u := <-m.inputChanStatusUpdate:
+				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
+			}
 		}
 	}()
+
 }
 
 func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNum) (map[TxSeqNum][][]byte, []TxSeqNum) {

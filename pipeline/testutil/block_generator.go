@@ -12,12 +12,12 @@ type BlockGenerator struct {
 	stopSignalChan chan struct{}
 }
 
-func NewBlockGenerator(numTxPerBlock, serialNumPerTx int) *BlockGenerator {
+func NewBlockGenerator(numTxPerBlock, serialNumPerTx int, addSignatureBytes bool) *BlockGenerator {
 	g := &BlockGenerator{
 		outputChan:     make(chan *token.Block, 2),
 		stopSignalChan: make(chan struct{}),
 	}
-	g.startBlockGenRoutine(numTxPerBlock, serialNumPerTx)
+	g.startBlockGenRoutine(numTxPerBlock, serialNumPerTx, addSignatureBytes)
 	return g
 }
 
@@ -33,9 +33,18 @@ func (g *BlockGenerator) Stop() {
 	close(g.stopSignalChan)
 }
 
-func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock int, serialNumPerTx int) {
+func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock, serialNumPerTx int, addSignatureBytes bool) {
+	randomBytesForSignature := []byte{}
+	if addSignatureBytes {
+		randomBytesForSignature = make([]byte, 1000) // 1kb
+		for i := 0; i < len(randomBytesForSignature); i++ {
+			randomBytesForSignature[i] = uint8(i)
+		}
+	}
+
 	blockNum := uint64(0)
 	uniqueSerialNum := 0
+
 	go func() {
 		for {
 			select {
@@ -56,6 +65,7 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock int, serialNumPerTx 
 					b.Txs = append(b.Txs,
 						&token.Tx{
 							SerialNumbers: serialNums,
+							Signature:     randomBytesForSignature,
 						},
 					)
 				}

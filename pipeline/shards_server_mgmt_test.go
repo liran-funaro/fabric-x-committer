@@ -18,10 +18,6 @@ func TestShardsServerMgr(t *testing.T) {
 
 	m, err := newShardsServerMgr(
 		&ShardsServerMgrConfig{
-			BatchConfig: &BatchConfig{
-				BatchSize:     2,
-				TimeoutMillis: 2000,
-			},
 			CleanupShards: true,
 			ShardsServersToNumShards: map[string]int{
 				"localhost": 1,

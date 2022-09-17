@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
@@ -156,25 +155,12 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 }
 
 func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
-	timeoutMillis := time.Duration(m.config.BatchConfig.TimeoutMillis * int(time.Millisecond))
-	batchSize := m.config.BatchConfig.BatchSize
-	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
-	writeToOutputChansAndSendPhaseTwoMessages := func() {
+	writeToOutputChansAndSendPhaseTwoMessages := func(phaseOneProcessedTxs []*phaseOneProcessedTx) {
 		status := []*TxStatus{}
 		phaseTwoMessages := map[*shardsServer]*shardsservice.PhaseTwoRequestBatch{}
 
-		size := len(phaseOneProcessedTxs)
-		if size == 0 {
-			return
-		}
-		if size > batchSize {
-			size = batchSize
-		}
-		b := phaseOneProcessedTxs[:size]
-		phaseOneProcessedTxs = phaseOneProcessedTxs[size:]
-
-		for _, t := range b {
+		for _, t := range phaseOneProcessedTxs {
 			for s := range t.shardServers {
 				reqBatch, ok := phaseTwoMessages[s]
 				if !ok {
@@ -202,11 +188,10 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 			}
 		}
 
+		m.outputChan <- status
 		for s, m := range phaseTwoMessages {
 			s.phaseTwoComm.sendCh <- m
 		}
-
-		m.outputChan <- status
 	}
 
 	go func() {
@@ -216,12 +201,7 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 				close(m.outputChan)
 				return
 			case t := <-m.twoPCInflightTxs.phaseOneProcessedTxsChan:
-				phaseOneProcessedTxs = append(phaseOneProcessedTxs, t...)
-				if len(phaseOneProcessedTxs) >= batchSize {
-					writeToOutputChansAndSendPhaseTwoMessages()
-				}
-			case <-time.After(timeoutMillis):
-				writeToOutputChansAndSendPhaseTwoMessages()
+				writeToOutputChansAndSendPhaseTwoMessages(t)
 			}
 		}
 	}()

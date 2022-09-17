@@ -13,7 +13,6 @@ func TestLoadConfig(t *testing.T) {
 		&pipeline.Config{
 			SigVerifierMgrConfig: &pipeline.SigVerifierMgrConfig{
 				SigVerifierServers: []string{"machine1", "machine2"},
-				BatchCutConfig:     pipeline.DefaultBatchConfig,
 			},
 
 			ShardsServerMgrConfig: &pipeline.ShardsServerMgrConfig{
@@ -21,7 +20,6 @@ func TestLoadConfig(t *testing.T) {
 					"machine3": 4,
 					"machine4": 4,
 				},
-				BatchConfig:   pipeline.DefaultBatchConfig,
 				CleanupShards: true,
 			},
 		},

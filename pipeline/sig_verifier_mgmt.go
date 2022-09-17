@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
@@ -82,24 +81,6 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 }
 
 func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
-	timeoutMillis := time.Duration(m.config.BatchCutConfig.TimeoutMillis * int(time.Millisecond))
-	batchSize := m.config.BatchCutConfig.BatchSize
-	responsesChan := m.responseCollectionChan
-	valids := []TxSeqNum{}
-
-	cutBatchOfValids := func() {
-		size := len(valids)
-		if size == 0 {
-			return
-		}
-		if size > batchSize {
-			size = batchSize
-		}
-		b := valids[:size]
-		valids = valids[size:]
-		m.outputChanValids <- b
-	}
-
 	go func() {
 		for {
 			select {
@@ -107,7 +88,8 @@ func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 				close(m.outputChanValids)
 				close(m.outputChanInvalids)
 				return
-			case responseBatch := <-responsesChan:
+			case responseBatch := <-m.responseCollectionChan:
+				valids := []TxSeqNum{}
 				invalids := []TxSeqNum{}
 				for _, res := range responseBatch.Responses {
 					n := TxSeqNum{
@@ -125,11 +107,9 @@ func (m *sigVerifierMgr) startOutputBatchCutterRoutine() {
 					m.outputChanInvalids <- invalids
 				}
 
-				if len(valids) >= batchSize {
-					cutBatchOfValids()
+				if len(valids) > 0 {
+					m.outputChanValids <- valids
 				}
-			case <-time.After(timeoutMillis):
-				cutBatchOfValids()
 			}
 		}
 	}()

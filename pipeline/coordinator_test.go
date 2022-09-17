@@ -28,18 +28,10 @@ func TestCoordinator(t *testing.T) {
 	c := &pipeline.Config{
 		SigVerifierMgrConfig: &pipeline.SigVerifierMgrConfig{
 			SigVerifierServers: []string{"localhost"},
-			BatchCutConfig: &pipeline.BatchConfig{
-				BatchSize:     2,
-				TimeoutMillis: 20000,
-			},
 		},
 
 		ShardsServerMgrConfig: &pipeline.ShardsServerMgrConfig{
 			ShardsServersToNumShards: map[string]int{"localhost": 1},
-			BatchConfig: &pipeline.BatchConfig{
-				BatchSize:     2,
-				TimeoutMillis: 20000,
-			},
 		},
 	}
 

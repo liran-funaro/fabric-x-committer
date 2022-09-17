@@ -62,9 +62,12 @@ func (c *Coordinator) startTxProcessingRoutine() {
 			case <-c.stopSignalCh:
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
+				//TODO - handle last leftover batch
 				intersection, leftover := c.dependencyMgr.fetchDependencyFreeTxsThatIntersect(append(sigVerifiedTxs, remainings...))
 				remainings = leftover
-				c.shardsServerMgr.inputChan <- intersection
+				if len(intersection) > 0 {
+					c.shardsServerMgr.inputChan <- intersection
+				}
 			}
 		}
 	}()

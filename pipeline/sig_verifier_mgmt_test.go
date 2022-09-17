@@ -21,10 +21,6 @@ func TestSigVerifiersMgr(t *testing.T) {
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{
 			SigVerifierServers: []string{"localhost"},
-			BatchCutConfig: &BatchConfig{
-				BatchSize:     2,
-				TimeoutMillis: 20000,
-			},
 		},
 	)
 	assert.NoError(t, err)

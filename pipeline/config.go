@@ -13,23 +13,10 @@ type Config struct {
 
 type SigVerifierMgrConfig struct {
 	SigVerifierServers []string
-	BatchCutConfig     *BatchConfig
 }
-
-type BatchConfig struct {
-	BatchSize     int
-	TimeoutMillis int
-}
-
 type ShardsServerMgrConfig struct {
 	ShardsServersToNumShards map[string]int
-	BatchConfig              *BatchConfig
 	CleanupShards            bool
-}
-
-var DefaultBatchConfig = &BatchConfig{
-	BatchSize:     10000,
-	TimeoutMillis: 10,
 }
 
 func LoadConfigFromYaml(path string) *Config {
@@ -44,7 +31,6 @@ func LoadConfigFromYaml(path string) *Config {
 
 	sigVerifierMgrConfig := &SigVerifierMgrConfig{
 		SigVerifierServers: viper.GetStringSlice("sig_verification.servers"),
-		BatchCutConfig:     DefaultBatchConfig,
 	}
 
 	shardsServers := viper.GetStringSlice("shards_service.servers")
@@ -56,7 +42,6 @@ func LoadConfigFromYaml(path string) *Config {
 	}
 	shardsServerMgrConfig := &ShardsServerMgrConfig{
 		ShardsServersToNumShards: shardsServersToNumShards,
-		BatchConfig:              DefaultBatchConfig,
 		CleanupShards:            viper.GetBool("shards_service.delete_existing_shards"),
 	}
 
