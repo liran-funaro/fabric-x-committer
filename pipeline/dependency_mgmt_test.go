@@ -64,6 +64,9 @@ func TestDependencyMgr(t *testing.T) {
 
 	t.Run("updateWithValidTx", func(t *testing.T) {
 		m := setup()
+		require.Len(t, m.nodes, 4)     // 4 tx nodes
+		require.Len(t, m.snToNodes, 6) // 6 unique serial numbers
+
 		m.inputChanStatusUpdate <- []*TxStatus{
 			{
 				TxSeqNum: TxSeqNum{0, 0}, // dependency tx marked valid
@@ -72,6 +75,8 @@ func TestDependencyMgr(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 
+		require.Len(t, m.nodes, 2)     // 2 tx nodes (tx0 is removed and tx3 is removed, because tx0 being valid makes tx3 now invalid)
+		require.Len(t, m.snToNodes, 4) // 4 unique serial numbers
 		intersection, extras := m.fetchDependencyFreeTxsThatIntersect([]TxSeqNum{
 			{0, 1},
 			{0, 2},
@@ -108,6 +113,8 @@ func TestDependencyMgr(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 
+		require.Len(t, m.nodes, 2)     // 2 tx nodes (tx0 and tx2 are removed, both being invalids)
+		require.Len(t, m.snToNodes, 4) // 4 unique serial numbers
 		intersection, extras := m.fetchDependencyFreeTxsThatIntersect([]TxSeqNum{
 			{0, 1},
 			{0, 2},

@@ -12,7 +12,7 @@ import (
 func main() {
 	numTxPerBlock := 100
 	serialNumPerTx := 1
-	numBlocks := 5000
+	numBlocks := 500000
 
 	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, false)
 	defer bg.Stop()
@@ -46,13 +46,17 @@ func main() {
 	}()
 
 	counter := 0
+	printMark := 100000
 	startTime := time.Now()
 	for {
 		status := <-coordinator.TxStatusChan()
 		counter += len(status)
 
-		totalTime := time.Since(startTime)
-		fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
+		if printMark <= counter {
+			totalTime := time.Since(startTime)
+			fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
+			printMark += 100000
+		}
 
 		if counter == numBlocks*numTxPerBlock {
 			break
