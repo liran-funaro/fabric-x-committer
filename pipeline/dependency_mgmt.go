@@ -6,7 +6,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
-const maxSerialNumbersEntries = 1000000
+const maxSerialNumbersEntries = 1000000 // 32 bytes per serial number, would cause roughly 32MB memory
 
 type dependencyMgr struct {
 	inputChan             chan *token.Block
@@ -55,7 +55,7 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 	m.c.L.Lock()
 	defer m.c.L.Unlock()
 
-	for !(len(m.snToNodes) < maxSerialNumbersEntries) {
+	for len(m.snToNodes) >= maxSerialNumbersEntries {
 		m.c.Wait()
 	}
 
@@ -145,8 +145,15 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 
 func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool) {
 	delete(m.nodes, *node.txID)
+
 	for _, sn := range node.serialNumbers {
-		delete(m.snToNodes[string(sn)], node)
+		snKey := string(sn)
+		nodesAgainstSN := m.snToNodes[snKey]
+		if len(nodesAgainstSN) == 1 {
+			delete(m.snToNodes, snKey)
+		} else {
+			delete(nodesAgainstSN, node)
+		}
 	}
 
 	if !validTx {

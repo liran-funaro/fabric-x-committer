@@ -1,6 +1,8 @@
 package pipeline
 
 import (
+	"time"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
@@ -56,17 +58,25 @@ func (c *Coordinator) Stop() {
 
 func (c *Coordinator) startTxProcessingRoutine() {
 	remainings := []TxSeqNum{}
+
+	sendDependencyFreeTxsToShardsServers := func(sigVerifiedTxs []TxSeqNum) {
+		intersection, leftover := c.dependencyMgr.fetchDependencyFreeTxsThatIntersect(sigVerifiedTxs)
+		remainings = leftover
+		if len(intersection) > 0 {
+			c.shardsServerMgr.inputChan <- intersection
+		}
+	}
+
 	go func() {
 		for {
 			select {
 			case <-c.stopSignalCh:
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
-				//TODO - handle last leftover batch
-				intersection, leftover := c.dependencyMgr.fetchDependencyFreeTxsThatIntersect(append(sigVerifiedTxs, remainings...))
-				remainings = leftover
-				if len(intersection) > 0 {
-					c.shardsServerMgr.inputChan <- intersection
+				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
+			case <-time.After(1 * time.Millisecond):
+				if len(remainings) > 0 {
+					sendDependencyFreeTxsToShardsServers(remainings)
 				}
 			}
 		}
