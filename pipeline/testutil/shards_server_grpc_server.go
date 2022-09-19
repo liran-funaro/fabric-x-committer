@@ -20,49 +20,73 @@ var DefaultPhaseOneBehavior = func(requestBatch *shardsservice.PhaseOneRequestBa
 	return responseBatch
 }
 
-type ShardsServer struct {
-	grpcServer *grpc.Server
+type ShardsGrpcServer struct {
+	grpcServer       *grpc.Server
+	ShardsServerImpl *ShardsServerImpl
 }
 
-func NewShardsServer(
+func StartsShardsGrpcServers(
+	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
+	ports []int,
+) ([]*ShardsGrpcServer, error) {
+
+	servers := make([]*ShardsGrpcServer, len(ports))
+	for i, p := range ports {
+		s, err := NewShardsGrpcServer(phaseOneBehavior, p)
+		if err != nil {
+			return nil, err
+		}
+		servers[i] = s
+	}
+	return servers, nil
+}
+
+func NewShardsGrpcServer(
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
 	port int,
-) (*ShardsServer, error) {
+) (*ShardsGrpcServer, error) {
 	grpcServer := grpc.NewServer()
-	shardsservice.RegisterServerServer(grpcServer,
-		&shardsServerImpl{
-			phaseOneBehavior: phaseOneBehavior,
-		},
-	)
+	shardsServerImpl := &ShardsServerImpl{
+		PhaseOneBehavior: phaseOneBehavior,
+		Stats:            &ShardsServerStats{},
+	}
 
+	shardsservice.RegisterServerServer(grpcServer, shardsServerImpl)
 	if err := startGrpcServer(port, grpcServer); err != nil {
 		return nil, err
 	}
 
-	return &ShardsServer{
-		grpcServer: grpcServer,
+	return &ShardsGrpcServer{
+		grpcServer:       grpcServer,
+		ShardsServerImpl: shardsServerImpl,
 	}, nil
 
 }
 
-func (s *ShardsServer) Stop() {
+func (s *ShardsGrpcServer) Stop() {
 	s.grpcServer.GracefulStop()
 }
 
-type shardsServerImpl struct {
+type ShardsServerStats struct {
+	PhaseOneBatchesServed int
+	PhaseTwoBatchesServed int
+}
+
+type ShardsServerImpl struct {
 	shardsservice.UnimplementedServerServer
-	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch
+	PhaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch
+	Stats            *ShardsServerStats
 }
 
-func (s *shardsServerImpl) DeleteShards(context.Context, *shardsservice.Empty) (*shardsservice.Empty, error) {
+func (s *ShardsServerImpl) DeleteShards(context.Context, *shardsservice.Empty) (*shardsservice.Empty, error) {
 	return &shardsservice.Empty{}, nil
 }
 
-func (s *shardsServerImpl) SetupShards(context.Context, *shardsservice.ShardsSetupRequest) (*shardsservice.Empty, error) {
+func (s *ShardsServerImpl) SetupShards(context.Context, *shardsservice.ShardsSetupRequest) (*shardsservice.Empty, error) {
 	return &shardsservice.Empty{}, nil
 }
 
-func (s *shardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_StartPhaseOneStreamServer) error {
+func (s *ShardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_StartPhaseOneStreamServer) error {
 	for {
 		requestBatch, err := stream.Recv()
 		if err != nil {
@@ -71,14 +95,15 @@ func (s *shardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_Start
 			}
 			return err
 		}
-		responseBatch := s.phaseOneBehavior(requestBatch)
+		responseBatch := s.PhaseOneBehavior(requestBatch)
 		if err := stream.Send(responseBatch); err != nil {
 			return err
 		}
+		s.Stats.PhaseOneBatchesServed++
 	}
 }
 
-func (s *shardsServerImpl) StartPhaseTwoStream(stream shardsservice.Server_StartPhaseTwoStreamServer) error {
+func (s *ShardsServerImpl) StartPhaseTwoStream(stream shardsservice.Server_StartPhaseTwoStreamServer) error {
 	for {
 		_, err := stream.Recv()
 		if err != nil {
@@ -87,5 +112,6 @@ func (s *shardsServerImpl) StartPhaseTwoStream(stream shardsservice.Server_Start
 			}
 			return err
 		}
+		s.Stats.PhaseTwoBatchesServed++
 	}
 }

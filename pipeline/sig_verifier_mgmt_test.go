@@ -1,45 +1,72 @@
 package pipeline
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
-	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(
+	// setup
+	sigVerifierServer, err := testutil.StartsSigVerifierGrpcServers(
 		testutil.DefaultSigVerifierBehavior,
-		config.DefaultGRPCPortSigVerifier,
+		[]int{5000, 5001, 5002},
 	)
 	require.NoError(t, err)
-	defer sigVerifierServer.Stop()
+	defer func() {
+		for _, s := range sigVerifierServer {
+			s.Stop()
+		}
+	}()
 
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{
-			SigVerifierServers: []string{"localhost"},
+			SigVerifierServers: []string{"localhost:5000", "localhost:5001", "localhost:5002"},
 		},
 	)
 	assert.NoError(t, err)
 	defer m.stop()
 
-	m.inputChan <- &token.Block{
-		Number: uint64(0),
-		Txs: []*token.Tx{
-			{SerialNumbers: [][]byte{[]byte("00"), []byte("01")}},
-			{SerialNumbers: [][]byte{[]byte("12"), []byte("13")}},
-		},
-	}
+	bg := testutil.NewBlockGenerator(2, 1, false)
+	defer bg.Stop()
 
-	txSeqNums := <-m.outputChanValids
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	// send blocks to mgr
+	go func() {
+		for i := 0; i < 4; i++ {
+			m.inputChan <- <-bg.OutputChan()
+		}
+		wg.Done()
+	}()
+
+	txSeqNums := []TxSeqNum{}
+	go func() {
+		for i := 0; i < 4; i++ {
+			txSeqNums = append(txSeqNums, <-m.outputChanValids...)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
 	require.ElementsMatch(t,
 		txSeqNums,
 		[]TxSeqNum{
-			{BlkNum: 0, TxNum: 0},
-			{BlkNum: 0, TxNum: 1},
+			{BlkNum: uint64(0), TxNum: 0},
+			{BlkNum: uint64(0), TxNum: 1},
+			{BlkNum: uint64(1), TxNum: 0},
+			{BlkNum: uint64(1), TxNum: 1},
+			{BlkNum: uint64(2), TxNum: 0},
+			{BlkNum: uint64(2), TxNum: 1},
+			{BlkNum: uint64(3), TxNum: 0},
+			{BlkNum: uint64(3), TxNum: 1},
 		},
 	)
+	require.Equal(t, 2, sigVerifierServer[0].SigVerifierImpl.Stats.NumBatchesServed)
+	require.Equal(t, 1, sigVerifierServer[1].SigVerifierImpl.Stats.NumBatchesServed)
+	require.Equal(t, 1, sigVerifierServer[2].SigVerifierImpl.Stats.NumBatchesServed)
 }

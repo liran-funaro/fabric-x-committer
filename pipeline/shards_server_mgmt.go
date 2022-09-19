@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
@@ -25,9 +26,9 @@ type shardsServerMgr struct {
 	shardIdToServer map[int]*shardsServer
 	numShards       int
 
-	inputChan        chan map[TxSeqNum][][]byte
-	twoPCInflightTxs *dbInflightTxs
-	outputChan       chan []*TxStatus
+	inputChan   chan map[TxSeqNum][][]byte
+	inflightTxs *dbInflightTxs
+	outputChan  chan []*TxStatus
 
 	stopSignalCh chan struct{}
 }
@@ -38,7 +39,7 @@ func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 		shardServers:    []*shardsServer{},
 		shardIdToServer: map[int]*shardsServer{},
 
-		twoPCInflightTxs: &dbInflightTxs{
+		inflightTxs: &dbInflightTxs{
 			phaseOnePendingTxs: &phaseOnePendingTxs{
 				m: map[TxSeqNum]*phaseOnePendingTx{},
 			},
@@ -49,23 +50,26 @@ func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 		stopSignalCh: make(chan struct{}),
 	}
 
-	hosts := []string{}
+	addresses := []string{}
 	for a := range c.ShardsServersToNumShards {
-		hosts = append(hosts, a)
+		addresses = append(addresses, a)
 	}
-	sort.Strings(hosts)
+	sort.Strings(addresses)
 
 	firstShardNum := 0
-	for _, a := range hosts {
+	for _, a := range addresses {
 		lastShardNum := firstShardNum + c.ShardsServersToNumShards[a] - 1
 
-		shardServer, err := newShardServer(a,
-			firstShardNum, lastShardNum, c.CleanupShards,
-			shardsServerMgr.twoPCInflightTxs,
+		shardServer, err := newShardServer(
+			a,
+			firstShardNum, lastShardNum,
+			c.CleanupShards,
+			shardsServerMgr.inflightTxs,
 		)
 		if err != nil {
 			return nil, err
 		}
+
 		shardsServerMgr.shardServers = append(shardsServerMgr.shardServers, shardServer)
 		for i := firstShardNum; i <= lastShardNum; i++ {
 			shardsServerMgr.shardIdToServer[i] = shardServer
@@ -147,7 +151,7 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 		}
 		pendingTxs[txSeq] = pendingTx
 	}
-	m.twoPCInflightTxs.phaseOnePendingTxs.add(pendingTxs)
+	m.inflightTxs.phaseOnePendingTxs.add(pendingTxs)
 
 	for server, reqBatch := range reqBatchByServer {
 		server.phaseOneComm.sendCh <- reqBatch
@@ -161,6 +165,13 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		phaseTwoMessages := map[*shardsServer]*shardsservice.PhaseTwoRequestBatch{}
 
 		for _, t := range phaseOneProcessedTxs {
+			status = append(status,
+				&TxStatus{
+					TxSeqNum: t.txSeqNum,
+					IsValid:  t.isValid,
+				},
+			)
+
 			for s := range t.shardServers {
 				reqBatch, ok := phaseTwoMessages[s]
 				if !ok {
@@ -169,12 +180,6 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 					}
 					phaseTwoMessages[s] = reqBatch
 				}
-				status = append(status,
-					&TxStatus{
-						TxSeqNum: t.txSeqNum,
-						IsValid:  t.isValid,
-					},
-				)
 				instruction := shardsservice.PhaseTwoRequest_COMMIT
 				if !t.isValid {
 					instruction = shardsservice.PhaseTwoRequest_FORGET
@@ -200,7 +205,7 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 			case <-m.stopSignalCh:
 				close(m.outputChan)
 				return
-			case t := <-m.twoPCInflightTxs.phaseOneProcessedTxsChan:
+			case t := <-m.inflightTxs.phaseOneProcessedTxsChan:
 				writeToOutputChansAndSendPhaseTwoMessages(t)
 			}
 		}
@@ -220,22 +225,25 @@ type shardsServer struct {
 	phaseTwoComm *phaseTwoComm
 }
 
-func newShardServer(host string,
-	firstShardNum, lastShardNum int, cleanupShards bool,
+func newShardServer(address string,
+	firstShardNum, lastShardNum int,
+	cleanupShards bool,
 	twoPCInflightTxs *dbInflightTxs) (*shardsServer, error) {
+
+	if !strings.Contains(address, ":") {
+		address = fmt.Sprintf("%s:%d", address, config.DefaultGRPCPortShardsServer)
+	}
 
 	if cleanupShards {
 		conn, err := grpc.Dial(
-			fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
+			address,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
-
 		if err != nil {
 			return nil, err
 		}
 
 		client := shardsservice.NewServerClient(conn)
-
 		if _, err := client.DeleteShards(context.Background(), &shardsservice.Empty{}); err != nil {
 			return nil, err
 		}
@@ -253,12 +261,12 @@ func newShardServer(host string,
 		}
 	}
 
-	o, err := newPhaseOneComm(host)
+	o, err := newPhaseOneComm(address)
 	if err != nil {
 		return nil, err
 	}
 
-	t, err := newPhaseTwoComm(host)
+	t, err := newPhaseTwoComm(address)
 	if err != nil {
 		return nil, err
 	}
@@ -290,9 +298,9 @@ type phaseOneComm struct {
 	stopWG       sync.WaitGroup
 }
 
-func newPhaseOneComm(host string) (*phaseOneComm, error) {
+func newPhaseOneComm(address string) (*phaseOneComm, error) {
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
+		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -338,9 +346,9 @@ func (oc *phaseOneComm) startRequestSenderRoutine() {
 	}()
 }
 
-func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, twoPCInflightTxs *dbInflightTxs) {
-	phaseOnePendingTxs := twoPCInflightTxs.phaseOnePendingTxs
-	phaseOneProcessedTxsChan := twoPCInflightTxs.phaseOneProcessedTxsChan
+func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, inflightTxs *dbInflightTxs) {
+	phaseOnePendingTxs := inflightTxs.phaseOnePendingTxs
+	phaseOneProcessedTxsChan := inflightTxs.phaseOneProcessedTxsChan
 	go func() {
 		for {
 			responseBatch, err := oc.stream.Recv()
@@ -364,7 +372,10 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 					TxNum:  response.TxNum,
 				}] = isValid
 			}
-			phaseOneProcessedTxsChan <- phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
+			phaseOneProcessedTxs := phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
+			if len(phaseOneProcessedTxs) > 0 {
+				phaseOneProcessedTxsChan <- phaseOneProcessedTxs
+			}
 		}
 	}()
 }
@@ -389,9 +400,9 @@ type phaseTwoComm struct {
 	stopWG       sync.WaitGroup
 }
 
-func newPhaseTwoComm(host string) (*phaseTwoComm, error) {
+func newPhaseTwoComm(address string) (*phaseTwoComm, error) {
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s:%d", host, config.DefaultGRPCPortShardsServer),
+		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -465,7 +476,18 @@ func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
 	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
 	for txSeqNum, isValid := range validationStatus {
-		pendingTx := t.m[txSeqNum]
+		pendingTx, ok := t.m[txSeqNum]
+		if !ok {
+			// This could happen if the transaction was removed prior to recieving a status response from a shard server.
+			// This can happend only if the prior response from a different shard server declared the transaction as invalid
+			continue
+		}
+
+		pendingTx.pendingResponseNums--
+		if isValid && pendingTx.pendingResponseNums > 0 {
+			continue
+		}
+
 		delete(t.m, txSeqNum)
 		processedTx := &phaseOneProcessedTx{
 			txSeqNum:     txSeqNum,

@@ -18,7 +18,7 @@ func TestCoordinator(t *testing.T) {
 	require.NoError(t, err)
 	defer sigVerifierServer.Stop()
 
-	shardsServer, err := testutil.NewShardsServer(
+	shardsServer, err := testutil.NewShardsGrpcServer(
 		testutil.DefaultPhaseOneBehavior,
 		config.DefaultGRPCPortShardsServer,
 	)

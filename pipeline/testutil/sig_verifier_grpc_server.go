@@ -24,7 +24,24 @@ var DefaultSigVerifierBehavior = func(requestBatch *sigverification.RequestBatch
 }
 
 type SigVerifierGrpcServer struct {
-	grpcServer *grpc.Server
+	grpcServer      *grpc.Server
+	SigVerifierImpl *SigVerifierImpl
+}
+
+func StartsSigVerifierGrpcServers(
+	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
+	ports []int,
+) ([]*SigVerifierGrpcServer, error) {
+
+	servers := make([]*SigVerifierGrpcServer, len(ports))
+	for i, p := range ports {
+		s, err := NewSigVerifierGrpcServer(behavior, p)
+		if err != nil {
+			return nil, err
+		}
+		servers[i] = s
+	}
+	return servers, nil
 }
 
 func NewSigVerifierGrpcServer(
@@ -33,18 +50,19 @@ func NewSigVerifierGrpcServer(
 ) (*SigVerifierGrpcServer, error) {
 
 	grpcServer := grpc.NewServer()
-	sigverification.RegisterVerifierServer(grpcServer,
-		&sigVerifierImpl{
-			behavior: behavior,
-		},
-	)
+	sigVerifierImpl := &SigVerifierImpl{
+		Behavior: behavior,
+		Stats:    &SigVerifierStats{},
+	}
 
+	sigverification.RegisterVerifierServer(grpcServer, sigVerifierImpl)
 	if err := startGrpcServer(port, grpcServer); err != nil {
 		return nil, err
 	}
 
 	return &SigVerifierGrpcServer{
-		grpcServer: grpcServer,
+		grpcServer:      grpcServer,
+		SigVerifierImpl: sigVerifierImpl,
 	}, nil
 }
 
@@ -52,16 +70,21 @@ func (s *SigVerifierGrpcServer) Stop() {
 	s.grpcServer.GracefulStop()
 }
 
-type sigVerifierImpl struct {
-	sigverification.UnimplementedVerifierServer
-	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch
+type SigVerifierStats struct {
+	NumBatchesServed int
 }
 
-func (s *sigVerifierImpl) SetVerificationKey(context context.Context, key *sigverification.Key) (*sigverification.Empty, error) {
+type SigVerifierImpl struct {
+	sigverification.UnimplementedVerifierServer
+	Behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch
+	Stats    *SigVerifierStats
+}
+
+func (s *SigVerifierImpl) SetVerificationKey(context context.Context, key *sigverification.Key) (*sigverification.Empty, error) {
 	return nil, nil
 }
 
-func (s *sigVerifierImpl) StartStream(stream sigverification.Verifier_StartStreamServer) error {
+func (s *SigVerifierImpl) StartStream(stream sigverification.Verifier_StartStreamServer) error {
 	for {
 		requestBatch, err := stream.Recv()
 		if err != nil {
@@ -70,10 +93,11 @@ func (s *sigVerifierImpl) StartStream(stream sigverification.Verifier_StartStrea
 			}
 			return err
 		}
-		responseBatch := s.behavior(requestBatch)
+		responseBatch := s.Behavior(requestBatch)
 		if err := stream.Send(responseBatch); err != nil {
 			return err
 		}
+		s.Stats.NumBatchesServed++
 	}
 }
 

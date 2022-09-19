@@ -81,7 +81,7 @@ func startGrpcServers() (s *grpcServers, err error) {
 	}
 	s.sigVerifierServers = append(s.sigVerifierServers, sigVerifierServer)
 
-	shardsServer, err := testutil.NewShardsServer(testutil.DefaultPhaseOneBehavior, config.DefaultGRPCPortShardsServer)
+	shardsServer, err := testutil.NewShardsGrpcServer(testutil.DefaultPhaseOneBehavior, config.DefaultGRPCPortShardsServer)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func startGrpcServers() (s *grpcServers, err error) {
 
 type grpcServers struct {
 	sigVerifierServers []*testutil.SigVerifierGrpcServer
-	shardsServers      []*testutil.ShardsServer
+	shardsServers      []*testutil.ShardsGrpcServer
 }
 
 func (s *grpcServers) stopAll() {
