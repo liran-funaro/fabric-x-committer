@@ -3,6 +3,9 @@ package config
 import (
 	"bytes"
 	"flag"
+	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/generated"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -44,6 +47,8 @@ type PrometheusConfig struct {
 
 var AppConfig *TopLevelConfig
 
+var generatedConfigPath = filepath.Join(generated.DirPath, "generated-config.yaml")
+
 var configUpdateListener []func()
 
 func init() {
@@ -52,7 +57,11 @@ func init() {
 
 func initializeConfig() error {
 	// Default
-	configFiles, err := FilePaths(DirPath, regexp.MustCompile(`config.*\.yaml`))
+	configFiles, err := FilePaths(DirPath, regexp.MustCompile(`^config.*\.yaml`))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Found config files: %v.\nOutput config will be stored in %s", configFiles, generatedConfigPath)
 	// We start reading config files with smaller length (more general, e.g. config.yaml) to the ones that are more specific (e.g. config-sigverification-host1.yaml)
 	sort.Slice(configFiles, func(i, j int) bool {
 		return len(configFiles[i]) < len(configFiles[j])
@@ -125,5 +134,7 @@ func configUpdated() error {
 	for _, listener := range configUpdateListener {
 		listener()
 	}
+
+	_ = viper.WriteConfigAs(generatedConfigPath)
 	return nil
 }

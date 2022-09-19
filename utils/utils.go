@@ -27,7 +27,11 @@ func sorted(a, b int) (int, int) {
 
 func CurrentDir() string {
 	_, b, _, _ := runtime.Caller(1)
-	return filepath.Dir(b)
+	dir := filepath.Dir(b)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return "."
+	}
+	return dir
 }
 
 func OverwriteFile(path string) (*os.File, error) {
