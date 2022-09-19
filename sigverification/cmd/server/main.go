@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/performance"
 	"google.golang.org/grpc"
 )
 
