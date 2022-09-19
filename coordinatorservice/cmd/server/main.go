@@ -6,7 +6,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -21,9 +21,9 @@ func main() {
 		Coordinator: coordinator,
 	}
 
-	utils.RunServerMain(
-		&utils.ServerConfig{
-			Endpoint: utils.Endpoint{
+	connection.RunServerMain(
+		&connection.ServerConfig{
+			Endpoint: connection.Endpoint{
 				Host: "localhost",
 				Port: config.DefaultGRPCPortCoordinatorServer,
 			},
