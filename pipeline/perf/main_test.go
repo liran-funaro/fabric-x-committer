@@ -2,23 +2,21 @@ package main
 
 import (
 	"fmt"
-	"runtime"
+	"testing"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-
-	"net/http"
-	_ "net/http/pprof"
 )
 
-func main() {
-	startProfiling()
+func BenchmarkCoordinator(b *testing.B) {
+	// go test -bench=BenchmarkCoordinator -benchmem -memprofile -blockprofile -cpuprofile profile.out
+	// go tool pprof profile.out
 	numTxPerBlock := 100
 	serialNumPerTx := 1
-	numBlocks := 500000
+	numBlocks := 50000
 
-	numSigVerifiers := 1
+	numSigVerifiers := 5
 	numShardsServers := 1
 	numShardsPerServer := 1
 
@@ -96,53 +94,5 @@ func main() {
 
 	totalTime := time.Since(startTime)
 	fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
-}
 
-func startGrpcServers(sigVerifiersPorts, shardsServesPort []int) (s *grpcServers, err error) {
-	s = &grpcServers{}
-	defer func() {
-		if err != nil {
-			s.stopAll()
-		}
-	}()
-
-	s.sigVerifierServers, err = testutil.StartsSigVerifierGrpcServers(testutil.DefaultSigVerifierBehavior, sigVerifiersPorts)
-	if err != nil {
-		return
-	}
-
-	s.shardsServers, err = testutil.StartsShardsGrpcServers(testutil.DefaultPhaseOneBehavior, shardsServesPort)
-	if err != nil {
-		return
-	}
-	return
-}
-
-type grpcServers struct {
-	sigVerifierServers []*testutil.SigVerifierGrpcServer
-	shardsServers      []*testutil.ShardsGrpcServer
-}
-
-func (s *grpcServers) stopAll() {
-	for _, s := range s.sigVerifierServers {
-		s.Stop()
-	}
-	for _, s := range s.shardsServers {
-		s.Stop()
-	}
-}
-
-func startProfiling() {
-	// go tool pprof http://localhost:6060/debug/pprof/profile
-	// go tool pprof http://localhost:6060/debug/pprof/heap
-	// go tool pprof http://localhost:6060/debug/pprof/block
-
-	go func() {
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
-			panic(fmt.Sprintf("Error while starting http server for profiling: %s", err))
-		}
-	}()
-
-	runtime.SetBlockProfileRate(1)
-	runtime.SetMutexProfileFraction(1)
 }

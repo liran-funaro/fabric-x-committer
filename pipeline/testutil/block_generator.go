@@ -14,7 +14,7 @@ type BlockGenerator struct {
 
 func NewBlockGenerator(numTxPerBlock, serialNumPerTx int, addSignatureBytes bool) *BlockGenerator {
 	g := &BlockGenerator{
-		outputChan:     make(chan *token.Block, 2),
+		outputChan:     make(chan *token.Block, 100),
 		stopSignalChan: make(chan struct{}),
 	}
 	g.startBlockGenRoutine(numTxPerBlock, serialNumPerTx, addSignatureBytes)
