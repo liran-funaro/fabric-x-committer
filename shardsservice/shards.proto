@@ -4,7 +4,7 @@ option go_package = "github.ibm.com/distributed-trust-research/scalable-committe
 
 package shardsservice;
 
-service Server{
+service Shards {
     rpc SetupShards(ShardsSetupRequest) returns (Empty);
     rpc DeleteShards(Empty) returns (Empty);
     
@@ -13,8 +13,8 @@ service Server{
 }
 
 message ShardsSetupRequest {
-    uint32 first_shard_num = 1;
-    uint32 last_shard_num = 2;
+    uint32 first_shard_id = 1;
+    uint32 last_shard_id = 2;
 }
 
 message SerialNumbers {

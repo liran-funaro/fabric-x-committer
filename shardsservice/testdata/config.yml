@@ -1,0 +1,7 @@
+database:
+  name: "rocksdb"
+  rootDir: "./"
+limits:
+  maxGoroutines: 100
+  maxPhaseOneResponseBatchItemCount: 100
+  phaseOneResponseCutTimeout: 50ms
