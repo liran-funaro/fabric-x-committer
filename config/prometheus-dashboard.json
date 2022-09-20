@@ -260,13 +260,13 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "builder",
-          "expr": "rate(sc_sent_txs[30s]) / 30",
+          "expr": "rate(sc_sent_txs[30s]) / 1000",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "TX Throughput (TXs/sec)",
+      "title": "TX Throughput (K TXs/sec)",
       "type": "timeseries"
     },
     {
@@ -845,7 +845,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "30s",
+  "refresh": "10s",
   "revision": "1.0",
   "schemaVersion": 37,
   "style": "dark",
@@ -856,7 +856,7 @@
     "list": []
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {
