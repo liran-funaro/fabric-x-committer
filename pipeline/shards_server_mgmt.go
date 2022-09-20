@@ -243,15 +243,15 @@ func newShardServer(address string,
 			return nil, err
 		}
 
-		client := shardsservice.NewServerClient(conn)
+		client := shardsservice.NewShardsClient(conn)
 		if _, err := client.DeleteShards(context.Background(), &shardsservice.Empty{}); err != nil {
 			return nil, err
 		}
 
 		if _, err := client.SetupShards(context.Background(),
 			&shardsservice.ShardsSetupRequest{
-				FirstShardNum: uint32(firstShardNum),
-				LastShardNum:  uint32(lastShardNum),
+				FirstShardId: uint32(firstShardNum),
+				LastShardId:  uint32(lastShardNum),
 			},
 		); err != nil {
 			return nil, err
@@ -289,7 +289,7 @@ func (s *shardsServer) stop() {
 
 //////////////////////////////////// phaseOneComm ////////////////////////////////////
 type phaseOneComm struct {
-	stream              shardsservice.Server_StartPhaseOneStreamClient
+	stream              shardsservice.Shards_StartPhaseOneStreamClient
 	streamContext       context.Context
 	streamContextCancel func()
 	sendCh              chan *shardsservice.PhaseOneRequestBatch
@@ -307,7 +307,7 @@ func newPhaseOneComm(address string) (*phaseOneComm, error) {
 		return nil, err
 	}
 
-	client := shardsservice.NewServerClient(conn)
+	client := shardsservice.NewShardsClient(conn)
 	cancelableContext, cancel := context.WithCancel(context.Background())
 	stream, err := client.StartPhaseOneStream(cancelableContext)
 
@@ -394,7 +394,7 @@ func (oc *phaseOneComm) stopResponseRecieverRoutine() {
 
 //////////////////////////////////// phaseTwoComm ////////////////////////////////////
 type phaseTwoComm struct {
-	stream       shardsservice.Server_StartPhaseTwoStreamClient
+	stream       shardsservice.Shards_StartPhaseTwoStreamClient
 	sendCh       chan *shardsservice.PhaseTwoRequestBatch
 	stopSignalCh chan struct{}
 	stopWG       sync.WaitGroup
@@ -409,7 +409,7 @@ func newPhaseTwoComm(address string) (*phaseTwoComm, error) {
 		return nil, err
 	}
 
-	client := shardsservice.NewServerClient(conn)
+	client := shardsservice.NewShardsClient(conn)
 	stream, err := client.StartPhaseTwoStream(context.Background())
 
 	if err != nil {

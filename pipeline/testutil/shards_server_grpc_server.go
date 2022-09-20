@@ -51,7 +51,7 @@ func NewShardsGrpcServer(
 		Stats:            &ShardsServerStats{},
 	}
 
-	shardsservice.RegisterServerServer(grpcServer, shardsServerImpl)
+	shardsservice.RegisterShardsServer(grpcServer, shardsServerImpl)
 	if err := startGrpcServer(port, grpcServer); err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ type ShardsServerStats struct {
 }
 
 type ShardsServerImpl struct {
-	shardsservice.UnimplementedServerServer
+	shardsservice.UnimplementedShardsServer
 	PhaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch
 	Stats            *ShardsServerStats
 }
@@ -86,7 +86,7 @@ func (s *ShardsServerImpl) SetupShards(context.Context, *shardsservice.ShardsSet
 	return &shardsservice.Empty{}, nil
 }
 
-func (s *ShardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_StartPhaseOneStreamServer) error {
+func (s *ShardsServerImpl) StartPhaseOneStream(stream shardsservice.Shards_StartPhaseOneStreamServer) error {
 	for {
 		requestBatch, err := stream.Recv()
 		if err != nil {
@@ -103,7 +103,7 @@ func (s *ShardsServerImpl) StartPhaseOneStream(stream shardsservice.Server_Start
 	}
 }
 
-func (s *ShardsServerImpl) StartPhaseTwoStream(stream shardsservice.Server_StartPhaseTwoStreamServer) error {
+func (s *ShardsServerImpl) StartPhaseTwoStream(stream shardsservice.Shards_StartPhaseTwoStreamServer) error {
 	for {
 		_, err := stream.Recv()
 		if err != nil {
