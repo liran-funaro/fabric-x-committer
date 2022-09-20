@@ -1,6 +1,6 @@
 logging:
   enabled: true
-  level: DEBUG
+  level: INFO
   development: true
   caller: true
 prometheus:

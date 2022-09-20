@@ -1,12 +1,36 @@
 package sigverification_test
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"log"
+	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
+
+// Constants
+
+// De facto constants
+
+var TxSize = test.Constant(1)
+var SerialNumberSize = test.Constant(32)
+var ClientInputDelay = test.NoDelay
+var SignatureValidRatio = test.Never
+var BatchSize = 100
+var BatchSizeDistribution = test.Constant(int64(BatchSize))
+var VerificationScheme = signature.Ecdsa
+
+// Typical result values from experiments
+
+var TypicalTxValidationDelay = int64(time.Second / 10_000)
+
+// Optimal values resulting from benchmarking
+
+var OptimalBatchTimeCutoff = 500 * time.Millisecond
+var OptimalChannelBufferSize = 50
 
 type State struct {
 	Client     sigverification.VerifierClient

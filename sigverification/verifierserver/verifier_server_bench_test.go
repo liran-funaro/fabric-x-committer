@@ -8,7 +8,6 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
@@ -20,27 +19,27 @@ type benchmarkConfig struct {
 	InputGeneratorParams    *sigverification_test.InputGeneratorParams
 }
 
-var privateKey, publicKey = sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
+var privateKey, publicKey = sigverification_test.GetSignatureFactory(sigverification_test.VerificationScheme).NewKeys()
 
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	ParallelExecutionConfig: &parallelexecutor.Config{
-		BatchSizeCutoff:   100,
-		BatchTimeCutoff:   1 * time.Second,
+		BatchSizeCutoff:   sigverification_test.BatchSize,
+		BatchTimeCutoff:   sigverification_test.OptimalBatchTimeCutoff,
 		Parallelism:       4,
-		ChannelBufferSize: 1,
+		ChannelBufferSize: sigverification_test.OptimalChannelBufferSize,
 	},
 	InputGeneratorParams: &sigverification_test.InputGeneratorParams{
 		InputDelay: test.NoDelay,
 		RequestBatch: sigverification_test.RequestBatchGeneratorParams{
 			Tx: sigverification_test.TxGeneratorParams{
 				SigningKey:       privateKey,
-				Scheme:           signature.Ecdsa,
-				ValidSigRatio:    0.8,
-				TxSize:           test.Constant(1),
-				SerialNumberSize: test.Constant(64),
+				Scheme:           sigverification_test.VerificationScheme,
+				ValidSigRatio:    sigverification_test.SignatureValidRatio,
+				TxSize:           sigverification_test.TxSize,
+				SerialNumberSize: sigverification_test.SerialNumberSize,
 			},
-			BatchSize: test.Constant(100),
+			BatchSize: sigverification_test.BatchSizeDistribution,
 		},
 	},
 }
@@ -54,9 +53,9 @@ func BenchmarkVerifierServer(b *testing.B) {
 	defer output.Close()
 	var stats sigverification_test.AsyncTrackerStats
 	config := baseConfig
-	for _, parallelism := range []int{1, 3} {
+	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
-		for _, batchSize := range []int64{100} {
+		for _, batchSize := range []int64{50, 100} {
 			config.InputGeneratorParams.RequestBatch.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)

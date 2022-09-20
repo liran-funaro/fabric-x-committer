@@ -21,15 +21,15 @@ type benchmarkConfig struct {
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	ParallelExecutionConfig: parallelexecutor.Config{
-		BatchSizeCutoff:   100,
-		BatchTimeCutoff:   1 * time.Second,
+		BatchSizeCutoff:   sigverification_test.BatchSize,
+		BatchTimeCutoff:   sigverification_test.OptimalBatchTimeCutoff,
 		Parallelism:       6,
-		ChannelBufferSize: 1,
+		ChannelBufferSize: sigverification_test.OptimalChannelBufferSize,
 	},
 	InputGeneratorParams: inputGeneratorParams{
-		InputDelay:    test.NoDelay,
-		BatchSize:     test.Constant(100),
-		ExecutorDelay: test.Constant(int64(time.Second / 10_000)),
+		InputDelay:    sigverification_test.ClientInputDelay,
+		BatchSize:     sigverification_test.BatchSizeDistribution,
+		ExecutorDelay: test.Constant(sigverification_test.TypicalTxValidationDelay),
 	},
 }
 
@@ -42,7 +42,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 	defer output.Close()
 	var stats sigverification_test.AsyncTrackerStats
 	config := baseConfig
-	for _, parallelism := range []int{4} {
+	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
 		for _, batchSize := range []int64{100} {
 			config.InputGeneratorParams.BatchSize = test.Constant(batchSize)

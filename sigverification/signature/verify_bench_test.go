@@ -1,7 +1,6 @@
 package signature_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
@@ -20,40 +19,40 @@ var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
 		TxInputGeneratorParams: &sigverification_test.TxInputGeneratorParams{
-			TxSize:           test.Constant(1),
-			SerialNumberSize: test.Constant(64),
+			TxSize:           sigverification_test.TxSize,
+			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
-		ValidSigRatio: test.Always,
+		ValidSigRatio: sigverification_test.SignatureValidRatio,
 	},
-	VerificationScheme: signature.Ecdsa,
+	VerificationScheme: sigverification_test.VerificationScheme,
 }
 
 func BenchmarkTxVerifier(b *testing.B) {
 	config := baseConfig
-	for _, ratio := range []test.Percentage{0.5, test.Always} {
-		config.InputGeneratorParams.ValidSigRatio = ratio
-		b.Run(fmt.Sprintf("%s-r%f", config.Name, ratio), func(b *testing.B) {
-			g := NewInputGenerator(config.InputGeneratorParams)
-			factory := sigverification_test.GetSignatureFactory(config.VerificationScheme)
-			privateKey, publicKey := factory.NewKeys()
-			txSigner, _ := factory.NewSigner(privateKey)
-			txVerifier, _ := factory.NewVerifier(publicKey)
+	//for _, ratio := range []test.Percentage{0.5, test.Always} {
+	//	config.InputGeneratorParams.ValidSigRatio = ratio
+	b.Run(config.Name, func(b *testing.B) {
+		g := NewInputGenerator(config.InputGeneratorParams)
+		factory := sigverification_test.GetSignatureFactory(config.VerificationScheme)
+		privateKey, publicKey := factory.NewKeys()
+		txSigner, _ := factory.NewSigner(privateKey)
+		txVerifier, _ := factory.NewVerifier(publicKey)
 
-			b.ResetTimer()
+		b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
-				b.StopTimer()
-				tx := &token.Tx{SerialNumbers: g.NextTxInput()}
-				isValid := g.NextValid()
-				if isValid {
-					tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers)
-				}
-				b.StartTimer()
-
-				txVerifier.VerifyTx(tx)
+		for n := 0; n < b.N; n++ {
+			b.StopTimer()
+			tx := &token.Tx{SerialNumbers: g.NextTxInput()}
+			isValid := g.NextValid()
+			if isValid {
+				tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers)
 			}
-		})
-	}
+			b.StartTimer()
+
+			txVerifier.VerifyTx(tx)
+		}
+	})
+	//}
 }
 
 // Input generator

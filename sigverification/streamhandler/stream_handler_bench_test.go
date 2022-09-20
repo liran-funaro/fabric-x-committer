@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
@@ -20,9 +19,9 @@ type benchmarkConfig struct {
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
-		BatchSize:   test.Constant(100),
-		ClientDelay: test.NoDelay,
-		ServerDelay: test.Stable(int64(time.Second / 635)),
+		BatchSize:   sigverification_test.BatchSizeDistribution,
+		ClientDelay: sigverification_test.ClientInputDelay,
+		ServerDelay: test.Constant(int64(sigverification_test.BatchSize) * sigverification_test.TypicalTxValidationDelay),
 	},
 }
 
@@ -35,9 +34,9 @@ func BenchmarkStreamHandler(b *testing.B) {
 	defer output.Close()
 	var stats sigverification_test.AsyncTrackerStats
 	config := baseConfig
-	for _, batchSize := range []int64{20} {
+	for _, batchSize := range []int64{50, 100} {
 		config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
-		for _, serverDelay := range []int64{0, int64(time.Second) * batchSize / 20_000} {
+		for _, serverDelay := range []int64{0, batchSize * sigverification_test.TypicalTxValidationDelay} {
 			config.InputGeneratorParams.ServerDelay = test.Constant(serverDelay)
 			b.Run(fmt.Sprintf("%s-b%d-d%v", config.Name, batchSize, time.Duration(serverDelay)), func(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
@@ -78,14 +77,14 @@ type inputGenerator struct {
 }
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
-	privateKey, _ := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
+	privateKey, _ := sigverification_test.GetSignatureFactory(sigverification_test.VerificationScheme).NewKeys()
 	batchGen := sigverification_test.NewRequestBatchGenerator(&sigverification_test.RequestBatchGeneratorParams{
 		Tx: sigverification_test.TxGeneratorParams{
 			SigningKey:       privateKey,
-			Scheme:           signature.Ecdsa,
-			ValidSigRatio:    test.Always,
-			TxSize:           test.Constant(1),
-			SerialNumberSize: test.Constant(64),
+			Scheme:           sigverification_test.VerificationScheme,
+			ValidSigRatio:    sigverification_test.SignatureValidRatio,
+			TxSize:           sigverification_test.TxSize,
+			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
 		BatchSize: p.BatchSize,
 	}, 100)
