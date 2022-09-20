@@ -1,12 +1,9 @@
 package client
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"os"
 	"sync"
 	"time"
 
@@ -16,7 +13,6 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client/codec"
@@ -24,7 +20,7 @@ import (
 
 func PumpToCoordinator(path, host string, port int) {
 	// read blocks from file into channel
-	serializedKey, dQueue, pp := getWorkload(path)
+	serializedKey, dQueue, pp := workload.GetWorkload(path)
 
 	// wait quickly
 
@@ -49,42 +45,52 @@ func PumpToCoordinator(path, host string, port int) {
 	utils.Must(err)
 
 	// we use our customCodec to the already serialized blocks from disc
-	blockStream, err := client.BlockProcessing(ctx, grpc.CallContentSubtype("customCodec"))
+	//blockStream, err := client.BlockProcessing(ctx, grpc.CallContentSubtype("customCodec"))
+	blockStream, err := client.BlockProcessing(ctx)
 	utils.Must(err)
 
 	// start receive
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		fmt.Printf("Spawning response listener...")
+		fmt.Printf("Spawning response listener...\n")
 		defer wg.Done()
 		for {
 			response, err := blockStream.Recv()
 			if err == io.EOF {
 				// end of blockStream
-				fmt.Printf("EOF\n")
+				fmt.Printf("RECV EOF\n")
 				break
 			}
 
 			if err != nil {
-				fmt.Printf("err: %v\n", err)
+				fmt.Printf("RECV err: %v\n", err)
 				break
 			}
 			_ = response
+			//fmt.Printf("> %v\n", response)
 		}
 	}()
+
+	fmt.Printf("starting now ...\n")
 
 	// start consuming blocks
 	start := time.Now()
 	bar := workload.NewProgressBar("Sending blocks from file...", pp.Block.Count)
 	for b := range dQueue {
-		if err := blockStream.SendMsg(b); err != nil {
+
+		block := &token.Block{}
+		err := proto.Unmarshal(b, block)
+		utils.Must(err)
+
+		if err := blockStream.SendMsg(block); err != nil {
+			//if err := blockStream.SendMsg(b); err != nil {
 			utils.Must(err)
 		}
 		bar.Add(1)
 	}
 	elapsed := time.Since(start)
-	printStats(pp, elapsed)
+	workload.PrintStats(pp, elapsed)
 
 	err = blockStream.CloseSend()
 	utils.Must(err)
@@ -94,7 +100,7 @@ func PumpToCoordinator(path, host string, port int) {
 
 func ReadAndForget(path string) {
 
-	_, dQueue, pp := getWorkload(path)
+	_, dQueue, pp := workload.GetWorkload(path)
 
 	// start consuming blocks
 	start := time.Now()
@@ -109,34 +115,5 @@ func ReadAndForget(path string) {
 		bar.Add(1)
 	}
 	elapsed := time.Since(start)
-	printStats(pp, elapsed)
-}
-
-func printStats(pp *workload.Profile, elapsed time.Duration) {
-	fmt.Printf("\nResult: %d tx (%d blocks)  pushed in %s\n", pp.Block.Count*pp.Block.Size, pp.Block.Count, elapsed)
-	fmt.Printf("tps: %f\n", float64(pp.Block.Count*pp.Block.Size)/elapsed.Seconds())
-}
-
-func getWorkload(path string) ([]byte, chan []byte, *workload.Profile) {
-	key, err := getKey(path)
-	utils.Must(err)
-
-	f, err := os.Open(path)
-	utils.Must(err)
-	// TODO can we improve here by tweaking the buffered reader size?
-	reader := bufio.NewReader(f)
-
-	// load profile from block file
-	pp := workload.ReadProfileFromBlockFile(reader)
-
-	// reading blocks into buffered channel
-	queueSize := 1000
-	dQueue := make(chan []byte, queueSize)
-	go workload.ByteReader(reader, dQueue, func() {})
-
-	return key, dQueue, pp
-}
-
-func getKey(path string) ([]byte, error) {
-	return ioutil.ReadFile(path + ".pem")
+	workload.PrintStats(pp, elapsed)
 }

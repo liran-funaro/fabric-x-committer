@@ -5,9 +5,9 @@ description: some text
 # block configuration
 block:
   # number of blocks we generate
-  count: 100000
+  count: 1
   # number of transactions per block
-  size: 100
+  size: 2
 
 # transaction configuration
 transaction:

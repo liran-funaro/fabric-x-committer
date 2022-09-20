@@ -81,7 +81,7 @@ type SigVerifierImpl struct {
 }
 
 func (s *SigVerifierImpl) SetVerificationKey(context context.Context, key *sigverification.Key) (*sigverification.Empty, error) {
-	return nil, nil
+	return &sigverification.Empty{}, nil
 }
 
 func (s *SigVerifierImpl) StartStream(stream sigverification.Verifier_StartStreamServer) error {

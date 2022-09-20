@@ -2,6 +2,8 @@ package sigverification_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -15,11 +17,13 @@ import (
 // Tx
 
 type TxGenerator struct {
-	txSigner  TxSigner
-	PublicKey signature.PublicKey
+	TxSigner               TxSigner
+	TxInputGenerator       TxInputGenerator
+	ValidSigRatioGenerator *test.BooleanGenerator
+}
 
-	txInputGenerator       *TxInputGenerator
-	validSigRatioGenerator *test.BooleanGenerator
+type TxInputGenerator interface {
+	Next() []signature.SerialNumber
 }
 
 type TxGeneratorParams struct {
@@ -33,31 +37,31 @@ type TxGeneratorParams struct {
 func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
 	txSigner, _ := GetSignatureFactory(params.Scheme).NewSigner(params.SigningKey)
 	return &TxGenerator{
-		txSigner:               txSigner,
-		txInputGenerator:       NewTxInputGenerator(&TxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
-		validSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
+		TxSigner:               txSigner,
+		TxInputGenerator:       NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
+		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
 }
 
 func (g *TxGenerator) Next() *token.Tx {
-	tx := &token.Tx{SerialNumbers: g.txInputGenerator.Next()}
-	if g.validSigRatioGenerator.Next() {
-		tx.Signature, _ = g.txSigner.SignTx(tx.SerialNumbers)
+	tx := &token.Tx{SerialNumbers: g.TxInputGenerator.Next()}
+	if g.ValidSigRatioGenerator.Next() {
+		tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers)
 	}
 	return tx
 }
 
-type TxInputGeneratorParams struct {
+type SomeTxInputGeneratorParams struct {
 	TxSize           test.Distribution
 	SerialNumberSize test.Distribution
 }
 
-type TxInputGenerator struct {
+type SomeTxInputGenerator struct {
 	serialNumberGenerator *FastTxInputSliceGenerator
 	txSizeGenerator       *test.PositiveIntGenerator
 }
 
-func NewTxInputGenerator(params *TxInputGeneratorParams) *TxInputGenerator {
+func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGenerator {
 
 	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
 	serialNumberGenerator := test.NewFastByteArrayGenerator(60)
@@ -65,14 +69,31 @@ func NewTxInputGenerator(params *TxInputGeneratorParams) *TxInputGenerator {
 		return serialNumberGenerator.NextWithSize(serialNumberSizeGenerator.Next())
 	}
 
-	return &TxInputGenerator{
+	return &SomeTxInputGenerator{
 		serialNumberGenerator: NewFastTxInputSliceGenerator(txInputValueGenerator, 100),
 		txSizeGenerator:       test.NewPositiveIntGenerator(params.TxSize, 50),
 	}
 }
 
-func (g *TxInputGenerator) Next() []signature.SerialNumber {
+func (g *SomeTxInputGenerator) Next() []signature.SerialNumber {
 	return g.serialNumberGenerator.NextWithSize(g.txSizeGenerator.Next())
+}
+
+type LinearTxInputGenerator struct {
+	uniqueSerialNum uint64
+	Count           int64
+}
+
+func (g *LinearTxInputGenerator) Next() []signature.SerialNumber {
+	serialNumbers := make([]signature.SerialNumber, g.Count)
+
+	for i := int64(0); i < g.Count; i++ {
+		sn := sha256.Sum256([]byte(fmt.Sprintf("%d", g.uniqueSerialNum)))
+		g.uniqueSerialNum++
+		serialNumbers[i] = sn[:]
+	}
+
+	return serialNumbers
 }
 
 // TX request batch

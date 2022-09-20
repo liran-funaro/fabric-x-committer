@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
@@ -23,11 +24,19 @@ func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 	go s.sendTxsValidationStatus(stream)
 	for {
 		block, err := stream.Recv()
+		if err == io.EOF {
+			// end of stream
+			fmt.Printf("BlockProcessing EOF\n")
+			break
+		}
+
 		if err != nil {
 			panic(fmt.Sprintf("Error while recieving block from stream: %s", err))
 		}
 		s.Coordinator.ProcessBlockAsync(block)
 	}
+
+	return nil
 }
 
 func (s *serviceImpl) sendTxsValidationStatus(stream coordinatorservice.Coordinator_BlockProcessingServer) {

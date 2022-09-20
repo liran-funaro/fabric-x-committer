@@ -23,8 +23,7 @@ type Profile struct {
 
 	Transaction struct {
 		SerialNumber struct {
-			Count  int64
-			Length int64
+			Count int64
 		}
 
 		Signature struct {
