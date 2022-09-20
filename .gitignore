@@ -16,3 +16,4 @@ bin
 # vendor/
 
 **/generated/**
+shard_*

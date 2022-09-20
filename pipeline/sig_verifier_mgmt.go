@@ -157,6 +157,7 @@ func newSigVerifier(address string, responseCollectionChan chan<- *sigverificati
 	}
 
 	v := &sigVerifier{
+		client:              client,
 		stream:              stream,
 		streamContext:       cancelableContext,
 		streamContextCancel: cancel,

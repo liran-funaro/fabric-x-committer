@@ -16,7 +16,7 @@ type serviceImpl struct {
 
 func (s *serviceImpl) SetVerificationKey(c context.Context, k *sigverification.Key) (*coordinatorservice.Empty, error) {
 	err := s.Coordinator.SetSigVerificationKey(k)
-	return nil, err
+	return &coordinatorservice.Empty{}, err
 }
 
 func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_BlockProcessingServer) error {

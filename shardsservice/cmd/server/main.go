@@ -7,7 +7,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -24,8 +24,8 @@ var conf = &shardsservice.Configuration{
 }
 
 func main() {
-	sConf := &utils.ServerConfig{
-		Endpoint: utils.Endpoint{
+	sConf := &connection.ServerConfig{
+		Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: config.DefaultGRPCPortShardsServer,
 		},
@@ -41,7 +41,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	utils.RunServerMain(sConf, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(sConf, func(grpcServer *grpc.Server) {
 		shardsservice.RegisterShardsServer(
 			grpcServer,
 			shardsservice.NewShardsCoordinator(conf),

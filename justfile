@@ -21,3 +21,19 @@ protos-coordinator:
     --proto_path=./token \
     --proto_path=./coordinatorservice \
     ./coordinatorservice/coordinator_service.proto
+
+bin-build-out := "bin"
+
+build-all: build-blockgen build-coordinator build-sigservice build-shardsservice
+
+build-blockgen:
+    go build -o {{bin-build-out}}/blockgen ./wgclient/cmd/generator
+
+build-coordinator:
+    go build -o {{bin-build-out}}/coordinator ./coordinatorservice/cmd/server
+
+build-sigservice:
+    go build -o {{bin-build-out}}/sigservice ./sigverification/cmd/server
+
+build-shardsservice:
+    go build -o {{bin-build-out}}/shardservice ./shardsservice/cmd/server

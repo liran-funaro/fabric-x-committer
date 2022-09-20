@@ -3,6 +3,7 @@ package verifierserver
 import (
 	"context"
 	"errors"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -59,9 +60,9 @@ func (s *verifierServer) SetVerificationKey(context context.Context, verificatio
 	return &sigverification.Empty{}, nil
 }
 func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {
-	if s.verifier == nil {
-		return errors.New("no verification key set")
-	}
+	//if s.verifier == nil {
+	//	return errors.New("no verification key set")
+	//}
 	if config.AppConfig.Prometheus.Enabled {
 		performance.ActiveStreams.Inc()
 		defer performance.ActiveStreams.Dec()

@@ -19,7 +19,8 @@ type mockService struct {
 }
 
 func (m *mockService) SetVerificationKey(c context.Context, k *sigverification.Key) (*coordinatorservice.Empty, error) {
-	return nil, nil
+	fmt.Printf("set key: %v\n", k)
+	return &coordinatorservice.Empty{}, nil
 }
 
 func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_BlockProcessingServer) error {

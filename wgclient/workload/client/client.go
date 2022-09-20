@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -22,7 +24,7 @@ import (
 
 func PumpToCoordinator(path, host string, port int) {
 	// read blocks from file into channel
-	dQueue, pp := getWorkload(path)
+	serializedKey, dQueue, pp := getWorkload(path)
 
 	// wait quickly
 
@@ -40,6 +42,11 @@ func PumpToCoordinator(path, host string, port int) {
 
 	ctx := context.Background()
 	client := coordinatorservice.NewCoordinatorClient(conn)
+
+	// send key
+	key := &sigverification.Key{SerializedBytes: serializedKey}
+	_, err = client.SetVerificationKey(ctx, key)
+	utils.Must(err)
 
 	// we use our customCodec to the already serialized blocks from disc
 	blockStream, err := client.BlockProcessing(ctx, grpc.CallContentSubtype("customCodec"))
@@ -87,7 +94,7 @@ func PumpToCoordinator(path, host string, port int) {
 
 func ReadAndForget(path string) {
 
-	dQueue, pp := getWorkload(path)
+	_, dQueue, pp := getWorkload(path)
 
 	// start consuming blocks
 	start := time.Now()
@@ -110,7 +117,10 @@ func printStats(pp *workload.Profile, elapsed time.Duration) {
 	fmt.Printf("tps: %f\n", float64(pp.Block.Count*pp.Block.Size)/elapsed.Seconds())
 }
 
-func getWorkload(path string) (chan []byte, *workload.Profile) {
+func getWorkload(path string) ([]byte, chan []byte, *workload.Profile) {
+	key, err := getKey(path)
+	utils.Must(err)
+
 	f, err := os.Open(path)
 	utils.Must(err)
 	// TODO can we improve here by tweaking the buffered reader size?
@@ -124,5 +134,9 @@ func getWorkload(path string) (chan []byte, *workload.Profile) {
 	dQueue := make(chan []byte, queueSize)
 	go workload.ByteReader(reader, dQueue, func() {})
 
-	return dQueue, pp
+	return key, dQueue, pp
+}
+
+func getKey(path string) ([]byte, error) {
+	return ioutil.ReadFile(path + ".pem")
 }
