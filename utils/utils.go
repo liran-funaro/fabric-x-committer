@@ -28,10 +28,15 @@ func sorted(a, b int) (int, int) {
 func CurrentDir() string {
 	_, b, _, _ := runtime.Caller(1)
 	dir := filepath.Dir(b)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if !FileExists(dir) {
 		return "."
 	}
 	return dir
+}
+
+func FileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
 
 func OverwriteFile(path string) (*os.File, error) {
@@ -40,6 +45,16 @@ func OverwriteFile(path string) (*os.File, error) {
 		return nil, errors.Wrapf(err, "unable to open %s", path)
 	}
 	return file, nil
+}
+
+func WriteFile(path string, data []byte) error {
+	file, err := OverwriteFile(path)
+	defer file.Close()
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(data)
+	return err
 }
 
 func Must(err error) {

@@ -23,6 +23,7 @@ type TxGenerator struct {
 }
 
 type TxGeneratorParams struct {
+	SigningKey       PrivateKey
 	Scheme           signature.Scheme
 	ValidSigRatio    test.Percentage
 	TxSize           test.Distribution
@@ -30,12 +31,9 @@ type TxGeneratorParams struct {
 }
 
 func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
-	factory := GetSignatureFactory(params.Scheme)
-	privateKey, publicKey := factory.NewKeys()
-	txSigner, _ := factory.NewSigner(privateKey)
+	txSigner, _ := GetSignatureFactory(params.Scheme).NewSigner(params.SigningKey)
 	return &TxGenerator{
 		txSigner:               txSigner,
-		PublicKey:              publicKey,
 		txInputGenerator:       NewTxInputGenerator(&TxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
 		validSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
@@ -84,7 +82,6 @@ type RequestBatchGeneratorParams struct {
 	BatchSize test.Distribution
 }
 type RequestBatchGenerator struct {
-	signature.PublicKey
 	inputArrayGenerator *FastInputArrayGenerator
 	batchSizeGenerator  *test.PositiveIntGenerator
 }
@@ -99,7 +96,6 @@ func NewRequestBatchGenerator(params *RequestBatchGeneratorParams, sampleSize in
 		}
 	}
 	return &RequestBatchGenerator{
-		PublicKey:           txGenerator.PublicKey,
 		inputArrayGenerator: NewFastInputSliceGenerator(valueGen, sampleSize),
 		batchSizeGenerator:  test.NewPositiveIntGenerator(params.BatchSize, 30),
 	}
@@ -277,8 +273,4 @@ func NewInputGenerator(p *InputGeneratorParams) *InputGenerator {
 func (c *InputGenerator) NextRequestBatch() *sigverification.RequestBatch {
 	c.inputDelayGenerator.Next()
 	return &sigverification.RequestBatch{Requests: c.requestBatchGenerator.Next()}
-}
-
-func (c *InputGenerator) PublicKey() *sigverification.Key {
-	return &sigverification.Key{SerializedBytes: c.requestBatchGenerator.PublicKey}
 }

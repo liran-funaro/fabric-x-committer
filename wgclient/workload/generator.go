@@ -18,9 +18,10 @@ import (
 func Generate(profilePath, outputPath string) {
 
 	pp := LoadProfileFromYaml(profilePath)
-
+	privateKey, publicKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 	// configure our transaction generator
 	p := &sigverification_test.TxGeneratorParams{
+		SigningKey:       privateKey,
 		Scheme:           signature.Ecdsa,
 		ValidSigRatio:    test.Percentage(pp.Transaction.Signature.ValidityRatio),
 		TxSize:           test.Constant(pp.Transaction.SerialNumber.Count),
@@ -52,7 +53,7 @@ func Generate(profilePath, outputPath string) {
 	outputPath = createIfNotExists(outputPath)
 
 	// store public key
-	savePublicKey(outputPath, g.PublicKey)
+	savePublicKey(outputPath, publicKey)
 
 	// create output file for blocks
 	outFile, err := os.Create(outputPath)

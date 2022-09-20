@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
+
+	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
@@ -35,31 +39,66 @@ func main() {
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.TxSize, "tx-size", test.Constant(1), "How many serial numbers are in each TX")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", test.Constant(64), "How many bytes contains each serial number")
 
+	verificationKeyPath := flag.String("verification-verificationKey", "./key.pub", "Path to the verification verificationKey")
+	signingKeyPath := flag.String("signing-verificationKey", "./key.priv", "Path to the signing verificationKey")
+
 	config.ParseFlags()
 
-	//TODO: Read key from file, so that multiple clients use the same keys for signing
-	inputGenerator := sigverification_test.NewInputGenerator(&clientConfig.Input)
+	signingKey, verificationKey, err := readOrGenerateKeys(*verificationKeyPath, *signingKeyPath)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
+	clientConfig.Input.RequestBatch.Tx.SigningKey = signingKey
+
+	inputGenerator := sigverification_test.NewInputGenerator(&clientConfig.Input)
 	clientConnection, _ := connection.Connect(&clientConfig.Connection)
 	client := sigverification.NewVerifierClient(clientConnection)
 
-	_, err := client.SetVerificationKey(context.Background(), inputGenerator.PublicKey())
+	_, err = client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	if err != nil {
-		logger.Errorf("Failed to set verification key: %v\n", err)
-		panic(err)
+		logger.Fatalf("Failed to set verification key: %v\n", err)
 	}
-	logger.Infoln("Set verification key")
+	logger.Infoln("Set verification verificationKey")
 
 	stream, err := client.StartStream(context.Background())
 	if err != nil {
-		logger.Errorf("Failed to start stream: %v\n", err)
-		panic(err)
+		logger.Fatalf("Failed to start stream: %v\n", err)
 	}
 	logger.Infoln("Started stream")
 
 	go handleResponses(stream)
 
 	produceRequests(inputGenerator, stream)
+}
+
+func readOrGenerateKeys(verificationKeyPath string, signingKeyPath string) (sigverification_test.PrivateKey, signature.PublicKey, error) {
+	if !utils.FileExists(verificationKeyPath) || !utils.FileExists(signingKeyPath) {
+		logger.Info("No verification/signing keys found in files %s/%s. Generating...", verificationKeyPath, signingKeyPath)
+		signingKey, verificationKey := sigverification_test.GetSignatureFactory(clientConfig.Input.RequestBatch.Tx.Scheme).NewKeys()
+		err := utils.WriteFile(verificationKeyPath, verificationKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not write public key into %s.", verificationKeyPath)
+		}
+		err = utils.WriteFile(signingKeyPath, signingKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not write private key into %s", signingKeyPath)
+		}
+		logger.Infoln("Keys successfully exported!")
+		return signingKey, verificationKey, nil
+	}
+
+	logger.Infof("Verification/signing keys found in files %s/%s. Importing...", verificationKeyPath, signingKeyPath)
+	verificationKey, err := os.ReadFile(verificationKeyPath)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "could not read public key from %s", verificationKeyPath)
+	}
+	signingKey, err := os.ReadFile(signingKeyPath)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "could not read private key from %s", signingKeyPath)
+	}
+	logger.Infoln("Keys successfully imported!")
+	return signingKey, verificationKey, nil
 }
 
 func produceRequests(inputGenerator *sigverification_test.InputGenerator, stream sigverification.Verifier_StartStreamClient) {

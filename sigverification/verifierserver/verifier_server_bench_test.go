@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
@@ -19,6 +20,8 @@ type benchmarkConfig struct {
 	InputGeneratorParams    *sigverification_test.InputGeneratorParams
 }
 
+var privateKey, publicKey = sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
+
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	ParallelExecutionConfig: &parallelexecutor.Config{
@@ -31,6 +34,7 @@ var baseConfig = benchmarkConfig{
 		InputDelay: test.NoDelay,
 		RequestBatch: sigverification_test.RequestBatchGeneratorParams{
 			Tx: sigverification_test.TxGeneratorParams{
+				SigningKey:       privateKey,
 				Scheme:           signature.Ecdsa,
 				ValidSigRatio:    0.8,
 				TxSize:           test.Constant(1),
@@ -60,7 +64,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 				c := sigverification_test.NewTestState(server)
 				t := sigverification_test.NewAsyncTracker()
 				defer c.TearDown()
-				c.Client.SetVerificationKey(context.Background(), g.PublicKey())
+				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: publicKey})
 				stream, _ := c.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
 

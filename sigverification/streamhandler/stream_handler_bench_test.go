@@ -78,8 +78,10 @@ type inputGenerator struct {
 }
 
 func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
+	privateKey, _ := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 	batchGen := sigverification_test.NewRequestBatchGenerator(&sigverification_test.RequestBatchGeneratorParams{
 		Tx: sigverification_test.TxGeneratorParams{
+			SigningKey:       privateKey,
 			Scheme:           signature.Ecdsa,
 			ValidSigRatio:    test.Always,
 			TxSize:           test.Constant(1),
