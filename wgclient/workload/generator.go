@@ -3,16 +3,16 @@ package workload
 import (
 	"bufio"
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
 func Generate(profilePath, outputPath string) {
@@ -70,8 +70,8 @@ func Generate(profilePath, outputPath string) {
 	var wg sync.WaitGroup
 	queueBufferSize := numWorker * 4
 	bQueue := make(chan *token.Block, queueBufferSize)
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		bar := NewProgressBar("Writing blocks to file...", blockCount)
 		BlockWriter(writer, bQueue, func() {
@@ -82,10 +82,8 @@ func Generate(profilePath, outputPath string) {
 	for blockNo := int64(1); blockNo <= blockCount; blockNo++ {
 		bQueue <- createBlock(blockNo, blockSize, txQueue)
 	}
-
 	close(bQueue)
 	wg.Wait()
-
 }
 
 func createBlock(blockNo, numTx int64, txQueue chan *token.Tx) *token.Block {

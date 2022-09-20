@@ -14,21 +14,27 @@ In addition to the block file, the tool write the corresponding signature verifi
 just build-blockgen
 
 # usage see
-blockgen --help
+./blockgen generate --help
 
-blockgen -p testdata/profile1.yaml -o out/blocks
+./blockgen generate -p testdata/profile1.yaml -o out/blocks
+
+./blockgen load --in out/blocks
+./blockgen pump --in out/blocks --host localhost --port 500
 ```
 
 ## Workload Submitter (client)
 
 Reads pre-generated blocks from file and submits them to the coordinator as fast as possible.
 
-TODO
-
-### Run and Build
+### Pump
 
 ```bash
-just build-client
+# usage see
+./blockgen pump --help
 
-./workload
+# reads blocks from disk and pumps to coordinator
+./blockgen pump --in out/blocks --host localhost --port 5002
+
+# just read blocks from disk
+./blockgen load --in out/blocks
 ```
