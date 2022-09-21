@@ -45,7 +45,7 @@ func main() {
 		shardsServerAddressToNumShards[address] = numShardsPerServer
 	}
 
-	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, false)
+	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, true)
 	defer bg.Stop()
 
 	grpcServers, err := startGrpcServers(sigVerifiersPorts, shardsServerPorts)

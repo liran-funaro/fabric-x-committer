@@ -2,22 +2,56 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"runtime"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	_ "net/http/pprof"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
-	"google.golang.org/protobuf/proto"
 )
 
 func main() {
-	key, bQueue, pp := workload.GetWorkload("../../wgclient/out/blocks")
+	run()
+}
 
-	grpcServers, err := startGrpcServers()
+func run() {
+	startProfiling()
+
+	key, bQueue, pp := workload.GetBlockWorkload("../../wgclient/out/blocks")
+
+	numSigVerifiers := 1
+	numShardsServers := 1
+	numShardsPerServer := 1
+
+	sigVerifiersBeginPort := 5000
+	shardsServersBeginPort := 6000
+
+	sigVerifiersPorts := make([]int, numSigVerifiers)
+	sigVerifiersAddresses := make([]string, numSigVerifiers)
+
+	for i := 0; i < numSigVerifiers; i++ {
+		port := sigVerifiersBeginPort + i
+		sigVerifiersPorts[i] = port
+		sigVerifiersAddresses[i] = fmt.Sprintf("localhost:%d", port)
+	}
+
+	shardsServerPorts := make([]int, numShardsServers)
+	shardsServerAddressToNumShards := map[string]int{}
+
+	for i := 0; i < numShardsServers; i++ {
+		port := shardsServersBeginPort + i
+		shardsServerPorts[i] = port
+
+		address := fmt.Sprintf("localhost:%d", port)
+		shardsServerAddressToNumShards[address] = numShardsPerServer
+	}
+
+	grpcServers, err := startGrpcServers(sigVerifiersPorts, shardsServerPorts)
 	if err != nil {
 		panic(fmt.Sprintf("Error in starting grpc servers: %s", err))
 	}
@@ -26,10 +60,10 @@ func main() {
 	coordinator, err := pipeline.NewCoordinator(
 		&pipeline.Config{
 			SigVerifierMgrConfig: &pipeline.SigVerifierMgrConfig{
-				SigVerifierServers: []string{"localhost"},
+				SigVerifierServers: sigVerifiersAddresses,
 			},
 			ShardsServerMgrConfig: &pipeline.ShardsServerMgrConfig{
-				ShardsServersToNumShards: map[string]int{"localhost": 1},
+				ShardsServersToNumShards: shardsServerAddressToNumShards,
 			},
 		},
 	)
@@ -42,23 +76,24 @@ func main() {
 	err = coordinator.SetSigVerificationKey(&sigverification.Key{SerializedBytes: key})
 	utils.Must(err)
 
+	time.Sleep(1 * time.Second)
+
+	fmt.Printf("start timer...\n")
+	counter := 0
+	printMark := 100000
+	startTime := time.Now()
 	go func() {
-		for i := int64(0); i < pp.Block.Count; i++ {
-
-			block := &token.Block{}
-			err := proto.Unmarshal(<-bQueue, block)
-			utils.Must(err)
-
+		for block := range bQueue {
 			coordinator.ProcessBlockAsync(block)
 		}
 	}()
 
-	counter := int64(0)
-	printMark := int64(100000)
-	startTime := time.Now()
+	max := int(pp.Block.Count * pp.Block.Size)
+
+	_ = pp
 	for {
 		status := <-coordinator.TxStatusChan()
-		counter += int64(len(status))
+		counter += len(status)
 
 		if printMark <= counter {
 			totalTime := time.Since(startTime)
@@ -66,7 +101,7 @@ func main() {
 			printMark += 100000
 		}
 
-		if counter == pp.Block.Count*pp.Block.Size {
+		if counter >= max {
 			break
 		}
 	}
@@ -75,7 +110,7 @@ func main() {
 	fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
 }
 
-func startGrpcServers() (s *grpcServers, err error) {
+func startGrpcServers(sigVerifiersPorts, shardsServesPort []int) (s *grpcServers, err error) {
 	s = &grpcServers{}
 	defer func() {
 		if err != nil {
@@ -83,17 +118,15 @@ func startGrpcServers() (s *grpcServers, err error) {
 		}
 	}()
 
-	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(testutil.DefaultSigVerifierBehavior, config.DefaultGRPCPortSigVerifier)
+	s.sigVerifierServers, err = testutil.StartsSigVerifierGrpcServers(testutil.DefaultSigVerifierBehavior, sigVerifiersPorts)
 	if err != nil {
-		return nil, err
+		return
 	}
-	s.sigVerifierServers = append(s.sigVerifierServers, sigVerifierServer)
 
-	shardsServer, err := testutil.NewShardsGrpcServer(testutil.DefaultPhaseOneBehavior, config.DefaultGRPCPortShardsServer)
+	s.shardsServers, err = testutil.StartsShardsGrpcServers(testutil.DefaultPhaseOneBehavior, shardsServesPort)
 	if err != nil {
-		return nil, err
+		return
 	}
-	s.shardsServers = append(s.shardsServers, shardsServer)
 	return
 }
 
@@ -109,4 +142,19 @@ func (s *grpcServers) stopAll() {
 	for _, s := range s.shardsServers {
 		s.Stop()
 	}
+}
+
+func startProfiling() {
+	// go tool pprof http://localhost:6060/debug/pprof/profile
+	// go tool pprof http://localhost:6060/debug/pprof/heap
+	// go tool pprof http://localhost:6060/debug/pprof/block
+
+	go func() {
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			panic(fmt.Sprintf("Error while starting http server for profiling: %s", err))
+		}
+	}()
+
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
 }

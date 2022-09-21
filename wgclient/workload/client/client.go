@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"sync"
@@ -20,7 +21,7 @@ import (
 
 func PumpToCoordinator(path, host string, port int) {
 	// read blocks from file into channel
-	serializedKey, dQueue, pp := workload.GetWorkload(path)
+	serializedKey, dQueue, pp := workload.GetByteWorkload(path)
 
 	// wait quickly
 
@@ -100,7 +101,15 @@ func PumpToCoordinator(path, host string, port int) {
 
 func ReadAndForget(path string) {
 
-	_, dQueue, pp := workload.GetWorkload(path)
+	_, dQueue, pp := workload.GetByteWorkload(path)
+
+	numTx := pp.Block.Count * pp.Block.Size
+
+	// let's check for duplicates
+	// be careful - this may cause damage on your computer if numTx is massive!  :D
+	stats := make(map[string]string, numTx)
+	allowedDuplicates := 0
+	foundDuplicates := 0
 
 	// start consuming blocks
 	start := time.Now()
@@ -111,6 +120,28 @@ func ReadAndForget(path string) {
 		err := proto.Unmarshal(b, block)
 		utils.Must(err)
 		_ = block
+
+		// check if we have duplicates
+		for i, tx := range block.Txs {
+			for j, sn := range tx.SerialNumbers {
+				if len(sn) != 32 {
+					panic("len wrong")
+				}
+
+				// let's treat the sn as base64 string
+				k := base64.StdEncoding.EncodeToString(sn)
+				if val, exists := stats[k]; exists {
+					fmt.Printf("Duplicate found:\n")
+					fmt.Printf("%s exists for: %s\n", k, val)
+					fmt.Printf("tx: %d, %d, %d\n\n", block.Number, i, j)
+					foundDuplicates++
+					if foundDuplicates > allowedDuplicates {
+						panic(fmt.Sprintf("too many duplicates!!! found %d, allowed: %d", foundDuplicates, allowedDuplicates))
+					}
+				}
+				stats[k] = fmt.Sprintf("tx-%d-%d-%d", block.Number, i, j)
+			}
+		}
 
 		bar.Add(1)
 	}

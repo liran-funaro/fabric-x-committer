@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"sync/atomic"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -88,8 +89,7 @@ func (g *LinearTxInputGenerator) Next() []signature.SerialNumber {
 	serialNumbers := make([]signature.SerialNumber, g.Count)
 
 	for i := int64(0); i < g.Count; i++ {
-		sn := sha256.Sum256([]byte(fmt.Sprintf("%d", g.uniqueSerialNum)))
-		g.uniqueSerialNum++
+		sn := sha256.Sum256([]byte(fmt.Sprintf("%d", atomic.AddUint64(&g.uniqueSerialNum, 1))))
 		serialNumbers[i] = sn[:]
 	}
 

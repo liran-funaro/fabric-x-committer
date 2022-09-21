@@ -36,7 +36,7 @@ func (g *BlockGenerator) Stop() {
 func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock, serialNumPerTx int, addSignatureBytes bool) {
 	randomBytesForSignature := []byte{}
 	if addSignatureBytes {
-		randomBytesForSignature = make([]byte, 1000) // 1kb
+		randomBytesForSignature = make([]byte, 72) // DER encoded ECDSA signature
 		for i := 0; i < len(randomBytesForSignature); i++ {
 			randomBytesForSignature[i] = uint8(i)
 		}
