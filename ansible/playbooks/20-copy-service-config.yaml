@@ -1,0 +1,14 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Copy a service config to respective service machines
+    hosts: "{{ servicename + 'services' }}"
+    tasks:
+      - name: Copy config file
+        copy:
+          src: "{{ '../../config/' + filename }}"
+          dest: "{{ '~/' + servicename + 'service/' }}"
+          owner: root
+          group: root
+          mode: a+rw

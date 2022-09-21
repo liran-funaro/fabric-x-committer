@@ -1,0 +1,28 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Copy a general config to shardsservice machines
+    hosts: shardsservices
+    tasks:
+      - name: Copy shardsservice executable to remote machine
+        copy:
+          src: ../../bin/shardsservice
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+x
+      - name: Run shardsservice executable
+        shell: ./shardsservice/shardsservice '{{ arg }}'
+  - name: Copy a general config to sigverificationservice machines
+    hosts: sigverificationservices
+    tasks:
+      - name: Copy sigverificationservice executable and config to remote machine
+        copy:
+          src: ../../bin/sigverificationservice
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+x
+      - name: Run sigverificationservice executable
+        shell: ./sigverificationservice/sigverificationservice '{{ arg }}'

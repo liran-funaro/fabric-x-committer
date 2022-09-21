@@ -1,0 +1,24 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Copy a general config to shardsservice machines
+    hosts: shardsservices
+    tasks:
+      - name: Copy config file
+        copy:
+          src: "{{ '../../config/' + filename }}"
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+rw
+  - name: Copy a general config to sigverificationservice machines
+    hosts: sigverificationservices
+    tasks:
+      - name: Copy config file
+        copy:
+          src: "{{ '../../config/' + filename }}"
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+rw

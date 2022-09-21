@@ -4,11 +4,23 @@ all:
     ansible_user: "root"
     ansible_ssh_pass: "SSH PASSWORD GOES HERE"
   children:
-    shardsservices:
-      hosts:
-        shardsservice-machine1:
-          ansible_host: "IP ADDRESS GOES HERE"
-    sigverificationservices:
-      hosts:
-        sigverificationservice-machine1:
-          ansible_host: "IP ADDRESS GOES HERE"
+    services:
+      children:
+        shardsservices:
+          hosts:
+            shardsservice-machine1:
+              ansible_host: "IP ADDRESS GOES HERE"
+          children:
+            shardsservices-custom:
+              hosts:
+                shardsservice-machine2:
+                  ansible_host: "IP ADDRESS GOES HERE"
+        sigverificationservices:
+          hosts:
+            sigverificationservice-machine1:
+              ansible_host: "IP ADDRESS GOES HERE"
+          children:
+            sigverificationservice-custom:
+              hosts:
+                sigverificationservice-machine2:
+                  ansible_host: "IP ADDRESS GOES HERE"

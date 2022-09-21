@@ -16,7 +16,21 @@
           owner: root
           group: root
           mode: a+x
-      - name: Copy config to remote machine
+      - name: Copy shared config to remote machine
+        copy:
+          src: "{{ '../../config/shared' }}"
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+rw
+      - name: Copy general config to remote machine
+        copy:
+          src: "{{ '../../config/config-shardsservice.yaml' }}"
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+rw
+      - name: Copy host specific config to remote machine
         copy:
           src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
           dest: ~/shardsservice/
@@ -39,7 +53,14 @@
           owner: root
           group: root
           mode: a+x
-      - name: Copy config to remote machine
+      - name: Copy general config to remote machine
+        copy:
+          src: "{{ '../../config/config-sigverification.yaml' }}"
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+rw
+      - name: Copy host specific config to remote machine
         copy:
           src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
           dest: ~/sigverificationservice/

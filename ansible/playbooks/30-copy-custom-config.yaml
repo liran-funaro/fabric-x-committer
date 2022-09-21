@@ -1,0 +1,24 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Copy custom shardsservice configs to respective shardsservice machines
+    hosts: shardsservices-custom
+    tasks:
+      - name: Copy config file
+        copy:
+          src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
+          dest: ~/shardsservice/
+          owner: root
+          group: root
+          mode: a+rw
+  - name: Copy custom sigverificationservice configs to respective sigverificationservice machines
+    hosts: sigverificationservices-custom
+    tasks:
+      - name: Copy config file
+        copy:
+          src: "{{ '../../config/config-' + inventory_hostname + '.yaml' }}"
+          dest: ~/sigverificationservice/
+          owner: root
+          group: root
+          mode: a+rw
