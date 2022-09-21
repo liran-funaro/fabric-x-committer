@@ -35,9 +35,9 @@ func NewProgressBar(description string, max int64) *progressbar.ProgressBar {
 		}))
 }
 
-func PrintStats(pp *Profile, elapsed time.Duration) {
-	fmt.Printf("\nResult: %d tx (%d blocks)  pushed in %s\n", pp.Block.Count*pp.Block.Size, pp.Block.Count, elapsed)
-	fmt.Printf("tps: %f\n", float64(pp.Block.Count*pp.Block.Size)/elapsed.Seconds())
+func PrintStats(numTx, numBlocks int64, elapsed time.Duration) {
+	fmt.Printf("\nResult: %d tx (%d blocks)  pushed in %s\n", numTx, numBlocks, elapsed)
+	fmt.Printf("tps: %.2f\n", float64(numTx)/elapsed.Seconds())
 }
 
 func GetByteWorkload(path string) ([]byte, chan []byte, *Profile) {

@@ -107,7 +107,7 @@ func run() {
 	}
 
 	totalTime := time.Since(startTime)
-	fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
+	workload.PrintStats(int64(counter), pp.Block.Count, totalTime)
 }
 
 func startGrpcServers(sigVerifiersPorts, shardsServesPort []int) (s *grpcServers, err error) {

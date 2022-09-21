@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"runtime"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-
-	"net/http"
-	_ "net/http/pprof"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
 func main() {
@@ -95,7 +96,7 @@ func main() {
 	}
 
 	totalTime := time.Since(startTime)
-	fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
+	workload.PrintStats(int64(counter), int64(numBlocks), totalTime)
 }
 
 func startGrpcServers(sigVerifiersPorts, shardsServesPort []int) (s *grpcServers, err error) {
