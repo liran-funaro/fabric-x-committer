@@ -23,8 +23,7 @@ type ServerConfig struct {
 var serverConfig ServerConfig
 
 func main() {
-	flag.StringVar(&serverConfig.Connection.Host, "host", "localhost", "Server host to connect to")
-	flag.IntVar(&serverConfig.Connection.Port, "port", config.DefaultGRPCPortSigVerifier, "Server port to connect to")
+	connection.EndpointVar(&serverConfig.Connection.Endpoint, "server", connection.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}, "Server host to connect to")
 	flag.Bool("prometheus", config.AppConfig.Prometheus.Enabled, "Enable prometheus metrics to be kept")
 
 	flag.IntVar(&serverConfig.Executor.Parallelism, "parallelism", 1, "Executor parallelism")

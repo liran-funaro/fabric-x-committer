@@ -14,35 +14,37 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 var logger = logging.New("sigverification-client")
 
 type ClientConfig struct {
-	Connection connection.DialConfig
-	Input      sigverification_test.InputGeneratorParams
+	Connections []*connection.DialConfig
+	Input       sigverification_test.InputGeneratorParams
 }
 
 var clientConfig ClientConfig
 
 func main() {
-	clientConfig.Connection.Credentials = insecure.NewCredentials()
-	flag.StringVar(&clientConfig.Connection.Host, "host", "localhost", "Server host to connect to")
-	flag.IntVar(&clientConfig.Connection.Port, "port", config.DefaultGRPCPortSigVerifier, "Server port to connect to")
+	var endpoints []*connection.Endpoint
+	connection.EndpointVars(&endpoints, "servers", []*connection.Endpoint{{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}, "Server host to connect to")
+	test.DistributionVar(&clientConfig.Input.InputDelay, "input-delay", sigverification_test.ClientInputDelay, "Interval between two batches are sent")
 
-	test.DistributionVar(&clientConfig.Input.InputDelay, "input-delay", test.NoDelay, "Interval between two batches are sent")
-
-	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", test.Constant(100), "Request batch size")
-	signature.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", signature.Ecdsa, "Verification scheme")
-	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", test.Always, "Percentage of transactions that should be valid (values from 0 to 1)")
-	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.TxSize, "tx-size", test.Constant(1), "How many serial numbers are in each TX")
-	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", test.Constant(64), "How many bytes contains each serial number")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
+	signature.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", sigverification_test.VerificationScheme, "Verification scheme")
+	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", sigverification_test.SignatureValidRatio, "Percentage of transactions that should be valid (values from 0 to 1)")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.TxSize, "tx-size", sigverification_test.TxSize, "How many serial numbers are in each TX")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", sigverification_test.SerialNumberSize, "How many bytes contains each serial number")
 
 	verificationKeyPath := flag.String("verification-verificationKey", "./key.pub", "Path to the verification verificationKey")
 	signingKeyPath := flag.String("signing-verificationKey", "./key.priv", "Path to the signing verificationKey")
 
 	config.ParseFlags()
+
+	clientConfig.Connections = make([]*connection.DialConfig, len(endpoints))
+	for i, endpoint := range endpoints {
+		clientConfig.Connections[i] = connection.NewDialConfig(*endpoint)
+	}
 
 	signingKey, verificationKey, err := readOrGenerateKeys(*verificationKeyPath, *signingKeyPath)
 	if err != nil {
@@ -51,25 +53,52 @@ func main() {
 
 	clientConfig.Input.RequestBatch.Tx.SigningKey = signingKey
 
+	requests := make(chan *sigverification.RequestBatch, len(clientConfig.Connections))
+	for _, conn := range clientConfig.Connections {
+		stream, err := startStream(conn, verificationKey)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		go func() {
+			for {
+				Should(stream.Recv())
+			}
+		}()
+		go func() {
+			for {
+				utils.Must(stream.Send(<-requests))
+			}
+		}()
+	}
+
 	inputGenerator := sigverification_test.NewInputGenerator(&clientConfig.Input)
-	clientConnection, _ := connection.Connect(&clientConfig.Connection)
+	for {
+		requests <- inputGenerator.NextRequestBatch()
+	}
+}
+
+func Should(_ interface{}, err error) {
+	if err != nil {
+		logger.Error(err)
+	}
+}
+
+func startStream(conn *connection.DialConfig, verificationKey signature.PublicKey) (sigverification.Verifier_StartStreamClient, error) {
+	clientConnection, _ := connection.Connect(conn)
 	client := sigverification.NewVerifierClient(clientConnection)
 
-	_, err = client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
+	_, err := client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
 	if err != nil {
-		logger.Fatalf("Failed to set verification key: %v\n", err)
+		return nil, err
 	}
 	logger.Infoln("Set verification verificationKey")
 
 	stream, err := client.StartStream(context.Background())
 	if err != nil {
-		logger.Fatalf("Failed to start stream: %v\n", err)
+		return nil, err
 	}
-	logger.Infoln("Started stream")
-
-	go handleResponses(stream)
-
-	produceRequests(inputGenerator, stream)
+	logger.Infof("Started stream to %s", conn.Address())
+	return stream, nil
 }
 
 func readOrGenerateKeys(verificationKeyPath string, signingKeyPath string) (sigverification_test.PrivateKey, signature.PublicKey, error) {
@@ -99,32 +128,4 @@ func readOrGenerateKeys(verificationKeyPath string, signingKeyPath string) (sigv
 	}
 	logger.Infoln("Keys successfully imported!")
 	return signingKey, verificationKey, nil
-}
-
-func produceRequests(inputGenerator *sigverification_test.InputGenerator, stream sigverification.Verifier_StartStreamClient) {
-	for {
-		batch := inputGenerator.NextRequestBatch()
-		err := stream.Send(batch)
-		logger.Debugf("Sent request: %d\n", len(batch.Requests))
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func handleResponses(stream sigverification.Verifier_StartStreamClient) {
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			logger.Errorf("Error occurred: %v\n", err)
-		} else {
-			valid := 0
-			for _, r := range response.Responses {
-				if r.IsValid {
-					valid++
-				}
-			}
-			logger.Debugf("Returned %d valid and %d invalid responses\n", valid, len(response.Responses)-valid)
-		}
-	}
 }

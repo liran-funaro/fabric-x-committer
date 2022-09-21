@@ -18,7 +18,7 @@ import (
 var TxSize = test.Constant(1)
 var SerialNumberSize = test.Constant(32)
 var ClientInputDelay = test.NoDelay
-var SignatureValidRatio = test.Never
+var SignatureValidRatio = test.Always
 var BatchSize = 100
 var BatchSizeDistribution = test.Constant(int64(BatchSize))
 var VerificationScheme = signature.Ecdsa

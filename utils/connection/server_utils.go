@@ -6,7 +6,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"google.golang.org/grpc"
@@ -73,8 +76,54 @@ type Endpoint struct {
 	Port int
 }
 
+const endpointSplitter = ":"
+
 func (e *Endpoint) Address() string {
-	return fmt.Sprintf("%s:%d", e.Host, e.Port)
+	return fmt.Sprintf("%s%s%d", e.Host, endpointSplitter, e.Port)
+}
+
+func NewEndpoint(value string) (*Endpoint, error) {
+	vals := strings.Split(value, ":")
+	if len(vals) != 2 {
+		return nil, errors.New("not in format: 1.2.3.4:5")
+	}
+	host := vals[0]
+	port, err := strconv.Atoi(vals[1])
+	if err != nil {
+		return nil, err
+	}
+	return &Endpoint{Host: host, Port: port}, nil
+}
+
+func EndpointVar(p *Endpoint, name string, defaultValue Endpoint, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(endpoint string) error {
+		result, err := NewEndpoint(endpoint)
+		if err != nil {
+			return err
+		}
+		*p = *result
+		return nil
+	})
+}
+
+const flagSliceSeparator = ","
+
+func EndpointVars(p *[]*Endpoint, name string, defaultValue []*Endpoint, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(input string) error {
+		endpoints := strings.Split(input, flagSliceSeparator)
+		results := make([]*Endpoint, len(endpoints))
+		for i, endpoint := range endpoints {
+			result, err := NewEndpoint(endpoint)
+			if err != nil {
+				return err
+			}
+			results[i] = result
+		}
+		*p = results
+		return nil
+	})
 }
 
 func launchPrometheus() {
