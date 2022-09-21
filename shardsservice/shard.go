@@ -76,8 +76,8 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 			}
 
 			resp.Status = PhaseOneResponse_CAN_COMMIT
-			s.phaseOneResponses.add(resp)
 			s.pendingCommits.add(tID, serialNumbers)
+			s.phaseOneResponses.add(resp)
 			s.logger.Debugf("shardID [%d] successfully validated txID [%v]", s.id, tID)
 		}(tID, serialNumbers)
 	}

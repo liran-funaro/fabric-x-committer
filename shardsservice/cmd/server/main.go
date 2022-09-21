@@ -17,7 +17,7 @@ var conf = &shardsservice.Configuration{
 		RootDir: "./",
 	},
 	Limits: &shardsservice.LimitsConf{
-		MaxGoroutines:                     100,
+		MaxGoroutines:                     1000,
 		MaxPhaseOneResponseBatchItemCount: 100,
 		PhaseOneResponseCutTimeout:        50 * time.Millisecond,
 	},
