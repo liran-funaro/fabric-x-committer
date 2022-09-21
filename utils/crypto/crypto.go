@@ -17,12 +17,14 @@ func NewECDSAKey() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(curve, rand.Reader)
 }
 
+var verifyError = errors.New("failed to verify signature")
+
 func VerifyMessage(verificationKey *ecdsa.PublicKey, message []byte, signature []byte) error {
 	hash := sha256.Sum256(message)
 
 	valid := ecdsa.VerifyASN1(verificationKey, hash[:], signature)
 	if !valid {
-		return errors.New("failed to verify signature")
+		return verifyError
 	}
 	return nil
 }
