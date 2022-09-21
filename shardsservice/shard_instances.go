@@ -278,15 +278,15 @@ type txIDToShardID struct {
 }
 
 func (t *txIDToShardID) add(tID txID, shardID uint32) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	t.txToShardID[tID] = append(t.txToShardID[tID], shardID)
 }
 
 func (t *txIDToShardID) get(tID txID) []uint32 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
 	return t.txToShardID[tID]
 }
