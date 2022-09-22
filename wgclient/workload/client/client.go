@@ -91,7 +91,7 @@ func PumpToCoordinator(path, host string, port int) {
 		bar.Add(1)
 	}
 	elapsed := time.Since(start)
-	workload.PrintStats(pp.Block.Count, pp.Block.Count*pp.Block.Size, elapsed)
+	workload.PrintStats(pp.Block.Count*pp.Block.Size, pp.Block.Count, elapsed)
 
 	err = blockStream.CloseSend()
 	utils.Must(err)
@@ -146,5 +146,5 @@ func ReadAndForget(path string) {
 		bar.Add(1)
 	}
 	elapsed := time.Since(start)
-	workload.PrintStats(pp.Block.Count, pp.Block.Count*pp.Block.Size, elapsed)
+	workload.PrintStats(pp.Block.Count*pp.Block.Size, pp.Block.Count, elapsed)
 }
