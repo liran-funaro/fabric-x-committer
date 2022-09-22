@@ -90,3 +90,20 @@ Example:
 ```bash
 SC_LOGGING_LEVEL=debug ./bin/shardservice
 ```
+
+## Docker based builder
+
+As we target Linux servers, all our SC components must be compiled for Linux.
+However, since most of us are using a Mac, compiling the shards server using `GOOS=linux go build` is not enough.
+For that reason, we provide a docker container that can be used to build the SC component binaries.
+
+```bash
+# builds the docker image
+just docker-image
+
+# starts a bash in the container
+just docker bash
+
+# runs `just build-all` inside the container
+just docker just build-all
+```

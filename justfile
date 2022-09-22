@@ -40,3 +40,9 @@ build-sigservice:
 
 build-shardsservice:
     go build -o {{bin-build-out}}/shardservice ./shardsservice/cmd/server
+
+docker-image:
+    docker build -f builder/Dockerfile -t sc_builder .
+
+docker CMD:
+    docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder {{CMD}}
