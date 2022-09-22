@@ -86,7 +86,11 @@ func main() {
 
 		if printMark <= counter {
 			totalTime := time.Since(startTime)
-			fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
+			fmt.Printf("time taken: %f sec. Total Status Recieved: %d. tps: %.2f \n",
+				totalTime.Seconds(),
+				counter,
+				float64(counter)/totalTime.Seconds(),
+			)
 			printMark += 100000
 		}
 

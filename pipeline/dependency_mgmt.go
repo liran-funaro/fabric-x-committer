@@ -74,18 +74,20 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 		m.nodes[blkNumTxNum] = newNode
 
 		for _, sn := range tx.SerialNumbers {
-			existingNodes := m.snToNodes[string(sn)]
+			existingNodes, ok := m.snToNodes[string(sn)]
+			if !ok {
+				existingNodes = map[*node]struct{}{}
+			}
+
 			for en := range existingNodes {
 				newNode.dependsOn[en] = struct{}{}
 				en.dependents[newNode] = struct{}{}
 			}
 
-			n, ok := m.snToNodes[string(sn)]
+			existingNodes[newNode] = struct{}{}
 			if !ok {
-				n = map[*node]struct{}{}
-				m.snToNodes[string(sn)] = n
+				m.snToNodes[string(sn)] = existingNodes
 			}
-			n[newNode] = struct{}{}
 		}
 	}
 }
