@@ -1,0 +1,14 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Run shardsservice machines
+    hosts: shardsservices
+    tasks:
+      - name: Run shardsservice executable
+        shell: ./shardsservice/shardsservice '{{ arg }}'
+  - name: Run sigverificationservice machines
+    hosts: sigverificationservices
+    tasks:
+      - name: Run sigverificationservice executable
+        shell: ./sigverificationservice/sigverificationservice '{{ arg }}'

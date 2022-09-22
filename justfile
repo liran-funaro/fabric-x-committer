@@ -8,10 +8,13 @@ default := ''
 test:
     go test -v ./...
 
-run arg=default:
-	./scripts/copy_and_run.sh {{arg}}
+setup:
+    ./scripts/setup.sh
 
-start arg=default: build (run arg)
+run arg=default:
+	./scripts/run.sh {{arg}}
+
+start arg=default: build setup (run arg)
 
 protos-coordinator:
     protoc \
