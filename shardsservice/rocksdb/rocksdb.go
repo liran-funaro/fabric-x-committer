@@ -41,8 +41,8 @@ func Open(path string) (*rocksdb, error) {
 }
 
 func (r *rocksdb) Commit(keys [][]byte) error {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	batch := grocksdb.NewWriteBatch()
 
@@ -74,8 +74,8 @@ func (r *rocksdb) DoNotExist(keys [][]byte) ([]bool, error) {
 }
 
 func (r *rocksdb) Close() {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	r.db.Close()
 }

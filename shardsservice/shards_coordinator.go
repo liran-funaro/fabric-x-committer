@@ -2,6 +2,7 @@ package shardsservice
 
 import (
 	"context"
+	"io"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
@@ -19,10 +20,6 @@ func NewShardsCoordinator(conf *Configuration) *shardsCoordinator {
 	logger.Info("Initializing shards coordinator")
 
 	phaseOneResponses := make(chan []*PhaseOneResponse, 10)
-
-	// TODO: Need to read shards which already exists. For now, we assume a
-	// fresh start of the shardservice. For failure and recovery, we need to
-	// read existing shards
 
 	si, err := newShardInstances(phaseOneResponses, conf.Database.RootDir)
 	if err != nil {
@@ -73,8 +70,6 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOneStreamServer) error {
 	go s.shards.accumulatedPhaseOneResponses(s.config.Limits.MaxPhaseOneResponseBatchItemCount, s.config.Limits.PhaseOneResponseCutTimeout)
 	for {
-		// TODO: we need to send only one response per transaction, i.e., wither commit or cannot commit
-		// irrespective of the number of phaseOneRequests for a given transaction
 		if err := stream.Send(
 			&PhaseOneResponseBatch{
 				Responses: <-s.phaseOneResponses,
@@ -89,6 +84,9 @@ func (s *shardsCoordinator) StartPhaseTwoStream(stream Shards_StartPhaseTwoStrea
 	for {
 		requestBatch, err := stream.Recv()
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 
