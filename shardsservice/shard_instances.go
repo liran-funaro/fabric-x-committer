@@ -18,12 +18,11 @@ type shardInstances struct {
 	txIDToPendingResponse *txIDToPendingResponse
 	rootDir               string
 	mu                    sync.RWMutex
-	limiter               *goroutineLimiter
 	phaseOneResponses     chan []*PhaseOneResponse
 	logger                *logging.AppLogger
 }
 
-func newShardInstances(limiter *goroutineLimiter, phaseOneResponse chan []*PhaseOneResponse, rootDir string) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
 
@@ -33,7 +32,6 @@ func newShardInstances(limiter *goroutineLimiter, phaseOneResponse chan []*Phase
 		txIDToPendingResponse: &txIDToPendingResponse{tIDToPendingShardIDResp: make(txIDToPendingShardIDResponse)},
 		rootDir:               rootDir,
 		mu:                    sync.RWMutex{},
-		limiter:               limiter,
 		phaseOneResponses:     phaseOneResponse,
 		logger:                logger,
 	}
@@ -68,7 +66,7 @@ func newShardInstances(limiter *goroutineLimiter, phaseOneResponse chan []*Phase
 
 func (i *shardInstances) setup(shardID uint32) error {
 	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, i.limiter)
+	shard, err := newShard(shardID, path)
 	if err != nil {
 		return err
 	}
@@ -134,9 +132,7 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
 		shard := i.shardIDToInstance.getShard(shardID)
 		i.logger.Debugf("validating transactions on shardID [%d]", shardID)
 
-		i.limiter.add()
 		go func(txToSn txIDToSerialNumbers) {
-			defer i.limiter.done()
 			shard.executePhaseOne(txToSn)
 		}(txToSn)
 	}
@@ -172,9 +168,7 @@ func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
 	for shardID, txToIns := range shardToTxIns {
 		shard := i.shardIDToInstance.getShard(shardID)
 
-		i.limiter.add()
 		go func(txToIns txIDToInstruction) {
-			defer i.limiter.done()
 			shard.executePhaseTwo(txToIns)
 		}(txToIns)
 	}

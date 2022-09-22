@@ -17,7 +17,6 @@ type shard struct {
 	pendingCommits    *pendingCommits
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
-	limiter           *goroutineLimiter
 	logger            *logging.AppLogger
 }
 
@@ -27,7 +26,7 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string, limiter *goroutineLimiter) (*shard, error) {
+func newShard(id uint32, path string) (*shard, error) {
 	db, err := rocksdb.Open(path)
 	if err != nil {
 		return nil, err
@@ -40,10 +39,10 @@ func newShard(id uint32, path string, limiter *goroutineLimiter) (*shard, error)
 		mu:   sync.RWMutex{},
 		pendingCommits: &pendingCommits{
 			txIDsToSerialNumbers: map[txID]*SerialNumbers{},
+			serialNumbers:        map[string]struct{}{},
 		},
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
-		limiter:           limiter,
 		logger:            logging.New("shard"),
 	}, nil
 }
@@ -54,15 +53,20 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 
 	for tID, serialNumbers := range requests {
 		s.wg.Add(1)
-		s.limiter.add()
 		go func(tID txID, serialNumbers *SerialNumbers) {
-			defer s.limiter.done()
 			s.logger.Debugf("shardID [%d] validating txID [%v]", s.id, tID)
 			defer s.wg.Done()
 
 			resp := &PhaseOneResponse{
 				BlockNum: tID.blockNum,
 				TxNum:    tID.txNum,
+			}
+
+			if !s.pendingCommits.doNotExist(serialNumbers.GetSerialNumbers()) {
+				s.logger.Debugf("shardID [%d] invalidates txID [%v]", s.id, tID)
+				resp.Status = PhaseOneResponse_CANNOT_COMMITTED
+				s.phaseOneResponses.add(resp)
+				return
 			}
 
 			doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())

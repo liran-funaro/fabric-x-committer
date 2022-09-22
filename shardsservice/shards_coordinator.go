@@ -8,7 +8,6 @@ import (
 
 type shardsCoordinator struct {
 	shards            *shardInstances
-	routineLimiter    *goroutineLimiter
 	phaseOneResponses chan []*PhaseOneResponse
 	config            *Configuration
 	logger            *logging.AppLogger
@@ -19,21 +18,19 @@ func NewShardsCoordinator(conf *Configuration) *shardsCoordinator {
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 
-	limiter := newGoroutineLimiter(conf.Limits.MaxGoroutines)
 	phaseOneResponses := make(chan []*PhaseOneResponse, 10)
 
 	// TODO: Need to read shards which already exists. For now, we assume a
 	// fresh start of the shardservice. For failure and recovery, we need to
 	// read existing shards
 
-	si, err := newShardInstances(limiter, phaseOneResponses, conf.Database.RootDir)
+	si, err := newShardInstances(phaseOneResponses, conf.Database.RootDir)
 	if err != nil {
 		panic(err)
 	}
 
 	return &shardsCoordinator{
 		shards:                    si,
-		routineLimiter:            limiter,
 		phaseOneResponses:         phaseOneResponses,
 		config:                    conf,
 		logger:                    logger,
@@ -67,9 +64,7 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 			return err
 		}
 
-		s.routineLimiter.add()
 		go func() {
-			defer s.routineLimiter.done()
 			s.shards.executePhaseOne(requestBatch)
 		}()
 	}
@@ -97,9 +92,7 @@ func (s *shardsCoordinator) StartPhaseTwoStream(stream Shards_StartPhaseTwoStrea
 			return err
 		}
 
-		s.routineLimiter.add()
 		go func() {
-			defer s.routineLimiter.done()
 			s.shards.executePhaseTwo(requestBatch)
 		}()
 	}
