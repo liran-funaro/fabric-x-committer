@@ -18,7 +18,7 @@ type benchmarkConfig struct {
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
-		TxInputGeneratorParams: &sigverification_test.TxInputGeneratorParams{
+		SomeTxInputGeneratorParams: &sigverification_test.SomeTxInputGeneratorParams{
 			TxSize:           sigverification_test.TxSize,
 			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
@@ -58,17 +58,17 @@ func BenchmarkTxVerifier(b *testing.B) {
 // Input generator
 
 type inputGeneratorParams struct {
-	*sigverification_test.TxInputGeneratorParams
+	*sigverification_test.SomeTxInputGeneratorParams
 	ValidSigRatio test.Percentage
 }
 type inputGenerator struct {
-	txInputGenerator *sigverification_test.TxInputGenerator
+	txInputGenerator *sigverification_test.SomeTxInputGenerator
 	validGenerator   *test.BooleanGenerator
 }
 
 func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	return &inputGenerator{
-		txInputGenerator: sigverification_test.NewTxInputGenerator(params.TxInputGeneratorParams),
+		txInputGenerator: sigverification_test.NewSomeTxInputGenerator(params.SomeTxInputGeneratorParams),
 		validGenerator:   test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 30),
 	}
 }
