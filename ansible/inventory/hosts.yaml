@@ -20,7 +20,7 @@ all:
             sigverificationservice-machine1:
               ansible_host: "IP ADDRESS GOES HERE"
           children:
-            sigverificationservice-custom:
+            sigverificationservices-custom:
               hosts:
                 sigverificationservice-machine2:
                   ansible_host: "IP ADDRESS GOES HERE"

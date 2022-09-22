@@ -18,6 +18,26 @@ just build-all
 GOOS=linux just build-all
 ```
 
+## Setup
+
+```bash
+# setup up all remote machines as shards and sigverification services by copying over config and bin files
+just setup
+```
+
+## Run
+
+```bash
+# execute all shards and sigverification services then execute coordinator
+just run
+```
+
+## Start
+
+```bash
+# build, setup, and run all in one line
+just start
+```
 
 
 ## Run e2e locally
