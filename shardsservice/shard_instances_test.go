@@ -8,12 +8,11 @@ import (
 )
 
 func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
-	limiter := newGoroutineLimiter(10)
 	phaseOneResponses := make(chan []*PhaseOneResponse, 10)
 
 	t.Run("simple phase one execution", func(t *testing.T) {
 		testDir := "./"
-		si, err := newShardInstances(limiter, phaseOneResponses, testDir)
+		si, err := newShardInstances(phaseOneResponses, testDir)
 		require.NoError(t, err)
 		defer si.deleteAll()
 

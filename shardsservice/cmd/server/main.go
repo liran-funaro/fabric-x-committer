@@ -19,7 +19,7 @@ var conf = &shardsservice.Configuration{
 	Limits: &shardsservice.LimitsConf{
 		MaxGoroutines:                     1000,
 		MaxPhaseOneResponseBatchItemCount: 100,
-		PhaseOneResponseCutTimeout:        50 * time.Millisecond,
+		PhaseOneResponseCutTimeout:        10 * time.Millisecond,
 	},
 }
 

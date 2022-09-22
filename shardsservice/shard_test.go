@@ -13,8 +13,7 @@ type shardForTest struct {
 }
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
-	limiter := newGoroutineLimiter(10)
-	s, err := newShard(id, path, limiter)
+	s, err := newShard(id, path)
 	require.NoError(t, err)
 
 	return &shardForTest{

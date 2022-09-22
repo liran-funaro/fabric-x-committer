@@ -21,7 +21,7 @@ type shardsCoordinatorGrpcServiceForTest struct {
 	cleanup    func()
 }
 
-func newShardsCoordinatorGrpcServiceForTest(t *testing.T, port uint32) *shardsCoordinatorGrpcServiceForTest {
+func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port uint32) *shardsCoordinatorGrpcServiceForTest {
 	conf := &Configuration{
 		Database: &DatabaseConf{
 			Name:    "rocksdb",
@@ -66,7 +66,7 @@ func newShardsCoordinatorGrpcServiceForTest(t *testing.T, port uint32) *shardsCo
 }
 
 func TestShardsCoordinator(t *testing.T) {
-	shardService := newShardsCoordinatorGrpcServiceForTest(t, 6002)
+	shardService := NewShardsCoordinatorGrpcServiceForTest(t, 6002)
 	defer shardService.cleanup()
 
 	client := NewShardsClient(shardService.clientConn)
