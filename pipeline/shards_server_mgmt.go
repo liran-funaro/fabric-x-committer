@@ -453,6 +453,7 @@ func (o *phaseTwoComm) stopRequestSenderRoutine() {
 type phaseOnePendingTx struct {
 	shardServers        map[*shardsServer]struct{}
 	pendingResponseNums int
+	invalidatedBy       *shardsServer
 }
 
 type phaseOnePendingTxs struct {
@@ -476,27 +477,25 @@ func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
 	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
 	for txSeqNum, isValid := range validationStatus {
-		pendingTx, ok := t.m[txSeqNum]
-		if !ok {
-			// This could happen if the transaction was removed prior to recieving a status response from a shard server.
-			// This can happend only if the prior response from a different shard server declared the transaction as invalid
-			continue
+		pendingTx := t.m[txSeqNum]
+
+		if !isValid {
+			pendingTx.invalidatedBy = shardServer
 		}
 
 		pendingTx.pendingResponseNums--
-		if isValid && pendingTx.pendingResponseNums > 0 {
+		if pendingTx.pendingResponseNums > 0 {
 			continue
 		}
 
 		delete(t.m, txSeqNum)
 		processedTx := &phaseOneProcessedTx{
-			txSeqNum:     txSeqNum,
-			shardServers: pendingTx.shardServers,
-			isValid:      isValid,
+			txSeqNum:      txSeqNum,
+			shardServers:  pendingTx.shardServers,
+			invalidatedBy: pendingTx.invalidatedBy,
+			isValid:       pendingTx.invalidatedBy == nil,
 		}
-		if !isValid {
-			processedTx.invalidatedBy = shardServer
-		}
+
 		phaseOneProcessedTxs = append(phaseOneProcessedTxs, processedTx)
 	}
 
