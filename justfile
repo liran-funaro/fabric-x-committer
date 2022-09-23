@@ -39,7 +39,7 @@ build-sigservice:
     go build -o {{bin-build-out}}/sigservice ./sigverification/cmd/server
 
 build-shardsservice:
-    go build -o {{bin-build-out}}/shardservice ./shardsservice/cmd/server
+    go build -o {{bin-build-out}}/shardsservice ./shardsservice/cmd/server
 
 docker-image:
     docker build -f builder/Dockerfile -t sc_builder .

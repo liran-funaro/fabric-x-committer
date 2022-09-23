@@ -17,7 +17,7 @@ COORDINATOR_BIN="coordinator"
 SHARDSSERVICE_MAIN="${rootDir}/shardsservice/cmd/server/main.go"
 SHARDSSERVICE_BIN="shardsservice"
 SIGVERIFICATION_MAIN="${rootDir}/sigverification/cmd/server/main.go"
-SIGVERIFICATION_BIN="sigverificationservice"
+SIGVERIFICATION_BIN="sigservice"
 
 mkdir -p ${binDir}
 
