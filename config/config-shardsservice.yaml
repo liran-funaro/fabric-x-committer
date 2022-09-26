@@ -1,3 +1,4 @@
-prometheus:
-  enabled: false
 shards-service:
+  endpoint: localhost:5001
+  prometheus:
+    enabled: false

@@ -16,13 +16,13 @@ var logger = logging.New("parallel_executor")
 
 type Config struct {
 	//Parallelism How many parallel go routines will be launched
-	Parallelism int
+	Parallelism int `mapstructure:"parallelism"`
 	//BatchSizeCutoff The minimum amount of responses we need to collect before emitting a response
-	BatchSizeCutoff int
+	BatchSizeCutoff int `mapstructure:"batch-size-cutoff"`
 	//BatchTimeCutoff How often we should empty the non-empty buffer
-	BatchTimeCutoff time.Duration
+	BatchTimeCutoff time.Duration `mapstructure:"batch-time-cutoff"`
 	//ChannelBufferSize The size of the buffer of the input channels (increase for high fluctuations of load)
-	ChannelBufferSize int
+	ChannelBufferSize int `mapstructure:"channel-buffer-size"`
 }
 
 type ParallelExecutor interface {

@@ -11,7 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -20,9 +19,14 @@ import (
 type Host = string
 
 type ServerConfig struct {
-	Endpoint
-	PrometheusEnabled bool
-	Opts              []grpc.ServerOption
+	Prometheus Prometheus
+	Endpoint   Endpoint
+	Opts       []grpc.ServerOption
+}
+
+type Prometheus struct {
+	Enabled  bool     `mapstructure:"enabled"`
+	Endpoint Endpoint `mapstructure:"endpoint"`
 }
 
 const grpcProtocol = "tcp"
@@ -38,8 +42,8 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
 	grpcServer := grpc.NewServer(serverConfig.Opts...)
 	register(grpcServer)
 
-	if config.AppConfig.Prometheus.Enabled {
-		go launchPrometheus()
+	if serverConfig.Prometheus.Enabled {
+		go launchPrometheus(serverConfig.Prometheus.Endpoint)
 	}
 
 	err = grpcServer.Serve(listener)
@@ -72,8 +76,8 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 }
 
 type Endpoint struct {
-	Host Host
-	Port int
+	Host Host `mapstructure:"host"`
+	Port int  `mapstructure:"port"`
 }
 
 const endpointSplitter = ":"
@@ -126,9 +130,9 @@ func EndpointVars(p *[]*Endpoint, name string, defaultValue []*Endpoint, usage s
 	})
 }
 
-func launchPrometheus() {
+func launchPrometheus(endpoint Endpoint) {
 	http.Handle("/metrics", promhttp.Handler())
-	err := http.ListenAndServe(":2112", nil)
+	err := http.ListenAndServe(endpoint.Address(), nil)
 	if err != nil {
 		panic(err)
 	}

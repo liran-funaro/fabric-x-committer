@@ -3,6 +3,7 @@ package signature
 import (
 	"encoding/asn1"
 	"flag"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
@@ -16,11 +17,11 @@ type PublicKey = []byte
 
 var log = logging.New("verifier")
 
-type Scheme = int
+type Scheme = string
 
 const (
-	NoScheme Scheme = iota
-	Ecdsa
+	NoScheme Scheme = ""
+	Ecdsa           = "Ecdsa"
 )
 
 var schemeMap = map[string]Scheme{
@@ -31,7 +32,7 @@ var schemeMap = map[string]Scheme{
 func SchemeVar(p *Scheme, name string, defaultValue Scheme, usage string) {
 	*p = defaultValue
 	flag.Func(name, usage, func(input string) error {
-		if scheme, ok := schemeMap[input]; ok {
+		if scheme, ok := schemeMap[strings.ToUpper(input)]; ok {
 			*p = scheme
 			return nil
 		}

@@ -61,7 +61,7 @@ func main() {
 		}
 		go func() {
 			for {
-				Should(stream.Recv())
+				maybe(stream.Recv())
 			}
 		}()
 		go func() {
@@ -77,7 +77,7 @@ func main() {
 	}
 }
 
-func Should(_ interface{}, err error) {
+func maybe(_ interface{}, err error) {
 	if err != nil {
 		logger.Error(err)
 	}

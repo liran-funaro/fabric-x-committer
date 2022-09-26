@@ -2,40 +2,44 @@ package main
 
 import (
 	"flag"
-	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/performance"
 	"google.golang.org/grpc"
 )
 
-type ServerConfig struct {
-	Connection         connection.ServerConfig
-	Executor           parallelexecutor.Config
-	VerificationScheme signature.Scheme
-}
-
-var serverConfig ServerConfig
-
 func main() {
-	connection.EndpointVar(&serverConfig.Connection.Endpoint, "server", connection.Endpoint{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}, "Server host to connect to")
-	flag.Bool("prometheus", config.AppConfig.Prometheus.Enabled, "Enable prometheus metrics to be kept")
+	flag.String("server", serverconfig.Config.Endpoint.Address(), "Where the server listens for incoming connections")
+	flag.Bool("prometheus-enabled", serverconfig.Config.Prometheus.Enabled, "Enable prometheus metrics to be kept")
+	flag.String("prometheus-endpoint", serverconfig.Config.Prometheus.Endpoint.Address(), "Where prometheus listens for incoming connections")
 
-	flag.IntVar(&serverConfig.Executor.Parallelism, "parallelism", 1, "Executor parallelism")
-	flag.DurationVar(&serverConfig.Executor.BatchTimeCutoff, "batch-time-cutoff", 10*time.Millisecond, "Batch time cutoff limit")
-	flag.IntVar(&serverConfig.Executor.BatchSizeCutoff, "batch-size-cutoff", 100, "Batch size cutoff limit")
-	flag.IntVar(&serverConfig.Executor.ChannelBufferSize, "channel-buffer-size", 2, "Channel buffer size for the executor")
+	flag.Int("parallelism", serverconfig.Config.ParallelExecutor.Parallelism, "Executor parallelism")
+	flag.Duration("batch-time-cutoff", serverconfig.Config.ParallelExecutor.BatchTimeCutoff, "Batch time cutoff limit")
+	flag.Int("batch-size-cutoff", serverconfig.Config.ParallelExecutor.BatchSizeCutoff, "Batch size cutoff limit")
+	flag.Int("channel-buffer-size", serverconfig.Config.ParallelExecutor.ChannelBufferSize, "Channel buffer size for the executor")
 
-	signature.SchemeVar(&serverConfig.VerificationScheme, "scheme", signature.Ecdsa, "Verification scheme")
+	flag.String("scheme", serverconfig.Config.Scheme, "Verification scheme")
 
-	config.ParseFlags("prometheus", "prometheus.enabled")
+	config.ParseFlags(
+		"server", "sig-verification.endpoint",
 
-	connection.RunServerMain(&serverConfig.Connection, func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverConfig.Executor, serverConfig.VerificationScheme))
+		"prometheus-enabled", "sig-verification.prometheus.enabled",
+		"prometheus-endpoint", "sig-verification.prometheus.endpoint",
+
+		"parallelism", "sig-verification.parallel-executor.parallelism",
+		"batch-time-cutoff", "sig-verification.parallel-executor.batch-time-cutoff",
+		"batch-size-cutoff", "sig-verification.parallel-executor.batch-size-cutoff",
+		"channel-buffer-size", "sig-verification.parallel-executor.channel-buffer-size",
+
+		"scheme", "sig-verification.scheme",
+	)
+
+	serverConnection := &connection.ServerConfig{Prometheus: serverconfig.Config.Prometheus, Endpoint: serverconfig.Config.Endpoint}
+	connection.RunServerMain(serverConnection, func(grpcServer *grpc.Server) {
+		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverconfig.Config.ParallelExecutor, serverconfig.Config.Scheme))
 	})
 }

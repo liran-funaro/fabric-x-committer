@@ -3,5 +3,3 @@ logging:
   level: INFO
   development: true
   caller: true
-prometheus:
-  enabled: true

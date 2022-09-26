@@ -13,33 +13,34 @@ type AppLogger struct {
 }
 
 func init() {
+	config.Unmarshal(&configWrapper)
 	updateLogger()
 	config.OnConfigUpdated(updateLogger)
 }
 
-var logLevelMap = map[config.LoggingLevel]zapcore.Level{
-	config.Debug: zap.DebugLevel,
-	config.Info:  zap.InfoLevel,
-	config.Error: zap.ErrorLevel,
+var logLevelMap = map[Level]zapcore.Level{
+	Debug: zap.DebugLevel,
+	Info:  zap.InfoLevel,
+	Error: zap.ErrorLevel,
 }
 
 func updateLogger() {
-	logger.SugaredLogger = zap.Must(createLogger(config.AppConfig.Logging)).Sugar()
+	logger.SugaredLogger = zap.Must(createLogger()).Sugar()
 }
 
-func createLogger(c config.LoggingConfig) (*zap.Logger, error) {
-	if !c.Enabled {
+func createLogger() (*zap.Logger, error) {
+	if !Config.Enabled {
 		return zap.NewNop(), nil
 	}
 	var options []zap.Option
-	if level, ok := logLevelMap[c.Level]; ok {
+	if level, ok := logLevelMap[Config.Level]; ok {
 		options = append(options, zap.IncreaseLevel(level))
 	}
-	if c.Caller {
+	if Config.Caller {
 		options = append(options, zap.AddCaller())
 	}
 
-	if c.Development {
+	if Config.Development {
 		return zap.NewDevelopment(options...)
 	}
 	return zap.NewProduction(options...)

@@ -7,6 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 const (
@@ -64,4 +66,17 @@ func ReadConfig(configFilePath string) (*Configuration, error) {
 	}
 	return conf, nil
 
+}
+
+var configWrapper struct {
+	Config struct {
+		Prometheus connection.Prometheus `mapstructure:"prometheus"`
+		Endpoint   connection.Endpoint   `mapstructure:"endpoint"`
+	} `mapstructure:"shards-service"`
+}
+
+var Config = &configWrapper.Config
+
+func init() {
+	config.Unmarshal(&configWrapper)
 }
