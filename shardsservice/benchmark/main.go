@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/performance"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -31,15 +33,27 @@ func main() {
 		blockRate:      1000,
 	}
 
-	serverAddr := startServer()
+	shardsservice.Config.Prometheus = connection.Prometheus{
+		Enabled: true,
+		Endpoint: connection.Endpoint{
+			Host: "localhost",
+			Port: 2112,
+		},
+	}
+	shardsservice.Config.Endpoint = connection.Endpoint{
+		Host: "localhost",
+		Port: 9001,
+	}
+
+	go startServer()
 
 	bg := testutil.NewBlockGenerator(lc.numTxPerBlock, lc.serialNumPerTx, false)
 	defer bg.Stop()
 
-	processBlocks(serverAddr, bg, lc)
+	processBlocks(shardsservice.Config.Endpoint.Address(), bg, lc)
 }
 
-func startServer() string {
+func startServer() {
 	conf := &shardsservice.Configuration{
 		Database: &shardsservice.DatabaseConf{
 			Name:    "rocksdb",
@@ -51,27 +65,15 @@ func startServer() string {
 			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
 		},
 	}
-	sc := shardsservice.NewShardsCoordinator(conf)
-	log.Print("created shards coordinator")
 
-	serverAddr := fmt.Sprintf("localhost:%d", 9001)
-	lis, err := net.Listen("tcp", serverAddr)
-	if err != nil {
-		panic(err)
+	serverConfig := &connection.ServerConfig{
+		Prometheus: shardsservice.Config.Prometheus,
+		Endpoint:   shardsservice.Config.Endpoint,
 	}
-	log.Print("listining on " + serverAddr)
-
-	var opts []grpc.ServerOption
-	grpcServer := grpc.NewServer(opts...)
-	shardsservice.RegisterShardsServer(grpcServer, sc)
-	go func() {
-		err := grpcServer.Serve(lis)
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	return serverAddr
+	connection.RunServerMain(serverConfig, func(server *grpc.Server) {
+		log.Print("created shards coordinator")
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(conf))
+	})
 }
 
 func processBlocks(serverAddr string, bg *testutil.BlockGenerator, lc *loadConfig) {

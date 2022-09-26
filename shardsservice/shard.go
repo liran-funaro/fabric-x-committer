@@ -3,7 +3,9 @@ package shardsservice
 import (
 	"os"
 	"sync"
+	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
@@ -18,6 +20,7 @@ type shard struct {
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.AppLogger
+	metrics           *performance.ShardMetrics
 }
 
 type database interface {
@@ -32,6 +35,11 @@ func newShard(id uint32, path string) (*shard, error) {
 		return nil, err
 	}
 
+	var shardMetrics *performance.ShardMetrics
+	if Config.Prometheus.Enabled {
+		shardMetrics = performance.NewShardMetrics(id)
+	}
+
 	return &shard{
 		id:   id,
 		path: path,
@@ -44,12 +52,17 @@ func newShard(id uint32, path string) (*shard, error) {
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
+		metrics:           shardMetrics,
 	}, nil
 }
 
 func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	if s.metrics != nil {
+		s.metrics.IncomingTxs.WithLabelValues().Add(float64(len(requests)))
+	}
 
 	for tID, serialNumbers := range requests {
 		s.wg.Add(1)
@@ -102,8 +115,13 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	}
 
 	s.logger.Debugf("shard [%d] committing [%d] serial numbers", s.id, len(sNumbers.SerialNumbers))
+	startCommit := time.Now()
 	if err := s.db.Commit(sNumbers.SerialNumbers); err != nil {
 		panic(err)
+	}
+	if s.metrics != nil {
+		s.metrics.SNCommitDuration.WithLabelValues().Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
+		s.metrics.CommittedSNs.WithLabelValues().Add(float64(len(sNumbers.SerialNumbers)))
 	}
 
 	for txID := range requests {

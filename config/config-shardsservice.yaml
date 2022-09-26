@@ -1,4 +1,10 @@
 shards-service:
   endpoint: localhost:5001
   prometheus:
-    enabled: false
+    enabled: true
+    endpoint: localhost:2113
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  caller: true
