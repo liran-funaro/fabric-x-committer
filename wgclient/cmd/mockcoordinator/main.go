@@ -93,11 +93,11 @@ func main() {
 			Host: "0.0.0.0",
 			Port: config.DefaultGRPCPortCoordinatorServer,
 		},
-		PrometheusEnabled: false,
-		Opts:              nil,
+		Prometheus: connection.Prometheus{Enabled: false},
+		Opts:       nil,
 	}
 
-	fmt.Printf("listing on %s:%d\n", conf.Host, conf.Port)
+	fmt.Printf("listing on %s:%d\n", conf.Endpoint.Host, conf.Endpoint.Port)
 
 	bQueue := make(chan *token.Block, 1000)
 	connection.RunServerMain(conf, func(grpcServer *grpc.Server) {

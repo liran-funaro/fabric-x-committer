@@ -27,7 +27,9 @@ func main() {
 				Host: "localhost",
 				Port: config.DefaultGRPCPortCoordinatorServer,
 			},
-			PrometheusEnabled: false,
+			Prometheus: connection.Prometheus{
+				Enabled: false,
+			},
 		},
 
 		func(grpcServer *grpc.Server) {
