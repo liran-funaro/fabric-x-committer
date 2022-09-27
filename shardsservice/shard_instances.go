@@ -183,9 +183,15 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 		select {
 		case <-ticker.C:
 			if len(responses) > 0 {
-				i.logger.Debug("emitting response due to timeout")
-				i.phaseOneResponses <- responses
-				responses = nil
+				if uint32(len(responses)) >= maxBatchItemCount {
+					i.logger.Debugf("emitting response due to timeout with %d", maxBatchItemCount)
+					i.phaseOneResponses <- responses[:maxBatchItemCount]
+					responses = responses[maxBatchItemCount:]
+				} else {
+					i.logger.Debugf("emitting response due to timeout with %d", len(responses))
+					i.phaseOneResponses <- responses
+					responses = nil
+				}
 			}
 		default:
 			i.mu.RLock()
