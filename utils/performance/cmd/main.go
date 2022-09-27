@@ -19,6 +19,9 @@ const grafanaMappedPort = 3001
 
 var logger = logging.New("dockerrunner")
 
+var runOpts = &performance.DockerRunOpts{
+	RemoveIfExists: true,
+}
 var prometheusParams = &performance.DockerRunParams{
 	Name:     "prometheus-instance",
 	Image:    "prom/prometheus:latest",
@@ -57,14 +60,14 @@ func main() {
 		panic(err)
 	}
 
-	err = runner.Start(prometheusParams)
+	err = runner.Start(prometheusParams, runOpts)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
 	logger.Infof("Prometheus client running on http://localhost:%d", prometheusMappedPort)
 
-	err = runner.Start(grafanaParams)
+	err = runner.Start(grafanaParams, runOpts)
 	if err != nil {
 		logger.Fatal(err)
 	}

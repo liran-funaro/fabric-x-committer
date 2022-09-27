@@ -13,10 +13,15 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
 var logger = logging.New("performance")
+
+type DockerRunOpts struct {
+	RemoveIfExists bool
+}
 
 type DockerRunParams struct {
 	Name         string
@@ -33,7 +38,7 @@ type DockerHelper struct {
 	client *client.Client
 }
 
-func (h *DockerHelper) Start(params *DockerRunParams) error {
+func (h *DockerHelper) Start(params *DockerRunParams, opts *DockerRunOpts) error {
 	logger.Infof("Running docker for %s...", params.Hostname)
 	reader, err := h.imagePull(params.Image)
 	logger.Infof("Pulled docker image %s for %s.", params.Image, params.Hostname)
@@ -48,14 +53,24 @@ func (h *DockerHelper) Start(params *DockerRunParams) error {
 	}
 	if cnt != nil && cnt.State == "running" {
 		logger.Infof("Container %s is already up and running.", params.Name)
-		return nil
+		if opts.RemoveIfExists {
+			utils.Must(h.containerStop(cnt.ID))
+			logger.Infof("Stopped container %s.", params.Name)
+		} else {
+			return nil
+		}
 	}
 	var containerId string
-	if cnt != nil {
-		containerId = cnt.ID
-	} else {
+	if cnt == nil {
 		containerId, err = h.createContainer(params)
 		logger.Infof("Created container %s.", params.Hostname)
+	} else if opts.RemoveIfExists {
+		utils.Must(h.containerRemove(cnt.ID))
+		logger.Infof("Removed container %s.", params.Hostname)
+		containerId, err = h.createContainer(params)
+		logger.Infof("Created container %s.", params.Hostname)
+	} else {
+		containerId = cnt.ID
 	}
 	if err != nil {
 		return err
@@ -72,6 +87,14 @@ func (h *DockerHelper) Start(params *DockerRunParams) error {
 
 	logger.Infof("Running %s is done!", params.Hostname)
 	return nil
+}
+
+func (h *DockerHelper) containerRemove(containerId string) error {
+	return h.client.ContainerRemove(h.ctx, containerId, types.ContainerRemoveOptions{})
+}
+
+func (h *DockerHelper) containerStop(containerId string) error {
+	return h.client.ContainerStop(h.ctx, containerId, nil)
 }
 
 func (h *DockerHelper) imagePull(image string) (io.ReadCloser, error) {
