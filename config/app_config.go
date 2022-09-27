@@ -59,18 +59,18 @@ func init() {
 }
 
 func initializeConfig() error {
-	// Read config files in the directory by default
-	err := readYamlConfigs(defaultConfigFiles())
-	if err != nil {
-		return err
-	}
+	//// Read config files in the directory by default
+	//err := readYamlConfigs(defaultConfigFiles())
+	//if err != nil {
+	//	return err
+	//}
 
 	// Env vars, e.g. SC_LOGGING_ENABLED=false, but not SC_VERBOSE=false (does not work with aliases)
 	viper.SetEnvPrefix("SC")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
-	err = configUpdated()
+	err := configUpdated()
 	if err != nil {
 		return err
 	}
