@@ -1,4 +1,4 @@
-package performance
+package monitoring
 
 import (
 	"bufio"
@@ -17,7 +17,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
-var logger = logging.New("performance")
+var logger = logging.New("monitoring")
 
 type DockerRunOpts struct {
 	RemoveIfExists bool

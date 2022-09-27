@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/performance"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
 const prometheusDefaultLocalPort = 9090
@@ -19,10 +20,10 @@ const grafanaMappedPort = 3001
 
 var logger = logging.New("dockerrunner")
 
-var runOpts = &performance.DockerRunOpts{
+var runOpts = &monitoring.DockerRunOpts{
 	RemoveIfExists: true,
 }
-var prometheusParams = &performance.DockerRunParams{
+var prometheusParams = &monitoring.DockerRunParams{
 	Name:     "prometheus-instance",
 	Image:    "prom/prometheus:latest",
 	Hostname: "prometheus",
@@ -33,7 +34,7 @@ var prometheusParams = &performance.DockerRunParams{
 		prometheusDefaultLocalPort: prometheusMappedPort,
 	},
 }
-var grafanaParams = &performance.DockerRunParams{
+var grafanaParams = &monitoring.DockerRunParams{
 	Name:     "grafana-instance",
 	Image:    "grafana/grafana:latest",
 	Hostname: "grafana",
@@ -55,7 +56,8 @@ var grafanaParams = &performance.DockerRunParams{
 }
 
 func main() {
-	runner, err := performance.DockerContainerRunner()
+
+	runner, err := monitoring.DockerContainerRunner()
 	if err != nil {
 		panic(err)
 	}
@@ -75,5 +77,9 @@ func main() {
 }
 
 func configFile(filename string) string {
-	return filepath.Join(config.DirPath, filename)
+
+	path, err := os.Getwd()
+	utils.Must(err)
+
+	return filepath.Join(path, "config", filename)
 }

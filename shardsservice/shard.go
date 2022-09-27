@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/performance"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
@@ -20,7 +20,7 @@ type shard struct {
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.Logger
-	metrics           *performance.ShardMetrics
+	metrics           *metrics.ShardMetrics
 }
 
 type database interface {
@@ -35,9 +35,9 @@ func newShard(id uint32, path string) (*shard, error) {
 		return nil, err
 	}
 
-	var shardMetrics *performance.ShardMetrics
+	var shardMetrics *metrics.ShardMetrics
 	if Config.Connection().Prometheus.Enabled {
-		shardMetrics = performance.NewShardMetrics(id)
+		shardMetrics = metrics.NewShardMetrics(id)
 	}
 
 	return &shard{

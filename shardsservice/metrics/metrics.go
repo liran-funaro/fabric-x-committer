@@ -1,9 +1,10 @@
-package performance
+package metrics
 
 import (
+	"strconv"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"strconv"
 )
 
 var IncomingTxs = promauto.NewCounterVec(prometheus.CounterOpts{
