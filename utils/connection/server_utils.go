@@ -137,3 +137,24 @@ func launchPrometheus(endpoint Endpoint) {
 		panic(err)
 	}
 }
+
+func ServerConfigFlags(defaultServerConfig ServerConfig) {
+	flag.String("server", defaultServerConfig.Endpoint.Address(), "Where the server listens for incoming connections")
+	flag.Bool("prometheus-enabled", defaultServerConfig.Prometheus.Enabled, "Enable prometheus metrics to be kept")
+	flag.String("prometheus-endpoint", defaultServerConfig.Prometheus.Endpoint.Address(), "Where prometheus listens for incoming connections")
+}
+
+func SliceFlag(name string, defaultValue []string, usage string) *[]string {
+	var p []string
+	SliceFlagVar(&p, name, defaultValue, usage)
+	return &p
+}
+
+func SliceFlagVar(p *[]string, name string, defaultValue []string, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(slice string) error {
+		result := strings.Split(slice, flagSliceSeparator)
+		*p = result
+		return nil
+	})
+}

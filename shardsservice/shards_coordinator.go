@@ -10,12 +10,12 @@ import (
 type shardsCoordinator struct {
 	shards            *shardInstances
 	phaseOneResponses chan []*PhaseOneResponse
-	config            *Configuration
+	config            *ShardCoordinatorConfig
 	logger            *logging.AppLogger
 	UnimplementedShardsServer
 }
 
-func NewShardsCoordinator(conf *Configuration) *shardsCoordinator {
+func NewShardsCoordinator(conf *ShardCoordinatorConfig) *shardsCoordinator {
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 

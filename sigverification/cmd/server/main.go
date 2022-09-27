@@ -5,6 +5,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -13,9 +14,7 @@ import (
 )
 
 func main() {
-	flag.String("server", serverconfig.Config.Endpoint.Address(), "Where the server listens for incoming connections")
-	flag.Bool("prometheus-enabled", serverconfig.Config.Prometheus.Enabled, "Enable prometheus metrics to be kept")
-	flag.String("prometheus-endpoint", serverconfig.Config.Prometheus.Endpoint.Address(), "Where prometheus listens for incoming connections")
+	connection.ServerConfigFlags(*serverconfig.Config.Connection())
 
 	flag.Int("parallelism", serverconfig.Config.ParallelExecutor.Parallelism, "Executor parallelism")
 	flag.Duration("batch-time-cutoff", serverconfig.Config.ParallelExecutor.BatchTimeCutoff, "Batch time cutoff limit")
@@ -26,7 +25,6 @@ func main() {
 
 	config.ParseFlags(
 		"server", "sig-verification.endpoint",
-
 		"prometheus-enabled", "sig-verification.prometheus.enabled",
 		"prometheus-endpoint", "sig-verification.prometheus.endpoint",
 
@@ -38,8 +36,7 @@ func main() {
 		"scheme", "sig-verification.scheme",
 	)
 
-	serverConnection := &connection.ServerConfig{Prometheus: serverconfig.Config.Prometheus, Endpoint: serverconfig.Config.Endpoint}
-	connection.RunServerMain(serverConnection, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(serverconfig.Config.Connection(), func(grpcServer *grpc.Server) {
 		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverconfig.Config.ParallelExecutor, serverconfig.Config.Scheme))
 	})
 }

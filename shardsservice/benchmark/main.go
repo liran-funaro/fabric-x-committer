@@ -25,55 +25,22 @@ type loadConfig struct {
 	blockRate      int
 }
 
+var lc = &loadConfig{
+	numTxPerBlock:  100,
+	serialNumPerTx: 1,
+	numBlocks:      100000,
+	blockRate:      1000,
+}
+
 func main() {
-	lc := &loadConfig{
-		numTxPerBlock:  100,
-		serialNumPerTx: 1,
-		numBlocks:      100000,
-		blockRate:      1000,
-	}
-
-	shardsservice.Config.Prometheus = connection.Prometheus{
-		Enabled: true,
-		Endpoint: connection.Endpoint{
-			Host: "localhost",
-			Port: 2112,
-		},
-	}
-	shardsservice.Config.Endpoint = connection.Endpoint{
-		Host: "localhost",
-		Port: 9001,
-	}
-
-	go startServer()
+	go connection.RunServerMain(shardsservice.Config.Connection(), func(server *grpc.Server) {
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(shardsservice.Config.ShardCoordinator()))
+	})
 
 	bg := testutil.NewBlockGenerator(lc.numTxPerBlock, lc.serialNumPerTx, false)
 	defer bg.Stop()
 
-	processBlocks(shardsservice.Config.Endpoint.Address(), bg, lc)
-}
-
-func startServer() {
-	conf := &shardsservice.Configuration{
-		Database: &shardsservice.DatabaseConf{
-			Name:    "rocksdb",
-			RootDir: "./",
-		},
-		Limits: &shardsservice.LimitsConf{
-			MaxGoroutines:                     500,
-			MaxPhaseOneResponseBatchItemCount: 100,
-			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
-		},
-	}
-
-	serverConfig := &connection.ServerConfig{
-		Prometheus: shardsservice.Config.Prometheus,
-		Endpoint:   shardsservice.Config.Endpoint,
-	}
-	connection.RunServerMain(serverConfig, func(server *grpc.Server) {
-		log.Print("created shards coordinator")
-		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(conf))
-	})
+	processBlocks(shardsservice.Config.Connection().Endpoint.Address(), bg, lc)
 }
 
 func processBlocks(serverAddr string, bg *testutil.BlockGenerator, lc *loadConfig) {

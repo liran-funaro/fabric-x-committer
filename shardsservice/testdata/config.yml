@@ -1,7 +1,8 @@
-database:
-  name: "rocksdb"
-  rootDir: "./"
-limits:
-  maxGoroutines: 100
-  maxPhaseOneResponseBatchItemCount: 100
-  phaseOneResponseCutTimeout: 50ms
+shards-service:
+  database:
+    name: "rocksdb"
+    root-dir: "./"
+  limits:
+    max-goroutines: 100
+    max-phase-one-response-batch-item-count: 100
+    phase-one-response-cut-timeout: 50ms

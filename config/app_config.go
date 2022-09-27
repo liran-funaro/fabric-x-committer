@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 var configUpdateListener []func()
@@ -44,7 +45,6 @@ func configUpdated() error {
 		updater()
 	}
 
-	//_ = viper.WriteConfigAs(filepath.Join(generated.DirPath, "generated-config.yaml"))
 	return nil
 }
 
@@ -99,7 +99,7 @@ func ParseFlags(customBindings ...string) {
 	defaultFlagBindings := []string{"verbose", "logging.enabled"} // Aliases don't work with bindings
 
 	// --configs flag
-	configPaths := pflag.StringSlice("configs", []string{}, "Config file paths to load")
+	configPaths := connection.SliceFlag("configs", []string{}, "Config file paths to load")
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()

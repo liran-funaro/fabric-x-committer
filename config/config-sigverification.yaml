@@ -1,9 +1,9 @@
 sig-verification:
-  scheme: "Ecdsa"
   endpoint: localhost:5000
   prometheus:
     enabled: true
     endpoint: localhost:2112
+  scheme: "Ecdsa"
   parallel-executor:
     parallelism: 4
     batch-time-cutoff: 500ms

@@ -1,10 +1,7 @@
 package main
 
 import (
-	"flag"
-	"log"
-	"time"
-
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -12,40 +9,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-var conf = &shardsservice.Configuration{
-	Database: &shardsservice.DatabaseConf{
-		Name:    "rocksdb",
-		RootDir: "./",
-	},
-	Limits: &shardsservice.LimitsConf{
-		MaxGoroutines:                     1000,
-		MaxPhaseOneResponseBatchItemCount: 100,
-		PhaseOneResponseCutTimeout:        10 * time.Millisecond,
-	},
-}
-
 func main() {
+	connection.ServerConfigFlags(*shardsservice.Config.Connection())
+	config.ParseFlags(
+		"server", "shards-service.endpoint",
+		"prometheus-enabled", "shards-service.prometheus.enabled",
+		"prometheus-endpoint", "shards-service.prometheus.endpoint",
+	)
 
-	configFileDir := flag.String("configfiledir", "", "directory where the yaml file holding the shard service configuration is placed")
-
-	flag.Parse()
-
-	if *configFileDir != "" {
-		var err error
-		conf, err = shardsservice.ReadConfig(*configFileDir)
-		log.Fatal(err.Error())
-	}
-
-	sConf := &connection.ServerConfig{
-		Prometheus: shardsservice.Config.Prometheus,
-		Endpoint:   shardsservice.Config.Endpoint,
-	}
-
-	connection.RunServerMain(sConf, func(grpcServer *grpc.Server) {
-		shardsservice.RegisterShardsServer(
-			grpcServer,
-			shardsservice.NewShardsCoordinator(conf),
-		)
-
+	connection.RunServerMain(shardsservice.Config.Connection(), func(grpcServer *grpc.Server) {
+		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(shardsservice.Config.ShardCoordinator()))
 	})
 }

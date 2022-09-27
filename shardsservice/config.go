@@ -1,82 +1,64 @@
 package shardsservice
 
 import (
-	"os"
-	"path"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
-const (
-	defaultLocalConfigFile = "config.yml"
-)
-
-type Configuration struct {
-	Database *DatabaseConf
-	Limits   *LimitsConf
+type ShardCoordinatorConfig struct {
+	Database *DatabaseConfig
+	Limits   *LimitsConfig
 }
 
-type DatabaseConf struct {
-	Name    string
-	RootDir string
+type DatabaseConfig struct {
+	Name    string `mapstructure:"name"`
+	RootDir string `mapstructure:"root-dir"`
 }
 
-type LimitsConf struct {
-	MaxGoroutines                     uint32
-	MaxPhaseOneResponseBatchItemCount uint32
-	PhaseOneResponseCutTimeout        time.Duration
+type LimitsConfig struct {
+	MaxGoroutines                     uint32        `mapstructure:"max-goroutines"`
+	MaxPhaseOneResponseBatchItemCount uint32        `mapstructure:"max-phase-one-response-batch-item-count"`
+	PhaseOneResponseCutTimeout        time.Duration `mapstructure:"phase-one-response-cut-timeout"`
 }
 
-// Read reads configurations from the config file and returns the config
-func ReadConfig(configFilePath string) (*Configuration, error) {
-	if configFilePath == "" {
-		return nil, errors.New("path to the configuration file is empty")
+type ShardServiceConfig struct {
+	Prometheus connection.Prometheus `mapstructure:"prometheus"`
+	Endpoint   connection.Endpoint   `mapstructure:"endpoint"`
+	Database   DatabaseConfig        `mapstructure:"database"`
+	Limits     LimitsConfig          `mapstructure:"limits"`
+}
+
+func (c *ShardServiceConfig) ShardCoordinator() *ShardCoordinatorConfig {
+	return &ShardCoordinatorConfig{
+		Database: &c.Database,
+		Limits:   &c.Limits,
 	}
+}
 
-	fileInfo, err := os.Stat(configFilePath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to read the status of the configuration path: '%s'", configFilePath)
-	}
-
-	fileName := configFilePath
-	if fileInfo.IsDir() {
-		fileName = path.Join(configFilePath, defaultLocalConfigFile)
-	}
-
-	v := viper.New()
-	v.SetConfigFile(fileName)
-
-	v.SetDefault("database.name", "rocksdb")
-	v.SetDefault("database.rootDir", "./")
-	v.SetDefault("limits.maxGoroutines", 100)
-	v.SetDefault("limits.maxPhaseOneResponseBatchItemCount", 100)
-	v.SetDefault("limits.phaseOneResponseCutTimeout", 50*time.Millisecond)
-
-	if err := v.ReadInConfig(); err != nil {
-		return nil, errors.Wrap(err, "error reading local config file")
-	}
-
-	conf := &Configuration{}
-	if err := v.UnmarshalExact(conf); err != nil {
-		return nil, errors.Wrapf(err, "unable to unmarshal local config file: '%s' into struct", fileName)
-	}
-	return conf, nil
-
+func (c *ShardServiceConfig) Connection() *connection.ServerConfig {
+	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
 var configWrapper struct {
-	Config struct {
-		Prometheus connection.Prometheus `mapstructure:"prometheus"`
-		Endpoint   connection.Endpoint   `mapstructure:"endpoint"`
-	} `mapstructure:"shards-service"`
+	Config ShardServiceConfig `mapstructure:"shards-service"`
 }
 
 var Config = &configWrapper.Config
 
 func init() {
+	viper.SetDefault("shards-service.database.name", "rocksdb")
+	viper.SetDefault("shards-service.database.root-dir", "./")
+
+	viper.SetDefault("shards-service.limits.max-goroutines", 100)
+	viper.SetDefault("shards-service.limits.max-phase-one-response-batch-item-count", 100)
+	viper.SetDefault("shards-service.limits.phase-one-response-cut-timeout", 50*time.Millisecond)
+
+	viper.SetDefault("shards-service.endpoint", "localhost:5000")
+	viper.SetDefault("shards-service.prometheus.enabled", "true")
+	viper.SetDefault("shards-service.prometheus.endpoint", "localhost:2113")
+
 	config.Unmarshal(&configWrapper)
 }

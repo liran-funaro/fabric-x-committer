@@ -36,7 +36,7 @@ func newShard(id uint32, path string) (*shard, error) {
 	}
 
 	var shardMetrics *performance.ShardMetrics
-	if Config.Prometheus.Enabled {
+	if Config.Connection().Prometheus.Enabled {
 		shardMetrics = performance.NewShardMetrics(id)
 	}
 

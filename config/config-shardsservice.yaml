@@ -3,6 +3,13 @@ shards-service:
   prometheus:
     enabled: true
     endpoint: localhost:2113
+  database:
+    name: "rocksdb"
+    root-dir: "./"
+  limits:
+    max-goroutines: 100
+    max-phase-one-response-batch-item-count: 100
+    phase-one-response-cut-timeout: 50ms
 logging:
   enabled: true
   level: INFO

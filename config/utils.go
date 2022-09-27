@@ -11,10 +11,10 @@ import (
 
 type configMap = map[interface{}]interface{}
 
-func MergeYamlConfigs(filenames ...string) ([]byte, error) {
+func MergeYamlConfigs(filePaths ...string) ([]byte, error) {
 	result := make(configMap)
-	for _, filename := range filenames {
-		current, err := readYamlConfig(filename)
+	for _, filePath := range filePaths {
+		current, err := readYamlConfig(filePath)
 		if err != nil {
 			return nil, err
 		}
@@ -24,8 +24,12 @@ func MergeYamlConfigs(filenames ...string) ([]byte, error) {
 	return yaml.Marshal(result)
 }
 
-func readYamlConfig(filename string) (configMap, error) {
-	file, err := os.Open(filename)
+func readYamlConfig(filePath string) (configMap, error) {
+	absoluteFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.Open(absoluteFilePath)
 	if err != nil {
 		return nil, err
 	}

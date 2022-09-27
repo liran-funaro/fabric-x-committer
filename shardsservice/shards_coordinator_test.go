@@ -2,59 +2,55 @@ package shardsservice
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type shardsCoordinatorGrpcServiceForTest struct {
 	sc         *shardsCoordinator
-	conf       *Configuration
+	conf       *ShardCoordinatorConfig
 	grpcServer *grpc.Server
 	clientConn *grpc.ClientConn
 	cleanup    func()
 }
 
-func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port uint32) *shardsCoordinatorGrpcServiceForTest {
-	conf := &Configuration{
-		Database: &DatabaseConf{
+func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoordinatorGrpcServiceForTest {
+	c := ShardServiceConfig{
+		Prometheus: connection.Prometheus{Enabled: false},
+		Endpoint: connection.Endpoint{
+			Host: "localhost",
+			Port: port,
+		},
+		Database: DatabaseConfig{
 			Name:    "rocksdb",
 			RootDir: "./",
 		},
-		Limits: &LimitsConf{
-			MaxGoroutines:                     100,
+		Limits: LimitsConfig{
+			MaxGoroutines:                     500,
 			MaxPhaseOneResponseBatchItemCount: 100,
-			PhaseOneResponseCutTimeout:        50 * time.Millisecond,
+			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
 		},
 	}
-	sc := NewShardsCoordinator(conf)
-	log.Print("created shards coordinator")
 
-	serverAddr := fmt.Sprintf("localhost:%d", port)
-	lis, err := net.Listen("tcp", serverAddr)
-	require.NoError(t, err)
-	log.Print("listining on " + serverAddr)
+	var grpcServer *grpc.Server
+	sc := NewShardsCoordinator(c.ShardCoordinator())
+	go connection.RunServerMain(c.Connection(), func(server *grpc.Server) {
+		log.Print("created shards coordinator")
+		grpcServer = server
+		RegisterShardsServer(server, sc)
+	})
 
-	var opts []grpc.ServerOption
-	grpcServer := grpc.NewServer(opts...)
-	RegisterShardsServer(grpcServer, sc)
-	go func() {
-		require.NoError(t, grpcServer.Serve(lis))
-	}()
-
-	cliOpts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	clientConn, err := grpc.Dial(serverAddr, cliOpts...)
+	clientConn, err := connection.Connect(connection.NewDialConfig(c.Endpoint))
 	require.NoError(t, err)
 
 	return &shardsCoordinatorGrpcServiceForTest{
 		sc:         sc,
-		conf:       conf,
+		conf:       Config.ShardCoordinator(),
 		grpcServer: grpcServer,
 		clientConn: clientConn,
 		cleanup: func() {
