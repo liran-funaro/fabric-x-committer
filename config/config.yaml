@@ -1,5 +1,0 @@
-logging:
-  enabled: true
-  level: INFO
-  development: true
-  caller: true

@@ -11,7 +11,7 @@ type shardsCoordinator struct {
 	shards            *shardInstances
 	phaseOneResponses chan []*PhaseOneResponse
 	config            *ShardCoordinatorConfig
-	logger            *logging.AppLogger
+	logger            *logging.Logger
 	UnimplementedShardsServer
 }
 

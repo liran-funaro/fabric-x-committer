@@ -19,7 +19,7 @@ type shardInstances struct {
 	rootDir               string
 	mu                    sync.RWMutex
 	phaseOneResponses     chan []*PhaseOneResponse
-	logger                *logging.AppLogger
+	logger                *logging.Logger
 }
 
 func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string) (*shardInstances, error) {

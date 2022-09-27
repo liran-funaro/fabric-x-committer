@@ -1,22 +1,14 @@
 package logging
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"sync"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var logger AppLogger
-
-type AppLogger struct {
-	*zap.SugaredLogger
-}
-
-func init() {
-	config.Unmarshal(&configWrapper)
-	updateLogger()
-	config.OnConfigUpdated(updateLogger)
-}
+var loggerInstance Logger
+var mu sync.Mutex
 
 var logLevelMap = map[Level]zapcore.Level{
 	Debug: zap.DebugLevel,
@@ -24,28 +16,42 @@ var logLevelMap = map[Level]zapcore.Level{
 	Error: zap.ErrorLevel,
 }
 
-func updateLogger() {
-	logger.SugaredLogger = zap.Must(createLogger()).Sugar()
+type Logger struct {
+	*zap.SugaredLogger
 }
 
-func createLogger() (*zap.Logger, error) {
-	if !Config.Enabled {
+func init() {
+	SetupWithConfig(defaultConfig)
+}
+
+func SetupWithConfig(config *Config) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	loggerInstance.SugaredLogger = zap.Must(createLogger(config)).Sugar()
+}
+
+func createLogger(config *Config) (*zap.Logger, error) {
+	if !config.Enabled {
 		return zap.NewNop(), nil
 	}
+
 	var options []zap.Option
-	if level, ok := logLevelMap[Config.Level]; ok {
+	if level, ok := logLevelMap[config.Level]; ok {
 		options = append(options, zap.IncreaseLevel(level))
 	}
-	if Config.Caller {
-		options = append(options, zap.AddCaller())
+
+	options = append(options, zap.WithCaller(config.Caller))
+
+	if config.Development {
+		c := zap.NewDevelopmentConfig()
+		c.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		return c.Build(options...)
 	}
 
-	if Config.Development {
-		return zap.NewDevelopment(options...)
-	}
 	return zap.NewProduction(options...)
 }
 
-func New(name string) *AppLogger {
-	return &logger
+func New(name string) *Logger {
+	return &loggerInstance
 }

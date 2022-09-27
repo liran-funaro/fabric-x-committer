@@ -19,7 +19,7 @@ type shard struct {
 	pendingCommits    *pendingCommits
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
-	logger            *logging.AppLogger
+	logger            *logging.Logger
 	metrics           *performance.ShardMetrics
 }
 

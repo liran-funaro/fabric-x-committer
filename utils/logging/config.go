@@ -8,13 +8,16 @@ const (
 	Error       = "ERROR"
 )
 
-var configWrapper struct {
-	Config struct {
-		Enabled     bool
-		Level       Level
-		Caller      bool
-		Development bool
-	} `mapstructure:"logging"`
+type Config struct {
+	Enabled     bool
+	Level       Level
+	Caller      bool
+	Development bool
 }
 
-var Config = &configWrapper.Config
+var defaultConfig = &Config{
+	Enabled:     true,
+	Level:       Info,
+	Caller:      false,
+	Development: true,
+}

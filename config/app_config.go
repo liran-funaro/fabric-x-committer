@@ -49,6 +49,12 @@ func configUpdated() error {
 }
 
 func init() {
+
+	// register logging for config updates
+	configUpdateListener = append(configUpdateListener, func() {
+		utils.Must(initializeLoggerViaConfig())
+	})
+
 	utils.Must(initializeConfig())
 }
 
