@@ -9,7 +9,7 @@ import (
 )
 
 type SigVerifierMgrConfig struct {
-	Endpoints []*connection.Endpoint `mapstructure:"servers"`
+	Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
 }
 
 type ShardsServerMgrConfig struct {
@@ -54,7 +54,7 @@ var configWrapper struct {
 var Config = &configWrapper.Config
 
 func init() {
-	viper.SetDefault("coordinator.sig-verifiers.servers", []string{
+	viper.SetDefault("coordinator.sig-verifiers.endpoints", []string{
 		"localhost:5000",
 	})
 

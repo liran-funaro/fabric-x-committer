@@ -6,11 +6,19 @@ scrape_configs:
     static_configs:
       - targets: [
         'tokentestbed1.sl.cloud9.ibm.com:9100',
+        'tokentestbed1.sl.cloud9.ibm.com:2112',
         'tokentestbed2.sl.cloud9.ibm.com:9100',
+        'tokentestbed2.sl.cloud9.ibm.com:2112',
         'tokentestbed3.sl.cloud9.ibm.com:9100',
+        'tokentestbed3.sl.cloud9.ibm.com:2112',
         'tokentestbed4.sl.cloud9.ibm.com:9100',
+        'tokentestbed4.sl.cloud9.ibm.com:2112',
         'tokentestbed5.sl.cloud9.ibm.com:9100',
+        'tokentestbed5.sl.cloud9.ibm.com:2112',
         'tokentestbed6.sl.cloud9.ibm.com:9100',
+        'tokentestbed6.sl.cloud9.ibm.com:2112',
         'tokentestbed7.sl.cloud9.ibm.com:9100',
-        'tokentestbed8.sl.cloud9.ibm.com:9100'
+        'tokentestbed7.sl.cloud9.ibm.com:2112',
+        'tokentestbed8.sl.cloud9.ibm.com:9100',
+        'tokentestbed8.sl.cloud9.ibm.com:2112'
       ]
