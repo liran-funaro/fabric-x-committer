@@ -3,6 +3,7 @@ package pipeline
 import (
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
@@ -43,6 +44,9 @@ func (c *Coordinator) SetSigVerificationKey(k *sigverification.Key) error {
 func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.dependencyMgr.inputChan <- block
 	c.sigVerifierMgr.inputChan <- block
+	if Config.Prometheus.Enabled {
+		metrics.IncomingTxs.Add(float64(len(block.Txs)))
+	}
 }
 
 func (c *Coordinator) TxStatusChan() <-chan []*TxStatus {
@@ -64,6 +68,9 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		remainings = leftover
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
+		}
+		if Config.Prometheus.Enabled {
+			metrics.SigVerifiedPendingTxs.Set(float64(len(remainings)))
 		}
 	}
 
@@ -108,4 +115,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.outputChan <- txStatus
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
+	if Config.Prometheus.Enabled {
+		metrics.ProcessedTxs.Add(float64(len(txStatus)))
+	}
 }

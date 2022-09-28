@@ -56,7 +56,7 @@ func init() {
 	viper.SetDefault("shards-service.limits.max-phase-one-response-batch-item-count", 100)
 	viper.SetDefault("shards-service.limits.phase-one-response-cut-timeout", 50*time.Millisecond)
 
-	viper.SetDefault("shards-service.endpoint", "localhost:5000")
+	viper.SetDefault("shards-service.endpoint", "localhost:5001")
 	viper.SetDefault("shards-service.prometheus.enabled", "true")
 	viper.SetDefault("shards-service.prometheus.endpoint", "localhost:2113")
 

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"sync"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
@@ -90,6 +91,10 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 			}
 		}
 	}
+	if Config.Prometheus.Enabled {
+		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
+		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
+	}
 }
 
 func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
@@ -141,6 +146,10 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 			continue
 		}
 		m.removeNodeUnderAcquiredLock(node, u.IsValid)
+	}
+	if Config.Prometheus.Enabled {
+		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
+		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
 	}
 	return notYetSeenTxs
 }

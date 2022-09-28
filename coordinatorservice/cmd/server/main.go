@@ -6,7 +6,9 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
