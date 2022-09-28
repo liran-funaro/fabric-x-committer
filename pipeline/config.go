@@ -9,7 +9,7 @@ import (
 )
 
 type SigVerifierMgrConfig struct {
-	Servers []*connection.Endpoint `mapstructure:"servers"`
+	Endpoints []*connection.Endpoint `mapstructure:"servers"`
 }
 
 type ShardsServerMgrConfig struct {

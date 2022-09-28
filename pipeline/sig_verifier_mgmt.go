@@ -27,7 +27,7 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}
-	for _, a := range c.Servers {
+	for _, a := range c.Endpoints {
 		v, err := newSigVerifier(a, responseCollectionChan)
 		if err != nil {
 			return nil, err

@@ -31,12 +31,12 @@ type SigVerifierGrpcServer struct {
 
 func StartsSigVerifierGrpcServers(
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
-	addresses []*connection.Endpoint,
+	endpoints []*connection.Endpoint,
 ) ([]*SigVerifierGrpcServer, error) {
 
-	servers := make([]*SigVerifierGrpcServer, len(addresses))
-	for i, a := range addresses {
-		s, err := NewSigVerifierGrpcServer(behavior, a)
+	servers := make([]*SigVerifierGrpcServer, len(endpoints))
+	for i, endpoint := range endpoints {
+		s, err := NewSigVerifierGrpcServer(behavior, endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -47,7 +47,7 @@ func StartsSigVerifierGrpcServers(
 
 func NewSigVerifierGrpcServer(
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
-	address *connection.Endpoint,
+	endpoint *connection.Endpoint,
 ) (*SigVerifierGrpcServer, error) {
 
 	grpcServer := grpc.NewServer()
@@ -57,7 +57,7 @@ func NewSigVerifierGrpcServer(
 	}
 
 	sigverification.RegisterVerifierServer(grpcServer, sigVerifierImpl)
-	if err := startGrpcServer(address, grpcServer); err != nil {
+	if err := startGrpcServer(endpoint, grpcServer); err != nil {
 		return nil, err
 	}
 
@@ -102,10 +102,10 @@ func (s *SigVerifierImpl) StartStream(stream sigverification.Verifier_StartStrea
 	}
 }
 
-func startGrpcServer(address *connection.Endpoint, grpcServer *grpc.Server) error {
+func startGrpcServer(endpoint *connection.Endpoint, grpcServer *grpc.Server) error {
 	//bufconn.Listen(1024 * 1024)
 	go func() {
-		lis, err := net.Listen("tcp", address.Address())
+		lis, err := net.Listen("tcp", endpoint.Address())
 		if err != nil {
 			panic(fmt.Sprintf("Error while starting test grpc server: %s", err))
 		}
@@ -117,7 +117,7 @@ func startGrpcServer(address *connection.Endpoint, grpcServer *grpc.Server) erro
 	}()
 
 	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout("tcp", address.Address(), 1*time.Second)
+		conn, err := net.DialTimeout("tcp", endpoint.Address(), 1*time.Second)
 		if err != nil {
 			if i == 9 {
 				return err

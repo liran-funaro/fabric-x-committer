@@ -52,12 +52,15 @@ just build-all
 Next, create `config-coordinator.yaml` with the following content:
 
 ```yaml
-sig_verification:
-  servers: "localhost"
-shards_service:
-  servers: "localhost"
-  num_shards_per_server: 1
-  delete_existing_shards: true
+coordinator:
+  sig-verifiers:
+    endpoints:
+      - "localhost:5000"
+  shards-servers:
+    servers:
+      - endpoint: "localhost:5001"
+        num-shards: 1
+  delete-existing-shards: true
 ```
 
 Next we start the services, each in a terminal window:

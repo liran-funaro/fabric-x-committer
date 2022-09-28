@@ -4,7 +4,7 @@ coordinator:
     endpoint: localhost:2114
   endpoint: localhost:5002
   sig-verifiers:
-    servers:
+    endpoints:
       - localhost:5000
   shards-servers:
     servers:

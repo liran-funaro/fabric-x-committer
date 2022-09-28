@@ -19,7 +19,7 @@ func main() {
 		testConfig     = `
 coordinator:
   sig-verifiers:
-    servers:
+    endpoints:
       - localhost:5000
   shards-servers:
     servers:
@@ -33,15 +33,16 @@ coordinator:
 	defer bg.Stop()
 
 	utils.Must(config.ReadYamlConfigString(testConfig))
+	coordinatorConfig := pipeline.Config
 	track.StartProfiling()
 
-	grpcServers, err := track.StartGrpcServers(pipeline.Config.SigVerifiers.Servers, pipeline.Config.ShardsServers.GetEndpoints())
+	grpcServers, err := track.StartGrpcServers(coordinatorConfig.SigVerifiers.Endpoints, coordinatorConfig.ShardsServers.GetEndpoints())
 	if err != nil {
 		panic(fmt.Sprintf("Error in starting grpc servers: %s", err))
 	}
 	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(pipeline.Config)
+	coordinator, err := pipeline.NewCoordinator(coordinatorConfig)
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))
 	}

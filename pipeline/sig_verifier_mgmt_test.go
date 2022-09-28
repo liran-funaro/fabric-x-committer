@@ -30,7 +30,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{
-			Servers: verifierServers,
+			Endpoints: verifierServers,
 		},
 	)
 	assert.NoError(t, err)

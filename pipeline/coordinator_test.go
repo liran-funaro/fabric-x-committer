@@ -12,7 +12,7 @@ import (
 
 var conf = &pipeline.CoordinatorConfig{
 	SigVerifiers: &pipeline.SigVerifierMgrConfig{
-		Servers: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
+		Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
 	},
 	ShardsServers: &pipeline.ShardsServerMgrConfig{
 		Servers:              []*pipeline.ShardServerInstanceConfig{{connection.CreateEndpoint("localhost:5001"), 1}},
@@ -23,7 +23,7 @@ var conf = &pipeline.CoordinatorConfig{
 func TestCoordinator(t *testing.T) {
 	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(
 		testutil.DefaultSigVerifierBehavior,
-		conf.SigVerifiers.Servers[0],
+		conf.SigVerifiers.Endpoints[0],
 	)
 	require.NoError(t, err)
 	defer sigVerifierServer.Stop()

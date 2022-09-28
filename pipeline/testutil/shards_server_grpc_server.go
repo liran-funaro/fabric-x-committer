@@ -28,12 +28,12 @@ type ShardsGrpcServer struct {
 
 func StartsShardsGrpcServers(
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
-	addresses []*connection.Endpoint,
+	endpoints []*connection.Endpoint,
 ) ([]*ShardsGrpcServer, error) {
 
-	servers := make([]*ShardsGrpcServer, len(addresses))
-	for i, a := range addresses {
-		s, err := NewShardsGrpcServer(phaseOneBehavior, a)
+	servers := make([]*ShardsGrpcServer, len(endpoints))
+	for i, endpoint := range endpoints {
+		s, err := NewShardsGrpcServer(phaseOneBehavior, endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func StartsShardsGrpcServers(
 
 func NewShardsGrpcServer(
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
-	address *connection.Endpoint,
+	endpoint *connection.Endpoint,
 ) (*ShardsGrpcServer, error) {
 	grpcServer := grpc.NewServer()
 	shardsServerImpl := &ShardsServerImpl{
@@ -53,7 +53,7 @@ func NewShardsGrpcServer(
 	}
 
 	shardsservice.RegisterShardsServer(grpcServer, shardsServerImpl)
-	if err := startGrpcServer(address, grpcServer); err != nil {
+	if err := startGrpcServer(endpoint, grpcServer); err != nil {
 		return nil, err
 	}
 
