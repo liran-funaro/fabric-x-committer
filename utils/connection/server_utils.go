@@ -86,6 +86,14 @@ func (e *Endpoint) Address() string {
 	return fmt.Sprintf("%s%s%d", e.Host, endpointSplitter, e.Port)
 }
 
+func CreateEndpoint(value string) *Endpoint {
+	endpoint, err := NewEndpoint(value)
+	if err != nil {
+		panic(err)
+	}
+	return endpoint
+}
+
 func NewEndpoint(value string) (*Endpoint, error) {
 	vals := strings.Split(value, ":")
 	if len(vals) != 2 {

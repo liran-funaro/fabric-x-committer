@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -30,12 +31,12 @@ type SigVerifierGrpcServer struct {
 
 func StartsSigVerifierGrpcServers(
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
-	ports []int,
+	addresses []*connection.Endpoint,
 ) ([]*SigVerifierGrpcServer, error) {
 
-	servers := make([]*SigVerifierGrpcServer, len(ports))
-	for i, p := range ports {
-		s, err := NewSigVerifierGrpcServer(behavior, p)
+	servers := make([]*SigVerifierGrpcServer, len(addresses))
+	for i, a := range addresses {
+		s, err := NewSigVerifierGrpcServer(behavior, a)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +47,7 @@ func StartsSigVerifierGrpcServers(
 
 func NewSigVerifierGrpcServer(
 	behavior func(reqBatch *sigverification.RequestBatch) *sigverification.ResponseBatch,
-	port int,
+	address *connection.Endpoint,
 ) (*SigVerifierGrpcServer, error) {
 
 	grpcServer := grpc.NewServer()
@@ -56,7 +57,7 @@ func NewSigVerifierGrpcServer(
 	}
 
 	sigverification.RegisterVerifierServer(grpcServer, sigVerifierImpl)
-	if err := startGrpcServer(port, grpcServer); err != nil {
+	if err := startGrpcServer(address, grpcServer); err != nil {
 		return nil, err
 	}
 
@@ -101,11 +102,10 @@ func (s *SigVerifierImpl) StartStream(stream sigverification.Verifier_StartStrea
 	}
 }
 
-func startGrpcServer(port int, grpcServer *grpc.Server) error {
+func startGrpcServer(address *connection.Endpoint, grpcServer *grpc.Server) error {
 	//bufconn.Listen(1024 * 1024)
-	address := fmt.Sprintf("localhost:%d", port)
 	go func() {
-		lis, err := net.Listen("tcp", address)
+		lis, err := net.Listen("tcp", address.Address())
 		if err != nil {
 			panic(fmt.Sprintf("Error while starting test grpc server: %s", err))
 		}
@@ -117,7 +117,7 @@ func startGrpcServer(port int, grpcServer *grpc.Server) error {
 	}()
 
 	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout("tcp", address, 1*time.Second)
+		conn, err := net.DialTimeout("tcp", address.Address(), 1*time.Second)
 		if err != nil {
 			if i == 9 {
 				return err

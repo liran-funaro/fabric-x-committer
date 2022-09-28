@@ -3,18 +3,16 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type sigVerifierMgr struct {
-	config    *SigVerifierMgrConfig
 	verifiers []*sigVerifier
 
 	inputChan              chan *token.Block
@@ -29,7 +27,7 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}
-	for _, a := range c.SigVerifierServers {
+	for _, a := range c.Servers {
 		v, err := newSigVerifier(a, responseCollectionChan)
 		if err != nil {
 			return nil, err
@@ -38,7 +36,6 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 	}
 
 	m := &sigVerifierMgr{
-		config:                 c,
 		verifiers:              verifiers,
 		inputChan:              make(chan *token.Block, defaultChannelBufferSize),
 		responseCollectionChan: responseCollectionChan,
@@ -136,12 +133,10 @@ type sigVerifier struct {
 	stopWG       sync.WaitGroup
 }
 
-func newSigVerifier(address string, responseCollectionChan chan<- *sigverification.ResponseBatch) (*sigVerifier, error) {
-	if !strings.Contains(address, ":") {
-		address = fmt.Sprintf("%s:%d", address, config.DefaultGRPCPortSigVerifier)
-	}
+func newSigVerifier(endpoint *connection.Endpoint, responseCollectionChan chan<- *sigverification.ResponseBatch) (*sigVerifier, error) {
+
 	conn, err := grpc.Dial(
-		address,
+		endpoint.Address(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

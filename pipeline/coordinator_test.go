@@ -1,41 +1,41 @@
 package pipeline_test
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
+var conf = &pipeline.CoordinatorConfig{
+	SigVerifiers: &pipeline.SigVerifierMgrConfig{
+		Servers: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
+	},
+	ShardsServers: &pipeline.ShardsServerMgrConfig{
+		Servers:              []*pipeline.ShardServerInstanceConfig{{connection.CreateEndpoint("localhost:5001"), 1}},
+		DeleteExistingShards: true,
+	},
+}
+
 func TestCoordinator(t *testing.T) {
 	sigVerifierServer, err := testutil.NewSigVerifierGrpcServer(
 		testutil.DefaultSigVerifierBehavior,
-		config.DefaultGRPCPortSigVerifier,
+		conf.SigVerifiers.Servers[0],
 	)
 	require.NoError(t, err)
 	defer sigVerifierServer.Stop()
 
 	shardsServer, err := testutil.NewShardsGrpcServer(
 		testutil.DefaultPhaseOneBehavior,
-		config.DefaultGRPCPortShardsServer,
+		conf.ShardsServers.Servers[0].Endpoint,
 	)
 	require.NoError(t, err)
 	defer shardsServer.Stop()
 
-	c := &pipeline.Config{
-		SigVerifierMgrConfig: &pipeline.SigVerifierMgrConfig{
-			SigVerifierServers: []string{"localhost"},
-		},
-
-		ShardsServerMgrConfig: &pipeline.ShardsServerMgrConfig{
-			ShardsServersToNumShards: map[string]int{"localhost": 1},
-		},
-	}
-
-	coordinator, err := pipeline.NewCoordinator(c)
+	coordinator, err := pipeline.NewCoordinator(conf)
 	require.NoError(t, err)
 	defer coordinator.Stop()
 

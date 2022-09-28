@@ -8,13 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/protobuf/proto"
 )
 
 func TestShardsServerMgr(t *testing.T) {
+	config := &ShardsServerMgrConfig{
+		Servers: []*ShardServerInstanceConfig{
+			{connection.CreateEndpoint("localhost:6000"), 1}, // shard 0
+			{connection.CreateEndpoint("localhost:6001"), 3}, // shard 1, shard 2, and shard 3
+			{connection.CreateEndpoint("localhost:6002"), 5}, // shards 4,5,6,7, and 8
+		},
+		DeleteExistingShards: true,
+	}
+
 	shardsServers, err := testutil.StartsShardsGrpcServers(
 		testutil.DefaultPhaseOneBehavior,
-		[]int{6000, 6001, 6002},
+		config.GetEndpoints(),
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -30,16 +40,7 @@ func TestShardsServerMgr(t *testing.T) {
 	shardsServers[1].ShardsServerImpl.PhaseOneBehavior = testServerImpl1.PhaseOneBehavior
 	shardsServers[2].ShardsServerImpl.PhaseOneBehavior = testServerImpl2.PhaseOneBehavior
 
-	m, err := newShardsServerMgr(
-		&ShardsServerMgrConfig{
-			CleanupShards: true,
-			ShardsServersToNumShards: map[string]int{
-				"localhost:6000": 1, // shard 0
-				"localhost:6001": 3, // shard 1, shard 2, and shard 3
-				"localhost:6002": 5, // shards 4,5,6,7, and 8
-			},
-		},
-	)
+	m, err := newShardsServerMgr(config)
 	require.NoError(t, err)
 	defer m.stop()
 

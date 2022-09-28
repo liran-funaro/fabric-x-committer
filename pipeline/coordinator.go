@@ -15,12 +15,12 @@ type Coordinator struct {
 	stopSignalCh    chan struct{}
 }
 
-func NewCoordinator(config *Config) (*Coordinator, error) {
-	sigVerifierMgr, err := newSigVerificationMgr(config.SigVerifierMgrConfig)
+func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
+	sigVerifierMgr, err := newSigVerificationMgr(config.SigVerifiers)
 	if err != nil {
 		return nil, err
 	}
-	shardsServerMgr, err := newShardsServerMgr(config.ShardsServerMgrConfig)
+	shardsServerMgr, err := newShardsServerMgr(config.ShardsServers)
 	if err != nil {
 		return nil, err
 	}

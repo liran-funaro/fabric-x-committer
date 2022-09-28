@@ -1,0 +1,13 @@
+coordinator:
+  prometheus:
+    enabled: false
+    endpoint: localhost:2114
+  endpoint: localhost:5002
+  sig-verifiers:
+    servers:
+      - localhost:5000
+  shards-servers:
+    servers:
+      - endpoint: localhost:5001
+        num-shards: 4
+    delete-existing-shards: true

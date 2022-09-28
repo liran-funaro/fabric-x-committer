@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"flag"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -126,17 +127,33 @@ func ParseFlags(customBindings ...string) {
 	}
 }
 
-//readYamlConfigs reads multiple config files in the order given and puts them together to compose the final config.
+//ReadYamlConfigs reads multiple config files in the order given and puts them together to compose the final config.
 //If a config value is defined in multiple files, then the latter ones overwrite the former ones.
+func ReadYamlConfigs(configFiles ...string) error {
+	err := readYamlConfigs(configFiles)
+	if err != nil {
+		return err
+	}
+	return configUpdated()
+}
+
+func ReadYamlConfigString(content string) error {
+	err := readYamlConfigString(strings.NewReader(content))
+	if err != nil {
+		return err
+	}
+	return configUpdated()
+}
+
 func readYamlConfigs(configFiles []string) error {
 	mergedConfigs, err := MergeYamlConfigs(configFiles...)
 	if err != nil {
 		return err
 	}
+	return readYamlConfigString(bytes.NewReader(mergedConfigs))
+}
+
+func readYamlConfigString(content io.Reader) error {
 	viper.SetConfigType("yaml")
-	err = viper.ReadConfig(bytes.NewReader(mergedConfigs))
-	if err != nil {
-		return err
-	}
-	return nil
+	return viper.ReadConfig(content)
 }

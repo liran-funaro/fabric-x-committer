@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"sort"
-	"strings"
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -21,7 +19,6 @@ type dbInflightTxs struct {
 
 ///////////////////////////////////////  shardsServerMgr  ////////////////////////////////
 type shardsServerMgr struct {
-	config          *ShardsServerMgrConfig
 	shardServers    []*shardsServer
 	shardIdToServer map[int]*shardsServer
 	numShards       int
@@ -33,9 +30,8 @@ type shardsServerMgr struct {
 	stopSignalCh chan struct{}
 }
 
-func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
+func newShardsServerMgr(config *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 	shardsServerMgr := &shardsServerMgr{
-		config:          c,
 		shardServers:    []*shardsServer{},
 		shardIdToServer: map[int]*shardsServer{},
 
@@ -50,20 +46,16 @@ func newShardsServerMgr(c *ShardsServerMgrConfig) (*shardsServerMgr, error) {
 		stopSignalCh: make(chan struct{}),
 	}
 
-	addresses := []string{}
-	for a := range c.ShardsServersToNumShards {
-		addresses = append(addresses, a)
-	}
-	sort.Strings(addresses)
+	config.SortServers()
 
 	firstShardNum := 0
-	for _, a := range addresses {
-		lastShardNum := firstShardNum + c.ShardsServersToNumShards[a] - 1
+	for _, server := range config.Servers {
+		lastShardNum := firstShardNum + server.NumShards - 1
 
 		shardServer, err := newShardServer(
-			a,
+			server.Endpoint,
 			firstShardNum, lastShardNum,
-			c.CleanupShards,
+			config.DeleteExistingShards,
 			shardsServerMgr.inflightTxs,
 		)
 		if err != nil {
@@ -225,20 +217,13 @@ type shardsServer struct {
 	phaseTwoComm *phaseTwoComm
 }
 
-func newShardServer(address string,
+func newShardServer(endpoint *connection.Endpoint,
 	firstShardNum, lastShardNum int,
 	cleanupShards bool,
 	twoPCInflightTxs *dbInflightTxs) (*shardsServer, error) {
 
-	if !strings.Contains(address, ":") {
-		address = fmt.Sprintf("%s:%d", address, config.DefaultGRPCPortShardsServer)
-	}
-
 	if cleanupShards {
-		conn, err := grpc.Dial(
-			address,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		conn, err := connection.Connect(connection.NewDialConfig(*endpoint))
 		if err != nil {
 			return nil, err
 		}
@@ -261,12 +246,12 @@ func newShardServer(address string,
 		}
 	}
 
-	o, err := newPhaseOneComm(address)
+	o, err := newPhaseOneComm(endpoint.Address())
 	if err != nil {
 		return nil, err
 	}
 
-	t, err := newPhaseTwoComm(address)
+	t, err := newPhaseTwoComm(endpoint.Address())
 	if err != nil {
 		return nil, err
 	}

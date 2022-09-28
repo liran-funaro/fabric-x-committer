@@ -3,65 +3,50 @@ package main
 import (
 	"fmt"
 	"testing"
-	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/perf/track"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 func BenchmarkCoordinator(b *testing.B) {
 	// go test -bench=BenchmarkCoordinator -benchmem -memprofile -blockprofile -cpuprofile profile.out
 	// go tool pprof profile.out
-	numTxPerBlock := 100
-	serialNumPerTx := 1
-	numBlocks := 50000
-
-	numSigVerifiers := 5
-	numShardsServers := 1
-	numShardsPerServer := 1
-
-	sigVerifiersBeginPort := 5000
-	shardsServersBeginPort := 6000
-
-	sigVerifiersPorts := make([]int, numSigVerifiers)
-	sigVerifiersAddresses := make([]string, numSigVerifiers)
-
-	for i := 0; i < numSigVerifiers; i++ {
-		port := sigVerifiersBeginPort + i
-		sigVerifiersPorts[i] = port
-		sigVerifiersAddresses[i] = fmt.Sprintf("localhost:%d", port)
-	}
-
-	shardsServerPorts := make([]int, numShardsServers)
-	shardsServerAddressToNumShards := map[string]int{}
-
-	for i := 0; i < numShardsServers; i++ {
-		port := shardsServersBeginPort + i
-		shardsServerPorts[i] = port
-
-		address := fmt.Sprintf("localhost:%d", port)
-		shardsServerAddressToNumShards[address] = numShardsPerServer
-	}
+	const (
+		numTxPerBlock  = 100
+		serialNumPerTx = 1
+		numBlocks      = 50000
+		testConfig     = `
+coordinator:
+  sig-verifiers:
+    servers:
+      - localhost:5000
+      - localhost:5001
+      - localhost:5002
+      - localhost:5003
+      - localhost:5004
+  shards-servers:
+    servers:
+      - endpoint: localhost:6000
+        num-shards: 1
+    delete-existing-shards: false
+`
+	)
 
 	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, false)
 	defer bg.Stop()
 
-	grpcServers, err := startGrpcServers(sigVerifiersPorts, shardsServerPorts)
+	utils.Must(config.ReadYamlConfigString(testConfig))
+
+	grpcServers, err := track.StartGrpcServers(pipeline.Config.SigVerifiers.Servers, pipeline.Config.ShardsServers.GetEndpoints())
 	if err != nil {
 		panic(fmt.Sprintf("Error in starting grpc servers: %s", err))
 	}
-	defer grpcServers.stopAll()
+	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(
-		&pipeline.Config{
-			SigVerifierMgrConfig: &pipeline.SigVerifierMgrConfig{
-				SigVerifierServers: sigVerifiersAddresses,
-			},
-			ShardsServerMgrConfig: &pipeline.ShardsServerMgrConfig{
-				ShardsServersToNumShards: shardsServerAddressToNumShards,
-			},
-		},
-	)
+	coordinator, err := pipeline.NewCoordinator(pipeline.Config)
 
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))
@@ -74,25 +59,5 @@ func BenchmarkCoordinator(b *testing.B) {
 		}
 	}()
 
-	counter := 0
-	printMark := 100000
-	startTime := time.Now()
-	for {
-		status := <-coordinator.TxStatusChan()
-		counter += len(status)
-
-		if printMark <= counter {
-			totalTime := time.Since(startTime)
-			fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
-			printMark += 100000
-		}
-
-		if counter == numBlocks*numTxPerBlock {
-			break
-		}
-	}
-
-	totalTime := time.Since(startTime)
-	fmt.Printf("time taken: %f sec. Total Status Recieved: %d \n", totalTime.Seconds(), counter)
-
+	track.TrackProgress(coordinator.TxStatusChan(), numBlocks, numTxPerBlock)
 }

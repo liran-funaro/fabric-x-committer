@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -27,12 +28,12 @@ type ShardsGrpcServer struct {
 
 func StartsShardsGrpcServers(
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
-	ports []int,
+	addresses []*connection.Endpoint,
 ) ([]*ShardsGrpcServer, error) {
 
-	servers := make([]*ShardsGrpcServer, len(ports))
-	for i, p := range ports {
-		s, err := NewShardsGrpcServer(phaseOneBehavior, p)
+	servers := make([]*ShardsGrpcServer, len(addresses))
+	for i, a := range addresses {
+		s, err := NewShardsGrpcServer(phaseOneBehavior, a)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +44,7 @@ func StartsShardsGrpcServers(
 
 func NewShardsGrpcServer(
 	phaseOneBehavior func(requestBatch *shardsservice.PhaseOneRequestBatch) *shardsservice.PhaseOneResponseBatch,
-	port int,
+	address *connection.Endpoint,
 ) (*ShardsGrpcServer, error) {
 	grpcServer := grpc.NewServer()
 	shardsServerImpl := &ShardsServerImpl{
@@ -52,7 +53,7 @@ func NewShardsGrpcServer(
 	}
 
 	shardsservice.RegisterShardsServer(grpcServer, shardsServerImpl)
-	if err := startGrpcServer(port, grpcServer); err != nil {
+	if err := startGrpcServer(address, grpcServer); err != nil {
 		return nil, err
 	}
 

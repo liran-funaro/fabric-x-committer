@@ -7,13 +7,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
 	// setup
+	verifierServers := []*connection.Endpoint{
+		connection.CreateEndpoint("localhost:5000"),
+		connection.CreateEndpoint("localhost:5001"),
+		connection.CreateEndpoint("localhost:5002"),
+	}
 	sigVerifierServer, err := testutil.StartsSigVerifierGrpcServers(
 		testutil.DefaultSigVerifierBehavior,
-		[]int{5000, 5001, 5002},
+		verifierServers,
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -24,7 +30,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 
 	m, err := newSigVerificationMgr(
 		&SigVerifierMgrConfig{
-			SigVerifierServers: []string{"localhost:5000", "localhost:5001", "localhost:5002"},
+			Servers: verifierServers,
 		},
 	)
 	assert.NoError(t, err)

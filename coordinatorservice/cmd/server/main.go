@@ -11,28 +11,18 @@ import (
 )
 
 func main() {
-	c := pipeline.LoadConfigFromYaml(".")
-	coordinator, err := pipeline.NewCoordinator(c)
+	connection.ServerConfigFlags(*pipeline.Config.Connection())
+	config.ParseFlags(
+		"server", "coordinator.endpoint",
+		"prometheus-enabled", "coordinator.prometheus.enabled",
+		"prometheus-endpoint", "coordinator.prometheus.endpoint",
+	)
+
+	coordinator, err := pipeline.NewCoordinator(pipeline.Config)
 	if err != nil {
 		panic(fmt.Sprintf("Error while constructing coordinator: %s", err))
 	}
-
-	serviceImpl := serviceImpl{
-		Coordinator: coordinator,
-	}
-
-	connection.RunServerMain(
-		&connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: config.DefaultGRPCPortCoordinatorServer,
-			},
-			Prometheus: connection.Prometheus{
-				Enabled: false,
-			},
-		},
-
-		func(grpcServer *grpc.Server) {
-			coordinatorservice.RegisterCoordinatorServer(grpcServer, &serviceImpl)
-		})
+	connection.RunServerMain(pipeline.Config.Connection(), func(server *grpc.Server) {
+		coordinatorservice.RegisterCoordinatorServer(server, &serviceImpl{Coordinator: coordinator})
+	})
 }
