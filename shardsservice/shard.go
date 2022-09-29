@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/goleveldb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -30,7 +30,8 @@ type database interface {
 }
 
 func newShard(id uint32, path string) (*shard, error) {
-	db, err := rocksdb.Open(path)
+	//db, err := rocksdb.Open(path)
+	db, err := goleveldb.Open(path)
 	if err != nil {
 		return nil, err
 	}
