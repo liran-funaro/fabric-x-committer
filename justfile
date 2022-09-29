@@ -46,3 +46,7 @@ docker-image:
 
 docker CMD:
     docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder {{CMD}}
+
+deploy hosts=("ansible/inventory/hosts") +files=("bin eval/simple*"):
+    # just create ansible/inventory/hosts with a list of servers
+    cat {{hosts}} | while read line; do rsync -P -r {{files}} root@$line:~; done
