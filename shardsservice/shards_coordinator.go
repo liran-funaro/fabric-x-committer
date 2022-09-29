@@ -5,7 +5,16 @@ import (
 	"io"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
+
+const defaultChannelBufferSize = 10
+
+func newShardsServiceChannelBufferGauge(subComponent, channel string) *metrics.ChannelBufferGauge {
+	return metrics.NewChannelBufferGauge("shard-service", subComponent, channel, defaultChannelBufferSize)
+}
+
+var shardsPhaseOneResponseChLength = newShardsServiceChannelBufferGauge("coordinator", "phase_one_responses")
 
 type shardsCoordinator struct {
 	shards            *shardInstances
@@ -19,7 +28,7 @@ func NewShardsCoordinator(conf *ShardCoordinatorConfig) *shardsCoordinator {
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 
-	phaseOneResponses := make(chan []*PhaseOneResponse, 10)
+	phaseOneResponses := make(chan []*PhaseOneResponse, defaultChannelBufferSize)
 
 	si, err := newShardInstances(phaseOneResponses, conf.Database.RootDir)
 	if err != nil {
@@ -76,6 +85,9 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 			},
 		); err != nil {
 			return err
+		}
+		if Config.Prometheus.Enabled {
+			shardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 		}
 	}
 }

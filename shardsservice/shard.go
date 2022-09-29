@@ -20,7 +20,6 @@ type shard struct {
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.Logger
-	metrics           *metrics.ShardMetrics
 }
 
 type database interface {
@@ -36,11 +35,6 @@ func newShard(id uint32, path string) (*shard, error) {
 		return nil, err
 	}
 
-	var shardMetrics *metrics.ShardMetrics
-	if Config.Connection().Prometheus.Enabled {
-		shardMetrics = metrics.NewShardMetrics(id)
-	}
-
 	return &shard{
 		id:   id,
 		path: path,
@@ -53,7 +47,6 @@ func newShard(id uint32, path string) (*shard, error) {
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
-		metrics:           shardMetrics,
 	}, nil
 }
 
@@ -61,8 +54,8 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.metrics != nil {
-		s.metrics.IncomingTxs.WithLabelValues().Add(float64(len(requests)))
+	if Config.Prometheus.Enabled {
+		metrics.IncomingTxs.With(metrics.ShardId(s.id)).Add(float64(len(requests)))
 	}
 
 	for tID, serialNumbers := range requests {
@@ -120,9 +113,9 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	if err := s.db.Commit(sNumbers.SerialNumbers); err != nil {
 		panic(err)
 	}
-	if s.metrics != nil {
-		s.metrics.SNCommitDuration.WithLabelValues().Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
-		s.metrics.CommittedSNs.WithLabelValues().Add(float64(len(sNumbers.SerialNumbers)))
+	if Config.Prometheus.Enabled {
+		metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
+		metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(sNumbers.SerialNumbers)))
 	}
 
 	for txID := range requests {

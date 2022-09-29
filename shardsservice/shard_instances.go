@@ -186,10 +186,16 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 				if uint32(len(responses)) >= maxBatchItemCount {
 					i.logger.Debugf("emitting response due to timeout with %d", maxBatchItemCount)
 					i.phaseOneResponses <- responses[:maxBatchItemCount]
+					if Config.Prometheus.Enabled {
+						shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+					}
 					responses = responses[maxBatchItemCount:]
 				} else {
 					i.logger.Debugf("emitting response due to timeout with %d", len(responses))
 					i.phaseOneResponses <- responses
+					if Config.Prometheus.Enabled {
+						shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+					}
 					responses = nil
 				}
 			}
@@ -226,6 +232,9 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 			if uint32(len(responses)) >= maxBatchItemCount {
 				i.logger.Debug("emitting response due to max batch size")
 				i.phaseOneResponses <- responses[:maxBatchItemCount]
+				if Config.Prometheus.Enabled {
+					shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+				}
 				responses = responses[maxBatchItemCount:]
 			}
 		}
