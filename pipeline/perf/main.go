@@ -26,6 +26,9 @@ coordinator:
       - endpoint: localhost:6000
         num-shards: 1
     delete-existing-shards: false
+  prometheus:
+    enabled: true
+    endpoint: :2113
 `
 	)
 

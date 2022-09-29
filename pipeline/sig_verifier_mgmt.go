@@ -12,6 +12,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+var sigVerifierMgrInputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "input")
+var sigVerifierMgrValidOutputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "valid_output")
+var sigVerifierMgrInvalidOutputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "invalid_output")
+
 type sigVerifierMgr struct {
 	verifiers []*sigVerifier
 
@@ -73,6 +77,9 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 				return
 			case b := <-m.inputChan:
 				v.sendCh <- b
+				if Config.Prometheus.Enabled {
+					sigVerifierMgrInputChLength.Set(len(m.inputChan))
+				}
 			}
 		}
 	}()
@@ -103,10 +110,16 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
+					if Config.Prometheus.Enabled {
+						sigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
+					}
 				}
 
 				if len(valids) > 0 {
 					m.outputChanValids <- valids
+					if Config.Prometheus.Enabled {
+						sigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
+					}
 				}
 			}
 		}

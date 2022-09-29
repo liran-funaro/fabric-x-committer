@@ -12,6 +12,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+var phaseOneSendChLength = newCoordinatorChannelBufferGauge("shard_mgr", "phase_one_send")
+var phaseOneProcessedChLength = newCoordinatorChannelBufferGauge("shard_mgr", "phase_one_processed_txs_chan")
+var phaseTwoSendChLength = newCoordinatorChannelBufferGauge("shard_mgr", "phase_two_send")
+var shardMgrInputChLength = newCoordinatorChannelBufferGauge("shard_mgr", "input")
+var shardMgrOutputChLength = newCoordinatorChannelBufferGauge("shard_mgr", "output")
+
 type dbInflightTxs struct {
 	phaseOnePendingTxs       *phaseOnePendingTxs
 	phaseOneProcessedTxsChan chan []*phaseOneProcessedTx
@@ -88,6 +94,9 @@ func (m *shardsServerMgr) startInputRecieverRoutine() {
 				return
 			case txs := <-m.inputChan:
 				m.sendPhaseOneMessages(txs)
+				if Config.Prometheus.Enabled {
+					shardMgrInputChLength.Set(len(m.inputChan))
+				}
 			}
 		}
 	}()
@@ -147,6 +156,9 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 
 	for server, reqBatch := range reqBatchByServer {
 		server.phaseOneComm.sendCh <- reqBatch
+		if Config.Prometheus.Enabled {
+			phaseOneSendChLength.Set(len(server.phaseOneComm.sendCh))
+		}
 	}
 }
 
@@ -188,6 +200,12 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		m.outputChan <- status
 		for s, m := range phaseTwoMessages {
 			s.phaseTwoComm.sendCh <- m
+			if Config.Prometheus.Enabled {
+				phaseTwoSendChLength.Set(len(s.phaseTwoComm.sendCh))
+			}
+		}
+		if Config.Prometheus.Enabled {
+			shardMgrOutputChLength.Set(len(m.outputChan))
 		}
 	}
 
@@ -199,6 +217,9 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 				return
 			case t := <-m.inflightTxs.phaseOneProcessedTxsChan:
 				writeToOutputChansAndSendPhaseTwoMessages(t)
+				if Config.Prometheus.Enabled {
+					phaseOneProcessedChLength.Set(len(m.inflightTxs.phaseOneProcessedTxsChan))
+				}
 			}
 		}
 	}()
@@ -326,6 +347,9 @@ func (oc *phaseOneComm) startRequestSenderRoutine() {
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
 				}
+				if Config.Prometheus.Enabled {
+					phaseOneSendChLength.Set(len(oc.sendCh))
+				}
 			}
 		}
 	}()
@@ -360,6 +384,9 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 			phaseOneProcessedTxs := phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
 			if len(phaseOneProcessedTxs) > 0 {
 				phaseOneProcessedTxsChan <- phaseOneProcessedTxs
+				if Config.Prometheus.Enabled {
+					phaseOneProcessedChLength.Set(len(phaseOneProcessedTxsChan))
+				}
 			}
 		}
 	}()
@@ -423,6 +450,9 @@ func (tc *phaseTwoComm) startRequestSenderRoutine() {
 				err := tc.stream.Send(b)
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
+				}
+				if Config.Prometheus.Enabled {
+					phaseTwoSendChLength.Set(len(tc.sendCh))
 				}
 			}
 		}

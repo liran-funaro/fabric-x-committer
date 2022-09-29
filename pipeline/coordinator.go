@@ -6,7 +6,12 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	metricUtils "github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
+
+func newCoordinatorChannelBufferGauge(subComponent, channel string) *metricUtils.ChannelBufferGauge {
+	return metricUtils.NewChannelBufferGauge("coordinator", subComponent, channel, defaultChannelBufferSize)
+}
 
 type Coordinator struct {
 	dependencyMgr   *dependencyMgr
@@ -45,6 +50,8 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.dependencyMgr.inputChan <- block
 	c.sigVerifierMgr.inputChan <- block
 	if Config.Prometheus.Enabled {
+		dependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
+		sigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
 		metrics.IncomingTxs.Add(float64(len(block.Txs)))
 	}
 }
@@ -68,6 +75,9 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		remainings = leftover
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
+			if Config.Prometheus.Enabled {
+				shardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
+			}
 		}
 		if Config.Prometheus.Enabled {
 			metrics.SigVerifiedPendingTxs.Set(float64(len(remainings)))
@@ -81,6 +91,9 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
+				if Config.Prometheus.Enabled {
+					sigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
+				}
 			case <-time.After(1 * time.Millisecond):
 				if len(remainings) > 0 {
 					sendDependencyFreeTxsToShardsServers(remainings)
@@ -98,6 +111,9 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				return
 			case status := <-c.shardsServerMgr.outputChan:
 				c.processValidationStatus(status)
+				if Config.Prometheus.Enabled {
+					shardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
+				}
 			case invalids := <-c.sigVerifierMgr.outputChanInvalids:
 				invalidStatus := make([]*TxStatus, len(invalids))
 				for i := 0; i < len(invalids); i++ {
@@ -107,6 +123,9 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 					}
 				}
 				c.processValidationStatus(invalidStatus)
+				if Config.Prometheus.Enabled {
+					sigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
+				}
 			}
 		}
 	}()
@@ -117,5 +136,6 @@ func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
 	if Config.Prometheus.Enabled {
 		metrics.ProcessedTxs.Add(float64(len(txStatus)))
+		dependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
 	}
 }

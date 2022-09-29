@@ -9,6 +9,9 @@ import (
 
 const maxSerialNumbersEntries = 1000000 // 32 bytes per serial number, would cause roughly 32MB memory
 
+var dependencyMgrInputChLength = newCoordinatorChannelBufferGauge("dep_mgr", "input")
+var dependencyMgrStatusUpdateChLength = newCoordinatorChannelBufferGauge("dep_mgr", "status_update")
+
 type dependencyMgr struct {
 	inputChan             chan *token.Block
 	inputChanStatusUpdate chan []*TxStatus
@@ -47,6 +50,9 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 				return
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
+				if Config.Prometheus.Enabled {
+					dependencyMgrInputChLength.Set(len(m.inputChan))
+				}
 			}
 		}
 	}()
@@ -106,6 +112,9 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 				return
 			case u := <-m.inputChanStatusUpdate:
 				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
+				if Config.Prometheus.Enabled {
+					dependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
+				}
 			}
 		}
 	}()
