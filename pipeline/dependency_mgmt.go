@@ -19,6 +19,7 @@ type dependencyMgr struct {
 	snToNodes             map[string]map[*node]struct{}
 	nodes                 map[TxSeqNum]*node
 	stopSignalCh          chan struct{}
+	metricsEnabled        bool
 }
 
 type node struct {
@@ -28,7 +29,7 @@ type node struct {
 	dependsOn     map[*node]struct{}
 }
 
-func newDependencyMgr() *dependencyMgr {
+func newDependencyMgr(metricsEnabled bool) *dependencyMgr {
 	m := &dependencyMgr{
 		inputChan:             make(chan *token.Block, defaultChannelBufferSize),
 		inputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
@@ -36,6 +37,7 @@ func newDependencyMgr() *dependencyMgr {
 		snToNodes:             map[string]map[*node]struct{}{},
 		nodes:                 map[TxSeqNum]*node{},
 		stopSignalCh:          make(chan struct{}),
+		metricsEnabled:        metricsEnabled,
 	}
 	m.startBlockRecieverRoutine()
 	m.startStatusUpdateProcessorRoutine()
@@ -50,7 +52,7 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 				return
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
-				if Config.Prometheus.Enabled {
+				if m.metricsEnabled {
 					dependencyMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
@@ -97,7 +99,7 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 			}
 		}
 	}
-	if Config.Prometheus.Enabled {
+	if m.metricsEnabled {
 		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
 		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
 	}
@@ -112,7 +114,7 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 				return
 			case u := <-m.inputChanStatusUpdate:
 				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
-				if Config.Prometheus.Enabled {
+				if m.metricsEnabled {
 					dependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
 				}
 			}
@@ -156,7 +158,7 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		}
 		m.removeNodeUnderAcquiredLock(node, u.IsValid)
 	}
-	if Config.Prometheus.Enabled {
+	if m.metricsEnabled {
 		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
 		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
 	}

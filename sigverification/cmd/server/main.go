@@ -1,8 +1,6 @@
 package main
 
 import (
-	"flag"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
@@ -14,29 +12,22 @@ import (
 )
 
 func main() {
-	connection.ServerConfigFlags(*serverconfig.Config.Connection())
+	config.String("server", "sig-verification.endpoint", "Where the server listens for incoming connections")
+	config.Bool("prometheus-enabled", "sig-verification.prometheus.enabled", "Enable prometheus metrics to be kept")
+	config.String("prometheus-endpoint", "sig-verification.prometheus.endpoint", "Where prometheus listens for incoming connections")
 
-	flag.Int("parallelism", serverconfig.Config.ParallelExecutor.Parallelism, "Executor parallelism")
-	flag.Duration("batch-time-cutoff", serverconfig.Config.ParallelExecutor.BatchTimeCutoff, "Batch time cutoff limit")
-	flag.Int("batch-size-cutoff", serverconfig.Config.ParallelExecutor.BatchSizeCutoff, "Batch size cutoff limit")
-	flag.Int("channel-buffer-size", serverconfig.Config.ParallelExecutor.ChannelBufferSize, "Channel buffer size for the executor")
+	config.Int("parallelism", "sig-verification.parallel-executor.parallelism", "Executor parallelism")
+	config.Duration("batch-time-cutoff", "sig-verification.parallel-executor.batch-time-cutoff", "Batch time cutoff limit")
+	config.Int("batch-size-cutoff", "sig-verification.parallel-executor.batch-size-cutoff", "Batch size cutoff limit")
+	config.Int("channel-buffer-size", "sig-verification.parallel-executor.channel-buffer-size", "Channel buffer size for the executor")
 
-	flag.String("scheme", serverconfig.Config.Scheme, "Verification scheme")
+	config.String("scheme", "sig-verification.scheme", "Verification scheme")
 
-	config.ParseFlags(
-		"server", "sig-verification.endpoint",
-		"prometheus-enabled", "sig-verification.prometheus.enabled",
-		"prometheus-endpoint", "sig-verification.prometheus.endpoint",
+	config.ParseFlags()
 
-		"parallelism", "sig-verification.parallel-executor.parallelism",
-		"batch-time-cutoff", "sig-verification.parallel-executor.batch-time-cutoff",
-		"batch-size-cutoff", "sig-verification.parallel-executor.batch-size-cutoff",
-		"channel-buffer-size", "sig-verification.parallel-executor.channel-buffer-size",
+	c := serverconfig.ReadConfig()
 
-		"scheme", "sig-verification.scheme",
-	)
-
-	connection.RunServerMain(serverconfig.Config.Connection(), func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&serverconfig.Config.ParallelExecutor, serverconfig.Config.Scheme))
+	connection.RunServerMain(c.Connection(), func(grpcServer *grpc.Server) {
+		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, c.Prometheus.Enabled))
 	})
 }

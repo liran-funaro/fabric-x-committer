@@ -4,11 +4,10 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/perf/track"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 func main() {
@@ -16,36 +15,32 @@ func main() {
 		numTxPerBlock  = 100
 		serialNumPerTx = 1
 		numBlocks      = 500000
-		testConfig     = `
-coordinator:
-  sig-verifiers:
-    endpoints:
-      - localhost:5000
-  shards-servers:
-    servers:
-      - endpoint: localhost:6000
-        num-shards: 1
-    delete-existing-shards: false
-  prometheus:
-    enabled: true
-    endpoint: :2113
-`
 	)
+
+	var c = &pipeline.CoordinatorConfig{
+		Prometheus: connection.Prometheus{},
+		Endpoint:   connection.Endpoint{},
+		SigVerifiers: &pipeline.SigVerifierMgrConfig{
+			Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
+		},
+		ShardsServers: &pipeline.ShardsServerMgrConfig{
+			Servers:              []*pipeline.ShardServerInstanceConfig{{connection.CreateEndpoint("localhost:6000"), 1}},
+			DeleteExistingShards: false,
+		},
+	}
 
 	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, true)
 	defer bg.Stop()
 
-	utils.Must(config.ReadYamlConfigString(testConfig))
-	coordinatorConfig := pipeline.Config
 	track.StartProfiling()
 
-	grpcServers, err := track.StartGrpcServers(coordinatorConfig.SigVerifiers.Endpoints, coordinatorConfig.ShardsServers.GetEndpoints())
+	grpcServers, err := track.StartGrpcServers(c.SigVerifiers.Endpoints, c.ShardsServers.GetEndpoints())
 	if err != nil {
 		panic(fmt.Sprintf("Error in starting grpc servers: %s", err))
 	}
 	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(coordinatorConfig)
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Prometheus.Enabled)
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))
 	}

@@ -2,7 +2,7 @@ sig-verification:
   endpoint: localhost:5000
   prometheus:
     enabled: true
-    endpoint: localhost:2112
+    endpoint: localhost:2113
   scheme: "Ecdsa"
   parallel-executor:
     parallelism: 4

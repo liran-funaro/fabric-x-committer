@@ -13,18 +13,17 @@ import (
 )
 
 func main() {
-	connection.ServerConfigFlags(*pipeline.Config.Connection())
-	config.ParseFlags(
-		"server", "coordinator.endpoint",
-		"prometheus-enabled", "coordinator.prometheus.enabled",
-		"prometheus-endpoint", "coordinator.prometheus.endpoint",
-	)
+	config.ServerConfig("coordinator")
 
-	coordinator, err := pipeline.NewCoordinator(pipeline.Config)
+	config.ParseFlags()
+
+	c := pipeline.ReadConfig()
+
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Prometheus.Enabled)
 	if err != nil {
 		panic(fmt.Sprintf("Error while constructing coordinator: %s", err))
 	}
-	connection.RunServerMain(pipeline.Config.Connection(), func(server *grpc.Server) {
+	connection.RunServerMain(c.Connection(), func(server *grpc.Server) {
 		coordinatorservice.RegisterCoordinatorServer(server, &serviceImpl{Coordinator: coordinator})
 	})
 }

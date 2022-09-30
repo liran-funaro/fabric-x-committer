@@ -10,7 +10,7 @@ import (
 
 func TestDependencyMgr(t *testing.T) {
 	setup := func() *dependencyMgr {
-		m := newDependencyMgr()
+		m := newDependencyMgr(false)
 		block0 := &token.Block{
 			Number: 0,
 			Txs: []*token.Tx{

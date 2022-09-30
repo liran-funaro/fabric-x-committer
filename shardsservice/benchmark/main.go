@@ -33,14 +33,16 @@ var lc = &loadConfig{
 }
 
 func main() {
-	go connection.RunServerMain(shardsservice.Config.Connection(), func(server *grpc.Server) {
-		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(shardsservice.Config.ShardCoordinator()))
+	c := shardsservice.ReadConfig()
+
+	go connection.RunServerMain(c.Connection(), func(server *grpc.Server) {
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled))
 	})
 
 	bg := testutil.NewBlockGenerator(lc.numTxPerBlock, lc.serialNumPerTx, false)
 	defer bg.Stop()
 
-	processBlocks(shardsservice.Config.Connection().Endpoint.Address(), bg, lc)
+	processBlocks(c.Connection().Endpoint.Address(), bg, lc)
 }
 
 func processBlocks(serverAddr string, bg *testutil.BlockGenerator, lc *loadConfig) {

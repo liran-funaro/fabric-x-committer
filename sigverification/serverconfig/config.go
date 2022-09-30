@@ -19,11 +19,13 @@ func (c *SigVerificationConfig) Connection() *connection.ServerConfig {
 	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
-var configWrapper struct {
-	Config SigVerificationConfig `mapstructure:"sig-verification"`
+func ReadConfig() SigVerificationConfig {
+	wrapper := new(struct {
+		Config SigVerificationConfig `mapstructure:"sig-verification"`
+	})
+	config.Unmarshal(wrapper)
+	return wrapper.Config
 }
-
-var Config = &configWrapper.Config
 
 func init() {
 	viper.SetDefault("sig-verification.endpoint", "localhost:5000")
@@ -36,6 +38,4 @@ func init() {
 	viper.SetDefault("sig-verification.parallel-executor.batch-time-cutoff", "500ms")
 	viper.SetDefault("sig-verification.parallel-executor.batch-size-cutoff", 50)
 	viper.SetDefault("sig-verification.parallel-executor.channel-buffer-size", 50)
-
-	config.Unmarshal(&configWrapper)
 }

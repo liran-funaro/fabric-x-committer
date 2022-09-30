@@ -2,37 +2,24 @@ package config
 
 import (
 	"bytes"
-	"flag"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 var configUpdateListener []func()
-
-var configUpdaters []func()
-
-//Unmarshal is called within the init method of a part of the configuration,
-//in order to read the viper config into the object.
-//It will automatically update the reference upon every config update
-func Unmarshal(c interface{}) {
-	updater := func() {
-		utils.Must(viper.Unmarshal(c, decoder))
-	}
-	updater()
-	configUpdaters = append(configUpdaters, updater)
-}
 
 //OnConfigUpdated subscribes a listener whenever a change in the config takes place.
 //The config reference will be updated (see Unmarshal), but if further actions are needed, this method can be used.
 func OnConfigUpdated(listener func()) {
 	configUpdateListener = append(configUpdateListener, listener)
+}
+
+func Unmarshal(c interface{}) {
+	utils.Must(viper.Unmarshal(c, decoder))
 }
 
 //configUpdated updates all listeners and pointers to configurations.
@@ -41,9 +28,6 @@ func OnConfigUpdated(listener func()) {
 func configUpdated() error {
 	for _, listener := range configUpdateListener {
 		listener()
-	}
-	for _, updater := range configUpdaters {
-		updater()
 	}
 
 	return nil
@@ -92,68 +76,11 @@ func defaultConfigFiles() []string {
 	return configFiles
 }
 
-//ParseFlags does the following:
-//* It adds some default flags to the main.go,
-//* parses the flags and
-//* updates the config according to the flag mapping as described in the bindings.
-func ParseFlags(customBindings ...string) {
-	if len(customBindings)%2 != 0 {
-		panic("arguments must be in pairs")
-	}
-
-	// --verbose flag
-	flag.Bool("verbose", viper.GetBool("logging.enabled"), "Turn on verbose mode")
-	defaultFlagBindings := []string{"verbose", "logging.enabled"} // Aliases don't work with bindings
-
-	// --configs flag
-	configPaths := connection.SliceFlag("configs", []string{}, "Config file paths to load")
-
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	pflag.Parse()
-
-	if len(*configPaths) > 0 {
-		utils.Must(readYamlConfigs(*configPaths))
-	}
-
-	bindings := append(customBindings, defaultFlagBindings...)
-	for i := 0; i < len(bindings); i += 2 {
-		flagName := bindings[i]
-		configKey := bindings[i+1]
-		utils.Must(viper.BindPFlag(configKey, pflag.CommandLine.Lookup(flagName)))
-	}
-
-	if err := configUpdated(); err != nil {
-		panic(err)
-	}
-}
-
-//ReadYamlConfigs reads multiple config files in the order given and puts them together to compose the final config.
-//If a config value is defined in multiple files, then the latter ones overwrite the former ones.
-func ReadYamlConfigs(configFiles ...string) error {
-	err := readYamlConfigs(configFiles)
-	if err != nil {
-		return err
-	}
-	return configUpdated()
-}
-
-func ReadYamlConfigString(content string) error {
-	err := readYamlConfigString(strings.NewReader(content))
-	if err != nil {
-		return err
-	}
-	return configUpdated()
-}
-
 func readYamlConfigs(configFiles []string) error {
 	mergedConfigs, err := MergeYamlConfigs(configFiles...)
 	if err != nil {
 		return err
 	}
-	return readYamlConfigString(bytes.NewReader(mergedConfigs))
-}
-
-func readYamlConfigString(content io.Reader) error {
 	viper.SetConfigType("yaml")
-	return viper.ReadConfig(content)
+	return viper.ReadConfig(bytes.NewReader(mergedConfigs))
 }

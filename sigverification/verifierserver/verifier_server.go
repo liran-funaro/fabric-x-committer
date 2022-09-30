@@ -7,7 +7,6 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
@@ -20,15 +19,16 @@ type verifierServer struct {
 	verificationScheme signature.Scheme
 	streamHandler      *streamhandler.StreamHandler
 	verifier           signature.TxVerifier
+	metricsEnabled     bool
 }
 
-func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme) *verifierServer {
-	s := &verifierServer{verificationScheme: verificationScheme}
+func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, metricsEnabled bool) *verifierServer {
+	s := &verifierServer{verificationScheme: verificationScheme, metricsEnabled: metricsEnabled}
 
 	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig)
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
-			if serverconfig.Config.Prometheus.Enabled {
+			if s.metricsEnabled {
 				performance.TxsReceived.Add(float64(len(batch.Requests)))
 				performance.BatchesReceived.Inc()
 			}
@@ -36,7 +36,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 		},
 		func() streamhandler.Output {
 			outputs := <-executor.Outputs()
-			if serverconfig.Config.Prometheus.Enabled {
+			if s.metricsEnabled {
 				performance.TxsSent.Add(float64(len(outputs)))
 				performance.BatchesSent.Inc()
 			}
@@ -63,7 +63,7 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 	//if s.verifier == nil {
 	//	return errors.New("no verification key set")
 	//}
-	if serverconfig.Config.Prometheus.Enabled {
+	if s.metricsEnabled {
 		performance.ActiveStreams.Inc()
 		defer performance.ActiveStreams.Dec()
 	}

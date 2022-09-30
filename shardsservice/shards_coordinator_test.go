@@ -13,7 +13,6 @@ import (
 
 type shardsCoordinatorGrpcServiceForTest struct {
 	sc         *shardsCoordinator
-	conf       *ShardCoordinatorConfig
 	grpcServer *grpc.Server
 	clientConn *grpc.ClientConn
 	cleanup    func()
@@ -26,11 +25,11 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 			Host: "localhost",
 			Port: port,
 		},
-		Database: DatabaseConfig{
+		Database: &DatabaseConfig{
 			Name:    "rocksdb",
 			RootDir: "./",
 		},
-		Limits: LimitsConfig{
+		Limits: &LimitsConfig{
 			MaxGoroutines:                     500,
 			MaxPhaseOneResponseBatchItemCount: 100,
 			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
@@ -38,7 +37,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 	}
 
 	var grpcServer *grpc.Server
-	sc := NewShardsCoordinator(c.ShardCoordinator())
+	sc := NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled)
 	go connection.RunServerMain(c.Connection(), func(server *grpc.Server) {
 		log.Print("created shards coordinator")
 		grpcServer = server
@@ -50,7 +49,6 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 
 	return &shardsCoordinatorGrpcServiceForTest{
 		sc:         sc,
-		conf:       Config.ShardCoordinator(),
 		grpcServer: grpcServer,
 		clientConn: clientConn,
 		cleanup: func() {

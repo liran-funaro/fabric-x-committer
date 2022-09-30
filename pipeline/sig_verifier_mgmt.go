@@ -24,10 +24,11 @@ type sigVerifierMgr struct {
 	outputChanValids       chan []TxSeqNum
 	outputChanInvalids     chan []TxSeqNum
 
-	stopSignalCh chan struct{}
+	stopSignalCh   chan struct{}
+	metricsEnabled bool
 }
 
-func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
+func newSigVerificationMgr(c *SigVerifierMgrConfig, metricsEnabled bool) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}
@@ -46,6 +47,7 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig) (*sigVerifierMgr, error) {
 		outputChanValids:       make(chan []TxSeqNum, defaultChannelBufferSize),
 		outputChanInvalids:     make(chan []TxSeqNum, defaultChannelBufferSize),
 		stopSignalCh:           make(chan struct{}),
+		metricsEnabled:         metricsEnabled,
 	}
 	m.startBlockReceiverRoutine()
 	m.startOutputWriterRoutine()
@@ -77,7 +79,7 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 				return
 			case b := <-m.inputChan:
 				v.sendCh <- b
-				if Config.Prometheus.Enabled {
+				if m.metricsEnabled {
 					sigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
@@ -110,14 +112,14 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
-					if Config.Prometheus.Enabled {
+					if m.metricsEnabled {
 						sigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
 					}
 				}
 
 				if len(valids) > 0 {
 					m.outputChanValids <- valids
-					if Config.Prometheus.Enabled {
+					if m.metricsEnabled {
 						sigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
 					}
 				}

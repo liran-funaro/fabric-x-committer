@@ -20,6 +20,7 @@ type shard struct {
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.Logger
+	metricsEnabled    bool
 }
 
 type database interface {
@@ -28,7 +29,7 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string) (*shard, error) {
+func newShard(id uint32, path string, metricsEnabled bool) (*shard, error) {
 	//db, err := rocksdb.Open(path)
 	db, err := goleveldb.Open(path)
 	if err != nil {
@@ -47,6 +48,7 @@ func newShard(id uint32, path string) (*shard, error) {
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
+		metricsEnabled:    metricsEnabled,
 	}, nil
 }
 
@@ -54,7 +56,7 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if Config.Prometheus.Enabled {
+	if s.metricsEnabled {
 		metrics.IncomingTxs.With(metrics.ShardId(s.id)).Add(float64(len(requests)))
 	}
 
@@ -113,7 +115,7 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	if err := s.db.Commit(sNumbers.SerialNumbers); err != nil {
 		panic(err)
 	}
-	if Config.Prometheus.Enabled {
+	if s.metricsEnabled {
 		metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
 		metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(sNumbers.SerialNumbers)))
 	}

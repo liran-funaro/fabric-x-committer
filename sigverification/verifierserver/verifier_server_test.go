@@ -26,7 +26,7 @@ var parallelExecutionConfig = &parallelexecutor.Config{
 
 func TestNoVerificationKeySet(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
 
 	stream, err := c.Client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -42,7 +42,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
@@ -63,7 +63,7 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
 	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, _ := factory.NewSigner(signingKey)
