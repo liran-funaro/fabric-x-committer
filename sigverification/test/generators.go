@@ -3,7 +3,7 @@ package sigverification_test
 import (
 	"context"
 	"crypto/sha256"
-	"fmt"
+	"encoding/binary"
 	"sync/atomic"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
@@ -88,8 +88,16 @@ type LinearTxInputGenerator struct {
 func (g *LinearTxInputGenerator) Next() []signature.SerialNumber {
 	serialNumbers := make([]signature.SerialNumber, g.Count)
 
+	h := sha256.New()
+	b := make([]byte, 8)
+
 	for i := int64(0); i < g.Count; i++ {
-		sn := sha256.Sum256([]byte(fmt.Sprintf("%d", atomic.AddUint64(&g.uniqueSerialNum, 1))))
+		binary.LittleEndian.PutUint64(b, atomic.AddUint64(&g.uniqueSerialNum, 1))
+
+		h.Reset()
+		h.Write(b)
+		sn := h.Sum(nil)
+
 		serialNumbers[i] = sn[:]
 	}
 

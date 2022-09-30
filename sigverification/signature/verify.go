@@ -21,7 +21,7 @@ type Scheme = string
 
 const (
 	NoScheme Scheme = ""
-	Ecdsa           = "Ecdsa"
+	Ecdsa           = "ECDSA"
 )
 
 var schemeMap = map[string]Scheme{
