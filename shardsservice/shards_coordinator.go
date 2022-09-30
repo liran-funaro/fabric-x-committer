@@ -17,30 +17,31 @@ func newShardsServiceChannelBufferGauge(subComponent, channel string) *metrics.C
 var shardsPhaseOneResponseChLength = newShardsServiceChannelBufferGauge("coordinator", "phase_one_responses")
 
 type shardsCoordinator struct {
+	UnimplementedShardsServer
 	shards            *shardInstances
 	phaseOneResponses chan []*PhaseOneResponse
-	config            *ShardCoordinatorConfig
+	limits            *LimitsConfig
 	logger            *logging.Logger
-	UnimplementedShardsServer
+	metricsEnabled    bool
 }
 
-func NewShardsCoordinator(conf *ShardCoordinatorConfig) *shardsCoordinator {
+func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metricsEnabled bool) *shardsCoordinator {
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 
 	phaseOneResponses := make(chan []*PhaseOneResponse, defaultChannelBufferSize)
 
-	si, err := newShardInstances(phaseOneResponses, conf.Database.RootDir)
+	si, err := newShardInstances(phaseOneResponses, database.RootDir, metricsEnabled)
 	if err != nil {
 		panic(err)
 	}
 
 	return &shardsCoordinator{
-		shards:                    si,
-		phaseOneResponses:         phaseOneResponses,
-		config:                    conf,
-		logger:                    logger,
-		UnimplementedShardsServer: UnimplementedShardsServer{},
+		shards:            si,
+		phaseOneResponses: phaseOneResponses,
+		limits:            limits,
+		logger:            logger,
+		metricsEnabled:    metricsEnabled,
 	}
 }
 
@@ -77,7 +78,7 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 }
 
 func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOneStreamServer) error {
-	go s.shards.accumulatedPhaseOneResponses(s.config.Limits.MaxPhaseOneResponseBatchItemCount, s.config.Limits.PhaseOneResponseCutTimeout)
+	go s.shards.accumulatedPhaseOneResponses(s.limits.MaxPhaseOneResponseBatchItemCount, s.limits.PhaseOneResponseCutTimeout)
 	for {
 		if err := stream.Send(
 			&PhaseOneResponseBatch{
@@ -86,7 +87,7 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 		); err != nil {
 			return err
 		}
-		if Config.Prometheus.Enabled {
+		if s.metricsEnabled {
 			shardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 		}
 	}

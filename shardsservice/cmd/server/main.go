@@ -10,14 +10,12 @@ import (
 )
 
 func main() {
-	connection.ServerConfigFlags(*shardsservice.Config.Connection())
-	config.ParseFlags(
-		"server", "shards-service.endpoint",
-		"prometheus-enabled", "shards-service.prometheus.enabled",
-		"prometheus-endpoint", "shards-service.prometheus.endpoint",
-	)
+	config.ServerConfig("shards-service")
+	config.ParseFlags()
 
-	connection.RunServerMain(shardsservice.Config.Connection(), func(grpcServer *grpc.Server) {
-		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(shardsservice.Config.ShardCoordinator()))
+	c := shardsservice.ReadConfig()
+
+	connection.RunServerMain(c.Connection(), func(grpcServer *grpc.Server) {
+		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled))
 	})
 }

@@ -1,10 +1,10 @@
 package pipeline
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"sort"
 
 	"github.com/spf13/viper"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
@@ -47,11 +47,13 @@ func (c *CoordinatorConfig) Connection() *connection.ServerConfig {
 	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
-var configWrapper struct {
-	Config CoordinatorConfig `mapstructure:"coordinator"`
+func ReadConfig() CoordinatorConfig {
+	wrapper := new(struct {
+		Config CoordinatorConfig `mapstructure:"coordinator"`
+	})
+	config.Unmarshal(wrapper)
+	return wrapper.Config
 }
-
-var Config = &configWrapper.Config
 
 func init() {
 	viper.SetDefault("coordinator.sig-verifiers.endpoints", []string{
@@ -66,6 +68,4 @@ func init() {
 	viper.SetDefault("coordinator.endpoint", "localhost:5002")
 	viper.SetDefault("coordinator.prometheus.enabled", "false")
 	viper.SetDefault("coordinator.prometheus.endpoint", "localhost:2114")
-
-	config.Unmarshal(&configWrapper)
 }

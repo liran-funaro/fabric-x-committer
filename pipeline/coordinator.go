@@ -19,23 +19,25 @@ type Coordinator struct {
 	shardsServerMgr *shardsServerMgr
 	outputChan      chan []*TxStatus
 	stopSignalCh    chan struct{}
+	metricsEnabled  bool
 }
 
-func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
-	sigVerifierMgr, err := newSigVerificationMgr(config.SigVerifiers)
+func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, metricsEnabled bool) (*Coordinator, error) {
+	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metricsEnabled)
 	if err != nil {
 		return nil, err
 	}
-	shardsServerMgr, err := newShardsServerMgr(config.ShardsServers)
+	shardsServerMgr, err := newShardsServerMgr(shardsServerMgrConfig, metricsEnabled)
 	if err != nil {
 		return nil, err
 	}
 	c := &Coordinator{
-		dependencyMgr:   newDependencyMgr(),
+		dependencyMgr:   newDependencyMgr(metricsEnabled),
 		sigVerifierMgr:  sigVerifierMgr,
 		shardsServerMgr: shardsServerMgr,
 		outputChan:      make(chan []*TxStatus, defaultChannelBufferSize),
 		stopSignalCh:    make(chan struct{}),
+		metricsEnabled:  metricsEnabled,
 	}
 	c.startTxProcessingRoutine()
 	c.startTxValidationProcessorRoutine()
@@ -49,7 +51,7 @@ func (c *Coordinator) SetSigVerificationKey(k *sigverification.Key) error {
 func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.dependencyMgr.inputChan <- block
 	c.sigVerifierMgr.inputChan <- block
-	if Config.Prometheus.Enabled {
+	if c.metricsEnabled {
 		dependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
 		sigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
 		metrics.IncomingTxs.Add(float64(len(block.Txs)))
@@ -75,11 +77,11 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		remainings = leftover
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
-			if Config.Prometheus.Enabled {
+			if c.metricsEnabled {
 				shardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
 			}
 		}
-		if Config.Prometheus.Enabled {
+		if c.metricsEnabled {
 			metrics.SigVerifiedPendingTxs.Set(float64(len(remainings)))
 		}
 	}
@@ -91,7 +93,7 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
-				if Config.Prometheus.Enabled {
+				if c.metricsEnabled {
 					sigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 			case <-time.After(1 * time.Millisecond):
@@ -111,7 +113,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				return
 			case status := <-c.shardsServerMgr.outputChan:
 				c.processValidationStatus(status)
-				if Config.Prometheus.Enabled {
+				if c.metricsEnabled {
 					shardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
 			case invalids := <-c.sigVerifierMgr.outputChanInvalids:
@@ -123,7 +125,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 					}
 				}
 				c.processValidationStatus(invalidStatus)
-				if Config.Prometheus.Enabled {
+				if c.metricsEnabled {
 					sigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
 				}
 			}
@@ -134,7 +136,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.outputChan <- txStatus
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
-	if Config.Prometheus.Enabled {
+	if c.metricsEnabled {
 		metrics.ProcessedTxs.Add(float64(len(txStatus)))
 		dependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
 	}
