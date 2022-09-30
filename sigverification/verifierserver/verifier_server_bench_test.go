@@ -59,7 +59,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 			config.InputGeneratorParams.RequestBatch.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
-				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme)
+				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, false)
 				c := sigverification_test.NewTestState(server)
 				t := sigverification_test.NewAsyncTracker()
 				defer c.TearDown()

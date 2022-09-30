@@ -107,18 +107,6 @@ func NewEndpoint(value string) (*Endpoint, error) {
 	return &Endpoint{Host: host, Port: port}, nil
 }
 
-func EndpointVar(p *Endpoint, name string, defaultValue Endpoint, usage string) {
-	*p = defaultValue
-	flag.Func(name, usage, func(endpoint string) error {
-		result, err := NewEndpoint(endpoint)
-		if err != nil {
-			return err
-		}
-		*p = *result
-		return nil
-	})
-}
-
 const flagSliceSeparator = ","
 
 func EndpointVars(p *[]*Endpoint, name string, defaultValue []*Endpoint, usage string) {
@@ -144,12 +132,6 @@ func launchPrometheus(endpoint Endpoint) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-func ServerConfigFlags(defaultServerConfig ServerConfig) {
-	flag.String("server", defaultServerConfig.Endpoint.Address(), "Where the server listens for incoming connections")
-	flag.Bool("prometheus-enabled", defaultServerConfig.Prometheus.Enabled, "Enable prometheus metrics to be kept")
-	flag.String("prometheus-endpoint", defaultServerConfig.Prometheus.Endpoint.Address(), "Where prometheus listens for incoming connections")
 }
 
 func SliceFlag(name string, defaultValue []string, usage string) *[]string {
