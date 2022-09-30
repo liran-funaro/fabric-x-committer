@@ -3,11 +3,11 @@ package main
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	_ "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 
@@ -27,7 +27,9 @@ func main() {
 
 	c := serverconfig.ReadConfig()
 
-	connection.RunServerMain(c.Connection(), func(grpcServer *grpc.Server) {
+	monitoring.LaunchPrometheus(c.Prometheus, "sigverifier", metrics.AllMetrics)
+
+	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
 		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, c.Prometheus.Enabled))
 	})
 }

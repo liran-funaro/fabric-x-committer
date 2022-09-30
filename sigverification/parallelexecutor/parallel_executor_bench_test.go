@@ -7,7 +7,6 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	_ "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
@@ -48,7 +47,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 			config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
 				g := NewInputGenerator(&config.InputGeneratorParams)
-				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig)
+				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig, false)
 				t := sigverification_test.NewAsyncTracker()
 
 				t.Start(e.Outputs())

@@ -93,8 +93,7 @@ func main() {
 			Host: "0.0.0.0",
 			Port: config.DefaultGRPCPortCoordinatorServer,
 		},
-		Prometheus: connection.Prometheus{Enabled: false},
-		Opts:       nil,
+		Opts: nil,
 	}
 
 	fmt.Printf("listing on %s:%d\n", conf.Endpoint.Host, conf.Endpoint.Port)

@@ -35,7 +35,7 @@ func TestCoordinator(t *testing.T) {
 	require.NoError(t, err)
 	defer shardsServer.Stop()
 
-	coordinator, err := pipeline.NewCoordinator(conf)
+	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, false)
 	require.NoError(t, err)
 	defer coordinator.Stop()
 

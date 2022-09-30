@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	_ "net/http/pprof"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
@@ -18,7 +19,7 @@ func main() {
 	)
 
 	var c = &pipeline.CoordinatorConfig{
-		Prometheus: connection.Prometheus{},
+		Prometheus: monitoring.Prometheus{},
 		Endpoint:   connection.Endpoint{},
 		SigVerifiers: &pipeline.SigVerifierMgrConfig{
 			Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},

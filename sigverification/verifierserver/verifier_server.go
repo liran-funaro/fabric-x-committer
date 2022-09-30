@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/performance"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
@@ -25,20 +25,20 @@ type verifierServer struct {
 func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, metricsEnabled bool) *verifierServer {
 	s := &verifierServer{verificationScheme: verificationScheme, metricsEnabled: metricsEnabled}
 
-	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig)
+	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, metricsEnabled)
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
 			if s.metricsEnabled {
-				performance.TxsReceived.Add(float64(len(batch.Requests)))
-				performance.BatchesReceived.Inc()
+				metrics.TxsReceived.Add(float64(len(batch.Requests)))
+				metrics.BatchesReceived.Inc()
 			}
 			executor.Submit(batch.Requests)
 		},
 		func() streamhandler.Output {
 			outputs := <-executor.Outputs()
 			if s.metricsEnabled {
-				performance.TxsSent.Add(float64(len(outputs)))
-				performance.BatchesSent.Inc()
+				metrics.TxsSent.Add(float64(len(outputs)))
+				metrics.BatchesSent.Inc()
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})
@@ -64,8 +64,8 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 	//	return errors.New("no verification key set")
 	//}
 	if s.metricsEnabled {
-		performance.ActiveStreams.Inc()
-		defer performance.ActiveStreams.Dec()
+		metrics.ActiveStreams.Inc()
+		defer metrics.ActiveStreams.Dec()
 	}
 	s.streamHandler.HandleStream(stream)
 	logger.Debug("Interrupted stream.")

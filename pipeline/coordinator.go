@@ -6,12 +6,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
-	metricUtils "github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
-
-func newCoordinatorChannelBufferGauge(subComponent, channel string) *metricUtils.ChannelBufferGauge {
-	return metricUtils.NewChannelBufferGauge("coordinator", subComponent, channel, defaultChannelBufferSize)
-}
 
 type Coordinator struct {
 	dependencyMgr   *dependencyMgr
@@ -52,8 +47,8 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.dependencyMgr.inputChan <- block
 	c.sigVerifierMgr.inputChan <- block
 	if c.metricsEnabled {
-		dependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
-		sigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
+		metrics.DependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
+		metrics.SigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
 		metrics.IncomingTxs.Add(float64(len(block.Txs)))
 	}
 }
@@ -78,7 +73,7 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
 			if c.metricsEnabled {
-				shardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
+				metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
 			}
 		}
 		if c.metricsEnabled {
@@ -94,7 +89,7 @@ func (c *Coordinator) startTxProcessingRoutine() {
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
 				if c.metricsEnabled {
-					sigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
+					metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 			case <-time.After(1 * time.Millisecond):
 				if len(remainings) > 0 {
@@ -114,7 +109,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 			case status := <-c.shardsServerMgr.outputChan:
 				c.processValidationStatus(status)
 				if c.metricsEnabled {
-					shardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
+					metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
 			case invalids := <-c.sigVerifierMgr.outputChanInvalids:
 				invalidStatus := make([]*TxStatus, len(invalids))
@@ -126,7 +121,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				}
 				c.processValidationStatus(invalidStatus)
 				if c.metricsEnabled {
-					sigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
+					metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
 				}
 			}
 		}
@@ -138,6 +133,6 @@ func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
 	if c.metricsEnabled {
 		metrics.ProcessedTxs.Add(float64(len(txStatus)))
-		dependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
+		metrics.DependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
 	}
 }

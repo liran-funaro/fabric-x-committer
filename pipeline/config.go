@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"sort"
 
 	"github.com/spf13/viper"
@@ -37,14 +38,10 @@ type ShardServerInstanceConfig struct {
 }
 
 type CoordinatorConfig struct {
-	Prometheus    connection.Prometheus  `mapstructure:"prometheus"`
+	Prometheus    monitoring.Prometheus  `mapstructure:"prometheus"`
 	Endpoint      connection.Endpoint    `mapstructure:"endpoint"`
 	SigVerifiers  *SigVerifierMgrConfig  `mapstructure:"sig-verifiers"`
 	ShardsServers *ShardsServerMgrConfig `mapstructure:"shards-servers"`
-}
-
-func (c *CoordinatorConfig) Connection() *connection.ServerConfig {
-	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
 func ReadConfig() CoordinatorConfig {

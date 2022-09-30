@@ -1,6 +1,7 @@
 package parallelexecutor
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
@@ -47,18 +48,25 @@ type parallelExecutor struct {
 	executor            ExecutorFunc
 	batchSizeCutoff     int
 	batchTimeCutoff     time.Duration
+	metricsEnabled      bool
 }
 
-func New(executor ExecutorFunc, config *Config) ParallelExecutor {
+func New(executor ExecutorFunc, config *Config, metricsEnabled bool) ParallelExecutor {
+	channelCapacity := config.ChannelBufferSize * config.Parallelism
+	if metricsEnabled {
+		metrics.ParallelExecutorInputChLength.SetCapacity(channelCapacity)
+		metrics.ParallelExecutorOutputChLength.SetCapacity(channelCapacity)
+	}
 	e := &parallelExecutor{
-		inputCh:             make(chan *Input, config.ChannelBufferSize*config.Parallelism),
+		inputCh:             make(chan *Input, channelCapacity),
 		outputCh:            make(chan []*Output),
 		errorCh:             make(chan error, config.Parallelism),
 		batchManualCutoffCh: make(chan struct{}),
-		outputAggregationCh: make(chan *Output, config.ChannelBufferSize*config.Parallelism),
+		outputAggregationCh: make(chan *Output, channelCapacity),
 		executor:            executor,
 		batchSizeCutoff:     config.BatchSizeCutoff,
 		batchTimeCutoff:     config.BatchTimeCutoff,
+		metricsEnabled:      metricsEnabled,
 	}
 
 	go e.handleTimeManualCutoff()
@@ -74,6 +82,9 @@ func New(executor ExecutorFunc, config *Config) ParallelExecutor {
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
+		if e.metricsEnabled {
+			metrics.ParallelExecutorInputChLength.Set(len(channel))
+		}
 		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
 		output, err := e.executor(input)
 		if err != nil {
@@ -82,6 +93,9 @@ func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 		} else {
 			logger.Debugf("Received output from executor %d: %v", idx, output)
 			e.outputAggregationCh <- output
+			if e.metricsEnabled {
+				metrics.ParallelExecutorOutputChLength.Set(len(e.outputAggregationCh))
+			}
 		}
 	}
 }

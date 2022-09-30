@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"sync"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
-
-var sigVerifierMgrInputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "input")
-var sigVerifierMgrValidOutputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "valid_output")
-var sigVerifierMgrInvalidOutputChLength = newCoordinatorChannelBufferGauge("sig_mgr", "invalid_output")
 
 type sigVerifierMgr struct {
 	verifiers []*sigVerifier
@@ -49,6 +46,12 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig, metricsEnabled bool) (*sigVe
 		stopSignalCh:           make(chan struct{}),
 		metricsEnabled:         metricsEnabled,
 	}
+	if metricsEnabled {
+		metrics.SigVerifierMgrInputChLength.SetCapacity(defaultChannelBufferSize)
+		metrics.SigVerifierMgrValidOutputChLength.SetCapacity(defaultChannelBufferSize)
+		metrics.SigVerifierMgrInvalidOutputChLength.SetCapacity(defaultChannelBufferSize)
+	}
+
 	m.startBlockReceiverRoutine()
 	m.startOutputWriterRoutine()
 	return m, nil
@@ -80,7 +83,7 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 			case b := <-m.inputChan:
 				v.sendCh <- b
 				if m.metricsEnabled {
-					sigVerifierMgrInputChLength.Set(len(m.inputChan))
+					metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
 		}
@@ -113,14 +116,14 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
 					if m.metricsEnabled {
-						sigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
+						metrics.SigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
 					}
 				}
 
 				if len(valids) > 0 {
 					m.outputChanValids <- valids
 					if m.metricsEnabled {
-						sigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
+						metrics.SigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
 					}
 				}
 			}

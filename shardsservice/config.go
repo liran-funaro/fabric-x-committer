@@ -1,6 +1,7 @@
 package shardsservice
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"time"
 
 	"github.com/spf13/viper"
@@ -20,14 +21,10 @@ type LimitsConfig struct {
 }
 
 type ShardServiceConfig struct {
-	Prometheus connection.Prometheus `mapstructure:"prometheus"`
+	Prometheus monitoring.Prometheus `mapstructure:"prometheus"`
 	Endpoint   connection.Endpoint   `mapstructure:"endpoint"`
 	Database   *DatabaseConfig       `mapstructure:"database"`
 	Limits     *LimitsConfig         `mapstructure:"limits"`
-}
-
-func (c *ShardServiceConfig) Connection() *connection.ServerConfig {
-	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
 func ReadConfig() ShardServiceConfig {

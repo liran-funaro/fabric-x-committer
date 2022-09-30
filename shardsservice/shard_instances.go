@@ -1,6 +1,7 @@
 package shardsservice
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -189,14 +190,14 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 					i.logger.Debugf("emitting response due to timeout with %d", maxBatchItemCount)
 					i.phaseOneResponses <- responses[:maxBatchItemCount]
 					if i.metricsEnabled {
-						shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+						metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 					}
 					responses = responses[maxBatchItemCount:]
 				} else {
 					i.logger.Debugf("emitting response due to timeout with %d", len(responses))
 					i.phaseOneResponses <- responses
 					if i.metricsEnabled {
-						shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+						metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 					}
 					responses = nil
 				}
@@ -235,7 +236,7 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 				i.logger.Debug("emitting response due to max batch size")
 				i.phaseOneResponses <- responses[:maxBatchItemCount]
 				if i.metricsEnabled {
-					shardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+					metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 				}
 				responses = responses[maxBatchItemCount:]
 			}
