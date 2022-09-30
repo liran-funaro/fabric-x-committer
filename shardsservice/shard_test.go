@@ -13,7 +13,7 @@ type shardForTest struct {
 }
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
-	s, err := newShard(id, path)
+	s, err := newShard(id, path, false)
 	require.NoError(t, err)
 
 	return &shardForTest{

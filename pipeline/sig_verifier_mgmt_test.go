@@ -32,6 +32,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 		&SigVerifierMgrConfig{
 			Endpoints: verifierServers,
 		},
+		false,
 	)
 	assert.NoError(t, err)
 	defer m.stop()

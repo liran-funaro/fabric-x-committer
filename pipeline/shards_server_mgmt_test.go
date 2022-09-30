@@ -40,7 +40,7 @@ func TestShardsServerMgr(t *testing.T) {
 	shardsServers[1].ShardsServerImpl.PhaseOneBehavior = testServerImpl1.PhaseOneBehavior
 	shardsServers[2].ShardsServerImpl.PhaseOneBehavior = testServerImpl2.PhaseOneBehavior
 
-	m, err := newShardsServerMgr(config)
+	m, err := newShardsServerMgr(config, false)
 	require.NoError(t, err)
 	defer m.stop()
 
