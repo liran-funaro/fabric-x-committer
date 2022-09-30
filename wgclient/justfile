@@ -1,10 +1,10 @@
 build: build-blockgen build-mockcoordinator
 
 build-blockgen:
-    go build -o blockgen ./cmd/generator
+    go build -o bin/blockgen ./cmd/generator
 
 build-mockcoordinator:
-    go build -o mockcoordinator ./cmd/mockcoordinator
+    go build -o bin/mockcoordinator ./cmd/mockcoordinator
 
 test:
     go test -v ./...

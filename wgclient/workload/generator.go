@@ -8,46 +8,15 @@ import (
 	"runtime"
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
 func Generate(profilePath, outputPath string) {
 
 	pp := LoadProfileFromYaml(profilePath)
-	privateKey, publicKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
-	signer, _ := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewSigner(privateKey)
-	g := &sigverification_test.TxGenerator{
-		TxSigner:               signer,
-		TxInputGenerator:       &sigverification_test.LinearTxInputGenerator{Count: pp.Transaction.SerialNumber.Count},
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Percentage(pp.Transaction.Signature.ValidityRatio), 10),
-	}
-
-	blockCount := pp.Block.Count
-	blockSize := pp.Block.Size
-	parallel := 2
-	numWorker := runtime.NumCPU() * parallel
-
-	// start workers already to produce transactions
-	txQueue := make(chan *token.Tx, int(blockSize)*numWorker)
-	fmt.Printf("Starting %d worker to generate load\n", numWorker)
-	for i := 0; i < numWorker; i++ {
-		// we already start our workers to produce some transactions
-		go func() {
-			for {
-				// create transactions
-				txQueue <- g.Next()
-			}
-		}()
-	}
-
-	// TODO
-	//fmt.Printf("Estimated size: %s\n", estimatedSize)
-
+	publicKey, txQueue := startTxGenerator(pp)
 	outputPath = createIfNotExists(outputPath)
 
 	// store public key
@@ -63,6 +32,11 @@ func Generate(profilePath, outputPath string) {
 
 	// write profile first as our header
 	WriteProfileToBlockFile(writer, pp)
+
+	blockCount := pp.Block.Count
+	blockSize := pp.Block.Size
+	parallel := 2
+	numWorker := runtime.NumCPU() * parallel
 
 	// start file writer
 	var wg sync.WaitGroup

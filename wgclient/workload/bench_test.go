@@ -3,6 +3,9 @@ package workload
 import (
 	"testing"
 
+	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
@@ -32,4 +35,29 @@ func BenchmarkBBB(b *testing.B) {
 		}
 	}
 	result = r
+}
+
+var r *token.Tx
+
+func BenchmarkGenSingle(b *testing.B) {
+
+	sigType := "ECDSA"
+	privateKey, _ := sigverification_test.GetSignatureFactory(sigType).NewKeys()
+	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
+
+	snCount := int64(1)
+	vr := 1.0
+
+	g := &sigverification_test.TxGenerator{
+		TxSigner:               signer,
+		TxInputGenerator:       &sigverification_test.LinearTxInputGenerator{Count: snCount},
+		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Percentage(vr), 10),
+	}
+
+	var tx *token.Tx
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		tx = g.Next()
+	}
+	r = tx
 }

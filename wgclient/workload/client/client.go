@@ -5,8 +5,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
@@ -19,25 +24,34 @@ import (
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client/codec"
 )
 
-func PumpToCoordinator(path, host string, port int) {
+func LoadAndPump(path, endpoint string) {
 	// read blocks from file into channel
-	serializedKey, dQueue, pp := workload.GetByteWorkload(path)
+	serializedKey, dQueue, pp := workload.GetBlockWorkload(path)
 
-	// wait quickly
+	PumpToCoordinator(serializedKey, dQueue, pp, endpoint)
+}
+
+func GenerateAndPump(profilePath string, endpoint string) {
+	pp := workload.LoadProfileFromYaml(profilePath)
+
+	// generate blocks and push them into channel
+	publicKey, bQueue := workload.StartBlockGenerator(pp)
+
+	PumpToCoordinator(publicKey, bQueue, pp, endpoint)
+}
+
+func PumpToCoordinator(serializedKey []byte, dQueue chan *token.Block, pp *workload.Profile, endpoint string) {
 
 	// TODO book keeping of transaction invocation start and finish
 	// TODO post-processing transaction latency
 
-	clientConfig := connection.NewDialConfig(connection.Endpoint{
-		Host: host,
-		Port: port,
-	})
+	clientConfig := connection.NewDialConfig(*connection.CreateEndpoint(endpoint))
 
 	fmt.Printf("Connect to coordinator...\n")
 	conn, err := connection.Connect(clientConfig)
 	utils.Must(err)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	client := coordinatorservice.NewCoordinatorClient(conn)
 
 	// send key
@@ -65,7 +79,7 @@ func PumpToCoordinator(path, host string, port int) {
 			}
 
 			if err != nil {
-				fmt.Printf("RECV err: %v\n", err)
+				fmt.Printf("Closing listerer due to err: %v\n", err)
 				break
 			}
 			_ = response
@@ -78,25 +92,55 @@ func PumpToCoordinator(path, host string, port int) {
 	// start consuming blocks
 	start := time.Now()
 	bar := workload.NewProgressBar("Sending blocks from file...", pp.Block.Count)
-	for b := range dQueue {
 
-		block := &token.Block{}
-		err := proto.Unmarshal(b, block)
-		utils.Must(err)
+	go func() {
+		c := make(chan os.Signal, 1) // we need to reserve to buffer size 1, so the notifier are not blocked
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		<-c
+		cancel()
+	}()
 
-		if err := blockStream.SendMsg(block); err != nil {
-			//if err := blockStream.SendMsg(b); err != nil {
-			utils.Must(err)
-		}
+	cnt := int64(0)
+	send(ctx, blockStream, dQueue, func() {
 		bar.Add(1)
-	}
+		cnt++
+		if pp.Block.Count > -1 && cnt >= pp.Block.Count {
+			cancel()
+		}
+
+	})
+
+	blocksSent := int64(bar.State().CurrentBytes)
+
 	elapsed := time.Since(start)
-	workload.PrintStats(pp.Block.Count*pp.Block.Size, pp.Block.Count, elapsed)
+	workload.PrintStats(blocksSent*pp.Block.Size, blocksSent, elapsed)
 
 	err = blockStream.CloseSend()
 	utils.Must(err)
 
 	wg.Wait()
+}
+
+func send(ctx context.Context, blockStream grpc.ClientStream, bQueue chan *token.Block, cnt func()) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case b, more := <-bQueue:
+			if !more {
+				return
+			}
+			if err := blockStream.SendMsg(b); err != nil {
+				if err == io.EOF {
+					// end of blockStream
+					fmt.Printf("RECV EOF\n")
+					return
+				}
+				utils.Must(err)
+			}
+			cnt()
+		}
+	}
 }
 
 func ReadAndForget(path string) {

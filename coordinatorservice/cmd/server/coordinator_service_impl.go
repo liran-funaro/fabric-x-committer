@@ -27,7 +27,7 @@ func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 		if err == io.EOF {
 			// end of stream
 			fmt.Printf("BlockProcessing EOF\n")
-			break
+			return nil
 		}
 
 		if err != nil {
@@ -55,7 +55,8 @@ func (s *serviceImpl) sendTxsValidationStatus(stream coordinatorservice.Coordina
 
 		err := stream.Send(batch)
 		if err != nil {
-			panic(fmt.Sprintf("Error while sending tx status batch: %s", err))
+			fmt.Printf("Error while sending tx status batch: %v\n", err)
+			return
 		}
 	}
 }

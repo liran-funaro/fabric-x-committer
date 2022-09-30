@@ -73,7 +73,7 @@ func ReadProfileFromBlockFile(reader io.Reader) *Profile {
 	err := json.Unmarshal(data, pp)
 	utils.Must(err)
 
-	PrintProfile(pp)
+	//PrintProfile(pp)
 
 	return pp
 }

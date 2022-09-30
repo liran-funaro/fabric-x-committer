@@ -41,9 +41,9 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 				}
 				resp.TxsValidationStatus[i] = status
 
-				// TODO send some responses
-				//stream.Send(resp)
 			}
+			// TODO send some responses
+			stream.Send(resp)
 		}
 	}()
 
@@ -61,23 +61,7 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 			break
 		}
 
-		// just spawn a responder
-		go func(block *token.Block) {
-			resp := &coordinatorservice.TxValidationStatusBatch{
-				TxsValidationStatus: make([]*coordinatorservice.TxValidationStatus, len(block.Txs)),
-			}
-
-			for i, _ := range block.Txs {
-				status := &coordinatorservice.TxValidationStatus{
-					BlockNum: block.Number,
-					TxNum:    uint64(i),
-					IsValid:  true,
-				}
-				resp.TxsValidationStatus[i] = status
-			}
-
-			//stream.Send(resp)
-		}(block)
+		rQueue <- block
 
 	}
 	close(rQueue)
