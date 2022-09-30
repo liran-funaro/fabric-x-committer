@@ -31,6 +31,7 @@ build-all: build-blockgen build-coordinator build-sigservice build-shardsservice
 
 build-blockgen:
     go build -o {{bin-build-out}}/blockgen ./wgclient/cmd/generator
+    go build -o {{bin-build-out}}/mockcoordinator ./wgclient/cmd/mockcoordinator
 
 build-coordinator:
     go build -o {{bin-build-out}}/coordinator ./coordinatorservice/cmd/server
@@ -47,6 +48,11 @@ docker-image:
 docker CMD:
     docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder {{CMD}}
 
-deploy hosts=("ansible/inventory/hosts") +files=("bin eval/simple*"):
+defaultDeploymentFiles := "bin eval/simple/*"
+
+deploy-all hosts=("ansible/inventory/hosts") +files=(defaultDeploymentFiles):
     # just create ansible/inventory/hosts with a list of servers
-    cat {{hosts}} | while read line; do rsync -P -r {{files}} root@$line:~; done
+    cat {{hosts}} | while read line; do just deploy $line {{files}}; done
+
+deploy host +files=(defaultDeploymentFiles):
+    rsync -P -r {{files}} root@{{host}}:~
