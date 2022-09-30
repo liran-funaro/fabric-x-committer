@@ -4,17 +4,9 @@ import (
 	"context"
 	"io"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
-
-const defaultChannelBufferSize = 10
-
-func newShardsServiceChannelBufferGauge(subComponent, channel string) *metrics.ChannelBufferGauge {
-	return metrics.NewChannelBufferGauge("shard-service", subComponent, channel, defaultChannelBufferSize)
-}
-
-var shardsPhaseOneResponseChLength = newShardsServiceChannelBufferGauge("coordinator", "phase_one_responses")
 
 type shardsCoordinator struct {
 	UnimplementedShardsServer
@@ -29,7 +21,9 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 
-	phaseOneResponses := make(chan []*PhaseOneResponse, defaultChannelBufferSize)
+	const channelCapacity = 10
+	phaseOneResponses := make(chan []*PhaseOneResponse, channelCapacity)
+	metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
 
 	si, err := newShardInstances(phaseOneResponses, database.RootDir, metricsEnabled)
 	if err != nil {
@@ -88,7 +82,7 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 			return err
 		}
 		if s.metricsEnabled {
-			shardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
+			metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 		}
 	}
 }

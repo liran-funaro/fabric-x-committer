@@ -3,9 +3,9 @@ package main
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
-	_ "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	_ "github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 
@@ -15,7 +15,9 @@ func main() {
 
 	c := shardsservice.ReadConfig()
 
-	connection.RunServerMain(c.Connection(), func(grpcServer *grpc.Server) {
+	monitoring.LaunchPrometheus(c.Prometheus, "shards-service", metrics.AllMetrics)
+
+	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
 		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled))
 	})
 }

@@ -9,9 +9,6 @@ import (
 
 const maxSerialNumbersEntries = 1000000 // 32 bytes per serial number, would cause roughly 32MB memory
 
-var dependencyMgrInputChLength = newCoordinatorChannelBufferGauge("dep_mgr", "input")
-var dependencyMgrStatusUpdateChLength = newCoordinatorChannelBufferGauge("dep_mgr", "status_update")
-
 type dependencyMgr struct {
 	inputChan             chan *token.Block
 	inputChanStatusUpdate chan []*TxStatus
@@ -39,6 +36,10 @@ func newDependencyMgr(metricsEnabled bool) *dependencyMgr {
 		stopSignalCh:          make(chan struct{}),
 		metricsEnabled:        metricsEnabled,
 	}
+	if metricsEnabled {
+		metrics.DependencyMgrInputChLength.SetCapacity(defaultChannelBufferSize)
+		metrics.DependencyMgrStatusUpdateChLength.SetCapacity(defaultChannelBufferSize)
+	}
 	m.startBlockRecieverRoutine()
 	m.startStatusUpdateProcessorRoutine()
 	return m
@@ -53,7 +54,7 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
 				if m.metricsEnabled {
-					dependencyMgrInputChLength.Set(len(m.inputChan))
+					metrics.DependencyMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
 		}
@@ -115,7 +116,7 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 			case u := <-m.inputChanStatusUpdate:
 				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
 				if m.metricsEnabled {
-					dependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
+					metrics.DependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
 				}
 			}
 		}

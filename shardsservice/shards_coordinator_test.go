@@ -2,6 +2,7 @@ package shardsservice
 
 import (
 	"context"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"log"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ type shardsCoordinatorGrpcServiceForTest struct {
 
 func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoordinatorGrpcServiceForTest {
 	c := ShardServiceConfig{
-		Prometheus: connection.Prometheus{Enabled: false},
+		Prometheus: monitoring.Prometheus{Enabled: false},
 		Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: port,
@@ -38,7 +39,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 
 	var grpcServer *grpc.Server
 	sc := NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled)
-	go connection.RunServerMain(c.Connection(), func(server *grpc.Server) {
+	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
 		log.Print("created shards coordinator")
 		grpcServer = server
 		RegisterShardsServer(server, sc)

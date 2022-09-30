@@ -6,17 +6,14 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
 type SigVerificationConfig struct {
-	Prometheus       connection.Prometheus   `mapstructure:"prometheus"`
+	Prometheus       monitoring.Prometheus   `mapstructure:"prometheus"`
 	Endpoint         connection.Endpoint     `mapstructure:"endpoint"`
 	Scheme           signature.Scheme        `mapstructure:"scheme"`
 	ParallelExecutor parallelexecutor.Config `mapstructure:"parallel-executor"`
-}
-
-func (c *SigVerificationConfig) Connection() *connection.ServerConfig {
-	return &connection.ServerConfig{Prometheus: c.Prometheus, Endpoint: c.Endpoint}
 }
 
 func ReadConfig() SigVerificationConfig {
