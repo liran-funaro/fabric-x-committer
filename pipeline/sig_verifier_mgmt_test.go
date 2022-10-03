@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
@@ -32,7 +33,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 		&SigVerifierMgrConfig{
 			Endpoints: verifierServers,
 		},
-		false,
+		metrics.New(false),
 	)
 	assert.NoError(t, err)
 	defer m.stop()

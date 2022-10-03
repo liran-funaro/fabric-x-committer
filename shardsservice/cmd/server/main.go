@@ -14,10 +14,11 @@ func main() {
 	config.ParseFlags()
 
 	c := shardsservice.ReadConfig()
+	m := metrics.New(c.Prometheus.Enabled)
 
-	monitoring.LaunchPrometheus(c.Prometheus, "shards-service", metrics.AllMetrics)
+	monitoring.LaunchPrometheus(c.Prometheus, "shards-service", m.AllMetrics())
 
 	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
-		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled))
+		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))
 	})
 }

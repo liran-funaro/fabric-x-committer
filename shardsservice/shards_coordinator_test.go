@@ -2,13 +2,14 @@ package shardsservice
 
 import (
 	"context"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"log"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 
@@ -38,7 +39,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 	}
 
 	var grpcServer *grpc.Server
-	sc := NewShardsCoordinator(c.Database, c.Limits, c.Prometheus.Enabled)
+	sc := NewShardsCoordinator(c.Database, c.Limits, metrics.New(false))
 	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
 		log.Print("created shards coordinator")
 		grpcServer = server

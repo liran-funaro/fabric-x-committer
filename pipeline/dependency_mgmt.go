@@ -16,7 +16,7 @@ type dependencyMgr struct {
 	snToNodes             map[string]map[*node]struct{}
 	nodes                 map[TxSeqNum]*node
 	stopSignalCh          chan struct{}
-	metricsEnabled        bool
+	metrics               *metrics.Metrics
 }
 
 type node struct {
@@ -26,7 +26,7 @@ type node struct {
 	dependsOn     map[*node]struct{}
 }
 
-func newDependencyMgr(metricsEnabled bool) *dependencyMgr {
+func newDependencyMgr(metrics *metrics.Metrics) *dependencyMgr {
 	m := &dependencyMgr{
 		inputChan:             make(chan *token.Block, defaultChannelBufferSize),
 		inputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
@@ -34,11 +34,11 @@ func newDependencyMgr(metricsEnabled bool) *dependencyMgr {
 		snToNodes:             map[string]map[*node]struct{}{},
 		nodes:                 map[TxSeqNum]*node{},
 		stopSignalCh:          make(chan struct{}),
-		metricsEnabled:        metricsEnabled,
+		metrics:               metrics,
 	}
-	if metricsEnabled {
-		metrics.DependencyMgrInputChLength.SetCapacity(defaultChannelBufferSize)
-		metrics.DependencyMgrStatusUpdateChLength.SetCapacity(defaultChannelBufferSize)
+	if metrics.Enabled {
+		m.metrics.DependencyMgrInputChLength.SetCapacity(defaultChannelBufferSize)
+		m.metrics.DependencyMgrStatusUpdateChLength.SetCapacity(defaultChannelBufferSize)
 	}
 	m.startBlockRecieverRoutine()
 	m.startStatusUpdateProcessorRoutine()
@@ -53,8 +53,8 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 				return
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
-				if m.metricsEnabled {
-					metrics.DependencyMgrInputChLength.Set(len(m.inputChan))
+				if m.metrics.Enabled {
+					m.metrics.DependencyMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
 		}
@@ -100,9 +100,9 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 			}
 		}
 	}
-	if m.metricsEnabled {
-		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
-		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
+	if m.metrics.Enabled {
+		m.metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
+		m.metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
 	}
 }
 
@@ -115,8 +115,8 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 				return
 			case u := <-m.inputChanStatusUpdate:
 				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
-				if m.metricsEnabled {
-					metrics.DependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
+				if m.metrics.Enabled {
+					m.metrics.DependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
 				}
 			}
 		}
@@ -159,9 +159,9 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		}
 		m.removeNodeUnderAcquiredLock(node, u.IsValid)
 	}
-	if m.metricsEnabled {
-		metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
-		metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
+	if m.metrics.Enabled {
+		m.metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
+		m.metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
 	}
 	return notYetSeenTxs
 }

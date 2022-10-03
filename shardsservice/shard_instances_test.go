@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 )
 
 func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
@@ -12,7 +13,7 @@ func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
 
 	t.Run("simple phase one execution", func(t *testing.T) {
 		testDir := "./"
-		si, err := newShardInstances(phaseOneResponses, testDir, false)
+		si, err := newShardInstances(phaseOneResponses, testDir, metrics.New(false))
 		require.NoError(t, err)
 		defer si.deleteAll()
 

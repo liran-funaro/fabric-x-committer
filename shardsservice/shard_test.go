@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 )
 
 type shardForTest struct {
@@ -13,7 +14,7 @@ type shardForTest struct {
 }
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
-	s, err := newShard(id, path, false)
+	s, err := newShard(id, path, metrics.New(false))
 	require.NoError(t, err)
 
 	return &shardForTest{

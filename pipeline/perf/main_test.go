@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"testing"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/perf/track"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
 func BenchmarkCoordinator(b *testing.B) {
@@ -40,7 +41,7 @@ func BenchmarkCoordinator(b *testing.B) {
 	}
 	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Prometheus.Enabled)
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, metrics.New(false))
 
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))

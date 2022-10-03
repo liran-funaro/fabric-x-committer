@@ -21,11 +21,11 @@ type sigVerifierMgr struct {
 	outputChanValids       chan []TxSeqNum
 	outputChanInvalids     chan []TxSeqNum
 
-	stopSignalCh   chan struct{}
-	metricsEnabled bool
+	stopSignalCh chan struct{}
+	metrics      *metrics.Metrics
 }
 
-func newSigVerificationMgr(c *SigVerifierMgrConfig, metricsEnabled bool) (*sigVerifierMgr, error) {
+func newSigVerificationMgr(c *SigVerifierMgrConfig, metrics *metrics.Metrics) (*sigVerifierMgr, error) {
 	responseCollectionChan := make(chan *sigverification.ResponseBatch, defaultChannelBufferSize)
 
 	verifiers := []*sigVerifier{}
@@ -44,9 +44,9 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig, metricsEnabled bool) (*sigVe
 		outputChanValids:       make(chan []TxSeqNum, defaultChannelBufferSize),
 		outputChanInvalids:     make(chan []TxSeqNum, defaultChannelBufferSize),
 		stopSignalCh:           make(chan struct{}),
-		metricsEnabled:         metricsEnabled,
+		metrics:                metrics,
 	}
-	if metricsEnabled {
+	if metrics.Enabled {
 		metrics.SigVerifierMgrInputChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.SigVerifierMgrValidOutputChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.SigVerifierMgrInvalidOutputChLength.SetCapacity(defaultChannelBufferSize)
@@ -82,8 +82,8 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 				return
 			case b := <-m.inputChan:
 				v.sendCh <- b
-				if m.metricsEnabled {
-					metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
+				if m.metrics.Enabled {
+					m.metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
 		}
@@ -115,15 +115,15 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
-					if m.metricsEnabled {
-						metrics.SigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
+					if m.metrics.Enabled {
+						m.metrics.SigVerifierMgrInvalidOutputChLength.Set(len(m.outputChanInvalids))
 					}
 				}
 
 				if len(valids) > 0 {
 					m.outputChanValids <- valids
-					if m.metricsEnabled {
-						metrics.SigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
+					if m.metrics.Enabled {
+						m.metrics.SigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
 					}
 				}
 			}

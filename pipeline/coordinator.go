@@ -14,25 +14,25 @@ type Coordinator struct {
 	shardsServerMgr *shardsServerMgr
 	outputChan      chan []*TxStatus
 	stopSignalCh    chan struct{}
-	metricsEnabled  bool
+	metrics         *metrics.Metrics
 }
 
-func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, metricsEnabled bool) (*Coordinator, error) {
-	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metricsEnabled)
+func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, metrics *metrics.Metrics) (*Coordinator, error) {
+	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metrics)
 	if err != nil {
 		return nil, err
 	}
-	shardsServerMgr, err := newShardsServerMgr(shardsServerMgrConfig, metricsEnabled)
+	shardsServerMgr, err := newShardsServerMgr(shardsServerMgrConfig, metrics)
 	if err != nil {
 		return nil, err
 	}
 	c := &Coordinator{
-		dependencyMgr:   newDependencyMgr(metricsEnabled),
+		dependencyMgr:   newDependencyMgr(metrics),
 		sigVerifierMgr:  sigVerifierMgr,
 		shardsServerMgr: shardsServerMgr,
 		outputChan:      make(chan []*TxStatus, defaultChannelBufferSize),
 		stopSignalCh:    make(chan struct{}),
-		metricsEnabled:  metricsEnabled,
+		metrics:         metrics,
 	}
 	c.startTxProcessingRoutine()
 	c.startTxValidationProcessorRoutine()
@@ -46,10 +46,10 @@ func (c *Coordinator) SetSigVerificationKey(k *sigverification.Key) error {
 func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.dependencyMgr.inputChan <- block
 	c.sigVerifierMgr.inputChan <- block
-	if c.metricsEnabled {
-		metrics.DependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
-		metrics.SigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
-		metrics.IncomingTxs.Add(float64(len(block.Txs)))
+	if c.metrics.Enabled {
+		c.metrics.DependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
+		c.metrics.SigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
+		c.metrics.IncomingTxs.Add(float64(len(block.Txs)))
 	}
 }
 
@@ -72,12 +72,12 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		remainings = leftover
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
-			if c.metricsEnabled {
-				metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
+			if c.metrics.Enabled {
+				c.metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
 			}
 		}
-		if c.metricsEnabled {
-			metrics.SigVerifiedPendingTxs.Set(float64(len(remainings)))
+		if c.metrics.Enabled {
+			c.metrics.SigVerifiedPendingTxs.Set(float64(len(remainings)))
 		}
 	}
 
@@ -88,8 +88,8 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
-				if c.metricsEnabled {
-					metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
+				if c.metrics.Enabled {
+					c.metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 			case <-time.After(1 * time.Millisecond):
 				if len(remainings) > 0 {
@@ -108,8 +108,8 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				return
 			case status := <-c.shardsServerMgr.outputChan:
 				c.processValidationStatus(status)
-				if c.metricsEnabled {
-					metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
+				if c.metrics.Enabled {
+					c.metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
 			case invalids := <-c.sigVerifierMgr.outputChanInvalids:
 				invalidStatus := make([]*TxStatus, len(invalids))
@@ -120,8 +120,8 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 					}
 				}
 				c.processValidationStatus(invalidStatus)
-				if c.metricsEnabled {
-					metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
+				if c.metrics.Enabled {
+					c.metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
 				}
 			}
 		}
@@ -131,8 +131,8 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.outputChan <- txStatus
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
-	if c.metricsEnabled {
-		metrics.ProcessedTxs.Add(float64(len(txStatus)))
-		metrics.DependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
+	if c.metrics.Enabled {
+		c.metrics.ProcessedTxs.Add(float64(len(txStatus)))
+		c.metrics.DependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
 	}
 }

@@ -21,10 +21,10 @@ type shardInstances struct {
 	mu                    sync.RWMutex
 	phaseOneResponses     chan []*PhaseOneResponse
 	logger                *logging.Logger
-	metricsEnabled        bool
+	metrics               *metrics.Metrics
 }
 
-func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, metricsEnabled bool) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, metrics *metrics.Metrics) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
 
@@ -36,7 +36,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 		mu:                    sync.RWMutex{},
 		phaseOneResponses:     phaseOneResponse,
 		logger:                logger,
-		metricsEnabled:        metricsEnabled,
+		metrics:               metrics,
 	}
 
 	// TODO: Use a db to keep track of existing shards and
@@ -69,7 +69,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 
 func (i *shardInstances) setup(shardID uint32) error {
 	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, i.metricsEnabled)
+	shard, err := newShard(shardID, path, metrics.New(false))
 	if err != nil {
 		return err
 	}
@@ -189,15 +189,15 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 				if uint32(len(responses)) >= maxBatchItemCount {
 					i.logger.Debugf("emitting response due to timeout with %d", maxBatchItemCount)
 					i.phaseOneResponses <- responses[:maxBatchItemCount]
-					if i.metricsEnabled {
-						metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+					if i.metrics.Enabled {
+						i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 					}
 					responses = responses[maxBatchItemCount:]
 				} else {
 					i.logger.Debugf("emitting response due to timeout with %d", len(responses))
 					i.phaseOneResponses <- responses
-					if i.metricsEnabled {
-						metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+					if i.metrics.Enabled {
+						i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 					}
 					responses = nil
 				}
@@ -235,8 +235,8 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 			if uint32(len(responses)) >= maxBatchItemCount {
 				i.logger.Debug("emitting response due to max batch size")
 				i.phaseOneResponses <- responses[:maxBatchItemCount]
-				if i.metricsEnabled {
-					metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
+				if i.metrics.Enabled {
+					i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
 				}
 				responses = responses[maxBatchItemCount:]
 			}
