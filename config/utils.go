@@ -67,10 +67,14 @@ func FilePaths(dir string, filePattern *regexp.Regexp) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	absoluteDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
 	var filePaths []string
 	for _, entry := range entries {
 		if !entry.IsDir() && filePattern.MatchString(entry.Name()) {
-			filePaths = append(filePaths, filepath.Join(dir, entry.Name()))
+			filePaths = append(filePaths, filepath.Join(absoluteDir, entry.Name()))
 		}
 	}
 	return filePaths, nil

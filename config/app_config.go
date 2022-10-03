@@ -64,7 +64,7 @@ func initializeConfig() error {
 }
 
 func defaultConfigFiles() []string {
-	configFiles, err := FilePaths(DirPath, regexp.MustCompile(`^config.*\.yaml`))
+	configFiles, err := FilePaths(".", regexp.MustCompile(`^config.*\.yaml`))
 	if err != nil {
 		panic(err)
 	}

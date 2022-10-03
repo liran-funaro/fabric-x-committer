@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/generated"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
@@ -61,7 +59,7 @@ func Open(name string, options *ResultOptions) *ResultOutput {
 		panic(err)
 	}
 	filename := fmt.Sprintf("%s-%s.txt", name, time.Now().Format(fileTimeFormat))
-	file, err := utils.OverwriteFile(filepath.Join(generated.DirPath, filename))
+	file, err := utils.OverwriteFile(filename)
 	if err != nil {
 		panic(err)
 	}
