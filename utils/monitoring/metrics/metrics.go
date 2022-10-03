@@ -37,8 +37,8 @@ type BufferGaugeOpts struct {
 	SubComponent, Channel string
 }
 
-func NewChannelBufferGauge(opts BufferGaugeOpts) ChannelBufferGauge {
-	return ChannelBufferGauge{Gauge: CommitterChannelLength.With(prometheus.Labels{
+func NewChannelBufferGauge(opts BufferGaugeOpts) *ChannelBufferGauge {
+	return &ChannelBufferGauge{Gauge: CommitterChannelLength.With(prometheus.Labels{
 		"sub_component": opts.SubComponent,
 		"channel":       opts.Channel,
 	}),
