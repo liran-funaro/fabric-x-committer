@@ -49,7 +49,7 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	if c.metrics.Enabled {
 		c.metrics.DependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
 		c.metrics.SigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
-		c.metrics.IncomingTxs.Add(float64(len(block.Txs)))
+		c.metrics.CoordinatorInTxs.Add(float64(len(block.Txs)))
 	}
 }
 
@@ -73,6 +73,7 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		if len(intersection) > 0 {
 			c.shardsServerMgr.inputChan <- intersection
 			if c.metrics.Enabled {
+				c.metrics.DependencyMgrOutTxs.Add(float64(len(intersection)))
 				c.metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
 			}
 		}
@@ -132,7 +133,7 @@ func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
 	c.outputChan <- txStatus
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
 	if c.metrics.Enabled {
-		c.metrics.ProcessedTxs.Add(float64(len(txStatus)))
+		c.metrics.CoordinatorOutTxs.Add(float64(len(txStatus)))
 		c.metrics.DependencyMgrStatusUpdateChLength.Set(len(c.dependencyMgr.inputChanStatusUpdate))
 	}
 }

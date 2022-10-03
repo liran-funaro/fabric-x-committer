@@ -54,6 +54,7 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
 				if m.metrics.Enabled {
+					m.metrics.DependencyMgrInTxs.Add(float64(len(b.Txs)))
 					m.metrics.DependencyMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
@@ -101,8 +102,8 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 		}
 	}
 	if m.metrics.Enabled {
-		m.metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
-		m.metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
+		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
+		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
 	}
 }
 
@@ -160,8 +161,8 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		m.removeNodeUnderAcquiredLock(node, u.IsValid)
 	}
 	if m.metrics.Enabled {
-		m.metrics.DependencyTotalSNs.Set(float64(len(m.snToNodes)))
-		m.metrics.DependencyTotalTXs.Set(float64(len(m.nodes)))
+		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
+		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
 	}
 	return notYetSeenTxs
 }

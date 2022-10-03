@@ -124,6 +124,9 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	e.outputCh <- buffer[:batchSize]
+	if e.metrics.Enabled {
+		e.metrics.ParallelExecutorOutTxs.Add(float64(batchSize))
+	}
 	return e.cutBatch(buffer[batchSize:], minBatchSize)
 }
 
@@ -139,6 +142,9 @@ func (e *parallelExecutor) Submit(inputs []*Input) {
 	logger.Debugf("Will submit %d requests for execution.", len(inputs))
 	for _, input := range inputs {
 		e.inputCh <- input
+	}
+	if e.metrics.Enabled {
+		e.metrics.ParallelExecutorInTxs.Add(float64(len(inputs)))
 	}
 }
 

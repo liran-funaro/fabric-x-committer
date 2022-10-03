@@ -29,16 +29,14 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
 			if s.metrics.Enabled {
-				metrics.TxsReceived.Add(float64(len(batch.Requests)))
-				metrics.BatchesReceived.Inc()
+				metrics.VerifierServerInTxs.Add(float64(len(batch.Requests)))
 			}
 			executor.Submit(batch.Requests)
 		},
 		func() streamhandler.Output {
 			outputs := <-executor.Outputs()
 			if s.metrics.Enabled {
-				metrics.TxsSent.Add(float64(len(outputs)))
-				metrics.BatchesSent.Inc()
+				metrics.VerifierServerOutTxs.Add(float64(len(outputs)))
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})

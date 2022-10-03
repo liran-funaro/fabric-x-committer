@@ -21,7 +21,27 @@ var MemoryUsage = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 	return memory.UsedPercent
 })
 
-var AllMetrics = []prometheus.Collector{CpuUsage, MemoryUsage, CommitterChannelLength}
+var AllMetrics = []prometheus.Collector{CpuUsage, MemoryUsage, CommitterChannelLength, CommitterThroughputCounter}
+
+type ThroughputDirection = string
+
+var (
+	In  ThroughputDirection = "in"
+	Out ThroughputDirection = "out"
+)
+
+var CommitterThroughputCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "component_throughput",
+	Help: "Incoming requests/Outgoing responses for a component",
+}, []string{"sub_component", "direction"})
+
+func NewThroughputCounter(subComponent string, direction ThroughputDirection) prometheus.Counter {
+	return CommitterThroughputCounter.With(prometheus.Labels{"sub_component": subComponent, "direction": direction})
+}
+
+func NewThroughputCounterVec(direction ThroughputDirection) *prometheus.CounterVec {
+	return CommitterThroughputCounter.MustCurryWith(prometheus.Labels{"direction": direction})
+}
 
 type ChannelBufferGauge struct {
 	prometheus.Gauge

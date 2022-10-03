@@ -6,12 +6,25 @@ import (
 )
 
 type Metrics struct {
-	Enabled                             bool
-	IncomingTxs                         prometheus.Counter
-	SigVerifiedPendingTxs               prometheus.Gauge
-	ProcessedTxs                        prometheus.Counter
-	DependencyTotalSNs                  prometheus.Gauge
-	DependencyTotalTXs                  prometheus.Gauge
+	Enabled bool
+
+	SigVerifiedPendingTxs     prometheus.Gauge
+	DependencyGraphPendingSNs prometheus.Gauge
+	DependencyGraphPendingTXs prometheus.Gauge
+
+	CoordinatorInTxs     prometheus.Counter
+	CoordinatorOutTxs    prometheus.Counter
+	SigVerifierMgrInTxs  prometheus.Counter
+	SigVerifierMgrOutTxs prometheus.Counter
+	DependencyMgrInTxs   prometheus.Counter
+	DependencyMgrOutTxs  prometheus.Counter
+	ShardMgrInTxs        prometheus.Counter
+	ShardMgrOutTxs       prometheus.Counter
+	PhaseOneInTxs        prometheus.Counter
+	PhaseOneOutTxs       prometheus.Counter
+	PhaseTwoInTxs        prometheus.Counter
+	PhaseTwoOutTxs       prometheus.Counter
+
 	DependencyMgrInputChLength          *metrics.ChannelBufferGauge
 	DependencyMgrStatusUpdateChLength   *metrics.ChannelBufferGauge
 	PhaseOneSendChLength                *metrics.ChannelBufferGauge
@@ -30,33 +43,35 @@ func New(enabled bool) *Metrics {
 	}
 	return &Metrics{
 		Enabled: true,
-		IncomingTxs: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "coordinator_incoming_txs",
-			Help: "The total number of processed TXs on phase 1",
-		}),
 
 		SigVerifiedPendingTxs: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "coordinator_pending_txs",
 			Help: "The total number of TXs with valid sigs, waiting on the dependency graph",
 		}),
-
-		ProcessedTxs: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "coordinator_resolved_txs",
-			Help: "The total number of completely processed TXs",
+		DependencyGraphPendingSNs: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "dependency_graph_pending_sns",
+			Help: "The size of the dependency graph in SNs",
+		}),
+		DependencyGraphPendingTXs: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "dependency_graph_pending_txs",
+			Help: "The size of the dependency graph in TXs",
 		}),
 
-		DependencyTotalSNs: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "dependency_graph_total_sns",
-			Help: "The total number of SNs in the dependency graph",
-		}),
-
-		DependencyTotalTXs: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "dependency_graph_total_txs",
-			Help: "The total number of TXs in the dependency graph",
-		}),
+		// Throughput
+		CoordinatorInTxs:     metrics.NewThroughputCounter("coordinator", metrics.In),
+		CoordinatorOutTxs:    metrics.NewThroughputCounter("coordinator", metrics.Out),
+		SigVerifierMgrInTxs:  metrics.NewThroughputCounter("sigverifier_mgr", metrics.In),
+		SigVerifierMgrOutTxs: metrics.NewThroughputCounter("sigverifier_mgr", metrics.Out),
+		DependencyMgrInTxs:   metrics.NewThroughputCounter("dependency_mgr", metrics.In),
+		DependencyMgrOutTxs:  metrics.NewThroughputCounter("dependency_mgr", metrics.Out),
+		ShardMgrInTxs:        metrics.NewThroughputCounter("shard_mgr", metrics.In),
+		ShardMgrOutTxs:       metrics.NewThroughputCounter("shard_mgr", metrics.Out),
+		PhaseOneInTxs:        metrics.NewThroughputCounter("phase_one", metrics.In),
+		PhaseOneOutTxs:       metrics.NewThroughputCounter("phase_one", metrics.Out),
+		PhaseTwoInTxs:        metrics.NewThroughputCounter("phase_two", metrics.In),
+		PhaseTwoOutTxs:       metrics.NewThroughputCounter("phase_two", metrics.Out),
 
 		// Channel Buffers
-
 		DependencyMgrInputChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "dep_mgr",
 			Channel:      "input",
@@ -71,7 +86,7 @@ func New(enabled bool) *Metrics {
 		}),
 		PhaseOneProcessedChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "shard_mgr",
-			Channel:      "phase_one_processed_txs_chan",
+			Channel:      "phase_one_processed_txs",
 		}),
 		PhaseTwoSendChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "shard_mgr",
@@ -85,7 +100,6 @@ func New(enabled bool) *Metrics {
 			SubComponent: "shard_mgr",
 			Channel:      "output",
 		}),
-
 		SigVerifierMgrInputChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "sig_mgr",
 			Channel:      "input",
@@ -105,5 +119,5 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.IncomingTxs, m.SigVerifiedPendingTxs, m.ProcessedTxs, m.DependencyTotalSNs, m.DependencyTotalTXs}
+	return []prometheus.Collector{m.SigVerifiedPendingTxs, m.DependencyGraphPendingSNs, m.DependencyGraphPendingTXs}
 }

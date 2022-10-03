@@ -83,6 +83,7 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 			case b := <-m.inputChan:
 				v.sendCh <- b
 				if m.metrics.Enabled {
+					m.metrics.SigVerifierMgrInTxs.Add(float64(len(b.Txs)))
 					m.metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
@@ -125,6 +126,9 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 					if m.metrics.Enabled {
 						m.metrics.SigVerifierMgrValidOutputChLength.Set(len(m.outputChanValids))
 					}
+				}
+				if m.metrics.Enabled {
+					m.metrics.SigVerifierMgrOutTxs.Add(float64(len(responseBatch.Responses)))
 				}
 			}
 		}

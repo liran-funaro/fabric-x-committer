@@ -69,7 +69,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 
 func (i *shardInstances) setup(shardID uint32) error {
 	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, metrics.New(false))
+	shard, err := newShard(shardID, path, i.metrics)
 	if err != nil {
 		return err
 	}

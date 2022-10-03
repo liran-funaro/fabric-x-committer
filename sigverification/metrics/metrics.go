@@ -7,10 +7,10 @@ import (
 
 type Metrics struct {
 	Enabled                        bool
-	TxsReceived                    prometheus.Counter
-	TxsSent                        prometheus.Counter
-	BatchesReceived                prometheus.Counter
-	BatchesSent                    prometheus.Counter
+	VerifierServerInTxs            prometheus.Counter
+	VerifierServerOutTxs           prometheus.Counter
+	ParallelExecutorInTxs          prometheus.Counter
+	ParallelExecutorOutTxs         prometheus.Counter
 	ActiveStreams                  prometheus.Gauge
 	ParallelExecutorInputChLength  *metrics.ChannelBufferGauge
 	ParallelExecutorOutputChLength *metrics.ChannelBufferGauge
@@ -21,23 +21,11 @@ func New(enabled bool) *Metrics {
 		return &Metrics{Enabled: false}
 	}
 	return &Metrics{
-		Enabled: true,
-		TxsReceived: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "received_txs",
-			Help: "The total number of processed TXs",
-		}),
-		TxsSent: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "sent_txs",
-			Help: "The total number of sent TXs",
-		}),
-		BatchesReceived: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "received_batches",
-			Help: "The total number of processed batches",
-		}),
-		BatchesSent: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "sent_batches",
-			Help: "The total number of sent batches",
-		}),
+		Enabled:                true,
+		VerifierServerInTxs:    metrics.NewThroughputCounter("verifier_server", metrics.In),
+		VerifierServerOutTxs:   metrics.NewThroughputCounter("verifier_server", metrics.Out),
+		ParallelExecutorInTxs:  metrics.NewThroughputCounter("parallel_executor", metrics.In),
+		ParallelExecutorOutTxs: metrics.NewThroughputCounter("parallel_executor", metrics.Out),
 		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "active_streams",
 			Help: "The total number of started streams",
@@ -58,5 +46,5 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.TxsReceived, m.TxsSent, m.BatchesReceived, m.BatchesSent, m.ActiveStreams}
+	return []prometheus.Collector{m.ActiveStreams}
 }
