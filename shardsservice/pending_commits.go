@@ -1,11 +1,25 @@
 package shardsservice
 
-import sync "sync"
+import (
+	sync "sync"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+)
 
 type pendingCommits struct {
 	txIDsToSerialNumbers map[txID]*SerialNumbers
-	serialNumbers        map[string]struct{}
+	serialNumbers        map[string][]chan struct{}
 	mu                   sync.RWMutex
+	logging              *logging.Logger
+}
+
+func newPendingCommits() *pendingCommits {
+	return &pendingCommits{
+		txIDsToSerialNumbers: make(map[txID]*SerialNumbers),
+		serialNumbers:        make(map[string][]chan struct{}),
+		mu:                   sync.RWMutex{},
+		logging:              logging.New("pending commits"),
+	}
 }
 
 func (p *pendingCommits) add(tx txID, sNumbers *SerialNumbers) {
@@ -14,7 +28,7 @@ func (p *pendingCommits) add(tx txID, sNumbers *SerialNumbers) {
 
 	p.txIDsToSerialNumbers[tx] = sNumbers
 	for _, sn := range sNumbers.SerialNumbers {
-		p.serialNumbers[string(sn)] = struct{}{}
+		p.serialNumbers[string(sn)] = []chan struct{}{}
 	}
 }
 
@@ -25,17 +39,29 @@ func (p *pendingCommits) get(tx txID) *SerialNumbers {
 	return p.txIDsToSerialNumbers[tx]
 }
 
-func (p *pendingCommits) doNotExist(serialNumbers [][]byte) bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
+func (p *pendingCommits) waitTillNotExist(serialNumbers [][]byte) {
 	for _, sn := range serialNumbers {
-		if _, ok := p.serialNumbers[string(sn)]; ok {
-			return false
+		p.mu.RLock()
+		_, ok := p.serialNumbers[string(sn)]
+		p.mu.RUnlock()
+		if !ok {
+			continue
 		}
-	}
 
-	return true
+		p.mu.Lock()
+		waitingChan, ok := p.serialNumbers[string(sn)]
+		if !ok {
+			p.mu.Unlock()
+			continue
+		}
+
+		waitOn := make(chan struct{})
+		p.logging.Debug("waiting for serial number [" + string(sn) + "]")
+		waitingChan = append(waitingChan, waitOn)
+		p.serialNumbers[string(sn)] = waitingChan
+		p.mu.Unlock()
+		<-waitOn
+	}
 }
 
 func (p *pendingCommits) count() int {
@@ -55,6 +81,14 @@ func (p *pendingCommits) delete(tx txID) {
 	}
 
 	for _, sn := range sNumbers.SerialNumbers {
+		waitingChan, ok := p.serialNumbers[string(sn)]
+		if !ok {
+			continue
+		}
+		for _, c := range waitingChan {
+			p.logging.Debug("releasing serial number [" + string(sn) + "]")
+			c <- struct{}{}
+		}
 		delete(p.serialNumbers, string(sn))
 	}
 	delete(p.txIDsToSerialNumbers, tx)

@@ -37,14 +37,11 @@ func newShard(id uint32, path string, metricsEnabled bool) (*shard, error) {
 	}
 
 	return &shard{
-		id:   id,
-		path: path,
-		db:   db,
-		mu:   sync.RWMutex{},
-		pendingCommits: &pendingCommits{
-			txIDsToSerialNumbers: map[txID]*SerialNumbers{},
-			serialNumbers:        map[string]struct{}{},
-		},
+		id:                id,
+		path:              path,
+		db:                db,
+		mu:                sync.RWMutex{},
+		pendingCommits:    newPendingCommits(),
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
@@ -71,12 +68,7 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				TxNum:    tID.txNum,
 			}
 
-			if !s.pendingCommits.doNotExist(serialNumbers.GetSerialNumbers()) {
-				s.logger.Debugf("shardID [%d] invalidates txID [%v]", s.id, tID)
-				resp.Status = PhaseOneResponse_CANNOT_COMMITTED
-				s.phaseOneResponses.add(resp)
-				return
-			}
+			s.pendingCommits.waitTillNotExist(serialNumbers.GetSerialNumbers())
 
 			doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
 			for _, notExist := range doNoExist {
