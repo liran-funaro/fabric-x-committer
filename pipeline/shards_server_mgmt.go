@@ -28,11 +28,11 @@ type shardsServerMgr struct {
 	inflightTxs *dbInflightTxs
 	outputChan  chan []*TxStatus
 
-	stopSignalCh   chan struct{}
-	metricsEnabled bool
+	stopSignalCh chan struct{}
+	metrics      *metrics.Metrics
 }
 
-func newShardsServerMgr(config *ShardsServerMgrConfig, metricsEnabled bool) (*shardsServerMgr, error) {
+func newShardsServerMgr(config *ShardsServerMgrConfig, metrics *metrics.Metrics) (*shardsServerMgr, error) {
 	shardsServerMgr := &shardsServerMgr{
 		shardServers:    []*shardsServer{},
 		shardIdToServer: map[int]*shardsServer{},
@@ -43,12 +43,12 @@ func newShardsServerMgr(config *ShardsServerMgrConfig, metricsEnabled bool) (*sh
 			},
 			phaseOneProcessedTxsChan: make(chan []*phaseOneProcessedTx, defaultChannelBufferSize),
 		},
-		inputChan:      make(chan map[TxSeqNum][][]byte, defaultChannelBufferSize),
-		outputChan:     make(chan []*TxStatus, defaultChannelBufferSize),
-		stopSignalCh:   make(chan struct{}),
-		metricsEnabled: metricsEnabled,
+		inputChan:    make(chan map[TxSeqNum][][]byte, defaultChannelBufferSize),
+		outputChan:   make(chan []*TxStatus, defaultChannelBufferSize),
+		stopSignalCh: make(chan struct{}),
+		metrics:      metrics,
 	}
-	if metricsEnabled {
+	if metrics.Enabled {
 		metrics.PhaseOneProcessedChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.ShardMgrInputChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.ShardMgrOutputChLength.SetCapacity(defaultChannelBufferSize)
@@ -64,7 +64,7 @@ func newShardsServerMgr(config *ShardsServerMgrConfig, metricsEnabled bool) (*sh
 			firstShardNum, lastShardNum,
 			config.DeleteExistingShards,
 			shardsServerMgr.inflightTxs,
-			metricsEnabled,
+			metrics,
 		)
 		if err != nil {
 			return nil, err
@@ -96,8 +96,9 @@ func (m *shardsServerMgr) startInputRecieverRoutine() {
 				return
 			case txs := <-m.inputChan:
 				m.sendPhaseOneMessages(txs)
-				if m.metricsEnabled {
-					metrics.ShardMgrInputChLength.Set(len(m.inputChan))
+				if m.metrics.Enabled {
+					m.metrics.ShardMgrInTxs.Add(float64(len(txs)))
+					m.metrics.ShardMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
 		}
@@ -158,8 +159,9 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 
 	for server, reqBatch := range reqBatchByServer {
 		server.phaseOneComm.sendCh <- reqBatch
-		if m.metricsEnabled {
-			metrics.PhaseOneSendChLength.Set(len(server.phaseOneComm.sendCh))
+		if m.metrics.Enabled {
+			m.metrics.PhaseOneInTxs.Add(float64(len(reqBatch.Requests)))
+			m.metrics.PhaseOneSendChLength.Set(len(server.phaseOneComm.sendCh))
 		}
 	}
 }
@@ -202,12 +204,14 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		m.outputChan <- status
 		for s, msg := range phaseTwoMessages {
 			s.phaseTwoComm.sendCh <- msg
-			if m.metricsEnabled {
-				metrics.PhaseTwoSendChLength.Set(len(s.phaseTwoComm.sendCh))
+			if m.metrics.Enabled {
+				m.metrics.PhaseTwoOutTxs.Add(float64(len(msg.Requests)))
+				m.metrics.PhaseTwoSendChLength.Set(len(s.phaseTwoComm.sendCh))
 			}
 		}
-		if m.metricsEnabled {
-			metrics.ShardMgrOutputChLength.Set(len(m.outputChan))
+		if m.metrics.Enabled {
+			m.metrics.ShardMgrOutTxs.Add(float64(len(status)))
+			m.metrics.ShardMgrOutputChLength.Set(len(m.outputChan))
 		}
 	}
 
@@ -219,8 +223,8 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 				return
 			case t := <-m.inflightTxs.phaseOneProcessedTxsChan:
 				writeToOutputChansAndSendPhaseTwoMessages(t)
-				if m.metricsEnabled {
-					metrics.PhaseOneProcessedChLength.Set(len(m.inflightTxs.phaseOneProcessedTxsChan))
+				if m.metrics.Enabled {
+					m.metrics.PhaseOneProcessedChLength.Set(len(m.inflightTxs.phaseOneProcessedTxsChan))
 				}
 			}
 		}
@@ -243,7 +247,7 @@ type shardsServer struct {
 func newShardServer(endpoint *connection.Endpoint,
 	firstShardNum, lastShardNum int,
 	cleanupShards bool,
-	twoPCInflightTxs *dbInflightTxs, metricsEnabled bool) (*shardsServer, error) {
+	twoPCInflightTxs *dbInflightTxs, metrics *metrics.Metrics) (*shardsServer, error) {
 
 	if cleanupShards {
 		conn, err := connection.Connect(connection.NewDialConfig(*endpoint))
@@ -269,12 +273,12 @@ func newShardServer(endpoint *connection.Endpoint,
 		}
 	}
 
-	o, err := newPhaseOneComm(endpoint.Address(), metricsEnabled)
+	o, err := newPhaseOneComm(endpoint.Address(), metrics)
 	if err != nil {
 		return nil, err
 	}
 
-	t, err := newPhaseTwoComm(endpoint.Address(), metricsEnabled)
+	t, err := newPhaseTwoComm(endpoint.Address(), metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -302,12 +306,12 @@ type phaseOneComm struct {
 	streamContextCancel func()
 	sendCh              chan *shardsservice.PhaseOneRequestBatch
 
-	stopSignalCh   chan struct{}
-	stopWG         sync.WaitGroup
-	metricsEnabled bool
+	stopSignalCh chan struct{}
+	stopWG       sync.WaitGroup
+	metrics      *metrics.Metrics
 }
 
-func newPhaseOneComm(address string, metricsEnabled bool) (*phaseOneComm, error) {
+func newPhaseOneComm(address string, metrics *metrics.Metrics) (*phaseOneComm, error) {
 	conn, err := grpc.Dial(
 		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -325,7 +329,7 @@ func newPhaseOneComm(address string, metricsEnabled bool) (*phaseOneComm, error)
 		return nil, err
 	}
 
-	if metricsEnabled {
+	if metrics.Enabled {
 		metrics.PhaseOneSendChLength.SetCapacity(defaultChannelBufferSize)
 	}
 	return &phaseOneComm{
@@ -334,7 +338,7 @@ func newPhaseOneComm(address string, metricsEnabled bool) (*phaseOneComm, error)
 		streamContextCancel: cancel,
 		sendCh:              make(chan *shardsservice.PhaseOneRequestBatch, defaultChannelBufferSize),
 		stopSignalCh:        make(chan struct{}),
-		metricsEnabled:      metricsEnabled,
+		metrics:             metrics,
 	}, nil
 }
 
@@ -354,8 +358,8 @@ func (oc *phaseOneComm) startRequestSenderRoutine() {
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
 				}
-				if oc.metricsEnabled {
-					metrics.PhaseOneSendChLength.Set(len(oc.sendCh))
+				if oc.metrics.Enabled {
+					oc.metrics.PhaseOneSendChLength.Set(len(oc.sendCh))
 				}
 			}
 		}
@@ -391,8 +395,9 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 			phaseOneProcessedTxs := phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
 			if len(phaseOneProcessedTxs) > 0 {
 				phaseOneProcessedTxsChan <- phaseOneProcessedTxs
-				if oc.metricsEnabled {
-					metrics.PhaseOneProcessedChLength.Set(len(phaseOneProcessedTxsChan))
+				if oc.metrics.Enabled {
+					oc.metrics.PhaseOneOutTxs.Add(float64(len(phaseOneProcessedTxs)))
+					oc.metrics.PhaseOneProcessedChLength.Set(len(phaseOneProcessedTxsChan))
 				}
 			}
 		}
@@ -413,14 +418,14 @@ func (oc *phaseOneComm) stopResponseRecieverRoutine() {
 
 //////////////////////////////////// phaseTwoComm ////////////////////////////////////
 type phaseTwoComm struct {
-	stream         shardsservice.Shards_StartPhaseTwoStreamClient
-	sendCh         chan *shardsservice.PhaseTwoRequestBatch
-	stopSignalCh   chan struct{}
-	stopWG         sync.WaitGroup
-	metricsEnabled bool
+	stream       shardsservice.Shards_StartPhaseTwoStreamClient
+	sendCh       chan *shardsservice.PhaseTwoRequestBatch
+	stopSignalCh chan struct{}
+	stopWG       sync.WaitGroup
+	metrics      *metrics.Metrics
 }
 
-func newPhaseTwoComm(address string, metricsEnabled bool) (*phaseTwoComm, error) {
+func newPhaseTwoComm(address string, metrics *metrics.Metrics) (*phaseTwoComm, error) {
 	conn, err := grpc.Dial(
 		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -436,14 +441,14 @@ func newPhaseTwoComm(address string, metricsEnabled bool) (*phaseTwoComm, error)
 		panic(fmt.Sprintf("Error while starting phase two stream: %s", err))
 	}
 
-	if metricsEnabled {
+	if metrics.Enabled {
 		metrics.PhaseTwoSendChLength.SetCapacity(defaultChannelBufferSize)
 	}
 	return &phaseTwoComm{
-		stream:         stream,
-		sendCh:         make(chan *shardsservice.PhaseTwoRequestBatch, defaultChannelBufferSize),
-		stopSignalCh:   make(chan struct{}),
-		metricsEnabled: metricsEnabled,
+		stream:       stream,
+		sendCh:       make(chan *shardsservice.PhaseTwoRequestBatch, defaultChannelBufferSize),
+		stopSignalCh: make(chan struct{}),
+		metrics:      metrics,
 	}, nil
 }
 
@@ -463,8 +468,9 @@ func (tc *phaseTwoComm) startRequestSenderRoutine() {
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
 				}
-				if tc.metricsEnabled {
-					metrics.PhaseTwoSendChLength.Set(len(tc.sendCh))
+				if tc.metrics.Enabled {
+					tc.metrics.PhaseTwoInTxs.Add(float64(len(b.Requests)))
+					tc.metrics.PhaseTwoSendChLength.Set(len(tc.sendCh))
 				}
 			}
 		}

@@ -19,26 +19,24 @@ type verifierServer struct {
 	verificationScheme signature.Scheme
 	streamHandler      *streamhandler.StreamHandler
 	verifier           signature.TxVerifier
-	metricsEnabled     bool
+	metrics            *metrics.Metrics
 }
 
-func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, metricsEnabled bool) *verifierServer {
-	s := &verifierServer{verificationScheme: verificationScheme, metricsEnabled: metricsEnabled}
+func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, metrics *metrics.Metrics) *verifierServer {
+	s := &verifierServer{verificationScheme: verificationScheme, metrics: metrics}
 
-	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, metricsEnabled)
+	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, metrics)
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
-			if s.metricsEnabled {
-				metrics.TxsReceived.Add(float64(len(batch.Requests)))
-				metrics.BatchesReceived.Inc()
+			if s.metrics.Enabled {
+				metrics.VerifierServerInTxs.Add(float64(len(batch.Requests)))
 			}
 			executor.Submit(batch.Requests)
 		},
 		func() streamhandler.Output {
 			outputs := <-executor.Outputs()
-			if s.metricsEnabled {
-				metrics.TxsSent.Add(float64(len(outputs)))
-				metrics.BatchesSent.Inc()
+			if s.metrics.Enabled {
+				metrics.VerifierServerOutTxs.Add(float64(len(outputs)))
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})
@@ -63,9 +61,9 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 	//if s.verifier == nil {
 	//	return errors.New("no verification key set")
 	//}
-	if s.metricsEnabled {
-		metrics.ActiveStreams.Inc()
-		defer metrics.ActiveStreams.Dec()
+	if s.metrics.Enabled {
+		s.metrics.ActiveStreams.Inc()
+		defer s.metrics.ActiveStreams.Dec()
 	}
 	s.streamHandler.HandleStream(stream)
 	logger.Debug("Interrupted stream.")

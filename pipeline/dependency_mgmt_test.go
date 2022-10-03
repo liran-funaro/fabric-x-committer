@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 func TestDependencyMgr(t *testing.T) {
 	setup := func() *dependencyMgr {
-		m := newDependencyMgr(false)
+		m := newDependencyMgr(metrics.New(false))
 		block0 := &token.Block{
 			Number: 0,
 			Txs: []*token.Tx{

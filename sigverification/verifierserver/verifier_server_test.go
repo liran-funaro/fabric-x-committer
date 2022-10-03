@@ -7,6 +7,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
@@ -26,7 +27,7 @@ var parallelExecutionConfig = &parallelexecutor.Config{
 
 func TestNoVerificationKeySet(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
 
 	stream, err := c.Client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -42,7 +43,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
@@ -63,7 +64,7 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, false))
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
 	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, _ := factory.NewSigner(signingKey)

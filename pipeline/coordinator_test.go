@@ -1,13 +1,14 @@
 package pipeline_test
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 var conf = &pipeline.CoordinatorConfig{
@@ -35,7 +36,7 @@ func TestCoordinator(t *testing.T) {
 	require.NoError(t, err)
 	defer shardsServer.Stop()
 
-	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, false)
+	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, metrics.New(false))
 	require.NoError(t, err)
 	defer coordinator.Stop()
 

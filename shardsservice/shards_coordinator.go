@@ -14,10 +14,10 @@ type shardsCoordinator struct {
 	phaseOneResponses chan []*PhaseOneResponse
 	limits            *LimitsConfig
 	logger            *logging.Logger
-	metricsEnabled    bool
+	metrics           *metrics.Metrics
 }
 
-func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metricsEnabled bool) *shardsCoordinator {
+func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) *shardsCoordinator {
 	logger := logging.New("shard coordinator")
 	logger.Info("Initializing shards coordinator")
 
@@ -25,7 +25,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 	phaseOneResponses := make(chan []*PhaseOneResponse, channelCapacity)
 	metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
 
-	si, err := newShardInstances(phaseOneResponses, database.RootDir, metricsEnabled)
+	si, err := newShardInstances(phaseOneResponses, database.RootDir, metrics)
 	if err != nil {
 		panic(err)
 	}
@@ -35,7 +35,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		phaseOneResponses: phaseOneResponses,
 		limits:            limits,
 		logger:            logger,
-		metricsEnabled:    metricsEnabled,
+		metrics:           metrics,
 	}
 }
 
@@ -81,8 +81,8 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 		); err != nil {
 			return err
 		}
-		if s.metricsEnabled {
-			metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
+		if s.metrics.Enabled {
+			s.metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 		}
 	}
 }

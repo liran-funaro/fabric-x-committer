@@ -26,10 +26,11 @@ func main() {
 	config.ParseFlags()
 
 	c := serverconfig.ReadConfig()
+	m := metrics.New(c.Prometheus.Enabled)
 
-	monitoring.LaunchPrometheus(c.Prometheus, "sigverifier", metrics.AllMetrics)
+	monitoring.LaunchPrometheus(c.Prometheus, "sigverifier", m.AllMetrics())
 
 	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, c.Prometheus.Enabled))
+		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, m))
 	})
 }

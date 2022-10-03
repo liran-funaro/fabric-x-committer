@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
@@ -59,7 +60,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 			config.InputGeneratorParams.RequestBatch.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
-				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, false)
+				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, metrics.New(false))
 				c := sigverification_test.NewTestState(server)
 				t := sigverification_test.NewAsyncTracker()
 				defer c.TearDown()

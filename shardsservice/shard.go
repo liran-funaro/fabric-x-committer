@@ -20,7 +20,7 @@ type shard struct {
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.Logger
-	metricsEnabled    bool
+	metrics           *metrics.Metrics
 }
 
 type database interface {
@@ -29,7 +29,7 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string, metricsEnabled bool) (*shard, error) {
+func newShard(id uint32, path string, metrics *metrics.Metrics) (*shard, error) {
 	//db, err := rocksdb.Open(path)
 	db, err := goleveldb.Open(path)
 	if err != nil {
@@ -45,7 +45,7 @@ func newShard(id uint32, path string, metricsEnabled bool) (*shard, error) {
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
-		metricsEnabled:    metricsEnabled,
+		metrics:           metrics,
 	}, nil
 }
 
@@ -53,8 +53,8 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.metricsEnabled {
-		metrics.IncomingTxs.With(metrics.ShardId(s.id)).Add(float64(len(requests)))
+	if s.metrics.Enabled {
+		s.metrics.IncomingTxs.With(metrics.ShardId(s.id)).Add(float64(len(requests)))
 	}
 
 	for tID, serialNumbers := range requests {
@@ -107,9 +107,9 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	if err := s.db.Commit(sNumbers.SerialNumbers); err != nil {
 		panic(err)
 	}
-	if s.metricsEnabled {
-		metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
-		metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(sNumbers.SerialNumbers)))
+	if s.metrics.Enabled {
+		s.metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
+		s.metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(sNumbers.SerialNumbers)))
 	}
 
 	for txID := range requests {

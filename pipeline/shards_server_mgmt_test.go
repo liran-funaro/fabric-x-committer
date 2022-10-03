@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -40,7 +41,7 @@ func TestShardsServerMgr(t *testing.T) {
 	shardsServers[1].ShardsServerImpl.PhaseOneBehavior = testServerImpl1.PhaseOneBehavior
 	shardsServers[2].ShardsServerImpl.PhaseOneBehavior = testServerImpl2.PhaseOneBehavior
 
-	m, err := newShardsServerMgr(config, false)
+	m, err := newShardsServerMgr(config, metrics.New(false))
 	require.NoError(t, err)
 	defer m.stop()
 

@@ -48,12 +48,12 @@ type parallelExecutor struct {
 	executor            ExecutorFunc
 	batchSizeCutoff     int
 	batchTimeCutoff     time.Duration
-	metricsEnabled      bool
+	metrics             *metrics.Metrics
 }
 
-func New(executor ExecutorFunc, config *Config, metricsEnabled bool) ParallelExecutor {
+func New(executor ExecutorFunc, config *Config, metrics *metrics.Metrics) ParallelExecutor {
 	channelCapacity := config.ChannelBufferSize * config.Parallelism
-	if metricsEnabled {
+	if metrics.Enabled {
 		metrics.ParallelExecutorInputChLength.SetCapacity(channelCapacity)
 		metrics.ParallelExecutorOutputChLength.SetCapacity(channelCapacity)
 	}
@@ -66,7 +66,7 @@ func New(executor ExecutorFunc, config *Config, metricsEnabled bool) ParallelExe
 		executor:            executor,
 		batchSizeCutoff:     config.BatchSizeCutoff,
 		batchTimeCutoff:     config.BatchTimeCutoff,
-		metricsEnabled:      metricsEnabled,
+		metrics:             metrics,
 	}
 
 	go e.handleTimeManualCutoff()
@@ -82,8 +82,8 @@ func New(executor ExecutorFunc, config *Config, metricsEnabled bool) ParallelExe
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		if e.metricsEnabled {
-			metrics.ParallelExecutorInputChLength.Set(len(channel))
+		if e.metrics.Enabled {
+			e.metrics.ParallelExecutorInputChLength.Set(len(channel))
 		}
 		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
 		output, err := e.executor(input)
@@ -93,8 +93,8 @@ func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 		} else {
 			logger.Debugf("Received output from executor %d: %v", idx, output)
 			e.outputAggregationCh <- output
-			if e.metricsEnabled {
-				metrics.ParallelExecutorOutputChLength.Set(len(e.outputAggregationCh))
+			if e.metrics.Enabled {
+				e.metrics.ParallelExecutorOutputChLength.Set(len(e.outputAggregationCh))
 			}
 		}
 	}
@@ -124,6 +124,9 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	e.outputCh <- buffer[:batchSize]
+	if e.metrics.Enabled {
+		e.metrics.ParallelExecutorOutTxs.Add(float64(batchSize))
+	}
 	return e.cutBatch(buffer[batchSize:], minBatchSize)
 }
 
@@ -139,6 +142,9 @@ func (e *parallelExecutor) Submit(inputs []*Input) {
 	logger.Debugf("Will submit %d requests for execution.", len(inputs))
 	for _, input := range inputs {
 		e.inputCh <- input
+	}
+	if e.metrics.Enabled {
+		e.metrics.ParallelExecutorInTxs.Add(float64(len(inputs)))
 	}
 }
 

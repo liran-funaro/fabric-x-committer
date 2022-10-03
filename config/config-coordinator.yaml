@@ -11,6 +11,3 @@ coordinator:
       - endpoint: localhost:5001
         num-shards: 4
     delete-existing-shards: true
-
-sig-verification:
-  endpoint: localhost:5009
