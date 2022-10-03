@@ -172,6 +172,95 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys[2:], s.shard)
 		require.Equal(t, 0, s.shard.pendingCommits.count())
 	})
+
+	t.Run("valid txs and invalid tx", func(t *testing.T) {
+		phaseOneRequests := txIDToSerialNumbers{
+			txID{blockNum: 4, txNum: 1}: &SerialNumbers{
+				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
+			},
+			txID{blockNum: 4, txNum: 3}: &SerialNumbers{
+				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
+			},
+		}
+
+		s.shard.executePhaseOne(phaseOneRequests)
+
+		ensure2PendingCommits := func() bool {
+			return s.shard.pendingCommits.count() == 2
+		}
+		require.Eventually(t, ensure2PendingCommits, 5*time.Second, 500*time.Millisecond)
+
+		expectedPhaseOneResponses := []*PhaseOneResponse{
+			{
+				BlockNum: 4,
+				TxNum:    1,
+				Status:   PhaseOneResponse_CAN_COMMIT,
+			},
+			{
+				BlockNum: 4,
+				TxNum:    3,
+				Status:   PhaseOneResponse_CAN_COMMIT,
+			},
+		}
+
+		actualPhaseOneResponses := s.shard.accumulatedPhaseOneResponse()
+		require.ElementsMatch(t, expectedPhaseOneResponses, actualPhaseOneResponses)
+
+		keys := [][]byte{[]byte("key11"), []byte("key12"), []byte("key13"), []byte("key14")}
+		checkKeysNonExistanceForTest(t, keys, s.shard)
+
+		phaseOneRequests = txIDToSerialNumbers{
+			txID{blockNum: 5, txNum: 1}: &SerialNumbers{
+				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
+			},
+			txID{blockNum: 5, txNum: 3}: &SerialNumbers{
+				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
+			},
+		}
+
+		s.shard.executePhaseOne(phaseOneRequests)
+
+		ensure4PendingCommits := func() bool {
+			return s.shard.pendingCommits.count() == 4
+		}
+		require.Never(t, ensure4PendingCommits, 2*time.Second, 500*time.Millisecond)
+
+		phaseTwoRequests := txIDToInstruction{
+			txID{blockNum: 4, txNum: 1}: PhaseTwoRequest_COMMIT,
+			txID{blockNum: 4, txNum: 3}: PhaseTwoRequest_FORGET,
+		}
+		s.shard.executePhaseTwo(phaseTwoRequests)
+
+		checkKeysExistanceForTest(t, keys[:2], s.shard)
+
+		ensure1PendingCommits := func() bool {
+			return s.shard.pendingCommits.count() == 1
+		}
+		require.Eventually(t, ensure1PendingCommits, 2*time.Second, 500*time.Millisecond)
+
+		expectedPhaseOneResponses = []*PhaseOneResponse{
+			{
+				BlockNum: 5,
+				TxNum:    1,
+				Status:   PhaseOneResponse_CANNOT_COMMITTED,
+			},
+			{
+				BlockNum: 5,
+				TxNum:    3,
+				Status:   PhaseOneResponse_CAN_COMMIT,
+			},
+		}
+
+		actualPhaseOneResponses = s.shard.accumulatedPhaseOneResponse()
+		require.ElementsMatch(t, expectedPhaseOneResponses, actualPhaseOneResponses)
+
+		phaseTwoRequests = txIDToInstruction{
+			txID{blockNum: 5, txNum: 3}: PhaseTwoRequest_COMMIT,
+		}
+		s.shard.executePhaseTwo(phaseTwoRequests)
+
+		checkKeysExistanceForTest(t, keys, s.shard)
+	})
 }
 
 func checkKeysExistanceForTest(t *testing.T, keys [][]byte, s *shard) {
