@@ -60,8 +60,8 @@ func (l *goleveldb) DoNotExist(keys [][]byte) ([]bool, error) {
 }
 
 func (l *goleveldb) Close() {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	l.db.Close()
 }
