@@ -1,0 +1,22 @@
+name: profile1
+
+description: some text
+
+# block configuration
+block:
+  # number of blocks we generate
+  # -1 indicates streaming infinite number of blocks
+  count: -1
+  # number of transactions per block
+  size: 100
+
+# transaction configuration
+transaction:
+  serialnumber:
+    # number of serial numbers per transaction
+    count: 4
+  signature:
+    # signature scheme
+    type: ecdsa
+    #
+    validityratio: 1.0
