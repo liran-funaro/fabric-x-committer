@@ -56,7 +56,7 @@ var verifierFactories = map[Scheme]VerifierFactory{
 
 //NewTxVerifier creates a new TX verifier according to the implementation scheme
 func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
-	if factory, ok := verifierFactories[scheme]; ok {
+	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory.NewVerifier(key)
 	} else {
 		return nil, errors.New("scheme not supported")
