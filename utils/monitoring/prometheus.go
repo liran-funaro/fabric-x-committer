@@ -4,11 +4,9 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 type Prometheus struct {
@@ -16,20 +14,39 @@ type Prometheus struct {
 	Endpoint connection.Endpoint `mapstructure:"endpoint"`
 }
 
-func LaunchPrometheus(config Prometheus, componentName string, customCollectors []prometheus.Collector) {
+type ComponentType = int
+
+const (
+	Coordinator ComponentType = iota
+	SigVerifier
+	ShardsService
+)
+
+var componentTypeMap = map[ComponentType]string{
+	Coordinator:   "coordinator",
+	SigVerifier:   "sigverifier",
+	ShardsService: "shards-service",
+}
+
+var componentTypeGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "component_type",
+	Help: "Current component type",
+})
+
+func LaunchPrometheus(config Prometheus, componentType ComponentType, customCollectors []prometheus.Collector) {
 	if !config.Enabled {
 		return
 	}
 	registry := prometheus.NewRegistry()
 
-	customMetricRegisterer := registerer("sc", componentName, registry)
-	for _, collector := range append(append(metrics.New().AllMetrics(), customCollectors...), metrics.ChannelBufferLengthGauge, metrics.ThroughputCounter) {
-		customMetricRegisterer.MustRegister(collector)
-	}
+	customMetricRegisterer := registerer("sc", componentTypeMap[componentType], registry)
 
-	nodeExporterMetricRegisterer := registerer("ne", componentName, registry)
-	nodeExporterMetricRegisterer.MustRegister(collectors.NewGoCollector(collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll)))
-	nodeExporterMetricRegisterer.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	for _, collector := range append(customCollectors, componentTypeGauge) {
+		if err := customMetricRegisterer.Register(collector); err != nil {
+			logger.Infof("Error registering: %v", err)
+		}
+	}
+	componentTypeGauge.Set(float64(componentType))
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	go func() {

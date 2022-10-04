@@ -44,5 +44,10 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.SNCommitDuration}
+	return []prometheus.Collector{m.SNCommitDuration,
+		m.IncomingTxs,
+		m.CommittedSNs,
+		m.SNCommitDuration,
+		m.ShardsPhaseOneResponseChLength,
+	}
 }

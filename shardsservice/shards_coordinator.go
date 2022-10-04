@@ -23,7 +23,9 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 
 	const channelCapacity = 10
 	phaseOneResponses := make(chan []*PhaseOneResponse, channelCapacity)
-	metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
+	if metrics.Enabled {
+		metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
+	}
 
 	si, err := newShardInstances(phaseOneResponses, database.RootDir, metrics)
 	if err != nil {

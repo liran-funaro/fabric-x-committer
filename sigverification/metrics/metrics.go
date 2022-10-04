@@ -46,5 +46,12 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.ActiveStreams}
+	return []prometheus.Collector{m.ActiveStreams,
+		m.VerifierServerInTxs,
+		m.VerifierServerOutTxs,
+		m.ParallelExecutorInTxs,
+		m.ParallelExecutorOutTxs,
+		m.ParallelExecutorInputChLength,
+		m.ParallelExecutorOutputChLength,
+	}
 }

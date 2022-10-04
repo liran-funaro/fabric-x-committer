@@ -119,5 +119,28 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.SigVerifiedPendingTxs, m.DependencyGraphPendingSNs, m.DependencyGraphPendingTXs}
+	return []prometheus.Collector{m.SigVerifiedPendingTxs, m.DependencyGraphPendingSNs, m.DependencyGraphPendingTXs,
+		m.CoordinatorInTxs,
+		m.CoordinatorOutTxs,
+		m.SigVerifierMgrInTxs,
+		m.SigVerifierMgrOutTxs,
+		m.DependencyMgrInTxs,
+		m.DependencyMgrOutTxs,
+		m.ShardMgrInTxs,
+		m.ShardMgrOutTxs,
+		m.PhaseOneInTxs,
+		m.PhaseOneOutTxs,
+		m.PhaseTwoInTxs,
+		m.PhaseTwoOutTxs,
+		m.DependencyMgrInputChLength,
+		m.DependencyMgrStatusUpdateChLength,
+		m.PhaseOneSendChLength,
+		m.PhaseOneProcessedChLength,
+		m.PhaseTwoSendChLength,
+		m.ShardMgrInputChLength,
+		m.ShardMgrOutputChLength,
+		m.SigVerifierMgrInputChLength,
+		m.SigVerifierMgrValidOutputChLength,
+		m.SigVerifierMgrInvalidOutputChLength,
+	}
 }
