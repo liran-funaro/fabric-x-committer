@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -15,7 +14,7 @@ type goleveldb struct {
 
 func Open(path string) (*goleveldb, error) {
 	o := &opt.Options{
-		Filter:             filter.NewBloomFilter(10),
+		//Filter:             filter.NewBloomFilter(10),
 		BlockCacheCapacity: 32 * opt.MiB,
 	}
 	db, err := leveldb.OpenFile(path, o)
