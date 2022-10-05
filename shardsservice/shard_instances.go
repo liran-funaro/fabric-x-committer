@@ -127,6 +127,10 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
 			i.logger.Debugf("assigning txID [%v] to shardID [%d]", tID, shardID)
 			i.txIDToShardID.add(tID, shardID)
 			i.txIDToPendingResponse.add(tID, shardID)
+			if i.metrics.Enabled {
+				i.metrics.ShardInstanceTxShard.Set(len(i.txIDToShardID.txToShardID))
+				i.metrics.ShardInstanceTxResponse.Set(len(i.txIDToPendingResponse.tIDToPendingShardIDResp))
+			}
 		}
 	}
 

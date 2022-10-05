@@ -54,7 +54,7 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 			case b := <-m.inputChan:
 				m.updateGraphWithNewBlock(b)
 				if m.metrics.Enabled {
-					m.metrics.DependencyMgrInTxs.Add(float64(len(b.Txs)))
+					m.metrics.DependencyMgrInTxs.Add(len(b.Txs))
 					m.metrics.DependencyMgrInputChLength.Set(len(m.inputChan))
 				}
 			}

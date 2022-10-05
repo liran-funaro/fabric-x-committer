@@ -7,10 +7,10 @@ import (
 
 type Metrics struct {
 	Enabled                        bool
-	VerifierServerInTxs            prometheus.Counter
-	VerifierServerOutTxs           prometheus.Counter
-	ParallelExecutorInTxs          prometheus.Counter
-	ParallelExecutorOutTxs         prometheus.Counter
+	VerifierServerInTxs            *metrics.ThroughputCounter
+	VerifierServerOutTxs           *metrics.ThroughputCounter
+	ParallelExecutorInTxs          *metrics.ThroughputCounter
+	ParallelExecutorOutTxs         *metrics.ThroughputCounter
 	ActiveStreams                  prometheus.Gauge
 	ParallelExecutorInputChLength  *metrics.ChannelBufferGauge
 	ParallelExecutorOutputChLength *metrics.ChannelBufferGauge

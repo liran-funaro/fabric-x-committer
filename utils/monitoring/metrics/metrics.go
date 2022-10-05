@@ -9,21 +9,54 @@ const (
 	Out ThroughputDirection = "out"
 )
 
+type ThroughputCounter struct {
+	*prometheus.CounterVec
+}
+
 var throughputCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Name: "component_throughput",
 	Help: "Incoming requests/Outgoing responses for a component",
 }, []string{"sub_component", "direction"})
 
-func NewThroughputCounter(subComponent string, direction ThroughputDirection) prometheus.Counter {
-	return throughputCounter.With(prometheus.Labels{"sub_component": subComponent, "direction": direction})
+func NewThroughputCounter(subComponent string, direction ThroughputDirection) *ThroughputCounter {
+	return &ThroughputCounter{CounterVec: throughputCounter.MustCurryWith(prometheus.Labels{"sub_component": subComponent, "direction": direction})}
 }
 
-func NewThroughputCounterVec(direction ThroughputDirection) *prometheus.CounterVec {
-	return throughputCounter.MustCurryWith(prometheus.Labels{"direction": direction})
+func NewThroughputCounterVec(direction ThroughputDirection) *ThroughputCounter {
+	return &ThroughputCounter{CounterVec: throughputCounter.MustCurryWith(prometheus.Labels{"direction": direction})}
+}
+
+func (c *ThroughputCounter) AddFor(subComponent string, length int) {
+	c.CounterVec.WithLabelValues("sub_component", subComponent).Add(float64(length))
+}
+
+func (c *ThroughputCounter) Add(length int) {
+	c.CounterVec.WithLabelValues().Add(float64(length))
+}
+
+type InMemoryDataStructureGauge struct {
+	*prometheus.GaugeVec
+}
+
+func (g *InMemoryDataStructureGauge) Set(length int) {
+	g.GaugeVec.WithLabelValues().Set(float64(length))
+}
+
+var inMemoryDataStructureGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "data_structure_size",
+	Help: "Size of data structures (maps/slices)",
+}, []string{"sub_component", "prop"})
+
+func NewInMemoryDataStructureGauge(subComponent, prop string) *InMemoryDataStructureGauge {
+	return &InMemoryDataStructureGauge{GaugeVec: inMemoryDataStructureGauge.MustCurryWith(prometheus.Labels{
+		"sub_component": subComponent,
+		"prop":          prop,
+	}),
+	}
 }
 
 type ChannelBufferGauge struct {
-	prometheus.Gauge
+	*prometheus.GaugeVec
 	capacity float64
 }
 
@@ -37,7 +70,7 @@ type BufferGaugeOpts struct {
 }
 
 func NewChannelBufferGauge(opts BufferGaugeOpts) *ChannelBufferGauge {
-	return &ChannelBufferGauge{Gauge: channelBufferLengthGauge.With(prometheus.Labels{
+	return &ChannelBufferGauge{GaugeVec: channelBufferLengthGauge.MustCurryWith(prometheus.Labels{
 		"sub_component": opts.SubComponent,
 		"channel":       opts.Channel,
 	}),
@@ -55,5 +88,5 @@ func (g *ChannelBufferGauge) Set(length int) {
 	if g.capacity == 0 {
 		panic("no capacity set")
 	}
-	g.Gauge.Set(float64(length) / g.capacity)
+	g.GaugeVec.WithLabelValues().Set(float64(length) / g.capacity)
 }

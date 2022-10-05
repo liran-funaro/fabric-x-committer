@@ -83,6 +83,10 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 			resp.Status = PhaseOneResponse_CAN_COMMIT
 			s.pendingCommits.add(tID, serialNumbers)
 			s.phaseOneResponses.add(resp)
+			if s.metrics.Enabled {
+				s.metrics.PendingCommitsSNs.Set(len(s.pendingCommits.serialNumbers))
+				s.metrics.PendingCommitsTxIds.Set(len(s.pendingCommits.txIDsToSerialNumbers))
+			}
 			s.logger.Debugf("shardID [%d] successfully validated txID [%v]", s.id, tID)
 		}(tID, serialNumbers)
 	}
@@ -114,6 +118,10 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 
 	for txID := range requests {
 		s.pendingCommits.delete(txID)
+	}
+	if s.metrics.Enabled {
+		s.metrics.PendingCommitsSNs.Set(len(s.pendingCommits.serialNumbers))
+		s.metrics.PendingCommitsTxIds.Set(len(s.pendingCommits.txIDsToSerialNumbers))
 	}
 }
 

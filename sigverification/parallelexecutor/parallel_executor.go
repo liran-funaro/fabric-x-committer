@@ -125,7 +125,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	e.outputCh <- buffer[:batchSize]
 	if e.metrics.Enabled {
-		e.metrics.ParallelExecutorOutTxs.Add(float64(batchSize))
+		e.metrics.ParallelExecutorOutTxs.Add(batchSize)
 	}
 	return e.cutBatch(buffer[batchSize:], minBatchSize)
 }
@@ -144,7 +144,7 @@ func (e *parallelExecutor) Submit(inputs []*Input) {
 		e.inputCh <- input
 	}
 	if e.metrics.Enabled {
-		e.metrics.ParallelExecutorInTxs.Add(float64(len(inputs)))
+		e.metrics.ParallelExecutorInTxs.Add(len(inputs))
 	}
 }
 

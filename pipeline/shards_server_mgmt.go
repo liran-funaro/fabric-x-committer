@@ -97,7 +97,7 @@ func (m *shardsServerMgr) startInputRecieverRoutine() {
 			case txs := <-m.inputChan:
 				m.sendPhaseOneMessages(txs)
 				if m.metrics.Enabled {
-					m.metrics.ShardMgrInTxs.Add(float64(len(txs)))
+					m.metrics.ShardMgrInTxs.Add(len(txs))
 					m.metrics.ShardMgrInputChLength.Set(len(m.inputChan))
 				}
 			}
@@ -160,7 +160,7 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 	for server, reqBatch := range reqBatchByServer {
 		server.phaseOneComm.sendCh <- reqBatch
 		if m.metrics.Enabled {
-			m.metrics.PhaseOneInTxs.Add(float64(len(reqBatch.Requests)))
+			m.metrics.PhaseOneInTxs.Add(len(reqBatch.Requests))
 			m.metrics.PhaseOneSendChLength.Set(len(server.phaseOneComm.sendCh))
 		}
 	}
@@ -205,12 +205,12 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 		for s, msg := range phaseTwoMessages {
 			s.phaseTwoComm.sendCh <- msg
 			if m.metrics.Enabled {
-				m.metrics.PhaseTwoOutTxs.Add(float64(len(msg.Requests)))
+				m.metrics.PhaseTwoOutTxs.Add(len(msg.Requests))
 				m.metrics.PhaseTwoSendChLength.Set(len(s.phaseTwoComm.sendCh))
 			}
 		}
 		if m.metrics.Enabled {
-			m.metrics.ShardMgrOutTxs.Add(float64(len(status)))
+			m.metrics.ShardMgrOutTxs.Add(len(status))
 			m.metrics.ShardMgrOutputChLength.Set(len(m.outputChan))
 		}
 	}
@@ -396,7 +396,7 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 			if len(phaseOneProcessedTxs) > 0 {
 				phaseOneProcessedTxsChan <- phaseOneProcessedTxs
 				if oc.metrics.Enabled {
-					oc.metrics.PhaseOneOutTxs.Add(float64(len(phaseOneProcessedTxs)))
+					oc.metrics.PhaseOneOutTxs.Add(len(phaseOneProcessedTxs))
 					oc.metrics.PhaseOneProcessedChLength.Set(len(phaseOneProcessedTxsChan))
 				}
 			}
@@ -469,7 +469,7 @@ func (tc *phaseTwoComm) startRequestSenderRoutine() {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
 				}
 				if tc.metrics.Enabled {
-					tc.metrics.PhaseTwoInTxs.Add(float64(len(b.Requests)))
+					tc.metrics.PhaseTwoInTxs.Add(len(b.Requests))
 					tc.metrics.PhaseTwoSendChLength.Set(len(tc.sendCh))
 				}
 			}

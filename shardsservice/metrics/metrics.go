@@ -9,8 +9,12 @@ import (
 
 type Metrics struct {
 	Enabled                        bool
-	IncomingTxs                    *prometheus.CounterVec
-	CommittedSNs                   *prometheus.CounterVec
+	IncomingTxs                    *metrics.ThroughputCounter
+	CommittedSNs                   *metrics.ThroughputCounter
+	PendingCommitsSNs              *metrics.InMemoryDataStructureGauge
+	PendingCommitsTxIds            *metrics.InMemoryDataStructureGauge
+	ShardInstanceTxShard           *metrics.InMemoryDataStructureGauge
+	ShardInstanceTxResponse        *metrics.InMemoryDataStructureGauge
 	SNCommitDuration               *prometheus.GaugeVec
 	ShardsPhaseOneResponseChLength *metrics.ChannelBufferGauge
 }
@@ -20,9 +24,13 @@ func New(enabled bool) *Metrics {
 		return &Metrics{Enabled: false}
 	}
 	return &Metrics{
-		Enabled:      true,
-		IncomingTxs:  metrics.NewThroughputCounterVec(metrics.In),
-		CommittedSNs: metrics.NewThroughputCounterVec(metrics.Out),
+		Enabled:                 true,
+		IncomingTxs:             metrics.NewThroughputCounterVec(metrics.In),
+		CommittedSNs:            metrics.NewThroughputCounterVec(metrics.Out),
+		PendingCommitsSNs:       metrics.NewInMemoryDataStructureGauge("pending_commits", "serial_numbers"),
+		PendingCommitsTxIds:     metrics.NewInMemoryDataStructureGauge("pending_commits", "tx_ids"),
+		ShardInstanceTxShard:    metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_shard_id"),
+		ShardInstanceTxResponse: metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_response"),
 
 		SNCommitDuration: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "shard_commit_duration",
@@ -47,7 +55,10 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	return []prometheus.Collector{m.SNCommitDuration,
 		m.IncomingTxs,
 		m.CommittedSNs,
-		m.SNCommitDuration,
+		m.PendingCommitsSNs,
+		m.PendingCommitsTxIds,
+		m.ShardInstanceTxShard,
+		m.ShardInstanceTxResponse,
 		m.ShardsPhaseOneResponseChLength,
 	}
 }

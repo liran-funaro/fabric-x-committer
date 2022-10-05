@@ -12,18 +12,18 @@ type Metrics struct {
 	DependencyGraphPendingSNs prometheus.Gauge
 	DependencyGraphPendingTXs prometheus.Gauge
 
-	CoordinatorInTxs     prometheus.Counter
-	CoordinatorOutTxs    prometheus.Counter
-	SigVerifierMgrInTxs  prometheus.Counter
-	SigVerifierMgrOutTxs prometheus.Counter
-	DependencyMgrInTxs   prometheus.Counter
-	DependencyMgrOutTxs  prometheus.Counter
-	ShardMgrInTxs        prometheus.Counter
-	ShardMgrOutTxs       prometheus.Counter
-	PhaseOneInTxs        prometheus.Counter
-	PhaseOneOutTxs       prometheus.Counter
-	PhaseTwoInTxs        prometheus.Counter
-	PhaseTwoOutTxs       prometheus.Counter
+	CoordinatorInTxs     *metrics.ThroughputCounter
+	CoordinatorOutTxs    *metrics.ThroughputCounter
+	SigVerifierMgrInTxs  *metrics.ThroughputCounter
+	SigVerifierMgrOutTxs *metrics.ThroughputCounter
+	DependencyMgrInTxs   *metrics.ThroughputCounter
+	DependencyMgrOutTxs  *metrics.ThroughputCounter
+	ShardMgrInTxs        *metrics.ThroughputCounter
+	ShardMgrOutTxs       *metrics.ThroughputCounter
+	PhaseOneInTxs        *metrics.ThroughputCounter
+	PhaseOneOutTxs       *metrics.ThroughputCounter
+	PhaseTwoInTxs        *metrics.ThroughputCounter
+	PhaseTwoOutTxs       *metrics.ThroughputCounter
 
 	DependencyMgrInputChLength          *metrics.ChannelBufferGauge
 	DependencyMgrStatusUpdateChLength   *metrics.ChannelBufferGauge
