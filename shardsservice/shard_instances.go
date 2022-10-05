@@ -301,10 +301,12 @@ func (t *txIDToShardID) add(tID txID, shardID uint32) {
 }
 
 func (t *txIDToShardID) get(tID txID) []uint32 {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
-	return t.txToShardID[tID]
+	shardId := t.txToShardID[tID]
+	delete(t.txToShardID, tID)
+	return shardId
 }
 
 func shardFilePath(rootDir string, shardID uint32) string {
@@ -359,6 +361,10 @@ func (t *txIDToPendingResponse) removeDueToValid(tID txID, shardID uint32) (noMo
 
 	delete(shardIDResp, shardID)
 	noMorePendingResponse = len(shardIDResp) == 0
+
+	if noMorePendingResponse {
+		delete(t.tIDToPendingShardIDResp, tID)
+	}
 
 	return
 }
