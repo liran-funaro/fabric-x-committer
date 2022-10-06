@@ -58,7 +58,7 @@ deploy host +files=(defaultDeploymentFiles):
     rsync -P -r {{files}} root@{{host}}:~
 
 playbook-path := "./ansible/playbooks"
-export ANSIBLE_CONFIG_PATH := "./ansible/ansible.cfg"
+export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 
 deploy-bins:
     ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "servicename=blockgen"
