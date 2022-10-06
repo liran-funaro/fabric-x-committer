@@ -5,7 +5,7 @@ sig-verification:
     endpoint: localhost:2113
   scheme: "Ecdsa"
   parallel-executor:
-    parallelism: 4
+    parallelism: 40
     batch-time-cutoff: 500ms
     batch-size-cutoff: 50
     channel-buffer-size: 50

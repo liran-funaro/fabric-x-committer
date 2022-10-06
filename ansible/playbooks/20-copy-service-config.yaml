@@ -3,12 +3,12 @@
 #
 ---
   - name: Copy a service config to respective service machines
-    hosts: "{{ servicename + 'services' }}"
+    hosts: "{{ servicename + '*' }}"
     tasks:
       - name: Copy config file
         copy:
-          src: "{{ '../../config/' + filename }}"
-          dest: "{{ '~/' + servicename + 'service/' }}"
+          src: "{{ '../../' + configpath + '/config-' + servicename + '.yaml' }}"
+          dest: "{{ '~/config-' + servicename + '.yaml' }}"
           owner: root
           group: root
           mode: a+rw

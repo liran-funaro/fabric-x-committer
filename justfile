@@ -48,7 +48,7 @@ docker-image:
 docker CMD:
     docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder {{CMD}}
 
-defaultDeploymentFiles := "bin eval/simple/*"
+defaultDeploymentFiles := "bin eval/deployment/default/*"
 
 deploy-all hosts=("ansible/inventory/hosts") +files=(defaultDeploymentFiles):
     # just create ansible/inventory/hosts with a list of servers
@@ -56,3 +56,17 @@ deploy-all hosts=("ansible/inventory/hosts") +files=(defaultDeploymentFiles):
 
 deploy host +files=(defaultDeploymentFiles):
     rsync -P -r {{files}} root@{{host}}:~
+
+playbook-path := "./ansible/playbooks"
+export ANSIBLE_CONFIG_PATH := "./ansible/ansible.cfg"
+
+deploy-bins:
+    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "servicename=blockgen"
+    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "servicename=coordinator"
+    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "servicename=shardsservice"
+    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "servicename=sigservice"
+
+deploy-configs configpath=("eval/deployments/default"):
+    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=coordinator" --extra-vars "configpath={{configpath}}"
+    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=shardsservice" --extra-vars "configpath={{configpath}}"
+    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=sigservice" --extra-vars "configpath={{configpath}}"

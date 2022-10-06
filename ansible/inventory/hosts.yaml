@@ -2,25 +2,35 @@ all:
   vars:
     ansible_connection: ssh
     ansible_user: "root"
-    ansible_ssh_pass: "SSH PASSWORD GOES HERE"
+#    ansible_ssh_pass: "SSH PASSWORD GOES HERE"
+
   children:
     services:
       children:
+        blockgens:
+          hosts:
+            blockgen-machine:
+              ansible_host: "tokentestbed1.sl.cloud9.ibm.com"
+
+        coordinators:
+          hosts:
+            coordinator-machine:
+              ansible_host: "tokentestbed2.sl.cloud9.ibm.com"
+
+        sigservices:
+          hosts:
+            sigservice-machine1:
+              ansible_host: "tokentestbed3.sl.cloud9.ibm.com"
+            sigservice-machine2:
+              ansible_host: "tokentestbed4.sl.cloud9.ibm.com"
+            sigservice-machine3:
+              ansible_host: "tokentestbed5.sl.cloud9.ibm.com"
+
         shardsservices:
           hosts:
             shardsservice-machine1:
-              ansible_host: "IP ADDRESS GOES HERE"
-          children:
-            shardsservices-custom:
-              hosts:
-                shardsservice-machine2:
-                  ansible_host: "IP ADDRESS GOES HERE"
-        sigverificationservices:
-          hosts:
-            sigverificationservice-machine1:
-              ansible_host: "IP ADDRESS GOES HERE"
-          children:
-            sigverificationservices-custom:
-              hosts:
-                sigverificationservice-machine2:
-                  ansible_host: "IP ADDRESS GOES HERE"
+              ansible_host: "tokentestbed6.sl.cloud9.ibm.com"
+            shardsservice-machine2:
+              ansible_host: "tokentestbed7.sl.cloud9.ibm.com"
+            shardsservice-machine3:
+              ansible_host: "tokentestbed8.sl.cloud9.ibm.com"
