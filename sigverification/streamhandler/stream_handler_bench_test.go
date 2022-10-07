@@ -20,8 +20,8 @@ var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
 		BatchSize:   sigverification_test.BatchSizeDistribution,
-		ClientDelay: sigverification_test.ClientInputDelay,
-		ServerDelay: test.Constant(int64(sigverification_test.BatchSize) * sigverification_test.TypicalTxValidationDelay),
+		ClientDelay: test.ClientInputDelay,
+		ServerDelay: test.Constant(int64(test.BatchSize) * sigverification_test.TypicalTxValidationDelay),
 	},
 }
 
@@ -32,7 +32,7 @@ func BenchmarkStreamHandler(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats sigverification_test.AsyncTrackerStats
+	var stats test.AsyncTrackerStats
 	config := baseConfig
 	for _, batchSize := range []int64{50, 100} {
 		config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
@@ -41,12 +41,12 @@ func BenchmarkStreamHandler(b *testing.B) {
 			b.Run(fmt.Sprintf("%s-b%d-d%v", config.Name, batchSize, time.Duration(serverDelay)), func(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
 				s := sigverification_test.NewTestState(g.VerifierServer())
-				t := sigverification_test.NewAsyncTracker()
+				t := test.NewAsyncTracker()
 				defer s.TearDown()
 				stream, _ := s.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
 
-				t.Start(sigverification_test.OutputChannel(stream))
+				t.StartWithOutputReceived(sigverification_test.StreamOutputLength(stream))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 					for pb.Next() {
@@ -83,7 +83,7 @@ func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 			SigningKey:       privateKey,
 			Scheme:           sigverification_test.VerificationScheme,
 			ValidSigRatio:    sigverification_test.SignatureValidRatio,
-			TxSize:           sigverification_test.TxSize,
+			TxSize:           sigverification_test.TxSizeDistribution,
 			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
 		BatchSize: p.BatchSize,

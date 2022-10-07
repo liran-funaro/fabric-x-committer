@@ -11,3 +11,7 @@ func FailHandler(t *testing.T) {
 		t.Fatalf(message)
 	})
 }
+
+var TxSize = 1
+var ClientInputDelay = NoDelay
+var BatchSize = 100

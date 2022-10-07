@@ -19,7 +19,7 @@ var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
 		SomeTxInputGeneratorParams: &sigverification_test.SomeTxInputGeneratorParams{
-			TxSize:           sigverification_test.TxSize,
+			TxSize:           sigverification_test.TxSizeDistribution,
 			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
 		ValidSigRatio: sigverification_test.SignatureValidRatio,

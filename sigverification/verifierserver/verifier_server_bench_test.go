@@ -25,7 +25,7 @@ var privateKey, publicKey = sigverification_test.GetSignatureFactory(sigverifica
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	ParallelExecutionConfig: &parallelexecutor.Config{
-		BatchSizeCutoff:   sigverification_test.BatchSize,
+		BatchSizeCutoff:   test.BatchSize,
 		BatchTimeCutoff:   sigverification_test.OptimalBatchTimeCutoff,
 		Parallelism:       4,
 		ChannelBufferSize: sigverification_test.OptimalChannelBufferSize,
@@ -37,7 +37,7 @@ var baseConfig = benchmarkConfig{
 				SigningKey:       privateKey,
 				Scheme:           sigverification_test.VerificationScheme,
 				ValidSigRatio:    sigverification_test.SignatureValidRatio,
-				TxSize:           sigverification_test.TxSize,
+				TxSize:           sigverification_test.TxSizeDistribution,
 				SerialNumberSize: sigverification_test.SerialNumberSize,
 			},
 			BatchSize: sigverification_test.BatchSizeDistribution,
@@ -52,7 +52,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats sigverification_test.AsyncTrackerStats
+	var stats test.AsyncTrackerStats
 	config := baseConfig
 	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
@@ -62,13 +62,13 @@ func BenchmarkVerifierServer(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
 				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, metrics.New(false))
 				c := sigverification_test.NewTestState(server)
-				t := sigverification_test.NewAsyncTracker()
+				t := test.NewAsyncTracker()
 				defer c.TearDown()
 				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: publicKey})
 				stream, _ := c.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
 
-				t.Start(sigverification_test.OutputChannel(stream))
+				t.StartWithOutputReceived(sigverification_test.StreamOutputLength(stream))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 					for pb.Next() {

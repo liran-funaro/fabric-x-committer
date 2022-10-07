@@ -21,13 +21,13 @@ type benchmarkConfig struct {
 var baseConfig = benchmarkConfig{
 	Name: "basic",
 	ParallelExecutionConfig: parallelexecutor.Config{
-		BatchSizeCutoff:   sigverification_test.BatchSize,
+		BatchSizeCutoff:   test.BatchSize,
 		BatchTimeCutoff:   sigverification_test.OptimalBatchTimeCutoff,
 		Parallelism:       6,
 		ChannelBufferSize: sigverification_test.OptimalChannelBufferSize,
 	},
 	InputGeneratorParams: inputGeneratorParams{
-		InputDelay:    sigverification_test.ClientInputDelay,
+		InputDelay:    test.ClientInputDelay,
 		BatchSize:     sigverification_test.BatchSizeDistribution,
 		ExecutorDelay: test.Constant(sigverification_test.TypicalTxValidationDelay),
 	},
@@ -40,7 +40,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats sigverification_test.AsyncTrackerStats
+	var stats test.AsyncTrackerStats
 	config := baseConfig
 	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
@@ -49,9 +49,9 @@ func BenchmarkParallelExecutor(b *testing.B) {
 			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
 				g := NewInputGenerator(&config.InputGeneratorParams)
 				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig, metrics.New(false))
-				t := sigverification_test.NewAsyncTracker()
+				t := test.NewAsyncTracker()
 
-				t.Start(e.Outputs())
+				t.StartWithOutputReceived(sigverification_test.ChannelOutputLength(e.Outputs()))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 					for pb.Next() {

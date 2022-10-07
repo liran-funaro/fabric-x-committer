@@ -15,12 +15,10 @@ import (
 
 // De facto constants
 
-var TxSize = test.Constant(1)
+var TxSizeDistribution = test.Constant(int64(test.TxSize))
 var SerialNumberSize = test.Constant(32)
-var ClientInputDelay = test.NoDelay
 var SignatureValidRatio = test.Always
-var BatchSize = 100
-var BatchSizeDistribution = test.Constant(int64(BatchSize))
+var BatchSizeDistribution = test.Constant(int64(test.BatchSize))
 var VerificationScheme = signature.Ecdsa
 
 // Typical result values from experiments
@@ -73,20 +71,4 @@ func InputChannel(stream sigverification.Verifier_StartStreamClient) chan<- *sig
 		}
 	}()
 	return channel
-}
-
-func OutputChannel(stream sigverification.Verifier_StartStreamClient) <-chan []*sigverification.Response {
-	output := make(chan []*sigverification.Response)
-	go func() {
-		for {
-			response, _ := stream.Recv()
-			if response == nil || response.Responses == nil {
-				return
-			}
-			if len(response.Responses) > 0 {
-				output <- response.Responses
-			}
-		}
-	}()
-	return output
 }
