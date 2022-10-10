@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 )
 
 type shardForTest struct {
@@ -31,13 +32,13 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 	t.Run("only valid txs", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			txID{blockNum: 1, txNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 1, TxNum: 1}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key1"), []byte("key2")},
 			},
-			txID{blockNum: 1, txNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 1, TxNum: 3}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key3"), []byte("key4")},
 			},
-			txID{blockNum: 2, txNum: 13}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key5"), []byte("key6")},
 			},
 		}
@@ -45,7 +46,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		s.shard.executePhaseOne(phaseOneRequests)
 
 		ensure3PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 3
+			return s.shard.pendingCommits.CountTxs() == 3
 		}
 		require.Eventually(t, ensure3PendingCommits, 5*time.Second, 500*time.Millisecond)
 
@@ -74,25 +75,25 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseTwoRequests := txIDToInstruction{
-			txID{blockNum: 1, txNum: 1}:  PhaseTwoRequest_COMMIT,
-			txID{blockNum: 1, txNum: 3}:  PhaseTwoRequest_COMMIT,
-			txID{blockNum: 2, txNum: 13}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 1, TxNum: 1}:  PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 1, TxNum: 3}:  PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: PhaseTwoRequest_COMMIT,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
 		checkKeysExistanceForTest(t, keys, s.shard)
-		require.Equal(t, 0, s.shard.pendingCommits.count())
+		require.Equal(t, 0, s.shard.pendingCommits.CountTxs())
 	})
 
 	t.Run("only invalid txs", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			txID{blockNum: 10, txNum: 11}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 10, TxNum: 11}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key1"), []byte("key2")},
 			},
-			txID{blockNum: 11, txNum: 32}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 11, TxNum: 32}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key3"), []byte("key4")},
 			},
-			txID{blockNum: 12, txNum: 23}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 12, TxNum: 23}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key5"), []byte("key6")},
 			},
 		}
@@ -100,7 +101,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		s.shard.executePhaseOne(phaseOneRequests)
 
 		ensure3PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 3
+			return s.shard.pendingCommits.CountTxs() == 3
 		}
 		require.Never(t, ensure3PendingCommits, 2*time.Second, 500*time.Millisecond)
 
@@ -124,15 +125,15 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 		actualPhaseOneResponses := s.shard.accumulatedPhaseOneResponse()
 		require.ElementsMatch(t, expectedPhaseOneResponses, actualPhaseOneResponses)
-		require.Equal(t, 0, s.shard.pendingCommits.count())
+		require.Equal(t, 0, s.shard.pendingCommits.CountTxs())
 	})
 
 	t.Run("phase one response is `can_commit` but phase two request is forget", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			txID{blockNum: 21, txNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key7"), []byte("key8")},
 			},
-			txID{blockNum: 22, txNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key9"), []byte("key10")},
 			},
 		}
@@ -140,7 +141,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		s.shard.executePhaseOne(phaseOneRequests)
 
 		ensure3PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 2
+			return s.shard.pendingCommits.CountTxs() == 2
 		}
 		require.Eventually(t, ensure3PendingCommits, 5*time.Second, 500*time.Millisecond)
 
@@ -164,22 +165,22 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseTwoRequests := txIDToInstruction{
-			txID{blockNum: 21, txNum: 1}: PhaseTwoRequest_COMMIT,
-			txID{blockNum: 22, txNum: 3}: PhaseTwoRequest_FORGET,
+			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: PhaseTwoRequest_FORGET,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
 		checkKeysExistanceForTest(t, keys[:2], s.shard)
 		checkKeysNonExistanceForTest(t, keys[2:], s.shard)
-		require.Equal(t, 0, s.shard.pendingCommits.count())
+		require.Equal(t, 0, s.shard.pendingCommits.CountTxs())
 	})
 
 	t.Run("valid txs and invalid tx", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			txID{blockNum: 4, txNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
 			},
-			txID{blockNum: 4, txNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
 			},
 		}
@@ -187,7 +188,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		s.shard.executePhaseOne(phaseOneRequests)
 
 		ensure2PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 2
+			return s.shard.pendingCommits.CountTxs() == 2
 		}
 		require.Eventually(t, ensure2PendingCommits, 5*time.Second, 500*time.Millisecond)
 
@@ -211,10 +212,10 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseOneRequests = txIDToSerialNumbers{
-			txID{blockNum: 5, txNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 5, TxNum: 1}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
 			},
-			txID{blockNum: 5, txNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: &SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
 			},
 		}
@@ -222,20 +223,20 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		s.shard.executePhaseOne(phaseOneRequests)
 
 		ensure4PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 4
+			return s.shard.pendingCommits.CountTxs() == 4
 		}
 		require.Never(t, ensure4PendingCommits, 2*time.Second, 500*time.Millisecond)
 
 		phaseTwoRequests := txIDToInstruction{
-			txID{blockNum: 4, txNum: 1}: PhaseTwoRequest_COMMIT,
-			txID{blockNum: 4, txNum: 3}: PhaseTwoRequest_FORGET,
+			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: PhaseTwoRequest_FORGET,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
 		checkKeysExistanceForTest(t, keys[:2], s.shard)
 
 		ensure1PendingCommits := func() bool {
-			return s.shard.pendingCommits.count() == 1
+			return s.shard.pendingCommits.CountTxs() == 1
 		}
 		require.Eventually(t, ensure1PendingCommits, 2*time.Second, 500*time.Millisecond)
 
@@ -256,7 +257,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		require.ElementsMatch(t, expectedPhaseOneResponses, actualPhaseOneResponses)
 
 		phaseTwoRequests = txIDToInstruction{
-			txID{blockNum: 5, txNum: 3}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: PhaseTwoRequest_COMMIT,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 

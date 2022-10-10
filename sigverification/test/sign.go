@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/crypto"
 )
 
@@ -17,7 +18,7 @@ type SignerFactory interface {
 
 type TxSigner interface {
 	//SignTx signs a message and returns the signature
-	SignTx([]signature.SerialNumber) (signature.Signature, error)
+	SignTx([]token.SerialNumber) (signature.Signature, error)
 }
 
 var cryptoFactories = map[signature.Scheme]SignerFactory{
@@ -67,7 +68,7 @@ type ecdsaTxSigner struct {
 	signingKey *ecdsa.PrivateKey
 }
 
-func (s *ecdsaTxSigner) SignTx(inputs []signature.SerialNumber) (signature.Signature, error) {
+func (s *ecdsaTxSigner) SignTx(inputs []token.SerialNumber) (signature.Signature, error) {
 	return crypto.SignMessage(s.signingKey, signature.SignatureData(inputs))
 }
 
@@ -88,6 +89,6 @@ func (f *dummySignerFactory) NewSigner(key PrivateKey) (TxSigner, error) {
 type dummyTxSigner struct {
 }
 
-func (s *dummyTxSigner) SignTx(inputs []signature.SerialNumber) (signature.Signature, error) {
+func (s *dummyTxSigner) SignTx(inputs []token.SerialNumber) (signature.Signature, error) {
 	return []byte{}, nil
 }

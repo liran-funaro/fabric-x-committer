@@ -1,45 +1,47 @@
 package shardsservice
 
 import (
-	sync "sync"
+	"sync"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
 type pendingCommits struct {
-	txIDsToSerialNumbers map[txID]*SerialNumbers
+	txIDsToSerialNumbers map[pendingcommits.TxID][]token.SerialNumber
 	serialNumbers        map[string][]chan struct{}
 	mu                   sync.RWMutex
 	logging              *logging.Logger
 }
 
-func newPendingCommits() *pendingCommits {
+func NewMutexPendingCommits() pendingcommits.PendingCommits {
 	return &pendingCommits{
-		txIDsToSerialNumbers: make(map[txID]*SerialNumbers),
+		txIDsToSerialNumbers: make(map[pendingcommits.TxID][]token.SerialNumber),
 		serialNumbers:        make(map[string][]chan struct{}),
 		mu:                   sync.RWMutex{},
 		logging:              logging.New("pending commits"),
 	}
 }
 
-func (p *pendingCommits) add(tx txID, sNumbers *SerialNumbers) {
+func (p *pendingCommits) Add(tx pendingcommits.TxID, sNumbers []token.SerialNumber) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.txIDsToSerialNumbers[tx] = sNumbers
-	for _, sn := range sNumbers.SerialNumbers {
+	for _, sn := range sNumbers {
 		p.serialNumbers[string(sn)] = []chan struct{}{}
 	}
 }
 
-func (p *pendingCommits) get(tx txID) *SerialNumbers {
+func (p *pendingCommits) Get(tx pendingcommits.TxID) []token.SerialNumber {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	return p.txIDsToSerialNumbers[tx]
 }
 
-func (p *pendingCommits) waitTillNotExist(serialNumbers [][]byte) {
+func (p *pendingCommits) WaitTillNotExist(serialNumbers [][]byte) {
 	for _, sn := range serialNumbers {
 		p.mu.RLock()
 		_, ok := p.serialNumbers[string(sn)]
@@ -64,14 +66,20 @@ func (p *pendingCommits) waitTillNotExist(serialNumbers [][]byte) {
 	}
 }
 
-func (p *pendingCommits) count() int {
+func (p *pendingCommits) CountTxs() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	return len(p.txIDsToSerialNumbers)
 }
+func (p *pendingCommits) CountSNs() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-func (p *pendingCommits) delete(tx txID) {
+	return len(p.serialNumbers)
+}
+
+func (p *pendingCommits) Delete(tx pendingcommits.TxID) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -80,7 +88,7 @@ func (p *pendingCommits) delete(tx txID) {
 		return
 	}
 
-	for _, sn := range sNumbers.SerialNumbers {
+	for _, sn := range sNumbers {
 		waitingChan, ok := p.serialNumbers[string(sn)]
 		if !ok {
 			continue
@@ -94,12 +102,18 @@ func (p *pendingCommits) delete(tx txID) {
 	delete(p.txIDsToSerialNumbers, tx)
 }
 
-func (p *pendingCommits) deleteAll() {
+func (p *pendingCommits) DeleteBatch(txIds []pendingcommits.TxID) {
+	for _, tx := range txIds {
+		p.Delete(tx)
+	}
+}
+
+func (p *pendingCommits) DeleteAll() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	for txID, sNumbers := range p.txIDsToSerialNumbers {
-		for _, sn := range sNumbers.SerialNumbers {
+		for _, sn := range sNumbers {
 			delete(p.serialNumbers, string(sn))
 		}
 		delete(p.txIDsToSerialNumbers, txID)

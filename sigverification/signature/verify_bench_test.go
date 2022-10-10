@@ -73,7 +73,7 @@ func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	}
 }
 
-func (g *inputGenerator) NextTxInput() []signature.SerialNumber {
+func (g *inputGenerator) NextTxInput() []token.SerialNumber {
 	return g.txInputGenerator.Next()
 }
 

@@ -1,7 +1,6 @@
 package shardsservice
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -10,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -30,7 +31,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 
 	si := &shardInstances{
 		shardIDToInstance:     &shardIDToInstances{idToShard: make(map[uint32]*shard)},
-		txIDToShardID:         &txIDToShardID{txToShardID: make(map[txID][]uint32)},
+		txIDToShardID:         &txIDToShardID{txToShardID: make(map[pendingcommits.TxID][]uint32)},
 		txIDToPendingResponse: &txIDToPendingResponse{tIDToPendingShardIDResp: make(txIDToPendingShardIDResponse)},
 		rootDir:               rootDir,
 		mu:                    sync.RWMutex{},
@@ -110,9 +111,9 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
 				shardToTxSn[shardID] = txToSn
 			}
 
-			tID := txID{
-				blockNum: r.BlockNum,
-				txNum:    r.TxNum,
+			tID := pendingcommits.TxID{
+				BlkNum: r.BlockNum,
+				TxNum:  r.TxNum,
 			}
 
 			sn, ok := txToSn[tID]
@@ -121,10 +122,10 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
 				txToSn[tID] = sn
 			}
 
-			i.logger.Debugf("adding [%d] serial numbers to txID [%v]", len(serialNumbers.SerialNumbers), tID)
+			i.logger.Debugf("adding [%d] serial numbers to TxID [%v]", len(serialNumbers.SerialNumbers), tID)
 			sn.SerialNumbers = append(sn.SerialNumbers, serialNumbers.SerialNumbers...)
 
-			i.logger.Debugf("assigning txID [%v] to shardID [%d]", tID, shardID)
+			i.logger.Debugf("assigning TxID [%v] to shardID [%d]", tID, shardID)
 			i.txIDToShardID.add(tID, shardID)
 			i.txIDToPendingResponse.add(tID, shardID)
 			if i.metrics.Enabled {
@@ -153,9 +154,9 @@ func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
 	shardToTxIns := make(shardIDToTxIDInstruction)
 
 	for _, r := range requests.Requests {
-		tID := txID{
-			blockNum: r.BlockNum,
-			txNum:    r.TxNum,
+		tID := pendingcommits.TxID{
+			BlkNum: r.BlockNum,
+			TxNum:  r.TxNum,
 		}
 
 		shardIDs := i.txIDToShardID.get(tID)
@@ -212,9 +213,9 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 			for _, s := range shards {
 				if resp := s.accumulatedPhaseOneResponse(); resp != nil {
 					for _, r := range resp {
-						tID := txID{
-							blockNum: r.BlockNum,
-							txNum:    r.TxNum,
+						tID := pendingcommits.TxID{
+							BlkNum: r.BlockNum,
+							TxNum:  r.TxNum,
 						}
 						if r.Status == PhaseOneResponse_CAN_COMMIT {
 							noMorePendingResponse, isNotTracked := i.txIDToPendingResponse.removeDueToValid(tID, s.id)
@@ -289,18 +290,18 @@ func (i *shardIDToInstances) deleteAllShards() {
 }
 
 type txIDToShardID struct {
-	txToShardID map[txID][]uint32
+	txToShardID map[pendingcommits.TxID][]uint32
 	mu          sync.RWMutex
 }
 
-func (t *txIDToShardID) add(tID txID, shardID uint32) {
+func (t *txIDToShardID) add(tID pendingcommits.TxID, shardID uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.txToShardID[tID] = append(t.txToShardID[tID], shardID)
 }
 
-func (t *txIDToShardID) get(tID txID) []uint32 {
+func (t *txIDToShardID) get(tID pendingcommits.TxID) []uint32 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -323,7 +324,7 @@ type txIDToPendingResponse struct {
 	mu                      sync.RWMutex
 }
 
-func (t *txIDToPendingResponse) add(tID txID, shardID uint32) {
+func (t *txIDToPendingResponse) add(tID pendingcommits.TxID, shardID uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -336,7 +337,7 @@ func (t *txIDToPendingResponse) add(tID txID, shardID uint32) {
 	shardIDResp[shardID] = struct{}{}
 }
 
-func (t *txIDToPendingResponse) removeDueToInvalid(tID txID) (existRemoved bool) {
+func (t *txIDToPendingResponse) removeDueToInvalid(tID pendingcommits.TxID) (existRemoved bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -349,7 +350,7 @@ func (t *txIDToPendingResponse) removeDueToInvalid(tID txID) (existRemoved bool)
 	return
 }
 
-func (t *txIDToPendingResponse) removeDueToValid(tID txID, shardID uint32) (noMorePendingResponse bool, isNotTracked bool) {
+func (t *txIDToPendingResponse) removeDueToValid(tID pendingcommits.TxID, shardID uint32) (noMorePendingResponse bool, isNotTracked bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -371,17 +372,12 @@ func (t *txIDToPendingResponse) removeDueToValid(tID txID, shardID uint32) (noMo
 
 type shardIDToTxIDSerialNumbers map[uint32]txIDToSerialNumbers
 
-type txIDToSerialNumbers map[txID]*SerialNumbers
-
-type txID struct {
-	blockNum uint64
-	txNum    uint64
-}
+type txIDToSerialNumbers map[pendingcommits.TxID]*SerialNumbers
 
 type shardIDToTxIDInstruction map[uint32]txIDToInstruction
 
-type txIDToInstruction map[txID]PhaseTwoRequest_Instruction
+type txIDToInstruction map[pendingcommits.TxID]PhaseTwoRequest_Instruction
 
-type txIDToPendingShardIDResponse map[txID]pendingShardIDResponse
+type txIDToPendingShardIDResponse map[pendingcommits.TxID]pendingShardIDResponse
 
 type pendingShardIDResponse map[uint32]struct{}

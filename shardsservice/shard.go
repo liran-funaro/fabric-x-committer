@@ -7,6 +7,8 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/goleveldb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -16,7 +18,7 @@ type shard struct {
 	db   database
 	mu   sync.RWMutex
 
-	pendingCommits    *pendingCommits
+	pendingCommits    pendingcommits.PendingCommits
 	phaseOneResponses *phaseOneResponse
 	wg                sync.WaitGroup
 	logger            *logging.Logger
@@ -41,7 +43,7 @@ func newShard(id uint32, path string, metrics *metrics.Metrics) (*shard, error) 
 		path:              path,
 		db:                db,
 		mu:                sync.RWMutex{},
-		pendingCommits:    newPendingCommits(),
+		pendingCommits:    NewMutexPendingCommits(),
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
@@ -59,21 +61,21 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 
 	for tID, serialNumbers := range requests {
 		s.wg.Add(1)
-		go func(tID txID, serialNumbers *SerialNumbers) {
-			s.logger.Debugf("shardID [%d] validating txID [%v]", s.id, tID)
+		go func(tID pendingcommits.TxID, serialNumbers *SerialNumbers) {
+			s.logger.Debugf("shardID [%d] validating TxID [%v]", s.id, tID)
 			defer s.wg.Done()
 
 			resp := &PhaseOneResponse{
-				BlockNum: tID.blockNum,
-				TxNum:    tID.txNum,
+				BlockNum: tID.BlkNum,
+				TxNum:    tID.TxNum,
 			}
 
-			s.pendingCommits.waitTillNotExist(serialNumbers.GetSerialNumbers())
+			s.pendingCommits.WaitTillNotExist(serialNumbers.GetSerialNumbers())
 
 			doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
 			for _, notExist := range doNoExist {
 				if !notExist {
-					s.logger.Debugf("shardID [%d] invalidates txID [%v]", s.id, tID)
+					s.logger.Debugf("shardID [%d] invalidates TxID [%v]", s.id, tID)
 					resp.Status = PhaseOneResponse_CANNOT_COMMITTED
 					s.phaseOneResponses.add(resp)
 					return
@@ -81,13 +83,13 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 			}
 
 			resp.Status = PhaseOneResponse_CAN_COMMIT
-			s.pendingCommits.add(tID, serialNumbers)
+			s.pendingCommits.Add(tID, serialNumbers.SerialNumbers)
 			s.phaseOneResponses.add(resp)
 			if s.metrics.Enabled {
-				s.metrics.PendingCommitsSNs.Set(len(s.pendingCommits.serialNumbers))
-				s.metrics.PendingCommitsTxIds.Set(len(s.pendingCommits.txIDsToSerialNumbers))
+				s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
+				s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())
 			}
-			s.logger.Debugf("shardID [%d] successfully validated txID [%v]", s.id, tID)
+			s.logger.Debugf("shardID [%d] successfully validated TxID [%v]", s.id, tID)
 		}(tID, serialNumbers)
 	}
 }
@@ -96,32 +98,30 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sNumbers := &SerialNumbers{}
+	validSNs := make([]token.SerialNumber, 0)
 
+	txIds := make([]pendingcommits.TxID, 0, len(requests))
 	for txID, instruction := range requests {
 		// TODO: commit in progress should be recorded for recovery
-		serialNumbers := s.pendingCommits.get(txID)
+		serialNumbers := s.pendingCommits.Get(txID)
 		if instruction == PhaseTwoRequest_COMMIT {
-			sNumbers.SerialNumbers = append(sNumbers.SerialNumbers, serialNumbers.SerialNumbers...)
+			validSNs = append(validSNs, serialNumbers...)
 		}
+		txIds = append(txIds, txID)
 	}
 
-	s.logger.Debugf("shard [%d] committing [%d] serial numbers", s.id, len(sNumbers.SerialNumbers))
+	s.logger.Debugf("shard [%d] committing [%d] serial numbers", s.id, len(validSNs))
 	startCommit := time.Now()
-	if err := s.db.Commit(sNumbers.SerialNumbers); err != nil {
+	if err := s.db.Commit(validSNs); err != nil {
 		panic(err)
 	}
-	if s.metrics.Enabled {
-		s.metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(sNumbers.SerialNumbers)))
-		s.metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(sNumbers.SerialNumbers)))
-	}
+	s.pendingCommits.DeleteBatch(txIds)
 
-	for txID := range requests {
-		s.pendingCommits.delete(txID)
-	}
 	if s.metrics.Enabled {
-		s.metrics.PendingCommitsSNs.Set(len(s.pendingCommits.serialNumbers))
-		s.metrics.PendingCommitsTxIds.Set(len(s.pendingCommits.txIDsToSerialNumbers))
+		s.metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)/time.Second) / float64(len(validSNs)))
+		s.metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(validSNs)))
+		s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
+		s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())
 	}
 }
 

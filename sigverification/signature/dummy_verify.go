@@ -14,7 +14,7 @@ func (f *dummyVerifierFactory) NewVerifier(key []byte) (TxVerifier, error) {
 
 type dummyVerifier struct{}
 
-func (v *dummyVerifier) SignTx([]SerialNumber) (Signature, error) {
+func (v *dummyVerifier) SignTx([]token.SerialNumber) (Signature, error) {
 	return []byte{}, nil
 }
 

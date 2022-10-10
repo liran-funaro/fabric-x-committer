@@ -24,7 +24,7 @@ type TxGenerator struct {
 }
 
 type TxInputGenerator interface {
-	Next() []signature.SerialNumber
+	Next() []token.SerialNumber
 }
 
 type TxGeneratorParams struct {
@@ -66,7 +66,7 @@ func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGen
 
 	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
 	serialNumberGenerator := test.NewFastByteArrayGenerator(60)
-	txInputValueGenerator := func() signature.SerialNumber {
+	txInputValueGenerator := func() token.SerialNumber {
 		return serialNumberGenerator.NextWithSize(serialNumberSizeGenerator.Next())
 	}
 
@@ -76,7 +76,7 @@ func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGen
 	}
 }
 
-func (g *SomeTxInputGenerator) Next() []signature.SerialNumber {
+func (g *SomeTxInputGenerator) Next() []token.SerialNumber {
 	return g.serialNumberGenerator.NextWithSize(g.txSizeGenerator.Next())
 }
 
@@ -85,8 +85,8 @@ type LinearTxInputGenerator struct {
 	Count           int64
 }
 
-func (g *LinearTxInputGenerator) Next() []signature.SerialNumber {
-	serialNumbers := make([]signature.SerialNumber, g.Count)
+func (g *LinearTxInputGenerator) Next() []token.SerialNumber {
+	serialNumbers := make([]token.SerialNumber, g.Count)
 
 	h := sha256.New()
 	b := make([]byte, 8)
@@ -202,7 +202,7 @@ func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 	return batch
 }
 
-type R = signature.SerialNumber
+type R = token.SerialNumber
 
 // Code identical to test.FastByteArrayGenerator
 type FastTxInputSliceGenerator struct {

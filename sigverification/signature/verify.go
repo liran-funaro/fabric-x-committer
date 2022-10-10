@@ -11,7 +11,6 @@ import (
 )
 
 type Message = []byte
-type SerialNumber = []byte
 type Signature = []byte
 type PublicKey = []byte
 
@@ -63,7 +62,7 @@ func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
 	}
 }
 
-func SignatureData(inputs []SerialNumber) Message {
+func SignatureData(inputs []token.SerialNumber) Message {
 	data, err := asn1.Marshal(inputs)
 	if err != nil {
 		log.Error("failed to serialize the inputs")

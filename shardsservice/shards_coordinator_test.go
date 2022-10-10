@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
@@ -109,20 +110,20 @@ func TestShardsCoordinator(t *testing.T) {
 	phase1Responses, err := phaseOneStream.Recv()
 	require.NoError(t, err)
 
-	expectedPhase1Responses := map[txID]PhaseOneResponse_Status{
+	expectedPhase1Responses := map[pendingcommits.TxID]PhaseOneResponse_Status{
 		{
-			blockNum: 1,
-			txNum:    1,
+			BlkNum: 1,
+			TxNum:  1,
 		}: PhaseOneResponse_CAN_COMMIT,
 		{
-			blockNum: 1,
-			txNum:    2,
+			BlkNum: 1,
+			TxNum:  2,
 		}: PhaseOneResponse_CAN_COMMIT,
 	}
 
 	require.Equal(t, len(expectedPhase1Responses), len(phase1Responses.Responses))
 	for _, resp := range phase1Responses.Responses {
-		expectedStatus := expectedPhase1Responses[txID{blockNum: resp.BlockNum, txNum: resp.TxNum}]
+		expectedStatus := expectedPhase1Responses[pendingcommits.TxID{BlkNum: resp.BlockNum, TxNum: resp.TxNum}]
 		require.Equal(t, expectedStatus, resp.Status)
 	}
 
