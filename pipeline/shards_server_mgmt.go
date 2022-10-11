@@ -176,7 +176,7 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 			status = append(status,
 				&TxStatus{
 					TxSeqNum: t.txSeqNum,
-					IsValid:  t.isValid,
+					Status:   t.status,
 				},
 			)
 
@@ -189,7 +189,7 @@ func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 					phaseTwoMessages[s] = reqBatch
 				}
 				instruction := shardsservice.PhaseTwoRequest_COMMIT
-				if !t.isValid {
+				if t.status != VALID {
 					instruction = shardsservice.PhaseTwoRequest_FORGET
 				}
 				reqBatch.Requests = append(reqBatch.Requests,
@@ -381,16 +381,16 @@ func (oc *phaseOneComm) startResponseRecieverRoutine(shardServer *shardsServer, 
 				panic(fmt.Sprintf("Error while reaading sig verification response batch on stream: %s", err))
 			}
 
-			phaseOneValidationResults := map[TxSeqNum]bool{}
+			phaseOneValidationResults := map[TxSeqNum]Status{}
 			for _, response := range responseBatch.Responses {
-				isValid := false
+				status := DOUBLE_SPEND
 				if response.Status != shardsservice.PhaseOneResponse_CANNOT_COMMITTED {
-					isValid = true
+					status = VALID
 				}
 				phaseOneValidationResults[TxSeqNum{
 					BlkNum: response.BlockNum,
 					TxNum:  response.TxNum,
-				}] = isValid
+				}] = status
 			}
 			phaseOneProcessedTxs := phaseOnePendingTxs.processPhaseOneValidationResults(shardServer, phaseOneValidationResults)
 			if len(phaseOneProcessedTxs) > 0 {
@@ -503,16 +503,16 @@ func (t *phaseOnePendingTxs) add(txs map[TxSeqNum]*phaseOnePendingTx) {
 }
 
 func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
-	shardServer *shardsServer, validationStatus map[TxSeqNum]bool) []*phaseOneProcessedTx {
+	shardServer *shardsServer, validationStatus map[TxSeqNum]Status) []*phaseOneProcessedTx {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	phaseOneProcessedTxs := []*phaseOneProcessedTx{}
 
-	for txSeqNum, isValid := range validationStatus {
+	for txSeqNum, status := range validationStatus {
 		pendingTx := t.m[txSeqNum]
 
-		if !isValid {
+		if status != VALID {
 			pendingTx.invalidatedBy = shardServer
 		}
 
@@ -526,7 +526,7 @@ func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
 			txSeqNum:      txSeqNum,
 			shardServers:  pendingTx.shardServers,
 			invalidatedBy: pendingTx.invalidatedBy,
-			isValid:       pendingTx.invalidatedBy == nil,
+			status:        status,
 		}
 
 		phaseOneProcessedTxs = append(phaseOneProcessedTxs, processedTx)
@@ -538,6 +538,6 @@ func (t *phaseOnePendingTxs) processPhaseOneValidationResults(
 type phaseOneProcessedTx struct {
 	txSeqNum      TxSeqNum
 	shardServers  map[*shardsServer]struct{}
-	isValid       bool
+	status        Status
 	invalidatedBy *shardsServer
 }

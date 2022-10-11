@@ -1,0 +1,32 @@
+name: double trouble
+
+description: some text
+
+# block configuration
+block:
+  # number of blocks we generate
+  count: 1000
+  # number of transactions per block
+  size: 100
+
+# transaction configuration
+transaction:
+  serialnumber:
+    # number of serial numbers per transaction
+    count: 4
+  signature:
+    # signature scheme
+    type: ecdsa
+    #
+    validityratio: 1.0
+
+# Introduce conflicts into our block stream
+conflicts:
+  # maps txid (block-tx) to conflict
+  1-4:
+    invalidsignature: true
+  1-8:
+    # maps sn in other transactions (block-tx-sn)
+    invalidsignature: true
+  77-0:
+    invalidsignature: true

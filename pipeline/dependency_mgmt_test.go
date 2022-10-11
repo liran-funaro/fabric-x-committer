@@ -71,7 +71,7 @@ func TestDependencyMgr(t *testing.T) {
 		m.inputChanStatusUpdate <- []*TxStatus{
 			{
 				TxSeqNum: TxSeqNum{0, 0}, // dependency tx marked valid
-				IsValid:  true,
+				Status:   VALID,
 			},
 		}
 
@@ -84,14 +84,14 @@ func TestDependencyMgr(t *testing.T) {
 						BlkNum: 0,
 						TxNum:  0,
 					},
-					IsValid: true,
+					Status: VALID,
 				},
 				{
 					TxSeqNum: TxSeqNum{
 						BlkNum: 0,
 						TxNum:  3, //tx3 gets invalidated - cascade effect of tx0 being valid
 					},
-					IsValid: false,
+					Status: DOUBLE_SPEND,
 				},
 			},
 			status,
@@ -121,11 +121,11 @@ func TestDependencyMgr(t *testing.T) {
 		m.inputChanStatusUpdate <- []*TxStatus{ // both the dependency txs marked invalid
 			{
 				TxSeqNum: TxSeqNum{0, 0},
-				IsValid:  false,
+				Status:   INVALID_SIGNATURE,
 			},
 			{
 				TxSeqNum: TxSeqNum{0, 2},
-				IsValid:  false,
+				Status:   DOUBLE_SPEND,
 			},
 		}
 
@@ -138,14 +138,14 @@ func TestDependencyMgr(t *testing.T) {
 						BlkNum: 0,
 						TxNum:  0,
 					},
-					IsValid: false,
+					Status: INVALID_SIGNATURE,
 				},
 				{
 					TxSeqNum: TxSeqNum{
 						BlkNum: 0,
 						TxNum:  2,
 					},
-					IsValid: false,
+					Status: DOUBLE_SPEND,
 				},
 			},
 			status,
@@ -184,7 +184,7 @@ func TestDependencyMgr(t *testing.T) {
 					BlkNum: 100,
 					TxNum:  0,
 				},
-				IsValid: false,
+				Status: DOUBLE_SPEND,
 			},
 		}
 		m.inputChan <- &token.Block{
@@ -207,7 +207,7 @@ func TestDependencyMgr(t *testing.T) {
 						BlkNum: 100,
 						TxNum:  0,
 					},
-					IsValid: false,
+					Status: DOUBLE_SPEND,
 				},
 			},
 			status,

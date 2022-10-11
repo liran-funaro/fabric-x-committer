@@ -57,8 +57,8 @@ func WriteFile(path string, data []byte) error {
 	return err
 }
 
-func Must(err error) {
+func Must(err error, msg ...string) {
 	if err != nil {
-		panic(err)
+		panic(errors.Wrapf(err, "%v", msg))
 	}
 }

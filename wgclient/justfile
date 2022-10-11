@@ -8,3 +8,6 @@ build-mockcoordinator:
 
 test:
     go test -v ./...
+
+clean:
+    rm out/*.results

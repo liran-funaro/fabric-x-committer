@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"sync/atomic"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
@@ -44,12 +45,26 @@ func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
 	}
 }
 
-func (g *TxGenerator) Next() *token.Tx {
-	tx := &token.Tx{SerialNumbers: g.TxInputGenerator.Next()}
-	if g.ValidSigRatioGenerator.Next() {
-		tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers)
+func (g *TxGenerator) Next() (*token.Tx, coordinatorservice.Status) {
+	tx := &token.Tx{
+		SerialNumbers: g.TxInputGenerator.Next(),
 	}
-	return tx
+
+	tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers)
+	expectedStatus := coordinatorservice.Status_VALID
+	if !g.ValidSigRatioGenerator.Next() {
+		// we just Reverse signature
+		Reverse(tx.Signature)
+		expectedStatus = coordinatorservice.Status_INVALID_SIGNATURE
+	}
+
+	return tx, expectedStatus
+}
+
+func Reverse(s []byte) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 type SomeTxInputGeneratorParams struct {
@@ -118,10 +133,11 @@ type RequestBatchGenerator struct {
 func NewRequestBatchGenerator(params *RequestBatchGeneratorParams, sampleSize int) *RequestBatchGenerator {
 	txGenerator := NewTxGenerator(&params.Tx)
 	valueGen := func() *sigverification.Request {
+		tx, _ := txGenerator.Next()
 		return &sigverification.Request{
 			BlockNum: 0,
 			TxNum:    0,
-			Tx:       txGenerator.Next(),
+			Tx:       tx,
 		}
 	}
 	return &RequestBatchGenerator{

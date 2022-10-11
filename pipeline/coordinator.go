@@ -115,7 +115,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				for i := 0; i < len(invalids); i++ {
 					invalidStatus[i] = &TxStatus{
 						TxSeqNum: invalids[i],
-						IsValid:  false,
+						Status:   INVALID_SIGNATURE,
 					}
 				}
 				c.processValidationStatus(invalidStatus)

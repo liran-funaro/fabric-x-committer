@@ -86,5 +86,5 @@ func TrackProgress(statusCh <-chan []*pipeline.TxStatus, numBlocks, numTxPerBloc
 	}
 
 	totalTime := time.Since(startTime)
-	workload.PrintStats(int64(counter), int64(numBlocks), totalTime)
+	workload.PrintStats(int64(counter), int64(numBlocks), 0, totalTime, 0)
 }

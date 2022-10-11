@@ -19,8 +19,15 @@ message TxValidationStatusBatch {
     repeated TxValidationStatus txs_validation_status = 1;
 }
 
-message TxValidationStatus{
+message TxValidationStatus {
     uint64 block_num = 1;
     uint64 tx_num = 2;
-    bool is_valid = 3;
+    Status status = 3;
+}
+
+enum Status {
+    UNKNOWN = 0;
+    VALID = 1;
+    INVALID_SIGNATURE = 2;
+    DOUBLE_SPEND = 3;
 }

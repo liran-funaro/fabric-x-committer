@@ -5,13 +5,11 @@ import (
 	"io"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"google.golang.org/protobuf/proto"
 )
 
 // BlockWriter write all block available in bQueue to a given writer
-func BlockWriter(writer io.Writer, bQueue <-chan *token.Block, cntFunc func()) {
+func BlockWriter(writer io.Writer, bQueue <-chan *BlockWithExpectedResult, cntFunc func()) {
 	for block := range bQueue {
 		serializedBlock := MarshallBlock(block)
 		WriteToFile(writer, serializedBlock)
@@ -23,7 +21,7 @@ func BlockWriter(writer io.Writer, bQueue <-chan *token.Block, cntFunc func()) {
 	}
 }
 
-func BlockReader(reader io.Reader, bQueue chan *token.Block, cntFunc func()) {
+func BlockReader(reader io.Reader, bQueue chan *BlockWithExpectedResult, cntFunc func()) {
 	// read
 	for data := Next(reader); data != nil; data = Next(reader) {
 		// serialize
@@ -52,14 +50,14 @@ func ByteReader(reader io.Reader, bQueue chan []byte, cntFunc func()) {
 	close(bQueue)
 }
 
-func MarshallBlock(block *token.Block) []byte {
+func MarshallBlock(block *BlockWithExpectedResult) []byte {
 	serializedBlock, err := proto.Marshal(block)
 	utils.Must(err)
 	return serializedBlock
 }
 
-func UnmarshallBlock(data []byte) *token.Block {
-	block := &token.Block{}
+func UnmarshallBlock(data []byte) *BlockWithExpectedResult {
+	block := &BlockWithExpectedResult{}
 	err := proto.Unmarshal(data, block)
 	utils.Must(err)
 	return block

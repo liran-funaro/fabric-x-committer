@@ -190,13 +190,14 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		}
 
 		processedTxs = append(processedTxs, u)
-		m.removeNodeUnderAcquiredLock(node, u.IsValid, cascadeInvalidatedTxs)
+		m.removeNodeUnderAcquiredLock(node, u.Status == VALID, cascadeInvalidatedTxs)
 	}
 
 	for k := range cascadeInvalidatedTxs {
 		processedTxs = append(processedTxs,
 			&TxStatus{
 				TxSeqNum: k,
+				Status:   DOUBLE_SPEND,
 			},
 		)
 	}

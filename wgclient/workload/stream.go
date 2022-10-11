@@ -14,7 +14,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-func startTxGenerator(pp *Profile) (signature.PublicKey, chan *token.Tx) {
+func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.TxSigner, chan *token.Tx) {
 
 	sigType := strings.ToUpper(pp.Transaction.Signature.Type)
 
@@ -46,26 +46,27 @@ func startTxGenerator(pp *Profile) (signature.PublicKey, chan *token.Tx) {
 		go func() {
 			for {
 				// create transactions
-				txQueue <- g.Next()
+				tx, _ := g.Next()
+				txQueue <- tx
 			}
 		}()
 	}
 
-	return publicKey, txQueue
+	return publicKey, signer, txQueue
 }
 
-func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *token.Block) {
-	pk, txQueue := startTxGenerator(pp)
+func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *BlockWithExpectedResult) {
+	pk, _, txQueue := startTxGenerator(pp)
 
 	blockSize := pp.Block.Size
 	queueBufferSize := 1000
 
-	bQueue := make(chan *token.Block, queueBufferSize)
+	bQueue := make(chan *BlockWithExpectedResult, queueBufferSize)
 
 	blockNo := int64(0)
 	go func() {
 		for {
-			bQueue <- createBlock(blockNo, blockSize, txQueue)
+			bQueue <- createBlock(blockNo, blockSize, txQueue, nil)
 			blockNo++
 		}
 	}()

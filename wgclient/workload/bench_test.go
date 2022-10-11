@@ -10,13 +10,14 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
-var result *token.Block
+var result *BlockWithExpectedResult
+var resultBlock *token.Block
 
 // go test -bench . -benchmem -memprofile -blockprofile -cpuprofile profile.out
 // go tool pprof profile.out
 
 func BenchmarkAAA(b *testing.B) {
-	var r *token.Block
+	var r *BlockWithExpectedResult
 	for n := 0; n < b.N; n++ {
 		_, bQueue, _ := GetBlockWorkload("../../wgclient/out/blocks")
 		for block := range bQueue {
@@ -34,7 +35,7 @@ func BenchmarkBBB(b *testing.B) {
 			r = <-bg.OutputChan()
 		}
 	}
-	result = r
+	resultBlock = r
 }
 
 var r *token.Tx
@@ -57,7 +58,7 @@ func BenchmarkGenSingle(b *testing.B) {
 	var tx *token.Tx
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		tx = g.Next()
+		tx, _ = g.Next()
 	}
 	r = tx
 }

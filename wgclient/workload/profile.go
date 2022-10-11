@@ -31,6 +31,11 @@ type Profile struct {
 			ValidityRatio float32
 		}
 	}
+
+	Conflicts map[string]struct {
+		InvalidSignature bool
+		DoubleSpends     map[int]string
+	}
 }
 
 func LoadProfileFromYaml(yamlPath string) *Profile {

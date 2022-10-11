@@ -63,21 +63,21 @@ func TestShardsServerMgr(t *testing.T) {
 					BlkNum: 1,
 					TxNum:  1,
 				},
-				IsValid: true,
+				Status: VALID,
 			},
 			{
 				TxSeqNum: TxSeqNum{
 					BlkNum: 1,
 					TxNum:  2,
 				},
-				IsValid: true,
+				Status: VALID,
 			},
 			{
 				TxSeqNum: TxSeqNum{
 					BlkNum: 1,
 					TxNum:  3,
 				},
-				IsValid: true,
+				Status: VALID,
 			},
 		},
 	)

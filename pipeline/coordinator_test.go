@@ -58,14 +58,14 @@ func TestCoordinator(t *testing.T) {
 					BlkNum: 0,
 					TxNum:  0,
 				},
-				IsValid: true,
+				Status: pipeline.VALID,
 			},
 			{
 				TxSeqNum: pipeline.TxSeqNum{
 					BlkNum: 0,
 					TxNum:  1,
 				},
-				IsValid: true,
+				Status: pipeline.VALID,
 			},
 		},
 	)

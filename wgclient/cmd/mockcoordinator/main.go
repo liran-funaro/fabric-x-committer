@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
@@ -27,7 +28,10 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 
 	rQueue := make(chan *token.Block, 1000)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for block := range rQueue {
 			resp := &coordinatorservice.TxValidationStatusBatch{
 				TxsValidationStatus: make([]*coordinatorservice.TxValidationStatus, len(block.Txs)),
@@ -37,12 +41,19 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 				status := &coordinatorservice.TxValidationStatus{
 					BlockNum: block.Number,
 					TxNum:    uint64(i),
-					IsValid:  true,
+					Status:   coordinatorservice.Status_VALID,
 				}
+
+				// make the mock response a bit more interesting ....
+				if i%3 == 0 {
+					status.Status = coordinatorservice.Status_DOUBLE_SPEND
+				} else if i%7 == 0 {
+					status.Status = coordinatorservice.Status_INVALID_SIGNATURE
+				}
+
 				resp.TxsValidationStatus[i] = status
 
 			}
-			// TODO send some responses
 			stream.Send(resp)
 		}
 	}()
@@ -62,10 +73,11 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 		}
 
 		rQueue <- block
-
 	}
 	close(rQueue)
-	fmt.Printf("closing onnection...\n")
+
+	// wait until we pushed all responses back
+	wg.Wait()
 
 	return nil
 }
