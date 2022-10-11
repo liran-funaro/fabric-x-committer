@@ -1,12 +1,10 @@
 package pipeline
 
-import "fmt"
+import "github.ibm.com/distributed-trust-research/scalable-committer/token"
 
 const defaultChannelBufferSize = 100
 
-type TxSeqNum struct {
-	BlkNum, TxNum uint64
-}
+type TxSeqNum = token.TxSeqNum
 
 type TxStatus struct {
 	TxSeqNum TxSeqNum
@@ -21,7 +19,3 @@ const (
 	INVALID_SIGNATURE
 	DOUBLE_SPEND
 )
-
-func (n TxSeqNum) String() string {
-	return fmt.Sprintf("txSeq:%d:%d", n.BlkNum, n.TxNum)
-}

@@ -12,9 +12,7 @@ import (
 )
 
 func main() {
-	config.String("server", "sig-verification.endpoint", "Where the server listens for incoming connections")
-	config.Bool("prometheus-enabled", "sig-verification.prometheus.enabled", "Enable prometheus metrics to be kept")
-	config.String("prometheus-endpoint", "sig-verification.prometheus.endpoint", "Where prometheus listens for incoming connections")
+	config.ServerConfig("sig-verification")
 
 	config.Int("parallelism", "sig-verification.parallel-executor.parallelism", "Executor parallelism")
 	config.Duration("batch-time-cutoff", "sig-verification.parallel-executor.batch-time-cutoff", "Batch time cutoff limit")

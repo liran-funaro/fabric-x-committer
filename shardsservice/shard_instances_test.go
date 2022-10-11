@@ -13,7 +13,7 @@ func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
 
 	//t.Run("simple phase one execution", func(t *testing.T) {
 	testDir := "./"
-	si, err := newShardInstances(phaseOneResponses, testDir, metrics.New(false))
+	si, err := newShardInstances(phaseOneResponses, testDir, 1_000, 1_000, metrics.New(false))
 	require.NoError(t, err)
 	defer si.deleteAll()
 
@@ -22,7 +22,7 @@ func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
 	//setup 4 shards
 	shardIDs := []uint32{1, 2, 3, 4, 5, 6}
 	for _, id := range shardIDs {
-		require.NoError(t, si.setup(id))
+		require.NoError(t, si.setup(id, 1000))
 	}
 
 	p1 := &PhaseOneRequestBatch{

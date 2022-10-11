@@ -1,6 +1,7 @@
 package shardsservice
 
 import (
+	"github.com/golang/protobuf/ptypes/empty"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -19,13 +20,14 @@ type shardInstances struct {
 	txIDToShardID         *txIDToShardID
 	txIDToPendingResponse *txIDToPendingResponse
 	rootDir               string
-	mu                    sync.RWMutex
+	c                     *sync.Cond
 	phaseOneResponses     chan []*PhaseOneResponse
+	maxBufferSize         int
 	logger                *logging.Logger
 	metrics               *metrics.Metrics
 }
 
-func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, metrics *metrics.Metrics) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, maxShardInstancesBufferSize, maxPendingCommitsBufferSize uint32, metrics *metrics.Metrics) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
 
@@ -34,8 +36,9 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 		txIDToShardID:         &txIDToShardID{txToShardID: make(map[pendingcommits.TxID][]uint32)},
 		txIDToPendingResponse: &txIDToPendingResponse{tIDToPendingShardIDResp: make(txIDToPendingShardIDResponse)},
 		rootDir:               rootDir,
-		mu:                    sync.RWMutex{},
+		c:                     sync.NewCond(&sync.RWMutex{}),
 		phaseOneResponses:     phaseOneResponse,
+		maxBufferSize:         int(maxShardInstancesBufferSize),
 		logger:                logger,
 		metrics:               metrics,
 	}
@@ -59,7 +62,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 			if err != nil {
 				return nil, err
 			}
-			if err := si.setup(uint32(shardID)); err != nil {
+			if err := si.setup(uint32(shardID), maxPendingCommitsBufferSize); err != nil {
 				return nil, err
 			}
 		}
@@ -68,9 +71,9 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 	return si, nil
 }
 
-func (i *shardInstances) setup(shardID uint32) error {
+func (i *shardInstances) setup(shardID uint32, maxPendingCommitsBufferSize uint32) error {
 	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, i.metrics)
+	shard, err := newShard(shardID, path, maxPendingCommitsBufferSize, i.metrics)
 	if err != nil {
 		return err
 	}
@@ -80,8 +83,8 @@ func (i *shardInstances) setup(shardID uint32) error {
 }
 
 func (i *shardInstances) deleteAll() error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.c.L.Lock()
+	defer i.c.L.Unlock()
 
 	// TODO: need to handle failure and recovery
 	shards := i.shardIDToInstance.getAllShards()
@@ -96,9 +99,12 @@ func (i *shardInstances) deleteAll() error {
 	return nil
 }
 
-func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.Empty {
+	i.c.L.(*sync.RWMutex).Lock()
+	defer i.c.L.(*sync.RWMutex).Unlock()
+	for len(i.txIDToShardID.txToShardID) >= i.maxBufferSize {
+		i.c.Wait()
+	}
 
 	// 1. Transactions are grouped by shards on which it needs to execute
 	shardToTxSn := make(shardIDToTxIDSerialNumbers)
@@ -144,11 +150,11 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) {
 			shard.executePhaseOne(txToSn)
 		}(txToSn)
 	}
+	return &empty.Empty{}
 }
 
 func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
+	i.c.L.(*sync.RWMutex).RLock()
 
 	// 1. Transaction instructions are grouped by shardID
 	shardToTxIns := make(shardIDToTxIDInstruction)
@@ -180,6 +186,8 @@ func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
 			shard.executePhaseTwo(txToIns)
 		}(txToIns)
 	}
+	i.c.Broadcast()
+	i.c.L.(*sync.RWMutex).RUnlock()
 }
 
 func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, batchCutTimeout time.Duration) {
@@ -208,7 +216,7 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 				}
 			}
 		default:
-			i.mu.RLock()
+			i.c.L.(*sync.RWMutex).RLock()
 			shards := i.shardIDToInstance.getAllShards()
 			for _, s := range shards {
 				if resp := s.accumulatedPhaseOneResponse(); resp != nil {
@@ -235,7 +243,7 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 					}
 				}
 			}
-			i.mu.RUnlock()
+			i.c.L.(*sync.RWMutex).RUnlock()
 
 			if uint32(len(responses)) >= maxBatchItemCount {
 				i.logger.Debug("emitting response due to max batch size")

@@ -83,7 +83,7 @@ func (c *ShardClient) Start() {
 
 func (c *ShardClient) LogDebug() {
 	stats := c.tracker.CurrentStats()
-	logger.Infof("Sent transactions with rate: %d TPS. (%v)\n", stats.RequestsPer(time.Second), stats)
+	logger.Infof("Sent transactions with rate: %d TPS. (%v)", stats.RequestsPer(time.Second), stats)
 }
 
 func (c *ShardClient) WaitUntilDone() {
@@ -94,7 +94,7 @@ func (c *ShardClient) handlePhaseTwo(phaseOneStream shardsservice.Shards_StartPh
 	for {
 		p1Response, err := phaseOneStream.Recv()
 		if err != nil {
-			panic(err)
+			return
 		}
 		p2Request, err := createPhaseTwoRequestBatch(p1Response)
 		if err != nil {

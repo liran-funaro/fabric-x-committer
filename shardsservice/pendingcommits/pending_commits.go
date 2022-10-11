@@ -10,7 +10,7 @@ var logger = logging.New("pending commits")
 type PendingCommits interface {
 	Add(tx TxID, sNumbers []token.SerialNumber)
 	Get(tx TxID) []token.SerialNumber
-	WaitTillNotExist(serialNumbers [][]byte)
+	WaitTillNotExist(serialNumbers []token.SerialNumber)
 	Delete(tx TxID)
 	DeleteBatch(txIds []TxID)
 	CountTxs() int
@@ -18,7 +18,4 @@ type PendingCommits interface {
 	DeleteAll()
 }
 
-type TxID struct {
-	BlkNum uint64
-	TxNum  uint64
-}
+type TxID = token.TxSeqNum

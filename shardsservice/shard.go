@@ -31,7 +31,7 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string, metrics *metrics.Metrics) (*shard, error) {
+func newShard(id uint32, path string, maxPendingCommitsBufferSize uint32, metrics *metrics.Metrics) (*shard, error) {
 	//db, err := rocksdb.Open(path)
 	db, err := goleveldb.Open(path)
 	if err != nil {
@@ -43,7 +43,7 @@ func newShard(id uint32, path string, metrics *metrics.Metrics) (*shard, error) 
 		path:              path,
 		db:                db,
 		mu:                sync.RWMutex{},
-		pendingCommits:    NewMutexPendingCommits(),
+		pendingCommits:    pendingcommits.NewCondPendingCommits(maxPendingCommitsBufferSize),
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),

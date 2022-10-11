@@ -4,9 +4,19 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/pkg/errors"
 )
+
+func Every(interval time.Duration, runnable func()) {
+	go func() {
+		for {
+			<-time.After(interval)
+			runnable()
+		}
+	}()
+}
 
 func Min(a int, b int) int {
 	min, _ := sorted(a, b)

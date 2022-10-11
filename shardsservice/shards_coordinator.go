@@ -27,7 +27,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
 	}
 
-	si, err := newShardInstances(phaseOneResponses, database.RootDir, metrics)
+	si, err := newShardInstances(phaseOneResponses, database.RootDir, limits.MaxShardInstancesBufferSize, limits.MaxPendingCommitsBufferSize, metrics)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +44,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 func (s *shardsCoordinator) SetupShards(ctx context.Context, request *ShardsSetupRequest) (*Empty, error) {
 	s.logger.Debugf("received SetupShards request with FirstShardId [%d] and LastShardId [%d]", request.FirstShardId, request.LastShardId)
 	for shardID := request.FirstShardId; shardID <= request.LastShardId; shardID++ {
-		if err := s.shards.setup(shardID); err != nil {
+		if err := s.shards.setup(shardID, s.limits.MaxPendingCommitsBufferSize); err != nil {
 			return &Empty{}, err
 		}
 	}

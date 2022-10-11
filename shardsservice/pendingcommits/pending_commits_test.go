@@ -1,4 +1,4 @@
-package shardsservice
+package pendingcommits
 
 import (
 	"sync"
@@ -6,17 +6,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 func TestPendingCommits(t *testing.T) {
-	pc := NewMutexPendingCommits()
+	pc := NewCondPendingCommits(1_000)
 
-	txIDSN := map[pendingcommits.TxID][]token.SerialNumber{
-		pendingcommits.TxID{BlkNum: 1, TxNum: 1}: {[]byte("s1"), []byte("s2"), []byte("s3")},
-		pendingcommits.TxID{BlkNum: 1, TxNum: 3}: {[]byte("s4"), []byte("s5"), []byte("s6")},
-		pendingcommits.TxID{BlkNum: 2, TxNum: 2}: {[]byte("s7"), []byte("s8")},
+	txIDSN := map[TxID][]token.SerialNumber{
+		TxID{BlkNum: 1, TxNum: 1}: {[]byte("s1"), []byte("s2"), []byte("s3")},
+		TxID{BlkNum: 1, TxNum: 3}: {[]byte("s4"), []byte("s5"), []byte("s6")},
+		TxID{BlkNum: 2, TxNum: 2}: {[]byte("s7"), []byte("s8")},
 	}
 
 	for tID, sn := range txIDSN {
@@ -39,9 +38,9 @@ func TestPendingCommits(t *testing.T) {
 	}()
 
 	require.Never(t, func() bool { return pc.CountTxs() < 3 }, 2*time.Second, 500*time.Millisecond)
-	pc.Delete(pendingcommits.TxID{BlkNum: 2, TxNum: 2})
+	pc.Delete(TxID{BlkNum: 2, TxNum: 2})
 	require.Eventually(t, func() bool { return pc.CountTxs() == 2 }, 2*time.Second, 500*time.Millisecond)
-	pc.Delete(pendingcommits.TxID{BlkNum: 1, TxNum: 3})
+	pc.Delete(TxID{BlkNum: 1, TxNum: 3})
 
 	wg.Wait()
 	require.Eventually(t, func() bool { return pc.CountTxs() == 1 }, 2*time.Second, 500*time.Millisecond)

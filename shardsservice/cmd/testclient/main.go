@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
+	connectionUtils "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-var clientConfig utils.ClientConfig
+var clientConfig connectionUtils.ClientConfig
 
 func main() {
 	var endpoints []*connection.Endpoint
@@ -31,18 +32,10 @@ func main() {
 		clientConfig.Connections[i] = connection.NewDialConfig(*endpoint)
 	}
 
-	client, err := utils.NewClient(clientConfig)
-	if err != nil {
-		panic(err)
-	}
+	client, err := connectionUtils.NewClient(clientConfig)
+	utils.Must(err)
+	utils.Every(time.Second, client.LogDebug)
 	client.Start()
-
-	go func() {
-		for {
-			<-time.After(1 * time.Second)
-			client.LogDebug()
-		}
-	}()
-
 	client.WaitUntilDone()
+	client.LogDebug()
 }

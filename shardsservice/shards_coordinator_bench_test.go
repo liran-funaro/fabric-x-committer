@@ -1,6 +1,7 @@
-package main
+package shardsservice_test
 
 import (
+	"testing"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
@@ -12,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func main() {
+func BenchmarkShardsCoordinator(b *testing.B) {
 	c := shardsservice.ReadConfig()
 
 	connection.RunServerMainAndWait(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
@@ -33,8 +34,13 @@ func main() {
 	})
 	utils.Must(err)
 	utils.Every(time.Second, client.LogDebug)
-	client.Start()
-	defer client.CleanUp()
-	client.WaitUntilDone()
-	client.LogDebug()
+
+	//for i := 0; i < b.N; i++ {
+	b.Run("main", func(b *testing.B) {
+		client.Start()
+		client.WaitUntilDone()
+		client.LogDebug()
+		client.CleanUp()
+	})
+	//}
 }
