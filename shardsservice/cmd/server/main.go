@@ -13,6 +13,7 @@ func main() {
 	config.ServerConfig("shards-service")
 	config.Int("max-pending-commits-size", "shards-service.limits.max-pending-commits-buffer-size", "Max size of pending-commits buffer")
 	config.Int("max-shard-instance-size", "shards-service.limits.max-shard-instances-buffer-size", "Max size of shard-instances buffer")
+	config.Int("max-phase-one-workers", "shards-service.limits.max-phase-one-processing-workers", "Max size of workers that consume phase-one request batches")
 	config.ParseFlags()
 
 	c := shardsservice.ReadConfig()

@@ -6,6 +6,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
 
 type shardsCoordinator struct {
@@ -13,6 +14,7 @@ type shardsCoordinator struct {
 	shards            *shardInstances
 	phaseOneResponses chan []*PhaseOneResponse
 	limits            *LimitsConfig
+	phaseOnePool      *workerpool.WorkerPool
 	logger            *logging.Logger
 	metrics           *metrics.Metrics
 }
@@ -36,8 +38,12 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		shards:            si,
 		phaseOneResponses: phaseOneResponses,
 		limits:            limits,
-		logger:            logger,
-		metrics:           metrics,
+		phaseOnePool: workerpool.New(&workerpool.Config{
+			Parallelism:     int(limits.MaxPhaseOneProcessingWorkers),
+			ChannelCapacity: channelCapacity,
+		}),
+		logger:  logger,
+		metrics: metrics,
 	}
 }
 
@@ -67,9 +73,9 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 			return err
 		}
 
-		go func() {
+		s.phaseOnePool.Run(func() {
 			s.shards.executePhaseOne(requestBatch)
-		}()
+		})
 	}
 }
 

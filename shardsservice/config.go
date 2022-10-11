@@ -19,6 +19,7 @@ type LimitsConfig struct {
 	MaxPhaseOneResponseBatchItemCount uint32        `mapstructure:"max-phase-one-response-batch-item-count"`
 	MaxShardInstancesBufferSize       uint32        `mapstructure:"max-shard-instances-buffer-size"`
 	MaxPendingCommitsBufferSize       uint32        `mapstructure:"max-pending-commits-buffer-size"`
+	MaxPhaseOneProcessingWorkers      uint32        `mapstructure:"max-phase-one-processing-workers"`
 	PhaseOneResponseCutTimeout        time.Duration `mapstructure:"phase-one-response-cut-timeout"`
 }
 
@@ -44,10 +45,11 @@ func init() {
 	viper.SetDefault("shards-service.limits.max-goroutines", 100)
 	viper.SetDefault("shards-service.limits.max-phase-one-response-batch-item-count", 100)
 	viper.SetDefault("shards-service.limits.phase-one-response-cut-timeout", 50*time.Millisecond)
-	viper.SetDefault("shards-service.limits.max-shard-instances-buffer-size", 10_000)
-	viper.SetDefault("shards-service.limits.max-pending-commits-buffer-size", 10_000)
+	viper.SetDefault("shards-service.limits.max-shard-instances-buffer-size", 5_000)
+	viper.SetDefault("shards-service.limits.max-pending-commits-buffer-size", 5_000)
+	viper.SetDefault("shards-service.limits.max-phase-one-processing-workers", 50)
 
 	viper.SetDefault("shards-service.endpoint", "localhost:5001")
 	viper.SetDefault("shards-service.prometheus.enabled", "true")
-	viper.SetDefault("shards-service.prometheus.endpoint", "localhost:2113")
+	viper.SetDefault("shards-service.prometheus.endpoint", "localhost:2112")
 }
