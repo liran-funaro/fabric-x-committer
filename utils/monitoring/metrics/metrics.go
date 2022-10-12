@@ -1,6 +1,46 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"runtime"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// Default Metrics
+
+type Metrics struct {
+	Enabled       bool
+	GoRoutines    prometheus.GaugeFunc
+	ComponentType prometheus.Gauge
+}
+
+func New(enabled bool) *Metrics {
+	if !enabled {
+		return &Metrics{Enabled: false}
+	}
+	return &Metrics{
+		Enabled: true,
+		GoRoutines: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "go_routines",
+			Help: "The total number of active GoRoutines",
+		}, func() float64 {
+			return float64(runtime.NumGoroutine())
+		}),
+		ComponentType: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "component_type",
+			Help: "Current component type",
+		}),
+	}
+}
+
+func (m *Metrics) AllMetrics() []prometheus.Collector {
+	if !m.Enabled {
+		return []prometheus.Collector{}
+	}
+	return []prometheus.Collector{m.GoRoutines, m.ComponentType}
+}
+
+// Re-Usable Metrics
 
 type ThroughputDirection = string
 

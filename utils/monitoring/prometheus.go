@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,24 +15,11 @@ type Prometheus struct {
 	Endpoint connection.Endpoint `mapstructure:"endpoint"`
 }
 
-type ComponentType = int
-
-const (
-	Coordinator ComponentType = iota
-	SigVerifier
-	ShardsService
-)
-
 var componentTypeMap = map[ComponentType]string{
 	Coordinator:   "coordinator",
 	SigVerifier:   "sigverifier",
 	ShardsService: "shards-service",
 }
-
-var componentTypeGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "component_type",
-	Help: "Current component type",
-})
 
 func LaunchPrometheus(config Prometheus, componentType ComponentType, customCollectors []prometheus.Collector) {
 	if !config.Enabled {
@@ -41,12 +29,11 @@ func LaunchPrometheus(config Prometheus, componentType ComponentType, customColl
 
 	customMetricRegisterer := registerer("sc", componentTypeMap[componentType], registry)
 
-	for _, collector := range append(customCollectors, componentTypeGauge) {
-		if err := customMetricRegisterer.Register(collector); err != nil {
-			logger.Infof("Error registering: %v", err)
-		}
+	defaultMetrics := metrics.New(true)
+	for _, collector := range append(customCollectors, defaultMetrics.AllMetrics()...) {
+		customMetricRegisterer.Register(collector)
 	}
-	componentTypeGauge.Set(float64(componentType))
+	defaultMetrics.ComponentType.Set(float64(componentType))
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	go func() {
