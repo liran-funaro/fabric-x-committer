@@ -49,6 +49,7 @@ func main() {
 		}
 	}()
 
-	result := client.WaitUntilDone()
-	fmt.Printf("Execution finished: %v TPS (%v)", result.RequestsPer(time.Second), result)
+	client.WaitUntilDone()
+	fmt.Printf("Finished execution.")
+	client.Debug()
 }

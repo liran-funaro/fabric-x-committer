@@ -36,7 +36,7 @@ type ClientConfig struct {
 type ShardClient struct {
 	blockGenerator  *testutil.BlockGenerator
 	delayGenerator  *test.DelayGenerator
-	tracker         *test.AsyncRequestTracker
+	tracker         *connection.RequestTracker
 	phaseOneStreams []shardsservice.Shards_StartPhaseOneStreamClient
 	phaseTwoStreams []shardsservice.Shards_StartPhaseTwoStreamClient
 	maxBlockCount   uint64
@@ -57,7 +57,7 @@ func NewClient(clientConfig ClientConfig) (*ShardClient, error) {
 	return &ShardClient{
 		blockGenerator:  testutil.NewBlockGenerator(clientConfig.Input.BlockSize, clientConfig.Input.TxSize, clientConfig.Input.SignatureBytes),
 		delayGenerator:  test.NewDelayGenerator(clientConfig.Input.InputDelay, 10),
-		tracker:         test.NewAsyncTracker(),
+		tracker:         connection.NewRequestTracker(),
 		phaseOneStreams: phaseOneStreams,
 		phaseTwoStreams: phaseTwoStreams,
 		maxBlockCount:   uint64(clientConfig.Input.BlockCount),
@@ -76,25 +76,26 @@ func (c *ShardClient) CleanUp() {
 
 func (c *ShardClient) Start() {
 	c.started.Add(1)
-	outputReceived := c.tracker.Start()
+	c.tracker.Start()
 	var totalBlocks uint64
 
 	for i := 0; i < len(c.phaseOneStreams); i++ {
 		go c.handlePhaseOne(c.phaseOneStreams[i], &totalBlocks)
-		go c.handlePhaseTwo(c.phaseOneStreams[i], c.phaseTwoStreams[i], outputReceived)
+		go c.handlePhaseTwo(c.phaseOneStreams[i], c.phaseTwoStreams[i])
 	}
 }
 
 func (c *ShardClient) Debug() {
-	fmt.Printf("Sent transactions with rate: %d TPS.\n", c.tracker.RequestsPer(time.Second))
+	stats := c.tracker.CurrentStats()
+	logger.Infof("Sent transactions with rate: %d TPS. (%v)\n", stats.RequestsPer(time.Second), stats)
 }
 
-func (c *ShardClient) WaitUntilDone() test.AsyncTrackerStats {
+func (c *ShardClient) WaitUntilDone() {
 	c.started.Wait()
-	return c.tracker.WaitUntilDone()
+	c.tracker.WaitUntilDone()
 }
 
-func (c *ShardClient) handlePhaseTwo(phaseOneStream shardsservice.Shards_StartPhaseOneStreamClient, phaseTwoStream shardsservice.Shards_StartPhaseTwoStreamClient, outputReceived func(int)) {
+func (c *ShardClient) handlePhaseTwo(phaseOneStream shardsservice.Shards_StartPhaseOneStreamClient, phaseTwoStream shardsservice.Shards_StartPhaseTwoStreamClient) {
 	for {
 		p1Response, err := phaseOneStream.Recv()
 		if err != nil {
@@ -107,7 +108,7 @@ func (c *ShardClient) handlePhaseTwo(phaseOneStream shardsservice.Shards_StartPh
 		if err := phaseTwoStream.Send(p2Request); err != nil {
 			panic(err)
 		}
-		outputReceived(len(p2Request.Requests))
+		c.tracker.ReceivedResponses(len(p2Request.Requests))
 	}
 }
 

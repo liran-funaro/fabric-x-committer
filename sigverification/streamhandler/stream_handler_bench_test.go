@@ -8,6 +8,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -32,7 +33,7 @@ func BenchmarkStreamHandler(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats test.AsyncTrackerStats
+	var stats connection.RequestTrackerStats
 	config := baseConfig
 	for _, batchSize := range []int64{50, 100} {
 		config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
@@ -41,7 +42,7 @@ func BenchmarkStreamHandler(b *testing.B) {
 			b.Run(fmt.Sprintf("%s-b%d-d%v", config.Name, batchSize, time.Duration(serverDelay)), func(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
 				s := sigverification_test.NewTestState(g.VerifierServer())
-				t := test.NewAsyncTracker()
+				t := connection.NewRequestTracker()
 				defer s.TearDown()
 				stream, _ := s.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
@@ -56,7 +57,8 @@ func BenchmarkStreamHandler(b *testing.B) {
 						send <- batch
 					}
 				})
-				stats = t.WaitUntilDone()
+				t.WaitUntilDone()
+				stats = *t.CurrentStats()
 			})
 			output.Record(config.InputGeneratorParams.BatchSize, config.InputGeneratorParams.ServerDelay, stats.RequestsPer(time.Second))
 		}

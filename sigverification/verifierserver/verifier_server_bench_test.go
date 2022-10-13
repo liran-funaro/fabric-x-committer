@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -52,7 +53,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats test.AsyncTrackerStats
+	var stats connection.RequestTrackerStats
 	config := baseConfig
 	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
@@ -62,7 +63,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
 				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, metrics.New(false))
 				c := sigverification_test.NewTestState(server)
-				t := test.NewAsyncTracker()
+				t := connection.NewRequestTracker()
 				defer c.TearDown()
 				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: publicKey})
 				stream, _ := c.Client.StartStream(context.Background())
@@ -78,7 +79,8 @@ func BenchmarkVerifierServer(b *testing.B) {
 						send <- batch
 					}
 				})
-				stats = t.WaitUntilDone()
+				t.WaitUntilDone()
+				stats = *t.CurrentStats()
 				b.StopTimer()
 			})
 			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.RequestBatch.BatchSize, stats.RequestsPer(time.Second))

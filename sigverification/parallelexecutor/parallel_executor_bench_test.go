@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -40,7 +41,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 		{Header: "Throughput", Formatter: test.NoFormatting},
 	}})
 	defer output.Close()
-	var stats test.AsyncTrackerStats
+	var stats connection.RequestTrackerStats
 	config := baseConfig
 	for _, parallelism := range []int{1, 4, 8, 16, 32, 40, 64, 80} {
 		config.ParallelExecutionConfig.Parallelism = parallelism
@@ -49,7 +50,7 @@ func BenchmarkParallelExecutor(b *testing.B) {
 			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
 				g := NewInputGenerator(&config.InputGeneratorParams)
 				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig, metrics.New(false))
-				t := test.NewAsyncTracker()
+				t := connection.NewRequestTracker()
 
 				t.StartWithOutputReceived(sigverification_test.ChannelOutputLength(e.Outputs()))
 				b.ResetTimer()
@@ -61,7 +62,8 @@ func BenchmarkParallelExecutor(b *testing.B) {
 						e.Submit(batch.Requests)
 					}
 				})
-				stats = t.WaitUntilDone()
+				t.WaitUntilDone()
+				stats = *t.CurrentStats()
 				b.StopTimer()
 			})
 			output.Record(config.ParallelExecutionConfig.Parallelism, config.InputGeneratorParams.BatchSize, stats.RequestsPer(time.Second))
