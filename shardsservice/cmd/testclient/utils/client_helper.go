@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,8 +39,6 @@ type ShardClient struct {
 	phaseOneStreams []shardsservice.Shards_StartPhaseOneStreamClient
 	phaseTwoStreams []shardsservice.Shards_StartPhaseTwoStreamClient
 	maxBlockCount   uint64
-	once            sync.Once
-	started         sync.WaitGroup
 }
 
 func NewClient(clientConfig ClientConfig) (*ShardClient, error) {
@@ -75,7 +72,6 @@ func (c *ShardClient) CleanUp() {
 }
 
 func (c *ShardClient) Start() {
-	c.started.Add(1)
 	c.tracker.Start()
 	var totalBlocks uint64
 
@@ -85,13 +81,12 @@ func (c *ShardClient) Start() {
 	}
 }
 
-func (c *ShardClient) Debug() {
+func (c *ShardClient) LogDebug() {
 	stats := c.tracker.CurrentStats()
 	logger.Infof("Sent transactions with rate: %d TPS. (%v)\n", stats.RequestsPer(time.Second), stats)
 }
 
 func (c *ShardClient) WaitUntilDone() {
-	c.started.Wait()
 	c.tracker.WaitUntilDone()
 }
 
@@ -116,9 +111,6 @@ func (c *ShardClient) handlePhaseOne(phaseOneStream shardsservice.Shards_StartPh
 	for {
 		block := <-c.blockGenerator.OutputChan()
 		c.tracker.SubmitRequests(len(block.Txs))
-		c.once.Do(func() {
-			c.started.Done()
-		})
 		atomic.AddUint64(totalBlocks, 1)
 
 		utils.Must(phaseOneStream.Send(createPhaseOneRequestBatch(block)))

@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,8 +16,9 @@ type RequestTracker struct {
 	done              chan struct{}
 	outputReceived    chan int
 	startTime         time.Time
-
-	totalRequests int
+	startedSubmitting sync.WaitGroup
+	once              sync.Once
+	totalRequests     int
 }
 
 func NewRequestTracker() *RequestTracker {
@@ -27,14 +29,19 @@ func NewRequestTracker() *RequestTracker {
 	}
 }
 
+//Start starts the tracker and creates an output channel.
+//We can register responses only by calling ReceivedResponses.
 func (t *RequestTracker) Start() {
 	t.StartWithOutputReceived(make(chan int))
 }
 
+//StartWithOutputReceived starts the tracker with an existing output channel.
+//We can register responses either by sending the lengths to the channel or by calling ReceivedResponses.
 func (t *RequestTracker) StartWithOutputReceived(outputReceived chan int) {
 	if t.outputReceived != nil {
 		panic("tracker already started")
 	}
+	t.startedSubmitting.Add(1)
 	t.outputReceived = outputReceived
 	t.totalRequests = 0
 	t.startTime = time.Now()
@@ -73,15 +80,22 @@ func (t *RequestTracker) trackRequests() {
 	}
 }
 
+//SubmitRequests registers the requests sent
 func (t *RequestTracker) SubmitRequests(requests int) {
 	t.requestsSubmitted <- requests
+	t.once.Do(func() {
+		t.startedSubmitting.Done()
+	})
 }
 
+//ReceivedResponses registers the responses received
 func (t *RequestTracker) ReceivedResponses(responses int) {
 	t.outputReceived <- responses
 }
 
+//WaitUntilDone registers that we have finished sending requests, and we want to wait until we receive all responses
 func (t *RequestTracker) WaitUntilDone() {
+	t.startedSubmitting.Wait()
 	t.stopSending <- struct{}{}
 	<-t.done
 	stats := t.CurrentStats()
@@ -90,6 +104,7 @@ func (t *RequestTracker) WaitUntilDone() {
 	close(t.requestsSubmitted)
 }
 
+//CurrentStats returns a current summary of the tracker since we called Start.
 func (t *RequestTracker) CurrentStats() *RequestTrackerStats {
 	return &RequestTrackerStats{
 		TotalRequests: t.totalRequests,

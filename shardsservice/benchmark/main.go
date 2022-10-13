@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
@@ -14,16 +14,13 @@ import (
 )
 
 func main() {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	config.ParseFlags()
 	c := shardsservice.ReadConfig()
 
-	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
+	connection.RunServerMainAndWait(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
 		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.Enabled)))
-		wg.Done()
 	})
 	//monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, metrics.New(c.Prometheus.Enabled).AllMetrics())
-	wg.Wait()
 
 	client, err := utils.NewClient(utils.ClientConfig{
 		Connections:        []*connection.DialConfig{connection.NewDialConfig(c.Endpoint)},
@@ -45,11 +42,11 @@ func main() {
 	go func() {
 		for {
 			<-time.After(1 * time.Second)
-			client.Debug()
+			client.LogDebug()
 		}
 	}()
 
 	client.WaitUntilDone()
 	fmt.Printf("Finished execution.")
-	client.Debug()
+	client.LogDebug()
 }

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -18,6 +19,18 @@ type ServerConfig struct {
 }
 
 const grpcProtocol = "tcp"
+
+func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server)) {
+	serverStarted := sync.WaitGroup{}
+	serverStarted.Add(1)
+
+	go RunServerMain(serverConfig, func(server *grpc.Server) {
+		register(server)
+		serverStarted.Done()
+	})
+
+	serverStarted.Wait() // Avoid trying to connect before the server starts
+}
 
 func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
 	flag.Parse()

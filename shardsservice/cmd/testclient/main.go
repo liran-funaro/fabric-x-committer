@@ -40,7 +40,7 @@ func main() {
 	go func() {
 		for {
 			<-time.After(1 * time.Second)
-			client.Debug()
+			client.LogDebug()
 		}
 	}()
 
