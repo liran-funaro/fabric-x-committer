@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"sync"
+	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
@@ -10,13 +11,17 @@ import (
 const maxSerialNumbersEntries = 1000000 // 32 bytes per serial number, would cause roughly 32MB memory
 
 type dependencyMgr struct {
-	inputChan             chan *token.Block
-	inputChanStatusUpdate chan []*TxStatus
-	c                     *sync.Cond
-	snToNodes             map[string]map[*node]struct{}
-	nodes                 map[TxSeqNum]*node
-	stopSignalCh          chan struct{}
-	metrics               *metrics.Metrics
+	inputChan              chan *token.Block
+	inputChanStatusUpdate  chan []*TxStatus
+	outputChanStatusUpdate chan []*TxStatus
+
+	c             *sync.Cond
+	numBlocksSeen uint64
+	snToNodes     map[string]map[*node]struct{}
+	nodes         map[TxSeqNum]*node
+
+	stopSignalCh chan struct{}
+	metrics      *metrics.Metrics
 }
 
 type node struct {
@@ -28,18 +33,21 @@ type node struct {
 
 func newDependencyMgr(metrics *metrics.Metrics) *dependencyMgr {
 	m := &dependencyMgr{
-		inputChan:             make(chan *token.Block, defaultChannelBufferSize),
-		inputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
-		c:                     sync.NewCond(&sync.Mutex{}),
-		snToNodes:             map[string]map[*node]struct{}{},
-		nodes:                 map[TxSeqNum]*node{},
-		stopSignalCh:          make(chan struct{}),
-		metrics:               metrics,
+		inputChan:              make(chan *token.Block, defaultChannelBufferSize),
+		inputChanStatusUpdate:  make(chan []*TxStatus, defaultChannelBufferSize),
+		c:                      sync.NewCond(&sync.Mutex{}),
+		snToNodes:              map[string]map[*node]struct{}{},
+		nodes:                  map[TxSeqNum]*node{},
+		stopSignalCh:           make(chan struct{}),
+		outputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
+		metrics:                metrics,
 	}
+
 	if metrics.Enabled {
 		m.metrics.DependencyMgrInputChLength.SetCapacity(defaultChannelBufferSize)
 		m.metrics.DependencyMgrStatusUpdateChLength.SetCapacity(defaultChannelBufferSize)
 	}
+
 	m.startBlockRecieverRoutine()
 	m.startStatusUpdateProcessorRoutine()
 	return m
@@ -101,6 +109,9 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 			}
 		}
 	}
+
+	m.numBlocksSeen = b.Number + 1
+
 	if m.metrics.Enabled {
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
@@ -114,15 +125,20 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 			select {
 			case <-m.stopSignalCh:
 				return
+
 			case u := <-m.inputChanStatusUpdate:
 				notYetSeenTxs = m.updateGraphWithValidatedTxs(append(u, notYetSeenTxs...))
 				if m.metrics.Enabled {
 					m.metrics.DependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
 				}
+
+			case <-time.After(1 * time.Millisecond):
+				if len(notYetSeenTxs) > 0 {
+					notYetSeenTxs = m.updateGraphWithValidatedTxs(notYetSeenTxs)
+				}
 			}
 		}
 	}()
-
 }
 
 func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNum) (map[TxSeqNum][][]byte, []TxSeqNum) {
@@ -136,9 +152,15 @@ func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNu
 		node, ok := m.nodes[e]
 		if ok && len(node.dependsOn) == 0 {
 			dependencyFreeTxs[e] = node.serialNumbers
-		} else {
-			dependentOrNotYetSeenTxs = append(dependentOrNotYetSeenTxs, e)
+			continue
 		}
+
+		if !ok && m.hasSeen(e.BlkNum) {
+			// This can happen only if the transaction is already invalidated by dependency graph because one of its dependency got validated
+			continue
+		}
+
+		dependentOrNotYetSeenTxs = append(dependentOrNotYetSeenTxs, e)
 	}
 	return dependencyFreeTxs, dependentOrNotYetSeenTxs
 }
@@ -151,15 +173,38 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	}()
 
 	notYetSeenTxs := []*TxStatus{}
+	processedTxs := []*TxStatus{}
+	cascadeInvalidatedTxs := map[TxSeqNum]struct{}{}
+
 	for _, u := range toUpdate {
 		node, ok := m.nodes[u.TxSeqNum]
+
 		if !ok {
-			// This can happen only when sigverifier invalidates the transaction
+			// This can happen only if sigverifier invalidates the transaction
+			if m.hasSeen(u.TxSeqNum.BlkNum) {
+				// This can happen only if the transaction is already invalidated by dependency graph because one of its dependency got validated
+				continue
+			}
 			notYetSeenTxs = append(notYetSeenTxs, u)
 			continue
 		}
-		m.removeNodeUnderAcquiredLock(node, u.IsValid)
+
+		processedTxs = append(processedTxs, u)
+		m.removeNodeUnderAcquiredLock(node, u.IsValid, cascadeInvalidatedTxs)
 	}
+
+	for k := range cascadeInvalidatedTxs {
+		processedTxs = append(processedTxs,
+			&TxStatus{
+				TxSeqNum: k,
+			},
+		)
+	}
+
+	if len(processedTxs) > 0 {
+		m.outputChanStatusUpdate <- processedTxs
+	}
+
 	if m.metrics.Enabled {
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
@@ -167,7 +212,11 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	return notYetSeenTxs
 }
 
-func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool) {
+func (m *dependencyMgr) hasSeen(blockNum uint64) bool {
+	return blockNum < m.numBlocksSeen
+}
+
+func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool, cascadeInvalidatedTxs map[TxSeqNum]struct{}) {
 	delete(m.nodes, *node.txID)
 
 	for _, sn := range node.serialNumbers {
@@ -198,10 +247,12 @@ func (m *dependencyMgr) removeNodeUnderAcquiredLock(node *node, validTx bool) {
 	}
 
 	for d := range node.dependents {
-		m.removeNodeUnderAcquiredLock(d, false)
+		cascadeInvalidatedTxs[*d.txID] = struct{}{}
+		m.removeNodeUnderAcquiredLock(d, false, cascadeInvalidatedTxs)
 	}
 }
 
 func (m *dependencyMgr) stop() {
 	close(m.stopSignalCh)
+	close(m.outputChanStatusUpdate)
 }

@@ -74,9 +74,30 @@ func TestDependencyMgr(t *testing.T) {
 				IsValid:  true,
 			},
 		}
-		time.Sleep(10 * time.Millisecond)
 
-		require.Len(t, m.nodes, 2)     // 2 tx nodes (tx0 is removed and tx3 is removed, because tx0 being valid makes tx3 now invalid)
+		status := <-m.outputChanStatusUpdate
+		require.Equal(
+			t,
+			[]*TxStatus{
+				{
+					TxSeqNum: TxSeqNum{
+						BlkNum: 0,
+						TxNum:  0,
+					},
+					IsValid: true,
+				},
+				{
+					TxSeqNum: TxSeqNum{
+						BlkNum: 0,
+						TxNum:  3, //tx3 gets invalidated - cascade effect of tx0 being valid
+					},
+					IsValid: false,
+				},
+			},
+			status,
+		)
+
+		require.Len(t, m.nodes, 2)     // 2 tx nodes - tx0 (valid) is removed and tx3 (cascade invalid) is removed
 		require.Len(t, m.snToNodes, 4) // 4 unique serial numbers
 		intersection, extras := m.fetchDependencyFreeTxsThatIntersect([]TxSeqNum{
 			{0, 1},
@@ -92,12 +113,7 @@ func TestDependencyMgr(t *testing.T) {
 			intersection,
 		)
 
-		require.ElementsMatch(t,
-			[]TxSeqNum{
-				{0, 3}, // dependent tx should have been removed from the graph
-			},
-			extras,
-		)
+		require.Len(t, extras, 0) // dependent tx (tx3) should have been removed from the graph
 	})
 
 	t.Run("updateWithInvalidTx", func(t *testing.T) {
@@ -112,7 +128,28 @@ func TestDependencyMgr(t *testing.T) {
 				IsValid:  false,
 			},
 		}
-		time.Sleep(10 * time.Millisecond)
+
+		status := <-m.outputChanStatusUpdate
+		require.Equal(
+			t,
+			[]*TxStatus{
+				{
+					TxSeqNum: TxSeqNum{
+						BlkNum: 0,
+						TxNum:  0,
+					},
+					IsValid: false,
+				},
+				{
+					TxSeqNum: TxSeqNum{
+						BlkNum: 0,
+						TxNum:  2,
+					},
+					IsValid: false,
+				},
+			},
+			status,
+		)
 
 		require.Len(t, m.nodes, 2)     // 2 tx nodes (tx0 and tx2 are removed, both being invalids)
 		require.Len(t, m.snToNodes, 4) // 4 unique serial numbers
@@ -120,6 +157,8 @@ func TestDependencyMgr(t *testing.T) {
 			{0, 1},
 			{0, 2},
 			{0, 3},
+			{0, 4},
+			{1, 1},
 		})
 
 		require.Equal(t,
@@ -130,11 +169,48 @@ func TestDependencyMgr(t *testing.T) {
 			intersection,
 		)
 
-		require.ElementsMatch(t,
+		require.Equal(t,
 			[]TxSeqNum{
-				{0, 2}, // invalid tx should have been removed from the graph
+				{1, 1}, // not-yet-seen tx should be included in the extras
 			},
-			extras,
+			extras)
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		m := newDependencyMgr(metrics.New(false))
+		m.inputChanStatusUpdate <- []*TxStatus{
+			{
+				TxSeqNum: TxSeqNum{
+					BlkNum: 100,
+					TxNum:  0,
+				},
+				IsValid: false,
+			},
+		}
+		m.inputChan <- &token.Block{
+			Number: 100,
+			Txs: []*token.Tx{
+				{
+					SerialNumbers: [][]byte{
+						[]byte("1"),
+					},
+				},
+			},
+		}
+
+		status := <-m.outputChanStatusUpdate
+		require.Equal(
+			t,
+			[]*TxStatus{
+				{
+					TxSeqNum: TxSeqNum{
+						BlkNum: 100,
+						TxNum:  0,
+					},
+					IsValid: false,
+				},
+			},
+			status,
 		)
 	})
 }

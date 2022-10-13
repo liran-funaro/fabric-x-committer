@@ -12,7 +12,6 @@ type Coordinator struct {
 	dependencyMgr   *dependencyMgr
 	sigVerifierMgr  *sigVerifierMgr
 	shardsServerMgr *shardsServerMgr
-	outputChan      chan []*TxStatus
 	stopSignalCh    chan struct{}
 	metrics         *metrics.Metrics
 }
@@ -30,7 +29,6 @@ func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrC
 		dependencyMgr:   newDependencyMgr(metrics),
 		sigVerifierMgr:  sigVerifierMgr,
 		shardsServerMgr: shardsServerMgr,
-		outputChan:      make(chan []*TxStatus, defaultChannelBufferSize),
 		stopSignalCh:    make(chan struct{}),
 		metrics:         metrics,
 	}
@@ -54,7 +52,7 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 }
 
 func (c *Coordinator) TxStatusChan() <-chan []*TxStatus {
-	return c.outputChan
+	return c.dependencyMgr.outputChanStatusUpdate
 }
 
 func (c *Coordinator) Stop() {
@@ -130,7 +128,6 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 }
 
 func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
-	c.outputChan <- txStatus
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
 	if c.metrics.Enabled {
 		c.metrics.CoordinatorOutTxs.Add(len(txStatus))
