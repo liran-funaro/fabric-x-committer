@@ -1,7 +1,6 @@
 package shardsservice
 
 import (
-	"github.com/golang/protobuf/ptypes/empty"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -10,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
 
 type shardInstances struct {
@@ -23,13 +24,17 @@ type shardInstances struct {
 	c                     *sync.Cond
 	phaseOneResponses     chan []*PhaseOneResponse
 	maxBufferSize         int
+	phaseOnePool          *workerpool.WorkerPool
+	phaseTwoPool          *workerpool.WorkerPool
 	logger                *logging.Logger
 	metrics               *metrics.Metrics
 }
 
-func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, maxShardInstancesBufferSize, maxPendingCommitsBufferSize uint32, metrics *metrics.Metrics) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, limits *LimitsConfig, metrics *metrics.Metrics) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
+
+	const channelCapacity = 10
 
 	si := &shardInstances{
 		shardIDToInstance:     &shardIDToInstances{idToShard: make(map[uint32]*shard)},
@@ -38,9 +43,17 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 		rootDir:               rootDir,
 		c:                     sync.NewCond(&sync.RWMutex{}),
 		phaseOneResponses:     phaseOneResponse,
-		maxBufferSize:         int(maxShardInstancesBufferSize),
-		logger:                logger,
-		metrics:               metrics,
+		maxBufferSize:         int(limits.MaxShardInstancesBufferSize),
+		phaseOnePool: workerpool.New(&workerpool.Config{
+			Parallelism:     int(limits.MaxPhaseOneProcessingWorkers),
+			ChannelCapacity: channelCapacity,
+		}),
+		phaseTwoPool: workerpool.New(&workerpool.Config{
+			Parallelism:     int(limits.MaxPhaseTwoProcessingWorkers),
+			ChannelCapacity: channelCapacity,
+		}),
+		logger:  logger,
+		metrics: metrics,
 	}
 
 	// TODO: Use a db to keep track of existing shards and
@@ -62,7 +75,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 			if err != nil {
 				return nil, err
 			}
-			if err := si.setup(uint32(shardID), maxPendingCommitsBufferSize); err != nil {
+			if err := si.setup(uint32(shardID), limits); err != nil {
 				return nil, err
 			}
 		}
@@ -71,9 +84,9 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 	return si, nil
 }
 
-func (i *shardInstances) setup(shardID uint32, maxPendingCommitsBufferSize uint32) error {
+func (i *shardInstances) setup(shardID uint32, limits *LimitsConfig) error {
 	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, maxPendingCommitsBufferSize, i.metrics)
+	shard, err := newShard(shardID, path, limits, i.metrics)
 	if err != nil {
 		return err
 	}
@@ -146,9 +159,11 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.
 		shard := i.shardIDToInstance.getShard(shardID)
 		i.logger.Debugf("validating transactions on shardID [%d]", shardID)
 
-		go func(txToSn txIDToSerialNumbers) {
-			shard.executePhaseOne(txToSn)
-		}(txToSn)
+		i.phaseOnePool.Run(func(txToSn txIDToSerialNumbers) func() {
+			return func() {
+				shard.executePhaseOne(txToSn)
+			}
+		}(txToSn))
 	}
 	return &empty.Empty{}
 }
@@ -182,9 +197,11 @@ func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
 	for shardID, txToIns := range shardToTxIns {
 		shard := i.shardIDToInstance.getShard(shardID)
 
-		go func(txToIns txIDToInstruction) {
-			shard.executePhaseTwo(txToIns)
-		}(txToIns)
+		i.phaseTwoPool.Run(func(txToIns txIDToInstruction) func() {
+			return func() {
+				shard.executePhaseTwo(txToIns)
+			}
+		}(txToIns))
 	}
 	i.c.Broadcast()
 	i.c.L.(*sync.RWMutex).RUnlock()

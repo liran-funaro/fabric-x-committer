@@ -15,6 +15,7 @@ type shardsCoordinator struct {
 	phaseOneResponses chan []*PhaseOneResponse
 	limits            *LimitsConfig
 	phaseOnePool      *workerpool.WorkerPool
+	phaseTwoPool      *workerpool.WorkerPool
 	logger            *logging.Logger
 	metrics           *metrics.Metrics
 }
@@ -29,7 +30,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
 	}
 
-	si, err := newShardInstances(phaseOneResponses, database.RootDir, limits.MaxShardInstancesBufferSize, limits.MaxPendingCommitsBufferSize, metrics)
+	si, err := newShardInstances(phaseOneResponses, database.RootDir, limits, metrics)
 	if err != nil {
 		panic(err)
 	}
@@ -42,6 +43,10 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 			Parallelism:     int(limits.MaxPhaseOneProcessingWorkers),
 			ChannelCapacity: channelCapacity,
 		}),
+		phaseTwoPool: workerpool.New(&workerpool.Config{
+			Parallelism:     int(limits.MaxPhaseTwoProcessingWorkers),
+			ChannelCapacity: channelCapacity,
+		}),
 		logger:  logger,
 		metrics: metrics,
 	}
@@ -50,7 +55,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 func (s *shardsCoordinator) SetupShards(ctx context.Context, request *ShardsSetupRequest) (*Empty, error) {
 	s.logger.Debugf("received SetupShards request with FirstShardId [%d] and LastShardId [%d]", request.FirstShardId, request.LastShardId)
 	for shardID := request.FirstShardId; shardID <= request.LastShardId; shardID++ {
-		if err := s.shards.setup(shardID, s.limits.MaxPendingCommitsBufferSize); err != nil {
+		if err := s.shards.setup(shardID, s.limits); err != nil {
 			return &Empty{}, err
 		}
 	}
@@ -73,9 +78,11 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 			return err
 		}
 
-		s.phaseOnePool.Run(func() {
-			s.shards.executePhaseOne(requestBatch)
-		})
+		s.phaseOnePool.Run(func(requestBatch *PhaseOneRequestBatch) func() {
+			return func() {
+				s.shards.executePhaseOne(requestBatch)
+			}
+		}(requestBatch))
 	}
 }
 
@@ -105,8 +112,10 @@ func (s *shardsCoordinator) StartPhaseTwoStream(stream Shards_StartPhaseTwoStrea
 			return err
 		}
 
-		go func() {
-			s.shards.executePhaseTwo(requestBatch)
-		}()
+		s.phaseTwoPool.Run(func(requestBatch *PhaseTwoRequestBatch) func() {
+			return func() {
+				s.shards.executePhaseTwo(requestBatch)
+			}
+		}(requestBatch))
 	}
 }

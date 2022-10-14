@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
 
 type shard struct {
@@ -20,6 +21,7 @@ type shard struct {
 
 	pendingCommits    pendingcommits.PendingCommits
 	phaseOneResponses *phaseOneResponse
+	phaseOnePool      *workerpool.WorkerPool
 	wg                sync.WaitGroup
 	logger            *logging.Logger
 	metrics           *metrics.Metrics
@@ -31,19 +33,25 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string, maxPendingCommitsBufferSize uint32, metrics *metrics.Metrics) (*shard, error) {
+func newShard(id uint32, path string, limits *LimitsConfig, metrics *metrics.Metrics) (*shard, error) {
 	//db, err := rocksdb.Open(path)
 	db, err := goleveldb.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
+	const channelCapacity = 10
+
 	return &shard{
-		id:                id,
-		path:              path,
-		db:                db,
-		mu:                sync.RWMutex{},
-		pendingCommits:    pendingcommits.NewCondPendingCommits(maxPendingCommitsBufferSize),
+		id:             id,
+		path:           path,
+		db:             db,
+		mu:             sync.RWMutex{},
+		pendingCommits: pendingcommits.NewCondPendingCommits(limits.MaxPendingCommitsBufferSize),
+		phaseOnePool: workerpool.New(&workerpool.Config{
+			Parallelism:     int(limits.MaxPhaseOneProcessingWorkers),
+			ChannelCapacity: channelCapacity,
+		}),
 		phaseOneResponses: &phaseOneResponse{},
 		wg:                sync.WaitGroup{},
 		logger:            logging.New("shard"),
@@ -61,36 +69,38 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 
 	for tID, serialNumbers := range requests {
 		s.wg.Add(1)
-		go func(tID pendingcommits.TxID, serialNumbers *SerialNumbers) {
-			s.logger.Debugf("shardID [%d] validating TxID [%v]", s.id, tID)
-			defer s.wg.Done()
+		s.phaseOnePool.Run(func(tID pendingcommits.TxID, serialNumbers *SerialNumbers) func() {
+			return func() {
+				s.logger.Debugf("shardID [%d] validating TxID [%v]", s.id, tID)
+				defer s.wg.Done()
 
-			resp := &PhaseOneResponse{
-				BlockNum: tID.BlkNum,
-				TxNum:    tID.TxNum,
-			}
-
-			s.pendingCommits.WaitTillNotExist(serialNumbers.GetSerialNumbers())
-
-			doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
-			for _, notExist := range doNoExist {
-				if !notExist {
-					s.logger.Debugf("shardID [%d] invalidates TxID [%v]", s.id, tID)
-					resp.Status = PhaseOneResponse_CANNOT_COMMITTED
-					s.phaseOneResponses.add(resp)
-					return
+				resp := &PhaseOneResponse{
+					BlockNum: tID.BlkNum,
+					TxNum:    tID.TxNum,
 				}
-			}
 
-			resp.Status = PhaseOneResponse_CAN_COMMIT
-			s.pendingCommits.Add(tID, serialNumbers.SerialNumbers)
-			s.phaseOneResponses.add(resp)
-			if s.metrics.Enabled {
-				s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
-				s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())
+				s.pendingCommits.WaitTillNotExist(serialNumbers.GetSerialNumbers())
+
+				doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
+				for _, notExist := range doNoExist {
+					if !notExist {
+						s.logger.Debugf("shardID [%d] invalidates TxID [%v]", s.id, tID)
+						resp.Status = PhaseOneResponse_CANNOT_COMMITTED
+						s.phaseOneResponses.add(resp)
+						return
+					}
+				}
+
+				resp.Status = PhaseOneResponse_CAN_COMMIT
+				s.pendingCommits.Add(tID, serialNumbers.SerialNumbers)
+				s.phaseOneResponses.add(resp)
+				if s.metrics.Enabled {
+					s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
+					s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())
+				}
+				s.logger.Debugf("shardID [%d] successfully validated TxID [%v]", s.id, tID)
 			}
-			s.logger.Debugf("shardID [%d] successfully validated TxID [%v]", s.id, tID)
-		}(tID, serialNumbers)
+		}(tID, serialNumbers))
 	}
 }
 

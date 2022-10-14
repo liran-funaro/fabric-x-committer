@@ -36,6 +36,10 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 			MaxGoroutines:                     500,
 			MaxPhaseOneResponseBatchItemCount: 100,
 			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
+			MaxPhaseOneProcessingWorkers:      50,
+			MaxPhaseTwoProcessingWorkers:      50,
+			MaxPendingCommitsBufferSize:       100,
+			MaxShardInstancesBufferSize:       100,
 		},
 	}
 
