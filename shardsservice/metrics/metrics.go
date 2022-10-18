@@ -7,6 +7,15 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
+var dbRequestSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "shard_db_request_size",
+	Help: "Request size for read/write in the shard DB",
+}, []string{"sub_component", "operation"})
+var dbRequestLatency = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "shard_db_request_latency",
+	Help: "Latency for read/write in the shard DB (ns)",
+}, []string{"sub_component", "operation"})
+
 type Metrics struct {
 	Enabled                        bool
 	IncomingTxs                    *metrics.ThroughputCounter
@@ -15,7 +24,10 @@ type Metrics struct {
 	PendingCommitsTxIds            *metrics.InMemoryDataStructureGauge
 	ShardInstanceTxShard           *metrics.InMemoryDataStructureGauge
 	ShardInstanceTxResponse        *metrics.InMemoryDataStructureGauge
+	SNReadDuration                 *prometheus.GaugeVec
 	SNCommitDuration               *prometheus.GaugeVec
+	SNReadSize                     *prometheus.GaugeVec
+	SNCommitSize                   *prometheus.GaugeVec
 	ShardsPhaseOneResponseChLength *metrics.ChannelBufferGauge
 }
 
@@ -32,10 +44,10 @@ func New(enabled bool) *Metrics {
 		ShardInstanceTxShard:    metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_shard_id"),
 		ShardInstanceTxResponse: metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_response"),
 
-		SNCommitDuration: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "shard_commit_duration",
-			Help: "The total number of processed TXs on phase 1 entering phase 2",
-		}, []string{"sub_component"}),
+		SNReadDuration:   dbRequestLatency.MustCurryWith(prometheus.Labels{"operation": "read"}),
+		SNCommitDuration: dbRequestLatency.MustCurryWith(prometheus.Labels{"operation": "write"}),
+		SNReadSize:       dbRequestSize.MustCurryWith(prometheus.Labels{"operation": "read"}),
+		SNCommitSize:     dbRequestSize.MustCurryWith(prometheus.Labels{"operation": "write"}),
 
 		ShardsPhaseOneResponseChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "shards_service",
@@ -60,5 +72,7 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.ShardInstanceTxShard,
 		m.ShardInstanceTxResponse,
 		m.ShardsPhaseOneResponseChLength,
+		m.SNReadSize,
+		m.SNCommitSize,
 	}
 }
