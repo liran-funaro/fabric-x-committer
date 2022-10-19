@@ -46,9 +46,10 @@ func grafanaParams(dir string, port int) *monitoring.DockerRunParams {
 			"_GF_PROMETHEUS_ENDPOINT": fmt.Sprintf("http://%s:%d", "prometheus-instance", prometheusDefaultLocalPort),
 		},
 		Mounts: map[string]string{
-			filepath.Join(dir, "grafana-datasources.yml"):   grafanaProvisioningDir + "datasources/datasource.yml",
-			filepath.Join(dir, "grafana-dashboards.yml"):    grafanaProvisioningDir + "dashboards/dashboard.yml",
-			filepath.Join(dir, "prometheus-dashboard.json"): grafanaProvisioningDir + "dashboards/prometheus-dashboard.json",
+			filepath.Join(dir, "grafana-datasources.yml"):      grafanaProvisioningDir + "datasources/datasource.yml",
+			filepath.Join(dir, "grafana-dashboards.yml"):       grafanaProvisioningDir + "dashboards/dashboard.yml",
+			filepath.Join(dir, "prometheus-dashboard.json"):    grafanaProvisioningDir + "dashboards/prometheus-dashboard.json",
+			filepath.Join(dir, "node-exporter-dashboard.json"): grafanaProvisioningDir + "dashboards/node-exporter-dashboard.json",
 		},
 		//TODO: Use user-defined network instead of link
 		Links: []string{prometheusInstanceName},
