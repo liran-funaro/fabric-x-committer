@@ -29,7 +29,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 			Port: port,
 		},
 		Database: &DatabaseConfig{
-			Name:    "rocksdb",
+			Type:    "rocksdb",
 			RootDir: "./",
 		},
 		Limits: &LimitsConfig{

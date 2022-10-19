@@ -2,12 +2,16 @@ package shardsservice
 
 import (
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/goleveldb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/mockdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
@@ -33,9 +37,21 @@ type database interface {
 	Close()
 }
 
-func newShard(id uint32, path string, limits *LimitsConfig, metrics *metrics.Metrics) (*shard, error) {
-	//db, err := rocksdb.Open(path)
-	db, err := goleveldb.Open(path)
+func openDb(dbType ShardDbType, path string) (database, error) {
+	switch strings.ToLower(dbType) {
+	case MockDb:
+		return mockdb.Open(path)
+	case GoLevelDb:
+		return goleveldb.Open(path)
+	case RocksDb:
+		return rocksdb.Open(path)
+	default:
+		return nil, errors.New("unknown db type")
+	}
+}
+
+func newShard(id uint32, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) (*shard, error) {
+	db, err := openDb(dbConfig.Type, shardFilePath(dbConfig.RootDir, id))
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +60,7 @@ func newShard(id uint32, path string, limits *LimitsConfig, metrics *metrics.Met
 
 	return &shard{
 		id:             id,
-		path:           path,
+		path:           shardFilePath(dbConfig.RootDir, id),
 		db:             db,
 		mu:             sync.RWMutex{},
 		pendingCommits: pendingcommits.NewCondPendingCommits(limits.MaxPendingCommitsBufferSize),

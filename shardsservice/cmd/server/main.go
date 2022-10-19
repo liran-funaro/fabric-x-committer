@@ -15,6 +15,7 @@ func main() {
 	config.Int("max-shard-instance-size", "shards-service.limits.max-shard-instances-buffer-size", "Max size of shard-instances buffer")
 	config.Int("max-phase-one-workers", "shards-service.limits.max-phase-one-processing-workers", "Max size of workers that consume phase-one request batches")
 	config.Int("max-phase-two-workers", "shards-service.limits.max-phase-two-processing-workers", "Max size of workers that consume phase-two request batches")
+	config.String("db-type", "shards-service.database.type", "DB type: 'RocksDb', 'MockDb', 'GoLevelDb'")
 	config.ParseFlags()
 
 	c := shardsservice.ReadConfig()

@@ -30,7 +30,7 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
 	}
 
-	si, err := newShardInstances(phaseOneResponses, database.RootDir, limits, metrics)
+	si, err := newShardInstances(phaseOneResponses, database, limits, metrics)
 	if err != nil {
 		panic(err)
 	}

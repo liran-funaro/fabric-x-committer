@@ -13,8 +13,8 @@ func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
 
 	c := ReadConfig()
 	//t.Run("simple phase one execution", func(t *testing.T) {
-	testDir := "./"
-	si, err := newShardInstances(phaseOneResponses, testDir, c.Limits, metrics.New(false))
+	dbConfig := &DatabaseConfig{Type: GoLevelDb, RootDir: "./"}
+	si, err := newShardInstances(phaseOneResponses, dbConfig, c.Limits, metrics.New(false))
 	require.NoError(t, err)
 	defer si.deleteAll()
 

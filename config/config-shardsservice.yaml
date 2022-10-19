@@ -4,7 +4,7 @@ shards-service:
     enabled: true
     endpoint: localhost:2113
   database:
-    name: "rocksdb"
+    type: "rocksdb"
     root-dir: "./"
   limits:
     max-goroutines: 100

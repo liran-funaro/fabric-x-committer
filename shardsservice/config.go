@@ -9,9 +9,17 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
+type ShardDbType = string
+
+const (
+	RocksDb   ShardDbType = "rocksdb"
+	GoLevelDb             = "goleveldb"
+	MockDb                = "mockdb"
+)
+
 type DatabaseConfig struct {
-	Name    string `mapstructure:"name"`
-	RootDir string `mapstructure:"root-dir"`
+	Type    ShardDbType `mapstructure:"type"`
+	RootDir string      `mapstructure:"root-dir"`
 }
 
 type LimitsConfig struct {
@@ -40,7 +48,7 @@ func ReadConfig() ShardServiceConfig {
 }
 
 func init() {
-	viper.SetDefault("shards-service.database.name", "rocksdb")
+	viper.SetDefault("shards-service.database.type", "rocksdb")
 	viper.SetDefault("shards-service.database.root-dir", "./")
 
 	viper.SetDefault("shards-service.limits.max-goroutines", 100)

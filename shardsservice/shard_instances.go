@@ -20,7 +20,7 @@ type shardInstances struct {
 	shardIDToInstance     *shardIDToInstances
 	txIDToShardID         *txIDToShardID
 	txIDToPendingResponse *txIDToPendingResponse
-	rootDir               string
+	dbConfig              *DatabaseConfig
 	c                     *sync.Cond
 	phaseOneResponses     chan []*PhaseOneResponse
 	maxBufferSize         int
@@ -30,7 +30,7 @@ type shardInstances struct {
 	metrics               *metrics.Metrics
 }
 
-func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string, limits *LimitsConfig, metrics *metrics.Metrics) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
 
@@ -40,7 +40,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 		shardIDToInstance:     &shardIDToInstances{idToShard: make(map[uint32]*shard)},
 		txIDToShardID:         &txIDToShardID{txToShardID: make(map[pendingcommits.TxID][]uint32)},
 		txIDToPendingResponse: &txIDToPendingResponse{tIDToPendingShardIDResp: make(txIDToPendingShardIDResponse)},
-		rootDir:               rootDir,
+		dbConfig:              dbConfig,
 		c:                     sync.NewCond(&sync.RWMutex{}),
 		phaseOneResponses:     phaseOneResponse,
 		maxBufferSize:         int(limits.MaxShardInstancesBufferSize),
@@ -60,7 +60,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 	// shard requests to handle failure and recovery.
 	// The below part of the code needs to be rewritten for
 	// production environment
-	files, err := ioutil.ReadDir(rootDir)
+	files, err := ioutil.ReadDir(dbConfig.RootDir)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +85,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, rootDir string
 }
 
 func (i *shardInstances) setup(shardID uint32, limits *LimitsConfig) error {
-	path := shardFilePath(i.rootDir, shardID)
-	shard, err := newShard(shardID, path, limits, i.metrics)
+	shard, err := newShard(shardID, i.dbConfig, limits, i.metrics)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ type shardForTest struct {
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
 	c := ReadConfig()
-	s, err := newShard(id, path, c.Limits, metrics.New(false))
+	s, err := newShard(id, &DatabaseConfig{Type: GoLevelDb, RootDir: path}, c.Limits, metrics.New(false))
 	require.NoError(t, err)
 
 	return &shardForTest{
