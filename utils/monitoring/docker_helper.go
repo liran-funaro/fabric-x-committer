@@ -13,9 +13,10 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
+
+const randomName = ""
 
 var logger = logging.New("monitoring")
 
@@ -24,7 +25,6 @@ type DockerRunOpts struct {
 }
 
 type DockerRunParams struct {
-	Name         string
 	Image        string
 	Hostname     string
 	Envs         map[string]string
@@ -38,55 +38,70 @@ type DockerHelper struct {
 	client *client.Client
 }
 
-func (h *DockerHelper) Start(params *DockerRunParams, opts *DockerRunOpts) error {
+func (h *DockerHelper) Start(params *DockerRunParams, opts *DockerRunOpts) (string, error) {
 	logger.Infof("Running docker for %s...", params.Hostname)
 	reader, err := h.imagePull(params.Image)
 	logger.Infof("Pulled docker image %s for %s.", params.Image, params.Hostname)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer reader.Close()
 
-	cnt, err := h.findContainerByName(params.Name)
-	if err != nil {
-		return err
-	}
-	if cnt != nil && cnt.State == "running" {
-		logger.Infof("Container %s is already up and running.", params.Name)
-		if opts.RemoveIfExists {
-			utils.Must(h.containerStop(cnt.ID))
-			logger.Infof("Stopped container %s.", params.Name)
-		} else {
-			return nil
-		}
-	}
-	var containerId string
-	if cnt == nil {
-		containerId, err = h.createContainer(params)
-		logger.Infof("Created container %s.", params.Hostname)
-	} else if opts.RemoveIfExists {
-		utils.Must(h.containerRemove(cnt.ID))
-		logger.Infof("Removed container %s.", params.Hostname)
-		containerId, err = h.createContainer(params)
-		logger.Infof("Created container %s.", params.Hostname)
-	} else {
-		containerId = cnt.ID
+	if opts.RemoveIfExists {
+		var removed int
+		removed, err = h.removeExistingContainers(params.Image)
+		logger.Infof("Removed %d containers of %s", removed, params.Image)
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	err = h.containerStart(containerId)
+	containerId, err := h.createContainer(params)
+	if err != nil {
+		return "", err
+	}
+
+	err = h.startContainer(containerId)
 	logger.Infof("Started container %s.", params.Hostname)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	go h.containerLogs(containerId)
 	logger.Infof("Enabled logs for %s.", params.Hostname)
 
 	logger.Infof("Running %s is done!", params.Hostname)
-	return nil
+
+	cntr, err := h.findContainerById(containerId)
+	if err != nil {
+		return "", err
+	}
+	return cntr.Names[0][1:], nil
+}
+
+func (h *DockerHelper) removeExistingContainers(imageName string) (int, error) {
+	removed := 0
+	containers, err := h.findContainersByImage(imageName)
+	if err != nil {
+		return removed, err
+	}
+	for _, cnt := range containers {
+		if cnt.State == "running" {
+			err = h.containerStop(cnt.ID)
+			logger.Infof("Stopped container %v.", cnt.Names)
+		}
+		if err != nil {
+			logger.Warnf("Failed to stop %v", cnt.Names)
+		}
+		err = h.containerRemove(cnt.ID)
+		if err != nil {
+			logger.Warnf("Failed to remove %v", cnt.Names)
+		} else {
+			removed++
+		}
+		logger.Infof("Removed and creating container %v.", cnt.Names)
+	}
+	return removed, nil
 }
 
 func (h *DockerHelper) containerRemove(containerId string) error {
@@ -144,7 +159,7 @@ func (h *DockerHelper) createContainer(params *DockerRunParams) (string, error) 
 		})
 	}
 
-	container, err := h.client.ContainerCreate(h.ctx, &container.Config{
+	cntr, err := h.client.ContainerCreate(h.ctx, &container.Config{
 		Hostname:     params.Hostname,
 		Image:        params.Image,
 		Tty:          true,
@@ -155,26 +170,38 @@ func (h *DockerHelper) createContainer(params *DockerRunParams) (string, error) 
 		Links:         params.Links,
 		Mounts:        mounts,
 		PortBindings:  portBindings,
-	}, &network.NetworkingConfig{}, nil, params.Name)
+	}, &network.NetworkingConfig{}, nil, randomName)
 	if err != nil {
 		return "", err
 	}
-	return container.ID, nil
+	return cntr.ID, nil
 }
 
-func (h *DockerHelper) findContainerByName(containerName string) (*types.Container, error) {
+func (h *DockerHelper) findContainerById(containerId string) (*types.Container, error) {
 	containers, err := h.client.ContainerList(h.ctx, types.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
 	for _, c := range containers {
-		for _, name := range c.Names {
-			if name == "/"+containerName {
-				return &c, nil
-			}
+		if c.ID == containerId {
+			return &c, nil
 		}
 	}
 	return nil, nil
+}
+
+func (h *DockerHelper) findContainersByImage(imageName string) ([]types.Container, error) {
+	containers, err := h.client.ContainerList(h.ctx, types.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]types.Container, 0, len(containers))
+	for _, c := range containers {
+		if c.Image == imageName {
+			result = append(result, c)
+		}
+	}
+	return result, nil
 }
 
 func (h *DockerHelper) containerLogs(containerId string) {
@@ -195,6 +222,6 @@ func (h *DockerHelper) containerLogs(containerId string) {
 	}
 }
 
-func (h *DockerHelper) containerStart(containerId string) error {
+func (h *DockerHelper) startContainer(containerId string) error {
 	return h.client.ContainerStart(h.ctx, containerId, types.ContainerStartOptions{})
 }
