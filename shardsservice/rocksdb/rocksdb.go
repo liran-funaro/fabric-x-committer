@@ -1,6 +1,7 @@
 package rocksdb
 
 import (
+	"runtime"
 	"sync"
 
 	"github.com/linxGnu/grocksdb"
@@ -14,14 +15,23 @@ type rocksdb struct {
 }
 
 func Open(path string) (*rocksdb, error) {
-	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
-	bbto.SetCacheIndexAndFilterBlocks(true)
-	bbto.SetCacheIndexAndFilterBlocksWithHighPriority(true)
-	bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30))
+	//bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+	//bbto.SetCacheIndexAndFilterBlocks(true)
+	//bbto.SetCacheIndexAndFilterBlocksWithHighPriority(true)
+	//bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30))
 
 	opts := grocksdb.NewDefaultOptions()
-	opts.SetBlockBasedTableFactory(bbto)
+	//opts.SetBlockBasedTableFactory(bbto)
 	opts.SetCreateIfMissing(true)
+
+	p := runtime.NumCPU() / 2
+	opts.IncreaseParallelism(p) // half of our cores allocated to the db
+	opts.SetMaxBackgroundJobs(p)
+
+	opts.OptimizeForPointLookup(1 * 1024) // using 1 gb of layer 0 block cache
+	opts.SetAllowConcurrentMemtableWrites(false)
+	opts.SetUseDirectReads(true)
+	opts.SetUseDirectIOForFlushAndCompaction(true)
 
 	// system failure and recovery during open is not handled
 	db, err := grocksdb.OpenDb(opts, path)
@@ -31,7 +41,7 @@ func Open(path string) (*rocksdb, error) {
 
 	ro := grocksdb.NewDefaultReadOptions()
 	wo := grocksdb.NewDefaultWriteOptions()
-	wo.SetSync(true)
+	wo.SetSync(false)
 
 	return &rocksdb{
 		db: db,
@@ -50,7 +60,7 @@ func (r *rocksdb) Commit(keys [][]byte) error {
 		batch.Put(k, nil)
 	}
 
-	defer batch.Clear()
+	defer batch.Destroy()
 	return r.db.Write(r.wo, batch)
 }
 
@@ -67,7 +77,7 @@ func (r *rocksdb) DoNotExist(keys [][]byte) ([]bool, error) {
 
 	for i, v := range values {
 		result[i] = !v.Exists()
-		go v.Free()
+		v.Free()
 	}
 
 	return result, nil
