@@ -6,4 +6,5 @@ const (
 	Coordinator ComponentType = iota
 	SigVerifier
 	ShardsService
+	Generator
 )

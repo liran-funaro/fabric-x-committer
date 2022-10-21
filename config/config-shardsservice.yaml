@@ -2,6 +2,7 @@ shards-service:
   endpoint: localhost:5001
   prometheus:
     enabled: true
+    latency-enabled: true
     endpoint: localhost:2113
   database:
     type: "rocksdb"

@@ -12,7 +12,7 @@ var (
 		Short: "Pushes blocks to the coordinator via the wire",
 		Long:  ``,
 		Run: func(cmd *cobra.Command, args []string) {
-			client.LoadAndPump(blockFile, host)
+			client.LoadAndPump(blockFile, host, prometheusEnabled, prometheusEndpoint)
 		},
 	}
 )

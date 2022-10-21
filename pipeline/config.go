@@ -62,7 +62,8 @@ func init() {
 		{"endpoint": "localhost:5001", "num-shards": 4},
 	})
 
-	viper.SetDefault("coordinator.endpoint", "localhost:5002")
-	viper.SetDefault("coordinator.prometheus.enabled", "false")
-	viper.SetDefault("coordinator.prometheus.endpoint", "localhost:2114")
+	viper.SetDefault("coordinator.endpoint", ":5002")
+	viper.SetDefault("coordinator.prometheus.enabled", true)
+	viper.SetDefault("coordinator.prometheus.latency-enabled", true)
+	viper.SetDefault("coordinator.prometheus.endpoint", ":2114")
 }

@@ -1,6 +1,7 @@
 coordinator:
   prometheus:
-    enabled: false
+    enabled: true
+    latency-enabled: true
     endpoint: localhost:2114
   endpoint: localhost:5002
   sig-verifiers:

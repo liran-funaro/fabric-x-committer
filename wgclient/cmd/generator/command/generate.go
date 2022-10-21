@@ -6,9 +6,11 @@ import (
 )
 
 var (
-	profilePath string
-	outputPath  string
-	genCmd      = &cobra.Command{
+	profilePath        string
+	outputPath         string
+	prometheusEnabled  bool
+	prometheusEndpoint string
+	genCmd             = &cobra.Command{
 		Use:   "generate",
 		Short: "A generator for benchmark workloads",
 		Long:  ``,
@@ -26,4 +28,7 @@ func init() {
 
 	genCmd.Flags().StringVarP(&outputPath, "out", "o", "", "path to block output file (required)")
 	genCmd.MarkFlagRequired("out")
+
+	genCmd.Flags().BoolVar(&prometheusEnabled, "prometheus-enabled", true, "enable prometheus metrics")
+	genCmd.Flags().StringVar(&prometheusEndpoint, "prometheus-endpoint", ":2112", "path to prometheus metrics")
 }

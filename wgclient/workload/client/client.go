@@ -17,14 +17,20 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client/codec"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
-func LoadAndPump(path, endpoint string) {
+func LoadAndPump(path, endpoint string, prometheusEnabled bool, prometheusEndpoint string) {
 	// read blocks from file into channel
+	tracker := workload.NewMetricTracker(monitoring.Prometheus{
+		Enabled:        prometheusEnabled,
+		LatencyEnabled: true,
+		Endpoint:       *connection.CreateEndpoint(prometheusEndpoint),
+	})
 	serializedKey, bQueue, pp := workload.GetBlockWorkload(path)
 
 	// event collector
@@ -37,21 +43,37 @@ func LoadAndPump(path, endpoint string) {
 		defer wg.Done()
 		for e := range eventQueue {
 			eventStore.Store(e)
+			tracker.RegisterEvent(e)
 		}
 		eventStore.Close()
 	}()
 
 	PumpToCoordinator(serializedKey, bQueue, eventQueue, pp, endpoint)
 	wg.Wait()
+	<-time.After(workload.ScrapingInterval)
 }
 
-func GenerateAndPump(profilePath string, endpoint string) {
+func GenerateAndPump(profilePath string, endpoint string, prometheusEnabled bool, prometheusEndpoint string) {
 	pp := workload.LoadProfileFromYaml(profilePath)
 
+	tracker := workload.NewMetricTracker(monitoring.Prometheus{
+		Enabled:        prometheusEnabled,
+		LatencyEnabled: true,
+		Endpoint:       *connection.CreateEndpoint(prometheusEndpoint),
+	})
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)
 
-	PumpToCoordinator(publicKey, bQueue, nil, pp, endpoint)
+	// event collector
+	eventQueue := make(chan *workload.Event, 10000)
+
+	go func() {
+		for e := range eventQueue {
+			tracker.RegisterEvent(e)
+		}
+	}()
+
+	PumpToCoordinator(publicKey, bQueue, eventQueue, pp, endpoint)
 }
 
 func Validate(path string) {

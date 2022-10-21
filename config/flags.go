@@ -30,6 +30,7 @@ func ParseFlags() {
 func ServerConfig(component string) {
 	String("server", component+".endpoint", "Where the server listens for incoming connections")
 	Bool("prometheus-enabled", component+".prometheus.enabled", "Enable prometheus metrics to be kept")
+	Bool("prometheus-latency-enabled", component+".prometheus.latency-enabled", "Enable prometheus latency-related metrics to be kept")
 	String("prometheus-endpoint", component+".prometheus.endpoint", "Where prometheus listens for incoming connections")
 }
 

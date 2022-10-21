@@ -27,6 +27,7 @@ func ReadConfig() SigVerificationConfig {
 func init() {
 	viper.SetDefault("sig-verification.endpoint", "localhost:5000")
 	viper.SetDefault("sig-verification.prometheus.enabled", true)
+	viper.SetDefault("sig-verification.prometheus.latency-enabled", true)
 	viper.SetDefault("sig-verification.prometheus.endpoint", "localhost:2112")
 
 	viper.SetDefault("sig-verification.scheme", "Ecdsa")

@@ -12,7 +12,7 @@ var (
 		Short: "A stream generator for benchmark workloads",
 		Long:  ``,
 		Run: func(cmd *cobra.Command, args []string) {
-			client.GenerateAndPump(profilePath, host)
+			client.GenerateAndPump(profilePath, host, prometheusEnabled, prometheusEndpoint)
 		},
 	}
 )

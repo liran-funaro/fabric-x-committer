@@ -11,14 +11,16 @@ import (
 )
 
 type Prometheus struct {
-	Enabled  bool                `mapstructure:"enabled"`
-	Endpoint connection.Endpoint `mapstructure:"endpoint"`
+	Enabled        bool                `mapstructure:"enabled"`
+	LatencyEnabled bool                `mapstructure:"latency-enabled"` //latency-related metrics might be heavier for performance
+	Endpoint       connection.Endpoint `mapstructure:"endpoint"`
 }
 
 var componentTypeMap = map[ComponentType]string{
 	Coordinator:   "coordinator",
 	SigVerifier:   "sigverifier",
 	ShardsService: "shards-service",
+	Generator:     "generator",
 }
 
 func LaunchPrometheus(config Prometheus, componentType ComponentType, customCollectors []prometheus.Collector) {
@@ -31,6 +33,10 @@ func LaunchPrometheus(config Prometheus, componentType ComponentType, customColl
 
 	defaultMetrics := metrics.New(true)
 	for _, collector := range append(customCollectors, defaultMetrics.AllMetrics()...) {
+		if histogram, ok := collector.(*metrics.LatencyHistogram); ok && config.LatencyEnabled {
+			histogram.SetEnabled(true)
+			customMetricRegisterer.Register(histogram.LatencyTrackerSize())
+		}
 		customMetricRegisterer.Register(collector)
 	}
 	defaultMetrics.ComponentType.Set(float64(componentType))
