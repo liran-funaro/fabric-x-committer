@@ -3,8 +3,10 @@ package shardsservice
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
@@ -89,15 +91,20 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOneStreamServer) error {
 	go s.shards.accumulatedPhaseOneResponses(s.limits.MaxPhaseOneResponseBatchItemCount, s.limits.PhaseOneResponseCutTimeout)
 	for {
+		end := time.Now()
+		responses := <-s.phaseOneResponses
 		if err := stream.Send(
 			&PhaseOneResponseBatch{
-				Responses: <-s.phaseOneResponses,
+				Responses: responses,
 			},
 		); err != nil {
 			return err
 		}
 		if s.metrics.Enabled {
 			s.metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
+			for _, response := range responses {
+				s.metrics.Latency.End(pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}, end)
+			}
 		}
 	}
 }

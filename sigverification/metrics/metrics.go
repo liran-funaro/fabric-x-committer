@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
@@ -11,6 +13,7 @@ type Metrics struct {
 	VerifierServerOutTxs           *metrics.ThroughputCounter
 	ParallelExecutorInTxs          *metrics.ThroughputCounter
 	ParallelExecutorOutTxs         *metrics.ThroughputCounter
+	Latency                        *metrics.LatencyHistogram
 	ActiveStreams                  prometheus.Gauge
 	ParallelExecutorInputChLength  *metrics.ChannelBufferGauge
 	ParallelExecutorOutputChLength *metrics.ChannelBufferGauge
@@ -26,6 +29,7 @@ func New(enabled bool) *Metrics {
 		VerifierServerOutTxs:   metrics.NewThroughputCounter("verifier_server", metrics.Out),
 		ParallelExecutorInTxs:  metrics.NewThroughputCounter("parallel_executor", metrics.In),
 		ParallelExecutorOutTxs: metrics.NewThroughputCounter("parallel_executor", metrics.Out),
+		Latency:                metrics.NewDefaultLatencyHistogram("sigverifier_latency", 2*time.Millisecond, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
 		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "active_streams",
 			Help: "The total number of started streams",
@@ -51,6 +55,7 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.VerifierServerOutTxs,
 		m.ParallelExecutorInTxs,
 		m.ParallelExecutorOutTxs,
+		m.Latency,
 		m.ParallelExecutorInputChLength,
 		m.ParallelExecutorOutputChLength,
 	}

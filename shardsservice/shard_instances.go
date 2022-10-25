@@ -113,6 +113,7 @@ func (i *shardInstances) deleteAll() error {
 
 func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.Empty {
 	i.c.L.(*sync.RWMutex).Lock()
+	started := time.Now()
 	defer i.c.L.(*sync.RWMutex).Unlock()
 	for len(i.txIDToShardID.txToShardID) >= i.maxBufferSize {
 		i.c.Wait()
@@ -150,6 +151,7 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.
 				i.metrics.ShardInstanceTxShard.Set(len(i.txIDToShardID.txToShardID))
 				i.metrics.ShardInstanceTxResponse.Set(len(i.txIDToPendingResponse.tIDToPendingShardIDResp))
 			}
+			i.metrics.Latency.Begin(tID, 1, started)
 		}
 	}
 

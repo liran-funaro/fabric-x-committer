@@ -100,8 +100,8 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				startRead := time.Now()
 				doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
 				if s.metrics.Enabled {
-					s.metrics.SNReadDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startRead)))
-					s.metrics.SNReadSize.With(metrics.ShardId(s.id)).Set(float64(len(serialNumbers.GetSerialNumbers())))
+					s.metrics.SNReadDuration.With(metrics.ShardId(s.id)).Observe(float64(time.Now().Sub(startRead)))
+					s.metrics.SNReadSize.With(metrics.ShardId(s.id)).Observe(float64(len(serialNumbers.GetSerialNumbers())))
 				}
 				for _, notExist := range doNoExist {
 					if !notExist {
@@ -149,8 +149,8 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	s.pendingCommits.DeleteBatch(txIds)
 
 	if s.metrics.Enabled {
-		s.metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Set(float64(time.Now().Sub(startCommit)))
-		s.metrics.SNCommitSize.With(metrics.ShardId(s.id)).Set(float64(len(validSNs)))
+		s.metrics.SNCommitDuration.With(metrics.ShardId(s.id)).Observe(float64(time.Now().Sub(startCommit)))
+		s.metrics.SNCommitSize.With(metrics.ShardId(s.id)).Observe(float64(len(validSNs)))
 		s.metrics.CommittedSNs.With(metrics.ShardId(s.id)).Add(float64(len(validSNs)))
 		s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
 		s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())

@@ -3,12 +3,14 @@ package verifierserver
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -30,6 +32,10 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 		func(batch *sigverification.RequestBatch) {
 			if s.metrics.Enabled {
 				metrics.VerifierServerInTxs.Add(len(batch.Requests))
+				start := time.Now()
+				for _, request := range batch.Requests {
+					s.metrics.Latency.Begin(token.TxSeqNum{BlkNum: request.BlockNum, TxNum: request.TxNum}, 1, start)
+				}
 			}
 			executor.Submit(batch.Requests)
 		},
@@ -37,6 +43,10 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			outputs := <-executor.Outputs()
 			if s.metrics.Enabled {
 				metrics.VerifierServerOutTxs.Add(len(outputs))
+				end := time.Now()
+				for _, output := range outputs {
+					s.metrics.Latency.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, end)
+				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})
