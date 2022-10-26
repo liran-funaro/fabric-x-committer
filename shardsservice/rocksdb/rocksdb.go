@@ -15,13 +15,14 @@ type rocksdb struct {
 }
 
 func Open(path string) (*rocksdb, error) {
-	//bbto := grocksdb.NewDefaultBlockBasedTableOptions()
-	//bbto.SetCacheIndexAndFilterBlocks(true)
-	//bbto.SetCacheIndexAndFilterBlocksWithHighPriority(true)
-	//bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30))
+	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+	bbto.SetCacheIndexAndFilterBlocks(true)
+	bbto.SetCacheIndexAndFilterBlocksWithHighPriority(true)
+	// bbto.SetBlockCache(grocksdb.NewLRUCache(1 << 30))
+	bbto.SetFilterPolicy(grocksdb.NewBloomFilterFull(10))
 
 	opts := grocksdb.NewDefaultOptions()
-	//opts.SetBlockBasedTableFactory(bbto)
+	opts.SetBlockBasedTableFactory(bbto)
 	opts.SetCreateIfMissing(true)
 
 	p := runtime.NumCPU() / 2
@@ -30,7 +31,7 @@ func Open(path string) (*rocksdb, error) {
 
 	opts.OptimizeForPointLookup(1 * 1024) // using 1 gb of layer 0 block cache
 	opts.SetAllowConcurrentMemtableWrites(false)
-	opts.SetUseDirectReads(true)
+	// opts.SetUseDirectReads(true)
 	opts.SetUseDirectIOForFlushAndCompaction(true)
 
 	// system failure and recovery during open is not handled
