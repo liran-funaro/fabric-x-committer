@@ -42,6 +42,7 @@ func Open(path string) (*rocksdb, error) {
 
 	ro := grocksdb.NewDefaultReadOptions()
 	wo := grocksdb.NewDefaultWriteOptions()
+	wo.DisableWAL(true)
 	wo.SetSync(false)
 
 	return &rocksdb{
