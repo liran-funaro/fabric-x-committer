@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,7 +23,7 @@ type Profile struct {
 
 	Transaction struct {
 		SerialNumber struct {
-			Count int64
+			Count []test.DiscreteValue
 		}
 
 		Signature struct {

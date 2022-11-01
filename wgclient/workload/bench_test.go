@@ -46,13 +46,12 @@ func BenchmarkGenSingle(b *testing.B) {
 	privateKey, _ := sigverification_test.GetSignatureFactory(sigType).NewKeys()
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
 
-	snCount := int64(1)
 	vr := 1.0
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:               signer,
-		TxInputGenerator:       &sigverification_test.LinearTxInputGenerator{Count: snCount},
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Percentage(vr), 10),
+		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
+		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, vr, 10),
 	}
 
 	var tx *token.Tx

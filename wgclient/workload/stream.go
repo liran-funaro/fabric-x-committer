@@ -23,7 +23,7 @@ func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.Tx
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:               signer,
-		TxInputGenerator:       &sigverification_test.LinearTxInputGenerator{Count: pp.Transaction.SerialNumber.Count},
+		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.SerialNumber.Count),
 		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Percentage(pp.Transaction.Signature.ValidityRatio), 10),
 	}
 

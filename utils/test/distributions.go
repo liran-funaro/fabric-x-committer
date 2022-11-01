@@ -24,6 +24,7 @@ const (
 	constant distributionType = iota
 	normal
 	uniform
+	discrete
 )
 
 type Distribution = distributionHolder
@@ -56,6 +57,8 @@ func (d *distributionHolder) UnmarshalJSON(b []byte) error {
 		d.Delegate = &constantDistribution{Value: delegateValue["Value"].(float64)}
 	case normal:
 		d.Delegate = &normalDistribution{Mean: delegateValue["Mean"].(float64), Std: delegateValue["Std"].(float64)}
+	case discrete:
+		d.Delegate = &discreteDistribution{Values: delegateValue["Values"].([]DiscreteValue)}
 	default:
 		panic("type not found")
 	}
@@ -97,6 +100,38 @@ func newUniformDistribution(min, max float64) Distribution {
 		Type:     uniform,
 		Delegate: &uniformDistribution{Min: min, Max: max},
 	}
+}
+
+type DiscreteValue struct {
+	Value       float64
+	Probability Percentage
+}
+
+type discreteDistribution struct {
+	Values []DiscreteValue
+}
+
+func Discrete(values []DiscreteValue) Distribution {
+	return newDiscreteDistribution(values)
+}
+
+func newDiscreteDistribution(values []DiscreteValue) Distribution {
+	return distributionHolder{
+		Type:     discrete,
+		Delegate: &discreteDistribution{Values: values},
+	}
+}
+
+func (d *discreteDistribution) Generate() float64 {
+	r := rand.Float64()
+	remaining := float64(1)
+	for _, value := range d.Values {
+		remaining -= value.Probability
+		if r >= remaining {
+			return value.Value
+		}
+	}
+	panic("map must have values within range (0, 1)")
 }
 
 type uniformDistribution struct {

@@ -14,7 +14,9 @@ block:
 transaction:
   serialnumber:
     # number of serial numbers per transaction
-    count: 4
+    count:
+      - value: 4
+        probability: 1
   signature:
     # signature scheme
     type: ecdsa

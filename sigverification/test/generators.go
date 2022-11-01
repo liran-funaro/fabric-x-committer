@@ -97,16 +97,21 @@ func (g *SomeTxInputGenerator) Next() []token.SerialNumber {
 
 type LinearTxInputGenerator struct {
 	uniqueSerialNum uint64
-	Count           int64
+	sizeGenerator   *test.PositiveIntGenerator
+}
+
+func NewLinearTxInputGenerator(sizes []test.DiscreteValue) *LinearTxInputGenerator {
+	return &LinearTxInputGenerator{sizeGenerator: test.NewPositiveIntGenerator(test.Discrete(sizes), 100)}
 }
 
 func (g *LinearTxInputGenerator) Next() []token.SerialNumber {
-	serialNumbers := make([]token.SerialNumber, g.Count)
+	count := g.sizeGenerator.Next()
+	serialNumbers := make([]token.SerialNumber, count)
 
 	h := sha256.New()
 	b := make([]byte, 8)
 
-	for i := int64(0); i < g.Count; i++ {
+	for i := 0; i < count; i++ {
 		binary.LittleEndian.PutUint64(b, atomic.AddUint64(&g.uniqueSerialNum, 1))
 
 		h.Reset()
