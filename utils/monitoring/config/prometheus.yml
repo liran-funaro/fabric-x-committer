@@ -20,5 +20,19 @@ scrape_configs:
         'tokentestbed7.sl.cloud9.ibm.com:9100',
         'tokentestbed7.sl.cloud9.ibm.com:2112',
         'tokentestbed8.sl.cloud9.ibm.com:9100',
-        'tokentestbed8.sl.cloud9.ibm.com:2112'
+        'tokentestbed8.sl.cloud9.ibm.com:2112',
+        'tokentestbed9.sl.cloud9.ibm.com:9100',
+        'tokentestbed9.sl.cloud9.ibm.com:2112',
+        'tokentestbed10.sl.cloud9.ibm.com:9100',
+        'tokentestbed10.sl.cloud9.ibm.com:2112',
+        'tokentestbed11.sl.cloud9.ibm.com:9100',
+        'tokentestbed11.sl.cloud9.ibm.com:2112',
+        'tokentestbed12.sl.cloud9.ibm.com:9100',
+        'tokentestbed12.sl.cloud9.ibm.com:2112',
+        'tokentestbed13.sl.cloud9.ibm.com:9100',
+        'tokentestbed13.sl.cloud9.ibm.com:2112',
+        'tokentestbed14.sl.cloud9.ibm.com:9100',
+        'tokentestbed14.sl.cloud9.ibm.com:2112',
+        'tokentestbed15.sl.cloud9.ibm.com:9100',
+        'tokentestbed15.sl.cloud9.ibm.com:2112'
       ]

@@ -34,3 +34,17 @@ all:
               ansible_host: "tokentestbed7.sl.cloud9.ibm.com"
             shardsservice-machine3:
               ansible_host: "tokentestbed8.sl.cloud9.ibm.com"
+            shardsservice-machine4:
+              ansible_host: "tokentestbed9.sl.cloud9.ibm.com"
+            shardsservice-machine5:
+              ansible_host: "tokentestbed10.sl.cloud9.ibm.com"
+            shardsservice-machine6:
+              ansible_host: "tokentestbed11.sl.cloud9.ibm.com"
+            shardsservice-machine7:
+              ansible_host: "tokentestbed12.sl.cloud9.ibm.com"
+            shardsservice-machine8:
+              ansible_host: "tokentestbed13.sl.cloud9.ibm.com"
+            shardsservice-machine9:
+              ansible_host: "tokentestbed14.sl.cloud9.ibm.com"
+            shardsservice-machine10:
+              ansible_host: "tokentestbed15.sl.cloud9.ibm.com"

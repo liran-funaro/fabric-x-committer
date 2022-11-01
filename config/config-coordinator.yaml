@@ -1,14 +1,39 @@
 coordinator:
+  endpoint: :5002
   prometheus:
     enabled: true
-    latency-enabled: true
-    endpoint: localhost:2114
-  endpoint: localhost:5002
+    endpoint: :2112
   sig-verifiers:
     endpoints:
-      - localhost:5000
+      - tokentestbed3.sl.cloud9.ibm.com:5000
+      - tokentestbed4.sl.cloud9.ibm.com:5000
+      - tokentestbed5.sl.cloud9.ibm.com:5000
   shards-servers:
     servers:
-      - endpoint: localhost:5001
-        num-shards: 4
+      - endpoint: tokentestbed6.sl.cloud9.ibm.com:5001
+        num-shards: 1
+      - endpoint: tokentestbed7.sl.cloud9.ibm.com:5001
+        num-shards: 1
+      - endpoint: tokentestbed8.sl.cloud9.ibm.com:5001
+        num-shards: 1
+      - endpoint: tokentestbed9.sl.cloud9.ibm.com:5001
+        num-shards: 1
+      - endpoint: tokentestbed10.sl.cloud9.ibm.com:5001
+        num-shards: 1
+      - endpoint: tokentestbed11.sl.cloud9.ibm.com:5001
+        num-shards: 1
+#      - endpoint: tokentestbed12.sl.cloud9.ibm.com:5001
+#        num-shards: 1
+#      - endpoint: tokentestbed13.sl.cloud9.ibm.com:5001
+#        num-shards: 1
+#      - endpoint: tokentestbed14.sl.cloud9.ibm.com:5001
+#        num-shards: 1
+#      - endpoint: tokentestbed15.sl.cloud9.ibm.com:5001
+#        num-shards: 1
     delete-existing-shards: true
+
+logging:
+  enabled: true
+  level: DEBUG
+  development: true
+  caller: true

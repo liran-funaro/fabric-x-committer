@@ -1,9 +1,8 @@
 shards-service:
-  endpoint: localhost:5001
+  endpoint: :5001
   prometheus:
     enabled: true
-    latency-enabled: true
-    endpoint: localhost:2113
+    endpoint: :2112
   database:
     type: "rocksdb"
     root-dir: "./"
@@ -19,4 +18,3 @@ logging:
   enabled: true
   level: INFO
   development: true
-  caller: true
