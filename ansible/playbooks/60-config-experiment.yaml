@@ -1,0 +1,156 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+# ansible-playbook -i ./ansible/inventory/hosts.yaml ./ansible/playbooks/60-config-experiment.yaml --extra-vars '{"sig_verifiers": 3, "shard_servers": 3, "large_txs": 0.0, "validity_ratio": 1.0}'
+
+### Coordinator config
+  - name: Create tmp folder
+    hosts: localhost
+    tasks:
+      - name: Create tmp
+        file:
+          path: ./tmp
+          state: directory
+  - name: Create coordinator config
+    vars:
+      coordinator_config_src: "../../{{src_config_dir}}/config-coordinator.yaml"
+      coordinator_config_dst: ./tmp/config-coordinator.yaml
+    hosts: localhost
+    tasks:
+      - name: Copy coordinator config
+        copy:
+          src: "{{coordinator_config_src}}"
+          dest: ./tmp/config-coordinator.yaml
+  - name: Modify shard servers
+    hosts: localhost
+    vars:
+      shard_servers: 3
+      shard_server_port: 5001
+      num_shards: 1
+    gather_facts: no
+    roles:
+      - kwoodson.yedit
+    tasks:
+      - name: Delete all default shard servers
+        yedit:
+          src: ./tmp/config-coordinator.yaml
+          key: coordinator.shards-servers.servers
+          state: absent
+      - name: Add shard servers
+        yedit:
+          src: ./tmp/config-coordinator.yaml
+          key: coordinator.shards-servers.servers
+          append: true
+          value:
+            endpoint: "{{hostvars[item].ansible_host}}:{{shard_server_port}}"
+            num-shards: "{{num_shards}}"
+        loop: "{{groups['shardsservices'] | default([])}}"
+        when: idx < {{shard_servers}}
+        loop_control:
+          index_var: idx
+  - name: Modify sig verifiers
+    hosts: localhost
+    vars:
+      sig_verifier_port: 5000
+      sig_verifiers: 3
+    gather_facts: no
+    roles:
+      - kwoodson.yedit
+    tasks:
+      - name: Delete all default sig-verifiers
+        yedit:
+          src: ./tmp/config-coordinator.yaml
+          key: coordinator.sig-verifiers.endpoints
+          state: absent
+      - name: Add sig-verifiers
+        yedit:
+          src: ./tmp/config-coordinator.yaml
+          key: coordinator.sig-verifiers.endpoints
+          append: true
+          value: "{{hostvars[item].ansible_host}}:{{sig_verifier_port}}"
+        loop: "{{groups['sigservices'] | default([])}}"
+        when: idx < {{sig_verifiers}}
+        loop_control:
+          index_var: idx
+  - name: Copy config to coordinator
+    hosts: coordinators
+    tasks:
+      - name: Copy config file
+        copy:
+          src: ./tmp/config-coordinator.yaml
+          dest: ~/config-coordinator.yaml
+          owner: root
+          group: root
+          mode: a+rw
+### Blockgen config
+  - name: Create blockgen config
+    vars:
+      blockgen_config_src: "../../{{src_config_dir}}/config-blockgen.yaml"
+      blockgen_config_dst: ./tmp/config-blockgen.yaml
+    hosts: localhost
+    tasks:
+      - name: Copy blockgen config
+        copy:
+          src: "{{blockgen_config_src}}"
+          dest: ./tmp/config-blockgen.yaml
+  - name: Modify TX sizes
+    hosts: localhost
+    vars:
+      small_txs: 1.0
+      large_txs: 0.0
+    gather_facts: no
+    roles:
+      - kwoodson.yedit
+    tasks:
+      - name: Delete all SN sizes
+        yedit:
+          src: ./tmp/config-blockgen.yaml
+          key: transaction.serialnumber.count
+          state: absent
+      - name: Add TXs with 2 SNs
+        yedit:
+          src: ./tmp/config-blockgen.yaml
+          key: transaction.serialnumber.count
+          append: true
+          value:
+            value: 2
+            probability: "{{small_txs}}"
+      - name: Add TXs with 8 SNs
+        yedit:
+          src: ./tmp/config-blockgen.yaml
+          key: transaction.serialnumber.count
+          append: true
+          value:
+            value: 8
+            probability: "{{large_txs}}"
+  - name: Modify sig valid ratio
+    hosts: localhost
+    vars:
+      validity_ratio: 0.5
+    gather_facts: no
+    roles:
+      - kwoodson.yedit
+    tasks:
+      - name: Edit validity ratio
+        yedit:
+          src: ./tmp/config-blockgen.yaml
+          key: transaction.signature.validityratio
+          value: "{{validity_ratio}}"
+  - name: Copy config to blockgen
+    hosts: blockgens
+    tasks:
+      - name: Copy config file
+        copy:
+          src: ./tmp/config-blockgen.yaml
+          dest: ~/config-blockgen.yaml
+          owner: root
+          group: root
+          mode: a+rw
+  - name: Clean up
+    hosts: localhost
+    tasks:
+      - name: Remove tmp
+        file:
+          path: ./tmp
+          state: absent

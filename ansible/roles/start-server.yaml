@@ -1,0 +1,15 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+  - name: Kill tmux server
+    command: tmux kill-server
+    ignore_errors: yes
+  - name: Runs server
+    shell:
+      cmd: tmux new-session -s root -d "~/bin/{{service_name}} --configs=config-{{service_name}}.yaml --prometheus-enabled=true --prometheus-endpoint=:2112"
+    async: 10
+    poll: 0
+  - name: Wait until server is running
+    wait_for:
+      port: "{{server_port}}"

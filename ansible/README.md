@@ -1,5 +1,11 @@
 # Ansible Setup Guide
 
+After installing ansible, make sure to install all dependencies by running
+
+```shell
+$ ansible-galaxy install -r requirements.yml
+```
+
 ## Inventory Setup
 
 The file `inventory/hosts.yaml` allows control over what remote machines Ansible has access to and how Ansible interacts with them. Variables shared between all machines can be placed under the `vars` field, allowing for example a shared password to be passed to all machines. To share a password for all machines, set the `ansible_ssh_pass` field to the password.

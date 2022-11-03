@@ -2,6 +2,7 @@ shards-service:
   endpoint: :5001
   prometheus:
     enabled: true
+    latency-enabled: true
     endpoint: :2112
   database:
     type: "rocksdb"
@@ -14,6 +15,7 @@ shards-service:
     max-phase-two-processing-workers: 50
     max-phase-one-response-batch-item-count: 50
     phase-one-response-cut-timeout: 50ms
+
 logging:
   enabled: true
   level: INFO

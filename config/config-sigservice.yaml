@@ -1,12 +1,17 @@
 sig-verification:
-  endpoint: localhost:5000
+  endpoint: :5000
   prometheus:
     enabled: true
     latency-enabled: true
-    endpoint: localhost:2113
+    endpoint: :2113
   scheme: "Ecdsa"
   parallel-executor:
     parallelism: 40
     batch-time-cutoff: 500ms
     batch-size-cutoff: 50
     channel-buffer-size: 50
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
