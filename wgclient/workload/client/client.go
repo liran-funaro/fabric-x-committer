@@ -24,6 +24,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func GetBlockSize(path string, sampleSize int) float64 {
+	pp := workload.LoadProfileFromYaml(path)
+	return workload.GetBlockSize(pp, sampleSize)
+}
+
 func LoadAndPump(path, endpoint string, prometheusEnabled bool, prometheusEndpoint string) {
 	// read blocks from file into channel
 	tracker := workload.NewMetricTracker(monitoring.Prometheus{
