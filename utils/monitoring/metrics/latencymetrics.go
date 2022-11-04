@@ -23,6 +23,7 @@ type blockTrace struct {
 
 type LatencyHistogram struct {
 	*prometheus.HistogramVec
+	name        string
 	trackerSize prometheus.Gauge
 	enabled     bool
 	traces      map[TraceKey]*blockTrace
@@ -36,7 +37,7 @@ func SampleThousandPerMillionUsing(hasher KeyHasher) SamplingStrategy {
 	const (
 		ratio        = 10
 		sampleSize   = 1_000
-		samplePeriod = 2_000_000
+		samplePeriod = 250_000
 	)
 	return func(key TraceKey) bool {
 		hash := hasher(key) % samplePeriod
@@ -79,6 +80,7 @@ func NewLatencyHistogram(opts LatencyHistogramOpts) *LatencyHistogram {
 			Help:    opts.Help,
 			Buckets: UniformBuckets(opts.Count, float64(opts.From), float64(opts.To)),
 		}, opts.Labels),
+		name:        opts.Name,
 		trackerSize: latencyTrackerSize.WithLabelValues(opts.Name),
 		traces:      map[TraceKey]*blockTrace{},
 		worker: *workerpool.New(&workerpool.Config{
@@ -120,7 +122,10 @@ func (h *LatencyHistogram) End(key TraceKey, timestamp time.Time, labels ...stri
 
 	h.worker.Run(func(key TraceKey) func() {
 		return func() {
-			trace := h.traces[key]
+			trace, ok := h.traces[key]
+			if !ok {
+				panic("error with histogram: " + h.name)
+			}
 			trace.pending--
 			if trace.pending == 0 {
 				delete(h.traces, key)

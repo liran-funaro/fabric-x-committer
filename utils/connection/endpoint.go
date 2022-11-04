@@ -20,6 +20,10 @@ func (e *Endpoint) Address() string {
 	return fmt.Sprintf("%s%s%d", e.Host, endpointSplitter, e.Port)
 }
 
+func (e *Endpoint) String() string {
+	return e.Address()
+}
+
 func CreateEndpoint(value string) *Endpoint {
 	endpoint, err := NewEndpoint(value)
 	if err != nil {

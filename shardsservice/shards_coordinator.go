@@ -11,6 +11,8 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
 
+var logger = logging.New("shard coordinator")
+
 type shardsCoordinator struct {
 	UnimplementedShardsServer
 	shards            *shardInstances
@@ -18,15 +20,21 @@ type shardsCoordinator struct {
 	limits            *LimitsConfig
 	phaseOnePool      *workerpool.WorkerPool
 	phaseTwoPool      *workerpool.WorkerPool
-	logger            *logging.Logger
 	metrics           *metrics.Metrics
 }
 
 func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) *shardsCoordinator {
-	logger := logging.New("shard coordinator")
-	logger.Info("Initializing shards coordinator")
 
 	const channelCapacity = 10
+	logger.Info("Initializing shards coordinator:\n"+
+		"\tDatabase: %s\n"+
+		"\tLimits:\n"+
+		"\t\tMax buffer sizes: %d (shard instances), %d (pending commits)\n"+
+		"\t\tGo Routines: %d\n"+
+		"\t\tWorkers: %d (phase 1), %d (phase 2), Channel capacity: %d\n"+
+		"\t\tCut off: %d %v\n"+
+		"\tTotal metrics: %d", database.Type, limits.MaxShardInstancesBufferSize, limits.MaxPendingCommitsBufferSize, limits.MaxGoroutines, limits.MaxPhaseOneProcessingWorkers, limits.MaxPhaseTwoProcessingWorkers, channelCapacity, limits.MaxPhaseOneResponseBatchItemCount, limits.PhaseOneResponseCutTimeout, len(metrics.AllMetrics()))
+
 	phaseOneResponses := make(chan []*PhaseOneResponse, channelCapacity)
 	if metrics.Enabled {
 		metrics.ShardsPhaseOneResponseChLength.SetCapacity(channelCapacity)
@@ -49,13 +57,12 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 			Parallelism:     int(limits.MaxPhaseTwoProcessingWorkers),
 			ChannelCapacity: channelCapacity,
 		}),
-		logger:  logger,
 		metrics: metrics,
 	}
 }
 
 func (s *shardsCoordinator) SetupShards(ctx context.Context, request *ShardsSetupRequest) (*Empty, error) {
-	s.logger.Debugf("received SetupShards request with FirstShardId [%d] and LastShardId [%d]", request.FirstShardId, request.LastShardId)
+	logger.Info("received SetupShards request with FirstShardId [%d] and LastShardId [%d]", request.FirstShardId, request.LastShardId)
 	for shardID := request.FirstShardId; shardID <= request.LastShardId; shardID++ {
 		if err := s.shards.setup(shardID, s.limits); err != nil {
 			return &Empty{}, err
@@ -66,7 +73,7 @@ func (s *shardsCoordinator) SetupShards(ctx context.Context, request *ShardsSetu
 }
 
 func (s *shardsCoordinator) DeleteShards(ctx context.Context, _ *Empty) (*Empty, error) {
-	s.logger.Debug("received DeleteShards request")
+	logger.Debug("received DeleteShards request")
 	err := s.shards.deleteAll()
 	return &Empty{}, err
 }
