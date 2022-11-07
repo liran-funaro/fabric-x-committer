@@ -15,10 +15,10 @@ type Metrics struct {
 	DependencyGraphPendingSNs prometheus.Gauge
 	DependencyGraphPendingTXs prometheus.Gauge
 
-	PreSignatureLatency  *metrics.LatencyHistogram
-	SignatureLatency     *metrics.LatencyHistogram
-	PostSignatureLatency *metrics.LatencyHistogram
-	PrePhaseOneLatency   *metrics.LatencyHistogram
+	//PreSignatureLatency  *metrics.LatencyHistogram
+	//SignatureLatency     *metrics.LatencyHistogram
+	//PostSignatureLatency *metrics.LatencyHistogram
+	//PrePhaseOneLatency   *metrics.LatencyHistogram
 	WaitingPhaseOneIn    prometheus.Histogram
 	WaitingPhaseOneOut   prometheus.Histogram
 	WaitingDepMgrIn      prometheus.Histogram
@@ -80,10 +80,10 @@ func New(enabled bool) *Metrics {
 		SigVerifierMgrOutTxs: metrics.NewThroughputCounter("sigverifier_mgr", metrics.Out),
 		DependencyMgrInTxs:   metrics.NewThroughputCounter("dependency_mgr", metrics.In),
 		DependencyMgrOutTxs:  metrics.NewThroughputCounter("dependency_mgr", metrics.Out),
-		PreSignatureLatency:  metrics.NewDefaultLatencyHistogram("pre_signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.Identity)),
-		SignatureLatency:     metrics.NewDefaultLatencyHistogram("signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.Identity)),
-		PostSignatureLatency: metrics.NewDefaultLatencyHistogram("post_signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
-		PrePhaseOneLatency:   metrics.NewDefaultLatencyHistogram("pre_phase_one_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
+		//PreSignatureLatency:  metrics.NewDefaultLatencyHistogram("pre_signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.Identity)),
+		//SignatureLatency:     metrics.NewDefaultLatencyHistogram("signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.Identity)),
+		//PostSignatureLatency: metrics.NewDefaultLatencyHistogram("post_signature_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
+		//PrePhaseOneLatency:   metrics.NewDefaultLatencyHistogram("pre_phase_one_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
 		WaitingPhaseOneIn:    WaitingChannelHistogram("phase_one", "in"),
 		WaitingPhaseOneOut:   WaitingChannelHistogram("phase_one", "out"),
 		WaitingDepMgrIn:      WaitingChannelHistogram("dep_mgr", "in"),
@@ -158,10 +158,10 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	return []prometheus.Collector{m.SigVerifiedPendingTxs, m.DependencyGraphPendingSNs, m.DependencyGraphPendingTXs,
 		m.CoordinatorInTxs,
 		m.CoordinatorOutTxs,
-		m.PreSignatureLatency,
-		m.SignatureLatency,
-		m.PostSignatureLatency,
-		m.PrePhaseOneLatency,
+		//m.PreSignatureLatency,
+		//m.SignatureLatency,
+		//m.PostSignatureLatency,
+		//m.PrePhaseOneLatency,
 		m.WaitingPhaseOneIn,
 		m.WaitingPhaseOneOut,
 		m.WaitingDepMgrIn,

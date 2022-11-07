@@ -50,7 +50,7 @@ func main() {
 	fmt.Printf("start timer...\n")
 	go func() {
 		for block := range bQueue {
-			coordinator.ProcessBlockAsync(block)
+			coordinator.ProcessBlockAsync(block.Block)
 		}
 	}()
 

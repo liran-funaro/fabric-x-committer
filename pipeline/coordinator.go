@@ -82,15 +82,15 @@ func (c *Coordinator) startTxProcessingRoutine() {
 		intersection, leftover := c.dependencyMgr.fetchDependencyFreeTxsThatIntersect(sigVerifiedTxs)
 		remainings = leftover
 		if len(intersection) > 0 {
-			//intersectionCalculated := time.Now()
+			intersectionCalculated := time.Now()
 			c.shardsServerMgr.inputChan <- intersection
 			if c.metrics.Enabled {
-				//waitingDuration := float64(time.Now().Sub(intersectionCalculated))
-				//for tx := range intersection {
-				//	c.metrics.WaitingPhaseOneIn.Observe(waitingDuration)
-				//	c.metrics.PrePhaseOneLatency.End(tx, intersectionCalculated)
-				//	c.metrics.PhaseOneLatency.Begin(tx, 1, intersectionCalculated)
-				//}
+				waitingDuration := float64(time.Now().Sub(intersectionCalculated))
+				for tx := range intersection {
+					c.metrics.WaitingPhaseOneIn.Observe(waitingDuration)
+					//	c.metrics.PrePhaseOneLatency.End(tx, intersectionCalculated)
+					c.metrics.PhaseOneLatency.Begin(tx, 1, intersectionCalculated)
+				}
 				c.metrics.DependencyMgrOutTxs.Add(len(intersection))
 				c.metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
 			}
@@ -132,11 +132,11 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				return
 			case status := <-c.shardsServerMgr.outputChan:
 				if c.metrics.Enabled {
-					//received := time.Now()
-					//for _, tx := range status {
-					//	c.metrics.PhaseOneLatency.End(tx.TxSeqNum, received)
-					//	c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
-					//}
+					received := time.Now()
+					for _, tx := range status {
+						c.metrics.PhaseOneLatency.End(tx.TxSeqNum, received)
+						c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
+					}
 					c.metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
 				c.processValidationStatus(status)
