@@ -110,3 +110,47 @@ just docker bash
 # runs `just build-all` inside the container
 just docker just build-all
 ```
+
+## Full build
+
+After having a Docker-based builder set up, we can build and deploy the code and the base configs (as defined under `config/`) to all of the machines defined in the inventory as follows:
+
+```bash
+just deploy-base-setup
+```
+
+## Experiments
+
+An experiment consists in setting up and starting all the servers (coordinator, sig verifiers and shard servers), as well as a block generator that acts as the client. We can have several variations of an experiment by modifying:
+
+* The number of sig verifiers (by default 3)
+* The number of shard servers (by default 3)
+* The percentage of large TXs (with 8 SNs instad of 2 SNs) (by default 0%)
+* The percentage of TXs that have valid signatures (by default 100%)
+
+The following command will modify and deploy the necessary modified config files and start up all the servers in the correct order:
+
+```bash
+just run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") validity_ratio=("1.0"):
+```
+
+An experiment suite is a set of experiments we run sequentially in an automated manner for a specific duration.
+When we run an experiment suite, the values of the config variables, as well as the start time is logged in an experiment-tracking-log file.
+We can run an experiment suite with all combinations of the aforementioned configuration variables as follows:
+
+```bash
+just run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.0") validity_ratio_arr=("1.0") experiment_duration=(experiment-duration-seconds)
+```
+
+The experiment-tracking-log will be stored under `eval/experiments/trackers/{{experiment_name}}.txt`.
+
+Once an experiment suite has finished, the experiment-tracking-log will be parsed and for each experiment run, the Prometheus instance that collected the metrics for the experiment will be queried for some metrics of interest, as defined under `utils/experiment/main`.
+The results will be stored under `eval/experiments/results/{{experiment_name}}.txt`.
+
+For the evaluation of our system, we have defined some experiment suites that we can run directly with the following shortcut commands:
+
+```bash
+just run-variable-shard-experiment
+just run-variable-tx-sizes-experiment
+just run-variable-validity-ratio-experiment
+```

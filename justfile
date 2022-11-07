@@ -11,7 +11,8 @@ experiment-results-dir := "eval/experiments/results"
 playbook-path := "./ansible/playbooks"
 array-separator := ","
 sig-verifiers-arr := "3"
-experiment-duration-seconds := "1800"
+experiment-duration-seconds := "1200"
+prometheus-endpoint := "9094"
 
 export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 
@@ -58,7 +59,7 @@ protos-wgclient:
     ./wgclient/workload/expected_results.proto
 
 
-build-all: build-blockgen build-coordinator build-sigservice build-shardsservice
+build-all: build-blockgen build-coordinator build-sigservice build-shardsservice build-result-gatherer
 
 build-blockgen:
     go build -o {{bin-build-out}}/blockgen ./wgclient/cmd/generator
@@ -73,14 +74,17 @@ build-sigservice:
 build-shardsservice:
     go build -o {{bin-build-out}}/shardsservice ./shardsservice/cmd/server
 
+build-result-gatherer:
+    go build -o {{bin-build-out}}/resultgatherer ./utils/experiment/cmd
+
 ### Deploy
 
 transfer-all +files=(default-deployment-files):
-    just list-hosts | while read line; do just deploy $line {{files}}; done
+    just list-hosts | while read line; do just deploy "$line" {{files}}; done
 
-list-hosts:
-    ansible all --list-hosts | tail -n +2 | \
-      while read line; do ansible-inventory --host $line | jq '.ansible_host';done
+list-hosts name=("all"):
+    ansible {{name}} --list-hosts | tail -n +2 | \
+      while read line; do ansible-inventory --host $line | jq '.ansible_host' | sed -e 's/^"//' -e 's/"$//';done
 
 transfer host +files=(default-deployment-files):
     rsync -P -r {{files}} root@{{host}}:~
@@ -124,20 +128,27 @@ run-variable-validity-ratio-experiment:
 
 run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.0") validity_ratio_arr=("1.0") experiment_duration=(experiment-duration-seconds):
     mkdir -p {{experiment-tracking-dir}}
-    echo "sig_verifiers,shard_servers,large_txs,validity_ratio,timestamp" > "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+    echo "sig_verifiers,shard_servers,large_txs,validity_ratio,start_time,sample_time" > "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
     echo {{sig-verifiers-arr}} | tr '{{array-separator}}' '\n' | while read sig_verifiers; do \
       echo {{shard_servers_arr}} | tr '{{array-separator}}' '\n' | while read shard_servers; do \
         echo {{large_txs_arr}} | tr '{{array-separator}}' '\n' | while read large_txs; do \
           echo {{validity_ratio_arr}} | tr '{{array-separator}}' '\n' | while read validity_ratio; do \
             echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
-            echo $sig_verifiers,$shard_servers,$large_txs,$validity_ratio,$(date +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+            just run-experiment $sig_verifiers $shard_servers $large_txs $validity_ratio; \
+            echo $sig_verifiers,$shard_servers,$large_txs,$validity_ratio,$(date +%s),$(date -v +{{experiment_duration}}S +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+            echo "Waiting experiment {{experiment_name}} until $(date -v +{{experiment_duration}}S). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
             sleep {{experiment_duration}} \
           ;done \
         ;done \
       ;done \
     done
+    just gather-results "{{experiment-tracking-dir}}/{{experiment_name}}.txt" "{{experiment-results-dir}}/{{experiment_name}}.txt"
 
 
 run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") validity_ratio=("1.0"):
     ansible-playbook "{{playbook-path}}/60-config-experiment.yaml" --extra-vars "{'src_config_dir': {{config-build-out}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'validity_ratio': {{validity_ratio}}}"
     ansible-playbook "{{playbook-path}}/70-run-experiment.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
+
+gather-results tracker_file result_file:
+    mkdir -p {{experiment-results-dir}}
+    {{bin-build-out}}/resultgatherer -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-endpoint}} -output={{result_file}} -sampling-times=$(cat {{tracker_file}} | tail -n +2 | while read line; do echo ${line##*,};done | tr '\n' ',')
