@@ -3,7 +3,7 @@ sig-verification:
   prometheus:
     enabled: true
     latency-enabled: true
-    endpoint: :2113
+    endpoint: :2112
   scheme: "Ecdsa"
   parallel-executor:
     parallelism: 40

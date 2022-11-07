@@ -28,28 +28,49 @@ func SetupWithConfig(config *Config) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	loggerInstance.SugaredLogger = zap.Must(createLogger(config)).Sugar()
+	loggerInstance.SugaredLogger = createLogger(config).Sugar()
 }
 
-func createLogger(config *Config) (*zap.Logger, error) {
+func createLogger(config *Config) *zap.Logger {
 	if !config.Enabled {
-		return zap.NewNop(), nil
+		return zap.NewNop()
 	}
 
-	var options []zap.Option
-	if level, ok := logLevelMap[config.Level]; ok {
-		options = append(options, zap.IncreaseLevel(level))
+	defaultLevel, ok := logLevelMap[config.Level]
+	if !ok {
+		defaultLevel = zapcore.ErrorLevel
+	}
+	outputs := []string{"stderr"}
+	if config.Output != "" {
+		outputs = append(outputs, config.Output)
 	}
 
-	options = append(options, zap.WithCaller(config.Caller))
-
-	if config.Development {
-		c := zap.NewDevelopmentConfig()
-		c.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		return c.Build(options...)
+	c := zap.Config{
+		Level:       zap.NewAtomicLevelAt(defaultLevel),
+		Development: config.Development,
+		Sampling: &zap.SamplingConfig{
+			Initial:    100,
+			Thereafter: 100,
+		},
+		Encoding:         "console",
+		EncoderConfig:    getEncoderConfig(config.Development),
+		OutputPaths:      outputs,
+		ErrorOutputPaths: outputs,
 	}
 
-	return zap.NewProduction(options...)
+	return zap.Must(c.Build(zap.WithCaller(config.Caller)))
+}
+
+func getEncoderConfig(dev bool) zapcore.EncoderConfig {
+	var cfg zapcore.EncoderConfig
+	if dev {
+		cfg = zap.NewDevelopmentEncoderConfig()
+		cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	} else {
+		cfg = zap.NewProductionEncoderConfig()
+	}
+	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	return cfg
 }
 
 func New(name string) *Logger {

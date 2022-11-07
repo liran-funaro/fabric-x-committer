@@ -13,6 +13,7 @@ type Config struct {
 	Level       Level
 	Caller      bool
 	Development bool
+	Output      string
 }
 
 var defaultConfig = &Config{
