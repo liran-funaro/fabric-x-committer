@@ -124,19 +124,23 @@
           value:
             value: 8
             probability: "{{large_txs}}"
-  - name: Modify sig valid ratio
+  - name: Modify sig valid ratio / block size
     hosts: localhost
     vars:
       validity_ratio: 0.5
+      block_size: 100
     gather_facts: no
     roles:
       - kwoodson.yedit
     tasks:
-      - name: Edit validity ratio
+      - name: Edit validity ratio / block size
         yedit:
           src: ./tmp/config-blockgen.yaml
-          key: transaction.signature.validityratio
-          value: "{{validity_ratio}}"
+          edits:
+            - key: transaction.signature.validityratio
+              value: "{{validity_ratio}}"
+            - key: block.size
+              value: "{{block_size}}"
   - name: Copy config to blockgen
     hosts: blockgens
     tasks:

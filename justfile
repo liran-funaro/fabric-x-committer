@@ -124,20 +124,24 @@ run-variable-shard-experiment:
 run-variable-tx-sizes-experiment:
     just run-experiment-suite "variable_tx_sizes" "3" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
 run-variable-validity-ratio-experiment:
-    just run-experiment-suite "variable_tx_sizes" "3" "0.0" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
+    just run-experiment-suite "variable_tx_sizes" "3" "0.0" "0.7,0.75,0.8,0.85,0.9,0.95,1.0"
+run-variable-block-size-experiment:
+    just run-experiment-suite "variable_block_sizes" "3" "0.0" "1.0" "50,100,3500,7000,15000,30000"
 
-run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.0") validity_ratio_arr=("1.0") experiment_duration=(experiment-duration-seconds):
+run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.0") validity_ratio_arr=("1.0") block_sizes_arr=("100") experiment_duration=(experiment-duration-seconds):
     mkdir -p {{experiment-tracking-dir}}
-    echo "sig_verifiers,shard_servers,large_txs,validity_ratio,start_time,sample_time" > "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+    echo "sig_verifiers,shard_servers,large_txs,validity_ratio,block_size,start_time,sample_time" > "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
     echo {{sig-verifiers-arr}} | tr '{{array-separator}}' '\n' | while read sig_verifiers; do \
       echo {{shard_servers_arr}} | tr '{{array-separator}}' '\n' | while read shard_servers; do \
         echo {{large_txs_arr}} | tr '{{array-separator}}' '\n' | while read large_txs; do \
           echo {{validity_ratio_arr}} | tr '{{array-separator}}' '\n' | while read validity_ratio; do \
-            echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
-            just run-experiment $sig_verifiers $shard_servers $large_txs $validity_ratio; \
-            echo $sig_verifiers,$shard_servers,$large_txs,$validity_ratio,$(date +%s),$(date -v +{{experiment_duration}}S +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
-            echo "Waiting experiment {{experiment_name}} until $(date -v +{{experiment_duration}}S). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
-            sleep {{experiment_duration}} \
+            echo {{block_sizes_arr}} | tr '{{array-separator}}' '\n' | while read block_size; do \
+                echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
+                just run-experiment $sig_verifiers $shard_servers $large_txs $validity_ratio $block_size; \
+                echo $sig_verifiers,$shard_servers,$large_txs,$validity_ratio,$block_size,$(date +%s),$(date -v +{{experiment_duration}}S +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+                echo "Waiting experiment {{experiment_name}} until $(date -v +{{experiment_duration}}S). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$validity_ratio/1 Validity ratio\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.txt.\n"; \
+                sleep {{experiment_duration}} \
+              ;done \
           ;done \
         ;done \
       ;done \
@@ -145,8 +149,8 @@ run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.
     just gather-results "{{experiment-tracking-dir}}/{{experiment_name}}.txt" "{{experiment-results-dir}}/{{experiment_name}}.txt"
 
 
-run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") validity_ratio=("1.0"):
-    ansible-playbook "{{playbook-path}}/60-config-experiment.yaml" --extra-vars "{'src_config_dir': {{config-build-out}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'validity_ratio': {{validity_ratio}}}"
+run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") validity_ratio=("1.0") block_size=("100"):
+    ansible-playbook "{{playbook-path}}/60-config-experiment.yaml" --extra-vars "{'src_config_dir': {{config-build-out}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'validity_ratio': {{validity_ratio}}, 'block_size': {{block_size}}}"
     ansible-playbook "{{playbook-path}}/70-run-experiment.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
 
 gather-results tracker_file result_file:
