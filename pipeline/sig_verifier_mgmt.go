@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
@@ -84,9 +83,9 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 			case b := <-m.inputChan:
 				v.sendCh <- b
 				if m.metrics.Enabled {
-					sent := time.Now()
-					m.metrics.PreSignatureLatency.End(b.Number, sent)
-					m.metrics.SignatureLatency.Begin(b.Number, len(b.Txs), sent)
+					//sent := time.Now()
+					//m.metrics.PreSignatureLatency.End(b.Number, sent)
+					//m.metrics.SignatureLatency.Begin(b.Number, len(b.Txs), sent)
 					m.metrics.SigVerifierMgrInTxs.Add(len(b.Txs))
 					m.metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
@@ -104,7 +103,7 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 				close(m.outputChanInvalids)
 				return
 			case responseBatch := <-m.responseCollectionChan:
-				received := time.Now()
+				//received := time.Now()
 				valids := []TxSeqNum{}
 				invalids := []TxSeqNum{}
 				for _, res := range responseBatch.Responses {
@@ -133,10 +132,10 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 					}
 				}
 				if m.metrics.Enabled {
-					for _, tx := range responseBatch.GetResponses() {
-						m.metrics.SignatureLatency.End(tx.BlockNum, received)
-						m.metrics.PostSignatureLatency.Begin(TxSeqNum{tx.BlockNum, tx.TxNum}, 1, received)
-					}
+					//for _, tx := range responseBatch.GetResponses() {
+					//	m.metrics.SignatureLatency.End(tx.BlockNum, received)
+					//	m.metrics.PostSignatureLatency.Begin(TxSeqNum{tx.BlockNum, tx.TxNum}, 1, received)
+					//}
 					m.metrics.SigVerifierMgrOutTxs.Add(len(responseBatch.Responses))
 				}
 			}

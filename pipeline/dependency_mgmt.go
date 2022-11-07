@@ -207,10 +207,10 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	}
 
 	if m.metrics.Enabled {
-		sent := time.Now()
-		for _, status := range processedTxs {
-			m.metrics.StatusProcessLatency.End(status.TxSeqNum, sent)
-		}
+		//sent := time.Now()
+		//for _, status := range processedTxs {
+		//	m.metrics.StatusProcessLatency.End(status.TxSeqNum, sent)
+		//}
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
 	}
