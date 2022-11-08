@@ -33,7 +33,7 @@ func NewResultReader(server *connection.Endpoint, rateInterval time.Duration) *R
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("rate(sc_e2e_responses[%v])", rateInterval),
+				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"VALID\"}[%v])", rateInterval),
 				description: "Throughput",
 				unit:        "TPS",
 				extractor:   floatExtractor,

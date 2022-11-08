@@ -12,13 +12,10 @@ block:
 
 # transaction configuration
 transaction:
-  serialnumber:
-    # number of serial numbers per transaction
-    count:
-      - value: 1
-        probability: 1
-  signature:
-    # signature scheme
-    type: ecdsa
-    #
-    validityratio: 1.0
+  # number of serial numbers per transaction
+  size:
+    - value: 1
+      probability: 1
+  # signature scheme
+  signaturetype: ecdsa
+

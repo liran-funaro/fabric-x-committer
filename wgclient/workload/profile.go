@@ -3,6 +3,7 @@ package workload
 import (
 	"encoding/json"
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"io"
 	"io/ioutil"
 	"path/filepath"
@@ -22,20 +23,23 @@ type Profile struct {
 	}
 
 	Transaction struct {
-		SerialNumber struct {
-			Count []test.DiscreteValue
-		}
-
-		Signature struct {
-			Type          string
-			ValidityRatio float32
-		}
+		Size          []test.DiscreteValue
+		SignatureType signature.Scheme
 	}
 
-	Conflicts map[string]struct {
-		InvalidSignature bool
-		DoubleSpends     map[int]string
+	Conflicts struct {
+		Scenario    *ScenarioConflicts
+		Statistical *StatisticalConflicts
 	}
+}
+
+type ScenarioConflicts map[string]struct {
+	InvalidSignature bool
+	DoubleSpends     map[int]string
+}
+type StatisticalConflicts struct {
+	InvalidSignature test.Percentage
+	DoubleSpends     test.Percentage
 }
 
 func LoadProfileFromYaml(yamlPath string) *Profile {

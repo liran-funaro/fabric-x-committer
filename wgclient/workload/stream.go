@@ -16,15 +16,15 @@ import (
 
 func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.TxSigner, chan *token.Tx) {
 
-	sigType := strings.ToUpper(pp.Transaction.Signature.Type)
+	sigType := strings.ToUpper(pp.Transaction.SignatureType)
 
 	privateKey, publicKey := sigverification_test.GetSignatureFactory(sigType).NewKeys()
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:               signer,
-		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.SerialNumber.Count),
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Percentage(pp.Transaction.Signature.ValidityRatio), 10),
+		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.Size),
+		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
 	}
 
 	blockSize := pp.Block.Size
@@ -56,17 +56,18 @@ func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.Tx
 }
 
 func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *BlockWithExpectedResult) {
-	pk, _, txQueue := startTxGenerator(pp)
+	pk, signer, txQueue := startTxGenerator(pp)
 
-	blockSize := pp.Block.Size
+	blockSize := uint64(pp.Block.Size)
 	queueBufferSize := 1000
 
 	bQueue := make(chan *BlockWithExpectedResult, queueBufferSize)
 
-	blockNo := int64(0)
+	conflictHandler := NewConflictHandler(nil, pp.Conflicts.Statistical, signer.SignTx)
+	blockNo := uint64(0)
 	go func() {
 		for {
-			bQueue <- createBlock(blockNo, blockSize, txQueue, nil)
+			bQueue <- createBlock(blockNo, blockSize, txQueue, conflictHandler)
 			blockNo++
 		}
 	}()

@@ -11,28 +11,25 @@ block:
 
 # transaction configuration
 transaction:
-  serialnumber:
-    # number of serial numbers per transaction
-    count:
-      - value: 4
-        probability: 1
-  signature:
-    # signature scheme
-    type: ecdsa
-    #
-    validityratio: 1.0
+  # number of serial numbers per transaction
+  size:
+    - value: 4
+      probability: 1
+  # signature scheme
+  signaturetype: ecdsa
 
 # Introduce conflicts into our block stream
 conflicts:
-  # maps txid (block-tx) to conflict
-  1-8:
-    # maps sn in other transactions (block-tx-sn)
-    doublespends:
-      1: 1-1-0
-      2: 1-2-1
-  400-8:
-    doublespends:
-      3: 1-1-0
-  999-8:
-    doublespends:
-      3: 4-2-2
+  scenario:
+    # maps txid (block-tx) to conflict
+    1-8:
+      # maps sn in other transactions (block-tx-sn)
+      doublespends:
+        1: 1-1-0
+        2: 1-2-1
+    400-8:
+      doublespends:
+        3: 1-1-0
+    999-8:
+      doublespends:
+        3: 4-2-2

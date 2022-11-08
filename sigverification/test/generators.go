@@ -230,12 +230,16 @@ type FastTxInputSliceGenerator struct {
 	sample []R
 }
 
+func NewFastTxInputGenerator(sample []R) *FastTxInputSliceGenerator {
+	return &FastTxInputSliceGenerator{sample}
+}
+
 func NewFastTxInputSliceGenerator(valueGenerator func() R, sampleSize int) *FastTxInputSliceGenerator {
 	sample := make([]R, sampleSize)
 	for i := 0; i < sampleSize; i++ {
 		sample[i] = valueGenerator()
 	}
-	return &FastTxInputSliceGenerator{sample: sample}
+	return NewFastTxInputGenerator(sample)
 }
 
 func (g *FastTxInputSliceGenerator) NextWithSize(targetSize int) []R {

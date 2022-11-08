@@ -135,7 +135,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 					received := time.Now()
 					for _, tx := range status {
 						c.metrics.PhaseOneLatency.End(tx.TxSeqNum, received)
-						c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
+						//c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
 					}
 					c.metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
