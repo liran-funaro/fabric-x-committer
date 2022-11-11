@@ -19,3 +19,14 @@ const (
 	INVALID_SIGNATURE
 	DOUBLE_SPEND
 )
+
+var statusMap = map[Status]string{
+	UNKNOWN:           "Unknown",
+	VALID:             "Valid",
+	INVALID_SIGNATURE: "Invalid signature",
+	DOUBLE_SPEND:      "Double spend",
+}
+
+func (s *Status) String() string {
+	return statusMap[*s]
+}

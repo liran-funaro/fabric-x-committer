@@ -109,7 +109,7 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 		if s.metrics.Enabled {
 			s.metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 			for _, response := range responses {
-				s.metrics.Latency.End(pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}, end)
+				s.metrics.RequestTracer.EndAt(pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}, end, response.Status.String())
 			}
 		}
 	}

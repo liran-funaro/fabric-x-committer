@@ -1,9 +1,8 @@
 sig-verification:
   endpoint: :5000
   prometheus:
-    enabled: true
-    latency-enabled: true
     endpoint: :2112
+    latency-endpoint: tokentestbed16.sl.cloud9.ibm.com:14268
   scheme: "Ecdsa"
   parallel-executor:
     parallelism: 40

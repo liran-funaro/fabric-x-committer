@@ -91,18 +91,6 @@ func NewLatencyHistogram(opts LatencyHistogramOpts) *LatencyHistogram {
 	}
 }
 
-func UniformBuckets(count int, from, to float64) []float64 {
-	if to < from {
-		panic("invalid input")
-	}
-	result := make([]float64, 0, count)
-	step := (to - from) / float64(count-1)
-	for low := from; low < to; low += step {
-		result = append(result, low)
-	}
-	return append(result, to)
-}
-
 func (h *LatencyHistogram) Begin(key TraceKey, txCount int, timestamp time.Time) {
 	if !h.enabled || !h.sampler(key) {
 		return

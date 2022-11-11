@@ -5,15 +5,16 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 type Metrics struct {
 	Enabled                        bool
+	RequestTracer                  metrics.AppTracer
 	VerifierServerInTxs            *metrics.ThroughputCounter
 	VerifierServerOutTxs           *metrics.ThroughputCounter
 	ParallelExecutorInTxs          *metrics.ThroughputCounter
 	ParallelExecutorOutTxs         *metrics.ThroughputCounter
-	Latency                        *metrics.LatencyHistogram
 	ActiveStreams                  prometheus.Gauge
 	ParallelExecutorInputChLength  *metrics.ChannelBufferGauge
 	ParallelExecutorOutputChLength *metrics.ChannelBufferGauge
@@ -25,11 +26,11 @@ func New(enabled bool) *Metrics {
 	}
 	return &Metrics{
 		Enabled:                true,
+		RequestTracer:          &metrics.NoopLatencyTracer{},
 		VerifierServerInTxs:    metrics.NewThroughputCounter("verifier_server", metrics.In),
 		VerifierServerOutTxs:   metrics.NewThroughputCounter("verifier_server", metrics.Out),
 		ParallelExecutorInTxs:  metrics.NewThroughputCounter("parallel_executor", metrics.In),
 		ParallelExecutorOutTxs: metrics.NewThroughputCounter("parallel_executor", metrics.Out),
-		Latency:                metrics.NewDefaultLatencyHistogram("sigverifier_latency", 2*time.Millisecond, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
 		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "active_streams",
 			Help: "The total number of started streams",
@@ -46,17 +47,24 @@ func New(enabled bool) *Metrics {
 	}
 }
 
+func (m *Metrics) IsEnabled() bool {
+	return m.Enabled
+}
+
+func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
+	m.RequestTracer = metrics.NewDefaultLatencyTracer("sigverifier_latency", 1*time.Second, tp)
+}
+
 func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.ActiveStreams,
+	return append(m.RequestTracer.Collectors(),
+		m.ActiveStreams,
 		m.VerifierServerInTxs,
 		m.VerifierServerOutTxs,
 		m.ParallelExecutorInTxs,
 		m.ParallelExecutorOutTxs,
-		m.Latency,
 		m.ParallelExecutorInputChLength,
-		m.ParallelExecutorOutputChLength,
-	}
+		m.ParallelExecutorOutputChLength)
 }

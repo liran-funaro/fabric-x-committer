@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	prometheusDefaultLocalPort = 9090
-	grafanaDefaultLocalPort    = 3000
-	grafanaProvisioningDir     = "/etc/grafana/provisioning/"
+	prometheusDefaultLocalPort      = 9090
+	grafanaDefaultLocalPort         = 3000
+	jaegerDefaultLocalUiPort        = 16686
+	jaegerDefaultLocalCollectorPort = 14268
+	grafanaProvisioningDir          = "/etc/grafana/provisioning/"
 )
 
 var logger = logging.New("dockerrunner")
@@ -26,6 +28,21 @@ func prometheusParams(dir string, port int) *monitoring.DockerRunParams {
 		},
 		PortMappings: map[int]int{
 			prometheusDefaultLocalPort: port,
+		},
+	}
+}
+func jaegerParams(uiPort, collectorPort int) *monitoring.DockerRunParams {
+	return &monitoring.DockerRunParams{
+		Image:    "jaegertracing/all-in-one:1.22",
+		Hostname: "jaeger",
+		Envs: map[string]string{
+			"JAEGER_SAMPLER_TYPE":  "const",
+			"JAEGER_SAMPLER_PARAM": "1",
+		},
+		PortMappings: map[int]int{
+			jaegerDefaultLocalUiPort:        uiPort,
+			jaegerDefaultLocalCollectorPort: collectorPort,
+			14269:                           14269,
 		},
 	}
 }
@@ -55,6 +72,8 @@ func grafanaParams(dir string, port int, prometheusInstanceName string) *monitor
 func main() {
 	configPath := flag.String("config-dir", ".", "Relative dir path with config files.")
 	prometheusPort := flag.Int("prometheus-port", 9091, "Port Prometheus listens to.")
+	jaegerUiPort := flag.Int("jaeger-ui-port", jaegerDefaultLocalUiPort, "Port Jaeger UI listens to.")
+	jaegerCollectorPort := flag.Int("jaeger-collector-port", jaegerDefaultLocalCollectorPort, "Port Jaeger Collector listens to.")
 	grafanaPort := flag.Int("grafana-port", 3001, "Port Prometheus listens to.")
 	removeExisting := flag.Bool("remove-existing", false, "Remove existing images")
 	flag.Parse()
@@ -77,6 +96,13 @@ func main() {
 	}
 
 	logger.Infof("Prometheus client running on http://localhost:%d", *prometheusPort)
+
+	_, err = runner.Start(jaegerParams(*jaegerUiPort, *jaegerCollectorPort), runOpts)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Infof("Jaeger UI running on http://localhost:%d", *jaegerUiPort)
 
 	_, err = runner.Start(grafanaParams(configAbsPath, *grafanaPort, prometheusInstanceName), runOpts)
 	if err != nil {

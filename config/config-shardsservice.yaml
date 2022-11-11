@@ -1,9 +1,8 @@
 shards-service:
   endpoint: :5001
   prometheus:
-    enabled: true
-    latency-enabled: true
     endpoint: :2112
+    latency-endpoint: tokentestbed16.sl.cloud9.ibm.com:14268
   database:
     type: "rocksdb"
     root-dir: "./"

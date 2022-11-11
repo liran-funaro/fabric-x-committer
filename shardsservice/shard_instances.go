@@ -151,7 +151,7 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.
 				i.metrics.ShardInstanceTxShard.Set(len(i.txIDToShardID.txToShardID))
 				i.metrics.ShardInstanceTxResponse.Set(len(i.txIDToPendingResponse.tIDToPendingShardIDResp))
 			}
-			i.metrics.Latency.Begin(tID, 1, started)
+			i.metrics.RequestTracer.StartAt(tID, started)
 		}
 	}
 

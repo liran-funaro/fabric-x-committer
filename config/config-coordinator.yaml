@@ -1,9 +1,8 @@
 coordinator:
   endpoint: :5002
   prometheus:
-    enabled: true
-    latency-enabled: true
     endpoint: :2112
+    latency-endpoint: tokentestbed16.sl.cloud9.ibm.com:14268
   sig-verifiers:
     endpoints:
       - tokentestbed3.sl.cloud9.ibm.com:5000

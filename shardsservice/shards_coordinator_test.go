@@ -23,7 +23,7 @@ type shardsCoordinatorGrpcServiceForTest struct {
 
 func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoordinatorGrpcServiceForTest {
 	c := ShardServiceConfig{
-		Prometheus: monitoring.Prometheus{Enabled: false},
+		Prometheus: monitoring.Prometheus{},
 		Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: port,

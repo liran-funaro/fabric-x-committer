@@ -4,9 +4,16 @@ import (
 	"runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 // Default Metrics
+
+type AppMetrics interface {
+	IsEnabled() bool
+	AllMetrics() []prometheus.Collector
+	SetTracerProvider(*trace.TracerProvider)
+}
 
 type Metrics struct {
 	Enabled       bool

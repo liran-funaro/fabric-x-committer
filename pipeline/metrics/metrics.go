@@ -6,10 +6,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 type Metrics struct {
 	Enabled bool
+
+	RequestTracer metrics.AppTracer
 
 	SigVerifiedPendingTxs     prometheus.Gauge
 	DependencyGraphPendingSNs prometheus.Gauge
@@ -155,7 +158,10 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.SigVerifiedPendingTxs, m.DependencyGraphPendingSNs, m.DependencyGraphPendingTXs,
+	return append(m.RequestTracer.Collectors(),
+		m.SigVerifiedPendingTxs,
+		m.DependencyGraphPendingSNs,
+		m.DependencyGraphPendingTXs,
 		m.CoordinatorInTxs,
 		m.CoordinatorOutTxs,
 		//m.PreSignatureLatency,
@@ -190,5 +196,13 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.SigVerifierMgrInputChLength,
 		m.SigVerifierMgrValidOutputChLength,
 		m.SigVerifierMgrInvalidOutputChLength,
-	}
+	)
+}
+
+func (m *Metrics) IsEnabled() bool {
+	return m.Enabled
+}
+
+func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
+	m.RequestTracer = metrics.NewDefaultLatencyTracer("coordinator_latency", 5*time.Second, tp, "status")
 }

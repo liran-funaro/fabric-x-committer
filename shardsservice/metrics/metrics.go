@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 var dbRequestSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -18,7 +19,7 @@ type Metrics struct {
 	Enabled                        bool
 	IncomingTxs                    *metrics.ThroughputCounter
 	CommittedSNs                   *metrics.ThroughputCounter
-	Latency                        *metrics.LatencyHistogram
+	RequestTracer                  metrics.AppTracer
 	PendingCommitsSNs              *metrics.InMemoryDataStructureGauge
 	PendingCommitsTxIds            *metrics.InMemoryDataStructureGauge
 	ShardInstanceTxShard           *metrics.InMemoryDataStructureGauge
@@ -38,7 +39,7 @@ func New(enabled bool) *Metrics {
 		Enabled:                 true,
 		IncomingTxs:             metrics.NewThroughputCounterVec(metrics.In),
 		CommittedSNs:            metrics.NewThroughputCounterVec(metrics.Out),
-		Latency:                 metrics.NewDefaultLatencyHistogram("shard_latency", 100*time.Millisecond, metrics.SampleThousandPerMillionUsing(metrics.TxSeqNumHasher)),
+		RequestTracer:           &metrics.NoopLatencyTracer{},
 		PendingCommitsSNs:       metrics.NewInMemoryDataStructureGauge("pending_commits", "serial_numbers"),
 		PendingCommitsTxIds:     metrics.NewInMemoryDataStructureGauge("pending_commits", "tx_ids"),
 		ShardInstanceTxShard:    metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_shard_id"),
@@ -72,17 +73,23 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 	if !m.Enabled {
 		return []prometheus.Collector{}
 	}
-	return []prometheus.Collector{m.SNReadDuration,
+	return append(m.RequestTracer.Collectors(),
+		m.SNReadDuration,
 		m.SNCommitDuration,
 		m.IncomingTxs,
 		m.CommittedSNs,
-		m.Latency,
 		m.PendingCommitsSNs,
 		m.PendingCommitsTxIds,
 		m.ShardInstanceTxShard,
 		m.ShardInstanceTxResponse,
 		m.ShardsPhaseOneResponseChLength,
-		//m.SNReadSize,
-		//m.SNCommitSize,
-	}
+	)
+}
+
+func (m *Metrics) IsEnabled() bool {
+	return m.Enabled
+}
+
+func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
+	m.RequestTracer = metrics.NewDefaultLatencyTracer("shard_latency", 1*time.Second, tp, "status")
 }

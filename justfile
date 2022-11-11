@@ -120,11 +120,11 @@ deploy-configs configpath=(config-build-out):
 ### Experiments
 
 run-variable-shard-experiment:
-    just run-experiment-suite "variable_shards" "1,2,3,4,5,6,7,8,9,10"
+    just run-experiment-suite "variable_shards" "1,2,3,4,5,6"
 run-variable-tx-sizes-experiment:
     just run-experiment-suite "variable_tx_sizes" "3" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
 run-variable-validity-ratio-experiment:
-    just run-experiment-suite "variable_tx_sizes" "3" "0.0" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
+    just run-experiment-suite "variable_validity_ratios" "3" "0.0" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
 run-variable-double-spends-experiment:
     just run-experiment-suite "variable_double_spends" "3" "0.0" "0.0" "0.0,0.05,0.1,0.15,0.2,0.25,0.3"
 run-variable-block-size-experiment:
@@ -141,7 +141,7 @@ run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.
                 echo {{block_sizes_arr}} | tr '{{array-separator}}' '\n' | while read block_size; do \
                     echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
                     just run-experiment $sig_verifiers $shard_servers $large_txs $invalidity_ratio $double_spends $block_size; \
-                    echo $sig_verifiers,$shard_servers,$large_txs,$invalidity_ratio,$double_spends,$block_size,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.txt"; \
+                    echo $sig_verifiers,$shard_servers,$large_txs,$invalidity_ratio,$double_spends,$block_size,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
                     echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
                     sleep {{experiment_duration}} \
                   ;done \

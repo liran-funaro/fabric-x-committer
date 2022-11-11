@@ -17,15 +17,9 @@ type Profile struct {
 	Name        string
 	Description string
 
-	Block struct {
-		Count int64
-		Size  int64
-	}
+	Block BlockProfile
 
-	Transaction struct {
-		Size          []test.DiscreteValue
-		SignatureType signature.Scheme
-	}
+	Transaction TransactionProfile
 
 	Conflicts struct {
 		Scenario    *ScenarioConflicts
@@ -33,9 +27,25 @@ type Profile struct {
 	}
 }
 
+func Always(size int) []test.DiscreteValue {
+	return []test.DiscreteValue{{float64(size), 1}}
+}
+
+type BlockProfile struct {
+	Count int64
+	Size  int64
+}
+type TransactionProfile struct {
+	Size          []test.DiscreteValue
+	SignatureType signature.Scheme
+}
 type ScenarioConflicts map[string]struct {
 	InvalidSignature bool
 	DoubleSpends     map[int]string
+}
+type ConflictProfile struct {
+	Scenario    *ScenarioConflicts
+	Statistical *StatisticalConflicts
 }
 type StatisticalConflicts struct {
 	InvalidSignature test.Percentage

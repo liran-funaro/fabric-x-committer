@@ -12,7 +12,7 @@ var (
 		Short: "A stream generator for benchmark workloads",
 		Long:  ``,
 		Run: func(cmd *cobra.Command, args []string) {
-			client.GenerateAndPump(profilePath, host, prometheusEnabled, prometheusEndpoint)
+			client.GenerateAndPump(profilePath, host, prometheusEndpoint, latencyEndpoint)
 		},
 	}
 )
@@ -25,5 +25,8 @@ func init() {
 
 	streamCmd.Flags().StringVarP(&host, "host", "", "localhost:5002", "coordinator host addr")
 	streamCmd.MarkFlagRequired("host")
+
+	streamCmd.Flags().StringVar(&prometheusEndpoint, "prometheus-endpoint", ":2112", "path to prometheus metrics")
+	streamCmd.Flags().StringVar(&latencyEndpoint, "prometheus-latency-endpoint", ":14268", "path to prometheus metrics")
 
 }

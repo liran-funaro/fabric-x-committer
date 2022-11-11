@@ -16,7 +16,7 @@ func main() {
 	c := shardsservice.ReadConfig()
 
 	connection.RunServerMainAndWait(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
-		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.Enabled)))
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.IsEnabled())))
 	})
 	//monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, metrics.New(c.Prometheus.Enabled).AllMetrics())
 

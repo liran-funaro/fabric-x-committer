@@ -29,12 +29,11 @@ func GetBlockSize(path string, sampleSize int) float64 {
 	return workload.GetBlockSize(pp, sampleSize)
 }
 
-func LoadAndPump(path, endpoint string, prometheusEnabled bool, prometheusEndpoint string) {
+func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	// read blocks from file into channel
 	tracker := workload.NewMetricTracker(monitoring.Prometheus{
-		Enabled:        prometheusEnabled,
-		LatencyEnabled: true,
-		Endpoint:       *connection.CreateEndpoint(prometheusEndpoint),
+		LatencyEndpoint: *connection.CreateEndpoint(latencyEndpoint),
+		Endpoint:        *connection.CreateEndpoint(prometheusEndpoint),
 	})
 	serializedKey, bQueue, pp := workload.GetBlockWorkload(path)
 
@@ -58,13 +57,12 @@ func LoadAndPump(path, endpoint string, prometheusEnabled bool, prometheusEndpoi
 	<-time.After(workload.ScrapingInterval)
 }
 
-func GenerateAndPump(profilePath string, endpoint string, prometheusEnabled bool, prometheusEndpoint string) {
+func GenerateAndPump(profilePath, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	pp := workload.LoadProfileFromYaml(profilePath)
 
 	tracker := workload.NewMetricTracker(monitoring.Prometheus{
-		Enabled:        prometheusEnabled,
-		LatencyEnabled: true,
-		Endpoint:       *connection.CreateEndpoint(prometheusEndpoint),
+		Endpoint:        *connection.CreateEndpoint(prometheusEndpoint),
+		LatencyEndpoint: *connection.CreateEndpoint(latencyEndpoint),
 	})
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)

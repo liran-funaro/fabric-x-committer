@@ -4,44 +4,67 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-var (
-	ScrapingInterval = 15 * time.Second
+const ScrapingInterval = 15 * time.Second
 
-	generatorRequests = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "e2e_requests",
-		Help: "E2E requests sent by the generator",
-	})
-	generatorResponses = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "e2e_responses",
-		Help: "E2E responses received by the generator",
-	}, []string{"status"})
-)
+type Metrics struct {
+	generatorRequests  prometheus.Counter
+	generatorResponses *prometheus.CounterVec
+	requestTracer      metrics.AppTracer
+}
+
+func NewMetrics() *Metrics {
+	return &Metrics{
+		generatorRequests: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "e2e_requests",
+			Help: "E2E requests sent by the generator",
+		}),
+		generatorResponses: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "e2e_responses",
+			Help: "E2E responses received by the generator",
+		}, []string{"status"}),
+		requestTracer: &metrics.NoopLatencyTracer{},
+	}
+}
+func (m *Metrics) AllMetrics() []prometheus.Collector {
+	return append(m.requestTracer.Collectors(), m.generatorRequests, m.generatorResponses)
+}
+func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
+	m.requestTracer = metrics.NewDefaultLatencyTracer("generator_latency", 5*time.Second, tp, "status")
+}
+
+func (m *Metrics) IsEnabled() bool {
+	return true
+}
 
 type MetricTracker struct {
-	latency *metrics.LatencyHistogram
+	metrics *Metrics
 }
 
 func NewMetricTracker(p monitoring.Prometheus) *MetricTracker {
-	histogram := metrics.NewDefaultLatencyHistogram("generator_latency", 5*time.Second, metrics.SampleThousandPerMillionUsing(metrics.Identity), "status")
+	m := NewMetrics()
 
-	monitoring.LaunchPrometheus(p, monitoring.Generator, []prometheus.Collector{histogram, generatorRequests, generatorResponses})
+	monitoring.LaunchPrometheus(p, monitoring.Generator, m)
 
-	return &MetricTracker{latency: histogram}
+	return &MetricTracker{m}
 }
 
 func (t *MetricTracker) RegisterEvent(e *Event) {
 	switch e.Msg {
 	case EventSubmitted:
-		t.latency.Begin(e.SubmittedBlock.Id, e.SubmittedBlock.Size, e.Timestamp)
-		generatorRequests.Add(float64(e.SubmittedBlock.Size))
+		for i := uint64(0); i < uint64(e.SubmittedBlock.Size); i++ {
+			t.metrics.requestTracer.StartAt(token.TxSeqNum{e.SubmittedBlock.Id, i}, e.Timestamp)
+		}
+		t.metrics.generatorRequests.Add(float64(e.SubmittedBlock.Size))
 	case EventReceived:
 		for _, status := range e.StatusBatch.TxsValidationStatus {
-			t.latency.End(status.BlockNum, e.Timestamp, status.Status.String())
-			generatorResponses.WithLabelValues(status.Status.String()).Add(1)
+			t.metrics.requestTracer.EndAt(token.TxSeqNum{status.BlockNum, status.TxNum}, e.Timestamp, status.Status.String())
+			t.metrics.generatorResponses.WithLabelValues(status.Status.String()).Add(1)
 		}
 	}
 }

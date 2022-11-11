@@ -57,8 +57,7 @@ func init() {
 	viper.SetDefault("shards-service.limits.max-phase-one-processing-workers", 50)
 	viper.SetDefault("shards-service.limits.max-phase-two-processing-workers", 50)
 
-	viper.SetDefault("shards-service.endpoint", "localhost:5001")
-	viper.SetDefault("shards-service.prometheus.enabled", true)
-	viper.SetDefault("shards-service.prometheus.latency-enabled", true)
-	viper.SetDefault("shards-service.prometheus.endpoint", "localhost:2112")
+	viper.SetDefault("shards-service.endpoint", ":5001")
+	viper.SetDefault("shards-service.prometheus.endpoint", ":2112")
+	viper.SetDefault("shards-service.prometheus.latency-endpoint", ":14268")
 }

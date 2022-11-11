@@ -8,3 +8,10 @@ const (
 	ShardsService
 	Generator
 )
+
+var componentTypeName = map[ComponentType]string{
+	Coordinator:   "Coordinator",
+	SigVerifier:   "SigVerifier",
+	ShardsService: "ShardsService",
+	Generator:     "Generator",
+}

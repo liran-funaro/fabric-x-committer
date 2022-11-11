@@ -14,6 +14,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
 var logger = logging.New("sigverification-client")
@@ -71,9 +72,21 @@ func main() {
 		}()
 	}
 
-	inputGenerator := sigverification_test.NewInputGenerator(&clientConfig.Input)
+	_, blocks := workload.StartBlockGenerator(&workload.Profile{
+		Block:       workload.BlockProfile{-1, 100},
+		Transaction: workload.TransactionProfile{workload.Always(2), signature.Ecdsa},
+	})
 	for {
-		requests <- inputGenerator.NextRequestBatch()
+		b := <-blocks
+		reqs := make([]*sigverification.Request, len(b.Block.Txs))
+		for i, tx := range b.Block.Txs {
+			reqs[i] = &sigverification.Request{
+				BlockNum: b.Block.Number,
+				TxNum:    uint64(i),
+				Tx:       tx,
+			}
+		}
+		requests <- &sigverification.RequestBatch{Requests: reqs}
 	}
 }
 

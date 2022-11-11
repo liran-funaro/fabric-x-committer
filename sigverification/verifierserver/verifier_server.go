@@ -3,8 +3,6 @@ package verifierserver
 import (
 	"context"
 	"errors"
-	"time"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -32,9 +30,8 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 		func(batch *sigverification.RequestBatch) {
 			if s.metrics.Enabled {
 				metrics.VerifierServerInTxs.Add(len(batch.Requests))
-				start := time.Now()
 				for _, request := range batch.Requests {
-					s.metrics.Latency.Begin(token.TxSeqNum{BlkNum: request.BlockNum, TxNum: request.TxNum}, 1, start)
+					s.metrics.RequestTracer.Start(token.TxSeqNum{BlkNum: request.BlockNum, TxNum: request.TxNum})
 				}
 			}
 			executor.Submit(batch.Requests)
@@ -43,9 +40,8 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			outputs := <-executor.Outputs()
 			if s.metrics.Enabled {
 				metrics.VerifierServerOutTxs.Add(len(outputs))
-				end := time.Now()
 				for _, output := range outputs {
-					s.metrics.Latency.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, end)
+					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum})
 				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
@@ -85,10 +81,16 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
 	}
+	if s.metrics.Enabled {
+		s.metrics.RequestTracer.AddEvent(token.TxSeqNum{request.BlockNum, request.TxNum}, "Start verification")
+	}
 	if err := s.verifier.VerifyTx(request.Tx); err != nil {
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true
+	}
+	if s.metrics.Enabled {
+		s.metrics.RequestTracer.AddEvent(token.TxSeqNum{request.BlockNum, request.TxNum}, "End verification")
 	}
 	return response, nil
 }
