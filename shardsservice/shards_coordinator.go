@@ -97,8 +97,8 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOneStreamServer) error {
 	go s.shards.accumulatedPhaseOneResponses(s.limits.MaxPhaseOneResponseBatchItemCount, s.limits.PhaseOneResponseCutTimeout)
 	for {
-		end := time.Now()
 		responses := <-s.phaseOneResponses
+		end := time.Now()
 		if err := stream.Send(
 			&PhaseOneResponseBatch{
 				Responses: responses,
@@ -109,7 +109,9 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 		if s.metrics.Enabled {
 			s.metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 			for _, response := range responses {
-				s.metrics.RequestTracer.EndAt(pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}, end, response.Status.String())
+				txID := pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}
+				s.metrics.RequestTracer.AddEventAt(txID, "Finished calculation on all shards.", end)
+				s.metrics.RequestTracer.End(txID, response.Status.String())
 			}
 		}
 	}

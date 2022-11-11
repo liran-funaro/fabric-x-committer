@@ -17,6 +17,7 @@ type Metrics struct {
 	SigVerifiedPendingTxs     prometheus.Gauge
 	DependencyGraphPendingSNs prometheus.Gauge
 	DependencyGraphPendingTXs prometheus.Gauge
+	NotSeenTxs                prometheus.Gauge
 
 	//PreSignatureLatency  *metrics.LatencyHistogram
 	//SignatureLatency     *metrics.LatencyHistogram
@@ -45,6 +46,7 @@ type Metrics struct {
 	PhaseTwoOutTxs       *metrics.ThroughputCounter
 
 	DependencyMgrInputChLength          *metrics.ChannelBufferGauge
+	DependencyMgrOutputChLength         *metrics.ChannelBufferGauge
 	DependencyMgrStatusUpdateChLength   *metrics.ChannelBufferGauge
 	PhaseOneSendChLength                *metrics.ChannelBufferGauge
 	PhaseOneProcessedChLength           *metrics.ChannelBufferGauge
@@ -74,6 +76,10 @@ func New(enabled bool) *Metrics {
 		DependencyGraphPendingTXs: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "dependency_graph_pending_txs",
 			Help: "The size of the dependency graph in TXs",
+		}),
+		NotSeenTxs: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "dependency_graph_not_seen_txs",
+			Help: "The size of the dependency graph in SNs",
 		}),
 
 		// Throughput
@@ -106,6 +112,10 @@ func New(enabled bool) *Metrics {
 		DependencyMgrInputChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "dep_mgr",
 			Channel:      "input",
+		}),
+		DependencyMgrOutputChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
+			SubComponent: "dep_mgr",
+			Channel:      "output",
 		}),
 		DependencyMgrStatusUpdateChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "dep_mgr",
@@ -164,6 +174,7 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.DependencyGraphPendingTXs,
 		m.CoordinatorInTxs,
 		m.CoordinatorOutTxs,
+		m.NotSeenTxs,
 		//m.PreSignatureLatency,
 		//m.SignatureLatency,
 		//m.PostSignatureLatency,
@@ -187,6 +198,7 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.PhaseTwoInTxs,
 		m.PhaseTwoOutTxs,
 		m.DependencyMgrInputChLength,
+		m.DependencyMgrOutputChLength,
 		m.DependencyMgrStatusUpdateChLength,
 		m.PhaseOneSendChLength,
 		m.PhaseOneProcessedChLength,

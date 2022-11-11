@@ -19,6 +19,7 @@ const (
 
 // -prometheus-endpoint=tokentestbed16.sl.cloud9.ibm.com:9094 -sampling-times=1667579016,1667579026,1667579116 -output=./tmp.txt
 func main() {
+	clientHost := flag.String("client-endpoint", "", "The client endpoint.")
 	prometheusHost := flag.String("prometheus-endpoint", "", "The host that runs prometheus and serves the metrics.")
 	unixTimestamps := connection.SliceFlag("sampling-times", []string{}, "When to take the samples (UNIX timestamp). Must be in the past")
 	outputFilePath := flag.String("output", "", "The path to the output file.")
@@ -46,7 +47,7 @@ func main() {
 		}
 	}
 
-	reader := experiment.NewResultReader(connection.CreateEndpoint(*prometheusHost), rateInterval)
+	reader := experiment.NewResultReader(connection.CreateEndpoint(*clientHost), connection.CreateEndpoint(*prometheusHost), rateInterval)
 
 	lines := make([]string, len(samplingTimes)+1)
 	lines[0] = strings.Join(reader.ReadHeaders(), resultJoiner)

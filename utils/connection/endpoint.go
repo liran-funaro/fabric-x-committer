@@ -33,6 +33,9 @@ func CreateEndpoint(value string) *Endpoint {
 }
 
 func NewEndpoint(value string) (*Endpoint, error) {
+	if len(value) == 0 {
+		return &Endpoint{}, nil
+	}
 	vals := strings.Split(value, ":")
 	if len(vals) != 2 {
 		return nil, errors.New("not in format: 1.2.3.4:5")

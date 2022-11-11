@@ -36,8 +36,8 @@ type SamplingStrategy = func(TraceKey) bool
 func SampleThousandPerMillionUsing(hasher KeyHasher) SamplingStrategy {
 	const (
 		ratio        = 10
-		sampleSize   = 1_000
-		samplePeriod = 250_000
+		sampleSize   = 100
+		samplePeriod = 100_000
 	)
 	return func(key TraceKey) bool {
 		hash := hasher(key) % samplePeriod

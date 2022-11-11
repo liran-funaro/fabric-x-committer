@@ -12,10 +12,14 @@ block:
 
 # transaction configuration
 transaction:
-  serialnumber:
-    # number of serial numbers per transaction
-    size:
-      - value: 2
-        probability: 1
+  # number of serial numbers per transaction
+  size:
+    - value: 2
+      probability: 1
   # signature scheme
   signaturetype: ecdsa
+# Introduce conflicts into our block stream
+conflicts:
+  statistical:
+    invalidsignature: 0.0
+    doublespends: 0.0

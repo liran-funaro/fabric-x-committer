@@ -12,7 +12,8 @@ playbook-path := "./ansible/playbooks"
 array-separator := ","
 sig-verifiers-arr := "3"
 experiment-duration-seconds := "600"
-prometheus-endpoint := "9094"
+prometheus-endpoint := "9091"
+prometheus-exporter-port := "2112"
 
 export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 
@@ -63,7 +64,7 @@ build-all: build-blockgen build-coordinator build-sigservice build-shardsservice
 
 build-blockgen:
     go build -o {{bin-build-out}}/blockgen ./wgclient/cmd/generator
-#    go build -o {{bin-build-out}}/mockcoordinator ./wgclient/cmd/mockcoordinator
+    go build -o {{bin-build-out}}/mockcoordinator ./wgclient/cmd/mockcoordinator
 
 build-coordinator:
     go build -o {{bin-build-out}}/coordinator ./coordinatorservice/cmd/server
@@ -158,7 +159,7 @@ run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalid
 
 gather-results tracker_file result_file:
     mkdir -p {{experiment-results-dir}}
-    {{bin-build-out}}/resultgatherer -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-endpoint}} -output={{result_file}} -sampling-times=$(cat {{tracker_file}} | tail -n +2 | while read line; do echo ${line##*,};done | tr '\n' ',')
+    {{bin-build-out}}/resultgatherer -client-endpoint=$(just list-hosts blockgens):{{prometheus-exporter-port}} -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-endpoint}} -output={{result_file}} -sampling-times=$(cat {{tracker_file}} | tail -n +2 | while read line; do echo ${line##*,};done | tr '\n' ',')
 
 get-timestamp plus_seconds=("0") format=(""):
     #date --date="+{{plus_seconds}} seconds" +%s #bash

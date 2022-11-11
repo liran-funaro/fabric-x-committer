@@ -48,6 +48,7 @@ func newDependencyMgr(maxGraphSize int, dependencyGraphUpdateTimeout time.Durati
 	if metrics.Enabled {
 		m.metrics.DependencyMgrInputChLength.SetCapacity(defaultChannelBufferSize)
 		m.metrics.DependencyMgrStatusUpdateChLength.SetCapacity(defaultChannelBufferSize)
+		m.metrics.DependencyMgrOutputChLength.SetCapacity(defaultChannelBufferSize)
 	}
 
 	m.startBlockRecieverRoutine()
@@ -192,7 +193,12 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		}
 
 		processedTxs = append(processedTxs, u)
+		before := time.Now()
 		m.removeNodeUnderAcquiredLock(node, u.Status == VALID, cascadeInvalidatedTxs)
+		if m.metrics.Enabled {
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Will remove node from dependency graph", before)
+			m.metrics.RequestTracer.AddEvent(u.TxSeqNum, "Removed node from dependency graph")
+		}
 	}
 
 	for k := range cascadeInvalidatedTxs {
@@ -209,14 +215,17 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	}
 
 	if m.metrics.Enabled {
-		//sent := time.Now()
-		//for _, status := range processedTxs {
-		//	if status.Status == VALID {
-		//		m.metrics.StatusProcessLatency.End(status.TxSeqNum, sent)
-		//	}
-		//}
+		sent := time.Now()
+		for _, status := range processedTxs {
+			m.metrics.RequestTracer.EndAt(status.TxSeqNum, sent, status.Status.String())
+			//	if status.Status == VALID {
+			//		m.metrics.StatusProcessLatency.End(status.TxSeqNum, sent)
+			//	}
+		}
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
+		m.metrics.DependencyMgrOutputChLength.Set(len(m.outputChanStatusUpdate))
+		m.metrics.NotSeenTxs.Set(float64(len(notYetSeenTxs)))
 	}
 	return notYetSeenTxs
 }

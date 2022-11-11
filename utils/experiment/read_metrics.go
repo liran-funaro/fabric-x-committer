@@ -22,7 +22,7 @@ type ResultReader struct {
 	metrics []*metric
 }
 
-func NewResultReader(server *connection.Endpoint, rateInterval time.Duration) *ResultReader {
+func NewResultReader(client *connection.Endpoint, server *connection.Endpoint, rateInterval time.Duration) *ResultReader {
 	return &ResultReader{
 		server: server,
 		metrics: []*metric{
@@ -33,37 +33,37 @@ func NewResultReader(server *connection.Endpoint, rateInterval time.Duration) *R
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"VALID\"}[%v])", rateInterval),
+				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"VALID\",instance=\"%s\"}[%v])", client.Address(), rateInterval),
 				description: "Throughput (Valid)",
 				unit:        "TPS",
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"INVALID_SIGNATURE\"}[%v])", rateInterval),
+				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"INVALID_SIGNATURE\",instance=\"%s\"}[%v])", client.Address(), rateInterval),
 				description: "Throughput (Invalid sig)",
 				unit:        "TPS",
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"DOUBLE_SPEND\"}[%v])", rateInterval),
+				query:       fmt.Sprintf("rate(sc_e2e_responses{status=\"DOUBLE_SPEND\",instance=\"%s\"}[%v])", client.Address(), rateInterval),
 				description: "Throughput (Double spend)",
 				unit:        "TPS",
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"VALID\"})", 0.99),
+				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"VALID\",instance=\"%s\"})", 0.99, client.Address()),
 				description: "99%-Latency (Valid)",
 				unit:        "ns",
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"INVALID_SIGNATURE\"})", 0.99),
+				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"INVALID_SIGNATURE\",instance=\"%s\"})", 0.99, client.Address()),
 				description: "99%-Latency (Invalid sig)",
 				unit:        "ns",
 				extractor:   floatExtractor,
 			},
 			{
-				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"DOUBLE_SPEND\"})", 0.99),
+				query:       fmt.Sprintf("histogram_quantile(%.2f,sc_generator_latency_bucket{status=\"DOUBLE_SPEND\",instance=\"%s\"})", 0.99, client.Address()),
 				description: "99%-Latency (Double spend)",
 				unit:        "ns",
 				extractor:   floatExtractor,

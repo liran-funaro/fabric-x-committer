@@ -40,8 +40,8 @@ type LatencyTracerOpts struct {
 
 const (
 	ratio        = 10
-	sampleSize   = 1_000
-	samplePeriod = 250_000
+	sampleSize   = 100
+	samplePeriod = 100_000
 )
 
 var AlwaysSampler = func(key token.TxSeqNum) bool {

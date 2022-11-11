@@ -219,6 +219,11 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 			if len(responses) > 0 {
 				if uint32(len(responses)) >= maxBatchItemCount {
 					i.logger.Debugf("emitting response due to timeout with %d", maxBatchItemCount)
+					//if i.metrics.Enabled {
+					//	for _, response := range responses {
+					//		i.metrics.RequestTracer.AddEvent(token.TxSeqNum{response.BlockNum, response.TxNum}, "Batch will be sent (timeout reached)")
+					//	}
+					//}
 					i.phaseOneResponses <- responses[:maxBatchItemCount]
 					if i.metrics.Enabled {
 						i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
@@ -226,6 +231,11 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 					responses = responses[maxBatchItemCount:]
 				} else {
 					i.logger.Debugf("emitting response due to timeout with %d", len(responses))
+					//if i.metrics.Enabled {
+					//	for _, response := range responses {
+					//		i.metrics.RequestTracer.AddEvent(token.TxSeqNum{response.BlockNum, response.TxNum}, "Batch will be sent (timeout reached)")
+					//	}
+					//}
 					i.phaseOneResponses <- responses
 					if i.metrics.Enabled {
 						i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))
@@ -265,6 +275,11 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 
 			if uint32(len(responses)) >= maxBatchItemCount {
 				i.logger.Debug("emitting response due to max batch size")
+				//if i.metrics.Enabled {
+				//	for _, response := range responses {
+				//		i.metrics.RequestTracer.AddEvent(token.TxSeqNum{response.BlockNum, response.TxNum}, "Batch will be sent (sufficient batch size achieved)")
+				//	}
+				//}
 				i.phaseOneResponses <- responses[:maxBatchItemCount]
 				if i.metrics.Enabled {
 					i.metrics.ShardsPhaseOneResponseChLength.Set(len(i.phaseOneResponses))

@@ -3,14 +3,13 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"sync"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"sync"
 )
 
 type sigVerifierMgr struct {
@@ -84,6 +83,9 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine() {
 				v.sendCh <- b
 				if m.metrics.Enabled {
 					//sent := time.Now()
+					//for i := range b.Txs {
+					//	m.metrics.RequestTracer.AddEventAt(TxSeqNum{b.Number, uint64(i)}, "Sent request to sigverifier", sent)
+					//}
 					//m.metrics.PreSignatureLatency.End(b.Number, sent)
 					//m.metrics.SignatureLatency.Begin(b.Number, len(b.Txs), sent)
 					m.metrics.SigVerifierMgrInTxs.Add(len(b.Txs))
@@ -133,6 +135,7 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 				}
 				if m.metrics.Enabled {
 					//for _, tx := range responseBatch.GetResponses() {
+					//	m.metrics.RequestTracer.AddEventAt(TxSeqNum{tx.BlockNum, tx.TxNum}, "Received response from sigverifier", received)
 					//	m.metrics.SignatureLatency.End(tx.BlockNum, received)
 					//	m.metrics.PostSignatureLatency.Begin(TxSeqNum{tx.BlockNum, tx.TxNum}, 1, received)
 					//}

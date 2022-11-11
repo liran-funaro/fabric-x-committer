@@ -61,6 +61,12 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	c.sigVerifierMgr.inputChan <- block
 	sigVerMgrSent := time.Now()
 	if c.metrics.Enabled {
+		for txNum := range block.GetTxs() {
+			txId := TxSeqNum{block.Number, uint64(txNum)}
+			c.metrics.RequestTracer.StartAt(txId, before)
+			c.metrics.RequestTracer.AddEventAt(txId, "Sent to dependency manager", depMgrSent)
+			c.metrics.RequestTracer.AddEventAt(txId, "Sent to sigver manager", sigVerMgrSent)
+		}
 		c.metrics.WaitingDepMgrIn.Observe(float64(depMgrSent.Sub(before)))
 		c.metrics.WaitingSigVerMgrIn.Observe(float64(sigVerMgrSent.Sub(depMgrSent)))
 		//c.metrics.PreSignatureLatency.Begin(block.Number, 1, sigVerMgrSent)
@@ -92,7 +98,10 @@ func (c *Coordinator) startTxProcessingRoutine() {
 			c.shardsServerMgr.inputChan <- intersection
 			if c.metrics.Enabled {
 				waitingDuration := float64(time.Now().Sub(intersectionCalculated))
+				sentToShardServer := time.Now()
 				for tx := range intersection {
+					c.metrics.RequestTracer.AddEventAt(tx, "Intersection calculated", intersectionCalculated)
+					c.metrics.RequestTracer.AddEventAt(tx, "Sent to shard server", sentToShardServer)
 					c.metrics.WaitingPhaseOneIn.Observe(waitingDuration)
 					//	c.metrics.PrePhaseOneLatency.End(tx, intersectionCalculated)
 					c.metrics.PhaseOneLatency.Begin(tx, 1, intersectionCalculated)
@@ -113,11 +122,12 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				if c.metrics.Enabled {
-					//received := time.Now()
-					//for _, tx := range sigVerifiedTxs {
-					//	c.metrics.PostSignatureLatency.End(tx, received)
-					//	c.metrics.PrePhaseOneLatency.Begin(tx, 1, received)
-					//}
+					received := time.Now()
+					for _, tx := range sigVerifiedTxs {
+						c.metrics.RequestTracer.AddEventAt(tx, "Received valid response from sigver manager", received)
+						//	c.metrics.PostSignatureLatency.End(tx, received)
+						//	c.metrics.PrePhaseOneLatency.Begin(tx, 1, received)
+					}
 					c.metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
@@ -140,6 +150,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				if c.metrics.Enabled {
 					received := time.Now()
 					for _, tx := range status {
+						c.metrics.RequestTracer.AddEventAt(tx.TxSeqNum, "Received response from shards server manager", received)
 						c.metrics.PhaseOneLatency.End(tx.TxSeqNum, received)
 						//c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
 					}
@@ -156,10 +167,11 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				}
 				c.processValidationStatus(invalidStatus)
 				if c.metrics.Enabled {
-					//received := time.Now()
-					//for _, tx := range invalidStatus {
-					//	c.metrics.PostSignatureLatency.End(tx.TxSeqNum, received)
-					//}
+					received := time.Now()
+					for _, tx := range invalidStatus {
+						c.metrics.RequestTracer.AddEventAt(tx.TxSeqNum, "Received invalid response from sigver manager", received)
+						//	c.metrics.PostSignatureLatency.End(tx.TxSeqNum, received)
+					}
 					c.metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
 				}
 			}

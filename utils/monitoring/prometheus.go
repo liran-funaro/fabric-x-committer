@@ -63,7 +63,7 @@ func LaunchPrometheus(config Prometheus, componentType ComponentType, appMetrics
 func traceProvider(componentType ComponentType, exporter sdktrace.SpanExporter) *sdktrace.TracerProvider {
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter, sdktrace.WithMaxExportBatchSize(1)),
+		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(componentTypeMap[componentType]),
