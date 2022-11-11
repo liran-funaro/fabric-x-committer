@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
@@ -16,8 +17,14 @@ var conf = &pipeline.CoordinatorConfig{
 		Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
 	},
 	ShardsServers: &pipeline.ShardsServerMgrConfig{
-		Servers:              []*pipeline.ShardServerInstanceConfig{{connection.CreateEndpoint("localhost:5001"), 1}},
-		DeleteExistingShards: true,
+		Servers:                       []*pipeline.ShardServerInstanceConfig{{connection.CreateEndpoint("localhost:5001"), 1}},
+		PrefixSizeForShardCalculation: 2,
+		DeleteExistingShards:          true,
+	},
+	Limits: &pipeline.LimitsConfig{
+		ShardRequestCutTimeout:       1 * time.Millisecond,
+		DependencyGraphUpdateTimeout: 1 * time.Millisecond,
+		MaxDependencyGraphSize:       1000000,
 	},
 }
 
@@ -36,7 +43,7 @@ func TestCoordinator(t *testing.T) {
 	require.NoError(t, err)
 	defer shardsServer.Stop()
 
-	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, metrics.New(false))
+	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, conf.Limits, metrics.New(false))
 	require.NoError(t, err)
 	defer coordinator.Stop()
 

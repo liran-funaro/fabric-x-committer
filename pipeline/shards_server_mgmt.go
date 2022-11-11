@@ -24,9 +24,10 @@ type shardsServerMgr struct {
 	shardIdToServer map[int]*shardsServer
 	numShards       int
 
-	inputChan   chan map[TxSeqNum][][]byte
-	inflightTxs *dbInflightTxs
-	outputChan  chan []*TxStatus
+	inputChan                     chan map[TxSeqNum][][]byte
+	inflightTxs                   *dbInflightTxs
+	outputChan                    chan []*TxStatus
+	prefixSizeForShardCalculation int
 
 	stopSignalCh chan struct{}
 	metrics      *metrics.Metrics
@@ -43,10 +44,11 @@ func newShardsServerMgr(config *ShardsServerMgrConfig, metrics *metrics.Metrics)
 			},
 			phaseOneProcessedTxsChan: make(chan []*phaseOneProcessedTx, defaultChannelBufferSize),
 		},
-		inputChan:    make(chan map[TxSeqNum][][]byte, defaultChannelBufferSize),
-		outputChan:   make(chan []*TxStatus, defaultChannelBufferSize),
-		stopSignalCh: make(chan struct{}),
-		metrics:      metrics,
+		inputChan:                     make(chan map[TxSeqNum][][]byte, defaultChannelBufferSize),
+		outputChan:                    make(chan []*TxStatus, defaultChannelBufferSize),
+		prefixSizeForShardCalculation: config.PrefixSizeForShardCalculation,
+		stopSignalCh:                  make(chan struct{}),
+		metrics:                       metrics,
 	}
 	if metrics.Enabled {
 		metrics.PhaseOneProcessedChLength.SetCapacity(defaultChannelBufferSize)
@@ -85,7 +87,7 @@ func newShardsServerMgr(config *ShardsServerMgrConfig, metrics *metrics.Metrics)
 }
 
 func (m *shardsServerMgr) computeShardId(sn []byte) int {
-	return int(binary.BigEndian.Uint16(sn[0:2]) % uint16(m.numShards))
+	return int(binary.BigEndian.Uint16(sn[0:m.prefixSizeForShardCalculation]) % uint16(m.numShards))
 }
 
 func (m *shardsServerMgr) startInputRecieverRoutine() {

@@ -22,7 +22,7 @@ func main() {
 
 	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Coordinator, m.AllMetrics())
 
-	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, m)
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, m)
 	if err != nil {
 		panic(fmt.Sprintf("Error while constructing coordinator: %s", err))
 	}

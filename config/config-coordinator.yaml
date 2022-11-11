@@ -18,6 +18,29 @@ coordinator:
       - endpoint: tokentestbed8.sl.cloud9.ibm.com:5001
         num-shards: 1
     delete-existing-shards: true
+    prefix-size-for-shard-calculation: 2
+  limits:
+    # Whenever we get validated TXs from the sigverifier, we look up which ones are free in the dependency graph, and we send them to the shard server (even if it is only one).
+    # If a TX is not free at that point, it will be added in a "pending" list. The next time a batch of valid TXs come from the sigverifier, the pending TXs will be appended to the validated TXs to be re-examined.
+    # In a scenario where the sigverifier sends validated TXs with a low rate, the "pending" TXs will not be re-examined for a long time.
+    # To this end, after every (shard-request-cut-timeout) we repeat a check for the "pending" TXs without waiting for the sig verifier.
+    shard-request-cut-timeout: 1ms
+    # Whenever a new block arrives at the coordinator, it is integrated directly to the dependency graph.
+    # Hence, this graph increases with each new block. Similarly, it decreases in size whenever a TX resolves (as VALID, INVALID_SIGNATURE, DOUBLE_SPEND).
+    # When this dependency graph becomes too big, we risk a performance penalty.
+    # This size limit stalls execution until enough TXs resolve, so that the dependency graph stays within a reasonable size limit.
+    max-dependency-graph-size: 1000000 # 32 bytes per serial number, would cause roughly 32MB memory
+    # When a block arrives at the coordinator, it goes in parallel into the dependency graph and the sig verifier.
+    # When a TX resolves (VALID, INVALID_SIGNATURE, DOUBLE_SPEND), it has to be removed from the dependency graph.
+    # When the transaction resolves as VALID, DOUBLE_SPEND, it means that it has gone through the shard.
+    # This means it has passed by the dependency graph first.
+    # However, when it resolves as INVALID_SIGNATURE, it is not necessarily the case (the sig verifier is very fast and the dependency graph is very slow or full; see max-dependency-graph-size).
+    # In some rare occasions, it could be that the sig verifier resolves a TX before this TX has been inserted into the dependency graph.
+    # Whenever we receive resolved TXs to remove from the graph, we check if they exist in the graph. If they do, then we remove them.
+    # Otherwise, we put them into a "pending" list that will be re-evaluated whenever a new batch of resolved TXs arrives (together with any newly-resolved TXs).
+    # If the TXs resolve at very slow rates, it could be that in the meantime a TX has been inserted into the dependency graph and it is still in our "pending" list.
+    # To this end, we have a periodic check that only checks whether any "pending" TX has been resolved in the graph, so that we can remove it.
+    dependency-graph-update-timeout: 1ms
 
 logging:
   enabled: true

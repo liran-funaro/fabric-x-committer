@@ -20,7 +20,8 @@ func TestShardsServerMgr(t *testing.T) {
 			{connection.CreateEndpoint("localhost:6001"), 3}, // shard 1, shard 2, and shard 3
 			{connection.CreateEndpoint("localhost:6002"), 5}, // shards 4,5,6,7, and 8
 		},
-		DeleteExistingShards: true,
+		PrefixSizeForShardCalculation: 2,
+		DeleteExistingShards:          true,
 	}
 
 	shardsServers, err := testutil.StartsShardsGrpcServers(

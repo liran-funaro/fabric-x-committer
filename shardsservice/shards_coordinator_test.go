@@ -33,7 +33,6 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 			RootDir: "./",
 		},
 		Limits: &LimitsConfig{
-			MaxGoroutines:                     500,
 			MaxPhaseOneResponseBatchItemCount: 100,
 			PhaseOneResponseCutTimeout:        10 * time.Millisecond,
 			MaxPhaseOneProcessingWorkers:      50,

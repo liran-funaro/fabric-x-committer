@@ -30,10 +30,9 @@ func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metric
 		"\tDatabase: %s\n"+
 		"\tLimits:\n"+
 		"\t\tMax buffer sizes: %d (shard instances), %d (pending commits)\n"+
-		"\t\tGo Routines: %d\n"+
 		"\t\tWorkers: %d (phase 1), %d (phase 2), Channel capacity: %d\n"+
 		"\t\tCut off: %d %v\n"+
-		"\tTotal metrics: %d", database.Type, limits.MaxShardInstancesBufferSize, limits.MaxPendingCommitsBufferSize, limits.MaxGoroutines, limits.MaxPhaseOneProcessingWorkers, limits.MaxPhaseTwoProcessingWorkers, channelCapacity, limits.MaxPhaseOneResponseBatchItemCount, limits.PhaseOneResponseCutTimeout, len(metrics.AllMetrics()))
+		"\tTotal metrics: %d", database.Type, limits.MaxShardInstancesBufferSize, limits.MaxPendingCommitsBufferSize, limits.MaxPhaseOneProcessingWorkers, limits.MaxPhaseTwoProcessingWorkers, channelCapacity, limits.MaxPhaseOneResponseBatchItemCount, limits.PhaseOneResponseCutTimeout, len(metrics.AllMetrics()))
 
 	phaseOneResponses := make(chan []*PhaseOneResponse, channelCapacity)
 	if metrics.Enabled {

@@ -1,12 +1,13 @@
 package pipeline
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"sort"
+	"time"
 
 	"github.com/spf13/viper"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
 type SigVerifierMgrConfig struct {
@@ -14,8 +15,9 @@ type SigVerifierMgrConfig struct {
 }
 
 type ShardsServerMgrConfig struct {
-	Servers              []*ShardServerInstanceConfig `mapstructure:"servers"`
-	DeleteExistingShards bool                         `mapstructure:"delete-existing-shards"`
+	Servers                       []*ShardServerInstanceConfig `mapstructure:"servers"`
+	DeleteExistingShards          bool                         `mapstructure:"delete-existing-shards"`
+	PrefixSizeForShardCalculation int                          `mapstructure:"prefix-size-for-shard-calculation"`
 }
 
 func (c *ShardsServerMgrConfig) GetEndpoints() []*connection.Endpoint {
@@ -42,6 +44,13 @@ type CoordinatorConfig struct {
 	Endpoint      connection.Endpoint    `mapstructure:"endpoint"`
 	SigVerifiers  *SigVerifierMgrConfig  `mapstructure:"sig-verifiers"`
 	ShardsServers *ShardsServerMgrConfig `mapstructure:"shards-servers"`
+	Limits        *LimitsConfig          `mapstructure:"limits"`
+}
+
+type LimitsConfig struct {
+	ShardRequestCutTimeout       time.Duration `mapstructure:"shard-request-cut-timeout"`
+	MaxDependencyGraphSize       int           `mapstructure:"max-dependency-graph-size"`
+	DependencyGraphUpdateTimeout time.Duration `mapstructure:"dependency-graph-update-timeout"`
 }
 
 func ReadConfig() CoordinatorConfig {
@@ -58,6 +67,7 @@ func init() {
 	})
 
 	viper.SetDefault("coordinator.shards-servers.delete-existing-shards", true)
+	viper.SetDefault("coordinator.shards-servers.prefix-size-for-shard-calculation", 2)
 	viper.SetDefault("coordinator.shards-servers.servers", []map[string]interface{}{
 		{"endpoint": "localhost:5001", "num-shards": 4},
 	})
@@ -66,4 +76,8 @@ func init() {
 	viper.SetDefault("coordinator.prometheus.enabled", true)
 	viper.SetDefault("coordinator.prometheus.latency-enabled", true)
 	viper.SetDefault("coordinator.prometheus.endpoint", ":2114")
+
+	viper.SetDefault("coordinator.limits.shard-request-cut-timeout", 1*time.Millisecond)
+	viper.SetDefault("coordinator.limits.max-dependency-graph-size", 1000000) // 32 bytes per serial number, would cause roughly 32MB memory
+	viper.SetDefault("coordinator.limits.dependency-graph-update-timeout", 1*time.Millisecond)
 }

@@ -8,8 +8,6 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
-const maxSerialNumbersEntries = 1000000 // 32 bytes per serial number, would cause roughly 32MB memory
-
 type dependencyMgr struct {
 	inputChan              chan *token.Block
 	inputChanStatusUpdate  chan []*TxStatus
@@ -20,8 +18,10 @@ type dependencyMgr struct {
 	snToNodes     map[string]map[*node]struct{}
 	nodes         map[TxSeqNum]*node
 
-	stopSignalCh chan struct{}
-	metrics      *metrics.Metrics
+	stopSignalCh                 chan struct{}
+	maxGraphSize                 int
+	dependencyGraphUpdateTimeout time.Duration
+	metrics                      *metrics.Metrics
 }
 
 type node struct {
@@ -31,16 +31,18 @@ type node struct {
 	dependsOn     map[*node]struct{}
 }
 
-func newDependencyMgr(metrics *metrics.Metrics) *dependencyMgr {
+func newDependencyMgr(maxGraphSize int, dependencyGraphUpdateTimeout time.Duration, metrics *metrics.Metrics) *dependencyMgr {
 	m := &dependencyMgr{
-		inputChan:              make(chan *token.Block, defaultChannelBufferSize),
-		inputChanStatusUpdate:  make(chan []*TxStatus, defaultChannelBufferSize),
-		c:                      sync.NewCond(&sync.Mutex{}),
-		snToNodes:              map[string]map[*node]struct{}{},
-		nodes:                  map[TxSeqNum]*node{},
-		stopSignalCh:           make(chan struct{}),
-		outputChanStatusUpdate: make(chan []*TxStatus, defaultChannelBufferSize),
-		metrics:                metrics,
+		inputChan:                    make(chan *token.Block, defaultChannelBufferSize),
+		inputChanStatusUpdate:        make(chan []*TxStatus, defaultChannelBufferSize),
+		c:                            sync.NewCond(&sync.Mutex{}),
+		snToNodes:                    map[string]map[*node]struct{}{},
+		nodes:                        map[TxSeqNum]*node{},
+		stopSignalCh:                 make(chan struct{}),
+		outputChanStatusUpdate:       make(chan []*TxStatus, defaultChannelBufferSize),
+		maxGraphSize:                 maxGraphSize,
+		dependencyGraphUpdateTimeout: dependencyGraphUpdateTimeout,
+		metrics:                      metrics,
 	}
 
 	if metrics.Enabled {
@@ -74,7 +76,7 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 	m.c.L.Lock()
 	defer m.c.L.Unlock()
 
-	for len(m.snToNodes) >= maxSerialNumbersEntries {
+	for len(m.snToNodes) >= m.maxGraphSize {
 		m.c.Wait()
 	}
 
@@ -132,7 +134,7 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 					m.metrics.DependencyMgrStatusUpdateChLength.Set(len(m.inputChanStatusUpdate))
 				}
 
-			case <-time.After(1 * time.Millisecond):
+			case <-time.After(m.dependencyGraphUpdateTimeout):
 				if len(notYetSeenTxs) > 0 {
 					notYetSeenTxs = m.updateGraphWithValidatedTxs(notYetSeenTxs)
 				}

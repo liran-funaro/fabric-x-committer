@@ -3,6 +3,5 @@ shards-service:
     name: "rocksdb"
     root-dir: "./"
   limits:
-    max-goroutines: 100
     max-phase-one-response-batch-item-count: 100
     phase-one-response-cut-timeout: 50ms

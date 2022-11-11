@@ -12,18 +12,23 @@ import (
 var logger = logging.New("coordiantor")
 
 type Coordinator struct {
-	dependencyMgr   *dependencyMgr
-	sigVerifierMgr  *sigVerifierMgr
-	shardsServerMgr *shardsServerMgr
-	stopSignalCh    chan struct{}
-	metrics         *metrics.Metrics
+	dependencyMgr          *dependencyMgr
+	sigVerifierMgr         *sigVerifierMgr
+	shardsServerMgr        *shardsServerMgr
+	stopSignalCh           chan struct{}
+	shardRequestCutTimeout time.Duration
+	metrics                *metrics.Metrics
 }
 
-func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, metrics *metrics.Metrics) (*Coordinator, error) {
+func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, limitsConfig *LimitsConfig, metrics *metrics.Metrics) (*Coordinator, error) {
 	logger.Infof("Starting coordinator with params:\n"+
 		"\t %d Sig verifiers: %v\n"+
 		"\t %d Shard servers: %v\n"+
-		"\t Total metrics: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), len(metrics.AllMetrics()))
+		"\t Limits:\n"+
+		"\t\t Shard request cut timeout: %v\n"+
+		"\t\t Dependency graph update timeout: %v\n"+
+		"\t\t Max dependency graph size: %d\n"+
+		"\t Total metrics: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), limitsConfig.ShardRequestCutTimeout, limitsConfig.DependencyGraphUpdateTimeout, limitsConfig.MaxDependencyGraphSize, len(metrics.AllMetrics()))
 	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metrics)
 	if err != nil {
 		return nil, err
@@ -33,11 +38,12 @@ func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrC
 		return nil, err
 	}
 	c := &Coordinator{
-		dependencyMgr:   newDependencyMgr(metrics),
-		sigVerifierMgr:  sigVerifierMgr,
-		shardsServerMgr: shardsServerMgr,
-		stopSignalCh:    make(chan struct{}),
-		metrics:         metrics,
+		dependencyMgr:          newDependencyMgr(limitsConfig.MaxDependencyGraphSize, limitsConfig.DependencyGraphUpdateTimeout, metrics),
+		sigVerifierMgr:         sigVerifierMgr,
+		shardsServerMgr:        shardsServerMgr,
+		stopSignalCh:           make(chan struct{}),
+		shardRequestCutTimeout: limitsConfig.ShardRequestCutTimeout,
+		metrics:                metrics,
 	}
 	c.startTxProcessingRoutine()
 	c.startTxValidationProcessorRoutine()
@@ -115,7 +121,7 @@ func (c *Coordinator) startTxProcessingRoutine() {
 					c.metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))
-			case <-time.After(1 * time.Millisecond):
+			case <-time.After(c.shardRequestCutTimeout):
 				if len(remainings) > 0 {
 					sendDependencyFreeTxsToShardsServers(remainings)
 				}

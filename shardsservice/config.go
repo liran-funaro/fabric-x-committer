@@ -23,7 +23,6 @@ type DatabaseConfig struct {
 }
 
 type LimitsConfig struct {
-	MaxGoroutines                     uint32        `mapstructure:"max-goroutines"`
 	MaxPhaseOneResponseBatchItemCount uint32        `mapstructure:"max-phase-one-response-batch-item-count"`
 	MaxShardInstancesBufferSize       uint32        `mapstructure:"max-shard-instances-buffer-size"`
 	MaxPendingCommitsBufferSize       uint32        `mapstructure:"max-pending-commits-buffer-size"`
@@ -51,7 +50,6 @@ func init() {
 	viper.SetDefault("shards-service.database.type", "rocksdb")
 	viper.SetDefault("shards-service.database.root-dir", "./")
 
-	viper.SetDefault("shards-service.limits.max-goroutines", 100)
 	viper.SetDefault("shards-service.limits.max-phase-one-response-batch-item-count", 100)
 	viper.SetDefault("shards-service.limits.phase-one-response-cut-timeout", 50*time.Millisecond)
 	viper.SetDefault("shards-service.limits.max-shard-instances-buffer-size", 1_000_000)

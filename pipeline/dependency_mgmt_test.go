@@ -11,7 +11,7 @@ import (
 
 func TestDependencyMgr(t *testing.T) {
 	setup := func() *dependencyMgr {
-		m := newDependencyMgr(metrics.New(false))
+		m := newDependencyMgr(1000000, 1*time.Millisecond, metrics.New(false))
 		block0 := &token.Block{
 			Number: 0,
 			Txs: []*token.Tx{
@@ -177,7 +177,7 @@ func TestDependencyMgr(t *testing.T) {
 	})
 
 	t.Run("timeout", func(t *testing.T) {
-		m := newDependencyMgr(metrics.New(false))
+		m := newDependencyMgr(1000000, 1*time.Millisecond, metrics.New(false))
 		m.inputChanStatusUpdate <- []*TxStatus{
 			{
 				TxSeqNum: TxSeqNum{

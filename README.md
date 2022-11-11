@@ -61,6 +61,7 @@ coordinator:
       - endpoint: "localhost:5001"
         num-shards: 1
   delete-existing-shards: true
+  prefix-size-for-shard-calculation: 2
 ```
 
 Next we start the services, each in a terminal window:
