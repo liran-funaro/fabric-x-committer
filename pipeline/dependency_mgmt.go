@@ -74,7 +74,9 @@ func (m *dependencyMgr) startBlockRecieverRoutine() {
 }
 
 func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
+	beforeLock := time.Now()
 	m.c.L.Lock()
+	unlocked := time.Now()
 	defer m.c.L.Unlock()
 
 	for len(m.snToNodes) >= m.maxGraphSize {
@@ -111,6 +113,11 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 				m.snToNodes[string(sn)] = existingNodes
 			}
 		}
+		if m.metrics.Enabled {
+			m.metrics.RequestTracer.AddEventAt(blkNumTxNum, "Waiting to add TX to graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(blkNumTxNum, "Adding TX to graph", unlocked)
+			m.metrics.RequestTracer.AddEvent(blkNumTxNum, "Added TX to graph")
+		}
 	}
 
 	m.numBlocksSeen = b.Number + 1
@@ -145,38 +152,44 @@ func (m *dependencyMgr) startStatusUpdateProcessorRoutine() {
 }
 
 func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNum) (map[TxSeqNum][][]byte, []TxSeqNum) {
+	beforeLock := time.Now()
 	m.c.L.Lock()
+	unlocked := time.Now()
 	defer m.c.L.Unlock()
 
-	dependencyFreeTxs := map[TxSeqNum][][]byte{}
+	dependencyFreeTxs := make(map[TxSeqNum][][]byte, len(enquirySet))
 	dependentOrNotYetSeenTxs := []TxSeqNum{}
 
 	for _, e := range enquirySet {
 		node, ok := m.nodes[e]
 		if ok && len(node.dependsOn) == 0 {
 			dependencyFreeTxs[e] = node.serialNumbers
-			continue
-		}
-
-		if !ok && m.hasSeen(e.BlkNum) {
+		} else if !ok && m.hasSeen(e.BlkNum) {
 			// This can happen only if the transaction is already invalidated by dependency graph because one of its dependency got validated
-			continue
+		} else {
+			dependentOrNotYetSeenTxs = append(dependentOrNotYetSeenTxs, e)
 		}
 
-		dependentOrNotYetSeenTxs = append(dependentOrNotYetSeenTxs, e)
+		if m.metrics.Enabled {
+			m.metrics.RequestTracer.AddEventAt(e, "Waiting to query graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(e, "Querying graph", unlocked)
+			m.metrics.RequestTracer.AddEvent(e, "Finished querying graph")
+		}
 	}
 	return dependencyFreeTxs, dependentOrNotYetSeenTxs
 }
 
 func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxStatus {
+	beforeLock := time.Now()
 	m.c.L.Lock()
+	unlocked := time.Now()
 	defer func() {
 		m.c.Signal()
 		m.c.L.Unlock()
 	}()
 
 	notYetSeenTxs := []*TxStatus{}
-	processedTxs := []*TxStatus{}
+	processedTxs := make([]*TxStatus, 0, len(toUpdate))
 	cascadeInvalidatedTxs := map[TxSeqNum]struct{}{}
 
 	for _, u := range toUpdate {
@@ -196,8 +209,10 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		before := time.Now()
 		m.removeNodeUnderAcquiredLock(node, u.Status == VALID, cascadeInvalidatedTxs)
 		if m.metrics.Enabled {
-			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Will remove node from dependency graph", before)
-			m.metrics.RequestTracer.AddEvent(u.TxSeqNum, "Removed node from dependency graph")
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Waiting to remove TX from graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Removing TX from graph", unlocked)
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Starting removal of TX from dependency graph", before)
+			m.metrics.RequestTracer.AddEvent(u.TxSeqNum, "Removed TX from dependency graph")
 		}
 	}
 
@@ -218,14 +233,10 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		sent := time.Now()
 		for _, status := range processedTxs {
 			m.metrics.RequestTracer.EndAt(status.TxSeqNum, sent, status.Status.String())
-			//	if status.Status == VALID {
-			//		m.metrics.StatusProcessLatency.End(status.TxSeqNum, sent)
-			//	}
 		}
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))
 		m.metrics.DependencyMgrOutputChLength.Set(len(m.outputChanStatusUpdate))
-		m.metrics.NotSeenTxs.Set(float64(len(notYetSeenTxs)))
 	}
 	return notYetSeenTxs
 }

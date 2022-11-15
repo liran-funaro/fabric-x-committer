@@ -10,7 +10,7 @@ sig-verification:
     # The verification results are not grouped based on their initial block, but they return immediately after they are calculated.
     # To avoid the overhead of sending each TX separately, we group them in batches.
     # If we don't have enough responses to create a batch for a period of (batch-time-cutoff), then we emit a batch with all results waiting to be included into the next batch.
-    batch-time-cutoff: 500ms
+    batch-time-cutoff: 10ms
     batch-size-cutoff: 50
     channel-buffer-size: 50
 

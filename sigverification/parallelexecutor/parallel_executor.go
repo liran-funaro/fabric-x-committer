@@ -1,10 +1,11 @@
 package parallelexecutor
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
@@ -82,9 +83,6 @@ func New(executor ExecutorFunc, config *Config, metrics *metrics.Metrics) Parall
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		if e.metrics.Enabled {
-			e.metrics.ParallelExecutorInputChLength.Set(len(channel))
-		}
 		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
 		output, err := e.executor(input)
 		if err != nil {
@@ -93,9 +91,10 @@ func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 		} else {
 			logger.Debugf("Received output from executor %d: %v", idx, output)
 			e.outputAggregationCh <- output
-			if e.metrics.Enabled {
-				e.metrics.ParallelExecutorOutputChLength.Set(len(e.outputAggregationCh))
-			}
+		}
+		if e.metrics.Enabled {
+			e.metrics.ParallelExecutorInputChLength.Set(len(channel))
+			e.metrics.ParallelExecutorOutputChLength.Set(len(e.outputAggregationCh))
 		}
 	}
 }
@@ -119,14 +118,22 @@ func (e *parallelExecutor) handleTimeManualCutoff() {
 
 func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Output {
 	if len(buffer) < minBatchSize {
+		if e.metrics.Enabled {
+			for _, tx := range buffer {
+				e.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Too small batch. Postponing batch cut.")
+			}
+		}
 		return buffer
 	}
 	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
-	e.outputCh <- buffer[:batchSize]
 	if e.metrics.Enabled {
 		e.metrics.ParallelExecutorOutTxs.Add(batchSize)
+		for _, tx := range buffer {
+			e.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Cutting batch. Will send TX to output.")
+		}
 	}
+	e.outputCh <- buffer[:batchSize]
 	return e.cutBatch(buffer[batchSize:], minBatchSize)
 }
 

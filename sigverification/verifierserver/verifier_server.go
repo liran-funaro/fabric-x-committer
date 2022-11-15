@@ -3,6 +3,8 @@ package verifierserver
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
@@ -81,16 +83,17 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
 	}
-	if s.metrics.Enabled {
-		s.metrics.RequestTracer.AddEvent(token.TxSeqNum{request.BlockNum, request.TxNum}, "Start verification")
-	}
+	txSeqNum := token.TxSeqNum{request.BlockNum, request.TxNum}
+	start := time.Now()
+
 	if err := s.verifier.VerifyTx(request.Tx); err != nil {
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true
 	}
 	if s.metrics.Enabled {
-		s.metrics.RequestTracer.AddEvent(token.TxSeqNum{request.BlockNum, request.TxNum}, "End verification")
+		s.metrics.RequestTracer.AddEventAt(txSeqNum, "Start verification", start)
+		s.metrics.RequestTracer.AddEvent(txSeqNum, "End verification")
 	}
 	return response, nil
 }

@@ -3,13 +3,15 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"sync"
 )
 
 type sigVerifierMgr struct {
@@ -29,7 +31,7 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig, metrics *metrics.Metrics) (*
 
 	verifiers := []*sigVerifier{}
 	for _, a := range c.Endpoints {
-		v, err := newSigVerifier(a, responseCollectionChan)
+		v, err := newSigVerifier(a, responseCollectionChan, metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +53,9 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig, metrics *metrics.Metrics) (*
 		metrics.SigVerifierMgrInvalidOutputChLength.SetCapacity(defaultChannelBufferSize)
 	}
 
-	m.startBlockReceiverRoutine()
+	for _, v := range verifiers {
+		m.startBlockReceiverRoutine(v)
+	}
 	m.startOutputWriterRoutine()
 	return m, nil
 }
@@ -66,28 +70,15 @@ func (m *sigVerifierMgr) setVerificationKey(k *sigverification.Key) error {
 	return nil
 }
 
-func (m *sigVerifierMgr) startBlockReceiverRoutine() {
+func (m *sigVerifierMgr) startBlockReceiverRoutine(v *sigVerifier) {
 	go func() {
-		i := 0
 		for {
-			v := m.verifiers[i]
-			if i == len(m.verifiers)-1 {
-				i = 0
-			} else {
-				i++
-			}
 			select {
 			case <-m.stopSignalCh:
 				return
 			case b := <-m.inputChan:
 				v.sendCh <- b
 				if m.metrics.Enabled {
-					//sent := time.Now()
-					//for i := range b.Txs {
-					//	m.metrics.RequestTracer.AddEventAt(TxSeqNum{b.Number, uint64(i)}, "Sent request to sigverifier", sent)
-					//}
-					//m.metrics.PreSignatureLatency.End(b.Number, sent)
-					//m.metrics.SignatureLatency.Begin(b.Number, len(b.Txs), sent)
 					m.metrics.SigVerifierMgrInTxs.Add(len(b.Txs))
 					m.metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
 				}
@@ -120,6 +111,15 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 					}
 				}
 
+				if m.metrics.Enabled {
+					for _, tx := range valids {
+						m.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigverifier")
+					}
+					for _, tx := range invalids {
+						m.metrics.RequestTracer.AddEvent(tx, "Received invalid response from sigverifier")
+					}
+				}
+
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
 					if m.metrics.Enabled {
@@ -134,11 +134,6 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 					}
 				}
 				if m.metrics.Enabled {
-					//for _, tx := range responseBatch.GetResponses() {
-					//	m.metrics.RequestTracer.AddEventAt(TxSeqNum{tx.BlockNum, tx.TxNum}, "Received response from sigverifier", received)
-					//	m.metrics.SignatureLatency.End(tx.BlockNum, received)
-					//	m.metrics.PostSignatureLatency.Begin(TxSeqNum{tx.BlockNum, tx.TxNum}, 1, received)
-					//}
 					m.metrics.SigVerifierMgrOutTxs.Add(len(responseBatch.Responses))
 				}
 			}
@@ -164,9 +159,10 @@ type sigVerifier struct {
 
 	stopSignalCh chan struct{}
 	stopWG       sync.WaitGroup
+	metrics      *metrics.Metrics
 }
 
-func newSigVerifier(endpoint *connection.Endpoint, responseCollectionChan chan<- *sigverification.ResponseBatch) (*sigVerifier, error) {
+func newSigVerifier(endpoint *connection.Endpoint, responseCollectionChan chan<- *sigverification.ResponseBatch, metrics *metrics.Metrics) (*sigVerifier, error) {
 
 	conn, err := grpc.Dial(
 		endpoint.Address(),
@@ -191,6 +187,7 @@ func newSigVerifier(endpoint *connection.Endpoint, responseCollectionChan chan<-
 		streamContextCancel: cancel,
 		sendCh:              make(chan *token.Block, defaultChannelBufferSize),
 		stopSignalCh:        make(chan struct{}),
+		metrics:             metrics,
 	}
 
 	v.startRequestSenderRoutine()
@@ -211,6 +208,7 @@ func (v *sigVerifier) startRequestSenderRoutine() {
 				return
 			case b := <-v.sendCh:
 				reqs := make([]*sigverification.Request, len(b.Txs))
+
 				for i, tx := range b.Txs {
 					reqs[i] = &sigverification.Request{
 						BlockNum: b.Number,
@@ -218,8 +216,15 @@ func (v *sigVerifier) startRequestSenderRoutine() {
 						Tx:       tx,
 					}
 				}
-
+				before := time.Now()
 				err := v.stream.Send(&sigverification.RequestBatch{Requests: reqs})
+				if v.metrics.Enabled {
+					for _, req := range reqs {
+						txSeqNum := TxSeqNum{req.BlockNum, req.TxNum}
+						v.metrics.RequestTracer.AddEventAt(txSeqNum, "Sending request to sigverifier", before)
+						v.metrics.RequestTracer.AddEvent(txSeqNum, "Sent request to sigverifier")
+					}
+				}
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
 				}
@@ -239,6 +244,12 @@ func (v *sigVerifier) startResponseRecieverRoutine(c chan<- *sigverification.Res
 
 			if err != nil {
 				panic(fmt.Sprintf("Error while reaading sig verification response batch on stream: %s", err))
+			}
+
+			if v.metrics.Enabled {
+				for _, response := range responseBatch.Responses {
+					v.metrics.RequestTracer.AddEvent(TxSeqNum{response.BlockNum, response.TxNum}, "Received response from sigverifier")
+				}
 			}
 			c <- responseBatch
 		}

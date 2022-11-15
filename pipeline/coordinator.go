@@ -29,7 +29,8 @@ func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrC
 		"\t\t Shard request cut timeout: %v\n"+
 		"\t\t Dependency graph update timeout: %v\n"+
 		"\t\t Max dependency graph size: %d\n"+
-		"\t Total metrics: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), limitsConfig.ShardRequestCutTimeout, limitsConfig.DependencyGraphUpdateTimeout, limitsConfig.MaxDependencyGraphSize, len(metrics.AllMetrics()))
+		"\t\t Invalid Sig Response Cutoff Size: %d\n"+
+		"\t Total metrics: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), limitsConfig.ShardRequestCutTimeout, limitsConfig.DependencyGraphUpdateTimeout, limitsConfig.MaxDependencyGraphSize, limitsConfig.InvalidSigBatchCutoffSize, len(metrics.AllMetrics()))
 	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metrics)
 	if err != nil {
 		return nil, err
@@ -57,7 +58,11 @@ func (c *Coordinator) SetSigVerificationKey(k *sigverification.Key) error {
 }
 
 func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
-	before := time.Now()
+	if c.metrics.Enabled {
+		for txNum := range block.GetTxs() {
+			c.metrics.RequestTracer.Start(TxSeqNum{block.Number, uint64(txNum)})
+		}
+	}
 	c.dependencyMgr.inputChan <- block
 	depMgrSent := time.Now()
 	c.sigVerifierMgr.inputChan <- block
@@ -65,13 +70,9 @@ func (c *Coordinator) ProcessBlockAsync(block *token.Block) {
 	if c.metrics.Enabled {
 		for txNum := range block.GetTxs() {
 			txId := TxSeqNum{block.Number, uint64(txNum)}
-			c.metrics.RequestTracer.StartAt(txId, before)
 			c.metrics.RequestTracer.AddEventAt(txId, "Sent to dependency manager", depMgrSent)
 			c.metrics.RequestTracer.AddEventAt(txId, "Sent to sigver manager", sigVerMgrSent)
 		}
-		c.metrics.WaitingDepMgrIn.Observe(float64(depMgrSent.Sub(before)))
-		c.metrics.WaitingSigVerMgrIn.Observe(float64(sigVerMgrSent.Sub(depMgrSent)))
-		//c.metrics.PreSignatureLatency.Begin(block.Number, 1, sigVerMgrSent)
 		c.metrics.DependencyMgrInputChLength.Set(len(c.dependencyMgr.inputChan))
 		c.metrics.SigVerifierMgrInputChLength.Set(len(c.sigVerifierMgr.inputChan))
 		c.metrics.CoordinatorInTxs.Add(len(block.Txs))
@@ -99,14 +100,11 @@ func (c *Coordinator) startTxProcessingRoutine() {
 			intersectionCalculated := time.Now()
 			c.shardsServerMgr.inputChan <- intersection
 			if c.metrics.Enabled {
-				waitingDuration := float64(time.Now().Sub(intersectionCalculated))
+				//waitingDuration := float64(time.Now().Sub(intersectionCalculated))
 				sentToShardServer := time.Now()
 				for tx := range intersection {
 					c.metrics.RequestTracer.AddEventAt(tx, "Intersection calculated", intersectionCalculated)
 					c.metrics.RequestTracer.AddEventAt(tx, "Sent to shard server", sentToShardServer)
-					c.metrics.WaitingPhaseOneIn.Observe(waitingDuration)
-					//	c.metrics.PrePhaseOneLatency.End(tx, intersectionCalculated)
-					c.metrics.PhaseOneLatency.Begin(tx, 1, intersectionCalculated)
 				}
 				c.metrics.DependencyMgrOutTxs.Add(len(intersection))
 				c.metrics.ShardMgrInputChLength.Set(len(c.shardsServerMgr.inputChan))
@@ -124,11 +122,8 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				if c.metrics.Enabled {
-					received := time.Now()
 					for _, tx := range sigVerifiedTxs {
-						c.metrics.RequestTracer.AddEventAt(tx, "Received valid response from sigver manager", received)
-						//	c.metrics.PostSignatureLatency.End(tx, received)
-						//	c.metrics.PrePhaseOneLatency.Begin(tx, 1, received)
+						c.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigver manager")
 					}
 					c.metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
@@ -151,18 +146,9 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 			case <-c.stopSignalCh:
 				return
 			case status := <-c.shardsServerMgr.outputChan:
-
-				invalidTxs = append(invalidTxs, status...)
-				if len(invalidTxs) < c.invalidSigResponseCutoffSize {
-					continue
-				}
-
 				if c.metrics.Enabled {
-					received := time.Now()
 					for _, tx := range status {
-						c.metrics.RequestTracer.AddEventAt(tx.TxSeqNum, "Received response from shards server manager", received)
-						c.metrics.PhaseOneLatency.End(tx.TxSeqNum, received)
-						//c.metrics.StatusProcessLatency.Begin(tx.TxSeqNum, 1, received)
+						c.metrics.RequestTracer.AddEvent(tx.TxSeqNum, "Received response from shards server manager")
 					}
 					c.metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
@@ -184,9 +170,8 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 				}
 				c.processValidationStatus(invalidTxs)
 				if c.metrics.Enabled {
-					received := time.Now()
 					for _, tx := range invalidTxs {
-						c.metrics.RequestTracer.AddEventAt(tx.TxSeqNum, "Received invalid response from sigver manager", received)
+						c.metrics.RequestTracer.AddEvent(tx.TxSeqNum, "Received invalid response from sigver manager")
 						//	c.metrics.PostSignatureLatency.End(tx.TxSeqNum, received)
 					}
 					c.metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
