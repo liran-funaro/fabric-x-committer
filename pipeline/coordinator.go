@@ -12,12 +12,13 @@ import (
 var logger = logging.New("coordiantor")
 
 type Coordinator struct {
-	dependencyMgr          *dependencyMgr
-	sigVerifierMgr         *sigVerifierMgr
-	shardsServerMgr        *shardsServerMgr
-	stopSignalCh           chan struct{}
-	shardRequestCutTimeout time.Duration
-	metrics                *metrics.Metrics
+	dependencyMgr                *dependencyMgr
+	sigVerifierMgr               *sigVerifierMgr
+	shardsServerMgr              *shardsServerMgr
+	stopSignalCh                 chan struct{}
+	shardRequestCutTimeout       time.Duration
+	invalidSigResponseCutoffSize int
+	metrics                      *metrics.Metrics
 }
 
 func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrConfig *ShardsServerMgrConfig, limitsConfig *LimitsConfig, metrics *metrics.Metrics) (*Coordinator, error) {
@@ -38,12 +39,13 @@ func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrC
 		return nil, err
 	}
 	c := &Coordinator{
-		dependencyMgr:          newDependencyMgr(limitsConfig.MaxDependencyGraphSize, limitsConfig.DependencyGraphUpdateTimeout, metrics),
-		sigVerifierMgr:         sigVerifierMgr,
-		shardsServerMgr:        shardsServerMgr,
-		stopSignalCh:           make(chan struct{}),
-		shardRequestCutTimeout: limitsConfig.ShardRequestCutTimeout,
-		metrics:                metrics,
+		dependencyMgr:                newDependencyMgr(limitsConfig.MaxDependencyGraphSize, limitsConfig.DependencyGraphUpdateTimeout, metrics),
+		sigVerifierMgr:               sigVerifierMgr,
+		shardsServerMgr:              shardsServerMgr,
+		stopSignalCh:                 make(chan struct{}),
+		shardRequestCutTimeout:       limitsConfig.ShardRequestCutTimeout,
+		invalidSigResponseCutoffSize: limitsConfig.InvalidSigBatchCutoffSize,
+		metrics:                      metrics,
 	}
 	c.startTxProcessingRoutine()
 	c.startTxValidationProcessorRoutine()
@@ -141,12 +143,20 @@ func (c *Coordinator) startTxProcessingRoutine() {
 }
 
 func (c *Coordinator) startTxValidationProcessorRoutine() {
+	invalidTxs := make([]*TxStatus, 0, c.invalidSigResponseCutoffSize*2)
+
 	go func() {
 		for {
 			select {
 			case <-c.stopSignalCh:
 				return
 			case status := <-c.shardsServerMgr.outputChan:
+
+				invalidTxs = append(invalidTxs, status...)
+				if len(invalidTxs) < c.invalidSigResponseCutoffSize {
+					continue
+				}
+
 				if c.metrics.Enabled {
 					received := time.Now()
 					for _, tx := range status {
@@ -156,24 +166,32 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 					}
 					c.metrics.ShardMgrOutputChLength.Set(len(c.shardsServerMgr.outputChan))
 				}
+				if len(invalidTxs) > 0 {
+					status = append(status, invalidTxs...)
+					invalidTxs = make([]*TxStatus, 0, 2*c.invalidSigResponseCutoffSize)
+				}
 				c.processValidationStatus(status)
 			case invalids := <-c.sigVerifierMgr.outputChanInvalids:
-				invalidStatus := make([]*TxStatus, len(invalids))
 				for i := 0; i < len(invalids); i++ {
-					invalidStatus[i] = &TxStatus{
+					invalidTxs = append(invalidTxs, &TxStatus{
 						TxSeqNum: invalids[i],
 						Status:   INVALID_SIGNATURE,
-					}
+					})
 				}
-				c.processValidationStatus(invalidStatus)
+
+				if len(invalidTxs) < c.invalidSigResponseCutoffSize {
+					continue
+				}
+				c.processValidationStatus(invalidTxs)
 				if c.metrics.Enabled {
 					received := time.Now()
-					for _, tx := range invalidStatus {
+					for _, tx := range invalidTxs {
 						c.metrics.RequestTracer.AddEventAt(tx.TxSeqNum, "Received invalid response from sigver manager", received)
 						//	c.metrics.PostSignatureLatency.End(tx.TxSeqNum, received)
 					}
 					c.metrics.SigVerifierMgrInvalidOutputChLength.Set(len(c.sigVerifierMgr.outputChanInvalids))
 				}
+				invalidTxs = make([]*TxStatus, 0, 2*c.invalidSigResponseCutoffSize)
 			}
 		}
 	}()

@@ -51,6 +51,7 @@ type LimitsConfig struct {
 	ShardRequestCutTimeout       time.Duration `mapstructure:"shard-request-cut-timeout"`
 	MaxDependencyGraphSize       int           `mapstructure:"max-dependency-graph-size"`
 	DependencyGraphUpdateTimeout time.Duration `mapstructure:"dependency-graph-update-timeout"`
+	InvalidSigBatchCutoffSize    int           `mapstructure:"invalid-sig-batch-cutoff-size"`
 }
 
 func ReadConfig() CoordinatorConfig {
@@ -79,4 +80,5 @@ func init() {
 	viper.SetDefault("coordinator.limits.shard-request-cut-timeout", 1*time.Millisecond)
 	viper.SetDefault("coordinator.limits.max-dependency-graph-size", 1000000) // 32 bytes per serial number, would cause roughly 32MB memory
 	viper.SetDefault("coordinator.limits.dependency-graph-update-timeout", 1*time.Millisecond)
+	viper.SetDefault("coordinator.limits.invalid-sig-batch-cutoff-size", 1*time.Millisecond)
 }

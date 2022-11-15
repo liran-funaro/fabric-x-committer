@@ -40,6 +40,13 @@ coordinator:
     # If the TXs resolve at very slow rates, it could be that in the meantime a TX has been inserted into the dependency graph and it is still in our "pending" list.
     # To this end, we have a periodic check that only checks whether any "pending" TX has been resolved in the graph, so that we can remove it.
     dependency-graph-update-timeout: 1ms
+    # Each sig verifier response batch contains two parts: valid and invalid TXs.
+    # The invalid TXs are integrated into the dependency graph right after they arrive, which means a lock has to be obtained and the maps must be accordingly updated.
+    # When the result contains a small number of invalid TXs, it will still be integrated and the locks will be acquired.
+    # To reduce the overhead of this update, we batch them together, and we trigger a dependency-graph update only if we have accumulated enough TXs.
+    # In the case of very scarce invalid signatures, the batch size may not be accumulated, so the invalid TXs will wait long before they are integrated into the dependency graph.
+    # To this end, we will also integrate all existing invalid TXs every time we receive a batch of valid TXs (from the shard server), as well.
+    invalid-sig-batch-cutoff-size: 1000
 
 logging:
   enabled: true
