@@ -1,25 +1,16 @@
-name: profile1
+blockgen:
+  endpoint: tokentestbed2.sl.cloud9.ibm.com:5002
+  prometheus:
+    endpoint: :2112
+    latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
+  generator:
+    profile: ./profile-blockgen.yaml
+#    limits:
+#      parallelism: 3
+#      channel-buffer-size: 10
 
-description: some text
-
-# block configuration
-block:
-  # number of blocks we generate
-  # -1 indicates streaming infinite number of blocks
-  count: -1
-  # number of transactions per block
-  size: 100
-
-# transaction configuration
-transaction:
-  # number of serial numbers per transaction
-  size:
-    - value: 2
-      probability: 1
-  # signature scheme
-  signaturetype: ecdsa
-# Introduce conflicts into our block stream
-conflicts:
-  statistical:
-    invalidsignature: 0.0
-    doublespends: 0.0
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt

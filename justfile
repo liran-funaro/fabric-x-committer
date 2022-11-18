@@ -111,12 +111,10 @@ deploy-bins:
 gather-configs dstpath=(config-build-out):
     mkdir -p {{dstpath}}
     cp ./config/config-*.yaml {{dstpath}}
+    cp ./config/profile-blockgen.yaml {{dstpath}}
 
 deploy-configs configpath=(config-build-out):
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=blockgen" --extra-vars "configpath={{configpath}}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=coordinator" --extra-vars "configpath={{configpath}}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=shardsservice" --extra-vars "configpath={{configpath}}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "servicename=sigservice" --extra-vars "configpath={{configpath}}"
+    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml"
 
 ### Experiments
 
@@ -154,8 +152,8 @@ run-experiment-suite  experiment_name shard_servers_arr=("3") large_txs_arr=("0.
     just gather-results "{{experiment-tracking-dir}}/{{experiment_name}}.csv" "{{experiment-results-dir}}/{{experiment_name}}.csv"
 
 run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100"):
-    ansible-playbook "{{playbook-path}}/60-config-experiment.yaml" --extra-vars "{'src_config_dir': {{config-build-out}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}}"
-    ansible-playbook "{{playbook-path}}/70-run-experiment.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
+    ansible-playbook "{{playbook-path}}/60-config-experiment.yaml" --extra-vars "{'src_config_dir': {{config-build-out}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}, 'coordinator_endpoint': $(just list-hosts coordinators)}"
+#    ansible-playbook "{{playbook-path}}/70-run-experiment.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
 
 gather-results tracker_file result_file:
     mkdir -p {{experiment-results-dir}}

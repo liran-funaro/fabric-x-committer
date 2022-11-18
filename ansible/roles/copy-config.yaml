@@ -1,0 +1,12 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Copy config file
+  copy:
+    src: "{{ '../../' + configpath + '/' + item }}"
+    dest: "{{ '~/' + item }}"
+    owner: root
+    group: root
+    mode: a+rw
+  loop: "{{filenames}}"

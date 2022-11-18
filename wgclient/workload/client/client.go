@@ -57,13 +57,10 @@ func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	<-time.After(workload.ScrapingInterval)
 }
 
-func GenerateAndPump(profilePath, endpoint, prometheusEndpoint, latencyEndpoint string) {
-	pp := workload.LoadProfileFromYaml(profilePath)
+func GenerateAndPump(config workload.BlockgenStreamConfig) {
+	pp := workload.LoadProfileFromYaml(config.Generator.Profile)
 
-	tracker := workload.NewMetricTracker(monitoring.Prometheus{
-		Endpoint:        *connection.CreateEndpoint(prometheusEndpoint),
-		LatencyEndpoint: *connection.CreateEndpoint(latencyEndpoint),
-	})
+	tracker := workload.NewMetricTracker(config.Prometheus)
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)
 
@@ -76,7 +73,7 @@ func GenerateAndPump(profilePath, endpoint, prometheusEndpoint, latencyEndpoint 
 		}
 	}()
 
-	PumpToCoordinator(publicKey, bQueue, eventQueue, pp, endpoint)
+	PumpToCoordinator(publicKey, bQueue, eventQueue, pp, config.Endpoint.Address())
 }
 
 func Validate(path string) {

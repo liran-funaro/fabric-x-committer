@@ -28,7 +28,7 @@
       - include: ../roles/start-server.yaml
   - name: Start block generator
     vars:
-      blockgen_profile: config-blockgen.yaml
+      blockgen_profile: profile-blockgen.yaml
     hosts: blockgens
     gather_facts: no
     tasks:

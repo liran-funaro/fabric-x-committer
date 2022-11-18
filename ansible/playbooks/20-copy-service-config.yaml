@@ -2,13 +2,36 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-  - name: Copy a service config to respective service machines
-    hosts: "{{ servicename + '*' }}"
+  - name: Copy a configs for blockgens
+    hosts: blockgens
+    vars:
+      configpath: config
+      filenames:
+        - config-blockgen.yaml
+        - profile-blockgen.yaml
     tasks:
-      - name: Copy config file
-        copy:
-          src: "{{ '../../' + configpath + '/config-' + servicename + '.yaml' }}"
-          dest: "{{ '~/config-' + servicename + '.yaml' }}"
-          owner: root
-          group: root
-          mode: a+rw
+      - include: ../roles/copy-config.yaml
+  - name: Copy a configs for coordinator
+    hosts: coordinators
+    vars:
+      configpath: config
+      filenames:
+        - config-coordinator.yaml
+    tasks:
+      - include: ../roles/copy-config.yaml
+  - name: Copy a configs for sigservices
+    hosts: sigservices
+    vars:
+      configpath: config
+      filenames:
+        - config-sigservice.yaml
+    tasks:
+      - include: ../roles/copy-config.yaml
+  - name: Copy a configs for shardsservices
+    hosts: shardsservices
+    vars:
+      configpath: config
+      filenames:
+        - config-shardsservice.yaml
+    tasks:
+      - include: ../roles/copy-config.yaml
