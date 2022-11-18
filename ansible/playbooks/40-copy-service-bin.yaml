@@ -4,12 +4,8 @@
 ---
 
 - name: Copy binary to machines
-  hosts: "{{ servicename + '*' }}"
+  hosts: "{{target_hosts}}"
+  vars:
+    mode: a+x
   tasks:
-    - name: Copy executeable
-      copy:
-        src: "{{ '../../bin/' + servicename }}"
-        dest: "{{ '~/bin/' }}"
-        owner: root
-        group: root
-        mode: a+x
+    - include: ../roles/copy-file.yaml

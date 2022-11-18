@@ -23,7 +23,8 @@ type BlockgenStreamConfig struct {
 	Generator  GeneratorConfig       `mapstructure:"generator"`
 }
 
-func ReadConfig() BlockgenStreamConfig {
+func ReadConfig(filepaths []string) BlockgenStreamConfig {
+	config.ReadYamlConfigs(filepaths)
 	wrapper := new(struct {
 		Config BlockgenStreamConfig `mapstructure:"blockgen"`
 	})

@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-# ansible-playbook -i ./ansible/inventory/hosts.yaml ./ansible/playbooks/70-run-experiment.yaml --extra-vars '{"sig_verifiers": 3, "shard_servers": 3}'
   - name: Start sig verifiers
     vars:
       sig_verifiers: 3
       server_port: 5000
       service_name: sigservice
+      config: config-sigservice.yaml
     hosts: sigservices[0:{{sig_verifiers - 1}}]
     tasks:
       - include: ../roles/start-server.yaml
@@ -16,6 +16,7 @@
       shard_servers: 3
       server_port: 5001
       service_name: shardsservice
+      config: config-shardsservice.yaml
     hosts: shardsservices[0:{{shard_servers - 1}}]
     tasks:
       - include: ../roles/start-server.yaml
@@ -23,25 +24,19 @@
     vars:
       server_port: 5002
       service_name: coordinator
+      config: config-coordinator.yaml
     hosts: coordinators
     tasks:
       - include: ../roles/start-server.yaml
   - name: Start block generator
     vars:
-      blockgen_profile: profile-blockgen.yaml
+      service_name: blockgen stream
+      config: config-blockgen.yaml
     hosts: blockgens
-    gather_facts: no
     tasks:
-      - name: Kill tmux server
-        command: tmux kill-server
-        ignore_errors: yes
-      - name: Runs block generator
-        shell:
-          cmd: tmux new-session -s root -d "GOGC=20000 ~/bin/blockgen stream --host={{hostvars[item].ansible_host}}:5002 --profile=./{{blockgen_profile}}"
-        async: 10
-        poll: 0
-        register: result
-        loop: "{{groups['coordinators'] | list}}"
+      - include: ../roles/start-server.yaml
+        environment:
+          GOGC: 20000
       - debug: var=result
 
 

@@ -19,7 +19,7 @@ func ParseFlags() {
 	pflag.Parse()
 
 	if len(*configPaths) > 0 {
-		utils.Must(readYamlConfigs(*configPaths))
+		utils.Must(ReadYamlConfigs(*configPaths))
 	}
 
 	if err := configUpdated(); err != nil {

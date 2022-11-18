@@ -76,7 +76,7 @@ func defaultConfigFiles() []string {
 	return configFiles
 }
 
-func readYamlConfigs(configFiles []string) error {
+func ReadYamlConfigs(configFiles []string) error {
 	mergedConfigs, err := MergeYamlConfigs(configFiles...)
 	if err != nil {
 		return err
