@@ -117,7 +117,7 @@ docker-image:
 
 # Executes a command from within the docker image. Requires that docker-image be run once before, to ensure the image exists.
 docker CMD:
-    docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder:latest {{CMD}}
+    docker run --rm -it -v "$PWD":/scalable-committer --env GOPROXY=direct -w /scalable-committer sc_builder:latest {{CMD}}
 
 deploy-base-setup:
     just docker "just build-all"
