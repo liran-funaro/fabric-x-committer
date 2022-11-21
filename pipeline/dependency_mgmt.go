@@ -170,7 +170,7 @@ func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNu
 			dependentOrNotYetSeenTxs = append(dependentOrNotYetSeenTxs, e)
 		}
 
-		if m.metrics.Enabled {
+		if ok && m.metrics.Enabled {
 			m.metrics.RequestTracer.AddEventAt(e, "Waiting to query graph (lock)", beforeLock)
 			m.metrics.RequestTracer.AddEventAt(e, "Querying graph", unlocked)
 			m.metrics.RequestTracer.AddEvent(e, "Finished querying graph")
@@ -208,7 +208,7 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		processedTxs = append(processedTxs, u)
 		before := time.Now()
 		m.removeNodeUnderAcquiredLock(node, u.Status == VALID, cascadeInvalidatedTxs)
-		if m.metrics.Enabled {
+		if ok && m.metrics.Enabled {
 			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Waiting to remove TX from graph (lock)", beforeLock)
 			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Removing TX from graph", unlocked)
 			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Starting removal of TX from dependency graph", before)

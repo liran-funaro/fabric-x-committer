@@ -23,7 +23,7 @@ type ConflictHandler interface {
 type statisticalConflictHandler struct {
 	invalidSignatureGenerator *test.BooleanGenerator
 	doubleSpendGenerator      *test.BooleanGenerator
-	doubleSpendTx             token.Tx
+	doubleSpendTx             *slidingSlice
 	signFnc                   SignerFunc
 }
 
@@ -32,26 +32,52 @@ func NewStatisticalConflicts(profile *StatisticalConflicts, signerFunc SignerFun
 		invalidSignatureGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.InvalidSignature, 100),
 		doubleSpendGenerator:      test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.DoubleSpends, 101),
 		signFnc:                   signerFunc,
+		doubleSpendTx:             NewSlidingSlice(100),
 	}
 }
 
-func (h *statisticalConflictHandler) ApplyConflicts(_ token.TxSeqNum, tx *token.Tx) coordinatorservice.Status {
-	// Store the first TX to use it for double spends
-	if len(h.doubleSpendTx.SerialNumbers) == 0 {
-		h.doubleSpendTx = *tx
-		return coordinatorservice.Status_VALID
-	}
+type slidingSlice struct {
+	items      []token.Tx
+	start, end int
+}
 
+func NewSlidingSlice(length int) *slidingSlice {
+	return &slidingSlice{items: make([]token.Tx, length)}
+}
+
+func (s *slidingSlice) Push(item token.Tx) {
+	s.items[s.end%len(s.items)] = item
+	s.end++
+}
+func (s *slidingSlice) Pop() token.Tx {
+	item := s.items[s.start%len(s.items)]
+	s.start++
+	return item
+}
+func (s *slidingSlice) IsEmpty() bool {
+	return s.start == s.end
+}
+func (s *slidingSlice) IsFull() bool {
+	return s.start == s.end-len(s.items)
+}
+
+func (h *statisticalConflictHandler) ApplyConflicts(_ token.TxSeqNum, tx *token.Tx) coordinatorservice.Status {
 	if h.invalidSignatureGenerator.Next() {
 		sigverificationtest.Reverse(tx.Signature)
 		return coordinatorservice.Status_INVALID_SIGNATURE
 	}
 
-	if h.doubleSpendGenerator.Next() {
+	if !h.doubleSpendTx.IsEmpty() && h.doubleSpendGenerator.Next() {
 		// Copy SNs and signatures (we avoid to calculate the signature again, because it slows down the generator significantly)
-		tx.SerialNumbers = h.doubleSpendTx.GetSerialNumbers()
-		tx.Signature = h.doubleSpendTx.GetSignature()
+		doubleSpentTx := h.doubleSpendTx.Pop()
+		tx.SerialNumbers = doubleSpentTx.GetSerialNumbers()
+		tx.Signature = doubleSpentTx.GetSignature()
 		return coordinatorservice.Status_DOUBLE_SPEND
+	}
+
+	// Use later for double spends
+	if !h.doubleSpendTx.IsFull() {
+		h.doubleSpendTx.Push(*tx)
 	}
 
 	return coordinatorservice.Status_VALID

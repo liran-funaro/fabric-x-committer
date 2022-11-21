@@ -122,9 +122,9 @@ func (c *Coordinator) startTxProcessingRoutine() {
 				return
 			case sigVerifiedTxs := <-c.sigVerifierMgr.outputChanValids:
 				if c.metrics.Enabled {
-					for _, tx := range sigVerifiedTxs {
-						c.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigver manager")
-					}
+					//for _, tx := range sigVerifiedTxs {
+					//	c.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigver manager")
+					//}
 					c.metrics.SigVerifierMgrValidOutputChLength.Set(len(c.sigVerifierMgr.outputChanValids))
 				}
 				sendDependencyFreeTxsToShardsServers(append(sigVerifiedTxs, remainings...))

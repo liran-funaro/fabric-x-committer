@@ -111,14 +111,14 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 					}
 				}
 
-				if m.metrics.Enabled {
-					for _, tx := range valids {
-						m.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigverifier")
-					}
-					for _, tx := range invalids {
-						m.metrics.RequestTracer.AddEvent(tx, "Received invalid response from sigverifier")
-					}
-				}
+				//if m.metrics.Enabled {
+				//	for _, tx := range valids {
+				//		m.metrics.RequestTracer.AddEvent(tx, "Received valid response from sigverifier")
+				//	}
+				//	for _, tx := range invalids {
+				//		m.metrics.RequestTracer.AddEvent(tx, "Received invalid response from sigverifier")
+				//	}
+				//}
 
 				if len(invalids) > 0 {
 					m.outputChanInvalids <- invalids
@@ -247,9 +247,9 @@ func (v *sigVerifier) startResponseRecieverRoutine(c chan<- *sigverification.Res
 			}
 
 			if v.metrics.Enabled {
-				for _, response := range responseBatch.Responses {
-					v.metrics.RequestTracer.AddEvent(TxSeqNum{response.BlockNum, response.TxNum}, "Received response from sigverifier")
-				}
+				//for _, response := range responseBatch.Responses {
+				//	v.metrics.RequestTracer.AddEvent(TxSeqNum{response.BlockNum, response.TxNum}, "Received response from sigverifier")
+				//}
 			}
 			c <- responseBatch
 		}
