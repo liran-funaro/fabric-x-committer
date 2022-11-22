@@ -4,7 +4,10 @@
 
 ### Run on localhost
 #### Install prerequisites
-* Just (should run already, further details [here](https://github.com/casey/just#installation))
+* Just (further details [here](https://github.com/casey/just#installation))
+```shell
+brew install just
+```
 * go 1.18
 ```shell
 brew install go@1.18
@@ -29,19 +32,69 @@ just build-all
 ```
 
 ### Run on remote hosts
-#### Install prerequisites
-* Just (should run already, further details [here](https://github.com/casey/just#installation))
+#### Install prerequisites (on Mac)
+This is when we build the code on our local machine and then send the binaries to the remote hosts for execution. This is easier for debugging, but it requires our localhost be on during the experiment runs.
+
+* Golang 1.18 (see above)
+* Just (see above)
+* Docker engine (see above)
+* Clone project
+```shell
+mkdir -p ~/go/src/github.com/decentralized-trust-search/scalable-committer
+git clone https://github.ibm.com/decentralized-trust-research/scalable-committer.git ~/go/src/github.com/decentralized-trust-search/scalable-committer/
+cd ~/go/src/github.com/decentralized-trust-search/scalable-committer/
+```
+* Docker image
+```shell
+just docker-image
+```
 * Ansible with its requirements (further details [here](./ansible/README.md))
 ```shell
 brew install ansible
 ansible-galaxy install -r ./ansible/requirements.yml
 ```
-* Docker engine
-* Create docker image (only first time):
+* Add SSH keys to known hosts (generate with `ssh-keygen` if none existing. Choose a name like `id_rsa`, so that it is picked by default)
 ```shell
-just docker-image
+ssh-keygen -t ed25519 -C "my_name"
+ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed1.sl.cloud9.ibm.com
+...
+ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed15.sl.cloud9.ibm.com
 ```
 * Optional: Monitoring (For further details see section Monitoring > Setup > Remote)
+
+#### Install prerequisites (on Ubuntu)
+This is when we want to build the code on a remote host and then send the binaries from there to the service hosts.
+* Golang 1.18
+
+```shell
+apt-get update
+wget https://go.dev/dl/go1.18.8.linux-amd64.tar.gz
+tar xvf ./go1.18.8.linux-amd64.tar.gz
+rm ~/go1.18.8.linux-amd64.tar.gz
+mv ./go/ /usr/local/
+export GOPATH=$HOME/go
+export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+# go version
+```
+* Just
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/just
+export PATH=$PATH:/usr/local/just
+# just —version
+```
+* Docker client (details [here](https://docs.docker.com/engine/install/ubuntu/))
+* Clone project (same as on Mac)
+* Docker image (same as on Mac)
+* Ansible with its requirements
+```shell
+apt-install ansible
+ansible-galaxy install -r requirements.yaml
+```
+* Add SSH keys to known hosts (same as on Mac)
+* JQ
+```shell
+apt install jq
+```
 
 #### Build and run (with Ansible)
 
