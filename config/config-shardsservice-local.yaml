@@ -1,0 +1,5 @@
+shards-service:
+  endpoint: :5001
+  prometheus:
+    endpoint: :2114
+    latency-endpoint: :14268

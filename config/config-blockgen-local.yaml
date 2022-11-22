@@ -1,0 +1,7 @@
+blockgen:
+  endpoint: :5002
+  prometheus:
+    endpoint: :2116
+    latency-endpoint: :14268
+  generator:
+    profile: ./config/profile-blockgen.yaml

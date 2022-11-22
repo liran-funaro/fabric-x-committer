@@ -26,7 +26,7 @@ type shardsCoordinator struct {
 func NewShardsCoordinator(database *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) *shardsCoordinator {
 
 	const channelCapacity = 10
-	logger.Info("Initializing shards coordinator:\n"+
+	logger.Infof("Initializing shards coordinator:\n"+
 		"\tDatabase: %s\n"+
 		"\tLimits:\n"+
 		"\t\tMax buffer sizes: %d (shard instances), %d (pending commits)\n"+

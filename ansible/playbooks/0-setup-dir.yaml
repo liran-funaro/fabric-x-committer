@@ -1,18 +1,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
----
-  - name: Initial shardsservices directory setup
-    hosts: shardsservices
-    tasks:
-      - name: Create directory for shardsservice
-        file:
-          path: ~/shardsservice
-          state: directory
-  - name: Initial sigverificationservices directory setup
-    hosts: sigverificationservice
-    tasks:
-      - name: Create directory for sigverificationservice
-        file:
-          path: ~/sigverificationservice
-          state: directory
+#---
+#  - name: Initial shardsservices directory setup
+#    hosts: shardsservices
+#    tasks:
+#      - name: Create directory for shardsservice
+#        file:
+#          path: ~/shardsservice
+#          state: directory
+#  - name: Initial sigverificationservices directory setup
+#    hosts: sigverificationservice
+#    tasks:
+#      - name: Create directory for sigverificationservice
+#        file:
+#          path: ~/sigverificationservice
+#          state: directory

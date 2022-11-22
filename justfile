@@ -83,20 +83,20 @@ protos-wgclient:
 build-all: build-blockgen build-coordinator build-sigservice build-shardsservice build-result-gatherer
 
 build-blockgen:
-    go build -o {{bin-input-dir}}/blockgen ./wgclient/cmd/generator
-    go build -o {{bin-input-dir}}/mockcoordinator ./wgclient/cmd/mockcoordinator
+    go build -o {{bin-input-dir}}blockgen ./wgclient/cmd/generator
+    go build -o {{bin-input-dir}}mockcoordinator ./wgclient/cmd/mockcoordinator
 
 build-coordinator:
-    go build -o {{bin-input-dir}}/coordinator ./coordinatorservice/cmd/server
+    go build -o {{bin-input-dir}}coordinator ./coordinatorservice/cmd/server
 
 build-sigservice:
-    go build -o {{bin-input-dir}}/sigservice ./sigverification/cmd/server
+    go build -o {{bin-input-dir}}sigservice ./sigverification/cmd/server
 
 build-shardsservice:
-    go build -o {{bin-input-dir}}/shardsservice ./shardsservice/cmd/server
+    go build -o {{bin-input-dir}}shardsservice ./shardsservice/cmd/server
 
 build-result-gatherer:
-    go build -o {{bin-input-dir}}/resultgatherer ./utils/experiment/cmd
+    go build -o {{bin-input-dir}}resultgatherer ./utils/experiment/cmd
 
 ### Deploy
 
