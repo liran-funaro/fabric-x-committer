@@ -15,6 +15,7 @@ const (
 	RocksDb   ShardDbType = "rocksdb"
 	GoLevelDb             = "goleveldb"
 	MockDb                = "mockdb"
+	PebbleDb              = "pebbledb"
 )
 
 type DatabaseConfig struct {

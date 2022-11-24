@@ -2,6 +2,7 @@ package shardsservice
 
 import (
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pebbledb"
 	"os"
 	"strings"
 	"sync"
@@ -46,6 +47,8 @@ func openDb(dbType ShardDbType, path string) (database, error) {
 		return goleveldb.Open(path)
 	case RocksDb:
 		return rocksdb.Open(path)
+	case PebbleDb:
+		return pebbledb.Open(path)
 	default:
 		return nil, errors.New("unknown db type")
 	}
