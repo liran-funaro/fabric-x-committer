@@ -1,14 +1,13 @@
-package rocksdb_test
+package pebbledb_test
 
 import (
-	"testing"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pebbledb"
+	"testing"
 )
 
 var opener db.DbOpener = func(path string) (db.Database, error) {
-	return rocksdb.Open(path)
+	return pebbledb.Open(path)
 }
 
 func TestMultiGet(t *testing.T) {
