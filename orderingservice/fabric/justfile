@@ -1,0 +1,103 @@
+
+# create org
+# configure orderer.yaml
+# create gensis block
+# bootstrap
+
+# export FABRIC_PATH=your/path/to/fabric
+fabric_path := env_var_or_default('FABRIC_PATH', "/Users/bur/Developer/gocode/src/github.com/hyperledger/fabric")
+fabric_bins := fabric_path + "/build/bin"
+
+out := "./out"
+cryptogen_out := out + "/orgs"
+configtxgen_out := out + "/genesisblock"
+
+orderer_credentials :=  out + "/orgs/ordererOrganizations/orderer.org/orderers/raft<<id>>.orderer.org"
+orderer_msp := orderer_credentials + "/msp"
+orderer_tls := orderer_credentials + "/tls"
+orderer_port := "705<<x>>"
+
+client_org := "Org1"
+client_credentials := out + "/orgs/peerOrganizations/org1.com/users/User1@org1.com"
+
+channelID := "mychannel"
+
+init: clean cryptogen genesis
+
+# builds the fabric binaries
+# make sure you on the expected fabric version branch
+# git checkout v2.4.7 -b v2.4.7-branch
+build_fabric:
+    make -C {{fabric_path}} native
+
+cryptogen:
+    {{fabric_bins}}/cryptogen \
+    generate \
+    --config="./crypto-config.yaml" \
+    --output={{cryptogen_out}}
+
+genesis:
+    {{fabric_bins}}/configtxgen \
+    -outputBlock {{configtxgen_out}} \
+    -profile SampleDevModeEtcdRaft \
+    -channelID {{channelID}}
+
+start:
+    tmux new-session -d -s "orderer" \; \
+    split-window -t "orderer:0" -v \; \
+    split-window -t "orderer:0.0" -h \; \
+    split-window -t "orderer:0.2" -h \; \
+    split-window -t "orderer:0.3" -v \; \
+    \
+    send-keys -t "orderer:0.0" "just run_orderer 0" Enter \; \
+    send-keys -t "orderer:0.1" "just run_orderer 1" Enter \; \
+    send-keys -t "orderer:0.2" "just run_orderer 2" Enter \; \
+    \
+    attach-session -t "orderer:0.3"
+
+kill:
+    tmux kill-session -t "orderer"
+
+run_orderer n=("0"):
+    ORDERER_GENERAL_LOCALMSPID="Orderer" \
+    ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
+    ORDERER_GENERAL_LISTENPORT="{{replace(orderer_port, "<<x>>", n)}}" \
+    ORDERER_GENERAL_GENESISFILE="{{out}}/genesisblock" \
+    ORDERER_GENERAL_TLS_ENABLED="true" \
+    ORDERER_GENERAL_TLS_PRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
+    ORDERER_GENERAL_TLS_CERTIFICATE="{{replace(orderer_tls, "<<id>>", n)}}/server.crt" \
+    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", n)}}/ca.crt]" \
+    ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE="{{replace(orderer_tls, "<<id>>", n)}}/server.crt" \
+    ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
+    ORDERER_GENERAL_CLUSTER_ROOTCAS="[{{replace(orderer_tls, "<<id>>", n)}}/ca.crt]" \
+    ORDERER_OPERATIONS_LISTENADDRESS="{{replace("localhost:844<<x>>", "<<x>>", n)}}" \
+    ORDERER_ADMIN_LISTENADDRESS="{{replace("localhost:944<<x>>", "<<x>>", n)}}" \
+    ORDERER_FILELEDGER_LOCATION="{{out}}/hyperledger/production/orderer_{{n}}" \
+    ORDERER_CONSENSUS_WALDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/wal" \
+    ORDERER_CONSENSUS_SNAPDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/snapshot" \
+    {{fabric_bins}}/orderer
+
+submit:
+    FABRIC_CFG_PATH=. \
+    ORDERER_GENERAL_LOCALMSPID="{{client_org}}" \
+    ORDERER_GENERAL_LOCALMSPDIR="{{client_credentials}}/msp" \
+    ORDERER_GENERAL_LISTENADDRESS=localhost \
+    ORDERER_GENERAL_TLS_ENABLED=true \
+    ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
+    ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
+    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
+    go run clients/cmd/broadcaster/main.go -channelID {{channelID}} -goroutines 24 -messages 102400
+
+listen:
+    FABRIC_CFG_PATH=. \
+    ORDERER_GENERAL_LOCALMSPID="{{client_org}}" \
+    ORDERER_GENERAL_LOCALMSPDIR="{{client_credentials}}/msp" \
+    ORDERER_GENERAL_LISTENADDRESS=localhost \
+    ORDERER_GENERAL_TLS_ENABLED=true \
+    ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
+    ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
+    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
+    go run clients/cmd/listener/main.go -channelID {{channelID}} -quiet true
+
+clean:
+    rm -rf {{out}}
