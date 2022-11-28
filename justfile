@@ -35,6 +35,7 @@ coordinator-port := "5002"
 playbook-path := "./ansible/playbooks"
 export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 
+sampling-time-header := "sample_time"
 array-separator := ","
 
 ### Build
@@ -156,7 +157,7 @@ run-variable-block-size-experiment:
 
 run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=("3") large_txs_arr=("0.0") invalidity_ratio_arr=("0.0") double_spends_arr=("0.0") block_sizes_arr=("100") experiment_duration=(experiment-duration-seconds):
     mkdir -p {{experiment-tracking-dir}}
-    echo "sig_verifiers,shard_servers,large_txs,invalidity_ratio,double_spends,block_size,start_time,sample_time" > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
+    echo "sig_verifiers,shard_servers,large_txs,invalidity_ratio,double_spends,block_size,start_time,"{{sampling-time-header}} > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
     echo {{sig_verifiers_arr}} | tr '{{array-separator}}' '\n' | while read sig_verifiers; do \
       echo {{shard_servers_arr}} | tr '{{array-separator}}' '\n' | while read shard_servers; do \
         echo {{large_txs_arr}} | tr '{{array-separator}}' '\n' | while read large_txs; do \
@@ -174,7 +175,7 @@ run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=
         ;done \
       ;done \
     done
-    just gather-results "{{experiment-tracking-dir}}{{experiment_name}}.csv" "{{experiment-results-dir}}{{experiment_name}}.csv"
+    just gather-results "{{experiment_name}}.csv"
 
 run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100"):
     ansible-playbook "{{playbook-path}}/60-create-experiment-configs.yaml" --extra-vars "{'src_config_dir': ../../{{config-input-dir}}, 'dst_config_dir': ../../{{experiment-config-dir}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}, 'coordinator_endpoint': $(just list-hosts coordinators):{{coordinator-port}}}"
@@ -183,9 +184,9 @@ run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalid
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
 
 # Goes through all of the entries of the tracker file and retrieves the corresponding metric for each line (as defined at the sampling-time field)
-gather-results tracker_file result_file:
+gather-results filename:
     mkdir -p {{experiment-results-dir}}
-    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens):{{prometheus-exporter-port}} -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-scraper-port}} -output={{result_file}} -rate-interval=2m -sampling-times=$(cat {{tracker_file}} | tail -n +2 | while read line; do echo ${line##*,};done | tr '\n' ',')
+    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens):{{prometheus-exporter-port}} -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-scraper-port}} -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):

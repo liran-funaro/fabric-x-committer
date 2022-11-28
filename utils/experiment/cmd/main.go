@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,8 @@ const resultJoiner = ","
 func main() {
 	clientHost := flag.String("client-endpoint", "", "The client endpoint.")
 	prometheusHost := flag.String("prometheus-endpoint", "", "The host that runs prometheus and serves the metrics.")
-	unixTimestamps := connection.SliceFlag("sampling-times", []string{}, "When to take the samples (UNIX timestamp). Must be in the past")
+	trackerFilePath := flag.String("input", "", "The path to the tracker file")
+	samplingTimeHeader := flag.String("sampling-time-header", "", "The name of the header that corresponds to the sampling time")
 	rateInterval := flag.Duration("rate-interval", 30*time.Second, "The window in which we calculate the rate.")
 	outputFilePath := flag.String("output", "", "The path to the output file.")
 	flag.Parse()
@@ -27,33 +29,71 @@ func main() {
 	if prometheusEndpoint == nil {
 		panic("invalid prometheus endpoint")
 	}
-	if len(*unixTimestamps) == 0 {
+	file, err := ioutil.ReadFile(*trackerFilePath)
+	if err != nil {
+		panic(err)
+	}
+	trackerContent := strings.Split(string(file), "\n")
+
+	samplingTimes := extractSamplingTimes(trackerContent, *samplingTimeHeader)
+	if len(samplingTimes) == 0 {
 		panic("no timestamps passed")
 	}
-	samplingTimes := make([]time.Time, len(*unixTimestamps))
-	for i, unixTimestamp := range *unixTimestamps {
-		if unixTimestamp == "" {
+	fmt.Printf("Received sampling points for %d experiments from %v to %v", len(samplingTimes), samplingTimes[0], samplingTimes[len(samplingTimes)-1])
+
+	reader := experiment.NewResultReader(connection.CreateEndpoint(*clientHost), connection.CreateEndpoint(*prometheusHost), *rateInterval)
+
+	resultContent := make([]string, len(samplingTimes)+1)
+	resultContent[0] = strings.Join(reader.ReadHeaders(), resultJoiner)
+	for i, samplingTime := range samplingTimes {
+		resultContent[i+1] = convertToString(reader.ReadExperimentResults(samplingTime))
+	}
+
+	utils.Must(utils.WriteFile(*outputFilePath, []byte(strings.Join(merge(trackerContent, resultContent), "\n"))))
+}
+
+func merge(content1, content2 []string) []string {
+	if len(content1) != len(content2) {
+		panic("contents not of equal length")
+	}
+	result := make([]string, len(content1))
+	for i := 0; i < len(result); i++ {
+		result[i] = content1[i] + resultJoiner + content2[i]
+	}
+	return result
+}
+
+func extractSamplingTimes(trackerContent []string, samplingTimeHeader string) []time.Time {
+	headers := trackerContent[0]
+	data := trackerContent[1:]
+	samplingTimeIndex := findIndex(strings.Split(headers, resultJoiner), samplingTimeHeader)
+	if samplingTimeIndex < 0 {
+		panic("wrong sampling-time header name: " + samplingTimeHeader + ". not found in " + headers)
+	}
+	samplingTimes := make([]time.Time, len(data))
+	for i, line := range data {
+		if line == "" {
 			continue //TODO: Remove this
 		}
-		num, err := strconv.ParseInt(unixTimestamp, 10, 64)
+		unixTimestamp, err := strconv.ParseInt(strings.Split(line, resultJoiner)[samplingTimeIndex], 10, 64)
 		if err != nil {
-			panic(err)
+			panic("invalid unix timestamp given in line " + strconv.Itoa(i) + ": " + line + ". " + err.Error())
 		}
-		samplingTimes[i] = time.Unix(num, 0)
+		samplingTimes[i] = time.Unix(unixTimestamp, 0)
 		if samplingTimes[i].After(time.Now()) {
 			panic("future sampling not allowed")
 		}
 	}
+	return samplingTimes
+}
 
-	reader := experiment.NewResultReader(connection.CreateEndpoint(*clientHost), connection.CreateEndpoint(*prometheusHost), *rateInterval)
-
-	lines := make([]string, len(samplingTimes)+1)
-	lines[0] = strings.Join(reader.ReadHeaders(), resultJoiner)
-	for i, samplingTime := range samplingTimes {
-		lines[i+1] = convertToString(reader.ReadExperimentResults(samplingTime))
+func findIndex(haystack []string, needle string) int {
+	for i, item := range haystack {
+		if item == needle {
+			return i
+		}
 	}
-
-	utils.Must(utils.WriteFile(*outputFilePath, []byte(strings.Join(lines, "\n"))))
+	return -1
 }
 
 func convertToString(results []float64) string {

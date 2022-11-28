@@ -95,7 +95,6 @@ func (r *ResultReader) ReadExperimentResults(timestamp time.Time) []float64 {
 	results := make([]float64, len(r.metrics))
 	for i, metric := range r.metrics {
 		resp, err := r.fetchMetric(metric.query, timestamp)
-		fmt.Printf("Received: %v, %v", resp, err)
 		if err == nil {
 			results[i] = metric.extractor(resp)
 		}
@@ -117,7 +116,9 @@ type result struct {
 }
 
 func (r *ResultReader) fetchMetric(query string, timestamp time.Time) (*data, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/api/v1/query?query=%s&time=%d", r.server.Address(), query, timestamp.Unix()))
+	query = fmt.Sprintf("http://%s/api/v1/query?query=%s&time=%d", r.server.Address(), query, timestamp.Unix())
+	fmt.Printf("Query: %s\n", query)
+	resp, err := http.Get(query)
 	if err != nil {
 		return nil, err
 	}
