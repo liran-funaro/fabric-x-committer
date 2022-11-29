@@ -41,3 +41,14 @@ The generated output is located in `out/`.
 
 - The genesis block is defined in `configtx.yaml`, which is used as input for `just genesis`.
 The generated output is located in `out/`.
+
+
+## TODOS
+
+- [ ] Prepare for remote deployment (ansible, tls certs, etc ...)
+- [ ] Integrate scalable committer workload gen into `client/cmd/submitter`.
+- [ ] Integrate mock-coordinator and coordinator into `clients/cmd/listener`.
+- [ ] Add metrics to measure throughput and latency.
+- [ ] Establish a baseline for the ordering service
+- [ ] Try to reproduce 10k TPS as reported by Yacov (this includes envelope sig verification)
+- [ ] Try to have move TPS by removing orderer sig verification
