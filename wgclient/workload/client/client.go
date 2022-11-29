@@ -146,7 +146,7 @@ func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpe
 
 	// start consuming blocks
 	// TODO double check if we can simplify our life by using the request tracker in utils/connection/request_tracker.go
-	bar := workload.NewProgressBar("Sending blocks from file...", pp.Block.Count)
+	bar := workload.NewProgressBar("Sending blocks from file...", pp.Block.Count, "blocks")
 	start := time.Now()
 	txsSent := int64(0)
 	send(ctx, blockStream, dQueue, func(t time.Time, block *token.Block) {
@@ -230,7 +230,7 @@ func ReadAndForget(path string) {
 
 	// start consuming blocks
 	start := time.Now()
-	bar := workload.NewProgressBar("Reading blocks from file...", pp.Block.Count)
+	bar := workload.NewProgressBar("Reading blocks from file...", pp.Block.Count, "blocks")
 	for b := range dQueue {
 		_ = b
 		block := &token.Block{}

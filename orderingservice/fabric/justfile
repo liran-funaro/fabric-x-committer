@@ -86,7 +86,7 @@ submit:
     ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
     ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
     ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
-    go run clients/cmd/broadcaster/main.go -channelID {{channelID}} -goroutines 24 -messages 102400
+    GOGC=10000 go run clients/cmd/submitter/main.go -channelID {{channelID}} -goroutines 24 -messages 1000000
 
 listen:
     FABRIC_CFG_PATH=. \
@@ -97,7 +97,7 @@ listen:
     ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
     ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
     ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
-    go run clients/cmd/listener/main.go -channelID {{channelID}} -quiet true
+    go run clients/cmd/listener/main.go -channelID {{channelID}} -quiet
 
 clean:
     rm -rf {{out}}

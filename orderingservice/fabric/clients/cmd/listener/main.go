@@ -85,7 +85,7 @@ func (r *deliverClient) readUntilClose() {
 					fmt.Printf("  Error pretty printing block: %s", err)
 				}
 			} else {
-				fmt.Println("Received block: ", t.Block.Header.Number)
+				fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", t.Block.Header.Number, t.Block.XXX_Size(), len(t.Block.Data.Data), len(t.Block.Data.Data[0]))
 			}
 		}
 	}
@@ -141,7 +141,15 @@ func main() {
 		os.Exit(0)
 	}
 
-	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(tlsCredentials))
+	var dialOpts []grpc.DialOption
+	maxMsgSize := 100 * 1024 * 1024
+	dialOpts = append(dialOpts, grpc.WithDefaultCallOptions(
+		grpc.MaxCallRecvMsgSize(maxMsgSize),
+		grpc.MaxCallSendMsgSize(maxMsgSize),
+	))
+	dialOpts = append(dialOpts, grpc.WithTransportCredentials(tlsCredentials))
+
+	conn, err := grpc.Dial(serverAddr, dialOpts...)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 		return

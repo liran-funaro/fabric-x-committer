@@ -51,7 +51,7 @@ func Generate(profilePath, outputPath string) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		bar := NewProgressBar("Writing blocks to file...", blockCount)
+		bar := NewProgressBar("Writing blocks to file...", blockCount, "blocks")
 		BlockWriter(writer, bQueue, func() {
 			bar.Add(1)
 		})

@@ -15,14 +15,14 @@ import (
 
 const queueSize = 100
 
-func NewProgressBar(description string, max int64) *progressbar.ProgressBar {
+func NewProgressBar(description string, max int64, unit string) *progressbar.ProgressBar {
 	return progressbar.NewOptions64(max,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionThrottle(100*time.Millisecond),
 		progressbar.OptionFullWidth(),
 		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("blocks"),
+		progressbar.OptionSetItsString(unit),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowElapsedTimeOnFinish(),
 		progressbar.OptionSetDescription(fmt.Sprintf("%s", description)),
@@ -33,6 +33,10 @@ func NewProgressBar(description string, max int64) *progressbar.ProgressBar {
 			BarStart:      "[",
 			BarEnd:        "]",
 		}))
+}
+
+func NewBlockProgressBar(description string, max int64) *progressbar.ProgressBar {
+	return NewProgressBar(description, max, "blocks")
 }
 
 func PrintStats(numTx, numBlocks, received int64, elapsedPushed, totalElapsed time.Duration) {
