@@ -1,11 +1,17 @@
 all:
   vars:
     ansible_connection: ssh
-    ansible_user: "root"
+    ansible_user: "{{lookup('env', 'USER')}}"
+    binary_dir: ~/bin/
+    config_dir: ./ # Opening the file from the app does not work if we use ~/
+    os: linux
+    prometheus_exporter_port: 2112
 #    ansible_ssh_pass: "SSH PASSWORD GOES HERE"
 
   children:
     services:
+      vars:
+        ansible_user: "root"
       children:
         blockgens:
           hosts:
@@ -13,11 +19,15 @@ all:
               ansible_host: "tokentestbed1.sl.cloud9.ibm.com"
 
         coordinators:
+          vars:
+            service_port: 5002
           hosts:
             coordinator-machine:
               ansible_host: "tokentestbed2.sl.cloud9.ibm.com"
 
         sigservices:
+          vars:
+            service_port: 5000
           hosts:
             sigservice-machine1:
               ansible_host: "tokentestbed3.sl.cloud9.ibm.com"
@@ -25,10 +35,10 @@ all:
               ansible_host: "tokentestbed4.sl.cloud9.ibm.com"
             sigservice-machine3:
               ansible_host: "tokentestbed5.sl.cloud9.ibm.com"
-            sigservice-machine5:
-              ansible_host: "tokentestbed14.sl.cloud9.ibm.com"
 
         shardsservices:
+          vars:
+            service_port: 5001
           hosts:
             shardsservice-machine1:
               ansible_host: "tokentestbed6.sl.cloud9.ibm.com"
@@ -46,11 +56,12 @@ all:
               ansible_host: "tokentestbed12.sl.cloud9.ibm.com"
             shardsservice-machine8:
               ansible_host: "tokentestbed13.sl.cloud9.ibm.com"
-#            shardsservice-machine9:
-#              ansible_host: "tokentestbed14.sl.cloud9.ibm.com"
+            shardsservice-machine9:
+              ansible_host: "tokentestbed14.sl.cloud9.ibm.com"
 #            shardsservice-machine10:
 #              ansible_host: "tokentestbed15.sl.cloud9.ibm.com"
         monitoring:
           hosts:
             monitoring-machine:
               ansible_host: "tokentestbed15.sl.cloud9.ibm.com"
+              jaeger_exporter_port: 14268

@@ -1,0 +1,18 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Copy config
+  copy:
+    src: "{{src_filepath}}"
+    dest: "{{dst_filepath}}"
+- name: Adapt endpoints
+  yedit:
+    src: "{{dst_filepath}}"
+    edits:
+      - key: "{{config_root}}.endpoint"
+        value: "{{endpoint}}"
+      - key: "{{config_root}}.prometheus.endpoint"
+        value: ":{{hostvar_instance.prometheus_exporter_port}}"
+      - key: "{{config_root}}.prometheus.latency-endpoint"
+        value: "{{monitoring_host.ansible_host}}:{{monitoring_host.jaeger_exporter_port}}"

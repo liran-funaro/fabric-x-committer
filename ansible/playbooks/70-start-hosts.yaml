@@ -5,39 +5,40 @@
   - name: Start sig verifiers
     vars:
       sig_verifiers: 3
-      server_port: 5000
       service_name: sigservice
       config: config-sigservice.yaml
+      only_kill: false
     hosts: sigservices[0:{{sig_verifiers - 1}}]
     tasks:
-      - include: ../roles/start-server.yaml
+      - include_tasks: ../subtasks/start-server.yaml
   - name: Start shard servers
     vars:
       shard_servers: 3
-      server_port: 5001
       service_name: shardsservice
       config: config-shardsservice.yaml
+      only_kill: false
     hosts: shardsservices[0:{{shard_servers - 1}}]
     tasks:
-      - include: ../roles/start-server.yaml
+      - include_tasks: ../subtasks/start-server.yaml
   - name: Start coordinator
     vars:
-      server_port: 5002
       service_name: coordinator
       config: config-coordinator.yaml
+      only_kill: false
     hosts: coordinators
     tasks:
-      - include: ../roles/start-server.yaml
+      - include_tasks: ../subtasks/start-server.yaml
   - name: Start block generator
     vars:
       service_name: blockgen stream
       config: config-blockgen.yaml
+      only_kill: false
     hosts: blockgens
     tasks:
-      - include: ../roles/start-server.yaml
-        environment:
-          GOGC: 20000
-      - debug: var=result
+      - vars:
+          env:
+            - "GOGC=20000"
+        include: ../subtasks/start-server.yaml
 
 
 

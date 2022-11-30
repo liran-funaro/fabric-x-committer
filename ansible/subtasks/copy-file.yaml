@@ -1,0 +1,17 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create dir
+  file:
+    path: "{{dst_dir}}"
+    state: directory
+- name: Transfer file
+  vars:
+    src_path: "{{src_dir + filename}}"
+    dst_path: "{{dst_dir + filename}}"
+  copy:
+    src: "{{src_path}}"
+    dest: "{{dst_path}}"
+    owner: "{{ansible_user}}"
+    mode: "{{mode}}"

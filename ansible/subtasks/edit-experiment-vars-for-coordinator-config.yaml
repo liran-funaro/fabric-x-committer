@@ -1,0 +1,38 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- vars:
+    num_shards: 1
+    shard_servers: 3
+  set_fact:
+    elements: "{{elements | d([])  + [{'endpoint': '%s:%d' | format(instance.ansible_host, instance.service_port), 'num-shards': num_shards}]}}"
+  loop: "{{groups['shardsservices'] | default([]) | map('extract', hostvars)}}"
+  when: idx < {{shard_servers}}
+  loop_control:
+    loop_var: instance
+    index_var: idx
+- name: Set shard servers
+  yedit:
+    src: "{{filepath}}"
+    key: coordinator.shards-servers.servers
+    value: "{{elements}}"
+- set_fact:
+    elements: []
+
+- vars:
+    sig_verifiers: 3
+  set_fact:
+    elements: "{{elements | d([]) + ['%s:%d' | format(instance.ansible_host, instance.service_port)]}}"
+  loop: "{{groups['sigservices'] | default([]) | map('extract', hostvars)}}"
+  when: idx < {{sig_verifiers}}
+  loop_control:
+    loop_var: instance
+    index_var: idx
+- name: Set sig servers
+  yedit:
+    src: "{{filepath}}"
+    key: coordinator.sig-verifiers.endpoints
+    value: "{{elements}}"
+- set_fact:
+    elements: []

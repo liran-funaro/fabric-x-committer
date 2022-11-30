@@ -6,31 +6,33 @@
 
 default := ''
 
-# From where to copy the binaries/config files on the local host
-bin-input-dir := "bin/"
 config-input-dir := "config/"
 
-# Where to copy the binaries/config files on the remote host
-bin-remote-dir := "bin/"
-config-remote-dir := ""
+output-dir := "eval/"
 
-# Stores the temporary config files for the current experiment
-experiment-config-dir := "eval/experiments/configs/"
+
+deployment-dir := output-dir + "deployments/"
+
+# Stores the configs that are deployed to the servers
+base-setup-config-dir := deployment-dir + "configs/"
+# Stores the binaries that are deployed to the servers
+bin-input-dir := deployment-dir + "bins/"
+osx-bin-input-dir := bin-input-dir + "osx/"
+linux-bin-input-dir := bin-input-dir + "linux/"
+
+experiment-dir := output-dir + "experiments/"
 # Each file in this folder keeps track of an experiment suite.
 # Each line contains the experiment parameters, when it started and when we should sample.
-experiment-tracking-dir := "eval/experiments/trackers/"
+experiment-tracking-dir := experiment-dir + "trackers/"
 # Each file in this folder contains the results for an experiment suite.
 # Each line corresponds one-to-one to the lines of the respective track file with the same name.
-experiment-results-dir := "eval/experiments/results/"
+experiment-results-dir := experiment-dir + "results/"
 
 # Experiment constants
 experiment-duration-seconds := "600"
 
 # Well-known ports
 prometheus-scraper-port := "9091"
-prometheus-exporter-port := "2112"
-jaeger-exporter-port := "14268"
-coordinator-port := "5002"
 
 playbook-path := "./ansible/playbooks"
 export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
@@ -81,23 +83,28 @@ protos-wgclient:
     ./wgclient/workload/expected_results.proto
 
 
-build-all: build-blockgen build-coordinator build-sigservice build-shardsservice build-result-gatherer
+build-all output_dir:
+    just build-blockgen {{output_dir}}
+    just build-coordinator {{output_dir}}
+    just build-sigservice {{output_dir}}
+    just build-shardsservice {{output_dir}}
+    just build-result-gatherer {{output_dir}}
 
-build-blockgen:
-    go build -o {{bin-input-dir}}blockgen ./wgclient/cmd/generator
-    go build -o {{bin-input-dir}}mockcoordinator ./wgclient/cmd/mockcoordinator
+build-blockgen output_dir:
+    go build -o {{output_dir}}blockgen ./wgclient/cmd/generator
+    go build -o {{output_dir}}mockcoordinator ./wgclient/cmd/mockcoordinator
 
-build-coordinator:
-    go build -o {{bin-input-dir}}coordinator ./coordinatorservice/cmd/server
+build-coordinator output_dir:
+    go build -o {{output_dir}}coordinator ./coordinatorservice/cmd/server
 
-build-sigservice:
-    go build -o {{bin-input-dir}}sigservice ./sigverification/cmd/server
+build-sigservice output_dir:
+    go build -o {{output_dir}}sigservice ./sigverification/cmd/server
 
-build-shardsservice:
-    go build -o {{bin-input-dir}}shardsservice ./shardsservice/cmd/server
+build-shardsservice output_dir:
+    go build -o {{output_dir}}shardsservice ./shardsservice/cmd/server
 
-build-result-gatherer:
-    go build -o {{bin-input-dir}}resultgatherer ./utils/experiment/cmd
+build-result-gatherer output_dir:
+    go build -o {{output_dir}}resultgatherer ./utils/experiment/cmd
 
 ### Deploy
 
@@ -108,9 +115,9 @@ build-result-gatherer:
 #    rsync -P -r {{files}} root@{{host}}:~
 
 # Lists all hostnames from the inventory
-list-hosts name=("all"):
+list-hosts name=("all") property=("ansible_host"):
     ansible {{name}} --list-hosts | tail -n +2 | \
-      while read line; do ansible-inventory --host $line | jq '.ansible_host' | sed -e 's/^"//' -e 's/"$//';done
+      while read line; do ansible-inventory --host $line | jq {{'.' + property}} | sed -e 's/^"//' -e 's/"$//';done
 
 # The docker image required for compilation on the Unix machines
 docker-image:
@@ -121,24 +128,28 @@ docker CMD:
     docker run --rm -it -v "$PWD":/scalable-committer --env GOPROXY=direct -w /scalable-committer sc_builder:latest {{CMD}}
 
 deploy-base-setup:
-    just docker "just build-all"
+    mkdir -p {{osx-bin-input-dir}}
+    just build-all {{osx-bin-input-dir}}
+    mkdir -p {{linux-bin-input-dir}}
+    just docker "just build-all {{linux-bin-input-dir}}"
     just deploy-bins
     just deploy-base-configs
 
 #
-deploy-bins:
-    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'src_dir': '{{bin-input-dir}}', 'dst_dir': '{{bin-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'mockcoordinator'], 'src_dir': '{{bin-input-dir}}', 'dst_dir': '{{bin-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'src_dir': '{{bin-input-dir}}', 'dst_dir': '{{bin-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-copy-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'src_dir': '{{bin-input-dir}}', 'dst_dir': '{{bin-remote-dir}}'}"
+deploy-bins local_linux_src_dir=('../../' + linux-bin-input-dir) local_osx_src_dir=('../../' + osx-bin-input-dir):
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'mockcoordinator'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
-deploy-base-configs:
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{config-input-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{config-input-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['config-sigservice.yaml'], 'src_dir': '{{config-input-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['config-shardsservice.yaml'], 'src_dir': '{{config-input-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
+deploy-base-configs local_src_dir=('../../' + config-input-dir) local_dst_dir=('../../' + base-setup-config-dir):
+    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['config-sigservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['config-shardsservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{local_dst_dir}}'}"
 
 ### Experiments
 
@@ -177,16 +188,19 @@ run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=
     done
     just gather-results "{{experiment_name}}.csv"
 
-run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100"):
-    ansible-playbook "{{playbook-path}}/60-create-experiment-configs.yaml" --extra-vars "{'src_config_dir': ../../{{config-input-dir}}, 'dst_config_dir': ../../{{experiment-config-dir}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}, 'coordinator_endpoint': $(just list-hosts coordinators):{{coordinator-port}}}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{experiment-config-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
-    ansible-playbook "{{playbook-path}}/20-copy-service-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{experiment-config-dir}}', 'dst_dir': '{{config-remote-dir}}'}"
+run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") local_src_dir=('../../' + base-setup-config-dir):
+    ansible-playbook "{{playbook-path}}/60-create-experiment-configs.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_src_dir}}'}"
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
 
 # Goes through all of the entries of the tracker file and retrieves the corresponding metric for each line (as defined at the sampling-time field)
 gather-results filename:
     mkdir -p {{experiment-results-dir}}
-    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens):{{prometheus-exporter-port}} -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-scraper-port}} -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
+    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens):$(just list-hosts blockgens prometheus_exporter_port) -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-scraper-port}} -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
+
+kill-all sig_verifiers=("100") shard_servers=("100"):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}, "only_kill": true}'
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):

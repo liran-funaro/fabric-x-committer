@@ -2,119 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-  - name: Create tmp folder
-    hosts: localhost
-    tasks:
-      - name: Create tmp
-        file:
-          path: "{{dst_config_dir}}"
-          state: directory
-
-  - name: Create coordinator config
-    vars:
-      filename: config-coordinator.yaml
-      src_file: "{{src_config_dir}}{{filename}}"
-      dst_file: "{{dst_config_dir}}{{filename}}"
-      shard_servers: 3
-      shard_server_port: 5001
-      num_shards: 1
-      sig_verifier_port: 5000
-      sig_verifiers: 3
+  - name: Modify (in place) experiment-related variables
     hosts: localhost
     roles:
       - kwoodson.yedit
     tasks:
-      - name: Copy coordinator config
-        copy:
-          src: "{{src_file}}"
-          dest: "{{dst_file}}"
-      - name: Delete all default shard servers
-        yedit:
-          src: "{{dst_file}}"
-          key: coordinator.shards-servers.servers
-          state: absent
-      - name: Add shard servers
-        yedit:
-          src: "{{dst_file}}"
-          key: coordinator.shards-servers.servers
-          append: true
-          value:
-            endpoint: "{{hostvars[item].ansible_host}}:{{shard_server_port}}"
-            num-shards: "{{num_shards}}"
-        loop: "{{groups['shardsservices'] | default([])}}"
-        when: idx < {{shard_servers}}
-        loop_control:
-          index_var: idx
-      - name: Delete all default sig-verifiers
-        yedit:
-          src: "{{dst_file}}"
-          key: coordinator.sig-verifiers.endpoints
-          state: absent
-      - name: Add sig-verifiers
-        yedit:
-          src: "{{dst_file}}"
-          key: coordinator.sig-verifiers.endpoints
-          append: true
-          value: "{{hostvars[item].ansible_host}}:{{sig_verifier_port}}"
-        loop: "{{groups['sigservices'] | default([])}}"
-        when: idx < {{sig_verifiers}}
-        loop_control:
-          index_var: idx
-
-  - name: Create blockgen profile
-    vars:
-      filename: profile-blockgen.yaml
-      src_file: "{{src_config_dir}}{{filename}}"
-      dst_file: "{{dst_config_dir}}{{filename}}"
-      blockgen_profile_src:
-      small_txs: 1.0
-      large_txs: 0.0
-      invalidity_ratio: 0.0
-      double_spends: 0.0
-      block_size: 100
-    hosts: localhost
-    roles:
-      - kwoodson.yedit
-    tasks:
-      - name: Copy blockgen config
-        copy:
-          src: "{{src_file}}"
-          dest: "{{dst_file}}"
-      - name: Add TXs with 2 SNs
-        yedit:
-          src: "{{dst_file}}"
-          edits:
-            - key: transaction.size
-              append: true
-              value:
-                - value: 2
-                  probability: "{{small_txs}}"
-                - value: 8
-                  probability: "{{large_txs}}"
-            - key: conflicts.statistical.invalidsignature
-              value: "{{invalidity_ratio}}"
-            - key: conflicts.statistical.doublespends
-              value: "{{double_spends}}"
-            - key: block.size
-              value: "{{block_size}}"
-
-  - name: Create blockgen config
-    vars:
-      filename: config-blockgen.yaml
-      src_file: "{{src_config_dir}}/{{filename}}"
-      dst_file: "{{dst_config_dir}}{{filename}}"
-      coordinator_endpoint: ":5002"
-    hosts: localhost
-    roles:
-      - kwoodson.yedit
-    tasks:
-      - name: Copy blockgen config
-        copy:
-          src: "{{src_file}}"
-          dest: "{{dst_file}}"
-      - name: Edit endpoint
-        yedit:
-          src: "{{dst_file}}"
-          edits:
-            - key: blockgen.endpoint
-              value: "{{coordinator_endpoint}}"
+      - name: Modify coordinator config
+        vars:
+          filepath: "{{src_dir}}{{groups['coordinators'][0]}}-config-coordinator.yaml"
+        include_tasks: ../subtasks/edit-experiment-vars-for-coordinator-config.yaml
+      - name: Modify blockgen profile
+        vars:
+          filepath: "{{src_dir}}{{groups['blockgens'][0]}}-profile-blockgen.yaml"
+        include_tasks: ../subtasks/edit-experiment-vars-for-blockgen-profile.yaml

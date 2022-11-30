@@ -1,0 +1,33 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Kill process
+  shell:
+    cmd: lsof -i :{{process_port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -15
+  when: process_port is defined
+  ignore_errors: yes
+  loop:
+    - "{{hostvars[inventory_hostname].service_port | d(0)}}"
+    - "{{hostvars[inventory_hostname].prometheus_exporter_port | d(2112)}}"
+  loop_control:
+    loop_var: process_port
+- name: Runs server
+  vars:
+    config_path: "{{config_dir}}{{inventory_hostname}}-{{config}}"
+    session_name: "{{inventory_hostname}}"
+    env_vars: "{{env | d([]) | join(' ')}}"
+  shell:
+    cmd: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} --configs={{config_path}}"
+  async: 10
+  poll: 0
+  register: stdout
+  when: only_kill == false
+- debug: var=stdout
+- name: Wait until server is running
+  vars:
+    server_port: "{{hostvars[inventory_hostname].service_port | d()}}"
+  wait_for:
+    port: "{{server_port}}"
+  when: (only_kill == false) and (server_port != '')
+- debug: var=result
