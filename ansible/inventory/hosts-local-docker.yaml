@@ -1,0 +1,49 @@
+all:
+  vars:
+    ansible_connection: local
+    ansible_user: "{{lookup('env', 'USER')}}"
+    binary_dir: /root/bin/
+    config_dir: /root/
+    os: linux
+
+  children:
+    services:
+      children:
+        blockgens:
+          vars:
+            # Runs on localhost
+            root_path: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer
+            binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
+            config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
+            os: osx
+          hosts:
+            blockgen-machine:
+              ansible_host: "localhost"
+              prometheus_exporter_port: 2113
+
+        coordinators:
+          hosts:
+            coordinator-machine:
+              ansible_host: "localhost"
+              service_port: 5002
+              prometheus_exporter_port: 2112
+
+        sigservices:
+          hosts:
+            sigservice-machine:
+              ansible_host: "localhost"
+              service_port: 5000
+              prometheus_exporter_port: 2110
+
+        shardsservices:
+          hosts:
+            shardsservice-machine:
+              ansible_host: "localhost"
+              service_port: 5001
+              prometheus_exporter_port: 2111
+
+        monitoring:
+          hosts:
+            monitoring-machine:
+              ansible_host: "localhost"
+              jaeger_exporter_port: 14268

@@ -127,6 +127,28 @@ docker-image:
 docker CMD:
     docker run --rm -it -v "$PWD":/scalable-committer --env GOPROXY=direct -w /scalable-committer sc_builder:latest {{CMD}}
 
+docker-runner-dir := "runner/"
+docker-runner-config-dir := docker-runner-dir + "config/"
+docker-runner-bin-dir := docker-runner-dir + "bin/"
+
+docker-runner-image inventory=('ansible/inventory/hosts-local-docker.yaml'):
+    mkdir -p {{linux-bin-input-dir}}
+    mkdir -p {{docker-runner-bin-dir}}
+    rm {{docker-runner-bin-dir}}*
+    mkdir -p {{docker-runner-config-dir}}
+    rm {{docker-runner-config-dir}}*
+    just docker "just build-all {{linux-bin-input-dir}}"
+    cp {{linux-bin-input-dir}}* {{docker-runner-bin-dir}}
+    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" -i {{inventory}} --extra-vars "{'src_dir': '{{'../../' + config-input-dir}}', 'dst_dir': '{{'../../' + base-setup-config-dir}}'}"
+    cp {{base-setup-config-dir + '*'}} {{docker-runner-config-dir}}
+    docker build -f runner/Dockerfile -t sc_runner .
+
+docker-run-services:
+    docker run --rm -dit -p 5002:5002 sc_runner:latest
+
+docker-run-blockgen:
+    GOGC=20000 ./eval/experiments/local-bin/blockgen stream --configs ./eval/experiments/local-configs/blockgen-machine-config-blockgen.yaml
+
 deploy-base-setup:
     mkdir -p {{osx-bin-input-dir}}
     just build-all {{osx-bin-input-dir}}

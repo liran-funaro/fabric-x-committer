@@ -44,7 +44,7 @@
       # Where the file will be saved
       profile_dst_filepath: "{{dst_dir}}{{blockgen_instance}}-profile-blockgen.yaml"
       # Where the config file should point
-      profile_path_reference: "{{config_dir}}{{blockgen_instance}}-profile-blockgen.yaml"
+      profile_path_reference: "{{hostvars[blockgen_instance].config_dir}}{{blockgen_instance}}-profile-blockgen.yaml"
     roles:
       - kwoodson.yedit
     tasks:
