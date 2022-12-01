@@ -7,10 +7,6 @@
     roles:
       - kwoodson.yedit
     tasks:
-      - name: Modify coordinator config
-        vars:
-          filepath: "{{src_dir}}{{groups['coordinators'][0]}}-config-coordinator.yaml"
-        include_tasks: ../subtasks/edit-experiment-vars-for-coordinator-config.yaml
       - name: Modify blockgen profile
         vars:
           filepath: "{{src_dir}}{{groups['blockgens'][0]}}-profile-blockgen.yaml"

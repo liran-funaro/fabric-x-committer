@@ -28,17 +28,6 @@
     hosts: coordinators
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
-  - name: Start block generator
-    vars:
-      service_name: blockgen stream
-      config: config-blockgen.yaml
-      only_kill: false
-    hosts: blockgens
-    tasks:
-      - vars:
-          env:
-            - "GOGC=20000"
-        include: ../subtasks/start-server.yaml
 
 
 
