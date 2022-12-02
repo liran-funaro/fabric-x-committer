@@ -3,7 +3,7 @@
 After installing ansible as defined [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pip-install), make sure to install all dependencies by running
 
 ```shell
-$ ansible-galaxy install -r requirements.yml
+$ ansible-galaxy install -r requirements.yaml
 ```
 
 ## Inventory Setup

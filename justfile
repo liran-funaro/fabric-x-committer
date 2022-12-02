@@ -131,7 +131,7 @@ docker-runner-dir := "runner/"
 docker-runner-config-dir := docker-runner-dir + "config/"
 docker-runner-bin-dir := docker-runner-dir + "bin/"
 
-docker-runner-image inventory=('ansible/inventory/hosts-local-docker.yaml'):
+docker-runner-image inventory=("ansible/inventory/hosts-local-docker.yaml"):
     mkdir -p {{linux-bin-input-dir}}
     mkdir -p {{docker-runner-bin-dir}}
     mkdir -p {{docker-runner-config-dir}}
@@ -144,8 +144,13 @@ docker-runner-image inventory=('ansible/inventory/hosts-local-docker.yaml'):
 docker-run-services:
     docker run --rm -dit -p 5002:5002 sc_runner:latest
 
+docker-build-blockgen inventory=("ansible/inventory/hosts-local-docker.yaml"):
+    just build-blockgen {{osx-bin-input-dir}}
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{'../../' + osx-bin-input-dir}}', 'linux_src_dir': '{{'../../' + linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{'../../' + base-setup-config-dir}}'}"
+
 docker-run-blockgen:
-    GOGC=20000 ./eval/experiments/local-bin/blockgen stream --configs ./eval/experiments/local-configs/blockgen-machine-config-blockgen.yaml
+    GOGC=20000 {{osx-bin-input-dir}}blockgen stream --configs {{base-setup-config-dir}}blockgen-machine-config-blockgen.yaml
 
 deploy-base-setup:
     mkdir -p {{osx-bin-input-dir}}
