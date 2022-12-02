@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -31,6 +32,7 @@ type broadcastClient struct {
 	client    ab.AtomicBroadcast_BroadcastClient
 	signer    identity.SignerSerializer
 	channelID string
+	txCnt     uint64
 }
 
 // newBroadcastClient creates a simple instance of the broadcastClient interface
@@ -87,6 +89,25 @@ func CreateSignedEnvelope(
 	return env, nil
 }
 
+func NewSignatureHeader(id identity.Serializer) (*cb.SignatureHeader, error) {
+	//creator, err := id.Serialize()
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	creator := []byte("bob")
+
+	nonce, err := protoutil.CreateNonce()
+	if err != nil {
+		return nil, err
+	}
+
+	return &cb.SignatureHeader{
+		Creator: creator,
+		Nonce:   nonce,
+	}, nil
+}
+
 // CreateEnvelope create an envelope WITHOUT a signature and the corresponding header
 // can only be used with a patched fabric orderer
 func CreateEnvelope(
@@ -96,10 +117,12 @@ func CreateEnvelope(
 	dataMsg proto.Message,
 	msgVersion int32,
 	epoch uint64,
+	seqno uint64,
 	tlsCertHash []byte,
 ) (*common.Envelope, error) {
 	payloadChannelHeader := protoutil.MakeChannelHeader(txType, msgVersion, channelID, epoch)
 	payloadChannelHeader.TlsCertHash = tlsCertHash
+	payloadChannelHeader.TxId = fmt.Sprintf("%d", seqno)
 	var err error
 
 	data, err := proto.Marshal(dataMsg)
@@ -107,10 +130,14 @@ func CreateEnvelope(
 		return nil, errors.Wrap(err, "error marshaling")
 	}
 
+	// TODO create a "lightweight" header
+	sigHeader, err := NewSignatureHeader(signer)
+
 	paylBytes := protoutil.MarshalOrPanic(
 		&common.Payload{
 			Header: &cb.Header{
-				ChannelHeader: protoutil.MarshalOrPanic(payloadChannelHeader),
+				ChannelHeader:   protoutil.MarshalOrPanic(payloadChannelHeader),
+				SignatureHeader: protoutil.MarshalOrPanic(sigHeader),
 			},
 			Data: data,
 		},
@@ -126,7 +153,10 @@ func CreateEnvelope(
 
 func (s *broadcastClient) broadcast(transaction []byte) error {
 	// TODO replace cb.ConfigValue with "our" transaction
-	env, err := CreateEnvelope(cb.HeaderType_ENDORSER_TRANSACTION, s.channelID, s.signer, &cb.ConfigValue{Value: transaction}, 0, 0, nil)
+
+	seqNo := atomic.AddUint64(&s.txCnt, 1)
+
+	env, err := CreateEnvelope(cb.HeaderType_MESSAGE, s.channelID, s.signer, &cb.ConfigValue{Value: transaction}, 0, 0, seqNo, nil)
 	if err != nil {
 		panic(err)
 	}
