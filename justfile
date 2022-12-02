@@ -134,9 +134,7 @@ docker-runner-bin-dir := docker-runner-dir + "bin/"
 docker-runner-image inventory=('ansible/inventory/hosts-local-docker.yaml'):
     mkdir -p {{linux-bin-input-dir}}
     mkdir -p {{docker-runner-bin-dir}}
-    rm {{docker-runner-bin-dir}}*
     mkdir -p {{docker-runner-config-dir}}
-    rm {{docker-runner-config-dir}}*
     just docker "just build-all {{linux-bin-input-dir}}"
     cp {{linux-bin-input-dir}}* {{docker-runner-bin-dir}}
     ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" -i {{inventory}} --extra-vars "{'src_dir': '{{'../../' + config-input-dir}}', 'dst_dir': '{{'../../' + base-setup-config-dir}}'}"
