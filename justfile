@@ -40,6 +40,10 @@ export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 sampling-time-header := "sample_time"
 array-separator := ","
 
+### Admin
+update-dependencies:
+    ansible-playbook "{{playbook-path}}/0-update-deps.yaml"
+
 ### Build
 
 build:
