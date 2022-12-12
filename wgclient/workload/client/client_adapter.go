@@ -1,0 +1,145 @@
+package client
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+)
+
+type CoordinatorAdapter struct {
+	wg               sync.WaitGroup
+	stream           coordinatorservice.Coordinator_BlockProcessingClient
+	streamCancel     context.CancelFunc
+	receivedStatuses uint64
+}
+
+func OpenCoordinatorAdapter(endpoint connection.Endpoint, publicKey signature.PublicKey) *CoordinatorAdapter {
+	clientConfig := connection.NewDialConfig(endpoint)
+
+	fmt.Printf("Connect to coordinator...\n")
+	conn, err := connection.Connect(clientConfig)
+	utils.Must(err)
+
+	ctx, streamCancel := context.WithCancel(context.Background())
+	client := coordinatorservice.NewCoordinatorClient(conn)
+
+	// send key
+	key := &sigverification.Key{SerializedBytes: publicKey}
+	_, err = client.SetVerificationKey(ctx, key)
+	utils.Must(err)
+
+	blockStream, err := client.BlockProcessing(ctx)
+	utils.Must(err)
+
+	return &CoordinatorAdapter{
+		stream:           blockStream,
+		streamCancel:     streamCancel,
+		receivedStatuses: 0,
+	}
+}
+
+func (c *CoordinatorAdapter) StartCommitterOutputListener(onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		fmt.Printf("Spawning response listener...\n")
+		for {
+			response, err := c.stream.Recv()
+			if err == io.EOF {
+				// end of blockStream
+				fmt.Printf("RECV EOF\n")
+				break
+			}
+
+			if err != nil {
+				fmt.Printf("Closing listerer due to err: %v\n", err)
+				break
+			}
+
+			atomic.AddUint64(&c.receivedStatuses, uint64(len(response.GetTxsValidationStatus())))
+
+			onReceive(response)
+		}
+	}()
+}
+
+func (c *CoordinatorAdapter) RunCommitterSubmitter(dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
+	// sender context
+	ctx, cancel := context.WithCancel(context.Background())
+	// sender interrupt
+	interrupt(cancel)
+
+	start := time.Now()
+	txsSent := int64(0)
+	blocksSent := int64(0)
+	c.send(ctx, dQueue, func(t time.Time, block *token.Block) {
+		txsSent += int64(len(block.GetTxs()))
+		blocksSent += 1
+		onSend(t, block)
+	})
+	elapsedPushed := time.Since(start)
+
+	err := c.stream.CloseSend()
+	utils.Must(err)
+
+	needToComplete := txsSent - int64(atomic.LoadUint64(&c.receivedStatuses))
+	fmt.Printf("\nstopped sending! sent: %d received: %d\n", txsSent, c.receivedStatuses)
+	fmt.Printf("waiting for %d to complete\n", needToComplete)
+
+	if needToComplete > 0 {
+		// receiver interrupt
+		interrupt(c.streamCancel)
+		c.wg.Wait()
+	}
+
+	totalElapsed := time.Since(start)
+	workload.PrintStats(txsSent, blocksSent, int64(atomic.LoadUint64(&c.receivedStatuses)), elapsedPushed, totalElapsed)
+}
+
+func (c *CoordinatorAdapter) send(ctx context.Context, bQueue chan *workload.BlockWithExpectedResult, cnt func(t time.Time, b *token.Block)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case b, more := <-bQueue:
+			if !more {
+				// no more blocks to send
+				return
+			}
+
+			t := time.Now()
+			if err := c.stream.SendMsg(b.Block); err != nil {
+				if err == io.EOF {
+					// end of blockStream
+					fmt.Printf("RECV EOF\n")
+					return
+				}
+				utils.Must(err)
+			}
+			cnt(t, b.Block)
+		}
+	}
+}
+
+func interrupt(cancel context.CancelFunc) {
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		<-c
+		cancel()
+	}()
+}
