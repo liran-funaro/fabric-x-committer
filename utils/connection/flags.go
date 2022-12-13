@@ -24,6 +24,18 @@ func EndpointVars(p *[]*Endpoint, name string, defaultValue []*Endpoint, usage s
 	})
 }
 
+func EndpointVar(p *Endpoint, name string, defaultValue Endpoint, usage string) {
+	*p = defaultValue
+	flag.Func(name, usage, func(input string) error {
+		result, err := NewEndpoint(input)
+		if err != nil {
+			return err
+		}
+		*p = *result
+		return nil
+	})
+}
+
 func SliceFlag(name string, defaultValue []string, usage string) *[]string {
 	var p []string
 	SliceFlagVar(&p, name, defaultValue, usage)
