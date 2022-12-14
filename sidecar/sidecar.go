@@ -13,7 +13,10 @@ import (
 )
 
 type CommitterAdapter interface {
-	RunCommitterSubmitter(blocks chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) // TODO: Change interface to accept token.Block
+	RunCommitterSubmitterListener(
+		blocks chan *workload.BlockWithExpectedResult, // TODO: Change interface to accept token.Block
+		onSubmit func(time.Time, *token.Block),
+		onReceive func(*coordinatorservice.TxValidationStatusBatch))
 }
 type OrdererListener interface {
 	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse))
@@ -64,7 +67,7 @@ func (s *Sidecar) Start() {
 	}()
 
 	go func() {
-		s.committerAdapter.RunCommitterSubmitter(s.orderedBlocks, func(time.Time, *token.Block) {}, s.postCommitAggregator.AddStatusBatch)
+		s.committerAdapter.RunCommitterSubmitterListener(s.orderedBlocks, func(time.Time, *token.Block) {}, s.postCommitAggregator.AddStatusBatch)
 	}()
 
 	s.postCommitAggregator.RunCommittedBlockListener(s.outputBroadcaster.Broadcast)

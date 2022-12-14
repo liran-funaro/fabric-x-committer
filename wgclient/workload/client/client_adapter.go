@@ -52,7 +52,16 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, publicKey signature.Pu
 	}
 }
 
-func (c *CoordinatorAdapter) StartCommitterOutputListener(onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
+func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) {
+	// start receiver
+	c.startCommitterOutputListener(onReceive)
+
+	// start consuming blocks
+
+	c.runCommitterSubmitter(blocks, onSubmit)
+}
+
+func (c *CoordinatorAdapter) startCommitterOutputListener(onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -77,7 +86,7 @@ func (c *CoordinatorAdapter) StartCommitterOutputListener(onReceive func(batch *
 	}()
 }
 
-func (c *CoordinatorAdapter) RunCommitterSubmitter(dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
+func (c *CoordinatorAdapter) runCommitterSubmitter(dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
 	// sender context
 	ctx, cancel := context.WithCancel(context.Background())
 	// sender interrupt

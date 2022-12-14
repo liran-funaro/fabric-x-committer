@@ -76,9 +76,7 @@ func Validate(path string) {
 func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string) {
 	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), serializedKey)
 
-	// start receiver
-	cl.StartCommitterOutputListener(func(response *coordinatorservice.TxValidationStatusBatch) {
-		// track response
+	onReceive := func(response *coordinatorservice.TxValidationStatusBatch) {
 		if eventQueue != nil {
 			eventQueue <- &workload.Event{
 				Timestamp:   time.Now(),
@@ -86,15 +84,13 @@ func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpe
 				StatusBatch: response,
 			}
 		}
-	})
+	}
 
-	// start consuming blocks
 	// TODO double check if we can simplify our life by using the request tracker in utils/connection/request_tracker.go
 	bar := workload.NewProgressBar("Sending blocks from file...", pp.Block.Count, "blocks")
-	cl.RunCommitterSubmitter(dQueue, func(t time.Time, block *token.Block) {
-		bar.Add(1)
 
-		// track submissions
+	onSubmit := func(t time.Time, block *token.Block) {
+		bar.Add(1)
 		if eventQueue != nil {
 			eventQueue <- &workload.Event{
 				Timestamp:      t,
@@ -102,7 +98,9 @@ func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpe
 				SubmittedBlock: &workload.BlockInfo{Id: block.Number, Size: len(block.Txs)},
 			}
 		}
-	})
+	}
+
+	cl.RunCommitterSubmitterListener(dQueue, onSubmit, onReceive)
 
 	if eventQueue != nil {
 		close(eventQueue)
