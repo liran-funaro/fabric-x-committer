@@ -1,11 +1,11 @@
 package sidecar
 
 import (
-	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/proto"
 )
 
 type SidecarOutputListener interface {
@@ -15,7 +15,7 @@ type TxGenerator interface {
 	Next() *token.Tx
 }
 type OrdererSubmitter interface {
-	Broadcast(*common.Envelope)
+	Broadcast([]byte)
 }
 
 type Client struct {
@@ -39,12 +39,8 @@ func (c *Client) Start() {
 	c.sidecarOutputListener.RunOutputListener(func(*ab.DeliverResponse_Block) {})
 
 	for {
-		tx := c.txGenerator.Next()
-		envelope := mapTransaction(tx)
-		c.ordererSubmitter.Broadcast(envelope)
+		if tx, err := proto.Marshal(c.txGenerator.Next()); err == nil {
+			c.ordererSubmitter.Broadcast(tx)
+		}
 	}
-}
-
-func mapTransaction(tx *token.Tx) *common.Envelope {
-	return nil
 }

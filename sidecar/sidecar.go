@@ -19,7 +19,7 @@ type CommitterAdapter interface {
 		onReceive func(*coordinatorservice.TxValidationStatusBatch))
 }
 type OrdererListener interface {
-	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse))
+	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse)) error
 }
 type PostCommitAggregator interface {
 	AddStatusBatch(*coordinatorservice.TxValidationStatusBatch)

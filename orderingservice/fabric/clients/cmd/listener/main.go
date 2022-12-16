@@ -4,81 +4,54 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
-	"math"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"os"
 
 	"github.com/hyperledger/fabric-config/protolator"
-	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/bccsp/factory"
-	"github.com/hyperledger/fabric/msp"
-	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
-	"github.com/hyperledger/fabric/orderer/common/localconfig"
-	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/identity"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/tls"
-	"google.golang.org/grpc"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
-var (
-	oldest  = &ab.SeekPosition{Type: &ab.SeekPosition_Oldest{Oldest: &ab.SeekOldest{}}}
-	newest  = &ab.SeekPosition{Type: &ab.SeekPosition_Newest{Newest: &ab.SeekNewest{}}}
-	maxStop = &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}}
-)
+func main() {
+	defaults := clients.GetDefaultConfigValues()
 
-type deliverClient struct {
-	client    ab.AtomicBroadcast_DeliverClient
-	channelID string
-	signer    identity.SignerSerializer
-	quiet     bool
-}
+	var (
+		serverAddr string
+		channelID  string
+		quiet      bool
+		seek       int
+	)
 
-func newDeliverClient(client ab.AtomicBroadcast_DeliverClient, channelID string, signer identity.SignerSerializer, quiet bool) *deliverClient {
-	return &deliverClient{client: client, channelID: channelID, signer: signer, quiet: quiet}
-}
+	flag.StringVar(&serverAddr, "server", defaults.Endpoint.Address(), "The RPC server to connect to.")
+	flag.StringVar(&channelID, "channelID", defaults.ChannelID, "The channel ID to deliver from.")
+	flag.BoolVar(&quiet, "quiet", false, "Only print the block number, will not attempt to print its block contents.")
+	flag.IntVar(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
+		"Acceptable values:"+
+		"%d (or %d) to start from oldest (or newest) and keep at it indefinitely."+
+		"N >= 0 to fetch block N only.", clients.SeekSinceOldestBlock, clients.SeekSinceNewestBlock))
+	flag.Parse()
 
-func (r *deliverClient) seekHelper(start *ab.SeekPosition, stop *ab.SeekPosition) *cb.Envelope {
-	env, err := protoutil.CreateSignedEnvelope(cb.HeaderType_DELIVER_SEEK_INFO, r.channelID, r.signer, &ab.SeekInfo{
-		Start:    start,
-		Stop:     stop,
-		Behavior: ab.SeekInfo_BLOCK_UNTIL_READY,
-	}, 0, 0)
+	listener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
+		ChannelID:   channelID,
+		Endpoint:    *connection.CreateEndpoint(serverAddr),
+		Credentials: defaults.Credentials,
+		Signer:      defaults.Signer,
+	})
+
 	if err != nil {
-		panic(err)
+		return
 	}
-	return env
-}
 
-func (r *deliverClient) seekOldest() error {
-	return r.client.Send(r.seekHelper(oldest, maxStop))
-}
-
-func (r *deliverClient) seekNewest() error {
-	return r.client.Send(r.seekHelper(newest, maxStop))
-}
-
-func (r *deliverClient) seekSingle(blockNumber uint64) error {
-	specific := &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: blockNumber}}}
-	return r.client.Send(r.seekHelper(specific, specific))
-}
-
-func (r *deliverClient) readUntilClose() {
-	for {
-		msg, err := r.client.Recv()
-		if err != nil {
-			fmt.Println("Error receiving:", err)
-			return
-		}
-
+	utils.Must(listener.RunOrdererOutputListenerForBlock(seek, func(msg *ab.DeliverResponse) {
 		switch t := msg.Type.(type) {
 		case *ab.DeliverResponse_Status:
 			fmt.Println("Got status ", t)
 			return
 		case *ab.DeliverResponse_Block:
-			if !r.quiet {
+			if !quiet {
 				fmt.Println("Received block: ")
 				err := protolator.DeepMarshalJSON(os.Stdout, t.Block)
 				if err != nil {
@@ -88,91 +61,5 @@ func (r *deliverClient) readUntilClose() {
 				fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", t.Block.Header.Number, t.Block.XXX_Size(), len(t.Block.Data.Data), len(t.Block.Data.Data[0]))
 			}
 		}
-	}
-}
-
-func main() {
-	conf, err := localconfig.Load()
-	if err != nil {
-		fmt.Println("failed to load config:", err)
-		os.Exit(1)
-	}
-
-	// Load local MSP
-	mspConfig, err := msp.GetLocalMspConfig(conf.General.LocalMSPDir, conf.General.BCCSP, conf.General.LocalMSPID)
-	if err != nil {
-		fmt.Println("Failed to load MSP config:", err)
-		os.Exit(0)
-	}
-	err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
-	if err != nil { // Handle errors reading the config file
-		fmt.Println("Failed to initialize local MSP:", err)
-		os.Exit(0)
-	}
-
-	signer, err := mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
-	if err != nil {
-		fmt.Println("Failed to load local signing identity:", err)
-		os.Exit(0)
-	}
-
-	var channelID string
-	var serverAddr string
-	var seek int
-	var quiet bool
-
-	flag.StringVar(&serverAddr, "server", fmt.Sprintf("%s:%d", conf.General.ListenAddress, conf.General.ListenPort), "The RPC server to connect to.")
-	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to deliver from.")
-	flag.BoolVar(&quiet, "quiet", false, "Only print the block number, will not attempt to print its block contents.")
-	flag.IntVar(&seek, "seek", -2, "Specify the range of requested blocks."+
-		"Acceptable values:"+
-		"-2 (or -1) to start from oldest (or newest) and keep at it indefinitely."+
-		"N >= 0 to fetch block N only.")
-	flag.Parse()
-
-	if seek < -2 {
-		fmt.Println("Wrong seek value.")
-		flag.PrintDefaults()
-	}
-
-	tlsCredentials, err := tls.LoadTLSCredentials()
-	if err != nil {
-		fmt.Println("cannot load TLS credentials: :", err)
-		os.Exit(0)
-	}
-
-	var dialOpts []grpc.DialOption
-	maxMsgSize := 100 * 1024 * 1024
-	dialOpts = append(dialOpts, grpc.WithDefaultCallOptions(
-		grpc.MaxCallRecvMsgSize(maxMsgSize),
-		grpc.MaxCallSendMsgSize(maxMsgSize),
-	))
-	dialOpts = append(dialOpts, grpc.WithTransportCredentials(tlsCredentials))
-
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		return
-	}
-	client, err := ab.NewAtomicBroadcastClient(conn).Deliver(context.TODO())
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		return
-	}
-
-	s := newDeliverClient(client, channelID, signer, quiet)
-	switch seek {
-	case -2:
-		err = s.seekOldest()
-	case -1:
-		err = s.seekNewest()
-	default:
-		err = s.seekSingle(uint64(seek))
-	}
-
-	if err != nil {
-		fmt.Println("Received error:", err)
-	}
-
-	s.readUntilClose()
+	}))
 }
