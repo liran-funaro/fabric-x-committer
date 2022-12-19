@@ -22,7 +22,9 @@ type OrdererListener interface {
 	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse)) error
 }
 type PostCommitAggregator interface {
-	AddStatusBatch(*coordinatorservice.TxValidationStatusBatch)
+	AddSubmittedConfigBlock(block *common.Block)
+	AddSubmittedTxBlock(*common.Block)
+	AddCommittedBatch(*coordinatorservice.TxValidationStatusBatch)
 	RunCommittedBlockListener(onFullBlockStatusComplete func(*ab.DeliverResponse_Block))
 }
 type OutputBroadcaster interface {
@@ -56,8 +58,9 @@ func (s *Sidecar) Start() {
 		s.ordererListener.RunOrdererOutputListener(func(msg *ab.DeliverResponse) {
 			if t, ok := msg.Type.(*ab.DeliverResponse_Block); ok {
 				if isConfigBlock(t.Block) {
-					s.outputBroadcaster.Broadcast(t)
+					s.postCommitAggregator.AddSubmittedConfigBlock(t.Block)
 				} else {
+					s.postCommitAggregator.AddSubmittedTxBlock(t.Block)
 					s.orderedBlocks <- &workload.BlockWithExpectedResult{
 						Block: mapBlock(t.Block),
 					}
@@ -67,7 +70,7 @@ func (s *Sidecar) Start() {
 	}()
 
 	go func() {
-		s.committerAdapter.RunCommitterSubmitterListener(s.orderedBlocks, func(time.Time, *token.Block) {}, s.postCommitAggregator.AddStatusBatch)
+		s.committerAdapter.RunCommitterSubmitterListener(s.orderedBlocks, func(time.Time, *token.Block) {}, s.postCommitAggregator.AddCommittedBatch)
 	}()
 
 	s.postCommitAggregator.RunCommittedBlockListener(s.outputBroadcaster.Broadcast)
