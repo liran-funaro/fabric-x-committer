@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 )
 
@@ -113,8 +112,8 @@ func (a *txStatusAggregator) tryCompleteBlock(currentBlock *inProgressBlock) {
 	}
 }
 
-func (a *txStatusAggregator) RunCommittedBlockListener(onFullBlockStatusComplete func(*ab.DeliverResponse_Block)) {
+func (a *txStatusAggregator) RunCommittedBlockListener(onFullBlockStatusComplete func(*common.Block)) {
 	for {
-		onFullBlockStatusComplete(&ab.DeliverResponse_Block{Block: <-a.completedBlocks})
+		onFullBlockStatusComplete(<-a.completedBlocks)
 	}
 }

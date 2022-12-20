@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
@@ -124,31 +123,31 @@ func (i *testInstance) ReturnFromCommitter(statuses ...*coordinatorservice.TxVal
 	i.aggregator.AddCommittedBatch(&coordinatorservice.TxValidationStatusBatch{TxsValidationStatus: statuses})
 }
 
-func (i *testInstance) AssertReceivedBlocks(outputCh <-chan *ab.DeliverResponse_Block, from, to int) {
+func (i *testInstance) AssertReceivedBlocks(outputCh <-chan *common.Block, from, to int) {
 	for j := from; j <= to; j++ {
 		gomega.Eventually(outputCh).WithTimeout(defaultTimeout).Should(gomega.Receive(blockWithNumber(j)))
 	}
 }
 
-func (i *testInstance) StartOutputWriter() <-chan *ab.DeliverResponse_Block {
-	outputCh := make(chan *ab.DeliverResponse_Block, 10)
-	go i.aggregator.RunCommittedBlockListener(func(block *ab.DeliverResponse_Block) {
+func (i *testInstance) StartOutputWriter() <-chan *common.Block {
+	outputCh := make(chan *common.Block, 10)
+	go i.aggregator.RunCommittedBlockListener(func(block *common.Block) {
 		outputCh <- block
 	})
 	return outputCh
 }
 func (i *testInstance) StartOutputLogger() {
-	go i.aggregator.RunCommittedBlockListener(func(block *ab.DeliverResponse_Block) {
-		fmt.Printf("Output block: %d\n", block.Block.Header.Number)
+	go i.aggregator.RunCommittedBlockListener(func(block *common.Block) {
+		fmt.Printf("Output block: %d\n", block.Header.Number)
 	})
 }
 func (i *testInstance) StartEmptyOutputConsumer() {
-	go i.aggregator.RunCommittedBlockListener(func(block *ab.DeliverResponse_Block) {})
+	go i.aggregator.RunCommittedBlockListener(func(block *common.Block) {})
 }
 
 func blockWithNumber(blockNumber int) types.GomegaMatcher {
-	return gomega.Satisfy(func(b *ab.DeliverResponse_Block) bool {
-		return int(b.Block.Header.Number) == blockNumber
+	return gomega.Satisfy(func(b *common.Block) bool {
+		return int(b.Header.Number) == blockNumber
 	})
 }
 
