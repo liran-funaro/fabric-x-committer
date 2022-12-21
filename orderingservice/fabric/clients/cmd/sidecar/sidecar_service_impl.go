@@ -6,7 +6,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 type serviceImpl struct {
@@ -22,7 +21,7 @@ func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 
 	s.Start(func(commonBlock *common.Block) {
 		fmt.Printf("Received complete block from committer: %d:%d.\n", commonBlock.Header.Number, len(commonBlock.Data.Data))
-		utils.Must(stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{commonBlock}}))
+		stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{commonBlock}})
 	})
 	return nil
 }

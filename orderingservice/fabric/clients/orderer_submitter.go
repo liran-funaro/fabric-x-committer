@@ -19,47 +19,47 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// Multi Submitter
-
-//MultiFabricOrdererSubmitter can connect to multiple orderers. For each ordrerer it can open multiple streams and send messages.
-type MultiFabricOrdererSubmitter struct {
-	providers []*FabricOrdererSubmitterProvider
-}
-type MultiFabricOrdererSubmitterOpts struct {
-	ChannelID   string
-	Endpoints   []*connection.Endpoint
-	Credentials credentials.TransportCredentials
-	Signer      msp.SigningIdentity
+type FabricOrdererBroadcasterOpts struct {
+	ChannelID            string
+	Endpoints            []*connection.Endpoint
+	Credentials          credentials.TransportCredentials
+	Signer               msp.SigningIdentity
+	Parallelism          int
+	InputChannelCapacity int
+	OnAck                func(error)
 }
 
-func NewMultiFabricOrdererSubmitter(opts *MultiFabricOrdererSubmitterOpts) (*MultiFabricOrdererSubmitter, error) {
-	providers := make([]*FabricOrdererSubmitterProvider, len(opts.Endpoints))
-	for i, endpoint := range opts.Endpoints {
-		provider, err := NewFabricOrdererSubmitterProvider(&FabricOrdererConnectionOpts{
-			ChannelID:   opts.ChannelID,
-			Endpoint:    *endpoint,
-			Credentials: opts.Credentials,
-			Signer:      opts.Signer,
-		})
+func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*FabricOrdererBroadcaster, error) {
+	connections, err := openConnections(opts.Endpoints, opts.Credentials)
+	if err != nil {
+		return nil, err
+	}
+
+	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.Signer, opts.OnAck)
+	closer := func() error { return closeConnections(connections) }
+	return &FabricOrdererBroadcaster{submitters, closer}, nil
+}
+
+func openConnections(endpoints []*connection.Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
+	connections := make([]*grpc.ClientConn, len(endpoints))
+	for i, endpoint := range endpoints {
+		conn, err := connect(*endpoint, transportCredentials)
 
 		if err != nil {
 			fmt.Println("Error connecting:", err)
-			closeErrs := closeAll(providers[:i])
+			closeErrs := closeConnections(connections[:i])
 			if closeErrs != nil {
 				fmt.Println(closeErrs)
 			}
 			return nil, err
 		}
 
-		providers[i] = provider
+		connections[i] = conn
 	}
-	return &MultiFabricOrdererSubmitter{providers: providers}, nil
-}
-func (s *MultiFabricOrdererSubmitter) Close() error {
-	return closeAll(s.providers)
+	return connections, nil
 }
 
-func closeAll(closers []*FabricOrdererSubmitterProvider) error {
+func closeConnections(closers []*grpc.ClientConn) error {
 	errs := make([]error, 0, len(closers))
 	for _, closer := range closers {
 		if err := closer.Close(); err != nil {
@@ -72,117 +72,123 @@ func closeAll(closers []*FabricOrdererSubmitterProvider) error {
 	return nil
 }
 
-//BroadcastRepeat opens parallelism routines and on each routine it sends the same message (msgData) msgsPerGo times
-func (s *MultiFabricOrdererSubmitter) BroadcastRepeat(parallelism, msgsPerGo int, msgData []byte, onAck func(error)) *sync.WaitGroup {
-	return s.broadcast(parallelism, onAck, func(submitter *FabricOrdererSubmitter) {
-		for i := 0; i < msgsPerGo; i++ {
-			// TODO pre-generate signed envelopes
-			submitter.Broadcast(msgData)
-		}
-	})
-}
+func openStreams(connections []*grpc.ClientConn, parallelism int, channelID string, signer msp.SigningIdentity, onAck func(error)) []*fabricOrdererSubmitter {
+	submitters := make([]*fabricOrdererSubmitter, parallelism)
 
-//BroadcastChannel opens parallelism routines that consume from the same dataCh channel until it closes
-func (s *MultiFabricOrdererSubmitter) BroadcastChannel(parallelism int, dataCh <-chan []byte, onAck func(error)) *sync.WaitGroup {
-	return s.broadcast(parallelism, onAck, func(provider *FabricOrdererSubmitter) {
-		for {
-			if msgData, ok := <-dataCh; ok {
-				provider.Broadcast(msgData)
-			} else {
-				return
-			}
-		}
-	})
-}
-
-func (s *MultiFabricOrdererSubmitter) broadcast(parallelism int, onAck func(error), submit func(*FabricOrdererSubmitter)) *sync.WaitGroup {
 	var wg sync.WaitGroup
 	wg.Add(parallelism)
 	for i := 0; i < parallelism; i++ {
-		go func(provider *FabricOrdererSubmitterProvider) {
-			submitter, err := provider.NewSubmitter(onAck)
-
+		go func(conn *grpc.ClientConn, i int) {
+			client, err := ab.NewAtomicBroadcastClient(conn).Broadcast(context.TODO())
 			if err != nil {
 				fmt.Println("Error connecting:", err)
 				return
 			}
-			submit(submitter)
-			err = submitter.StopAndWait()
-			if err != nil {
-				fmt.Print(err)
+			submitters[i] = newFabricOrdererSubmitter(client, channelID, signer, onAck)
+			wg.Done()
+		}(connections[i%len(connections)], i)
+	}
+	wg.Wait()
+	return submitters
+}
+
+type FabricOrdererBroadcaster struct {
+	submitters []*fabricOrdererSubmitter
+	closer     func() error
+}
+
+func (b *FabricOrdererBroadcaster) SendBulk(getItem func(int, int) ([]byte, bool)) *sync.WaitGroup {
+	var wg sync.WaitGroup
+	wg.Add(len(b.submitters))
+	for s, submitter := range b.submitters {
+		go func(submitter *fabricOrdererSubmitter, s int) {
+			for m := 0; ; m++ {
+				if message, ok := getItem(m, s); ok {
+					submitter.Broadcast(message)
+				} else {
+					break
+				}
+			}
+			if err := submitter.StopAndWait(); err != nil {
+				fmt.Println(err)
 			}
 			wg.Done()
-		}(s.providers[i%len(s.providers)])
+		}(submitter, s)
 	}
 	return &wg
 }
 
-// Provider
-
-//FabricOrdererSubmitterProvider connects to one ordrerer and can open multiple streams to send messages to this orderer
-type FabricOrdererSubmitterProvider struct {
-	connection *grpc.ClientConn
-	channelID  string
-	signer     identity.SignerSerializer
-}
-
-func NewFabricOrdererSubmitterProvider(opts *FabricOrdererConnectionOpts) (*FabricOrdererSubmitterProvider, error) {
-	conn, err := connect(opts.Endpoint, opts.Credentials)
-	if err != nil {
-		return nil, err
+func (b *FabricOrdererBroadcaster) SendChannel(ch <-chan []byte) *sync.WaitGroup {
+	chs := make([]chan []byte, len(b.submitters))
+	for s := 0; s < len(chs); s++ {
+		chs[s] = make(chan []byte, 10)
 	}
-
-	return &FabricOrdererSubmitterProvider{conn, opts.ChannelID, opts.Signer}, nil
+	go func() {
+		for {
+			item := <-ch
+			for s := 0; s < len(chs); s++ {
+				chs[s] <- item
+			}
+		}
+	}()
+	return b.SendBulk(func(_, s int) ([]byte, bool) {
+		message, ok := <-chs[s]
+		return message, ok
+	})
 }
 
-//NewSubmitter opens a new stream (atomic broadcast client) to an orderer)
-func (p *FabricOrdererSubmitterProvider) NewSubmitter(onAck func(error)) (*FabricOrdererSubmitter, error) {
-	client, err := ab.NewAtomicBroadcastClient(p.connection).Broadcast(context.TODO())
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		return nil, err
+func (b *FabricOrdererBroadcaster) SendRepeated(message []byte, times int) *sync.WaitGroup {
+	return b.SendBulk(func(m, _ int) ([]byte, bool) {
+		return message, m < times
+	})
+}
+
+func (b *FabricOrdererBroadcaster) Send(message []byte) {
+	for _, submitter := range b.submitters {
+		submitter.Broadcast(message)
 	}
-	return newFabricOrdererSubmitter(client, p.channelID, p.signer, onAck), nil
 }
-
-func (p *FabricOrdererSubmitterProvider) Close() error {
-	return p.connection.Close()
+func (b *FabricOrdererBroadcaster) Close() error {
+	return b.closer()
 }
 
 // Submitter
 
-//FabricOrdererSubmitter holds the reference to a stream to the orderer. It can send data to this orderer.
-type FabricOrdererSubmitter struct {
-	client *broadcastClient
+//fabricOrdererSubmitter holds the reference to a stream to the orderer. It can send data to this orderer.
+type fabricOrdererSubmitter struct {
+	client    ab.AtomicBroadcast_BroadcastClient
+	channelID string
+	signer    msp.SigningIdentity
+	done      chan struct{}
 
-	done    chan struct{}
 	stopped bool
 	sent    uint64
 	acked   uint64
 	once    sync.Once
+	txCnt   uint64
 }
 
-func newFabricOrdererSubmitter(client ab.AtomicBroadcast_BroadcastClient, channelID string, signer identity.SignerSerializer, onAck func(error)) *FabricOrdererSubmitter {
-	s := &FabricOrdererSubmitter{client: newBroadcastClient(client, channelID, signer), done: make(chan struct{})}
+func newFabricOrdererSubmitter(client ab.AtomicBroadcast_BroadcastClient, channelID string, signer msp.SigningIdentity, onAck func(error)) *fabricOrdererSubmitter {
+	s := &fabricOrdererSubmitter{client: client, channelID: channelID, signer: signer, done: make(chan struct{})}
 	s.startAckListener(onAck)
 	return s
 }
 
-func (s *FabricOrdererSubmitter) Broadcast(msgData []byte) {
-	if err := s.client.broadcast(msgData); err != nil {
+func (s *fabricOrdererSubmitter) Broadcast(msgData []byte) {
+	if err := s.broadcast(msgData); err != nil {
 		panic(err)
 	} else {
 		atomic.AddUint64(&s.sent, 1)
 	}
 }
 
-func (s *FabricOrdererSubmitter) StopAndWait() error {
+func (s *fabricOrdererSubmitter) StopAndWait() error {
 	s.stopSending()
 	s.waitUntilAllAcked()
 	return s.closeSend()
 }
 
-func (s *FabricOrdererSubmitter) stopSending() {
+func (s *fabricOrdererSubmitter) stopSending() {
 	s.stopped = true
 	if atomic.LoadUint64(&s.sent) == atomic.LoadUint64(&s.acked) {
 		s.once.Do(func() {
@@ -190,19 +196,19 @@ func (s *FabricOrdererSubmitter) stopSending() {
 		})
 	}
 }
-func (s *FabricOrdererSubmitter) waitUntilAllAcked() {
+func (s *fabricOrdererSubmitter) waitUntilAllAcked() {
 	<-s.done
 }
 
-func (s *FabricOrdererSubmitter) closeSend() error {
-	return s.client.client.CloseSend()
+func (s *fabricOrdererSubmitter) closeSend() error {
+	return s.client.CloseSend()
 }
-func (s *FabricOrdererSubmitter) startAckListener(onAck func(error)) {
+func (s *fabricOrdererSubmitter) startAckListener(onAck func(error)) {
 	go func() {
 		var err error
 
 		for !s.stopped || atomic.LoadUint64(&s.sent) > s.acked {
-			err = s.client.getAck()
+			err = s.getAck()
 			onAck(err)
 			s.acked++
 		}
@@ -215,21 +221,7 @@ func (s *FabricOrdererSubmitter) startAckListener(onAck func(error)) {
 	}()
 }
 
-// Broadcast client
-
-type broadcastClient struct {
-	client    ab.AtomicBroadcast_BroadcastClient
-	signer    identity.SignerSerializer
-	channelID string
-	txCnt     uint64
-}
-
-// newBroadcastClient creates a simple instance of the broadcastClient interface
-func newBroadcastClient(client ab.AtomicBroadcast_BroadcastClient, channelID string, signer identity.SignerSerializer) *broadcastClient {
-	return &broadcastClient{client: client, channelID: channelID, signer: signer}
-}
-
-func (s *broadcastClient) broadcast(transaction []byte) error {
+func (s *fabricOrdererSubmitter) broadcast(transaction []byte) error {
 	// TODO replace cb.ConfigValue with "our" transaction
 
 	seqNo := atomic.AddUint64(&s.txCnt, 1)
@@ -241,7 +233,7 @@ func (s *broadcastClient) broadcast(transaction []byte) error {
 	return s.client.Send(env)
 }
 
-func (s *broadcastClient) getAck() error {
+func (s *fabricOrdererSubmitter) getAck() error {
 	msg, err := s.client.Recv()
 	if err != nil {
 		return err
