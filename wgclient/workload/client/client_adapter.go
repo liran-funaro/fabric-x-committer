@@ -22,12 +22,13 @@ import (
 
 type CoordinatorAdapter struct {
 	wg               sync.WaitGroup
-	stream           coordinatorservice.Coordinator_BlockProcessingClient
-	streamCancel     context.CancelFunc
+	client           coordinatorservice.CoordinatorClient
+	ctx              context.Context
+	ctxCancel        context.CancelFunc
 	receivedStatuses uint64
 }
 
-func OpenCoordinatorAdapter(endpoint connection.Endpoint, publicKey signature.PublicKey) *CoordinatorAdapter {
+func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
 	fmt.Printf("Connect to coordinator...\n")
@@ -37,37 +38,38 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, publicKey signature.Pu
 	ctx, streamCancel := context.WithCancel(context.Background())
 	client := coordinatorservice.NewCoordinatorClient(conn)
 
-	// send key
-	key := &sigverification.Key{SerializedBytes: publicKey}
-	_, err = client.SetVerificationKey(ctx, key)
-	utils.Must(err)
-
-	blockStream, err := client.BlockProcessing(ctx)
-	utils.Must(err)
-
 	return &CoordinatorAdapter{
-		stream:           blockStream,
-		streamCancel:     streamCancel,
-		receivedStatuses: 0,
+		client:    client,
+		ctx:       ctx,
+		ctxCancel: streamCancel,
 	}
 }
 
+func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey) error {
+	key := &sigverification.Key{SerializedBytes: publicKey}
+	_, err := c.client.SetVerificationKey(c.ctx, key)
+	return err
+}
+
 func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) {
+	blockStream, err := c.client.BlockProcessing(c.ctx)
+	utils.Must(err)
+
 	// start receiver
-	c.startCommitterOutputListener(onReceive)
+	c.startCommitterOutputListener(blockStream, onReceive)
 
 	// start consuming blocks
 
-	c.runCommitterSubmitter(blocks, onSubmit)
+	c.runCommitterSubmitter(blockStream, blocks, onSubmit)
 }
 
-func (c *CoordinatorAdapter) startCommitterOutputListener(onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
+func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorservice.Coordinator_BlockProcessingClient, onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		fmt.Printf("Spawning response listener...\n")
 		for {
-			response, err := c.stream.Recv()
+			response, err := stream.Recv()
 			if err == io.EOF {
 				// end of blockStream
 				fmt.Printf("RECV EOF\n")
@@ -86,7 +88,7 @@ func (c *CoordinatorAdapter) startCommitterOutputListener(onReceive func(batch *
 	}()
 }
 
-func (c *CoordinatorAdapter) runCommitterSubmitter(dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
+func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coordinator_BlockProcessingClient, dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
 	// sender context
 	ctx, cancel := context.WithCancel(context.Background())
 	// sender interrupt
@@ -95,14 +97,14 @@ func (c *CoordinatorAdapter) runCommitterSubmitter(dQueue chan *workload.BlockWi
 	start := time.Now()
 	txsSent := int64(0)
 	blocksSent := int64(0)
-	c.send(ctx, dQueue, func(t time.Time, block *token.Block) {
+	c.send(ctx, stream, dQueue, func(t time.Time, block *token.Block) {
 		txsSent += int64(len(block.GetTxs()))
 		blocksSent += 1
 		onSend(t, block)
 	})
 	elapsedPushed := time.Since(start)
 
-	err := c.stream.CloseSend()
+	err := stream.CloseSend()
 	utils.Must(err)
 
 	needToComplete := txsSent - int64(atomic.LoadUint64(&c.receivedStatuses))
@@ -111,7 +113,7 @@ func (c *CoordinatorAdapter) runCommitterSubmitter(dQueue chan *workload.BlockWi
 
 	if needToComplete > 0 {
 		// receiver interrupt
-		interrupt(c.streamCancel)
+		interrupt(c.ctxCancel)
 		c.wg.Wait()
 	}
 
@@ -119,7 +121,7 @@ func (c *CoordinatorAdapter) runCommitterSubmitter(dQueue chan *workload.BlockWi
 	workload.PrintStats(txsSent, blocksSent, int64(atomic.LoadUint64(&c.receivedStatuses)), elapsedPushed, totalElapsed)
 }
 
-func (c *CoordinatorAdapter) send(ctx context.Context, bQueue chan *workload.BlockWithExpectedResult, cnt func(t time.Time, b *token.Block)) {
+func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice.Coordinator_BlockProcessingClient, bQueue chan *workload.BlockWithExpectedResult, cnt func(t time.Time, b *token.Block)) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -131,7 +133,7 @@ func (c *CoordinatorAdapter) send(ctx context.Context, bQueue chan *workload.Blo
 			}
 
 			t := time.Now()
-			if err := c.stream.SendMsg(b.Block); err != nil {
+			if err := stream.SendMsg(b.Block); err != nil {
 				if err == io.EOF {
 					// end of blockStream
 					fmt.Printf("RECV EOF\n")

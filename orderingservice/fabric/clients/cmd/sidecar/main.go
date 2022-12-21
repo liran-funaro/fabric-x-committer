@@ -17,7 +17,6 @@ func main() {
 		OrdererTransportCredentials:    defaults.Credentials,
 		CommitterOutputChannelCapacity: 20,
 		OrdererSigner:                  defaults.Signer,
-		CommitterPublicKey:             []byte{},
 	}
 	var output connection.Endpoint
 	flag.StringVar(&options.ChannelID, defaults.ChannelID, defaults.ChannelID, "Channel ID")

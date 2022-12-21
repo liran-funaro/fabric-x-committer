@@ -9,7 +9,6 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -44,7 +43,6 @@ type Sidecar struct {
 type InitOptions struct {
 	ChannelID                      string
 	CommitterEndpoint              connection.Endpoint
-	CommitterPublicKey             signature.PublicKey
 	CommitterOutputChannelCapacity int
 	OrdererTransportCredentials    credentials.TransportCredentials
 	OrdererSigner                  msp.SigningIdentity
@@ -64,7 +62,7 @@ func New(opts *InitOptions) (*Sidecar, error) {
 
 	return &Sidecar{
 		ordererListener:      ordererListener,
-		committerAdapter:     client.OpenCoordinatorAdapter(opts.CommitterEndpoint, opts.CommitterPublicKey),
+		committerAdapter:     client.OpenCoordinatorAdapter(opts.CommitterEndpoint),
 		orderedBlocks:        make(chan *workload.BlockWithExpectedResult, opts.CommitterOutputChannelCapacity),
 		postCommitAggregator: NewTxStatusAggregator(),
 	}, nil

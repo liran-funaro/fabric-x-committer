@@ -74,7 +74,9 @@ func Validate(path string) {
 }
 
 func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string) {
-	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), serializedKey)
+	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint))
+
+	utils.Must(cl.SetVerificationKey(serializedKey))
 
 	onReceive := func(response *coordinatorservice.TxValidationStatusBatch) {
 		if eventQueue != nil {

@@ -19,7 +19,7 @@ func Generate(profilePath, outputPath string) {
 
 	pp := LoadProfileFromYaml(profilePath)
 
-	publicKey, signer, txQueue := startTxGenerator(pp)
+	publicKey, signer, txQueue := StartTxGenerator(&pp.Transaction, pp.Block.Size)
 	outputPath = createIfNotExists(outputPath)
 
 	// store public key

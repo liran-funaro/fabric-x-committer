@@ -14,20 +14,18 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.TxSigner, chan *token.Tx) {
-
-	sigType := strings.ToUpper(pp.Transaction.SignatureType)
+func StartTxGenerator(profile *TransactionProfile, bufferSize int64) (signature.PublicKey, sigverification_test.TxSigner, chan *token.Tx) {
+	sigType := strings.ToUpper(profile.SignatureType)
 
 	privateKey, publicKey := sigverification_test.GetSignatureFactory(sigType).NewKeys()
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:               signer,
-		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.Size),
+		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(profile.Size),
 		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
 	}
 
-	blockSize := pp.Block.Size
 	numWorker := runtime.NumCPU()
 	w := os.Getenv("NUM_WORKERS")
 	if w != "" {
@@ -36,7 +34,7 @@ func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.Tx
 		numWorker = n
 	}
 
-	txQueueSize := numWorker * int(blockSize)
+	txQueueSize := numWorker * int(bufferSize)
 
 	// start workers already to produce transactions
 	txQueue := make(chan *token.Tx, txQueueSize)
@@ -56,7 +54,7 @@ func startTxGenerator(pp *Profile) (signature.PublicKey, sigverification_test.Tx
 }
 
 func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *BlockWithExpectedResult) {
-	pk, signer, txQueue := startTxGenerator(pp)
+	pk, signer, txQueue := StartTxGenerator(&pp.Transaction, pp.Block.Size)
 
 	blockSize := uint64(pp.Block.Size)
 	queueBufferSize := 1000

@@ -97,7 +97,9 @@ type FabricOrdererBroadcaster struct {
 	closer     func() error
 }
 
-func (b *FabricOrdererBroadcaster) SendBulk(getItem func(int, int) ([]byte, bool)) *sync.WaitGroup {
+//send launches a goroutine for each stream and sends the result of the i-th invocation of getItem to the s-th submitter.
+//If we want to send the same message to all submitters, then for a specific value of i, getItem should return the same value (independent of s).
+func (b *FabricOrdererBroadcaster) send(getItem func(int, int) ([]byte, bool)) *sync.WaitGroup {
 	var wg sync.WaitGroup
 	wg.Add(len(b.submitters))
 	for s, submitter := range b.submitters {
@@ -118,36 +120,39 @@ func (b *FabricOrdererBroadcaster) SendBulk(getItem func(int, int) ([]byte, bool
 	return &wg
 }
 
-func (b *FabricOrdererBroadcaster) SendChannel(ch <-chan []byte) *sync.WaitGroup {
+//SendReplicated calls getItem, and then replicates and sends its result to all submitters.
+func (b *FabricOrdererBroadcaster) SendReplicated(getItem func() ([]byte, bool)) *sync.WaitGroup {
 	chs := make([]chan []byte, len(b.submitters))
 	for s := 0; s < len(chs); s++ {
 		chs[s] = make(chan []byte, 10)
 	}
 	go func() {
 		for {
-			item := <-ch
+			item, ok := getItem()
+			if !ok {
+				break
+			}
 			for s := 0; s < len(chs); s++ {
 				chs[s] <- item
 			}
 		}
+		for s := 0; s < len(chs); s++ {
+			close(chs[s])
+		}
 	}()
-	return b.SendBulk(func(_, s int) ([]byte, bool) {
+	return b.send(func(_, s int) ([]byte, bool) {
 		message, ok := <-chs[s]
 		return message, ok
 	})
 }
 
+//SendRepeated sends the same message (times) to all submitters times.
 func (b *FabricOrdererBroadcaster) SendRepeated(message []byte, times int) *sync.WaitGroup {
-	return b.SendBulk(func(m, _ int) ([]byte, bool) {
+	return b.send(func(m, _ int) ([]byte, bool) {
 		return message, m < times
 	})
 }
 
-func (b *FabricOrdererBroadcaster) Send(message []byte) {
-	for _, submitter := range b.submitters {
-		submitter.Broadcast(message)
-	}
-}
 func (b *FabricOrdererBroadcaster) Close() error {
 	return b.closer()
 }
