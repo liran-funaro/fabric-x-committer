@@ -5,16 +5,19 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 )
 
 type serviceImpl struct {
 	ab.UnimplementedAtomicBroadcastServer
-	opts *sidecar.InitOptions
+	ordererConfig   *sidecar.OrdererClientConfig
+	committerConfig *sidecar.CommitterClientConfig
+	securityConfig  *clients.SecurityConnectionOpts
 }
 
 func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	s, err := sidecar.New(i.opts)
+	s, err := sidecar.New(i.ordererConfig, i.committerConfig, i.securityConfig)
 	if err != nil {
 		return err
 	}

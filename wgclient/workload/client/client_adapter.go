@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -17,8 +16,11 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
+
+var logger = logging.New("clientadapter")
 
 type CoordinatorAdapter struct {
 	wg               sync.WaitGroup
@@ -31,7 +33,7 @@ type CoordinatorAdapter struct {
 func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
-	fmt.Printf("Connect to coordinator...\n")
+	logger.Infof("Connect to coordinator on %v.\n", endpoint)
 	conn, err := connection.Connect(clientConfig)
 	utils.Must(err)
 
@@ -46,12 +48,14 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
 }
 
 func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey) error {
+	logger.Infof("Setting verification key.\n")
 	key := &sigverification.Key{SerializedBytes: publicKey}
 	_, err := c.client.SetVerificationKey(c.ctx, key)
 	return err
 }
 
 func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) {
+	logger.Infof("Open stream to coordinator.\n")
 	blockStream, err := c.client.BlockProcessing(c.ctx)
 	utils.Must(err)
 
@@ -64,20 +68,21 @@ func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks chan *workload
 }
 
 func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorservice.Coordinator_BlockProcessingClient, onReceive func(batch *coordinatorservice.TxValidationStatusBatch)) {
+	logger.Infof("Starting response listener.\n")
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		fmt.Printf("Spawning response listener...\n")
+		logger.Debug("Spawning response listener...\n")
 		for {
 			response, err := stream.Recv()
 			if err == io.EOF {
 				// end of blockStream
-				fmt.Printf("RECV EOF\n")
+				logger.Infof("RECV EOF\n")
 				break
 			}
 
 			if err != nil {
-				fmt.Printf("Closing listerer due to err: %v\n", err)
+				logger.Errorf("Closing listerer due to err: %v\n", err)
 				break
 			}
 
@@ -89,6 +94,7 @@ func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorserv
 }
 
 func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coordinator_BlockProcessingClient, dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
+	logger.Infof("Start submitter to coordinator.\n")
 	// sender context
 	ctx, cancel := context.WithCancel(context.Background())
 	// sender interrupt
@@ -108,8 +114,8 @@ func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coo
 	utils.Must(err)
 
 	needToComplete := txsSent - int64(atomic.LoadUint64(&c.receivedStatuses))
-	fmt.Printf("\nstopped sending! sent: %d received: %d\n", txsSent, c.receivedStatuses)
-	fmt.Printf("waiting for %d to complete\n", needToComplete)
+	logger.Infof("\nstopped sending! sent: %d received: %d\n", txsSent, c.receivedStatuses)
+	logger.Infof("waiting for %d to complete\n", needToComplete)
 
 	if needToComplete > 0 {
 		// receiver interrupt
@@ -136,7 +142,7 @@ func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice
 			if err := stream.SendMsg(b.Block); err != nil {
 				if err == io.EOF {
 					// end of blockStream
-					fmt.Printf("RECV EOF\n")
+					logger.Infof("RECV EOF\n")
 					return
 				}
 				utils.Must(err)

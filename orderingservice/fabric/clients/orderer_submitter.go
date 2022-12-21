@@ -22,34 +22,34 @@ import (
 type FabricOrdererBroadcasterOpts struct {
 	ChannelID            string
 	Endpoints            []*connection.Endpoint
-	Credentials          credentials.TransportCredentials
-	Signer               msp.SigningIdentity
+	SecurityOpts         *SecurityConnectionOpts
 	Parallelism          int
 	InputChannelCapacity int
 	OnAck                func(error)
 }
 
 func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*FabricOrdererBroadcaster, error) {
-	connections, err := openConnections(opts.Endpoints, opts.Credentials)
+	connections, err := openConnections(opts.Endpoints, opts.SecurityOpts.Credentials)
 	if err != nil {
 		return nil, err
 	}
 
-	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.Signer, opts.OnAck)
+	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.SecurityOpts.Signer, opts.OnAck)
 	closer := func() error { return closeConnections(connections) }
 	return &FabricOrdererBroadcaster{submitters, closer}, nil
 }
 
 func openConnections(endpoints []*connection.Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
+	logger.Infof("Opening connections to %d orderers: %v.\n", len(endpoints), endpoints)
 	connections := make([]*grpc.ClientConn, len(endpoints))
 	for i, endpoint := range endpoints {
 		conn, err := connect(*endpoint, transportCredentials)
 
 		if err != nil {
-			fmt.Println("Error connecting:", err)
+			logger.Errorf("Error connecting: %v", err)
 			closeErrs := closeConnections(connections[:i])
 			if closeErrs != nil {
-				fmt.Println(closeErrs)
+				logger.Error(closeErrs)
 			}
 			return nil, err
 		}
@@ -59,9 +59,10 @@ func openConnections(endpoints []*connection.Endpoint, transportCredentials cred
 	return connections, nil
 }
 
-func closeConnections(closers []*grpc.ClientConn) error {
-	errs := make([]error, 0, len(closers))
-	for _, closer := range closers {
+func closeConnections(connections []*grpc.ClientConn) error {
+	logger.Infof("Closing %d connections.\n", len(connections))
+	errs := make([]error, 0, len(connections))
+	for _, closer := range connections {
 		if err := closer.Close(); err != nil {
 			errs = append(errs, err)
 		}
@@ -73,6 +74,7 @@ func closeConnections(closers []*grpc.ClientConn) error {
 }
 
 func openStreams(connections []*grpc.ClientConn, parallelism int, channelID string, signer msp.SigningIdentity, onAck func(error)) []*fabricOrdererSubmitter {
+	logger.Infof("Opening %d streams for channel '%s' using the %d connections to the orderers.\n", parallelism, channelID, len(connections))
 	submitters := make([]*fabricOrdererSubmitter, parallelism)
 
 	var wg sync.WaitGroup
@@ -122,6 +124,7 @@ func (b *FabricOrdererBroadcaster) send(getItem func(int, int) ([]byte, bool)) *
 
 //SendReplicated calls getItem, and then replicates and sends its result to all submitters.
 func (b *FabricOrdererBroadcaster) SendReplicated(getItem func() ([]byte, bool)) *sync.WaitGroup {
+	logger.Infof("Sending replicated message to all orderers.\n")
 	chs := make([]chan []byte, len(b.submitters))
 	for s := 0; s < len(chs); s++ {
 		chs[s] = make(chan []byte, 10)
@@ -148,6 +151,7 @@ func (b *FabricOrdererBroadcaster) SendReplicated(getItem func() ([]byte, bool))
 
 //SendRepeated sends the same message (times) to all submitters times.
 func (b *FabricOrdererBroadcaster) SendRepeated(message []byte, times int) *sync.WaitGroup {
+	logger.Infof("Sending the same message to all servers.\n")
 	return b.send(func(m, _ int) ([]byte, bool) {
 		return message, m < times
 	})
@@ -218,7 +222,7 @@ func (s *fabricOrdererSubmitter) startAckListener(onAck func(error)) {
 			s.acked++
 		}
 		if err != nil {
-			fmt.Printf("\nError: %v\n", err)
+			logger.Errorf("\nError: %v\n", err)
 		}
 		s.once.Do(func() {
 			close(s.done)

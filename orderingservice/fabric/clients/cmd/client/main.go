@@ -17,11 +17,11 @@ import (
 )
 
 func main() {
-	defaults := clients.GetDefaultConfigValues()
+	clients.SetEnvVars()
+	defaults := clients.GetDefaultSecurityOpts()
 	opts := &sidecar.ClientInitOptions{
-		OrdererTransportCredentials: defaults.Credentials,
-		OrdererSigner:               defaults.Signer,
-		InputChannelCapacity:        20,
+		OrdererSecurityOpts:  defaults,
+		InputChannelCapacity: 20,
 	}
 	profile := &workload.TransactionProfile{
 		Size:          []test.DiscreteValue{{10, 1}},
@@ -32,7 +32,7 @@ func main() {
 	connection.EndpointVar(&opts.CommitterEndpoint, "committer", *connection.CreateEndpoint(":5002"), "Endpoint of the committer to set the public key.")
 	connection.EndpointVar(&opts.SidecarEndpoint, "sidecar", *connection.CreateEndpoint(":1234"), "Endpoint where we listen for final committed blocks.")
 	connection.EndpointVars(&opts.OrdererEndpoints, "orderers", []*connection.Endpoint{{"localhost", 7050}, {"localhost", 7051}, {"localhost", 7052}}, "Orderers to send our TXs.")
-	flag.StringVar(&opts.ChannelID, "channelID", defaults.ChannelID, "The channel ID to broadcast to.")
+	flag.StringVar(&opts.ChannelID, "channelID", "mychannel", "The channel ID to broadcast to.")
 	flag.IntVar(&opts.Parallelism, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
 	flag.Uint64Var(&messages, "messages", 1000, "The number of messages to broadcast.")
 	config.ParseFlags()

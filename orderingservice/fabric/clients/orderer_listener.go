@@ -3,7 +3,6 @@ package clients
 import (
 	"context"
 	"flag"
-	"fmt"
 	"math"
 
 	cb "github.com/hyperledger/fabric-protos-go/common"
@@ -33,7 +32,7 @@ func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*FabricOrderer
 	conn, err := connect(opts.Endpoint, opts.Credentials)
 	client, err := ab.NewAtomicBroadcastClient(conn).Deliver(context.TODO())
 	if err != nil {
-		fmt.Println("Error connecting:", err)
+		logger.Errorf("Error connecting: %v", err)
 		return nil, err
 	}
 
@@ -41,6 +40,7 @@ func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*FabricOrderer
 }
 
 func (l *FabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onReceive func(*ab.DeliverResponse)) error {
+	logger.Infof("Connecting to orderer output with seek = %d.\n", seek)
 	var err error
 	if seek < -2 {
 		flag.PrintDefaults()
@@ -108,7 +108,7 @@ func (r *deliverClient) readUntilClose(onReceive func(*ab.DeliverResponse)) {
 	for {
 		msg, err := r.client.Recv()
 		if err != nil {
-			fmt.Println("Error receiving:", err)
+			logger.Errorf("Error receiving: %v", err)
 			return
 		}
 		onReceive(msg)

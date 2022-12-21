@@ -1,0 +1,16 @@
+sidecar:
+  endpoint: :5000
+  prometheus:
+    endpoint: :2112
+    latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
+  orderer:
+    endpoint: :5070
+    channel-id: mychannel
+  committer:
+    endpoint: :5002
+    output-channel-capacity: 20
+
+logging:
+  enabled: true
+  level: INFO
+  development: true

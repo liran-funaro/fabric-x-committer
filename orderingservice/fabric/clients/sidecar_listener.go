@@ -2,7 +2,6 @@ package clients
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
@@ -28,6 +27,7 @@ func NewSidecarListener(endpoint connection.Endpoint) (*SidecarListener, error) 
 }
 
 func (l *SidecarListener) StartListening(onBlock func(*common.Block), onError func(error)) {
+	logger.Infof("Starting to listen on sidecar for committed blocks.\n")
 	go func() {
 		for {
 			if response, err := l.stream.Recv(); err != nil {
@@ -35,7 +35,7 @@ func (l *SidecarListener) StartListening(onBlock func(*common.Block), onError fu
 			} else if block, ok := response.Type.(*ab.DeliverResponse_Block); ok {
 				onBlock(block.Block)
 			} else {
-				fmt.Printf("Received response: %v\n", response)
+				logger.Infof("Received response: %v\n", response)
 			}
 		}
 	}()

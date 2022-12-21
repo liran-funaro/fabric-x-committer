@@ -14,7 +14,8 @@ import (
 )
 
 func main() {
-	defaults := clients.GetDefaultConfigValues()
+	clients.SetEnvVars()
+	defaults := clients.GetDefaultSecurityOpts()
 
 	var (
 		ordererEndpoints []*connection.Endpoint
@@ -25,7 +26,7 @@ func main() {
 	)
 
 	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"localhost", 7050}, {"localhost", 7051}, {"localhost", 7052}}, "Orderers to send our TXs.")
-	flag.StringVar(&channelID, "channelID", defaults.ChannelID, "The channel ID to broadcast to.")
+	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
 	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
 	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
 	flag.Uint64Var(&msgSize, "size", 160, "The size in bytes of the data section for the payload")
@@ -37,8 +38,7 @@ func main() {
 	opts := &clients.FabricOrdererBroadcasterOpts{
 		ChannelID:            channelID,
 		Endpoints:            ordererEndpoints,
-		Credentials:          defaults.Credentials,
-		Signer:               defaults.Signer,
+		SecurityOpts:         defaults,
 		Parallelism:          int(goroutines),
 		InputChannelCapacity: 10,
 		OnAck: func(err error) {

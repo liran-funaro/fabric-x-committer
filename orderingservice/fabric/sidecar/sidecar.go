@@ -12,10 +12,13 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
 	"google.golang.org/grpc/credentials"
 )
+
+var logger = logging.New("sidecar")
 
 type CommitterAdapter interface {
 	RunCommitterSubmitterListener(
@@ -49,12 +52,18 @@ type InitOptions struct {
 	OrdererEndpoint                connection.Endpoint
 }
 
-func New(opts *InitOptions) (*Sidecar, error) {
+func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, security *clients.SecurityConnectionOpts) (*Sidecar, error) {
+	logger.Infof("Initializing sidecar:\n"+
+		"\tOrderer:\n"+
+		"\t\tEndpoint: %v\n"+
+		"\t\tChannel: '%s'\n"+
+		"\tCommitter:\n"+
+		"\t\tEndpoint: %v\n"+
+		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, committer.Endpoint, committer.OutputChannelCapacity)
 	ordererListener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
-		ChannelID:   opts.ChannelID,
-		Endpoint:    opts.OrdererEndpoint,
-		Credentials: opts.OrdererTransportCredentials,
-		Signer:      opts.OrdererSigner,
+		ChannelID:              orderer.ChannelID,
+		Endpoint:               orderer.Endpoint,
+		SecurityConnectionOpts: security,
 	})
 	if err != nil {
 		return nil, err
@@ -62,13 +71,14 @@ func New(opts *InitOptions) (*Sidecar, error) {
 
 	return &Sidecar{
 		ordererListener:      ordererListener,
-		committerAdapter:     client.OpenCoordinatorAdapter(opts.CommitterEndpoint),
-		orderedBlocks:        make(chan *workload.BlockWithExpectedResult, opts.CommitterOutputChannelCapacity),
+		committerAdapter:     client.OpenCoordinatorAdapter(committer.Endpoint),
+		orderedBlocks:        make(chan *workload.BlockWithExpectedResult, committer.OutputChannelCapacity),
 		postCommitAggregator: NewTxStatusAggregator(),
 	}, nil
 }
 
 func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
+	logger.Infof("Starting up sidecar\n")
 	go func() {
 		utils.Must(s.ordererListener.RunOrdererOutputListener(func(msg *ab.DeliverResponse) {
 			if t, ok := msg.Type.(*ab.DeliverResponse_Block); ok {

@@ -19,6 +19,7 @@ type ClientInitOptions struct {
 	CommitterEndpoint connection.Endpoint
 	SidecarEndpoint   connection.Endpoint
 
+	OrdererSecurityOpts         *clients.SecurityConnectionOpts
 	ChannelID                   string
 	OrdererTransportCredentials credentials.TransportCredentials
 	OrdererEndpoints            []*connection.Endpoint
@@ -38,6 +39,10 @@ type Client struct {
 }
 
 func NewClient(opts *ClientInitOptions) (*Client, error) {
+	logger.Infof("Connecting client to:\n"+
+		"\tCommitter: %v\n"+
+		"\tSidecar: %v\n"+
+		"\tOrderers: %v (%s)\n", opts.CommitterEndpoint, opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
 	listener, err := clients.NewSidecarListener(opts.SidecarEndpoint)
@@ -48,13 +53,10 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	submitter, err := clients.NewFabricOrdererBroadcaster(&clients.FabricOrdererBroadcasterOpts{
 		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
-		Credentials:          opts.OrdererTransportCredentials,
-		Signer:               opts.OrdererSigner,
+		SecurityOpts:         opts.OrdererSecurityOpts,
 		Parallelism:          opts.Parallelism,
 		InputChannelCapacity: opts.InputChannelCapacity,
-		OnAck: func(err error) {
-
-		},
+		OnAck:                func(err error) {},
 	})
 	if err != nil {
 		return nil, err

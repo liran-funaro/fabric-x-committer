@@ -113,6 +113,7 @@ func (a *txStatusAggregator) tryCompleteBlock(currentBlock *inProgressBlock) {
 }
 
 func (a *txStatusAggregator) RunCommittedBlockListener(onFullBlockStatusComplete func(*common.Block)) {
+	logger.Infof("Starting listener to committed blocks.\n")
 	for {
 		onFullBlockStatusComplete(<-a.completedBlocks)
 	}
