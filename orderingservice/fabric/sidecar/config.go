@@ -33,6 +33,7 @@ func ReadConfig() SidecarConfig {
 
 func init() {
 	viper.SetDefault("sidecar.endpoint", ":1234")
+	viper.SetDefault("sidecar.prometheus.endpoint", ":2112")
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
 	viper.SetDefault("sidecar.orderer.endpoint", ":7050")

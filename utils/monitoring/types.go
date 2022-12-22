@@ -7,6 +7,7 @@ const (
 	SigVerifier
 	ShardsService
 	Generator
+	Sidecar
 )
 
 var componentTypeName = map[ComponentType]string{
@@ -14,4 +15,5 @@ var componentTypeName = map[ComponentType]string{
 	SigVerifier:   "SigVerifier",
 	ShardsService: "ShardsService",
 	Generator:     "Generator",
+	Sidecar:       "Sidecar",
 }

@@ -34,6 +34,7 @@ var componentTypeMap = map[ComponentType]string{
 	SigVerifier:   "sigverifier",
 	ShardsService: "shards-service",
 	Generator:     "generator",
+	Sidecar:       "sidecar",
 }
 
 func LaunchPrometheus(config Prometheus, componentType ComponentType, appMetrics metrics.AppMetrics) {

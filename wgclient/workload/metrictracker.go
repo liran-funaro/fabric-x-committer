@@ -1,6 +1,7 @@
 package workload
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,11 +61,18 @@ func (t *MetricTracker) RegisterEvent(e *Event) {
 		for i := uint64(0); i < uint64(e.SubmittedBlock.Size); i++ {
 			t.metrics.requestTracer.StartAt(token.TxSeqNum{e.SubmittedBlock.Id, i}, e.Timestamp)
 		}
-		t.metrics.generatorRequests.Add(float64(e.SubmittedBlock.Size))
+		t.RequestSent(e.SubmittedBlock.Size)
 	case EventReceived:
 		for _, status := range e.StatusBatch.TxsValidationStatus {
 			t.metrics.requestTracer.EndAt(token.TxSeqNum{status.BlockNum, status.TxNum}, e.Timestamp, status.Status.String())
-			t.metrics.generatorResponses.WithLabelValues(status.Status.String()).Add(1)
+			t.ResponseReceived(status.Status, 1)
 		}
 	}
+}
+
+func (t *MetricTracker) RequestSent(size int) {
+	t.metrics.generatorRequests.Add(float64(size))
+}
+func (t *MetricTracker) ResponseReceived(status coordinatorservice.Status, size int) {
+	t.metrics.generatorResponses.WithLabelValues(status.String()).Add(float64(size))
 }

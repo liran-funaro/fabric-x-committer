@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/metrics"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
@@ -14,10 +15,11 @@ type serviceImpl struct {
 	ordererConfig   *sidecar.OrdererClientConfig
 	committerConfig *sidecar.CommitterClientConfig
 	securityConfig  *clients.SecurityConnectionOpts
+	metrics         *metrics.Metrics
 }
 
 func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	s, err := sidecar.New(i.ordererConfig, i.committerConfig, i.securityConfig)
+	s, err := sidecar.New(i.ordererConfig, i.committerConfig, i.securityConfig, i.metrics)
 	if err != nil {
 		return err
 	}
