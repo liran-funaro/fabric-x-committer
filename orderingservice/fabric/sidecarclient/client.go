@@ -1,29 +1,28 @@
-package sidecar
+package sidecarclient
 
 import (
 	"fmt"
 	"sync"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 )
+
+var logger = logging.New("sidecarclient")
 
 type ClientInitOptions struct {
 	CommitterEndpoint connection.Endpoint
 	SidecarEndpoint   connection.Endpoint
 
-	OrdererSecurityOpts         *clients.SecurityConnectionOpts
-	ChannelID                   string
-	OrdererTransportCredentials credentials.TransportCredentials
-	OrdererEndpoints            []*connection.Endpoint
-	OrdererSigner               msp.SigningIdentity
+	OrdererSecurityOpts *clients.SecurityConnectionOpts
+	ChannelID           string
+	OrdererEndpoints    []*connection.Endpoint
 
 	Parallelism          int
 	InputChannelCapacity int
@@ -42,7 +41,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	logger.Infof("Connecting client to:\n"+
 		"\tCommitter: %v\n"+
 		"\tSidecar: %v\n"+
-		"\tOrderers: %v (%s)\n", opts.CommitterEndpoint, opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID)
+		"\tOrderers: %v (%s)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
 	listener, err := clients.NewSidecarListener(opts.SidecarEndpoint)

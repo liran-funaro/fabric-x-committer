@@ -33,7 +33,7 @@ type CoordinatorAdapter struct {
 func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
-	logger.Infof("Connect to coordinator on %v.\n", endpoint)
+	logger.Infof("Connect to coordinator on %v.\n", &endpoint)
 	conn, err := connection.Connect(clientConfig)
 	utils.Must(err)
 

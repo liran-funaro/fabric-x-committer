@@ -1,0 +1,21 @@
+sidecar-client:
+  prometheus:
+    endpoint: :2113
+
+  sidecar: :1234
+  committer: :5002
+  orderers:
+    - :7050
+    - :7051
+    - :7052
+  channel-id: mychannel
+
+  profile: ../../config/profile-blockgen.yaml
+  input-channel-capacity: 20
+  parallelism: 10
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt
