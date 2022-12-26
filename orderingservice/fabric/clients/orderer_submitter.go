@@ -6,14 +6,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
-	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/identity"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -165,10 +161,9 @@ func (b *FabricOrdererBroadcaster) Close() error {
 
 //fabricOrdererSubmitter holds the reference to a stream to the orderer. It can send data to this orderer.
 type fabricOrdererSubmitter struct {
-	client    ab.AtomicBroadcast_BroadcastClient
-	channelID string
-	signer    msp.SigningIdentity
-	done      chan struct{}
+	client          BroadcastClient
+	envelopeCreator *envelopeCreator
+	done            chan struct{}
 
 	stopped bool
 	sent    uint64
@@ -177,8 +172,12 @@ type fabricOrdererSubmitter struct {
 	txCnt   uint64
 }
 
-func newFabricOrdererSubmitter(client ab.AtomicBroadcast_BroadcastClient, channelID string, signer msp.SigningIdentity, onAck func(error)) *fabricOrdererSubmitter {
-	s := &fabricOrdererSubmitter{client: client, channelID: channelID, signer: signer, done: make(chan struct{})}
+func newFabricOrdererSubmitter(client BroadcastClient, channelID string, signer msp.SigningIdentity, onAck func(error)) *fabricOrdererSubmitter {
+	s := &fabricOrdererSubmitter{
+		client:          client,
+		envelopeCreator: newEnvelopeCreator(channelID, signer),
+		done:            make(chan struct{}),
+	}
 	s.startAckListener(onAck)
 	return s
 }
@@ -235,7 +234,7 @@ func (s *fabricOrdererSubmitter) broadcast(transaction []byte) error {
 
 	seqNo := atomic.AddUint64(&s.txCnt, 1)
 
-	env, err := CreateEnvelope(cb.HeaderType_MESSAGE, s.channelID, s.signer, &cb.ConfigValue{Value: transaction}, 0, 0, seqNo, nil)
+	env, err := s.envelopeCreator.CreateEnvelope(&common.ConfigValue{Value: transaction}, seqNo, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -247,119 +246,8 @@ func (s *fabricOrdererSubmitter) getAck() error {
 	if err != nil {
 		return err
 	}
-	if msg.Status != cb.Status_SUCCESS {
+	if msg.Status != common.Status_SUCCESS {
 		return fmt.Errorf("got unexpected status: %v - %s", msg.Status, msg.Info)
 	}
 	return nil
-}
-
-func CreateSignedEnvelope(
-	txType common.HeaderType,
-	channelID string,
-	signer identity.SignerSerializer,
-	dataMsg proto.Message,
-	msgVersion int32,
-	epoch uint64,
-	tlsCertHash []byte,
-) (*common.Envelope, error) {
-	payloadChannelHeader := protoutil.MakeChannelHeader(txType, msgVersion, channelID, epoch)
-	payloadChannelHeader.TlsCertHash = tlsCertHash
-	var err error
-	payloadSignatureHeader := &common.SignatureHeader{}
-
-	if signer != nil {
-		payloadSignatureHeader, err = protoutil.NewSignatureHeader(signer)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	data, err := proto.Marshal(dataMsg)
-	if err != nil {
-		return nil, errors.Wrap(err, "error marshaling")
-	}
-
-	paylBytes := protoutil.MarshalOrPanic(
-		&common.Payload{
-			Header: protoutil.MakePayloadHeader(payloadChannelHeader, payloadSignatureHeader),
-			Data:   data,
-		},
-	)
-
-	var sig []byte
-	if signer != nil {
-		sig, err = signer.Sign(paylBytes)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	env := &common.Envelope{
-		Payload:   paylBytes,
-		Signature: sig,
-	}
-
-	return env, nil
-}
-
-func NewSignatureHeader(id identity.Serializer) (*cb.SignatureHeader, error) {
-	//creator, err := id.Serialize()
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	creator := []byte("bob")
-
-	nonce, err := protoutil.CreateNonce()
-	if err != nil {
-		return nil, err
-	}
-
-	return &cb.SignatureHeader{
-		Creator: creator,
-		Nonce:   nonce,
-	}, nil
-}
-
-// CreateEnvelope create an envelope WITHOUT a signature and the corresponding header
-// can only be used with a patched fabric orderer
-func CreateEnvelope(
-	txType common.HeaderType,
-	channelID string,
-	signer identity.SignerSerializer,
-	dataMsg proto.Message,
-	msgVersion int32,
-	epoch uint64,
-	seqno uint64,
-	tlsCertHash []byte,
-) (*common.Envelope, error) {
-	payloadChannelHeader := protoutil.MakeChannelHeader(txType, msgVersion, channelID, epoch)
-	payloadChannelHeader.TlsCertHash = tlsCertHash
-	payloadChannelHeader.TxId = fmt.Sprintf("%d", seqno)
-	var err error
-
-	data, err := proto.Marshal(dataMsg)
-	if err != nil {
-		return nil, errors.Wrap(err, "error marshaling")
-	}
-
-	// TODO create a "lightweight" header
-	sigHeader, err := NewSignatureHeader(signer)
-
-	paylBytes := protoutil.MarshalOrPanic(
-		&common.Payload{
-			Header: &cb.Header{
-				ChannelHeader:   protoutil.MarshalOrPanic(payloadChannelHeader),
-				SignatureHeader: protoutil.MarshalOrPanic(sigHeader),
-			},
-			Data: data,
-		},
-	)
-
-	env := &common.Envelope{
-		Payload:   paylBytes,
-		Signature: nil,
-	}
-
-	return env, nil
 }
