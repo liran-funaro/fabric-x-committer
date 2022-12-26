@@ -10,7 +10,7 @@ import (
 )
 
 type SidecarListener struct {
-	stream ab.AtomicBroadcast_DeliverClient
+	stream DeliverClient
 }
 
 func NewSidecarListener(endpoint connection.Endpoint) (*SidecarListener, error) {

@@ -48,7 +48,7 @@ func main() {
 	done := make(chan struct{})
 	client.StartListening(func(block *common.Block) {
 		tracker.ResponseReceived(coordinatorservice.Status_VALID, len(block.Data.Data))
-		fmt.Printf("Block received %d\n", block.Header.Number)
+		fmt.Printf("Block received %d:%d\n", block.Header.Number, len(block.Data.Data))
 	}, func(err error) {
 		close(done)
 	})

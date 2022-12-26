@@ -1,0 +1,13 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Modify (in place) experiment-related variables
+  hosts: localhost
+  roles:
+    - kwoodson.yedit
+  tasks:
+    - name: Modify sidecar config
+      vars:
+        filepath: "{{src_dir}}{{groups['sidecars'] | first}}-config-sidecar.yaml"
+      include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml

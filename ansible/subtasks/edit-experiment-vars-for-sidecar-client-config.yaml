@@ -1,0 +1,23 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Set config properties
+  vars:
+    orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
+    orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+    sidecar_host: "{{groups['sidecars'] | map('extract', hostvars) | first}}"
+    sidecar_endpoint: "{{sidecar_host.ansible_host}}:{{sidecar_host.service_port}}"
+    committer_host: "{{groups['coordinators'] | map('extract', hostvars) | first}}"
+    committer_endpoint: "{{committer_host.ansible_host}}:{{committer_host.service_port}}"
+  yedit:
+    src: "{{filepath}}"
+    edits:
+      - key: sidecar-client.orderers
+        value: "{{orderer_endpoints}}"
+      - key: sidecar-client.channel-id
+        value: "{{channel_id}}"
+      - key: sidecar-client.sidecar
+        value: "{{sidecar_endpoint}}"
+      - key: sidecar-client.committer
+        value: "{{committer_endpoint}}"

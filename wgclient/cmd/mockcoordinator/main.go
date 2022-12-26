@@ -8,6 +8,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -83,19 +84,13 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 }
 
 func main() {
-	fmt.Printf("start mock coordinator service ...\n")
-	conf := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{
-			Host: "0.0.0.0",
-			Port: config.DefaultGRPCPortCoordinatorServer,
-		},
-		Opts: nil,
-	}
+	fmt.Printf("start mock coordinator service. Config values (except endpoint) will be ignored...\n")
+	config.ParseFlags()
 
-	fmt.Printf("listing on %s:%d\n", conf.Endpoint.Host, conf.Endpoint.Port)
+	c := pipeline.ReadConfig()
 
 	bQueue := make(chan *token.Block, 1000)
-	connection.RunServerMain(conf, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
 		coordinatorservice.RegisterCoordinatorServer(grpcServer, &mockService{bQueue: bQueue})
 	})
 }

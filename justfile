@@ -40,6 +40,8 @@ export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
 sampling-time-header := "sample_time"
 array-separator := ","
 
+default-channel-id := "mychannel"
+
 ### Admin
 update-dependencies:
     ansible-playbook "{{playbook-path}}/0-update-deps.yaml"
@@ -93,6 +95,9 @@ build-all output_dir:
     just build-sigservice {{output_dir}}
     just build-shardsservice {{output_dir}}
     just build-result-gatherer {{output_dir}}
+    just build-sidecar {{output_dir}}
+    just build-mock-orderer {{output_dir}}
+    just build-sidecar-client {{output_dir}}
 
 build-blockgen output_dir:
     go build -o {{output_dir}}blockgen ./wgclient/cmd/generator
@@ -109,6 +114,15 @@ build-shardsservice output_dir:
 
 build-result-gatherer output_dir:
     go build -o {{output_dir}}resultgatherer ./utils/experiment/cmd
+
+build-sidecar output_dir:
+    cd ./orderingservice/fabric; go build -o ../../{{output_dir}}/sidecar ./clients/cmd/sidecar; cd ../..
+
+build-mock-orderer output_dir:
+    cd ./orderingservice/fabric; go build -o ../../{{output_dir}}/mockorderingservice ./clients/cmd/mockorderer; cd ../..
+
+build-sidecar-client output_dir:
+    cd ./orderingservice/fabric; go build -o ../../{{output_dir}}/sidecarclient ./clients/cmd/client; cd ../..
 
 ### Deploy
 
@@ -141,7 +155,7 @@ docker-runner-image inventory=("ansible/inventory/hosts-local-docker.yaml"):
     mkdir -p {{docker-runner-config-dir}}
     just docker "just build-all {{linux-bin-input-dir}}"
     cp {{linux-bin-input-dir}}* {{docker-runner-bin-dir}}
-    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" -i {{inventory}} --extra-vars "{'src_dir': '{{'../../' + config-input-dir}}', 'dst_dir': '{{'../../' + base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" -i {{inventory}} --extra-vars "{'src_dir': '{{'../../' + config-input-dir}}', 'dst_dir': '{{'../../' + base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}'}"
     cp {{base-setup-config-dir + '*'}} {{docker-runner-config-dir}}
     docker build -f runner/Dockerfile -t sc_runner .
 
@@ -170,15 +184,54 @@ deploy-bins local_linux_src_dir=('../../' + linux-bin-input-dir) local_osx_src_d
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'mockcoordinator'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['mockorderingservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
 deploy-base-configs local_src_dir=('../../' + config-input-dir) local_dst_dir=('../../' + base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}', 'channel_id': '{{default-channel-id}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['config-sigservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['config-shardsservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['config-sidecar.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['config-sidecar-client.yaml', 'profile-sidecar-client.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+
+### Full system run
+
+start-mock-coordinator local_src_dir=('../../' + base-setup-config-dir):
+    ansible-playbook "{{playbook-path}}/50-create-coordinator-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/71-start-mock-coordinator.yaml"
+
+start-mock-orderers channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/90-start-mock-orderers.yaml"
+
+start-sidecar channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
+    ansible-playbook "{{playbook-path}}/91-create-sidecar-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['config-sidecar.yaml'], 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/92-start-sidecar.yaml"
+
+start-sidecar-client channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
+    ansible-playbook "{{playbook-path}}/93-create-sidecar-client-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['config-sidecar-client.yaml', 'profile-sidecar-client.yaml'], 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/94-start-sidecar-client.yaml"
+
+start-all channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir) mock_committer=('false') mock_orderers=('true'):
+    tmux set-option remain-on-exit
+    if {{mock_committer}}; then \
+      just start-mock-coordinator {{local_src_dir}}; \
+    else \
+      just start-servers 100 100 {{local_src_dir}}; \
+    fi
+    if {{mock_orderers}}; then \
+      just start-mock-orderers {{channel_id}}; \
+    fi
+    just start-sidecar {{channel_id}} {{local_src_dir}}
+    just start-sidecar-client {{channel_id}} {{local_src_dir}}
+
 
 ### Experiments
 

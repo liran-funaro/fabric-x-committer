@@ -66,12 +66,12 @@ func (l *FabricOrdererListener) RunOrdererOutputListener(onReceive func(*ab.Deli
 }
 
 type deliverClient struct {
-	client    ab.AtomicBroadcast_DeliverClient
+	client    DeliverClient
 	channelID string
 	signer    identity.SignerSerializer
 }
 
-func newDeliverClient(client ab.AtomicBroadcast_DeliverClient, channelID string, signer identity.SignerSerializer) *deliverClient {
+func newDeliverClient(client DeliverClient, channelID string, signer identity.SignerSerializer) *deliverClient {
 	return &deliverClient{client: client, channelID: channelID, signer: signer}
 }
 

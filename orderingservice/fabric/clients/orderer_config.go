@@ -53,11 +53,12 @@ type FabricOrdererConnectionOpts struct {
 //TODO: Remove
 func SetEnvVars() {
 	goPath := os.Getenv("GOPATH")
-	projectPath := goPath + "/src/github.com/decentralized-trust-research/scalable-committer"
-	orgsPath := projectPath + "/orderingservice/fabric/out/orgs"
+	projectPath := goPath + "/src/github.com/decentralized-trust-research/scalable-committer/orderingservice/fabric"
+	orgsPath := projectPath + "/out/orgs"
 	peerPath := orgsPath + "/peerOrganizations/org1.com/users/User1@org1.com"
 	ordererPath := orgsPath + "/ordererOrganizations/orderer.org/orderers/raft0.orderer.org"
-	os.Setenv("FABRIC_CFG_PATH", goPath+"/src/github.com/hyperledger/fabric")
+	//os.Setenv("FABRIC_CFG_PATH", goPath+"/src/github.com/hyperledger/fabric")
+	os.Setenv("FABRIC_CFG_PATH", projectPath)
 	os.Setenv("ORDERER_GENERAL_LOCALMSPID", "Org1")
 	os.Setenv("ORDERER_GENERAL_LOCALMSPDIR", peerPath+"/msp")
 	os.Setenv("ORDERER_GENERAL_LISTENADDRESS", "localhost")

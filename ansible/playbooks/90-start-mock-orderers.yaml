@@ -1,0 +1,14 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start orderers
+  vars:
+    orderers: "{{groups['orderingservices'] | length | int}}"
+    service_name: mockorderingservice
+    opts:
+      endpoint: "{{ansible_host}}:{{service_port}}"
+    only_kill: false
+  hosts: orderingservices[0:{{(orderers | int) - 1}}]
+  tasks:
+    - include_tasks: ../subtasks/start-server.yaml

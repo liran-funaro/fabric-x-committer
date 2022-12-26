@@ -8,26 +8,33 @@
   when: process_port is defined
   ignore_errors: yes
   loop:
-    - "{{hostvars[inventory_hostname].service_port | d(0)}}"
-    - "{{hostvars[inventory_hostname].prometheus_exporter_port | d(2112)}}"
+    - "{{hostvars[inventory_hostname].service_port | d()}}"
+    - "{{hostvars[inventory_hostname].prometheus_exporter_port}}"
   loop_control:
     loop_var: process_port
 - name: Runs server
   vars:
-    config_path: "{{config_dir}}{{inventory_hostname}}-{{config}}"
     session_name: "{{inventory_hostname}}"
     env_vars: "{{env | d([]) | join(' ')}}"
-  shell:
-    cmd: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} --configs={{config_path}}"
+    options: "{{opts | d({}) | combine({} if config is not defined else {'configs': config_dir + inventory_hostname + '-' + config})}}"
+    flags: "{{(options.keys() | d([])) | zip(options.values() | d([])) | map('join', '=') | list}}"
+  set_fact:
+    command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{['--'] | product(flags) | map('join') | first}}"
+- shell:
+    cmd: "{{command}}"
   async: 10
   poll: 0
   register: stdout
   when: only_kill == false
-- debug: var=stdout
+- debug:
+    msg:
+      - " {{command}}"
+      - " {{stdout}}"
+- set_fact:
+    command: ""
 - name: Wait until server is running
   vars:
     server_port: "{{hostvars[inventory_hostname].service_port | d()}}"
   wait_for:
     port: "{{server_port}}"
   when: (only_kill == false) and (server_port != '')
-- debug: var=result
