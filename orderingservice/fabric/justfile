@@ -22,7 +22,7 @@ client_credentials := out + "/orgs/peerOrganizations/org1.com/users/User1@org1.c
 
 channelID := "mychannel"
 
-init: clean cryptogen genesis
+init channel_id=(channelID): clean cryptogen (genesis channel_id)
 
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
@@ -36,11 +36,11 @@ cryptogen:
     --config="./crypto-config.yaml" \
     --output={{cryptogen_out}}
 
-genesis:
+genesis channel_id:
     {{fabric_bins}}/configtxgen \
     -outputBlock {{configtxgen_out}} \
     -profile SampleDevModeEtcdRaft \
-    -channelID {{channelID}}
+    -channelID {{channel_id}}
 
 start:
     tmux new-session -d -s "orderer" \; \
@@ -59,9 +59,12 @@ kill:
     tmux kill-session -t "orderer"
 
 run_orderer n=("0"):
+    just run_orderer_on_port {{n}} {{replace(orderer_port, "<<x>>", n)}}
+
+run_orderer_on_port n listen_port:
     ORDERER_GENERAL_LOCALMSPID="Orderer" \
     ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
-    ORDERER_GENERAL_LISTENPORT="{{replace(orderer_port, "<<x>>", n)}}" \
+    ORDERER_GENERAL_LISTENPORT="{{listen_port}}" \
     ORDERER_GENERAL_GENESISFILE="{{out}}/genesisblock" \
     ORDERER_GENERAL_TLS_ENABLED="true" \
     ORDERER_GENERAL_TLS_PRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \

@@ -132,10 +132,15 @@ build-sidecar-client output_dir:
 #transfer host +files=(default-deployment-files):
 #    rsync -P -r {{files}} root@{{host}}:~
 
+list-host-names name=("all"):
+    ansible {{name}} --list-hosts | tail -n +2
+
+get-property host query:
+    ansible-inventory --host {{host}} | jq '{{query}}' | sed -e 's/^"//' -e 's/"$//'
+
 # Lists all hostnames from the inventory
-list-hosts name=("all") property=("ansible_host"):
-    ansible {{name}} --list-hosts | tail -n +2 | \
-      while read line; do ansible-inventory --host $line | jq {{'.' + property}} | sed -e 's/^"//' -e 's/"$//';done
+list-hosts name query:
+     just list-host-names {{name}} | while read line; do just get-property "$line" "{{query}}";done
 
 # The docker image required for compilation on the Unix machines
 docker-image:
@@ -206,8 +211,20 @@ start-mock-coordinator local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_src_dir}}'}"
     ansible-playbook "{{playbook-path}}/71-start-mock-coordinator.yaml"
 
-start-mock-orderers channel_id=(default-channel-id):
+start-mock-orderers:
     ansible-playbook "{{playbook-path}}/90-start-mock-orderers.yaml"
+
+start-orderers:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    i=0
+    just list-host-names orderingservices | while read line; do \
+      service_port=$(just get-property $line "(.service_port|tostring)"); \
+      session_name=$line; \
+      echo "Running orderer $i on port $service_port\n"; \
+      cd ./orderingservice/fabric; tmux new-session -s $session_name -d "just run_orderer_on_port $i $service_port"; cd ../..; \
+      i=$((i+1)) \
+    ; done
 
 start-sidecar channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/91-create-sidecar-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
@@ -219,19 +236,41 @@ start-sidecar-client channel_id=(default-channel-id) local_src_dir=('../../' + b
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['config-sidecar-client.yaml', 'profile-sidecar-client.yaml'], 'src_dir': '{{local_src_dir}}'}"
     ansible-playbook "{{playbook-path}}/94-start-sidecar-client.yaml"
 
-start-all channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir) mock_committer=('false') mock_orderers=('true'):
-    tmux set-option remain-on-exit
-    if {{mock_committer}}; then \
+start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
+    just kill-process-on-all-ports
+
+    if [[ "{{committer}}" = "mock" ]]; then \
       just start-mock-coordinator {{local_src_dir}}; \
-    else \
+    elif [[ "{{committer}}" = "sc" ]]; then \
       just start-servers 100 100 {{local_src_dir}}; \
+    else \
+      echo "Committer type {{committer}} not defined"; \
+      exit 1; \
     fi
-    if {{mock_orderers}}; then \
-      just start-mock-orderers {{channel_id}}; \
+
+    if [[ "{{orderer}}" = "mock" ]]; then \
+      just start-mock-orderers; \
+    elif [[ "{{orderer}}" = "raft" ]]; then \
+      cd orderingservice/fabric; just init {{channel_id}}; cd ../..; \
+      just start-orderers; \
+    elif [[ "{{orderer}}" = "mir" ]]; then \
+      echo "MIR not yet implemented"; \
+      exit 1; \
+    else \
+      echo "Orderer type {{orderer}} not defined"; \
+      exit 1; \
     fi
+
     just start-sidecar {{channel_id}} {{local_src_dir}}
     just start-sidecar-client {{channel_id}} {{local_src_dir}}
 
+    tmux set-option remain-on-exit
+
+kill-process-on-all-ports name=("all"):
+    just list-hosts {{name}} ".service_port" | while read line; do just kill-process-on-port $line;done
+
+kill-process-on-port port:
+    lsof -i :{{port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -15
 
 ### Experiments
 
@@ -287,7 +326,7 @@ start-blockgen large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") 
 # Goes through all of the entries of the tracker file and retrieves the corresponding metric for each line (as defined at the sampling-time field)
 gather-results filename:
     mkdir -p {{experiment-results-dir}}
-    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens):$(just list-hosts blockgens prometheus_exporter_port) -prometheus-endpoint=$(just list-hosts monitoring):{{prometheus-scraper-port}} -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
+    {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens "(.ansible_host) + \\\":\\\" + (.prometheus_exporter_port|tostring)") -prometheus-endpoint=$(just list-hosts monitoring "(.ansible_host) + \\\":{{prometheus-scraper-port}}\\\"") -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
 
 kill-all sig_verifiers=("100") shard_servers=("100"):
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}, "only_kill": true}'
