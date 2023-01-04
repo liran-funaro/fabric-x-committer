@@ -6,11 +6,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var logger = logging.New("latencytracer")
 
 type traceData struct {
 	start time.Time
@@ -144,10 +147,10 @@ func (h *latencyTracer) AddEventAt(key token.TxSeqNum, name string, timestamp ti
 		return func() {
 			t, ok := h.traces[key]
 			if !ok {
-				panic("error with tracer: " + h.name + " at event: " + name)
+				h.handleError("error with tracer: " + h.name + " at event: " + name)
+			} else {
+				t.span.AddEvent(name, trace.WithTimestamp(timestamp))
 			}
-
-			t.span.AddEvent(name, trace.WithTimestamp(timestamp))
 		}
 	}(key, timestamp))
 }
@@ -183,6 +186,11 @@ func (h *latencyTracer) EndAt(key token.TxSeqNum, timestamp time.Time, labels ..
 
 func (t *latencyTracer) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{t.histogram}
+}
+
+//TODO: AF Panic
+func (h *latencyTracer) handleError(s string) {
+	logger.Error(s)
 }
 
 func UniformBuckets(count int, from, to float64) []float64 {
