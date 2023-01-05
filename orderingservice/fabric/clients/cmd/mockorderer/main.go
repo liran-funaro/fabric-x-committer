@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
 	"os"
@@ -18,13 +17,10 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 func main() {
 	tlsDir := os.Getenv("GOPATH") + "/src/github.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls"
-	certPath := tlsDir + "/server.crt"
-	keyPath := tlsDir + "/server.key"
 
 	profile := &workload.Profile{
 		Block: workload.BlockProfile{
@@ -42,14 +38,8 @@ func main() {
 	flag.Int64Var(&profile.Block.Size, "block-size", profile.Block.Size, "The size of the outgoing blocks")
 	flag.Parse()
 
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	utils.Must(err)
-	opts := []grpc.ServerOption{grpc.Creds(credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.NoClientCert,
-	}))}
-
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Opts: opts}, func(grpcServer *grpc.Server) {
+	creds := connection.LoadCreds(tlsDir+"/server.crt", tlsDir+"/server.key")
+	connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Opts: []grpc.ServerOption{creds}}, func(grpcServer *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(grpcServer, NewMockOrderer(profile))
 	})
 }

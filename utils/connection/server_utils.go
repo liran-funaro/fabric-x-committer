@@ -1,11 +1,12 @@
 package connection
 
 import (
-	"flag"
+	"crypto/tls"
 	"log"
 	"net"
 	"sync"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,8 +33,8 @@ func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc
 	serverStarted.Wait() // Avoid trying to connect before the server starts
 }
 
-func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
-	flag.Parse()
+func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) func() {
+	//flag.Parse()
 
 	listener, err := net.Listen(grpcProtocol, serverConfig.Endpoint.Address())
 	if err != nil {
@@ -47,6 +48,7 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) {
 	if err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+	return grpcServer.Stop
 }
 
 // Client
@@ -72,4 +74,14 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return conn, nil
+}
+
+func LoadCreds(certPath, keyPath string) grpc.ServerOption {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	utils.Must(err)
+	creds := grpc.Creds(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.NoClientCert,
+	}))
+	return creds
 }

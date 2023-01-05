@@ -21,9 +21,12 @@ import (
 	"github.com/filecoin-project/mir/pkg/util/errstack"
 	libp2p_util "github.com/filecoin-project/mir/pkg/util/libp2p"
 	cb "github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/pkg/errors"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -145,8 +148,12 @@ func run() error {
 	}()
 
 	// fabric ordering service interface
-	server := NewServer(fmt.Sprintf("localhost:%d", ReqReceiverBasePort+ownNumericID), node, blockChan)
-	defer server.Stop()
+	endpoint := connection.Endpoint{"localhost", ReqReceiverBasePort + ownNumericID}
+	creds := connection.LoadCreds("testdata/server.crt", "testdata/server.key")
+	stopServer := connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Opts: []grpc.ServerOption{creds}}, func(s *grpc.Server) {
+		ab.RegisterAtomicBroadcastServer(s, newServerImpl(node, blockChan))
+	})
+	defer stopServer()
 
 	fmt.Printf("ready to go ...\n")
 	wg.Wait()

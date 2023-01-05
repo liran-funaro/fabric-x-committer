@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
@@ -49,7 +47,6 @@ func (i *serviceImpl) Deliver(stream clients.DeliverServer) error {
 	}
 
 	s.Start(func(commonBlock *common.Block) {
-		fmt.Printf("Received complete block from committer: %d:%d.\n", commonBlock.Header.Number, len(commonBlock.Data.Data))
 		stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{commonBlock}})
 	})
 	return nil
