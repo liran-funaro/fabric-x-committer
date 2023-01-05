@@ -23,6 +23,7 @@ type ClientInitOptions struct {
 
 	OrdererSecurityOpts *clients.SecurityConnectionOpts
 	ChannelID           string
+	SignedEnvelopes     bool
 	OrdererEndpoints    []*connection.Endpoint
 
 	Parallelism          int
@@ -42,7 +43,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	logger.Infof("Connecting client to:\n"+
 		"\tCommitter: %v\n"+
 		"\tSidecar: %v\n"+
-		"\tOrderers: %v (%s)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID)
+		"\tOrderers: %v (channel: %s, signed envelopes: %v)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID, opts.SignedEnvelopes)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
 	listener, err := clients.NewSidecarListener(opts.SidecarEndpoint)
@@ -56,6 +57,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		Endpoints:            opts.OrdererEndpoints,
 		SecurityOpts:         opts.OrdererSecurityOpts,
 		Parallelism:          len(opts.OrdererEndpoints),
+		SignedEnvelopes:      opts.SignedEnvelopes,
 		InputChannelCapacity: opts.InputChannelCapacity,
 		OnAck: func(err error) {
 			atomic.AddUint64(&sent, 1)

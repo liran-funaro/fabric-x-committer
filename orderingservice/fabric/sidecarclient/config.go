@@ -17,6 +17,7 @@ type SidecarClientConfig struct {
 	InputChannelCapacity int    `mapstructure:"input-channel-capacity"`
 	ChannelID            string `mapstructure:"channel-id"`
 	Parallelism          int    `mapstructure:"parallelism"`
+	SignedEnvelopes      bool   `mapstructure:"signed-envelopes"`
 }
 
 func ReadConfig() SidecarClientConfig {
@@ -37,4 +38,5 @@ func init() {
 	viper.SetDefault("sidecar-client.input-channel-capacity", 20)
 	viper.SetDefault("sidecar-client.channel-id", "mychannel")
 	viper.SetDefault("sidecar-client.parallelism", 10)
+	viper.SetDefault("sidecar-client.signed-envelopes", false)
 }

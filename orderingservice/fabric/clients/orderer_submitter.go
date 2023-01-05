@@ -19,6 +19,7 @@ type FabricOrdererBroadcasterOpts struct {
 	ChannelID            string
 	Endpoints            []*connection.Endpoint
 	SecurityOpts         *SecurityConnectionOpts
+	SignedEnvelopes      bool
 	Parallelism          int
 	InputChannelCapacity int
 	OnAck                func(error)
@@ -30,7 +31,7 @@ func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*FabricOrd
 		return nil, err
 	}
 
-	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.SecurityOpts.Signer, opts.OnAck)
+	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.SecurityOpts.Signer, opts.SignedEnvelopes, opts.OnAck)
 	closer := func() error { return closeConnections(connections) }
 	return &FabricOrdererBroadcaster{submitters, closer}, nil
 }
@@ -69,7 +70,7 @@ func closeConnections(connections []*grpc.ClientConn) error {
 	return nil
 }
 
-func openStreams(connections []*grpc.ClientConn, parallelism int, channelID string, signer msp.SigningIdentity, onAck func(error)) []*fabricOrdererSubmitter {
+func openStreams(connections []*grpc.ClientConn, parallelism int, channelID string, signer msp.SigningIdentity, signed bool, onAck func(error)) []*fabricOrdererSubmitter {
 	logger.Infof("Opening %d streams for channel '%s' using the %d connections to the orderers.\n", parallelism, channelID, len(connections))
 	submitters := make([]*fabricOrdererSubmitter, parallelism)
 
@@ -82,7 +83,7 @@ func openStreams(connections []*grpc.ClientConn, parallelism int, channelID stri
 				fmt.Println("Error connecting:", err)
 				return
 			}
-			submitters[i] = newFabricOrdererSubmitter(client, channelID, signer, onAck)
+			submitters[i] = newFabricOrdererSubmitter(client, channelID, signer, signed, onAck)
 			wg.Done()
 		}(connections[i%len(connections)], i)
 	}
@@ -172,10 +173,10 @@ type fabricOrdererSubmitter struct {
 	txCnt   uint64
 }
 
-func newFabricOrdererSubmitter(client BroadcastClient, channelID string, signer msp.SigningIdentity, onAck func(error)) *fabricOrdererSubmitter {
+func newFabricOrdererSubmitter(client BroadcastClient, channelID string, signer msp.SigningIdentity, signed bool, onAck func(error)) *fabricOrdererSubmitter {
 	s := &fabricOrdererSubmitter{
 		client:          client,
-		envelopeCreator: newEnvelopeCreator(channelID, signer),
+		envelopeCreator: newEnvelopeCreator(channelID, signer, signed),
 		done:            make(chan struct{}),
 	}
 	s.startAckListener(onAck)
@@ -234,7 +235,7 @@ func (s *fabricOrdererSubmitter) broadcast(transaction []byte) error {
 
 	seqNo := atomic.AddUint64(&s.txCnt, 1)
 
-	env, err := s.envelopeCreator.CreateEnvelope(&common.ConfigValue{Value: transaction}, seqNo, nil)
+	env, err := s.envelopeCreator.CreateEnvelope(transaction, seqNo)
 	if err != nil {
 		panic(err)
 	}

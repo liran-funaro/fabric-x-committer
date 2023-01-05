@@ -23,6 +23,7 @@ func main() {
 		messages         uint64
 		goroutines       uint64
 		msgSize          uint64
+		signedEnvs       bool
 	)
 
 	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"localhost", 7050}, {"localhost", 7051}, {"localhost", 7052}}, "Orderers to send our TXs.")
@@ -30,6 +31,7 @@ func main() {
 	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
 	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
 	flag.Uint64Var(&msgSize, "size", 160, "The size in bytes of the data section for the payload")
+	flag.BoolVar(&signedEnvs, "signed", false, "Sign envelopes to send to orderer")
 	flag.Parse()
 
 	msgsPerGo := messages / goroutines
@@ -39,6 +41,7 @@ func main() {
 		ChannelID:            channelID,
 		Endpoints:            ordererEndpoints,
 		SecurityOpts:         defaults,
+		SignedEnvelopes:      signedEnvs,
 		Parallelism:          int(goroutines),
 		InputChannelCapacity: 10,
 		OnAck: func(err error) {

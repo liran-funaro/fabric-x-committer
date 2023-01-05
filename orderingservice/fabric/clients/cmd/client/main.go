@@ -31,6 +31,7 @@ func main() {
 		OrdererEndpoints:     c.Orderers,
 		Parallelism:          c.Parallelism,
 		InputChannelCapacity: c.InputChannelCapacity,
+		SignedEnvelopes:      c.SignedEnvelopes,
 	}
 
 	tracker := workload.NewMetricTracker(c.Prometheus)

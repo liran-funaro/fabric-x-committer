@@ -13,6 +13,7 @@ sidecar-client:
   profile: ../../config/profile-blockgen.yaml
   input-channel-capacity: 20
   parallelism: 10
+  signed-envelopes: false
 
 logging:
   enabled: true
