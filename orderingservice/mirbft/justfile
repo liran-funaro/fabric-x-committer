@@ -63,6 +63,9 @@ start:
 kill:
     tmux kill-session -t "orderer"
 
+run_orderer_on_port n port:
+    just run_orderer {{n}}
+
 run_orderer n=("0"):
     go run ./cmd/node --init-membership=testdata/membership {{n}}
 

@@ -214,7 +214,7 @@ start-mock-coordinator local_src_dir=('../../' + base-setup-config-dir):
 start-mock-orderers:
     ansible-playbook "{{playbook-path}}/90-start-mock-orderers.yaml"
 
-start-orderers:
+start-orderers dir:
     #!/usr/bin/env bash
     set -euxo pipefail
     i=0
@@ -222,9 +222,23 @@ start-orderers:
       service_port=$(just get-property $line "(.service_port|tostring)"); \
       session_name=$line; \
       echo "Running orderer $i on port $service_port\n"; \
-      cd ./orderingservice/fabric; tmux new-session -s $session_name -d "just run_orderer_on_port $i $service_port"; cd ../..; \
+      cd {{dir}}; tmux new-session -s $session_name -d "just run_orderer_on_port $i $service_port"; cd ../..; \
       i=$((i+1)) \
     ; done
+
+start-raft-orderers channel_id=(default-channel-id):
+    cd orderingservice/fabric; just init {{channel_id}}; cd ../..; \
+    just start-orderers ./orderingservice/fabric
+
+start-mir-orderers channel_id=(default-channel-id):
+    cp orderingservice/fabric/configtx.yaml orderingservice/mirbft; \
+    cp orderingservice/fabric/crypto-config.yaml orderingservice/mirbft; \
+    cd orderingservice/fabric; just init {{channel_id}}; cd ../..; \
+    rm -r orderingservice/mirbft/out; cp -R orderingservice/fabric/out orderingservice/mirbft/; \
+    mkdir orderingservice/mirbft/out/creds; \
+    cp orderingservice/fabric/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt orderingservice/mirbft/out/creds; \
+    cp orderingservice/fabric/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.key orderingservice/mirbft/out/creds; \
+    just start-orderers ./orderingservice/mirbft
 
 start-sidecar channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/91-create-sidecar-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
@@ -251,11 +265,9 @@ start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) loca
     if [[ "{{orderer}}" = "mock" ]]; then \
       just start-mock-orderers; \
     elif [[ "{{orderer}}" = "raft" ]]; then \
-      cd orderingservice/fabric; just init {{channel_id}}; cd ../..; \
-      just start-orderers; \
+      just start-raft-orderers {{channel_id}}; \
     elif [[ "{{orderer}}" = "mir" ]]; then \
-      echo "MIR not yet implemented"; \
-      exit 1; \
+      just start-mir-orderers {{channel_id}}; \
     else \
       echo "Orderer type {{orderer}} not defined"; \
       exit 1; \

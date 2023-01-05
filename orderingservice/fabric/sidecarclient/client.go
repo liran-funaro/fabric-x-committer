@@ -3,6 +3,7 @@ package sidecarclient
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
@@ -49,13 +50,19 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		return nil, err
 	}
 
+	sent := uint64(0)
 	submitter, err := clients.NewFabricOrdererBroadcaster(&clients.FabricOrdererBroadcasterOpts{
 		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
 		SecurityOpts:         opts.OrdererSecurityOpts,
-		Parallelism:          opts.Parallelism,
+		Parallelism:          len(opts.OrdererEndpoints),
 		InputChannelCapacity: opts.InputChannelCapacity,
-		OnAck:                func(err error) {},
+		OnAck: func(err error) {
+			atomic.AddUint64(&sent, 1)
+			if sent%1_000_000 == 0 {
+				logger.Debugf("Sent %d M TXs so far", sent/1_000_000)
+			}
+		},
 	})
 	if err != nil {
 		return nil, err

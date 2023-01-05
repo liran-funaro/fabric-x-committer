@@ -52,6 +52,10 @@ all:
             orderingservice-machine3:
               ansible_host: "localhost"
               service_port: 7052
+            # machine4 to be used only for MIR experiments
+#            orderingservice-machine4:
+#              ansible_host: "localhost"
+#              service_port: 7053
 
         sidecars:
           hosts:

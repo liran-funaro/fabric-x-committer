@@ -149,7 +149,7 @@ func run() error {
 
 	// fabric ordering service interface
 	endpoint := connection.Endpoint{"localhost", ReqReceiverBasePort + ownNumericID}
-	creds := connection.LoadCreds("testdata/server.crt", "testdata/server.key")
+	creds := connection.LoadCreds("out/creds/server.crt", "out/creds/server.key")
 	stopServer := connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Opts: []grpc.ServerOption{creds}}, func(s *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(s, newServerImpl(node, blockChan))
 	})

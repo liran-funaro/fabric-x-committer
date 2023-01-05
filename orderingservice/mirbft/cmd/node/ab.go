@@ -43,11 +43,13 @@ func (s *serverImpl) startConsumeBlocks() {
 			response := &ab.DeliverResponse{
 				Type: &ab.DeliverResponse_Block{Block: block},
 			}
-			fmt.Printf("Received block %d\n", block.Header.Number)
+			fmt.Printf("Received block %d. Sending to %d streams.\n", block.Header.Number, len(s.streams))
 
 			s.mu.RLock()
 			for _, stream := range s.streams {
-				_ = stream.Send(response)
+				if err := stream.Send(response); err != nil {
+					fmt.Printf("error sending block: %v\n", err)
+				}
 			}
 			s.mu.RUnlock()
 		}

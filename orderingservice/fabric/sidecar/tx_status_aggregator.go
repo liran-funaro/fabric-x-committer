@@ -97,7 +97,8 @@ func (a *txStatusAggregator) tryCompleteBlock(currentBlock *inProgressBlock) {
 		return
 	}
 
-	if !atomic.CompareAndSwapUint64(&a.nextBlock, blockNum, blockNum+1) {
+	// When we start listening, we will start from the frist block that arrives
+	if !atomic.CompareAndSwapUint64(&a.nextBlock, 0, blockNum+1) && !atomic.CompareAndSwapUint64(&a.nextBlock, blockNum, blockNum+1) {
 		return
 	}
 

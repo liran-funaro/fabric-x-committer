@@ -87,6 +87,7 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	go func() {
 		utils.Must(s.ordererListener.RunOrdererOutputListener(func(msg *ab.DeliverResponse) {
 			if t, ok := msg.Type.(*ab.DeliverResponse_Block); ok {
+				logger.Infof("Received block %d from orderer", t.Block.Header.Number)
 				if s.metrics.Enabled {
 					s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
 					//for txNum := uint64(0); txNum < uint64(len(t.Block.Data.Data)); txNum++ {
@@ -133,6 +134,7 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 			//}
 			s.metrics.OutTxs.Add(len(block.Data.Data))
 		}
+		logger.Infof("Received complete block from committer: %d:%d.", block.Header.Number, len(block.Data.Data))
 		onBlockCommitted(block)
 	})
 }
