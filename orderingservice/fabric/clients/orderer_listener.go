@@ -7,9 +7,12 @@ import (
 
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/identity"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc/credentials"
 )
 
 const (
@@ -28,8 +31,15 @@ type FabricOrdererListener struct {
 	deliverClient *deliverClient
 }
 
+type FabricOrdererConnectionOpts struct {
+	Credentials credentials.TransportCredentials
+	Signer      msp.SigningIdentity
+	ChannelID   string
+	Endpoint    connection.Endpoint
+}
+
 func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*FabricOrdererListener, error) {
-	conn, err := connect(opts.Endpoint, opts.Credentials)
+	conn, err := connection.Connect(connection.NewDialConfigWithCreds(opts.Endpoint, opts.Credentials))
 	client, err := ab.NewAtomicBroadcastClient(conn).Deliver(context.TODO())
 	if err != nil {
 		logger.Errorf("Error connecting: %v", err)

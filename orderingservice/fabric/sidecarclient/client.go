@@ -6,12 +6,14 @@ import (
 	"sync/atomic"
 
 	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,10 +23,11 @@ type ClientInitOptions struct {
 	CommitterEndpoint connection.Endpoint
 	SidecarEndpoint   connection.Endpoint
 
-	OrdererSecurityOpts *clients.SecurityConnectionOpts
-	ChannelID           string
-	SignedEnvelopes     bool
-	OrdererEndpoints    []*connection.Endpoint
+	Credentials      credentials.TransportCredentials
+	Signer           msp.SigningIdentity
+	ChannelID        string
+	SignedEnvelopes  bool
+	OrdererEndpoints []*connection.Endpoint
 
 	Parallelism          int
 	InputChannelCapacity int
@@ -55,7 +58,8 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	submitter, err := clients.NewFabricOrdererBroadcaster(&clients.FabricOrdererBroadcasterOpts{
 		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
-		SecurityOpts:         opts.OrdererSecurityOpts,
+		Credentials:          opts.Credentials,
+		Signer:               opts.Signer,
 		Parallelism:          len(opts.OrdererEndpoints),
 		SignedEnvelopes:      opts.SignedEnvelopes,
 		InputChannelCapacity: opts.InputChannelCapacity,

@@ -19,19 +19,10 @@ type ServerConfig struct {
 	Opts     []grpc.ServerOption
 }
 
-const grpcProtocol = "tcp"
-
-func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server)) {
-	serverStarted := sync.WaitGroup{}
-	serverStarted.Add(1)
-
-	go RunServerMain(serverConfig, func(server *grpc.Server) {
-		register(server)
-		serverStarted.Done()
-	})
-
-	serverStarted.Wait() // Avoid trying to connect before the server starts
-}
+const (
+	grpcProtocol = "tcp"
+	maxMsgSize   = 100 * 1024 * 1024
+)
 
 func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) func() {
 	//flag.Parse()
@@ -55,22 +46,43 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) func
 
 type DialConfig struct {
 	Endpoint
-	Credentials credentials.TransportCredentials
+	DialOpts []grpc.DialOption
+}
+
+func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server)) {
+	serverStarted := sync.WaitGroup{}
+	serverStarted.Add(1)
+
+	go RunServerMain(serverConfig, func(server *grpc.Server) {
+		register(server)
+		serverStarted.Done()
+	})
+
+	serverStarted.Wait() // Avoid trying to connect before the server starts
 }
 
 func NewDialConfig(endpoint Endpoint) *DialConfig {
+	return NewDialConfigWithCreds(endpoint, insecure.NewCredentials())
+}
+
+func NewDialConfigWithCreds(endpoint Endpoint, creds credentials.TransportCredentials) *DialConfig {
 	return &DialConfig{
-		Endpoint:    endpoint,
-		Credentials: insecure.NewCredentials(),
+		Endpoint: endpoint,
+		DialOpts: []grpc.DialOption{
+			grpc.WithTransportCredentials(creds),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(maxMsgSize),
+				grpc.MaxCallSendMsgSize(maxMsgSize),
+			),
+		},
 	}
 }
 
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(config.Credentials)}
-
-	conn, err := grpc.Dial(config.Endpoint.Address(), opts...)
+	conn, err := grpc.Dial(config.Endpoint.Address(), config.DialOpts...)
 
 	if err != nil {
+		logger.Infof("Error connecting to %s: %v", config.Endpoint.String(), err)
 		return nil, err
 	}
 	return conn, nil

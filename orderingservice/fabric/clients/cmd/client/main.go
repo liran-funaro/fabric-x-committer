@@ -14,8 +14,7 @@ import (
 )
 
 func main() {
-	clients.SetEnvVars()
-	defaults := clients.GetDefaultSecurityOpts()
+	creds, signer := clients.GetDefaultSecurityOpts()
 
 	config.ParseFlags()
 
@@ -26,7 +25,8 @@ func main() {
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint:    c.Committer,
 		SidecarEndpoint:      c.Sidecar,
-		OrdererSecurityOpts:  defaults,
+		Credentials:          creds,
+		Signer:               signer,
 		ChannelID:            c.ChannelID,
 		OrdererEndpoints:     c.Orderers,
 		Parallelism:          c.Parallelism,

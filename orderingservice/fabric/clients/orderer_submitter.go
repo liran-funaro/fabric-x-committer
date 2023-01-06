@@ -18,7 +18,8 @@ import (
 type FabricOrdererBroadcasterOpts struct {
 	ChannelID            string
 	Endpoints            []*connection.Endpoint
-	SecurityOpts         *SecurityConnectionOpts
+	Credentials          credentials.TransportCredentials
+	Signer               msp.SigningIdentity
 	SignedEnvelopes      bool
 	Parallelism          int
 	InputChannelCapacity int
@@ -26,12 +27,12 @@ type FabricOrdererBroadcasterOpts struct {
 }
 
 func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*FabricOrdererBroadcaster, error) {
-	connections, err := openConnections(opts.Endpoints, opts.SecurityOpts.Credentials)
+	connections, err := openConnections(opts.Endpoints, opts.Credentials)
 	if err != nil {
 		return nil, err
 	}
 
-	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.SecurityOpts.Signer, opts.SignedEnvelopes, opts.OnAck)
+	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.Signer, opts.SignedEnvelopes, opts.OnAck)
 	closer := func() error { return closeConnections(connections) }
 	return &FabricOrdererBroadcaster{submitters, closer}, nil
 }
@@ -40,7 +41,7 @@ func openConnections(endpoints []*connection.Endpoint, transportCredentials cred
 	logger.Infof("Opening connections to %d orderers: %v.\n", len(endpoints), endpoints)
 	connections := make([]*grpc.ClientConn, len(endpoints))
 	for i, endpoint := range endpoints {
-		conn, err := connect(*endpoint, transportCredentials)
+		conn, err := connection.Connect(connection.NewDialConfigWithCreds(*endpoint, transportCredentials))
 
 		if err != nil {
 			logger.Errorf("Error connecting: %v", err)

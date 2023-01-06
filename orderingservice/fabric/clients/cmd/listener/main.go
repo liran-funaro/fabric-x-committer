@@ -19,8 +19,7 @@ import (
 )
 
 func main() {
-	clients.SetEnvVars()
-	defaults := clients.GetDefaultSecurityOpts()
+	creds, signer := clients.GetDefaultSecurityOpts()
 
 	var (
 		serverAddr string
@@ -39,9 +38,10 @@ func main() {
 	flag.Parse()
 
 	listener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
-		ChannelID:              channelID,
-		Endpoint:               *connection.CreateEndpoint(serverAddr),
-		SecurityConnectionOpts: defaults,
+		ChannelID:   channelID,
+		Endpoint:    *connection.CreateEndpoint(serverAddr),
+		Credentials: creds,
+		Signer:      signer,
 	})
 
 	if err != nil {

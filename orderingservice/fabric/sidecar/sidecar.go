@@ -54,7 +54,7 @@ type InitOptions struct {
 	OrdererEndpoint                connection.Endpoint
 }
 
-func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, security *clients.SecurityConnectionOpts, metrics *metrics.Metrics) (*Sidecar, error) {
+func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds credentials.TransportCredentials, signer msp.SigningIdentity, metrics *metrics.Metrics) (*Sidecar, error) {
 	logger.Infof("Initializing sidecar:\n"+
 		"\tOrderer:\n"+
 		"\t\tEndpoint: %v\n"+
@@ -63,9 +63,10 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, securit
 		"\t\tEndpoint: %v\n"+
 		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, committer.Endpoint, committer.OutputChannelCapacity)
 	ordererListener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
-		ChannelID:              orderer.ChannelID,
-		Endpoint:               orderer.Endpoint,
-		SecurityConnectionOpts: security,
+		ChannelID:   orderer.ChannelID,
+		Endpoint:    orderer.Endpoint,
+		Credentials: creds,
+		Signer:      signer,
 	})
 	if err != nil {
 		return nil, err

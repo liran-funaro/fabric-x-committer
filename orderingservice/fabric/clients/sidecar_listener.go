@@ -14,7 +14,7 @@ type SidecarListener struct {
 }
 
 func NewSidecarListener(endpoint connection.Endpoint) (*SidecarListener, error) {
-	clientConnection, err := connect(endpoint, insecure.NewCredentials())
+	clientConnection, err := connection.Connect(connection.NewDialConfigWithCreds(endpoint, insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

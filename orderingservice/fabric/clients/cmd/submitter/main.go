@@ -14,8 +14,7 @@ import (
 )
 
 func main() {
-	clients.SetEnvVars()
-	defaults := clients.GetDefaultSecurityOpts()
+	creds, signer := clients.GetDefaultSecurityOpts()
 
 	var (
 		ordererEndpoints []*connection.Endpoint
@@ -40,7 +39,8 @@ func main() {
 	opts := &clients.FabricOrdererBroadcasterOpts{
 		ChannelID:            channelID,
 		Endpoints:            ordererEndpoints,
-		SecurityOpts:         defaults,
+		Credentials:          creds,
+		Signer:               signer,
 		SignedEnvelopes:      signedEnvs,
 		Parallelism:          int(goroutines),
 		InputChannelCapacity: 10,
