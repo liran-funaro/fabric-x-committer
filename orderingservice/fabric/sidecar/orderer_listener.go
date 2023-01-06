@@ -1,4 +1,4 @@
-package clients
+package sidecar
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/identity"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/pkg/identity"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc/credentials"
 )
@@ -26,8 +26,8 @@ var (
 	maxStop = &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}}
 )
 
-//FabricOrdererListener connects to an orderer and listens for one or more blocks
-type FabricOrdererListener struct {
+//fabricOrdererListener connects to an orderer and listens for one or more blocks
+type fabricOrdererListener struct {
 	deliverClient *deliverClient
 }
 
@@ -38,7 +38,7 @@ type FabricOrdererConnectionOpts struct {
 	Endpoint    connection.Endpoint
 }
 
-func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*FabricOrdererListener, error) {
+func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*fabricOrdererListener, error) {
 	conn, err := connection.Connect(connection.NewDialConfigWithCreds(opts.Endpoint, opts.Credentials))
 	client, err := ab.NewAtomicBroadcastClient(conn).Deliver(context.TODO())
 	if err != nil {
@@ -46,10 +46,10 @@ func NewFabricOrdererListener(opts *FabricOrdererConnectionOpts) (*FabricOrderer
 		return nil, err
 	}
 
-	return &FabricOrdererListener{newDeliverClient(client, opts.ChannelID, opts.Signer)}, nil
+	return &fabricOrdererListener{newDeliverClient(client, opts.ChannelID, opts.Signer)}, nil
 }
 
-func (l *FabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onReceive func(*ab.DeliverResponse)) error {
+func (l *fabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onReceive func(*ab.DeliverResponse)) error {
 	logger.Infof("Connecting to orderer output with seek = %d.\n", seek)
 	var err error
 	if seek < -2 {
@@ -71,17 +71,17 @@ func (l *FabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onRec
 	return nil
 }
 
-func (l *FabricOrdererListener) RunOrdererOutputListener(onReceive func(*ab.DeliverResponse)) error {
+func (l *fabricOrdererListener) RunOrdererOutputListener(onReceive func(*ab.DeliverResponse)) error {
 	return l.RunOrdererOutputListenerForBlock(SeekSinceOldestBlock, onReceive)
 }
 
 type deliverClient struct {
-	client    DeliverClient
+	client    ab.AtomicBroadcast_DeliverClient
 	channelID string
 	signer    identity.SignerSerializer
 }
 
-func newDeliverClient(client DeliverClient, channelID string, signer identity.SignerSerializer) *deliverClient {
+func newDeliverClient(client ab.AtomicBroadcast_DeliverClient, channelID string, signer identity.SignerSerializer) *deliverClient {
 	return &deliverClient{client: client, channelID: channelID, signer: signer}
 }
 

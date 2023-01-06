@@ -42,7 +42,7 @@ type serviceImpl struct {
 	metrics         *metrics.Metrics
 }
 
-func (i *serviceImpl) Deliver(stream clients.DeliverServer) error {
+func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	s, err := sidecar.New(i.ordererConfig, i.committerConfig, i.credentials, i.signer, i.metrics)
 	if err != nil {
 		return err
@@ -54,6 +54,6 @@ func (i *serviceImpl) Deliver(stream clients.DeliverServer) error {
 	return nil
 }
 
-func (*serviceImpl) Broadcast(server clients.BroadcastServer) error {
+func (*serviceImpl) Broadcast(ab.AtomicBroadcast_BroadcastServer) error {
 	panic("not implemented")
 }

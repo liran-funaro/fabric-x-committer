@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
@@ -36,7 +37,7 @@ func main() {
 	msgsPerGo := messages / goroutines
 	roundMsgs := msgsPerGo * goroutines
 	bar := workload.NewProgressBar("Submitting transactions...", int64(roundMsgs), "tx")
-	opts := &clients.FabricOrdererBroadcasterOpts{
+	opts := &sidecar.FabricOrdererBroadcasterOpts{
 		ChannelID:            channelID,
 		Endpoints:            ordererEndpoints,
 		Credentials:          creds,
@@ -51,13 +52,20 @@ func main() {
 		},
 	}
 
-	s, err := clients.NewFabricOrdererBroadcaster(opts)
+	s, err := sidecar.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
 	if roundMsgs != messages {
 		fmt.Println("Rounding messages to", roundMsgs)
 	}
-	s.SendRepeated(make([]byte, msgSize), int(msgsPerGo)).Wait()
-	utils.Must(s.Close())
+
+	fmt.Printf("Sending the same message to all servers.\n")
+	message := make([]byte, msgSize)
+	for i := uint64(0); i < msgsPerGo; i++ {
+		for _, ch := range s.InputChannels() {
+			ch <- message
+		}
+	}
+	utils.Must(s.CloseAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")
 }

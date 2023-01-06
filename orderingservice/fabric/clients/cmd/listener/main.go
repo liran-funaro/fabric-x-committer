@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-config/protolator"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/text/language"
@@ -34,10 +35,10 @@ func main() {
 	flag.IntVar(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
 		"Acceptable values:"+
 		"%d (or %d) to start from oldest (or newest) and keep at it indefinitely."+
-		"N >= 0 to fetch block N only.", clients.SeekSinceOldestBlock, clients.SeekSinceNewestBlock))
+		"N >= 0 to fetch block N only.", sidecar.SeekSinceOldestBlock, sidecar.SeekSinceNewestBlock))
 	flag.Parse()
 
-	listener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
+	listener, err := sidecar.NewFabricOrdererListener(&sidecar.FabricOrdererConnectionOpts{
 		ChannelID:   channelID,
 		Endpoint:    *connection.CreateEndpoint(serverAddr),
 		Credentials: creds,

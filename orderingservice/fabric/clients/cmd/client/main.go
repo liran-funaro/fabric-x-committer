@@ -8,7 +8,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
@@ -40,9 +39,6 @@ func main() {
 
 	client, err := sidecarclient.NewClient(opts)
 	utils.Must(err)
-	defer func() {
-		utils.Must(client.Close())
-	}()
 
 	utils.Must(client.SetCommitterKey(publicKey))
 
@@ -54,11 +50,7 @@ func main() {
 		close(done)
 	})
 
-	client.SendReplicated(func() (*token.Tx, bool) {
-		tracker.RequestSent(1)
-		tx, ok := <-txs
-		return tx, ok
-	}).Wait()
+	client.SendReplicated(txs, func() { tracker.RequestSent(1) })
 
 	<-done
 }

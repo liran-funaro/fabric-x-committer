@@ -6,7 +6,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/msp"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
@@ -21,25 +20,44 @@ import (
 
 var logger = logging.New("sidecar")
 
-type CommitterAdapter interface {
+//OrdererListener connects to the orderer, and only listens for orderered blocks
+type OrdererListener interface {
+	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse)) error
+}
+
+//CommitterSubmitterListener connects to the committer (i.e. the coordinator of the committer), and submits blocks and listens for status batches.
+type CommitterSubmitterListener interface {
+	//RunCommitterSubmitterListener commits blocks to the committer
 	RunCommitterSubmitterListener(
 		blocks chan *workload.BlockWithExpectedResult, // TODO: Change interface to accept token.Block
 		onSubmit func(time.Time, *token.Block),
 		onReceive func(*coordinatorservice.TxValidationStatusBatch))
 }
-type OrdererListener interface {
-	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse)) error
-}
+
+//PostCommitAggregator is an adapter between the scalable committer and the client
+//SC returns the status of a committed TX as fast as possible, without waiting for the rest of the TXs of the same block.
+//However, the client is listening for whole blocks.
+//This component collects the sharded TX statuses and aggregates them until it collects the entire block.
+//Then the entire block is output in the correct order (as defined by the orderer).
 type PostCommitAggregator interface {
-	AddSubmittedConfigBlock(block *common.Block)
+	//AddSubmittedTxBlock adds a TX block to the aggregator and keeps a list of the TXs that have not been validated by the committer.
+	//Once we collect the statuses of all TXs from the committer, the block is marked as complete and can be output (after all previous blocks have been output).
 	AddSubmittedTxBlock(*common.Block)
+	//AddSubmittedConfigBlock adds a config block to the aggregator, similarly to AddSubmittedTxBlock.
+	//Unlike TX blocks, since config blocks do not have to be validated by the committer, we do not aggregate the statuses of their TXs.
+	//Hence, they are marked directly as complete.
+	AddSubmittedConfigBlock(*common.Block)
+	//AddCommittedBatch registers to the aggregator a batch of (in)validated TXs that came from the committer.
+	//A batch contains TXs belonging to different blocks.
+	//Once we collect all TXs that belong to a specific block, that block is marked as complete.
 	AddCommittedBatch(*coordinatorservice.TxValidationStatusBatch)
+	//RunCommittedBlockListener listens for the complete blocks in the output in the correct order (as defined by the orderer).
 	RunCommittedBlockListener(onFullBlockStatusComplete func(*common.Block))
 }
 
 type Sidecar struct {
 	ordererListener      OrdererListener
-	committerAdapter     CommitterAdapter
+	committerAdapter     CommitterSubmitterListener
 	orderedBlocks        chan *workload.BlockWithExpectedResult
 	postCommitAggregator PostCommitAggregator
 	metrics              *metrics.Metrics
@@ -62,7 +80,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		"\tCommitter:\n"+
 		"\t\tEndpoint: %v\n"+
 		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, committer.Endpoint, committer.OutputChannelCapacity)
-	ordererListener, err := clients.NewFabricOrdererListener(&clients.FabricOrdererConnectionOpts{
+	ordererListener, err := NewFabricOrdererListener(&FabricOrdererConnectionOpts{
 		ChannelID:   orderer.ChannelID,
 		Endpoint:    orderer.Endpoint,
 		Credentials: creds,

@@ -1,4 +1,4 @@
-package clients
+package sidecarclient
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type SidecarListener struct {
-	stream DeliverClient
+type sidecarListener struct {
+	stream ab.AtomicBroadcast_DeliverClient
 }
 
-func NewSidecarListener(endpoint connection.Endpoint) (*SidecarListener, error) {
+func newSidecarListener(endpoint connection.Endpoint) (*sidecarListener, error) {
 	clientConnection, err := connection.Connect(connection.NewDialConfigWithCreds(endpoint, insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
@@ -23,10 +23,10 @@ func NewSidecarListener(endpoint connection.Endpoint) (*SidecarListener, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &SidecarListener{stream}, nil
+	return &sidecarListener{stream}, nil
 }
 
-func (l *SidecarListener) StartListening(onBlock func(*common.Block), onError func(error)) {
+func (l *sidecarListener) StartListening(onBlock func(*common.Block), onError func(error)) {
 	logger.Infof("Starting to listen on sidecar for committed blocks.\n")
 	go func() {
 		for {

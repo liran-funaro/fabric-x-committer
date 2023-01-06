@@ -1,15 +1,15 @@
 package sidecarclient
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
@@ -18,6 +18,24 @@ import (
 )
 
 var logger = logging.New("sidecarclient")
+
+//VerificationKeySetter connects to the committer (coordinator) and sets the PK that has to be used to verify the signatures of the TXs.
+type VerificationKeySetter interface {
+	SetVerificationKey(signature.PublicKey) error
+}
+
+//SidecarListener connects to the sidecar and listens for committed blocks
+type SidecarListener interface {
+	StartListening(onBlockReceived func(*common.Block), onError func(error))
+}
+
+//OrdererSubmitter connects to the orderers, establishes one or more streams with each, and broadcasts serialized envelopes to all streams.
+type OrdererSubmitter interface {
+	//InputChannels returns one channel per stream.
+	InputChannels() []chan []byte
+	//CloseAndWait closes all input streams and waits until all envelopes have been broadcast.
+	CloseAndWait() error
+}
 
 type ClientInitOptions struct {
 	CommitterEndpoint connection.Endpoint
@@ -37,9 +55,9 @@ type ClientInitOptions struct {
 //1. the orderer where it sends transactions to be ordered, and
 //2. the sidecar where it listens for committed blocks
 type Client struct {
-	committerClient    *client.CoordinatorAdapter
-	sidecarListener    *clients.SidecarListener
-	ordererBroadcaster *clients.FabricOrdererBroadcaster
+	committerClient    VerificationKeySetter
+	sidecarListener    SidecarListener
+	ordererBroadcaster OrdererSubmitter
 }
 
 func NewClient(opts *ClientInitOptions) (*Client, error) {
@@ -49,13 +67,13 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		"\tOrderers: %v (channel: %s, signed envelopes: %v)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID, opts.SignedEnvelopes)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
-	listener, err := clients.NewSidecarListener(opts.SidecarEndpoint)
+	listener, err := newSidecarListener(opts.SidecarEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
 	sent := uint64(0)
-	submitter, err := clients.NewFabricOrdererBroadcaster(&clients.FabricOrdererBroadcasterOpts{
+	submitter, err := sidecar.NewFabricOrdererBroadcaster(&sidecar.FabricOrdererBroadcasterOpts{
 		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
 		Credentials:          opts.Credentials,
@@ -86,26 +104,26 @@ func (c *Client) StartListening(onBlock func(*common.Block), onError func(error)
 	c.sidecarListener.StartListening(onBlock, onError)
 }
 
-func (c *Client) SendReplicated(getItem func() (*token.Tx, bool)) *sync.WaitGroup {
-	return c.ordererBroadcaster.SendReplicated(func() ([]byte, bool) {
-		tx, ok := getItem()
-		if !ok {
-			return nil, false
-		}
-		data, err := proto.Marshal(tx)
-		if err != nil {
-			fmt.Printf("Error occurred: %v\n", err)
-			return nil, false
-		}
-		return data, true
-	})
-}
+//SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all submitters.
+func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
+	logger.Infof("Sending replicated message to all orderers.\n")
 
-func (c *Client) SendRepeated(msgSize, msgsPerGo int) *sync.WaitGroup {
-	return c.ordererBroadcaster.SendRepeated(make([]byte, msgSize), msgsPerGo)
-}
-
-func (c *Client) Close() error {
-	err := c.ordererBroadcaster.Close()
-	return err
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		for tx := range txs {
+			item, err := proto.Marshal(tx)
+			if err != nil {
+				logger.Infof("Error occurred: %v\n", err)
+				break
+			}
+			onRequestSend()
+			for _, messageCh := range c.ordererBroadcaster.InputChannels() {
+				messageCh <- item
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	utils.Must(c.ordererBroadcaster.CloseAndWait())
 }

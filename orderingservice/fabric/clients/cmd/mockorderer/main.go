@@ -9,7 +9,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
@@ -54,7 +53,7 @@ func NewMockOrderer(pp *workload.Profile) *mockOrdererImpl {
 }
 
 //Broadcast receives TXs and returns ACKs
-func (o *mockOrdererImpl) Broadcast(stream clients.BroadcastServer) error {
+func (o *mockOrdererImpl) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 	fmt.Printf("Starting listener for new TXs. No ACKs will be returned.\n")
 
 	for {
@@ -63,7 +62,7 @@ func (o *mockOrdererImpl) Broadcast(stream clients.BroadcastServer) error {
 }
 
 //Deliver receives a seek request and returns a stream of the orderered blocks
-func (o *mockOrdererImpl) Deliver(stream clients.DeliverServer) error {
+func (o *mockOrdererImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 
 	seekInfo, channelID, err := readSeekEnvelope(stream)
 	if err != nil {
@@ -77,7 +76,7 @@ func (o *mockOrdererImpl) Deliver(stream clients.DeliverServer) error {
 	}
 }
 
-func readSeekEnvelope(stream clients.DeliverServer) (*ab.SeekInfo, string, error) {
+func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, string, error) {
 	env, err := stream.Recv()
 	if err != nil {
 		return nil, "", err

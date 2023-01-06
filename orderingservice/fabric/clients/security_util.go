@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/tls"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/pkg/tls"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"google.golang.org/grpc/credentials"
 )

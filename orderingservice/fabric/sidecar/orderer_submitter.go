@@ -1,4 +1,4 @@
-package clients
+package sidecar
 
 import (
 	"context"
@@ -26,15 +26,66 @@ type FabricOrdererBroadcasterOpts struct {
 	OnAck                func(error)
 }
 
-func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*FabricOrdererBroadcaster, error) {
+type fabricOrdererBroadcaster struct {
+	submitters       []*fabricOrdererSubmitter
+	messageChs       []chan []byte
+	wg               *sync.WaitGroup
+	closeConnections func() error
+}
+
+func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrdererBroadcaster, error) {
 	connections, err := openConnections(opts.Endpoints, opts.Credentials)
 	if err != nil {
 		return nil, err
 	}
 
-	submitters := openStreams(connections, opts.Parallelism, opts.ChannelID, opts.Signer, opts.SignedEnvelopes, opts.OnAck)
-	closer := func() error { return closeConnections(connections) }
-	return &FabricOrdererBroadcaster{submitters, closer}, nil
+	b := &fabricOrdererBroadcaster{
+		submitters:       openStreams(connections, opts.Parallelism, opts.ChannelID, opts.Signer, opts.SignedEnvelopes, opts.OnAck),
+		messageChs:       createChannels(opts.Parallelism, opts.InputChannelCapacity),
+		wg:               &sync.WaitGroup{},
+		closeConnections: func() error { return closeConnections(connections) },
+	}
+
+	go func() {
+		b.startSending()
+	}()
+
+	return b, nil
+}
+
+func (b *fabricOrdererBroadcaster) InputChannels() []chan []byte {
+	return b.messageChs
+}
+
+func (b *fabricOrdererBroadcaster) CloseAndWait() error {
+	for _, ch := range b.messageChs {
+		close(ch)
+	}
+	b.wg.Wait()
+	return b.closeConnections()
+}
+
+func createChannels(length, capacity int) []chan []byte {
+	messageChs := make([]chan []byte, length)
+	for s := 0; s < len(messageChs); s++ {
+		messageChs[s] = make(chan []byte, capacity)
+	}
+	return messageChs
+}
+
+func (b *fabricOrdererBroadcaster) startSending() {
+	b.wg.Add(len(b.submitters))
+	for i := range b.submitters {
+		go func(submitter *fabricOrdererSubmitter, messages <-chan []byte) {
+			for message := range messages {
+				submitter.Broadcast(message)
+			}
+			if err := submitter.StopAndWait(); err != nil {
+				fmt.Println(err)
+			}
+			b.wg.Done()
+		}(b.submitters[i], b.messageChs[i])
+	}
 }
 
 func openConnections(endpoints []*connection.Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
@@ -92,79 +143,12 @@ func openStreams(connections []*grpc.ClientConn, parallelism int, channelID stri
 	return submitters
 }
 
-type FabricOrdererBroadcaster struct {
-	submitters []*fabricOrdererSubmitter
-	closer     func() error
-}
-
-//send launches a goroutine for each stream and sends the result of the i-th invocation of getItem to the s-th submitter.
-//If we want to send the same message to all submitters, then for a specific value of i, getItem should return the same value (independent of s).
-func (b *FabricOrdererBroadcaster) send(getItem func(int, int) ([]byte, bool)) *sync.WaitGroup {
-	var wg sync.WaitGroup
-	wg.Add(len(b.submitters))
-	for s, submitter := range b.submitters {
-		go func(submitter *fabricOrdererSubmitter, s int) {
-			for m := 0; ; m++ {
-				if message, ok := getItem(m, s); ok {
-					submitter.Broadcast(message)
-				} else {
-					break
-				}
-			}
-			if err := submitter.StopAndWait(); err != nil {
-				fmt.Println(err)
-			}
-			wg.Done()
-		}(submitter, s)
-	}
-	return &wg
-}
-
-//SendReplicated calls getItem, and then replicates and sends its result to all submitters.
-func (b *FabricOrdererBroadcaster) SendReplicated(getItem func() ([]byte, bool)) *sync.WaitGroup {
-	logger.Infof("Sending replicated message to all orderers.\n")
-	chs := make([]chan []byte, len(b.submitters))
-	for s := 0; s < len(chs); s++ {
-		chs[s] = make(chan []byte, 10)
-	}
-	go func() {
-		for {
-			item, ok := getItem()
-			if !ok {
-				break
-			}
-			for s := 0; s < len(chs); s++ {
-				chs[s] <- item
-			}
-		}
-		for s := 0; s < len(chs); s++ {
-			close(chs[s])
-		}
-	}()
-	return b.send(func(_, s int) ([]byte, bool) {
-		message, ok := <-chs[s]
-		return message, ok
-	})
-}
-
-//SendRepeated sends the same message (times) to all submitters times.
-func (b *FabricOrdererBroadcaster) SendRepeated(message []byte, times int) *sync.WaitGroup {
-	logger.Infof("Sending the same message to all servers.\n")
-	return b.send(func(m, _ int) ([]byte, bool) {
-		return message, m < times
-	})
-}
-
-func (b *FabricOrdererBroadcaster) Close() error {
-	return b.closer()
-}
-
 // Submitter
 
 //fabricOrdererSubmitter holds the reference to a stream to the orderer. It can send data to this orderer.
 type fabricOrdererSubmitter struct {
-	client          BroadcastClient
-	envelopeCreator *envelopeCreator
+	client          ab.AtomicBroadcast_BroadcastClient
+	envelopeCreator EnvelopeCreator
 	done            chan struct{}
 
 	stopped bool
@@ -174,7 +158,7 @@ type fabricOrdererSubmitter struct {
 	txCnt   uint64
 }
 
-func newFabricOrdererSubmitter(client BroadcastClient, channelID string, signer msp.SigningIdentity, signed bool, onAck func(error)) *fabricOrdererSubmitter {
+func newFabricOrdererSubmitter(client ab.AtomicBroadcast_BroadcastClient, channelID string, signer msp.SigningIdentity, signed bool, onAck func(error)) *fabricOrdererSubmitter {
 	s := &fabricOrdererSubmitter{
 		client:          client,
 		envelopeCreator: newEnvelopeCreator(channelID, signer, signed),

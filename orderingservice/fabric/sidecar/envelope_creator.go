@@ -1,4 +1,4 @@
-package clients
+package sidecar
 
 import (
 	"fmt"
@@ -7,9 +7,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients/pkg/identity"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/pkg/identity"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
+
+//EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
+type EnvelopeCreator interface {
+	CreateEnvelope(data []byte, seqNo uint64) (*common.Envelope, error)
+}
 
 type envelopeCreator struct {
 	txType      common.HeaderType
