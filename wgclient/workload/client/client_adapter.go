@@ -54,7 +54,7 @@ func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey) e
 	return err
 }
 
-func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) {
+func (c *CoordinatorAdapter) RunCommitterSubmitterListener(blocks <-chan *workload.BlockWithExpectedResult, onSubmit func(time.Time, *token.Block), onReceive func(*coordinatorservice.TxValidationStatusBatch)) {
 	logger.Infof("Open stream to coordinator.\n")
 	blockStream, err := c.client.BlockProcessing(c.ctx)
 	utils.Must(err)
@@ -93,7 +93,7 @@ func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorserv
 	}()
 }
 
-func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coordinator_BlockProcessingClient, dQueue chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
+func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coordinator_BlockProcessingClient, dQueue <-chan *workload.BlockWithExpectedResult, onSend func(time.Time, *token.Block)) {
 	logger.Infof("Start submitter to coordinator.\n")
 	// sender context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,7 +127,7 @@ func (c *CoordinatorAdapter) runCommitterSubmitter(stream coordinatorservice.Coo
 	workload.PrintStats(txsSent, blocksSent, int64(atomic.LoadUint64(&c.receivedStatuses)), elapsedPushed, totalElapsed)
 }
 
-func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice.Coordinator_BlockProcessingClient, bQueue chan *workload.BlockWithExpectedResult, cnt func(t time.Time, b *token.Block)) {
+func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice.Coordinator_BlockProcessingClient, bQueue <-chan *workload.BlockWithExpectedResult, cnt func(t time.Time, b *token.Block)) {
 	for {
 		select {
 		case <-ctx.Done():

@@ -29,7 +29,7 @@ type OrdererListener interface {
 type CommitterSubmitterListener interface {
 	//RunCommitterSubmitterListener commits blocks to the committer
 	RunCommitterSubmitterListener(
-		blocks chan *workload.BlockWithExpectedResult, // TODO: Change interface to accept token.Block
+		blocks <-chan *workload.BlockWithExpectedResult, // TODO: Change interface to accept token.Block
 		onSubmit func(time.Time, *token.Block),
 		onReceive func(*coordinatorservice.TxValidationStatusBatch))
 }

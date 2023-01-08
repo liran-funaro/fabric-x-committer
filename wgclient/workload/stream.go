@@ -53,13 +53,10 @@ func StartTxGenerator(profile *TransactionProfile, bufferSize int64) (signature.
 	return publicKey, signer, txQueue
 }
 
-func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *BlockWithExpectedResult) {
+func StartBockGeneratorOnQueue(pp *Profile, bQueue chan<- *BlockWithExpectedResult) signature.PublicKey {
 	pk, signer, txQueue := StartTxGenerator(&pp.Transaction, pp.Block.Size)
 
 	blockSize := uint64(pp.Block.Size)
-	queueBufferSize := 1000
-
-	bQueue := make(chan *BlockWithExpectedResult, queueBufferSize)
 
 	conflictHandler := NewConflictHandler(nil, pp.Conflicts.Statistical, signer.SignTx)
 	blockNo := uint64(0)
@@ -70,5 +67,11 @@ func StartBlockGenerator(pp *Profile) (signature.PublicKey, chan *BlockWithExpec
 		}
 	}()
 
+	return pk
+}
+
+func StartBlockGenerator(pp *Profile) (signature.PublicKey, <-chan *BlockWithExpectedResult) {
+	bQueue := make(chan *BlockWithExpectedResult, 1000)
+	pk := StartBockGeneratorOnQueue(pp, bQueue)
 	return pk, bQueue
 }

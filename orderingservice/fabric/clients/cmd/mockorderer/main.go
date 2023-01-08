@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -44,17 +45,25 @@ func main() {
 }
 
 type mockOrdererImpl struct {
-	blocks chan *workload.BlockWithExpectedResult
+	once    sync.Once
+	profile *workload.Profile
+	blocks  chan *workload.BlockWithExpectedResult
 }
 
 func NewMockOrderer(pp *workload.Profile) *mockOrdererImpl {
-	_, blocks := workload.StartBlockGenerator(pp)
-	return &mockOrdererImpl{blocks: blocks}
+	return &mockOrdererImpl{
+		profile: pp,
+		blocks:  make(chan *workload.BlockWithExpectedResult, 1000),
+	}
 }
 
 //Broadcast receives TXs and returns ACKs
 func (o *mockOrdererImpl) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 	fmt.Printf("Starting listener for new TXs. No ACKs will be returned.\n")
+
+	o.once.Do(func() {
+		workload.StartBockGeneratorOnQueue(o.profile, o.blocks)
+	})
 
 	for {
 		_, _ = stream.Recv()

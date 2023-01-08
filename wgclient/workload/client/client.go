@@ -73,7 +73,7 @@ func Validate(path string) {
 	workload.Validate(path)
 }
 
-func PumpToCoordinator(serializedKey []byte, dQueue chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string) {
+func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string) {
 	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint))
 
 	utils.Must(cl.SetVerificationKey(serializedKey))
