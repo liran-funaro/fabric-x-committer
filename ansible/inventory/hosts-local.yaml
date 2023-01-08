@@ -1,7 +1,11 @@
 all:
   vars:
     ansible_connection: local
+
+    # The user of the deployment machine
     ansible_user: "{{lookup('env', 'USER')}}"
+
+    # Where to transfer the binary and config files on the deployment machines
     root_path: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer
     binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
     config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
@@ -13,17 +17,22 @@ all:
         blockgens:
           hosts:
             blockgen-machine:
+              config: config-blockgen.yaml
+              block_profile: profile-blockgen.yaml
               ansible_host: "localhost"
               prometheus_exporter_port: 2113
 
         coordinators:
           hosts:
             coordinator-machine:
+              config: config-coordinator.yaml
               ansible_host: "localhost"
               service_port: 5002
               prometheus_exporter_port: 2112
 
         sigservices:
+          vars:
+            config: config-sigservice.yaml
           hosts:
             sigservice-machine1:
               ansible_host: "localhost"
@@ -35,6 +44,8 @@ all:
               prometheus_exporter_port: 2114
 
         shardsservices:
+          vars:
+            config: config-shardsservice.yaml
           hosts:
             shardsservice-machine:
               ansible_host: "localhost"
@@ -60,15 +71,22 @@ all:
         sidecars:
           hosts:
             sidecar-machine:
+              config: config-sidecar.yaml
               ansible_host: "localhost"
               service_port: 1234
               prometheus_exporter_port: 2111
 
         sidecarclients:
+          vars:
+            config: config-sidecar-client.yaml
           hosts:
-            sidecar-client-machine:
+            sidecar-client-machine1:
+              block_profile: profile-blockgen.yaml
               ansible_host: "localhost"
               prometheus_exporter_port: 2116
+            sidecar-client-machine2:
+              ansible_host: "localhost"
+              prometheus_exporter_port: 2117
 
         monitoring:
           hosts:

@@ -9,5 +9,6 @@
   tasks:
     - name: Modify sidecar config
       vars:
-        filepath: "{{src_dir}}{{groups['sidecars'] | first}}-config-sidecar.yaml"
+        sidecar_instance: "{{groups['sidecars'] | first}}"
+        filepath: "{{src_dir}}{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml

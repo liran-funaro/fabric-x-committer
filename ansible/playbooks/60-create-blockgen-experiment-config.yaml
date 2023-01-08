@@ -9,5 +9,7 @@
     tasks:
       - name: Modify blockgen profile
         vars:
-          filepath: "{{src_dir}}{{groups['blockgens'][0]}}-profile-blockgen.yaml"
+          filepath: "{{src_dir}}{{blockgen_instance}}-{{blockgens[blockgen_instance].block_profile}}"
         include_tasks: ../subtasks/edit-experiment-vars-for-blockgen-profile.yaml
+        loop: "{{groups['blockgens']}}"
+        loop_var: blockgen_instance

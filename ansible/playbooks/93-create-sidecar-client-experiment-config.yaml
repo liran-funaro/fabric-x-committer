@@ -7,7 +7,10 @@
   roles:
     - kwoodson.yedit
   tasks:
-    - name: Modify sidecar config
+    - name: Modify sidecar-client config
       vars:
-        filepath: "{{src_dir}}{{groups['sidecarclients'] | first}}-config-sidecar-client.yaml"
+        filepath: "{{src_dir}}{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].config}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-client-config.yaml
+      loop: "{{groups['sidecarclients'] | default([])}}"
+      loop_control:
+        loop_var: sidecar_client_instance

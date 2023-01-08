@@ -4,6 +4,7 @@
 ---
 - name: Set config properties
   vars:
+    profile_path_reference: "{{hostvars[sidecar_client_instance].config_dir + sidecar_client_instance + '-' + hostvars[sidecar_client_instance].block_profile if hostvars[sidecar_client_instance].block_profile is defined else ''}}"
     orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
     orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
     sidecar_host: "{{groups['sidecars'] | map('extract', hostvars) | first}}"
@@ -13,6 +14,8 @@
   yedit:
     src: "{{filepath}}"
     edits:
+      - key: sidecar-client.profile
+        value: "{{profile_path_reference}}"
       - key: sidecar-client.orderers
         value: "{{orderer_endpoints}}"
       - key: sidecar-client.channel-id

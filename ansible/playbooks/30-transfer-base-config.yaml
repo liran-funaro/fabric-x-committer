@@ -7,11 +7,16 @@
   vars:
     mode: a+rw
     dst_dir: "{{config_dir}}"
+    hostvar: "{{hostvars[inventory_hostname]}}"
   tasks:
     - vars:
-        filename: "{{inventory_hostname}}-{{name}}"
+        src_filename: "{{hostvar.config}}"
+        filename: "{{inventory_hostname}}-{{src_filename}}"
       include_tasks: ../subtasks/copy-file.yaml
-      loop: "{{filenames}}"
+      when: src_filename | length > 0
+      loop:
+        - "{{hostvar.config | d()}}"
+        - "{{hostvar.block_profile | d()}}"
       loop_control:
-        loop_var: name
+        loop_var: src_filename
 

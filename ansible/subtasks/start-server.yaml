@@ -16,7 +16,8 @@
   vars:
     session_name: "{{inventory_hostname}}"
     env_vars: "{{env | d([]) | join(' ')}}"
-    options: "{{opts | d({}) | combine({} if config is not defined else {'configs': config_dir + inventory_hostname + '-' + config})}}"
+    config: "{{hostvars[inventory_hostname].config | d()}}"
+    options: "{{opts | d({}) | combine({} if config | length == 0 else {'configs': config_dir + inventory_hostname + '-' + config})}}"
     flags: "{{(options.keys() | d([])) | zip(options.values() | d([])) | map('join', '=') | list}}"
   set_fact:
     command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{['--'] | product(flags) | map('join') | first}}"
@@ -25,7 +26,7 @@
   async: 10
   poll: 0
   register: stdout
-  when: only_kill == false
+  when: only_kill is undefined or only_kill == false
 - debug:
     msg:
       - " {{command}}"
@@ -37,4 +38,4 @@
     server_port: "{{hostvars[inventory_hostname].service_port | d()}}"
   wait_for:
     port: "{{server_port}}"
-  when: (only_kill == false) and (server_port != '')
+  when: (only_kill is undefined or only_kill == false) and (server_port != '')

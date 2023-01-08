@@ -17,40 +17,34 @@
       - name: Create base config
         include_tasks: ../subtasks/create-base-vars-for-group-config.yaml
         loop:
-          - {filename: config-sigservice.yaml, target_hosts: sigservices, config_root: sig-verification}
-          - {filename: config-shardsservice.yaml, target_hosts: shardsservices, config_root: shards-service}
-          - {filename: config-coordinator.yaml, target_hosts: coordinators, config_root: coordinator}
-          - {filename: config-blockgen.yaml, target_hosts: blockgens, config_root: blockgen}
-          - {filename: config-sidecar.yaml, target_hosts: sidecars, config_root: sidecar}
-          - {filename: config-sidecar-client.yaml, target_hosts: sidecarclients, config_root: sidecar-client}
+          - {target_hosts: sigservices, config_root: sig-verification}
+          - {target_hosts: shardsservices, config_root: shards-service}
+          - {target_hosts: coordinators, config_root: coordinator}
+          - {target_hosts: blockgens, config_root: blockgen}
+          - {target_hosts: sidecars, config_root: sidecar}
+          - {target_hosts: sidecarclients, config_root: sidecar-client}
         loop_control:
           loop_var: config_item
           label: "{{config_item.target_hosts}}"
   - name: Further edit coordinator config
     hosts: localhost
     vars:
-      coordinator_instance: "{{groups['coordinators'][0]}}"
-      filepath: "{{dst_dir}}{{coordinator_instance}}-config-coordinator.yaml"
+      coordinator_instance: "{{groups['coordinators'] | first}}"
+      filepath: "{{dst_dir}}{{coordinator_instance}}-{{hostvars[coordinator_instance].config}}"
     tasks:
       - include_tasks: ../subtasks/edit-experiment-vars-for-coordinator-config.yaml
   - name: Further edit blockgen config/profile
     hosts: localhost
-    vars:
-      blockgen_instance: "{{groups['blockgens'][0]}}"
-      # Where the file will be saved
-      config_dst_filepath: "{{dst_dir}}{{blockgen_instance}}-config-blockgen.yaml"
-      # Where we will read the file from
-      profile_src_filepath: "{{src_dir}}profile-blockgen.yaml"
-      # Where the file will be saved
-      profile_dst_filepath: "{{dst_dir}}{{blockgen_instance}}-profile-blockgen.yaml"
-      # Where the config file should point
-      profile_path_reference: "{{hostvars[blockgen_instance].config_dir}}{{blockgen_instance}}-profile-blockgen.yaml"
     roles:
       - kwoodson.yedit
     tasks:
     - name: Edit blockgen endpoint and profile filepath
       vars:
         coordinator_host: "{{hostvars[groups['coordinators'][0]]}}"
+        # Where the file will be saved
+        config_dst_filepath: "{{dst_dir}}{{blockgen_instance}}-{{hostvars[blockgen_instance].config}}"
+        # Where the config file should point
+        profile_path_reference: "{{hostvars[blockgen_instance].config_dir}}{{blockgen_instance}}-{{hostvars[blockgen_instance].block_profile}}"
       yedit:
         src: "{{config_dst_filepath}}"
         edits:
@@ -58,51 +52,52 @@
             value: "{{profile_path_reference}}"
           - key: blockgen.endpoint
             value: "{{coordinator_host.ansible_host}}:{{coordinator_host.service_port}}"
+      loop: "{{groups['blockgens']}}"
+      loop_control:
+        loop_var: blockgen_instance
     - name: Copy base blockgen profile from local filesystem
       vars:
         mode: a+rw
-        src_path: "{{profile_src_filepath}}"
-        dst_path: "{{profile_dst_filepath}}"
+        # Where we will read the file from
+        src_path: "{{src_dir}}{{hostvars[blockgen_instance].block_profile}}"
+        # Where the file will be saved
+        dst_path: "{{dst_dir}}{{blockgen_instance}}-{{hostvars[blockgen_instance].block_profile}}"
       include_tasks: ../subtasks/copy-file.yaml
+      loop: "{{groups['blockgens']}}"
+      loop_control:
+        loop_var: blockgen_instance
     - name: Set base setup to blockgen profile
       vars:
-        filepath: "{{profile_dst_filepath}}"
+        filepath: "{{dst_dir}}{{blockgen_instance}}-{{hostvars[blockgen_instance].block_profile}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-blockgen-profile.yaml
+      loop: "{{groups['blockgens']}}"
+      loop_control:
+        loop_var: blockgen_instance
   - name: Further edit sidecar config
     hosts: localhost
     vars:
       sidecar_instance: "{{groups['sidecars'] | first}}"
-      filepath: "{{dst_dir}}{{sidecar_instance}}-config-sidecar.yaml"
+      filepath: "{{dst_dir}}{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
     tasks:
       - include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml
   - name: Further edit sidecar-client config
     hosts: localhost
     roles:
       - kwoodson.yedit
-    vars:
-      sidecar_client_instance: "{{groups['sidecarclients'] | first}}"
-      remote_config_dir: "{{hostvars[sidecar_client_instance].config_dir}}"
-      # Where the file will be saved
-      config_dst_filepath: "{{dst_dir}}{{sidecar_client_instance}}-config-sidecar-client.yaml"
-      # Where we will read the file from
-      profile_src_filepath: "{{src_dir}}profile-sidecar-client.yaml"
-      # Where the file will be saved
-      profile_dst_filepath: "{{dst_dir}}{{sidecar_client_instance}}-profile-sidecar-client.yaml"
-      # Where the config file should point
-      profile_path_reference: "{{remote_config_dir}}{{sidecar_client_instance}}-profile-sidecar-client.yaml"
     tasks:
-    - name: Edit sidecar profile filepath
-      yedit:
-        src: "{{config_dst_filepath}}"
-        edits:
-          - key: sidecar-client.profile
-            value: "{{profile_path_reference}}"
     - vars:
-        filepath: "{{config_dst_filepath}}"
+        filepath: "{{dst_dir}}{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].config}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-client-config.yaml
+      loop: "{{groups['sidecarclients']}}"
+      loop_control:
+        loop_var: sidecar_client_instance
     - name: Copy sidecar-client profile from local filesystem
       vars:
         mode: a+rw
-        src_path: "{{profile_src_filepath}}"
-        dst_path: "{{profile_dst_filepath}}"
+        src_path: "{{src_dir}}{{hostvars[sidecar_client_instance].block_profile}}"
+        dst_path: "{{dst_dir}}{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].block_profile}}"
       include_tasks: ../subtasks/copy-file.yaml
+      when: hostvars[sidecar_client_instance].block_profile is defined
+      loop: "{{groups['sidecarclients']}}"
+      loop_control:
+        loop_var: sidecar_client_instance

@@ -174,5 +174,5 @@ func mapBlock(block *common.Block) *token.Block {
 
 //TODO: AF
 func isConfigBlock(block *common.Block) bool {
-	return block.Header.Number == 1
+	return block.Header.Number == 0
 }

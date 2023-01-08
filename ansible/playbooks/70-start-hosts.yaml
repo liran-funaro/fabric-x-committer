@@ -4,30 +4,75 @@
 ---
   - name: Start sig verifiers
     vars:
-      sig_verifiers: 3
+      target_hosts: sigservices
       service_name: sigservice
-      config: config-sigservice.yaml
-      only_kill: false
-    hosts: sigservices[0:{{sig_verifiers - 1}}]
+      sigservice_instances: "{{groups[target_hosts] | length}}"
+    hosts: sigservices[0:{{sigservice_instances | int - 1}}]
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
   - name: Start shard servers
     vars:
-      shard_servers: 3
+      target_hosts: shardsservices
       service_name: shardsservice
-      config: config-shardsservice.yaml
-      only_kill: false
-    hosts: shardsservices[0:{{shard_servers - 1}}]
+      shardsservice_instances: "{{groups[target_hosts] | length}}"
+    hosts: shardsservices[0:{{shardsservice_instances | int - 1}}]
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
   - name: Start coordinator
     vars:
       service_name: coordinator
-      config: config-coordinator.yaml
-      only_kill: false
     hosts: coordinators
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
-
-
-
+        when: service_name in start
+  - name: Start mock coordinator
+    vars:
+      service_name: mockcoordinator
+    hosts: coordinators
+    tasks:
+      - include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start block generator
+    vars:
+      target_hosts: blockgens
+      service_name: blockgen stream
+      blockgen_instances: "{{groups[target_hosts] | length}}"
+    hosts: blockgens[0:{{blockgen_instances | int - 1}}]
+    tasks:
+      - vars:
+          env:
+            - "GOGC=20000"
+        include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start mock orderers
+    vars:
+      target_hosts: orderingservices
+      service_name: mockorderingservice
+      orderingservice_instances: "{{groups[target_hosts] | length}}"
+      opts:
+        endpoint: "{{ansible_host}}:{{service_port}}"
+    hosts: orderingservices[0:{{orderingservice_instances | int - 1}}]
+    tasks:
+      - include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start sidecar
+    vars:
+      service_name: sidecar
+    hosts: sidecars
+    tasks:
+      - include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start sidecar client
+    vars:
+      target_hosts: sidecarclients
+      service_name: sidecarclient
+      sidecarclient_instances: "{{groups[target_hosts] | length}}"
+    hosts: sidecarclients[0:{{sidecarclient_instances | int - 1}}]
+    tasks:
+      - vars:
+          env:
+            - "GOGC=20000"
+        include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start

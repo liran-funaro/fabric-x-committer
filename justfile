@@ -170,7 +170,7 @@ docker-run-services:
 docker-build-blockgen inventory=("ansible/inventory/hosts-local-docker.yaml"):
     just build-blockgen {{osx-bin-input-dir}}
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{'../../' + osx-bin-input-dir}}', 'linux_src_dir': '{{'../../' + linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{'../../' + base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{'../../' + base-setup-config-dir}}'}"
 
 docker-run-blockgen:
     GOGC=20000 {{osx-bin-input-dir}}blockgen stream --configs {{base-setup-config-dir}}blockgen-machine-config-blockgen.yaml
@@ -197,22 +197,22 @@ deploy-bins local_linux_src_dir=('../../' + linux-bin-input-dir) local_osx_src_d
 # Each server will receive only the files it needs
 deploy-base-configs local_src_dir=('../../' + config-input-dir) local_dst_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}', 'channel_id': '{{default-channel-id}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['config-sigservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['config-shardsservice.yaml'], 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['config-sidecar.yaml'], 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['config-sidecar-client.yaml', 'profile-sidecar-client.yaml'], 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{local_dst_dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{local_dst_dir}}'}"
 
 ### Full system run
 
 start-mock-coordinator local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/50-create-coordinator-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/71-start-mock-coordinator.yaml"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["mockcoordinator"]}'
 
 start-mock-orderers:
-    ansible-playbook "{{playbook-path}}/90-start-mock-orderers.yaml"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["mockorderingservice"]}'
 
 start-orderers dir:
     #!/usr/bin/env bash
@@ -242,13 +242,13 @@ start-mir-orderers channel_id=(default-channel-id):
 
 start-sidecar channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/91-create-sidecar-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['config-sidecar.yaml'], 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/92-start-sidecar.yaml"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sidecar"]}'
 
-start-sidecar-client channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
+start-sidecar-clients channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/93-create-sidecar-client-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['config-sidecar-client.yaml', 'profile-sidecar-client.yaml'], 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/94-start-sidecar-client.yaml"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sidecarclient"]}'
 
 start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) local_src_dir=('../../' + base-setup-config-dir):
     just kill-process-on-all-ports
@@ -274,7 +274,7 @@ start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) loca
     fi
 
     just start-sidecar {{channel_id}} {{local_src_dir}}
-    just start-sidecar-client {{channel_id}} {{local_src_dir}}
+    just start-sidecar-clients {{channel_id}} {{local_src_dir}}
 
     tmux set-option remain-on-exit
 
@@ -327,13 +327,13 @@ run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalid
 
 start-servers  sig_verifiers=("3") shard_servers=("3") local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/50-create-coordinator-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['config-coordinator.yaml'], 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}}'
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator"], "sigservice_instances": {{sig_verifiers}}, "shardsservice_instances": {{shard_servers}}}'
 
 start-blockgen large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") local_src_dir=('../../' + base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/60-create-blockgen-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['config-blockgen.yaml', 'profile-blockgen.yaml'], 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/80-start-blockgen.yaml"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{local_src_dir}}'}"
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["blockgen stream"]}'
 
 # Goes through all of the entries of the tracker file and retrieves the corresponding metric for each line (as defined at the sampling-time field)
 gather-results filename:
@@ -341,7 +341,7 @@ gather-results filename:
     {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens "(.ansible_host) + \\\":\\\" + (.prometheus_exporter_port|tostring)") -prometheus-endpoint=$(just list-hosts monitoring "(.ansible_host) + \\\":{{prometheus-scraper-port}}\\\"") -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
 
 kill-all sig_verifiers=("100") shard_servers=("100"):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"sig_verifiers": {{sig_verifiers}}, "shard_servers": {{shard_servers}}, "only_kill": true}'
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator"], "only_kill": true}'
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):
