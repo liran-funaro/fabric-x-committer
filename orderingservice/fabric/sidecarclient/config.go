@@ -34,7 +34,7 @@ func init() {
 	viper.SetDefault("sidecar-client.orderers", []string{":7050"})
 	viper.SetDefault("sidecar-client.prometheus.endpoint", ":2113")
 
-	viper.SetDefault("sidecar-client.profile", "../../config/profile-blockgen.yaml")
+	viper.SetDefault("sidecar-client.profile", "")
 	viper.SetDefault("sidecar-client.input-channel-capacity", 20)
 	viper.SetDefault("sidecar-client.channel-id", "mychannel")
 	viper.SetDefault("sidecar-client.parallelism", 10)

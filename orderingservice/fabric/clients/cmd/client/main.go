@@ -8,6 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
@@ -18,8 +19,6 @@ func main() {
 	config.ParseFlags()
 
 	c := sidecarclient.ReadConfig()
-
-	profile := workload.LoadProfileFromYaml(c.Profile)
 
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint:    c.Committer,
@@ -35,12 +34,18 @@ func main() {
 
 	tracker := workload.NewMetricTracker(c.Prometheus)
 
-	publicKey, _, txs := workload.StartTxGenerator(&profile.Transaction, 100)
-
 	client, err := sidecarclient.NewClient(opts)
 	utils.Must(err)
 
-	utils.Must(client.SetCommitterKey(publicKey))
+	var txs chan *token.Tx
+	if len(c.Profile) > 0 {
+		profile := workload.LoadProfileFromYaml(c.Profile)
+		publicKey, _, txCh := workload.StartTxGenerator(&profile.Transaction, 100)
+		utils.Must(client.SetCommitterKey(publicKey))
+		txs = txCh
+	} else {
+		txs = make(chan *token.Tx)
+	}
 
 	done := make(chan struct{})
 	client.StartListening(func(block *common.Block) {

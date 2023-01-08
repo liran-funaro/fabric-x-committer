@@ -5,9 +5,12 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+var listenRequest = &common.Envelope{}
 
 type sidecarListener struct {
 	stream ab.AtomicBroadcast_DeliverClient
@@ -28,6 +31,7 @@ func newSidecarListener(endpoint connection.Endpoint) (*sidecarListener, error) 
 
 func (l *sidecarListener) StartListening(onBlock func(*common.Block), onError func(error)) {
 	logger.Infof("Starting to listen on sidecar for committed blocks.\n")
+	utils.Must(l.stream.Send(listenRequest))
 	go func() {
 		for {
 			if response, err := l.stream.Recv(); err != nil {
