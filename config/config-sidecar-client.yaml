@@ -1,19 +1,19 @@
 sidecar-client:
-  prometheus:
+  prometheus:                                 # Overridden by ansible
     endpoint: :2113
 
-  sidecar: :1234
-  committer: :5002
-  orderers:
+  sidecar: :1234                              # Overridden by ansible
+  committer: :5002                            # Overridden by ansible
+  orderers:                                   # Overridden by ansible
     - :7050
     - :7051
     - :7052
-  channel-id: mychannel
+  channel-id: mychannel                       # Overridden by ansible
 
-  profile: ../../config/profile-blockgen.yaml
+  profile: ../../config/profile-blockgen.yaml # Overridden by ansible
   input-channel-capacity: 20
   parallelism: 10
-  signed-envelopes: false
+  signed-envelopes: true
 
 logging:
   enabled: true

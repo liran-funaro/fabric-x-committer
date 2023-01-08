@@ -1,10 +1,10 @@
 blockgen:
-  endpoint: tokentestbed2.sl.cloud9.ibm.com:5002
-  prometheus:
+  endpoint: tokentestbed2.sl.cloud9.ibm.com:5002              # Overridden by ansible
+  prometheus:                                                 # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
   generator:
-    profile: ./profile-blockgen.yaml
+    profile: ./profile-blockgen.yaml                          # Overridden by ansible
 #    limits:
 #      parallelism: 3
 #      channel-buffer-size: 10

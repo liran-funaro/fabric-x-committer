@@ -1,6 +1,6 @@
 shards-service:
-  endpoint: :5001
-  prometheus:
+  endpoint: :5001                                             # Overridden by ansible
+  prometheus:                                                 # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
   database:

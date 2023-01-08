@@ -1,15 +1,15 @@
 coordinator:
-  endpoint: :5002
-  prometheus:
+  endpoint: :5002                                             # Overridden by ansible
+  prometheus:                                                 # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
-  sig-verifiers:
+  sig-verifiers:                                              # Overridden by ansible
     endpoints:
       - tokentestbed3.sl.cloud9.ibm.com:5000
       - tokentestbed4.sl.cloud9.ibm.com:5000
       - tokentestbed5.sl.cloud9.ibm.com:5000
   shards-servers:
-    servers:
+    servers:                                                  # Overridden by ansible
       - endpoint: tokentestbed6.sl.cloud9.ibm.com:5001
         num-shards: 1
       - endpoint: tokentestbed7.sl.cloud9.ibm.com:5001

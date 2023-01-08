@@ -1,5 +1,0 @@
-sig-verification:
-  endpoint: :5000
-  prometheus:
-    endpoint: :2113
-    latency-endpoint: :14268
