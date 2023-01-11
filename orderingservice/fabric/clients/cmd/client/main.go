@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -14,9 +15,16 @@ import (
 )
 
 func main() {
-	creds, signer := clients.GetDefaultSecurityOpts()
+	var (
+		credsPath  string
+		configPath string
+	)
 
+	flag.StringVar(&credsPath, "credsPath", clients.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
+	flag.StringVar(&configPath, "configPath", clients.DefaultConfigPath, "The path to the output folder containing the orderer config.")
 	config.ParseFlags()
+
+	creds, signer := clients.GetDefaultSecurityOpts(credsPath, configPath)
 
 	c := sidecarclient.ReadConfig()
 

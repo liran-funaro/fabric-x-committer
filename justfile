@@ -124,6 +124,64 @@ build-mock-orderer output_dir:
 build-sidecar-client output_dir:
     cd ./orderingservice/fabric; go build -o ../../{{output_dir}}/sidecarclient ./clients/cmd/client; cd ../..
 
+docker-orderer-image:
+    docker build -f ordererbuilder/Dockerfile -t orderer_builder .
+
+start-all-raft-orderers network=('my-orderer-net') bin_dir=('$PWD/bins') out_dir=('$PWD/outs') client_out_dir=('$PWD/orderingservice/fabric/out') signed=('false') orderer_config=('$PWD/orderingservice/fabric/testdata/orderer.yaml') crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml') channel_id=(default-channel-id):
+    # Build binaries
+    just docker-build-orderer {{bin_dir}} {{signed}}
+
+    # Create crypto, configtx and copy what is required for the client
+    just docker-init-orderer {{out_dir}} {{client_out_dir}} {{crypto_config}} {{txgen_config}} {{channel_id}}
+
+    # Create network for orderer containers, if not existing
+    docker network inspect {{network}} >/dev/null 2>&1 || docker network create {{network}}
+
+    # Create all orderer containers, connect them to the network, and start them
+    tmux new-session -s "orderer0" -d "just docker-start-raft-orderer-by-id {{out_dir}} 0 {{network}} {{orderer_config}}"
+    tmux new-session -s "orderer1" -d "just docker-start-raft-orderer-by-id {{out_dir}} 1 {{network}} {{orderer_config}}"
+    tmux new-session -s "orderer2" -d "just docker-start-raft-orderer-by-id {{out_dir}} 2 {{network}} {{orderer_config}}"
+
+
+docker-build-orderer output_dir signed=('false'):
+    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/rebuild_binaries.sh {{signed}} /usr/local/out
+
+docker-init-orderer out_dir client_out_dir crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml') channel_id=(default-channel-id):
+    echo "Clean up {{out_dir}}"
+    if [ -d "{{out_dir}}" ]; then \
+      rm -r {{out_dir}}; \
+    fi
+
+    echo "Generate crypto and configtx in {{out_dir}}"
+    docker run --rm -it \
+      -v {{out_dir}}:/usr/local/out \
+      -v $(dirname "{{crypto_config}}"):/usr/local/crypto-config \
+      -v $(dirname "{{txgen_config}}"):/usr/local/txgen-config \
+      orderer_builder:latest /usr/local/init.sh /usr/local/crypto-config/$(basename "{{crypto_config}}") /usr/local/txgen-config/$(basename "{{txgen_config}}") /usr/local/out {{channel_id}}
+
+    echo "Copy Root CA and client credentials to {{client_out_dir}}"
+    if [ -d "{{client_out_dir}}" ]; then \
+      rm -r "{{client_out_dir}}"; \
+    fi
+    mkdir {{client_out_dir}}
+    cp {{out_dir}}/orgs/ordererOrganizations/orderer.org/orderers/orderer__0.orderer.org/tls/ca.crt {{client_out_dir}}/
+    cp -r {{out_dir}}/orgs/peerOrganizations/org1.com/users/User1@org1.com/msp {{client_out_dir}}/
+
+docker-start-raft-orderer-by-id out_dir n network orderer_config=('$PWD/orderingservice/fabric/testdata/orderer.yaml'):
+    just docker-start-raft-orderer orderer__{{n}} {{network}} "{{out_dir}}/orgs/ordererOrganizations/orderer.org/orderers/orderer__{{n}}.orderer.org" "{{out_dir}}/genesisblock" {{orderer_config}} "705{{n}}" "844{{n}}" "944{{n}}"
+
+docker-start-raft-orderer name network orderer_creds genesis_block orderer_config listen_port ops_port admin_port:
+    echo "Start server with:\n\tOrderer Creds: {{orderer_creds}}\n\tGenesis Block: {{genesis_block}}\n\tOrderer Config: {{orderer_config}}\n"
+    echo "Command: /usr/local/run_orderer.sh {{listen_port}} localhost:{{ops_port}} localhost:{{admin_port}} /usr/local/orderer-creds /usr/local/genesisblock /usr/local/ledger /usr/local/fabric/orderer.yaml"
+    docker run --rm -it \
+      --volume {{orderer_creds}}:/usr/local/orderer-creds \
+      --volume {{genesis_block}}:/usr/local/genesisblock \
+      --volume $(dirname "{{orderer_config}}"):/usr/local/fabric \
+      --publish {{listen_port}}:{{listen_port}} \
+      --network {{network}} \
+      --name {{name}} \
+      orderer_builder:latest /usr/local/run_orderer.sh {{listen_port}} localhost:{{ops_port}} localhost:{{admin_port}} /usr/local/orderer-creds /usr/local/genesisblock /usr/local/ledger /usr/local/fabric/$(basename "{{orderer_config}}")
+
 ### Deploy
 
 #transfer-all +files=(default-deployment-files):

@@ -20,9 +20,9 @@ Organizations:
                 Rule: "OR('orderer.admin')"
 
         OrdererEndpoints:
-            - localhost:7050
-            - localhost:7051
-            - localhost:7052
+            - orderer__1:7050
+            - orderer__2:7051
+            - orderer__3:7052
 
     - &Org1
         Name: Org1
@@ -70,8 +70,8 @@ Organizations:
         # to instead use the channel configuration update process to set the
         # anchor peers for each organization.
         AnchorPeers:
-            - Host: 127.0.0.1
-              Port: 7051
+            - Host: orderer__0
+              Port: 7050
 
 ################################################################################
 #
@@ -264,7 +264,7 @@ Orderer: &OrdererDefaults
     # as TLS validation.  The preferred way to specify orderer addresses is now
     # to include the OrdererEndpoints item in your org definition
     Addresses:
-         - 127.0.0.1:7050
+         - orderer__0:7050
 
     # Batch Timeout: The amount of time to wait before creating a batch.
     BatchTimeout: 2s
@@ -315,18 +315,18 @@ Orderer: &OrdererDefaults
         # a subset of the host:port items enumerated in this list should be
         # replicated under the Orderer.Addresses key above.
         Consenters:
-            - Host: localhost
+            - Host: orderer__0
               Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-            - Host: localhost
+              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__0.orderer.org/tls/server.crt
+              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__0.orderer.org/tls/server.crt
+            - Host: orderer__1
               Port: 7051
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-            - Host: localhost
+              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__1.orderer.org/tls/server.crt
+              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__1.orderer.org/tls/server.crt
+            - Host: orderer__2
               Port: 7052
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__2.orderer.org/tls/server.crt
+              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/orderer__2.orderer.org/tls/server.crt
 
         # Options to be specified for all the etcd/raft nodes. The values here
         # are the defaults for all new channels and can be modified on a

@@ -20,23 +20,28 @@ import (
 )
 
 func main() {
-	creds, signer := clients.GetDefaultSecurityOpts()
 
 	var (
 		serverAddr string
+		credsPath  string
+		configPath string
 		channelID  string
 		quiet      bool
 		seek       int
 	)
 
-	flag.StringVar(&serverAddr, "server", ":7050", "The RPC server to connect to.")
+	flag.StringVar(&serverAddr, "server", "0.0.0.0:7050", "The RPC server to connect to.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to deliver from.")
+	flag.StringVar(&credsPath, "credsPath", clients.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
+	flag.StringVar(&configPath, "configPath", clients.DefaultConfigPath, "The path to the output folder containing the orderer config.")
 	flag.BoolVar(&quiet, "quiet", false, "Only print the block number, will not attempt to print its block contents.")
 	flag.IntVar(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
 		"Acceptable values:"+
 		"%d (or %d) to start from oldest (or newest) and keep at it indefinitely."+
 		"N >= 0 to fetch block N only.", sidecar.SeekSinceOldestBlock, sidecar.SeekSinceNewestBlock))
 	flag.Parse()
+
+	creds, signer := clients.GetDefaultSecurityOpts(credsPath, configPath)
 
 	listener, err := sidecar.NewFabricOrdererListener(&sidecar.FabricOrdererConnectionOpts{
 		ChannelID:   channelID,

@@ -81,25 +81,9 @@ run_orderer_on_port n listen_port:
     {{fabric_bins}}/orderer
 
 submit:
-    FABRIC_CFG_PATH=. \
-    ORDERER_GENERAL_LOCALMSPID="{{client_org}}" \
-    ORDERER_GENERAL_LOCALMSPDIR="{{client_credentials}}/msp" \
-    ORDERER_GENERAL_LISTENADDRESS=localhost \
-    ORDERER_GENERAL_TLS_ENABLED=true \
-    ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
-    ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
-    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
     GOGC=10000 go run clients/cmd/submitter/main.go -channelID {{channelID}} -goroutines 24 -messages 1000000
 
 listen:
-    FABRIC_CFG_PATH=. \
-    ORDERER_GENERAL_LOCALMSPID="{{client_org}}" \
-    ORDERER_GENERAL_LOCALMSPDIR="{{client_credentials}}/msp" \
-    ORDERER_GENERAL_LISTENADDRESS=localhost \
-    ORDERER_GENERAL_TLS_ENABLED=true \
-    ORDERER_GENERAL_TLS_PRIVATEKEY="{{client_credentials}}/tls/client.key" \
-    ORDERER_GENERAL_TLS_CERTIFICATE="{{client_credentials}}/tls/client.crt" \
-    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", "0")}}/ca.crt]" \
     go run clients/cmd/listener/main.go -channelID {{channelID}} -quiet
 
 clean:

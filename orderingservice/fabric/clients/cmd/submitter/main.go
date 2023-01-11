@@ -15,10 +15,10 @@ import (
 )
 
 func main() {
-	creds, signer := clients.GetDefaultSecurityOpts()
-
 	var (
 		ordererEndpoints []*connection.Endpoint
+		credsPath        string
+		configPath       string
 		channelID        string
 		messages         uint64
 		goroutines       uint64
@@ -26,13 +26,17 @@ func main() {
 		signedEnvs       bool
 	)
 
-	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"localhost", 7050}, {"localhost", 7051}, {"localhost", 7052}}, "Orderers to send our TXs.")
+	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"0.0.0.0", 7050}, {"0.0.0.0", 7051}, {"0.0.0.0", 7052}}, "Orderers to send our TXs.")
+	flag.StringVar(&credsPath, "credsPath", clients.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
+	flag.StringVar(&configPath, "configPath", clients.DefaultConfigPath, "The path to the output folder containing the orderer config.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
 	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
 	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
 	flag.Uint64Var(&msgSize, "size", 160, "The size in bytes of the data section for the payload")
-	flag.BoolVar(&signedEnvs, "signed", false, "Sign envelopes to send to orderer")
+	flag.BoolVar(&signedEnvs, "signed", true, "Sign envelopes to send to orderer")
 	flag.Parse()
+
+	creds, signer := clients.GetDefaultSecurityOpts(credsPath, configPath)
 
 	msgsPerGo := messages / goroutines
 	roundMsgs := msgsPerGo * goroutines

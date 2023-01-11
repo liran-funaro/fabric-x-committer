@@ -5,25 +5,11 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"os"
 
 	"google.golang.org/grpc/credentials"
-	"gopkg.in/yaml.v2"
 )
 
-func LoadTLSCredentials() (credentials.TransportCredentials, error) {
-
-	certsString := os.Getenv("ORDERER_GENERAL_TLS_ROOTCAS")
-	if certsString == "" {
-		return nil, fmt.Errorf("cannot load ORDERER_GENERAL_TLS_ROOTCAS")
-	}
-
-	var certs []string
-	err := yaml.Unmarshal([]byte(certsString), &certs)
-	if err != nil {
-		return nil, err
-	}
-
+func LoadTLSCredentials(certs []string) (credentials.TransportCredentials, error) {
 	if len(certs) < 1 {
 		return nil, fmt.Errorf("no ROOT CAS")
 
