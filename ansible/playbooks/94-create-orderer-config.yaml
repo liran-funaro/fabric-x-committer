@@ -1,0 +1,75 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Edit orderer configs
+  hosts: localhost
+  roles:
+    - kwoodson.yedit
+  vars:
+    orderers: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+  tasks:
+  - name: Prepare crypto-config
+    vars:
+      cert: "{{'./out/orgs/ordererOrganizations/orderer.org/orderers/%s.orderer.org/tls/server.crt' | format(instance.ansible_host)}}"
+    set_fact:
+      endpointMaps: "{{endpointMaps | d([])  + [{'Host': instance.ansible_host, 'Port': instance.service_port}]}}"
+      certs: "{{certs | d([])  + [{'ClientTLSCert': cert, 'ServerTLSCert': cert}]}}"
+    loop: "{{orderers}}"
+    loop_control:
+      loop_var: instance
+  - name: Edit configtx
+    vars:
+      endpointStrings: "{{(orderers | map(attribute='ansible_host') | d([])) | zip(orderers | map(attribute='service_port') | d([])) | map('join', ':')}}"
+      ordererEndpoints: "{{endpointStrings}}"
+      ordererAddresses: "{{[endpointStrings | first]}}"
+      consenters: "{{endpointMaps | zip(certs) | map('combine') | list}}"
+      anchorPeers: "{{[endpointMaps | first]}}"
+    yedit:
+      src: "{{configtx_path}}"
+      edits:
+        - key: Orderer.Addresses
+          value: "{{ordererAddresses}}"
+        - key: Orderer.EtcdRaft.Consenters
+          value: "{{consenters}}"
+        - key: Organizations[0].OrdererEndpoints
+          value: "{{ordererEndpoints}}"
+        - key: Organizations[1].AnchorPeers
+          value: "{{anchorPeers}}"
+        - key: Profiles.SampleDevModeEtcdRaft.Application.Organizations[0].AnchorPeers
+          value: "{{anchorPeers}}"
+        - key: Profiles.SampleDevModeEtcdRaft.Consortiums.SampleConsortium.Organizations[0].OrdererEndpoints
+          value: "{{ordererEndpoints}}"
+        - key: Profiles.SampleDevModeEtcdRaft.Orderer.Addresses
+          value: "{{ordererAddresses}}"
+        - key: Profiles.SampleDevModeEtcdRaft.Orderer.EtcdRaft.Consenters
+          value: "{{consenters}}"
+        - key: Profiles.SampleDevModeEtcdRaft.Orderer.Organizations[0].OrdererEndpoints
+          value: "{{ordererEndpoints}}"
+
+  - name: Edit orderer.yaml
+    yedit:
+      src: "{{orderer_path}}"
+      edits:
+        - key: General.ListenAddress
+          value: "{{orderers | map(attribute='ansible_host') | first}}"
+        - key: General.ListenPort
+          value: "{{orderers | map(attribute='service_port') | first}}"
+  - name: Prepare crypto-config
+    set_fact:
+      specs: "{{specs | d([])  + [{'Hostname': instance.ansible_host, 'SANS': ['0.0.0.0']}]}}" #TODO AF
+    loop: "{{orderers}}"
+    loop_control:
+      loop_var: instance
+  - name: Edit crypto-config
+    vars:
+      sidecar: "{{groups['sidecars'] | map('extract', hostvars) | map(attribute='ansible_host') | first}}"
+    yedit:
+      src: "{{crypto_config_path}}"
+      edits:
+        - key: OrdererOrgs[0].Specs
+          value: "{{specs}}"
+        - key: PeerOrgs[0].Template.SANS
+          value:
+            - "{{sidecar}}"
+            - 0.0.0.0 # TODO: AF

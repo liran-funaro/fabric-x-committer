@@ -55,18 +55,25 @@ all:
         orderingservices:
           hosts:
             orderingservice-machine1:
-              ansible_host: "localhost"
+              ansible_host: orderer__0
               service_port: 7050
+              ops_port: 8440
+              admin_port: 9440
             orderingservice-machine2:
-              ansible_host: "localhost"
+              ansible_host: orderer__1
               service_port: 7051
+              ops_port: 8441
+              admin_port: 9441
             orderingservice-machine3:
-              ansible_host: "localhost"
+              ansible_host: orderer__2
               service_port: 7052
-            # machine4 to be used only for MIR experiments
-#            orderingservice-machine4:
-#              ansible_host: "localhost"
-#              service_port: 7053
+              ops_port: 8442
+              admin_port: 9442
+            orderingservice-machine4:
+              ansible_host: orderer__3
+              service_port: 7053
+              ops_port: 8443
+              admin_port: 9443
 
         sidecars:
           hosts:

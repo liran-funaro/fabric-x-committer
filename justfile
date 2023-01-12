@@ -127,24 +127,41 @@ build-sidecar-client output_dir:
 docker-orderer-image:
     docker build -f ordererbuilder/Dockerfile -t orderer_builder .
 
-start-all-raft-orderers network=('my-orderer-net') bin_dir=('$PWD/bins') out_dir=('$PWD/outs') client_out_dir=('$PWD/orderingservice/fabric/out') signed=('false') orderer_config=('$PWD/orderingservice/fabric/testdata/orderer.yaml') crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml') channel_id=(default-channel-id):
-    # Build binaries
-    just docker-build-orderer {{bin_dir}} {{signed}}
+docker-start-raft-orderers channel_id=(default-channel-id) network=('my-orderer-net') creds_out_dir=('$PWD/out-creds') configs_out_dir=('$PWD/out-configs') client_out_dir=('$PWD/orderingservice/fabric/out') config_template_dir=('$PWD/orderingservice/fabric/testdata'):
+    # Adapt the orderer configs based on the number of orderers, and their endpoints
+    just create-orderer-configs {{configs_out_dir}} {{config_template_dir}}
 
     # Create crypto, configtx and copy what is required for the client
-    just docker-init-orderer {{out_dir}} {{client_out_dir}} {{crypto_config}} {{txgen_config}} {{channel_id}}
+    just docker-init-orderer {{creds_out_dir}} {{client_out_dir}} "{{configs_out_dir}}/crypto-config.yaml" "{{configs_out_dir}}/configtx.yaml" {{channel_id}}
 
     # Create network for orderer containers, if not existing
     docker network inspect {{network}} >/dev/null 2>&1 || docker network create {{network}}
 
     # Create all orderer containers, connect them to the network, and start them
-    tmux new-session -s "orderer0" -d "just docker-start-raft-orderer-by-id {{out_dir}} 0 {{network}} {{orderer_config}}"
-    tmux new-session -s "orderer1" -d "just docker-start-raft-orderer-by-id {{out_dir}} 1 {{network}} {{orderer_config}}"
-    tmux new-session -s "orderer2" -d "just docker-start-raft-orderer-by-id {{out_dir}} 2 {{network}} {{orderer_config}}"
-
+    just list-host-names orderingservices | while read instance; do \
+      host=$(just get-property $instance "(.ansible_host)"); \
+      orderer_creds="{{creds_out_dir}}/orgs/ordererOrganizations/orderer.org/orderers/$host.orderer.org"; \
+      genesis_block="{{creds_out_dir}}/genesisblock"; \
+      listen_port=$(just get-property $instance "(.service_port|tostring)"); \
+      ops_port=$(just get-property $instance "(.ops_port|tostring)"); \
+      admin_port=$(just get-property $instance "(.admin_port|tostring)"); \
+      command="just docker-start-raft-orderer $host {{network}} $orderer_creds $genesis_block {{configs_out_dir}}/orderer.yaml $listen_port $ops_port $admin_port"; \
+      echo "$command"; \
+      tmux new-session -s "$instance" -d "$command"; \
+    done
 
 docker-build-orderer output_dir signed=('false'):
     docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/rebuild_binaries.sh {{signed}} /usr/local/out
+
+create-orderer-configs output_dir input_dir=('$PWD/orderingservice/fabric/testdata'):
+    if [ -d "{{output_dir}}" ]; then \
+      rm -r "{{output_dir}}"; \
+    fi
+    mkdir -p {{output_dir}}
+    spruce merge {{input_dir}}/configtx.yaml >> {{output_dir}}/configtx.yaml
+    spruce merge {{input_dir}}/orderer.yaml >> {{output_dir}}/orderer.yaml
+    spruce merge {{input_dir}}/crypto-config.yaml >> {{output_dir}}/crypto-config.yaml
+    ansible-playbook "{{playbook-path}}/94-create-orderer-config.yaml" --extra-vars "{'configtx_path': '{{output_dir}}/configtx.yaml', 'orderer_path': '{{output_dir}}/orderer.yaml', 'crypto_config_path': '{{output_dir}}/crypto-config.yaml'}"
 
 docker-init-orderer out_dir client_out_dir crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml') channel_id=(default-channel-id):
     echo "Clean up {{out_dir}}"
@@ -166,9 +183,6 @@ docker-init-orderer out_dir client_out_dir crypto_config=('$PWD/orderingservice/
     mkdir {{client_out_dir}}
     cp {{out_dir}}/orgs/ordererOrganizations/orderer.org/orderers/orderer__0.orderer.org/tls/ca.crt {{client_out_dir}}/
     cp -r {{out_dir}}/orgs/peerOrganizations/org1.com/users/User1@org1.com/msp {{client_out_dir}}/
-
-docker-start-raft-orderer-by-id out_dir n network orderer_config=('$PWD/orderingservice/fabric/testdata/orderer.yaml'):
-    just docker-start-raft-orderer orderer__{{n}} {{network}} "{{out_dir}}/orgs/ordererOrganizations/orderer.org/orderers/orderer__{{n}}.orderer.org" "{{out_dir}}/genesisblock" {{orderer_config}} "705{{n}}" "844{{n}}" "944{{n}}"
 
 docker-start-raft-orderer name network orderer_creds genesis_block orderer_config listen_port ops_port admin_port:
     echo "Start server with:\n\tOrderer Creds: {{orderer_creds}}\n\tGenesis Block: {{genesis_block}}\n\tOrderer Config: {{orderer_config}}\n"
@@ -323,7 +337,7 @@ start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) loca
     if [[ "{{orderer}}" = "mock" ]]; then \
       just start-mock-orderers; \
     elif [[ "{{orderer}}" = "raft" ]]; then \
-      just start-raft-orderers {{channel_id}}; \
+      just docker-start-raft-orderers {{channel_id}}; \
     elif [[ "{{orderer}}" = "mir" ]]; then \
       just start-mir-orderers {{channel_id}}; \
     else \
