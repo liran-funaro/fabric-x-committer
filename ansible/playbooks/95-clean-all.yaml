@@ -7,12 +7,13 @@
   tasks:
   - file:
       state: absent
-    when: dst_path is defined
+      path: "{{dir}}/"
+    when: dir is defined and dir | length > 0
     loop:
-      - "{{config_dir}}"
-      - "{{creds_dir}}"
-      - "{{genesis_dir}}"
+      - "{{config_dir if include_configs is defined and include_configs == 'true' else ''}}"
+      - "{{creds_dir if include_configs is defined and include_configs == 'true' else ''}}"
+      - "{{genesis_dir if include_configs is defined and include_configs == 'true' else ''}}"
       - "{{ledger_dir}}"
-#        - "{{binary_dir}}"
+      - "{{binary_dir if include_bins is defined and include_bins == 'true' else ''}}"
     loop_control:
-      loop_var: path
+      loop_var: dir

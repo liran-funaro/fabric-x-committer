@@ -81,6 +81,14 @@ protos-coordinator:
     --proto_path=./coordinatorservice \
     ./coordinatorservice/coordinator_service.proto
 
+protos-token:
+    protoc \
+    --go_out=. --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    --proto_path=. \
+    --proto_path=./token \
+    ./token/token.proto
+
 protos-wgclient:
     protoc \
     --go_out=. --go_opt=paths=source_relative \
@@ -90,14 +98,15 @@ protos-wgclient:
     --proto_path=./coordinatorservice \
     ./wgclient/workload/expected_results.proto
 
-clean-all target_hosts=('all'):
-    ansible-playbook "{{playbook-path}}/95-clean-all.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+clean-all include_bins=('false') include_configs=('false') target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/95-clean-all.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': '{{include_bins}}', 'include_configs': '{{include_configs}}'}"
 
-deploy-base-setup:
-    just clean-all
-
-    just build-bins
-    just deploy-bins
+deploy-base-setup include_bins=('false'):
+    just clean-all {{include_bins}} true
+    if [[ "{{include_bins}}" = "true" ]]; then \
+      just build-bins; \
+      just deploy-bins; \
+    fi
 
     just build-base-configs
     just deploy-base-configs
@@ -340,6 +349,8 @@ start-sidecar-clients channel_id=(default-channel-id) local_src_dir=(base-setup-
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sidecarclient"]}'
 
 start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) local_src_dir=(base-setup-config-dir):
+    just clean-all false false
+
     if [[ "{{committer}}" = "mock" ]]; then \
       just start-mock-coordinator {{local_src_dir}}; \
     elif [[ "{{committer}}" = "sc" ]]; then \
@@ -421,8 +432,8 @@ gather-results filename:
     mkdir -p {{experiment-results-dir}}
     {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens "(.ansible_host) + \\\":\\\" + (.prometheus_exporter_port|tostring)") -prometheus-endpoint=$(just list-hosts monitoring "(.ansible_host) + \\\":{{prometheus-scraper-port}}\\\"") -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
 
-kill-all sig_verifiers=("100") shard_servers=("100"):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator"], "only_kill": true}'
+kill-all:
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator", "mockcoordinator", "blockgen stream", "mockorderingservice", "sidecar", "sidecarclient", "orderer"], "only_kill": true}'
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):
