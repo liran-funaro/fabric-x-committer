@@ -12,13 +12,17 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	github.com/spf13/viper v1.14.0
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
+	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel/sdk v1.11.2
+	golang.org/x/text v0.4.0
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1
-	gopkg.in/yaml.v2 v2.4.0
 )
 
-replace github.ibm.com/distributed-trust-research/scalable-committer => ../..
+replace (
+	github.ibm.com/distributed-trust-research/scalable-committer => ../..
+	github.ibm.com/distributed-trust-research/scalable-committer/token => ../../token
+)
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
@@ -78,8 +82,8 @@ require (
 	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/sys v0.2.0 // indirect
 	golang.org/x/term v0.2.0 // indirect
-	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20221024183307-1bc688fe9f3e // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
