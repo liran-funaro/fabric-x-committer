@@ -15,7 +15,7 @@ import (
 var (
 	projectPath       = os.Getenv("GOPATH") + "/src/github.com/decentralized-trust-research/scalable-committer/orderingservice/fabric"
 	DefaultOutPath    = projectPath + "/out"
-	DefaultConfigPath = projectPath + "/testdata"
+	DefaultConfigPath = projectPath + "/out"
 )
 
 const (

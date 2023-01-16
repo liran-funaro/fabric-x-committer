@@ -72,7 +72,7 @@ func (l *fabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onRec
 }
 
 func (l *fabricOrdererListener) RunOrdererOutputListener(onReceive func(*ab.DeliverResponse)) error {
-	return l.RunOrdererOutputListenerForBlock(SeekSinceOldestBlock, onReceive)
+	return l.RunOrdererOutputListenerForBlock(SeekSinceNewestBlock, onReceive)
 }
 
 type deliverClient struct {

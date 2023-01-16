@@ -18,6 +18,8 @@ type SidecarClientConfig struct {
 	ChannelID            string `mapstructure:"channel-id"`
 	Parallelism          int    `mapstructure:"parallelism"`
 	SignedEnvelopes      bool   `mapstructure:"signed-envelopes"`
+	ConfigPath           string `mapstructure:"config-path"`
+	CredsPath            string `mapstructure:"creds-path"`
 }
 
 func ReadConfig() SidecarClientConfig {

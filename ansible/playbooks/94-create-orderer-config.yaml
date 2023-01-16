@@ -9,9 +9,9 @@
   vars:
     orderers: "{{groups['orderingservices'] | map('extract', hostvars)}}"
   tasks:
-  - name: Prepare crypto-config
+  - name: Prepare configtx
     vars:
-      cert: "{{'./out/orgs/ordererOrganizations/orderer.org/orderers/%s.orderer.org/tls/server.crt' | format(instance.ansible_host)}}"
+      cert: "{{'./out/orgs/ordererOrganizations/orderer.org/orderers/%s.orderer.org/tls/server.crt' | format(instance.orderer_name)}}"
     set_fact:
       endpointMaps: "{{endpointMaps | d([])  + [{'Host': instance.ansible_host, 'Port': instance.service_port}]}}"
       certs: "{{certs | d([])  + [{'ClientTLSCert': cert, 'ServerTLSCert': cert}]}}"
@@ -57,7 +57,7 @@
           value: "{{orderers | map(attribute='service_port') | first}}"
   - name: Prepare crypto-config
     set_fact:
-      specs: "{{specs | d([])  + [{'Hostname': instance.ansible_host, 'SANS': ['0.0.0.0']}]}}" #TODO AF
+      specs: "{{specs | d([])  + [{'Hostname': instance.orderer_name, 'SANS': [instance.ansible_host, '0.0.0.0']}]}}" #TODO AF
     loop: "{{orderers}}"
     loop_control:
       loop_var: instance

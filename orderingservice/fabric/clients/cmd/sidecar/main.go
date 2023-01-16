@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"sync"
 
@@ -20,19 +19,14 @@ import (
 )
 
 func main() {
-	var (
-		credsPath  string
-		configPath string
-	)
-
 	config.ServerConfig("sidecar")
 	config.String("channel-id", "sidecar.orderer.channel-id", "Channel ID")
-	flag.StringVar(&credsPath, "credsPath", clients.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
-	flag.StringVar(&configPath, "configPath", clients.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	config.String("orderer-creds-path", "sidecar.orderer.creds-path", "The path to the output folder containing the root CA and the client credentials.")
+	config.String("orderer-config-path", "sidecar.orderer.config-path", "The path to the output folder containing the orderer config.")
 	config.ParseFlags()
 
-	creds, signer := clients.GetDefaultSecurityOpts(credsPath, configPath)
 	c := sidecar.ReadConfig()
+	creds, signer := clients.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath)
 
 	m := metrics.New(c.Prometheus.IsEnabled())
 

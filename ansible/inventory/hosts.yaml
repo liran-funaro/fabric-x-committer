@@ -6,6 +6,7 @@ all:
     config_dir: ./ # Opening the file from the app does not work if we use ~/
     os: linux
     prometheus_exporter_port: 2112
+    skip_prefix_when_copy: ['orderer.yaml']
 #    ansible_ssh_pass: "SSH PASSWORD GOES HERE"
 
   children:
@@ -13,14 +14,16 @@ all:
       vars:
         ansible_user: "root"
       children:
-        blockgens:
-          hosts:
-            blockgen-machine:
-              ansible_host: "tokentestbed1.sl.cloud9.ibm.com"
+#        blockgens:
+#          hosts:
+#            blockgen-machine:
+#              config: config-blockgen.yaml
+#              ansible_host: "tokentestbed1.sl.cloud9.ibm.com"
 
         coordinators:
           vars:
             service_port: 5002
+            config: config-coordinator.yaml
           hosts:
             coordinator-machine:
               ansible_host: "tokentestbed2.sl.cloud9.ibm.com"
@@ -28,38 +31,58 @@ all:
         sigservices:
           vars:
             service_port: 5000
+            config: config-sigservice.yaml
           hosts:
             sigservice-machine1:
               ansible_host: "tokentestbed3.sl.cloud9.ibm.com"
-            sigservice-machine2:
-              ansible_host: "tokentestbed4.sl.cloud9.ibm.com"
-            sigservice-machine3:
-              ansible_host: "tokentestbed5.sl.cloud9.ibm.com"
 
         shardsservices:
           vars:
             service_port: 5001
+            config: config-shardsservice.yaml
           hosts:
             shardsservice-machine1:
+              ansible_host: "tokentestbed4.sl.cloud9.ibm.com"
+
+        orderingservices:
+          vars:
+            config: orderer.yaml
+            creds_dir: "{{config_dir}}"
+            genesis_dir: "{{config_dir}}"
+            ledger_dir: "{{config_dir + '/ledger'}}"
+            service_port: 7050
+            ops_port: 8440
+            admin_port: 9440
+          hosts:
+            orderingservice-machine1:
+              orderer_name: orderer_0
+              ansible_host: "tokentestbed5.sl.cloud9.ibm.com"
+            orderingservice-machine2:
+              orderer_name: orderer_1
               ansible_host: "tokentestbed6.sl.cloud9.ibm.com"
-            shardsservice-machine2:
-              ansible_host: "tokentestbed7.sl.cloud9.ibm.com"
-            shardsservice-machine3:
-              ansible_host: "tokentestbed8.sl.cloud9.ibm.com"
-            shardsservice-machine4:
-              ansible_host: "tokentestbed9.sl.cloud9.ibm.com"
-            shardsservice-machine5:
+            orderingservice-machine3:
+              orderer_name: orderer_2
               ansible_host: "tokentestbed10.sl.cloud9.ibm.com"
-            shardsservice-machine6:
-              ansible_host: "tokentestbed11.sl.cloud9.ibm.com"
-            shardsservice-machine7:
-              ansible_host: "tokentestbed12.sl.cloud9.ibm.com"
-            shardsservice-machine8:
-              ansible_host: "tokentestbed13.sl.cloud9.ibm.com"
-            shardsservice-machine9:
-              ansible_host: "tokentestbed14.sl.cloud9.ibm.com"
-            shardsservice-machine10:
-              ansible_host: "tokentestbed15.sl.cloud9.ibm.com"
+
+        sidecars:
+          hosts:
+            sidecar-machine:
+              config: config-sidecar.yaml
+              ansible_host: "tokentestbed7.sl.cloud9.ibm.com"
+              service_port: 5050
+              creds_dir: "{{config_dir}}"
+
+        sidecarclients:
+          vars:
+            config: config-sidecar-client.yaml
+            creds_dir: "{{config_dir}}"
+          hosts:
+            sidecar-client-machine1:
+              block_profile: profile-blockgen.yaml
+              ansible_host: "tokentestbed8.sl.cloud9.ibm.com"
+            sidecar-client-machine2:
+              ansible_host: "tokentestbed9.sl.cloud9.ibm.com"
+
         monitoring:
           hosts:
             monitoring-machine:

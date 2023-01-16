@@ -15,7 +15,7 @@ ENV BINS_PATH=$FABRIC_PATH/build/bin
 WORKDIR /usr/local
 
 # Patch to disable signatures
-ADD orderingservice/fabric/orderer_no_sig_check.patch .
+ADD ordererbuilder/orderer_no_sig_check.patch .
 # Script to build binaries
 ADD ordererbuilder/rebuild_binaries.sh .
 RUN chmod +x ./rebuild_binaries.sh

@@ -9,6 +9,7 @@ all:
     root_path: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer
     binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
     config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
+    skip_prefix_when_copy: ['orderer.yaml']
     os: osx
 
   children:
@@ -53,47 +54,79 @@ all:
               prometheus_exporter_port: 2115
 
         orderingservices:
+          vars:
+            config: orderer.yaml
+            orderer_config_dir: "{{root_path + '/eval/experiments/local-orderer-configs'}}"
           hosts:
             orderingservice-machine1:
+              orderer_name: orderer__0
               ansible_host: orderer__0
+              config_dir: "{{orderer_config_dir + '/orderer0'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
               service_port: 7050
               ops_port: 8440
               admin_port: 9440
             orderingservice-machine2:
+              orderer_name: orderer__1
               ansible_host: orderer__1
+              config_dir: "{{orderer_config_dir + '/orderer1'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
               service_port: 7051
               ops_port: 8441
               admin_port: 9441
             orderingservice-machine3:
+              orderer_name: orderer__2
               ansible_host: orderer__2
+              config_dir: "{{orderer_config_dir + '/orderer2'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
               service_port: 7052
               ops_port: 8442
               admin_port: 9442
             orderingservice-machine4:
+              orderer_name: orderer__3
               ansible_host: orderer__3
+              config_dir: "{{orderer_config_dir + '/orderer3'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
               service_port: 7053
               ops_port: 8443
               admin_port: 9443
 
         sidecars:
+          vars:
+            client_config_dir: "{{root_path + '/eval/experiments/local-sidecar-configs'}}"
           hosts:
             sidecar-machine:
               config: config-sidecar.yaml
               ansible_host: "localhost"
               service_port: 1234
               prometheus_exporter_port: 2111
+              config_dir: "{{client_config_dir + '/sidecar/'}}"
+              creds_dir: "{{config_dir}}"
 
         sidecarclients:
           vars:
             config: config-sidecar-client.yaml
+            client_config_dir: "{{root_path + '/eval/experiments/local-sidecar-client-configs'}}"
           hosts:
             sidecar-client-machine1:
               block_profile: profile-blockgen.yaml
               ansible_host: "localhost"
               prometheus_exporter_port: 2116
+              config_dir: "{{client_config_dir + '/sidecarclient0/'}}"
+              creds_dir: "{{config_dir}}"
             sidecar-client-machine2:
               ansible_host: "localhost"
               prometheus_exporter_port: 2117
+              config_dir: "{{client_config_dir + '/sidecarclient1/'}}"
+              creds_dir: "{{config_dir}}"
 
         monitoring:
           hosts:

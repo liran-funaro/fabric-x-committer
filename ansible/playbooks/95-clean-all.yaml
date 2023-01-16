@@ -1,0 +1,18 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Clean all generated files
+  hosts: "{{target_hosts}}"
+  tasks:
+  - file:
+      state: absent
+    when: dst_path is defined
+    loop:
+      - "{{config_dir}}"
+      - "{{creds_dir}}"
+      - "{{genesis_dir}}"
+      - "{{ledger_dir}}"
+#        - "{{binary_dir}}"
+    loop_control:
+      loop_var: path

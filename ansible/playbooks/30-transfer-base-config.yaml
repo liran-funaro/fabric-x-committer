@@ -11,7 +11,7 @@
   tasks:
     - vars:
         src_filename: "{{hostvar.config}}"
-        filename: "{{inventory_hostname}}-{{src_filename}}"
+        filename: "{{src_filename if src_filename in skip_prefix_when_copy else inventory_hostname + '-' + src_filename}}"
       include_tasks: ../subtasks/copy-file.yaml
       when: src_filename | length > 0
       loop:

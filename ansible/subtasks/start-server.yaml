@@ -4,23 +4,22 @@
 ---
 - name: Kill process
   shell:
-    cmd: lsof -i :{{process_port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -15
+    cmd: lsof -i :{{process_port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -f -15
   when: process_port is defined
   ignore_errors: yes
   loop:
-    - "{{hostvars[inventory_hostname].service_port | d()}}"
-    - "{{hostvars[inventory_hostname].prometheus_exporter_port}}"
+    - "{{service_port | d()}}"
+    - "{{prometheus_exporter_port}}"
   loop_control:
     loop_var: process_port
 - name: Runs server
   vars:
     session_name: "{{inventory_hostname}}"
     env_vars: "{{env | d([]) | join(' ')}}"
-    config: "{{hostvars[inventory_hostname].config | d()}}"
-    options: "{{opts | d({}) | combine({} if config | length == 0 else {'configs': config_dir + inventory_hostname + '-' + config})}}"
-    flags: "{{(options.keys() | d([])) | zip(options.values() | d([])) | map('join', '=') | list}}"
+    options: "{{opts | d({}) | combine({} if config | d('') | length == 0 else {'configs': config_dir + inventory_hostname + '-' + config})}}"
+    flags: "{{['--'] | product(options.keys() | d([])) | map('join') | zip(options.values() | d([])) | map('join', '=') | join(' ')}}"
   set_fact:
-    command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{['--'] | product(flags) | map('join') | first}}"
+    command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{flags}}"
 - shell:
     cmd: "{{command}}"
   async: 10

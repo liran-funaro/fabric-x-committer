@@ -15,8 +15,10 @@ type SidecarConfig struct {
 }
 
 type OrdererClientConfig struct {
-	ChannelID string              `mapstructure:"channel-id"`
-	Endpoint  connection.Endpoint `mapstructure:"endpoint"`
+	ChannelID  string              `mapstructure:"channel-id"`
+	Endpoint   connection.Endpoint `mapstructure:"endpoint"`
+	ConfigPath string              `mapstructure:"config-path"`
+	CredsPath  string              `mapstructure:"creds-path"`
 }
 type CommitterClientConfig struct {
 	Endpoint              connection.Endpoint `mapstructure:"endpoint"`

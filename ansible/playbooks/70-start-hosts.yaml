@@ -38,7 +38,7 @@
     vars:
       target_hosts: blockgens
       service_name: blockgen stream
-      blockgen_instances: "{{groups[target_hosts] | length}}"
+      blockgen_instances: "{{groups[target_hosts] | d([]) | length}}"
     hosts: blockgens[0:{{blockgen_instances | int - 1}}]
     tasks:
       - vars:
@@ -60,6 +60,9 @@
   - name: Start sidecar
     vars:
       service_name: sidecar
+      opts:
+        orderer-creds-path: "{{creds_dir}}"
+        orderer-config-path: "{{config_dir}}"
     hosts: sidecars
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
@@ -68,11 +71,45 @@
     vars:
       target_hosts: sidecarclients
       service_name: sidecarclient
-      sidecarclient_instances: "{{groups[target_hosts] | length}}"
+      sidecarclient_instances: "{{groups[target_hosts] | d([]) | length}}"
     hosts: sidecarclients[0:{{sidecarclient_instances | int - 1}}]
     tasks:
       - vars:
+          opts:
+            orderer-creds-path: "{{creds_dir}}"
+            orderer-config-path: "{{config_dir}}"
           env:
             - "GOGC=20000"
+        include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start orderers
+    vars:
+      target_hosts: orderingservices
+      service_name: orderer
+      orderingservice_instances: "{{groups[target_hosts] | d([]) | length}}"
+    hosts: orderingservices[0:{{orderingservice_instances | int - 1}}]
+    tasks:
+      - vars:
+          config: ''
+          env:
+            - FABRIC_CFG_PATH={{config_dir}}
+            - ORDERER_GENERAL_LOCALMSPID=Orderer
+            - ORDERER_GENERAL_LOCALMSPDIR={{creds_dir}}/msp
+            - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+            - ORDERER_GENERAL_LISTENPORT={{service_port}}
+            - ORDERER_GENERAL_GENESISFILE={{genesis_dir}}/genesisblock
+            - ORDERER_GENERAL_BOOTSTRAPFILE={{genesis_dir}}/genesisblock
+            - ORDERER_GENERAL_TLS_ENABLED=true
+            - ORDERER_GENERAL_TLS_PRIVATEKEY={{creds_dir}}/tls/server.key
+            - ORDERER_GENERAL_TLS_CERTIFICATE={{creds_dir}}/tls/server.crt
+            - ORDERER_GENERAL_TLS_ROOTCAS=[{{creds_dir}}/tls/ca.crt]
+            - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE={{creds_dir}}/tls/server.crt
+            - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY={{creds_dir}}/tls/server.key
+            - ORDERER_GENERAL_CLUSTER_ROOTCAS=[{{creds_dir}}/tls/ca.crt]
+            - ORDERER_OPERATIONS_LISTENADDRESS=0.0.0.0:{{ops_port}}
+            - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:{{admin_port}}
+            - ORDERER_FILELEDGER_LOCATION={{ledger_dir}}
+            - ORDERER_CONSENSUS_WALDIR={{ledger_dir}}/etcdraft/wal
+            - ORDERER_CONSENSUS_SNAPDIR={{ledger_dir}}/snapshot
         include_tasks: ../subtasks/start-server.yaml
         when: service_name in start
