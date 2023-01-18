@@ -1,19 +1,14 @@
 package sidecar
 
 import (
-	"fmt"
-
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/pkg/identity"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 
 //EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
 type EnvelopeCreator interface {
-	CreateEnvelope(data []byte, seqNo uint64) (*common.Envelope, error)
+	CreateEnvelope(data []byte) (*common.Envelope, error)
 }
 
 type envelopeCreator struct {
@@ -40,67 +35,32 @@ func newEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 
 // CreateEnvelope create an envelope with or without a signature and the corresponding header
 // An unsigned envelope can only be used with a patched fabric orderer
-func (c *envelopeCreator) CreateEnvelope(data []byte, seqNo uint64) (*common.Envelope, error) {
-	channelHeader := c.channelHeader(seqNo)
-
-	data, err := proto.Marshal(&common.ConfigValue{Value: data})
-	if err != nil {
-		return nil, errors.Wrap(err, "error marshaling")
-	}
+func (c *envelopeCreator) CreateEnvelope(data []byte) (*common.Envelope, error) {
 	payload := protoutil.MarshalOrPanic(&common.Payload{
-		Header: protoutil.MakePayloadHeader(channelHeader, c.signatureHeader()),
-		Data:   data,
+		Header: c.payloadHeader(),
+		Data:   protoutil.MarshalOrPanic(&common.ConfigValue{Value: data}),
 	})
 
-	var sig []byte
-	if c.signed && c.signer != nil {
-		sig, err = c.signer.Sign(payload)
-	}
+	signature, err := c.sign(payload)
 	if err != nil {
 		return nil, err
 	}
-	return &common.Envelope{Payload: payload, Signature: sig}, nil
+	return &common.Envelope{Payload: payload, Signature: signature}, nil
 }
 
-func (c *envelopeCreator) signatureHeader() *common.SignatureHeader {
+func (c *envelopeCreator) sign(payload []byte) ([]byte, error) {
 	if !c.signed {
-		header, err := newSignatureHeader(c.signer)
-		utils.Must(err)
-		return header
+		return []byte{}, nil
 	}
-	if c.signer == nil {
-		return &common.SignatureHeader{}
-	}
-	// TODO create a "lightweight" header
-	payloadSignatureHeader, err := protoutil.NewSignatureHeader(c.signer)
-	utils.Must(err)
-	return payloadSignatureHeader
+	return c.signer.Sign(payload)
 }
 
-func (c *envelopeCreator) channelHeader(seqNo uint64) *common.ChannelHeader {
-	h := protoutil.MakeChannelHeader(c.txType, c.msgVersion, c.channelID, c.epoch)
-	h.TlsCertHash = c.tlsCertHash
-	if !c.signed {
-		h.TxId = fmt.Sprintf("%d", seqNo)
-	}
-	return h
-}
+func (c *envelopeCreator) payloadHeader() *common.Header {
+	signatureHeader := protoutil.NewSignatureHeaderOrPanic(c.signer)
 
-func newSignatureHeader(id identity.Serializer) (*common.SignatureHeader, error) {
-	//creator, err := id.Serialize()
-	//if err != nil {
-	//	return nil, err
-	//}
+	channelHeader := protoutil.MakeChannelHeader(c.txType, c.msgVersion, c.channelID, c.epoch)
+	channelHeader.TlsCertHash = c.tlsCertHash
+	channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
 
-	creator := []byte("bob")
-
-	nonce, err := protoutil.CreateNonce()
-	if err != nil {
-		return nil, err
-	}
-
-	return &common.SignatureHeader{
-		Creator: creator,
-		Nonce:   nonce,
-	}, nil
+	return protoutil.MakePayloadHeader(channelHeader, signatureHeader)
 }

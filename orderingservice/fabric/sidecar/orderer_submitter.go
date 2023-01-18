@@ -218,9 +218,7 @@ func (s *fabricOrdererSubmitter) startAckListener(onAck func(error)) {
 func (s *fabricOrdererSubmitter) broadcast(transaction []byte) error {
 	// TODO replace cb.ConfigValue with "our" transaction
 
-	seqNo := atomic.AddUint64(&s.txCnt, 1)
-
-	env, err := s.envelopeCreator.CreateEnvelope(transaction, seqNo)
+	env, err := s.envelopeCreator.CreateEnvelope(transaction)
 	if err != nil {
 		panic(err)
 	}
