@@ -30,23 +30,14 @@ func NewTxStatusAggregator() *txStatusAggregator {
 	}
 }
 
-func (a *txStatusAggregator) AddSubmittedConfigBlock(block *common.Block) {
-	a.addSubmittedBlock(&inProgressBlock{
+func (a *txStatusAggregator) AddSubmittedBlock(block *common.Block, expected int) {
+	logger.Infof("Adding block %d with %d non-config, non-issuing TXs to the aggregator.", block.Header.Number, expected)
+	newBlock := &inProgressBlock{
 		block:     block,
-		returned:  make([]coordinatorservice.Status, 0),
-		remaining: 0,
-	})
-}
+		returned:  make([]coordinatorservice.Status, expected),
+		remaining: expected,
+	}
 
-func (a *txStatusAggregator) AddSubmittedTxBlock(block *common.Block) {
-	a.addSubmittedBlock(&inProgressBlock{
-		block:     block,
-		returned:  make([]coordinatorservice.Status, len(block.Data.Data)), // All elements are by default 0 = UNKNOWN
-		remaining: len(block.Data.Data),
-	})
-}
-
-func (a *txStatusAggregator) addSubmittedBlock(newBlock *inProgressBlock) {
 	currentBlockNum := newBlock.block.Header.Number
 	nextBlockNum := atomic.LoadUint64(&a.nextBlock)
 	if currentBlockNum < nextBlockNum {
@@ -61,6 +52,7 @@ func (a *txStatusAggregator) addSubmittedBlock(newBlock *inProgressBlock) {
 }
 
 func (a *txStatusAggregator) AddCommittedBatch(batch *coordinatorservice.TxValidationStatusBatch) {
+	logger.Infof("Adding commited batch with %d TXs to the aggregator", len(batch.TxsValidationStatus))
 	// We aggregate by block number to reduce the required accesses to the shared map a.inProgressBlocks
 	statusByBlockNumber := make(map[blockNumber][]*coordinatorservice.TxValidationStatus, 50)
 	for _, txStatus := range batch.TxsValidationStatus {
@@ -99,6 +91,7 @@ func (a *txStatusAggregator) tryCompleteBlock(currentBlock *inProgressBlock) {
 
 	// When we start listening, we will start from the frist block that arrives
 	if !atomic.CompareAndSwapUint64(&a.nextBlock, 0, blockNum+1) && !atomic.CompareAndSwapUint64(&a.nextBlock, blockNum, blockNum+1) {
+		logger.Infof("Completed block %d, but block %d must be completed first.", blockNum, a.nextBlock)
 		return
 	}
 

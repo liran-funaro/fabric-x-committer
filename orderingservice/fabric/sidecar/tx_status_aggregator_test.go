@@ -111,11 +111,7 @@ func NewTestInstance() *testInstance {
 
 func (i *testInstance) SubmitToOrderer(blocks ...*common.Block) {
 	for _, block := range blocks {
-		if len(block.Data.Data) == 0 {
-			i.aggregator.AddSubmittedConfigBlock(block)
-		} else {
-			i.aggregator.AddSubmittedTxBlock(block)
-		}
+		i.aggregator.AddSubmittedBlock(block, len(block.Data.Data))
 	}
 }
 

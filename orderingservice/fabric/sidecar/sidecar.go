@@ -6,6 +6,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
@@ -40,13 +41,9 @@ type CommitterSubmitterListener interface {
 //This component collects the sharded TX statuses and aggregates them until it collects the entire block.
 //Then the entire block is output in the correct order (as defined by the orderer).
 type PostCommitAggregator interface {
-	//AddSubmittedTxBlock adds a TX block to the aggregator and keeps a list of the TXs that have not been validated by the committer.
+	//AddSubmittedBlock adds a TX block to the aggregator and keeps a list of the (non-config, non-issue) TXs that have not been validated by the committer.
 	//Once we collect the statuses of all TXs from the committer, the block is marked as complete and can be output (after all previous blocks have been output).
-	AddSubmittedTxBlock(*common.Block)
-	//AddSubmittedConfigBlock adds a config block to the aggregator, similarly to AddSubmittedTxBlock.
-	//Unlike TX blocks, since config blocks do not have to be validated by the committer, we do not aggregate the statuses of their TXs.
-	//Hence, they are marked directly as complete.
-	AddSubmittedConfigBlock(*common.Block)
+	AddSubmittedBlock(block *common.Block, expected int)
 	//AddCommittedBatch registers to the aggregator a batch of (in)validated TXs that came from the committer.
 	//A batch contains TXs belonging to different blocks.
 	//Once we collect all TXs that belong to a specific block, that block is marked as complete.
@@ -114,13 +111,11 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 					//}
 					s.metrics.InTxs.Add(len(t.Block.Data.Data))
 				}
-				if isConfigBlock(t.Block) {
-					s.postCommitAggregator.AddSubmittedConfigBlock(t.Block)
-
-				} else {
-					s.postCommitAggregator.AddSubmittedTxBlock(t.Block)
+				block := mapBlock(t.Block)
+				s.postCommitAggregator.AddSubmittedBlock(t.Block, len(block.Txs))
+				if len(block.Txs) > 0 {
 					s.orderedBlocks <- &workload.BlockWithExpectedResult{
-						Block: mapBlock(t.Block),
+						Block: block,
 					}
 				}
 			}
@@ -159,11 +154,17 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 }
 
 func mapBlock(block *common.Block) *token.Block {
-	txs := make([]*token.Tx, len(block.Data.Data))
-	for i, msg := range block.Data.Data {
+	txs := make([]*token.Tx, 0, len(block.Data.Data))
+	for _, msg := range block.Data.Data {
+		if isConfigTx(msg) {
+			continue
+		}
 		var tx token.Tx
 		utils.Must(proto.Unmarshal(msg, &tx))
-		txs[i] = &tx
+		if isIssueTx(&tx) {
+			continue
+		}
+		txs = append(txs, &tx)
 
 	}
 	return &token.Block{
@@ -172,7 +173,18 @@ func mapBlock(block *common.Block) *token.Block {
 	}
 }
 
-//TODO: AF
-func isConfigBlock(block *common.Block) bool {
-	return block.Header.Number == 0
+func isIssueTx(tx *token.Tx) bool {
+	return len(tx.SerialNumbers) == 0
+}
+
+func isConfigTx(tx []byte) bool {
+	envelope, err := protoutil.GetEnvelopeFromBlock(tx)
+	if err != nil {
+		return false
+	}
+	payload := protoutil.UnmarshalPayloadOrPanic(envelope.Payload)
+	channelHdr := protoutil.UnmarshalChannelHeaderOrPanic(payload.Header.ChannelHeader)
+	txType := common.HeaderType(channelHdr.GetType())
+
+	return txType == common.HeaderType_CONFIG
 }
