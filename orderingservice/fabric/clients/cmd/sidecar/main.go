@@ -72,6 +72,7 @@ func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	address := util.ExtractRemoteAddress(stream.Context())
 	fmt.Printf("Opening new stream: %s\n", address)
 	for {
+		//TODO: We should normally read the request, because it defines the range of blocks the client wants to receive. However, we currently don't store the blocks and the statuses of their TXs.
 		if _, err := stream.Recv(); err == nil {
 			if i.findStreamIndex(stream) < 0 {
 				fmt.Printf("Adding stream: %s\n", address)

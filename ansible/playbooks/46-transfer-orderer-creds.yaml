@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-- name: Transfer creds to sidecar clients
+- name: Transfer creds to orderers
   hosts: orderingservices
   vars:
     mode: a+rw
@@ -12,6 +12,7 @@
         dst_dir: "{{item.dst_dir}}"
         filename: "{{item.filename | d('')}}"
       include_tasks: ../subtasks/copy-file.yaml
+      when: creds_dir is defined
       loop:
         - {src_dir: "{{input_creds_path}}/orgs/ordererOrganizations/orderer.org/orderers/{{orderer_name}}.orderer.org/", dst_dir: "{{creds_dir}}"}
         - {src_dir: "{{input_creds_path}}", filename: "genesisblock", dst_dir: "{{genesis_dir}}"}

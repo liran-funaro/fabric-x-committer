@@ -6,14 +6,14 @@
   hosts: "{{target_hosts}}"
   vars:
     mode: a+rw
-    dst_dir: "{{config_dir}}"
+    dst_dir: "{{config_dir | d()}}"
     hostvar: "{{hostvars[inventory_hostname]}}"
   tasks:
     - vars:
         src_filename: "{{hostvar.config}}"
         filename: "{{src_filename if src_filename in skip_prefix_when_copy else inventory_hostname + '-' + src_filename}}"
       include_tasks: ../subtasks/copy-file.yaml
-      when: src_filename | length > 0
+      when: src_filename | length > 0 and dst_dir | length > 0
       loop:
         - "{{hostvar.config | d()}}"
         - "{{hostvar.block_profile | d()}}"

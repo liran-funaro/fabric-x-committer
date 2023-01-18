@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+//TODO: This request should contain a range of blocks we want to read. See comment in fabricOrdererListener.RunOrdererOutputListener.
 var listenRequest = &common.Envelope{}
 
 type sidecarListener struct {

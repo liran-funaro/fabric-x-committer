@@ -6,6 +6,7 @@
 
 default := ''
 project-dir := env_var_or_default('PWD', '.')
+runner-dir := project-dir + "/runner"
 config-input-dir := project-dir + "/config"
 
 output-dir := project-dir + "/eval"
@@ -41,7 +42,7 @@ fabric_path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/githu
 prometheus-scraper-port := "9091"
 
 playbook-path := "./ansible/playbooks"
-export ANSIBLE_CONFIG := "./ansible/ansible.cfg"
+export ANSIBLE_CONFIG := env_var_or_default('ANSIBLE_CONFIG', './ansible/ansible.cfg')
 
 sampling-time-header := "sample_time"
 array-separator := ","
@@ -277,22 +278,28 @@ docker CMD:
 # Simple containerized SC
 #########################
 
-docker-runner-dir := "runner/"
-docker-runner-config-dir := docker-runner-dir + "config/"
-docker-runner-bin-dir := docker-runner-dir + "bin/"
-
-docker-runner-image inventory=("ansible/inventory/hosts-local-docker.yaml"):
-    mkdir -p {{linux-bin-input-dir}}
-    mkdir -p {{docker-runner-bin-dir}}
-    mkdir -p {{docker-runner-config-dir}}
-    just build-committer-docker
-    cp {{linux-bin-input-dir}}/* {{docker-runner-bin-dir}}
-    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" -i {{inventory}} --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}'}"
-    cp {{base-setup-config-dir + '*'}} {{docker-runner-config-dir}}
+docker-runner-image:
+    just clean-all true false
+    just build-bins
+    just deploy-bins
     docker build -f runner/Dockerfile -t sc_runner .
 
-docker-run-services:
-    docker run --rm -dit -p 5002:5002 sc_runner:latest
+# creds_dir should contain: msp/, ca.crt, orderer.yaml
+docker-run-services orderer_config_dir=(''):
+    just clean-all false true
+    just build-base-configs
+    just deploy-base-configs
+    if [[ "{{orderer_config_dir}}" = "" ]]; then \
+      echo "No creds and config passed. Will generate the creds and config based on the hosts file."; \
+      just build-creds; \
+      just deploy-creds; \
+    fi
+    docker run --rm -dit \
+    -p 5002:5002 \
+    -p 5050:5050 \
+    -v {{runner-dir}}/config:/root/config \
+    -v {{ if orderer_config_dir != '' { orderer_config_dir } else { runner-dir + '/orderer-creds'} }}:/root/orderer-creds \
+    sc_runner:latest
 
 docker-build-blockgen inventory=("ansible/inventory/hosts-local-docker.yaml"):
     just build-blockgen {{osx-bin-input-dir}}

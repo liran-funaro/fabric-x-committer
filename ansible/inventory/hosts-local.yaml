@@ -61,6 +61,8 @@ all:
             orderingservice-machine1:
               orderer_name: orderer__0
               ansible_host: orderer__0
+              SANS:
+                - 0.0.0.0
               config_dir: "{{orderer_config_dir + '/orderer0'}}"
               creds_dir: "{{config_dir}}"
               genesis_dir: "{{config_dir}}"
@@ -71,6 +73,8 @@ all:
             orderingservice-machine2:
               orderer_name: orderer__1
               ansible_host: orderer__1
+              SANS:
+                - 0.0.0.0
               config_dir: "{{orderer_config_dir + '/orderer1'}}"
               creds_dir: "{{config_dir}}"
               genesis_dir: "{{config_dir}}"
@@ -81,6 +85,8 @@ all:
             orderingservice-machine3:
               orderer_name: orderer__2
               ansible_host: orderer__2
+              SANS:
+                - 0.0.0.0
               config_dir: "{{orderer_config_dir + '/orderer2'}}"
               creds_dir: "{{config_dir}}"
               genesis_dir: "{{config_dir}}"
@@ -91,6 +97,8 @@ all:
             orderingservice-machine4:
               orderer_name: orderer__3
               ansible_host: orderer__3
+              SANS:
+                - 0.0.0.0
               config_dir: "{{orderer_config_dir + '/orderer3'}}"
               creds_dir: "{{config_dir}}"
               genesis_dir: "{{config_dir}}"

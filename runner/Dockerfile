@@ -1,18 +1,20 @@
 FROM sc_builder
 
-ADD runner/config/sigservice-machine-config-sigservice.yaml \
-runner/config/shardsservice-machine-config-shardsservice.yaml \
-runner/config/coordinator-machine-config-coordinator.yaml \
-/root/config/
+ENV CONFIGS_PATH=/root/config/
+ENV BINS_PATH=/root/bin/
+ENV ORDERER_CONFIGS_PATH=/root/orderer-creds/
 
 ADD runner/bin/sigservice \
 runner/bin/shardsservice \
 runner/bin/coordinator \
-/root/bin/
+runner/bin/sidecar \
+$BINS_PATH
 
-ADD runner/run-services.sh /root
+ADD runner/run-services.sh \
+/root/
 
 EXPOSE 5002
+EXPOSE 5050
 
 RUN chmod a+x /root/run-services.sh
 

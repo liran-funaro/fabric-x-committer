@@ -72,6 +72,7 @@ func (l *fabricOrdererListener) RunOrdererOutputListenerForBlock(seek int, onRec
 }
 
 func (l *fabricOrdererListener) RunOrdererOutputListener(onReceive func(*ab.DeliverResponse)) error {
+	//TODO: We currently do not support SeekSinceOldestBlock. All blocks we get are sent to the committer. If we start from the oldest block, then all blocks up to the current block height will be recognized as double spends by the committer.
 	return l.RunOrdererOutputListenerForBlock(SeekSinceNewestBlock, onReceive)
 }
 

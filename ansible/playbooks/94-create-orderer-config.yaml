@@ -57,7 +57,7 @@
           value: "{{orderers | map(attribute='service_port') | first}}"
   - name: Prepare crypto-config
     set_fact:
-      specs: "{{specs | d([])  + [{'Hostname': instance.orderer_name, 'SANS': [instance.ansible_host, '0.0.0.0']}]}}" #TODO AF
+      specs: "{{specs | d([])  + [{'Hostname': instance.orderer_name, 'SANS': [instance.ansible_host] + instance.SANS | d([])}]}}" #TODO AF
     loop: "{{orderers}}"
     loop_control:
       loop_var: instance
