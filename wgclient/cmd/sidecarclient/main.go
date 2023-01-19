@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
@@ -20,7 +20,7 @@ func main() {
 
 	c := sidecarclient.ReadConfig()
 
-	creds, signer := clients.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath)
+	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath)
 
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint:    c.Committer,

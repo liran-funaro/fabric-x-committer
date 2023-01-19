@@ -179,22 +179,19 @@ build-result-gatherer output_dir:
     go build -o {{output_dir}}/resultgatherer ./utils/experiment/cmd
 
 build-sidecar output_dir:
-    just build-ordering-main ./clients/cmd/sidecar sidecar {{output_dir}}
+    go build -o {{output_dir}}/sidecar ./sidecar/cmd/server
 
 build-mock-orderer output_dir:
-    just build-ordering-main ./clients/cmd/mockorderer mockorderingservice {{output_dir}}
+    just empty-dir ./orderingservice/fabric/temp
+    cd ./orderingservice/fabric; go build -o ./temp/mockorderingservice ./clients/cmd/mockorderer; cd ../..
+    cp ./orderingservice/fabric/temp/* {{output_dir}}
+    rm -r ./orderingservice/fabric/temp
 
 build-sidecar-client output_dir:
-    just build-ordering-main ./clients/cmd/client sidecarclient {{output_dir}}
+    go build -o {{output_dir}}/sidecarclient ./wgclient/cmd/sidecarclient
 
 docker-orderer-image:
     docker build -f ordererbuilder/Dockerfile -t orderer_builder .
-
-build-ordering-main main_path output_name output_path:
-    just empty-dir ./orderingservice/fabric/temp
-    cd ./orderingservice/fabric; go build -o ./temp/{{output_name}} {{main_path}}; cd ../..
-    cp ./orderingservice/fabric/temp/* {{output_path}}
-    rm -r ./orderingservice/fabric/temp
 
 #########################
 # Credentials
@@ -217,7 +214,7 @@ copy-client-creds dst_path=(project-dir + '/orderingservice/fabric/out'):
     cp -r {{base-setup-creds-dir}}/orgs/peerOrganizations/org1.com/users/User1@org1.com/msp {{dst_path}}
     cp {{base-setup-config-dir}}/orderer.yaml {{dst_path}}
 
-docker-init-orderer out_dir channel_id=(default-channel-id) crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml'):
+docker-init-orderer out_dir channel_id=(default-channel-id) crypto_config=('$PWD/config/testdata/crypto-config.yaml') txgen_config=('$PWD/config/testdata/configtx.yaml'):
     echo "Clean up {{out_dir}}"
     just empty-dir {{out_dir}}
 
@@ -249,7 +246,7 @@ deploy-base-configs local_dst_dir=(base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{local_dst_dir}}'}"
 
 # Create config files (configtx.yaml, orderer.yaml, crypto-config.yaml) based on the inventory
-create-orderer-configs output_dir input_dir=('$PWD/orderingservice/fabric/testdata'):
+create-orderer-configs output_dir input_dir=('$PWD/config/testdata'):
     spruce merge {{input_dir}}/configtx.yaml >> {{output_dir}}/configtx.yaml
     spruce merge {{input_dir}}/orderer.yaml >> {{output_dir}}/orderer.yaml
     spruce merge {{input_dir}}/crypto-config.yaml >> {{output_dir}}/crypto-config.yaml
@@ -326,8 +323,8 @@ start-raft-orderers channel_id=(default-channel-id):
 
 start-mir-orderers channel_id=(default-channel-id):
     #!/usr/bin/env bash
-    cp orderingservice/fabric/configtx.yaml orderingservice/mirbft; \
-    cp orderingservice/fabric/crypto-config.yaml orderingservice/mirbft; \
+    cp config/testdata/configtx.yaml orderingservice/mirbft; \
+    cp config/testdata/crypto-config.yaml orderingservice/mirbft; \
     cd orderingservice/fabric; just init {{channel_id}}; cd ../..; \
     rm -r orderingservice/mirbft/out; cp -R orderingservice/fabric/out orderingservice/mirbft/; \
     mkdir orderingservice/mirbft/out/creds; \

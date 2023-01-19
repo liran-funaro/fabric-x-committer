@@ -8,10 +8,9 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/msp"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
@@ -26,7 +25,7 @@ func main() {
 	config.ParseFlags()
 
 	c := sidecar.ReadConfig()
-	creds, signer := clients.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath)
+	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath)
 
 	m := metrics.New(c.Prometheus.IsEnabled())
 

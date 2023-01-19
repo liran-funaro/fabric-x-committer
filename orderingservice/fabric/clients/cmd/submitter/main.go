@@ -7,10 +7,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/clients"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
@@ -27,8 +26,8 @@ func main() {
 	)
 
 	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"0.0.0.0", 7050}, {"0.0.0.0", 7051}, {"0.0.0.0", 7052}}, "Orderers to send our TXs.")
-	flag.StringVar(&credsPath, "credsPath", clients.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
-	flag.StringVar(&configPath, "configPath", clients.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
+	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
 	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
 	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
@@ -36,7 +35,7 @@ func main() {
 	flag.BoolVar(&signedEnvs, "signed", true, "Sign envelopes to send to orderer")
 	flag.Parse()
 
-	creds, signer := clients.GetDefaultSecurityOpts(credsPath, configPath)
+	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath)
 
 	msgsPerGo := messages / goroutines
 	roundMsgs := msgsPerGo * goroutines

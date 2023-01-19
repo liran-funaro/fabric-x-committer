@@ -3,7 +3,7 @@ package sidecarclient
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/pkg/identity"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/identity"
 )
 
 //EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
