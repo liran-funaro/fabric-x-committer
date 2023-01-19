@@ -274,22 +274,13 @@ docker CMD:
 # Simple containerized SC
 #########################
 
-docker-runner-image:
-    just clean-all true false
-    just build-bins
-    just deploy-bins
+docker-runner-image include_bins=('true'):
+    just deploy-base-setup {{include_bins}}
+
     docker build -f runner/Dockerfile -t sc_runner .
 
 # creds_dir should contain: msp/, ca.crt, orderer.yaml
 docker-run-services orderer_config_dir=(''):
-    just clean-all false true
-    just build-base-configs
-    just deploy-base-configs
-    if [[ "{{orderer_config_dir}}" = "" ]]; then \
-      echo "No creds and config passed. Will generate the creds and config based on the hosts file."; \
-      just build-creds; \
-      just deploy-creds; \
-    fi
     docker run --rm -dit \
     -p 5002:5002 \
     -p 5050:5050 \
