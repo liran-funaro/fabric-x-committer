@@ -7,29 +7,32 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/hyperledger/fabric-config/protolator"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 func main() {
 
 	var (
-		serverAddr string
-		credsPath  string
-		configPath string
-		channelID  string
-		quiet      bool
-		seek       int
+		serverAddr     string
+		prometheusAddr string
+		credsPath      string
+		configPath     string
+		channelID      string
+		quiet          bool
+		seek           int
 	)
 
 	flag.StringVar(&serverAddr, "server", "0.0.0.0:7050", "The RPC server to connect to.")
+	flag.StringVar(&prometheusAddr, "prometheus-endpoint", "0.0.0.0:2112", "Prometheus endpoint.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to deliver from.")
 	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
 	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
@@ -48,20 +51,11 @@ func main() {
 		Credentials: creds,
 		Signer:      signer,
 	})
-
 	if err != nil {
 		return
 	}
 
-	start := time.Now()
-	totalTxs := uint64(0)
-	go func() {
-		printer := message.NewPrinter(language.German)
-		for {
-			<-time.After(2 * time.Second)
-			printer.Printf("Throughput: %d TXs/sec\n", totalTxs*uint64(time.Second)/uint64(time.Since(start)))
-		}
-	}()
+	m := launchPrometheus(*connection.CreateEndpoint(prometheusAddr))
 
 	utils.Must(listener.RunOrdererOutputListenerForBlock(seek, func(msg *ab.DeliverResponse) {
 		switch t := msg.Type.(type) {
@@ -78,7 +72,28 @@ func main() {
 			} else {
 				fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", t.Block.Header.Number, t.Block.XXX_Size(), len(t.Block.Data.Data), len(t.Block.Data.Data[0]))
 			}
-			totalTxs += uint64(len(t.Block.Data.Data))
+			m.InTxs.Add(len(t.Block.Data.Data))
 		}
 	}))
 }
+
+func launchPrometheus(endpoint connection.Endpoint) *Metrics {
+	m := New()
+	monitoring.LaunchPrometheus(monitoring.Prometheus{Endpoint: endpoint}, monitoring.Sidecar, m)
+	return m
+}
+
+type Metrics struct {
+	InTxs *metrics.ThroughputCounter
+}
+
+func New() *Metrics {
+	return &Metrics{InTxs: metrics.NewThroughputCounter("listener", metrics.In)}
+}
+func (m *Metrics) AllMetrics() []prometheus.Collector {
+	return []prometheus.Collector{m.InTxs}
+}
+func (m *Metrics) IsEnabled() bool {
+	return true
+}
+func (m *Metrics) SetTracerProvider(*trace.TracerProvider) {}
