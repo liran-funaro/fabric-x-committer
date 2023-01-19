@@ -2,7 +2,7 @@ all:
   vars:
     ansible_connection: local
     ansible_user: "{{lookup('env', 'USER')}}"
-    root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer/runner"
+    root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer/runner/out"
     binary_dir: "{{root_path}}/bin/"
     top_config_dir: "{{root_path}}/config/"
     skip_prefix_when_copy: ['orderer.yaml']

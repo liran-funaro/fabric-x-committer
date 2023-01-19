@@ -6,7 +6,7 @@
 
 default := ''
 project-dir := env_var_or_default('PWD', '.')
-runner-dir := project-dir + "/runner"
+runner-dir := project-dir + "/runner/out"
 config-input-dir := project-dir + "/config"
 
 output-dir := project-dir + "/eval"

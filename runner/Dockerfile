@@ -4,10 +4,10 @@ ENV CONFIGS_PATH=/root/config/
 ENV BINS_PATH=/root/bin/
 ENV ORDERER_CONFIGS_PATH=/root/orderer-creds/
 
-ADD runner/bin/sigservice \
-runner/bin/shardsservice \
-runner/bin/coordinator \
-runner/bin/sidecar \
+ADD runner/out/bin/sigservice \
+runner/out/bin/shardsservice \
+runner/out/bin/coordinator \
+runner/out/bin/sidecar \
 $BINS_PATH
 
 ADD runner/run-services.sh \
