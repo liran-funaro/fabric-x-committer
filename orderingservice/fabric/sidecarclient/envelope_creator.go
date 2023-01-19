@@ -1,4 +1,4 @@
-package sidecar
+package sidecarclient
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"

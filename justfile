@@ -216,7 +216,6 @@ copy-client-creds dst_path=(project-dir + '/orderingservice/fabric/out'):
     cp {{base-setup-creds-dir}}/orgs/ordererOrganizations/orderer.org/orderers/$any_orderer_name.orderer.org/tls/ca.crt {{dst_path}}
     cp -r {{base-setup-creds-dir}}/orgs/peerOrganizations/org1.com/users/User1@org1.com/msp {{dst_path}}
     cp {{base-setup-config-dir}}/orderer.yaml {{dst_path}}
-    echo "here $any_orderer_name"
 
 docker-init-orderer out_dir channel_id=(default-channel-id) crypto_config=('$PWD/orderingservice/fabric/testdata/crypto-config.yaml') txgen_config=('$PWD/orderingservice/fabric/testdata/configtx.yaml'):
     echo "Clean up {{out_dir}}"

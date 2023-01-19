@@ -5,13 +5,18 @@
 - name: Kill process
   shell:
     cmd: lsof -i :{{process_port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -f -15
-  when: process_port is defined
+  when: process_port is defined and only_kill is defined or only_kill == true
   ignore_errors: yes
   loop:
     - "{{service_port | d()}}"
     - "{{prometheus_exporter_port}}"
   loop_control:
     loop_var: process_port
+- name: Kill tmux
+  shell:
+    cmd: tmux kill-server
+  when: only_kill is defined or only_kill == true
+  ignore_errors: yes
 - name: Runs server
   vars:
     session_name: "{{inventory_hostname}}"

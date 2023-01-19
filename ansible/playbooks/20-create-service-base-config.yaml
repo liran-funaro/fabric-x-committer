@@ -94,10 +94,10 @@
     - name: Copy sidecar-client profile from local filesystem
       vars:
         mode: a+rw
-        src_path: "{{src_dir}}/{{hostvars[sidecar_client_instance].block_profile}}"
-        dst_path: "{{dst_dir}}/{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].block_profile}}"
+        src_path: "{{src_dir}}/{{hostvars[sidecar_client_instance].workload_profile}}"
+        dst_path: "{{dst_dir}}/{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].workload_profile}}"
       include_tasks: ../subtasks/copy-file.yaml
-      when: hostvars[sidecar_client_instance].block_profile is defined
+      when: hostvars[sidecar_client_instance].workload_profile is defined
       loop: "{{groups['sidecarclients'] | d([])}}"
       loop_control:
         loop_var: sidecar_client_instance

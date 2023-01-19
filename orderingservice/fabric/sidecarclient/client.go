@@ -6,7 +6,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
@@ -73,7 +72,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	}
 
 	sent := uint64(0)
-	submitter, err := sidecar.NewFabricOrdererBroadcaster(&sidecar.FabricOrdererBroadcasterOpts{
+	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
 		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
 		Credentials:          opts.Credentials,

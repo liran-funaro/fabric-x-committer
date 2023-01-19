@@ -17,6 +17,7 @@
       loop:
         - "{{hostvar.config | d()}}"
         - "{{hostvar.block_profile | d()}}"
+        - "{{hostvar.workload_profile | d()}}"
       loop_control:
         loop_var: src_filename
 

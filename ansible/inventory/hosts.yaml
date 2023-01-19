@@ -80,7 +80,7 @@ all:
             sidecar-client-machine1:
               ansible_host: "tokentestbed8.sl.cloud9.ibm.com"
             sidecar-client-machine2:
-              block_profile: profile-blockgen.yaml
+              workload_profile: profile-sidecar-client.yaml
               ansible_host: "tokentestbed9.sl.cloud9.ibm.com"
 
         monitoring:

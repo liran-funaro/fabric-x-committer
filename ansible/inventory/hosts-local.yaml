@@ -125,7 +125,7 @@ all:
             client_config_dir: "{{root_path + '/eval/experiments/local-sidecar-client-configs'}}"
           hosts:
             sidecar-client-machine1:
-              block_profile: profile-blockgen.yaml
+              workload_profile: profile-sidecar-client.yaml
               ansible_host: "localhost"
               prometheus_exporter_port: 2116
               config_dir: "{{client_config_dir + '/sidecarclient0/'}}"
