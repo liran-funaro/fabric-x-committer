@@ -6,17 +6,16 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/msp"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/proto"
 )
 
 var logger = logging.New("sidecar")
@@ -156,16 +155,17 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 func mapBlock(block *common.Block) *token.Block {
 	txs := make([]*token.Tx, 0, len(block.Data.Data))
 	for _, msg := range block.Data.Data {
-		if isConfigTx(msg) {
+		//TODO: We can improve performance by checking the type only of the first TX, if we can guarantee that a block cannot contain config envelopes and message envelopes at the same time.
+		if data, channelHeader, err := serialization.UnwrapEnvelope(msg); err != nil {
+			logger.Infof("error occurred: %v", err)
+			return nil
+		} else if isConfigTx(channelHeader) {
 			continue
-		}
-		var tx token.Tx
-		utils.Must(proto.Unmarshal(msg, &tx))
-		if isIssueTx(&tx) {
+		} else if tx := serialization.UnmarshalTx(data); isIssueTx(tx) {
 			continue
+		} else {
+			txs = append(txs, tx)
 		}
-		txs = append(txs, &tx)
-
 	}
 	return &token.Block{
 		Number: block.Header.Number,
@@ -173,18 +173,10 @@ func mapBlock(block *common.Block) *token.Block {
 	}
 }
 
-func isIssueTx(tx *token.Tx) bool {
-	return len(tx.SerialNumbers) == 0
+func isConfigTx(channelHeader *common.ChannelHeader) bool {
+	return channelHeader.Type == int32(common.HeaderType_CONFIG)
 }
 
-func isConfigTx(tx []byte) bool {
-	envelope, err := protoutil.GetEnvelopeFromBlock(tx)
-	if err != nil {
-		return false
-	}
-	payload := protoutil.UnmarshalPayloadOrPanic(envelope.Payload)
-	channelHdr := protoutil.UnmarshalChannelHeaderOrPanic(payload.Header.ChannelHeader)
-	txType := common.HeaderType(channelHdr.GetType())
-
-	return txType == common.HeaderType_CONFIG
+func isIssueTx(tx *token.Tx) bool {
+	return len(tx.SerialNumbers) == 0
 }

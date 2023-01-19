@@ -8,6 +8,7 @@
     committer_endpoint: "{{committer.ansible_host}}:{{committer.service_port}}"
     orderer: "{{groups['orderingservices'] | default([]) | map('extract', hostvars) | first}}"
     orderer_endpoint: "{{orderer.ansible_host}}:{{orderer.service_port}}"
+    creds_dir: "{{hostvars[sidecar_instance].creds_dir}}"
   yedit:
     src: "{{filepath}}"
     edits:
@@ -17,3 +18,7 @@
         value: "{{orderer_endpoint}}"
       - key: sidecar.orderer.channel-id
         value: "{{channel_id}}"
+      - key: sidecar.orderer.config-path
+        value: "{{creds_dir}}"
+      - key: sidecar.orderer.creds-path
+        value: "{{creds_dir}}"

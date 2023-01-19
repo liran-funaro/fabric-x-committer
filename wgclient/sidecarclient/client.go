@@ -11,9 +11,9 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/proto"
 )
 
 var logger = logging.New("sidecarclient")
@@ -111,11 +111,7 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	wg.Add(1)
 	go func() {
 		for tx := range txs {
-			item, err := proto.Marshal(tx)
-			if err != nil {
-				logger.Infof("Error occurred: %v\n", err)
-				break
-			}
+			item := serialization.MarshalTx(tx)
 			onRequestSend()
 			for _, messageCh := range c.ordererBroadcaster.InputChannels() {
 				messageCh <- item

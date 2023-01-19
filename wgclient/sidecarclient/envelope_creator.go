@@ -4,6 +4,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/identity"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 )
 
 //EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
@@ -36,10 +37,7 @@ func newEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 // CreateEnvelope create an envelope with or without a signature and the corresponding header
 // An unsigned envelope can only be used with a patched fabric orderer
 func (c *envelopeCreator) CreateEnvelope(data []byte) (*common.Envelope, error) {
-	payload := protoutil.MarshalOrPanic(&common.Payload{
-		Header: c.payloadHeader(),
-		Data:   protoutil.MarshalOrPanic(&common.ConfigValue{Value: data}),
-	})
+	payload := serialization.WrapEnvelope(data, c.payloadHeader())
 
 	signature, err := c.sign(payload)
 	if err != nil {

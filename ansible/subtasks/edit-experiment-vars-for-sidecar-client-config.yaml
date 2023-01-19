@@ -4,7 +4,9 @@
 ---
 - name: Set config properties
   vars:
-    profile_path_reference: "{{hostvars[sidecar_client_instance].config_dir + '/' + sidecar_client_instance + '-' + hostvars[sidecar_client_instance].workload_profile if hostvars[sidecar_client_instance].workload_profile is defined else ''}}"
+    hostvar: "{{hostvars[sidecar_client_instance]}}"
+    profile_path_reference: "{{hostvar.config_dir + '/' + sidecar_client_instance + '-' + hostvars[sidecar_client_instance].workload_profile if hostvars[sidecar_client_instance].workload_profile is defined else ''}}"
+    creds_dir: "{{hostvar.creds_dir}}"
     orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
     orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
     sidecar_host: "{{groups['sidecars'] | map('extract', hostvars) | first}}"
@@ -24,3 +26,7 @@
         value: "{{sidecar_endpoint}}"
       - key: sidecar-client.committer
         value: "{{committer_endpoint}}"
+      - key: sidecar-client.config-path
+        value: "{{creds_dir}}"
+      - key: sidecar-client.creds-path
+        value: "{{creds_dir}}"
