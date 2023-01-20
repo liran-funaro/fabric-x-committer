@@ -7,6 +7,7 @@ ENV ORDERER_CONFIGS_PATH=/root/orderer-creds/
 ADD runner/out/bin/sigservice \
 runner/out/bin/shardsservice \
 runner/out/bin/coordinator \
+runner/out/bin/coordinator_setup \
 runner/out/bin/sidecar \
 $BINS_PATH
 
