@@ -8,6 +8,7 @@ const (
 	ShardsService
 	Generator
 	Sidecar
+	Other
 )
 
 var componentTypeName = map[ComponentType]string{
@@ -16,4 +17,5 @@ var componentTypeName = map[ComponentType]string{
 	ShardsService: "ShardsService",
 	Generator:     "Generator",
 	Sidecar:       "Sidecar",
+	Other:         "Other",
 }

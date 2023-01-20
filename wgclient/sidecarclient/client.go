@@ -30,10 +30,10 @@ type SidecarListener interface {
 
 //OrdererSubmitter connects to the orderers, establishes one or more streams with each, and broadcasts serialized envelopes to all streams.
 type OrdererSubmitter interface {
-	//InputChannels returns one channel per stream.
-	InputChannels() []chan []byte
-	//CloseAndWait closes all input streams and waits until all envelopes have been broadcast.
-	CloseAndWait() error
+	//Streams returns all streams to the ordering service
+	Streams() []OrdererStream
+	//CloseStreamsAndWait waits for all acks to be received and closes all streams
+	CloseStreamsAndWait() error
 }
 
 type ClientInitOptions struct {
@@ -57,6 +57,7 @@ type Client struct {
 	committerClient    VerificationKeySetter
 	sidecarListener    SidecarListener
 	ordererBroadcaster OrdererSubmitter
+	envelopeCreator    EnvelopeCreator
 }
 
 func NewClient(opts *ClientInitOptions) (*Client, error) {
@@ -73,12 +74,9 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 
 	sent := uint64(0)
 	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
-		ChannelID:            opts.ChannelID,
 		Endpoints:            opts.OrdererEndpoints,
 		Credentials:          opts.Credentials,
-		Signer:               opts.Signer,
 		Parallelism:          len(opts.OrdererEndpoints),
-		SignedEnvelopes:      opts.SignedEnvelopes,
 		InputChannelCapacity: opts.InputChannelCapacity,
 		OnAck: func(err error) {
 			atomic.AddUint64(&sent, 1)
@@ -87,11 +85,12 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 			}
 		},
 	})
+	envelopeCreator := NewEnvelopeCreator(opts.ChannelID, opts.Signer, opts.SignedEnvelopes)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Client{committer, listener, submitter}, nil
+	return &Client{committer, listener, submitter, envelopeCreator}, nil
 }
 
 func (c *Client) SetCommitterKey(publicKey signature.PublicKey) error {
@@ -103,7 +102,7 @@ func (c *Client) StartListening(onBlock func(*common.Block), onError func(error)
 	c.sidecarListener.StartListening(onBlock, onError)
 }
 
-//SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all submitters.
+//SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all streams.
 func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	logger.Infof("Sending replicated message to all orderers.\n")
 
@@ -112,13 +111,15 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	go func() {
 		for tx := range txs {
 			item := serialization.MarshalTx(tx)
+			env, err := c.envelopeCreator.CreateEnvelope(item)
 			onRequestSend()
-			for _, messageCh := range c.ordererBroadcaster.InputChannels() {
-				messageCh <- item
+			utils.Must(err)
+			for _, messageCh := range c.ordererBroadcaster.Streams() {
+				messageCh.Input() <- env
 			}
 		}
 		wg.Done()
 	}()
 	wg.Wait()
-	utils.Must(c.ordererBroadcaster.CloseAndWait())
+	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
 }

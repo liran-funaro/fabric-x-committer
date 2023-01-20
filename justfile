@@ -182,9 +182,18 @@ build-sidecar output_dir:
     go build -o {{output_dir}}/sidecar ./sidecar/cmd/server
 
 build-mock-orderer output_dir:
+    just build-ordering-main ./clients/cmd/mockorderer mockorderingservice {{output_dir}}
+
+build-orderer-listener output_dir:
+    just build-ordering-main ./clients/cmd/listener ordererlistener {{output_dir}}
+
+build-orderer-submitter output_dir:
+    just build-ordering-main ./clients/cmd/submitter orderersubmitter {{output_dir}}
+
+build-ordering-main main_path output_name output_path:
     just empty-dir ./orderingservice/fabric/temp
-    cd ./orderingservice/fabric; go build -o ./temp/mockorderingservice ./clients/cmd/mockorderer; cd ../..
-    cp ./orderingservice/fabric/temp/* {{output_dir}}
+    cd ./orderingservice/fabric; go build -o ./temp/{{output_name}} {{main_path}}; cd ../..
+    cp ./orderingservice/fabric/temp/* {{output_path}}
     rm -r ./orderingservice/fabric/temp
 
 build-sidecar-client output_dir:

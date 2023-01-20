@@ -7,8 +7,10 @@ import (
 	"flag"
 	"fmt"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
@@ -16,6 +18,7 @@ import (
 func main() {
 	var (
 		ordererEndpoints []*connection.Endpoint
+		prometheusAddr   connection.Endpoint
 		credsPath        string
 		configPath       string
 		channelID        string
@@ -26,6 +29,7 @@ func main() {
 	)
 
 	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"0.0.0.0", 7050}, {"0.0.0.0", 7051}, {"0.0.0.0", 7052}}, "Orderers to send our TXs.")
+	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
 	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
 	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
@@ -41,11 +45,8 @@ func main() {
 	roundMsgs := msgsPerGo * goroutines
 	bar := workload.NewProgressBar("Submitting transactions...", int64(roundMsgs), "tx")
 	opts := &sidecarclient.FabricOrdererBroadcasterOpts{
-		ChannelID:            channelID,
 		Endpoints:            ordererEndpoints,
 		Credentials:          creds,
-		Signer:               signer,
-		SignedEnvelopes:      signedEnvs,
 		Parallelism:          int(goroutines),
 		InputChannelCapacity: 10,
 		OnAck: func(err error) {
@@ -55,6 +56,8 @@ func main() {
 		},
 	}
 
+	m := cmd.LaunchSimpleThroughputMetrics(prometheusAddr, "submitter", metrics.Out)
+
 	s, err := sidecarclient.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
 	if roundMsgs != messages {
@@ -63,12 +66,15 @@ func main() {
 
 	fmt.Printf("Sending the same message to all servers.\n")
 	message := make([]byte, msgSize)
+	envelopeCreator := sidecarclient.NewEnvelopeCreator(channelID, signer, signedEnvs)
+	env, _ := envelopeCreator.CreateEnvelope(message)
 	for i := uint64(0); i < msgsPerGo; i++ {
-		for _, ch := range s.InputChannels() {
-			ch <- message
+		for _, ch := range s.Streams() {
+			ch.Input() <- env
 		}
+		m.Throughput.Add(len(s.Streams()))
 	}
-	utils.Must(s.CloseAndWait())
+	utils.Must(s.CloseStreamsAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")
 }

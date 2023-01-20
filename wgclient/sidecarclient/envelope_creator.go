@@ -22,7 +22,7 @@ type envelopeCreator struct {
 	signed      bool
 }
 
-func newEnvelopeCreator(channelID string, signer identity.SignerSerializer, signed bool) *envelopeCreator {
+func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, signed bool) *envelopeCreator {
 	return &envelopeCreator{
 		txType:      common.HeaderType_MESSAGE,
 		channelID:   channelID,
