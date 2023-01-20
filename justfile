@@ -239,21 +239,26 @@ docker-init-orderer out_dir channel_id=(default-channel-id) crypto_config=('$PWD
 # Configs
 #########################
 
-build-base-configs local_src_dir=(config-input-dir) local_dst_dir=(base-setup-config-dir):
+build-base-configs include_orderer_configs=('true') local_src_dir=(config-input-dir) local_dst_dir=(base-setup-config-dir):
     just empty-dir {{local_dst_dir}}
     ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}', 'channel_id': '{{default-channel-id}}'}"
-    just create-orderer-configs {{local_dst_dir}}
+    if [[ "{{include_orderer_configs}}" = "true" ]]; then \
+      just create-orderer-configs {{local_dst_dir}}; \
+    fi
+
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
-deploy-base-configs local_dst_dir=(base-setup-config-dir):
+deploy-base-configs include_orderer_configs=('true') local_dst_dir=(base-setup-config-dir):
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{local_dst_dir}}'}"
     ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{local_dst_dir}}'}"
+    if [[ "{{include_orderer_configs}}" = "true" ]]; then \
+      ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{local_dst_dir}}'}"; \
+    fi
 
 # Create config files (configtx.yaml, orderer.yaml, crypto-config.yaml) based on the inventory
 create-orderer-configs output_dir input_dir=('$PWD/config/testdata'):
@@ -284,17 +289,21 @@ docker CMD:
 # Simple containerized SC
 #########################
 
-docker-runner-image include_bins=('true'):
-    just deploy-base-setup {{include_bins}}
-
+docker-runner-image:
+    #    just build-bins
+    #    just deploy-bins
     docker build -f runner/Dockerfile -t sc_runner .
 
+    just build-base-configs false
+    just deploy-base-configs false
+
 # creds_dir should contain: msp/, ca.crt, orderer.yaml
-docker-run-services orderer_config_dir=(''):
+docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(''):
     docker run --rm -dit \
     -p 5002:5002 \
     -p 5050:5050 \
     -v {{runner-dir}}/config:/root/config \
+    -v {{public_key_dir}}:/root/pubkey \
     -v {{ if orderer_config_dir != '' { orderer_config_dir } else { runner-dir + '/orderer-creds'} }}:/root/orderer-creds \
     sc_runner:latest
 

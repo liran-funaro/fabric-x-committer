@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"os"
 
@@ -44,16 +45,24 @@ func getEnv(key string) string {
 }
 
 func main() {
+	var (
+		coordinatorEndpoint connection.Endpoint
+		keyPath             string
+	)
+	connection.EndpointVar(&coordinatorEndpoint, "coordinator", connection.Endpoint{"0.0.0.0", 5002}, "Coordinator endpoint.")
+	flag.StringVar(&keyPath, "key-path", "./sc_pubkey.pem", "The path to the public key to set to the committer.")
+	flag.Parse()
 
-	endpoint := getEnv("SC_COORDINATOR_ENDPOINT")
-	pubKeyPath := getEnv("SC_COORDINATOR_PUBKEY_PATH")
-
-	pemContent, err := os.ReadFile(pubKeyPath)
+	fmt.Printf("Starting setup helper:\n\tCoordinator: %s\n\tKey path: %s\n", coordinatorEndpoint.Address(), keyPath)
+	pemContent, err := os.ReadFile(keyPath)
 	utils.Must(err)
 
 	pubBytes, err := getSerializedKeyFromCert(pemContent)
 	utils.Must(err)
 
-	cl := client.OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint))
+	fmt.Println("Successfully retrieved public key from path.")
+	cl := client.OpenCoordinatorAdapter(coordinatorEndpoint)
+	fmt.Println("Successfully connected to coordinator.")
 	utils.Must(cl.SetVerificationKey(pubBytes))
+	fmt.Println("Successfully set public key to coordinator.")
 }
