@@ -105,8 +105,10 @@ clean-all include_bins=('false') include_configs=('false') target_hosts=('all'):
 deploy-base-setup include_bins=('false'):
     just clean-all {{include_bins}} true
     if [[ "{{include_bins}}" = "true" ]]; then \
-      just build-bins; \
-      just deploy-bins; \
+      just build-committer-bins; \
+      just deploy-committer-bins; \
+      just build-orderer-bins; \
+      just deploy-orderer-bins; \
     fi
 
     just build-base-configs
@@ -119,23 +121,35 @@ deploy-base-setup include_bins=('false'):
 # Binaries
 #########################
 
-build-bins:
-    just empty-dir {{osx-bin-input-dir}}
-    just build-committer-local {{osx-bin-input-dir}}
-    just build-raft-orderers-local {{osx-bin-input-dir}}
+build-committer-bins local=('true') docker=('true'):
+    if [[ "{{local}}" = "true" ]]; then \
+      just empty-dir {{osx-bin-input-dir}}; \
+      just build-committer-local {{osx-bin-input-dir}}; \
+    fi
 
-    just empty-dir {{linux-bin-input-dir}}
-    just build-committer-docker {{linux-bin-input-dir}}
-    just build-raft-orderers-docker {{linux-bin-input-dir}}
+    if [[ "{{docker}}" = "true" ]]; then \
+      just empty-dir {{linux-bin-input-dir}}; \
+      just build-committer-docker {{linux-bin-input-dir}}; \
+    fi
 
-deploy-bins local_linux_src_dir=(linux-bin-input-dir) local_osx_src_dir=(osx-bin-input-dir):
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'coordinator_setup', 'mockcoordinator'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{local_osx_src_dir}}', 'linux_src_dir': '{{local_linux_src_dir}}'}"
+build-orderer-bins local=('true') docker=('true'):
+    if [[ "{{local}}" = "true" ]]; then \
+      just build-raft-orderers-local {{osx-bin-input-dir}}; \
+    fi
+    if [[ "{{docker}}" = "true" ]]; then \
+      just build-raft-orderers-docker {{linux-bin-input-dir}}; \
+    fi
+
+deploy-committer-bins:
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'coordinator_setup', 'mockcoordinator'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+
+deploy-orderer-bins:
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
@@ -290,8 +304,8 @@ docker CMD:
 #########################
 
 docker-runner-image:
-    just build-bins
-    just deploy-bins
+    just build-committer-bins false
+    just deploy-committer-bins
     docker build -f runner/Dockerfile -t sc_runner .
 
     just build-base-configs false
