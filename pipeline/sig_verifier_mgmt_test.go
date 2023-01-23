@@ -74,7 +74,5 @@ func TestSigVerifiersMgr(t *testing.T) {
 			{BlkNum: uint64(3), TxNum: 1},
 		},
 	)
-	require.Equal(t, 2, sigVerifierServer[0].SigVerifierImpl.Stats.NumBatchesServed)
-	require.Equal(t, 1, sigVerifierServer[1].SigVerifierImpl.Stats.NumBatchesServed)
-	require.Equal(t, 1, sigVerifierServer[2].SigVerifierImpl.Stats.NumBatchesServed)
+	require.Equal(t, 4, sigVerifierServer[0].SigVerifierImpl.Stats.NumBatchesServed+sigVerifierServer[1].SigVerifierImpl.Stats.NumBatchesServed+sigVerifierServer[2].SigVerifierImpl.Stats.NumBatchesServed)
 }

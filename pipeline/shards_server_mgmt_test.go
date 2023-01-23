@@ -169,7 +169,8 @@ func TestShardsServerMgr(t *testing.T) {
 
 func TestComputeShardId(t *testing.T) {
 	m := &shardsServerMgr{
-		numShards: 16,
+		numShards:                     16,
+		prefixSizeForShardCalculation: 2,
 	}
 	for i := uint16(0); i <= 500; i++ {
 		b := getForTestBytesStartingWith(i)
