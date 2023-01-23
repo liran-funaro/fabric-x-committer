@@ -290,8 +290,8 @@ docker CMD:
 #########################
 
 docker-runner-image:
-    #    just build-bins
-    #    just deploy-bins
+    just build-bins
+    just deploy-bins
     docker build -f runner/Dockerfile -t sc_runner .
 
     just build-base-configs false
