@@ -6,8 +6,11 @@ sidecar:
   orderer:
     endpoint: :7050                                             # Overridden by ansible
     channel-id: mychannel                                       # Overridden by ansible
+    config-path: /root/sc/orderer                               # Overridden by ansible
+    creds-path: /root/sc/orderer                                # Overridden by ansible
     msp-dir: /msp
     msp-id: Org1
+    reconnect: 10s
   committer:
     endpoint: :5002                                             # Overridden by ansible
     output-channel-capacity: 20

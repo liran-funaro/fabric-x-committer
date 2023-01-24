@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
@@ -22,7 +21,7 @@ var logger = logging.New("sidecar")
 
 //OrdererListener connects to the orderer, and only listens for orderered blocks
 type OrdererListener interface {
-	RunOrdererOutputListener(onOrderedBlockReceive func(*ab.DeliverResponse)) error
+	RunOrdererOutputListener(onOrderedBlockReceive func(block *common.Block)) error
 }
 
 //CommitterSubmitterListener connects to the committer (i.e. the coordinator of the committer), and submits blocks and listens for status batches.
@@ -73,14 +72,16 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		"\tOrderer:\n"+
 		"\t\tEndpoint: %v\n"+
 		"\t\tChannel: '%s'\n"+
+		"\t\tReconnect: %v\n"+
 		"\tCommitter:\n"+
 		"\t\tEndpoint: %v\n"+
-		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, committer.Endpoint, committer.OutputChannelCapacity)
+		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, orderer.Reconnect, committer.Endpoint, committer.OutputChannelCapacity)
 	ordererListener, err := NewFabricOrdererListener(&FabricOrdererConnectionOpts{
 		ChannelID:   orderer.ChannelID,
 		Endpoint:    orderer.Endpoint,
 		Credentials: creds,
 		Signer:      signer,
+		Reconnect:   orderer.Reconnect,
 	})
 	if err != nil {
 		return nil, err
@@ -100,23 +101,21 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	logger.Infof("Starting up sidecar\n")
 	go func() {
-		utils.Must(s.ordererListener.RunOrdererOutputListener(func(msg *ab.DeliverResponse) {
-			if t, ok := msg.Type.(*ab.DeliverResponse_Block); ok {
-				logger.Infof("Received block %d from orderer", t.Block.Header.Number)
-				logger.Debugf("Block: %v", t.Block)
-				if s.metrics.Enabled {
-					s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
-					//for txNum := uint64(0); txNum < uint64(len(t.Block.Data.Data)); txNum++ {
-					//	s.metrics.RequestTracer.Start(token.TxSeqNum{t.Block.Header.Number, txNum})
-					//}
-					s.metrics.InTxs.Add(len(t.Block.Data.Data))
-				}
-				block := mapBlock(t.Block)
-				s.postCommitAggregator.AddSubmittedBlock(t.Block, len(block.Txs))
-				if len(block.Txs) > 0 {
-					s.orderedBlocks <- &workload.BlockWithExpectedResult{
-						Block: block,
-					}
+		utils.Must(s.ordererListener.RunOrdererOutputListener(func(b *common.Block) {
+			logger.Infof("Received block %d from orderer", b.Header.Number)
+			logger.Debugf("Block: %v", b)
+			if s.metrics.Enabled {
+				s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
+				//for txNum := uint64(0); txNum < uint64(len(t.Block.Data.Data)); txNum++ {
+				//	s.metrics.RequestTracer.Start(token.TxSeqNum{t.Block.Header.Number, txNum})
+				//}
+				s.metrics.InTxs.Add(len(b.Data.Data))
+			}
+			block := mapBlock(b)
+			s.postCommitAggregator.AddSubmittedBlock(b, len(block.Txs))
+			if len(block.Txs) > 0 {
+				s.orderedBlocks <- &workload.BlockWithExpectedResult{
+					Block: block,
 				}
 			}
 		}))

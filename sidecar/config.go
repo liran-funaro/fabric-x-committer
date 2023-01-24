@@ -1,6 +1,8 @@
 package sidecar
 
 import (
+	"time"
+
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -21,6 +23,7 @@ type OrdererClientConfig struct {
 	CredsPath  string              `mapstructure:"creds-path"`
 	MspDir     string              `mapstructure:"msp-dir"`
 	MspId      string              `mapstructure:"msp-id"`
+	Reconnect  time.Duration       `mapstructure:"reconnect"`
 }
 type CommitterClientConfig struct {
 	Endpoint              connection.Endpoint `mapstructure:"endpoint"`
@@ -41,6 +44,7 @@ func init() {
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
 	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
+	viper.SetDefault("sidecar.orderer.reconnect", 10*time.Second)
 
 	viper.SetDefault("sidecar.committer.endpoint", ":5002")
 	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
