@@ -14,6 +14,8 @@ sidecar-client:
   input-channel-capacity: 20
   parallelism: 10
   signed-envelopes: true
+  msp-dir: /msp
+  msp-id: Org1
 
 logging:
   enabled: true

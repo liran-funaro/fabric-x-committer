@@ -312,9 +312,8 @@ docker-runner-image:
     just deploy-base-configs false
 
 # creds_dir should contain: msp/, ca.crt, orderer.yaml
-docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(''):
+docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(project-dir + '/eval/deployments/configs/'):
     docker run --rm -dit \
-    -p 5002:5002 \
     -p 5050:5050 \
     -v {{runner-dir}}/config:/root/config \
     -v {{public_key_dir}}:/root/pubkey \

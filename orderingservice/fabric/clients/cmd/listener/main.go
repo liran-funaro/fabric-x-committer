@@ -24,6 +24,8 @@ func main() {
 		prometheusAddr connection.Endpoint
 		credsPath      string
 		configPath     string
+		localMspDir    string
+		localMspId     string
 		channelID      string
 		quiet          bool
 		seek           int
@@ -34,6 +36,8 @@ func main() {
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to deliver from.")
 	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
 	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	flag.StringVar(&localMspDir, "mspDir", connection.DefaultLocalMspDir, "Local MSP Dir.")
+	flag.StringVar(&localMspId, "mspId", connection.DefaultLocalMspId, "Local MSP ID.")
 	flag.BoolVar(&quiet, "quiet", false, "Only print the block number, will not attempt to print its block contents.")
 	flag.IntVar(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
 		"Acceptable values:"+
@@ -41,7 +45,7 @@ func main() {
 		"N >= 0 to fetch block N only.", sidecar.SeekSinceOldestBlock, sidecar.SeekSinceNewestBlock))
 	flag.Parse()
 
-	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath)
+	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId)
 
 	listener, err := sidecar.NewFabricOrdererListener(&sidecar.FabricOrdererConnectionOpts{
 		ChannelID:   channelID,

@@ -21,6 +21,8 @@ func main() {
 		prometheusAddr   connection.Endpoint
 		credsPath        string
 		configPath       string
+		localMspDir      string
+		localMspId       string
 		channelID        string
 		messages         uint64
 		goroutines       uint64
@@ -32,6 +34,8 @@ func main() {
 	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
 	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
 	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	flag.StringVar(&localMspDir, "mspDir", connection.DefaultLocalMspDir, "Local MSP Dir.")
+	flag.StringVar(&localMspId, "mspId", connection.DefaultLocalMspId, "Local MSP ID.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
 	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
 	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
@@ -39,7 +43,7 @@ func main() {
 	flag.BoolVar(&signedEnvs, "signed", true, "Sign envelopes to send to orderer")
 	flag.Parse()
 
-	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath)
+	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId)
 
 	msgsPerGo := messages / goroutines
 	roundMsgs := msgsPerGo * goroutines

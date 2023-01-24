@@ -16,11 +16,13 @@ import (
 func main() {
 	config.String("orderer-creds-path", "sidecar-client.creds-path", "The path to the output folder containing the root CA and the client credentials.")
 	config.String("orderer-config-path", "sidecar-client.config-path", "The path to the output folder containing the orderer config.")
+	config.String("orderer-msp-dir", "sidecar-client.msp-dir", "The local MSP dir.")
+	config.String("orderer-msp-id", "sidecar-client.msp-id", "The local MSP ID.")
 	config.ParseFlags()
 
 	c := sidecarclient.ReadConfig()
 
-	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath)
+	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath, c.MspDir, c.MspId)
 
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint:    c.Committer,

@@ -20,6 +20,8 @@ type SidecarClientConfig struct {
 	SignedEnvelopes      bool   `mapstructure:"signed-envelopes"`
 	ConfigPath           string `mapstructure:"config-path"`
 	CredsPath            string `mapstructure:"creds-path"`
+	MspDir               string `mapstructure:"msp-dir"`
+	MspId                string `mapstructure:"msp-id"`
 }
 
 func ReadConfig() SidecarClientConfig {

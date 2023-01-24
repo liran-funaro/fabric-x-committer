@@ -15,7 +15,6 @@ $BINS_PATH
 ADD runner/run-services.sh \
 /root/
 
-EXPOSE 5002
 EXPOSE 5050
 
 RUN chmod a+x /root/run-services.sh

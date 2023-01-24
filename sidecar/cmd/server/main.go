@@ -22,10 +22,12 @@ func main() {
 	config.String("channel-id", "sidecar.orderer.channel-id", "Channel ID")
 	config.String("orderer-creds-path", "sidecar.orderer.creds-path", "The path to the output folder containing the root CA and the client credentials.")
 	config.String("orderer-config-path", "sidecar.orderer.config-path", "The path to the output folder containing the orderer config.")
+	config.String("orderer-msp-dir", "sidecar.orderer.msp-dir", "The local MSP dir.")
+	config.String("orderer-msp-id", "sidecar.orderer.msp-id", "The local MSP ID.")
 	config.ParseFlags()
 
 	c := sidecar.ReadConfig()
-	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath)
+	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath, c.Orderer.MspDir, c.Orderer.MspId)
 
 	m := metrics.New(c.Prometheus.IsEnabled())
 
@@ -54,7 +56,6 @@ func newSidecarService(ordererConfig *sidecar.OrdererClientConfig, committerConf
 		mu:      &sync.RWMutex{},
 	}
 
-	_ = s
 	go s.Start(func(commonBlock *common.Block) {
 		fmt.Printf("Sending out block %v to %d clients\n", commonBlock.Header.Number, len(i.streams))
 		response := &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{commonBlock}}

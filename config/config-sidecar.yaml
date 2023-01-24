@@ -3,9 +3,11 @@ sidecar:
   prometheus:                                                   # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
-  orderer:                                                      # Overridden by ansible
-    endpoint: :7050
-    channel-id: mychannel
+  orderer:
+    endpoint: :7050                                             # Overridden by ansible
+    channel-id: mychannel                                       # Overridden by ansible
+    msp-dir: /msp
+    msp-id: Org1
   committer:
     endpoint: :5002                                             # Overridden by ansible
     output-channel-capacity: 20

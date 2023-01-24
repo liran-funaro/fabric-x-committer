@@ -19,6 +19,8 @@ type OrdererClientConfig struct {
 	Endpoint   connection.Endpoint `mapstructure:"endpoint"`
 	ConfigPath string              `mapstructure:"config-path"`
 	CredsPath  string              `mapstructure:"creds-path"`
+	MspDir     string              `mapstructure:"msp-dir"`
+	MspId      string              `mapstructure:"msp-id"`
 }
 type CommitterClientConfig struct {
 	Endpoint              connection.Endpoint `mapstructure:"endpoint"`

@@ -53,6 +53,7 @@ func (a *txStatusAggregator) AddSubmittedBlock(block *common.Block, expected int
 
 func (a *txStatusAggregator) AddCommittedBatch(batch *coordinatorservice.TxValidationStatusBatch) {
 	logger.Infof("Adding commited batch with %d TXs to the aggregator", len(batch.TxsValidationStatus))
+	logger.Debugf("Batch: %v", batch)
 	// We aggregate by block number to reduce the required accesses to the shared map a.inProgressBlocks
 	statusByBlockNumber := make(map[blockNumber][]*coordinatorservice.TxValidationStatus, 50)
 	for _, txStatus := range batch.TxsValidationStatus {

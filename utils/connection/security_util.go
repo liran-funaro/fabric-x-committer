@@ -19,12 +19,18 @@ var (
 )
 
 const (
-	localMspId  = "Org1"
-	localMspDir = "/msp"
-	rootCAPath  = "/ca.crt"
+	DefaultLocalMspId  = "Org1"
+	DefaultLocalMspDir = "/msp"
+	rootCAPath         = "/ca.crt"
 )
 
-func GetDefaultSecurityOpts(credsPath, configPath string) (credentials.TransportCredentials, msp.SigningIdentity) {
+func GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId string) (credentials.TransportCredentials, msp.SigningIdentity) {
+	logger.Infof("Initialize creds:"+
+		"\tMSP Dir: %s\n"+
+		"\tMSP ID: %s\n"+
+		"\tCreds Dir: %s(/msp, ca.crt)\n"+
+		"\tConfig Path: %s/orderer.yaml", localMspDir, localMspId, credsPath, configPath)
+
 	os.Setenv("FABRIC_CFG_PATH", configPath)
 	os.Setenv("ORDERER_GENERAL_TLS_ENABLED", "true")
 	//os.Setenv("ORDERER_GENERAL_LOCALMSPID", "Org1")

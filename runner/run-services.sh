@@ -7,4 +7,4 @@ sleep 1 # Wait until the services are up and running before starting the coordin
 sleep 5
 "$BINS_PATH/coordinator_setup" -coordinator :5002 -key-path "$PUBKEY_PATH/sc_pubkey.pem"
 sleep 2
-"$BINS_PATH/sidecar" --configs "$CONFIGS_PATH/sidecar/sidecar-machine-config-sidecar.yaml" --orderer-config-path "$ORDERER_CONFIGS_PATH" --orderer-creds-path "$ORDERER_CONFIGS_PATH"
+"$BINS_PATH/sidecar" --configs "$CONFIGS_PATH/sidecar/sidecar-machine-config-sidecar.yaml"
