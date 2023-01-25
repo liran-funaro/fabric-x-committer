@@ -6,19 +6,20 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/util"
 )
 
 type statelessDeliverServer struct {
 	ab.UnimplementedAtomicBroadcastServer
-	streams []ab.AtomicBroadcast_DeliverServer
+	streams []peer.Deliver_DeliverServer
 	mu      *sync.RWMutex
 	input   chan *common.Block
 }
 
 func newStatelessDeliverService() deliverServer {
 	i := &statelessDeliverServer{
-		streams: make([]ab.AtomicBroadcast_DeliverServer, 0),
+		streams: make([]peer.Deliver_DeliverServer, 0),
 		mu:      &sync.RWMutex{},
 		input:   make(chan *common.Block, 100),
 	}
@@ -26,7 +27,7 @@ func newStatelessDeliverService() deliverServer {
 	go func() {
 		commonBlock := <-i.input
 		fmt.Printf("Sending out block %v to %d clients\n", commonBlock.Header.Number, len(i.streams))
-		response := &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: commonBlock}}
+		response := &peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: commonBlock}}
 		i.mu.RLock()
 		for _, stream := range i.streams {
 			_ = stream.Send(response)
@@ -40,21 +41,21 @@ func (s *statelessDeliverServer) Input() chan<- *common.Block {
 	return s.input
 }
 
-func (s *statelessDeliverServer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	address := util.ExtractRemoteAddress(stream.Context())
+func (s *statelessDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
+	address := util.ExtractRemoteAddress(srv.Context())
 	fmt.Printf("Opening new stream: %s\n", address)
 	for {
 		//TODO: We should normally read the request, because it defines the range of blocks the client wants to receive. However, we currently don't store the blocks and the statuses of their TXs.
-		if _, err := stream.Recv(); err == nil {
-			if s.findStreamIndex(stream) < 0 {
+		if _, err := srv.Recv(); err == nil {
+			if s.findStreamIndex(srv) < 0 {
 				fmt.Printf("Adding stream: %s\n", address)
-				s.addStream(stream)
+				s.addStream(srv)
 			} else {
 				fmt.Printf("Cannot add stream: %s\n", address)
 			}
 		} else {
 			fmt.Printf("Error occurred: %v\n", err)
-			if index := s.findStreamIndex(stream); index >= 0 {
+			if index := s.findStreamIndex(srv); index >= 0 {
 				fmt.Printf("Removing stream: %s\n", address)
 				s.removeStream(index)
 			} else {
@@ -65,7 +66,7 @@ func (s *statelessDeliverServer) Deliver(stream ab.AtomicBroadcast_DeliverServer
 	}
 }
 
-func (s *statelessDeliverServer) addStream(stream ab.AtomicBroadcast_DeliverServer) {
+func (s *statelessDeliverServer) addStream(stream peer.Deliver_DeliverServer) {
 	s.mu.Lock()
 	s.streams = append(s.streams, stream)
 	s.mu.Unlock()
@@ -78,7 +79,7 @@ func (s *statelessDeliverServer) removeStream(index int) {
 	s.mu.Unlock()
 }
 
-func (s *statelessDeliverServer) findStreamIndex(needle ab.AtomicBroadcast_DeliverServer) int {
+func (s *statelessDeliverServer) findStreamIndex(needle peer.Deliver_DeliverServer) int {
 	address := util.ExtractRemoteAddress(needle.Context())
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -88,8 +89,4 @@ func (s *statelessDeliverServer) findStreamIndex(needle ab.AtomicBroadcast_Deliv
 		}
 	}
 	return -1
-}
-
-func (*statelessDeliverServer) Broadcast(ab.AtomicBroadcast_BroadcastServer) error {
-	panic("not implemented")
 }

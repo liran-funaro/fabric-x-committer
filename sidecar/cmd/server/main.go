@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
@@ -16,7 +16,7 @@ import (
 var logger = logging.New("server")
 
 type deliverServer interface {
-	ab.AtomicBroadcastServer
+	Deliver(server peer.Deliver_DeliverServer) error
 	Input() chan<- *common.Block
 }
 
@@ -38,7 +38,7 @@ func main() {
 
 	service := newLedgerDeliverServer(c.Orderer.ChannelID, c.Committer.LedgerPath)
 	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
-		ab.RegisterAtomicBroadcastServer(grpcServer, service)
+		peer.RegisterDeliverServer(grpcServer, &serviceImpl{deliverDelegate: service})
 	})
 
 	s, err := sidecar.New(c.Orderer, c.Committer, creds, signer, m)
@@ -47,4 +47,13 @@ func main() {
 	s.Start(func(commonBlock *common.Block) {
 		service.Input() <- commonBlock
 	})
+}
+
+type serviceImpl struct {
+	peer.UnimplementedDeliverServer
+	deliverDelegate deliverServer
+}
+
+func (i *serviceImpl) Deliver(server peer.Deliver_DeliverServer) error {
+	return i.deliverDelegate.Deliver(server)
 }

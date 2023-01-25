@@ -1,4 +1,4 @@
-package sidecar
+package deliver
 
 import (
 	"flag"

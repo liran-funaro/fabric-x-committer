@@ -1,6 +1,7 @@
 package sidecar
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -76,12 +77,13 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		"\tCommitter:\n"+
 		"\t\tEndpoint: %v\n"+
 		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, orderer.Reconnect, committer.Endpoint, committer.OutputChannelCapacity)
-	ordererListener, err := NewDeliverListener(&DeliverConnectionOpts{
-		ChannelID:   orderer.ChannelID,
-		Endpoint:    orderer.Endpoint,
-		Credentials: creds,
-		Signer:      signer,
-		Reconnect:   orderer.Reconnect,
+	ordererListener, err := deliver.NewListener(&deliver.ConnectionOpts{
+		ClientProvider: &OrdererDeliverClientProvider{},
+		ChannelID:      orderer.ChannelID,
+		Endpoint:       orderer.Endpoint,
+		Credentials:    creds,
+		Signer:         signer,
+		Reconnect:      orderer.Reconnect,
 	})
 	if err != nil {
 		return nil, err

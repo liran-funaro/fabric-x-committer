@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"io"
 	"sync"
 
@@ -16,7 +17,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 )
 
-type serviceImpl struct {
+type ledgerDeliverServer struct {
 	ab.UnimplementedAtomicBroadcastServer
 	streams   []ab.AtomicBroadcast_DeliverServer
 	mu        *sync.RWMutex
@@ -30,7 +31,7 @@ func newLedgerDeliverServer(channelId, ledgerDir string) deliverServer {
 	utils.Must(err)
 	ledger, err := factory.GetOrCreate(channelId)
 	utils.Must(err)
-	i := &serviceImpl{
+	i := &ledgerDeliverServer{
 		streams:   make([]ab.AtomicBroadcast_DeliverServer, 0),
 		mu:        &sync.RWMutex{},
 		input:     make(chan *common.Block, 100),
@@ -47,11 +48,11 @@ func newLedgerDeliverServer(channelId, ledgerDir string) deliverServer {
 	return i
 }
 
-func (i *serviceImpl) Input() chan<- *common.Block {
+func (i *ledgerDeliverServer) Input() chan<- *common.Block {
 	return i.input
 }
 
-func (i *serviceImpl) Deliver(srv ab.AtomicBroadcast_DeliverServer) error {
+func (i *ledgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
 	logger.Debugf("Starting new deliver loop for %s", addr)
 	for {
@@ -70,8 +71,8 @@ func (i *serviceImpl) Deliver(srv ab.AtomicBroadcast_DeliverServer) error {
 			return err
 		}
 
-		err = srv.Send(&ab.DeliverResponse{
-			Type: &ab.DeliverResponse_Status{Status: status},
+		err = srv.Send(&peer.DeliverResponse{
+			Type: &peer.DeliverResponse_Status{Status: status},
 		})
 		if status != common.Status_SUCCESS {
 			return err
@@ -85,7 +86,7 @@ func (i *serviceImpl) Deliver(srv ab.AtomicBroadcast_DeliverServer) error {
 	}
 }
 
-func (i *serviceImpl) deliverBlocks(addr string, srv ab.AtomicBroadcast_DeliverServer, envelope *common.Envelope) (common.Status, error) {
+func (i *ledgerDeliverServer) deliverBlocks(addr string, srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
 
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
@@ -115,7 +116,7 @@ func (i *serviceImpl) deliverBlocks(addr string, srv ab.AtomicBroadcast_DeliverS
 			return status, nil
 		}
 
-		if err := srv.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}); err != nil {
+		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
 			logger.Infof("internal server error occurred %s", err)
 			return common.Status_INTERNAL_SERVER_ERROR, err
 		}
@@ -130,7 +131,7 @@ func (i *serviceImpl) deliverBlocks(addr string, srv ab.AtomicBroadcast_DeliverS
 	return common.Status_SUCCESS, nil
 }
 
-func (i *serviceImpl) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
+func (i *ledgerDeliverServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
 	seekInfo := &ab.SeekInfo{}
 	if err := proto.Unmarshal(payload, seekInfo); err != nil {
 		return nil, 0, errors.New("malformed seekInfo payload")
@@ -162,8 +163,4 @@ func (i *serviceImpl) getCursor(payload []byte) (blockledger.Iterator, uint64, e
 	default:
 		panic("unknown type")
 	}
-}
-
-func (*serviceImpl) Broadcast(ab.AtomicBroadcast_BroadcastServer) error {
-	panic("not implemented")
 }

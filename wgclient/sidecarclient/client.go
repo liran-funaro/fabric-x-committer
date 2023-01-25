@@ -1,6 +1,7 @@
 package sidecarclient
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"sync"
 	"sync/atomic"
 
@@ -66,13 +67,14 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		"\tOrderers: %v (channel: %s, signed envelopes: %v)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID, opts.SignedEnvelopes)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
-	listener, err := sidecar.NewDeliverListener(&sidecar.DeliverConnectionOpts{
-		Credentials: opts.SidecarCredentials,
-		Signer:      opts.SidecarSigner,
-		ChannelID:   opts.ChannelID,
-		Endpoint:    opts.SidecarEndpoint,
-		Reconnect:   -1,
-		StartBlock:  0,
+	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
+		ClientProvider: &PeerDeliverClientProvider{},
+		Credentials:    opts.SidecarCredentials,
+		Signer:         opts.SidecarSigner,
+		ChannelID:      opts.ChannelID,
+		Endpoint:       opts.SidecarEndpoint,
+		Reconnect:      -1,
+		StartBlock:     0,
 	})
 	if err != nil {
 		return nil, err

@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"os"
 	"time"
 
@@ -45,18 +46,19 @@ func main() {
 	flag.Int64Var(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
 		"Acceptable values:"+
 		"%d (or %d) to start from oldest (or newest) and keep at it indefinitely."+
-		"N >= 0 to fetch starting from block N.", sidecar.SeekSinceOldestBlock, sidecar.SeekSinceNewestBlock))
+		"N >= 0 to fetch starting from block N.", deliver.SeekSinceOldestBlock, deliver.SeekSinceNewestBlock))
 	flag.Parse()
 
 	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId)
 
-	listener, err := sidecar.NewDeliverListener(&sidecar.DeliverConnectionOpts{
-		ChannelID:   channelID,
-		Endpoint:    serverAddr,
-		Credentials: creds,
-		Signer:      signer,
-		Reconnect:   10 * time.Second,
-		StartBlock:  seek,
+	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
+		ClientProvider: &sidecar.OrdererDeliverClientProvider{},
+		ChannelID:      channelID,
+		Endpoint:       serverAddr,
+		Credentials:    creds,
+		Signer:         signer,
+		Reconnect:      10 * time.Second,
+		StartBlock:     seek,
 	})
 	if err != nil {
 		return
