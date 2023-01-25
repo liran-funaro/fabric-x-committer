@@ -20,8 +20,15 @@ func TestConfigs(t *testing.T) {
 	i := NewTestInstance()
 	outputCh := i.StartOutputWriter()
 
-	i.SubmitToOrderer(createBlock(0, 0), createBlock(1, 0), createBlock(2, 0))
+	i.SubmitToOrderer(ordererRequest{createBlock(0, 1), []int{0}},
+		ordererRequest{createBlock(1, 4), []int{0, 1, 2, 3}},
+		ordererRequest{createBlock(2, 2), []int{0, 1}})
 	i.AssertReceivedBlocks(outputCh, 0, 2)
+}
+
+type ordererRequest struct {
+	block    *common.Block
+	excluded []int
 }
 
 func TestBaseCase(t *testing.T) {
@@ -29,18 +36,48 @@ func TestBaseCase(t *testing.T) {
 	i := NewTestInstance()
 	outputCh := i.StartOutputWriter()
 
-	i.SubmitToOrderer(createBlock(0, 0), createBlock(1, 3))
-	i.ReturnFromCommitter(createValidStatus(1, 1),
+	i.SubmitToOrderer(
+		ordererRequest{createBlock(0, 2), []int{0, 1}},
+		ordererRequest{createBlock(1, 3), []int{}})
+	i.ReturnFromCommitter(
+		createValidStatus(1, 1),
 		createValidStatus(1, 2),
 		createValidStatus(1, 0),
 	)
 	i.AssertReceivedBlocks(outputCh, 0, 1)
 
-	i.SubmitToOrderer(createBlock(2, 2), createBlock(3, 2))
-	i.ReturnFromCommitter(createValidStatus(2, 0),
+	i.SubmitToOrderer(
+		ordererRequest{createBlock(2, 2), []int{}},
+		ordererRequest{createBlock(3, 2), []int{}})
+	i.ReturnFromCommitter(
+		createValidStatus(2, 0),
 		createValidStatus(2, 1),
 		createValidStatus(3, 0),
 		createValidStatus(3, 1),
+	)
+	i.AssertReceivedBlocks(outputCh, 2, 3)
+}
+
+func TestMixedConfigs(t *testing.T) {
+	test.FailHandler(t)
+	i := NewTestInstance()
+	outputCh := i.StartOutputWriter()
+
+	i.SubmitToOrderer(
+		ordererRequest{createBlock(0, 2), []int{0, 1}},
+		ordererRequest{createBlock(1, 3), []int{1}})
+	i.ReturnFromCommitter(
+		createValidStatus(1, 1),
+		createValidStatus(1, 0),
+	)
+	i.AssertReceivedBlocks(outputCh, 0, 1)
+
+	i.SubmitToOrderer(
+		ordererRequest{createBlock(2, 2), []int{1}},
+		ordererRequest{createBlock(3, 2), []int{0}})
+	i.ReturnFromCommitter(
+		createValidStatus(2, 0),
+		createValidStatus(3, 0),
 	)
 	i.AssertReceivedBlocks(outputCh, 2, 3)
 }
@@ -50,14 +87,19 @@ func TestBlockInReverseOrder(t *testing.T) {
 	i := NewTestInstance()
 	outputCh := i.StartOutputWriter()
 
-	i.SubmitToOrderer(createBlock(0, 0), createBlock(1, 2), createBlock(2, 2))
-	i.ReturnFromCommitter(createValidStatus(1, 1),
+	i.SubmitToOrderer(
+		ordererRequest{createBlock(0, 2), []int{0, 1}},
+		ordererRequest{createBlock(1, 2), []int{}},
+		ordererRequest{createBlock(2, 2), []int{}})
+	i.ReturnFromCommitter(
+		createValidStatus(1, 1),
 		createValidStatus(2, 0),
 		createValidStatus(2, 1),
 	)
 	i.AssertReceivedBlocks(outputCh, 0, 0)
 
-	i.ReturnFromCommitter(createValidStatus(1, 0))
+	i.ReturnFromCommitter(
+		createValidStatus(1, 0))
 	i.AssertReceivedBlocks(outputCh, 1, 2)
 }
 
@@ -67,20 +109,28 @@ func TestParallel(t *testing.T) {
 	outputCh := i.StartOutputWriter()
 
 	go func() {
-		i.SubmitToOrderer(createBlock(0, 0), createBlock(1, 2), createBlock(2, 2))
-		i.ReturnFromCommitter(createValidStatus(1, 1),
+		i.SubmitToOrderer(
+			ordererRequest{createBlock(0, 1), []int{0}},
+			ordererRequest{createBlock(1, 2), []int{}},
+			ordererRequest{createBlock(2, 2), []int{}})
+		i.ReturnFromCommitter(
+			createValidStatus(1, 1),
 			createValidStatus(2, 0),
 			createValidStatus(2, 1),
 		)
 	}()
 	go func() {
-		i.SubmitToOrderer(createBlock(3, 2), createBlock(4, 2))
-		i.ReturnFromCommitter(createValidStatus(4, 0),
+		i.SubmitToOrderer(
+			ordererRequest{createBlock(3, 2), []int{}},
+			ordererRequest{createBlock(4, 2), []int{}})
+		i.ReturnFromCommitter(
+			createValidStatus(4, 0),
 			createValidStatus(4, 1),
 			createValidStatus(3, 0),
 			createValidStatus(3, 1),
 		)
-		i.ReturnFromCommitter(createValidStatus(1, 0))
+		i.ReturnFromCommitter(
+			createValidStatus(1, 0))
 	}()
 
 	i.AssertReceivedBlocks(outputCh, 0, 4)
@@ -109,9 +159,9 @@ func NewTestInstance() *testInstance {
 	}
 }
 
-func (i *testInstance) SubmitToOrderer(blocks ...*common.Block) {
-	for _, block := range blocks {
-		i.aggregator.AddSubmittedBlock(block, len(block.Data.Data))
+func (i *testInstance) SubmitToOrderer(requests ...ordererRequest) {
+	for _, request := range requests {
+		i.aggregator.AddSubmittedBlock(request.block, request.excluded)
 	}
 }
 

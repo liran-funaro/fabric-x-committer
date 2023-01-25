@@ -32,7 +32,7 @@ func BenchmarkTxStatusAggregatorSerial(b *testing.B) {
 						block := createBlock(n, blockSize)
 						b.StartTimer()
 
-						t.SubmitToOrderer(block)
+						t.SubmitToOrderer(ordererRequest{block, []int{}})
 						for p := uint64(0); p < parts; p++ {
 							b.StopTimer()
 							statuses := createValidStatuses(n, p*partSize, uint64(utils.Min(int((p+1)*partSize), int(blockSize))))
@@ -63,7 +63,7 @@ func BenchmarkTxStatusAggregatorParallel(b *testing.B) {
 							n := atomic.AddUint64(&blocks, 1) - 1
 							block := createBlock(n, blockSize)
 
-							t.SubmitToOrderer(block)
+							t.SubmitToOrderer(ordererRequest{block, []int{}})
 							for p := uint64(0); p < parts; p++ {
 								statuses := createValidStatuses(n, p*partSize, uint64(utils.Min(int((p+1)*partSize), int(blockSize))))
 								delayGenerator.Next()

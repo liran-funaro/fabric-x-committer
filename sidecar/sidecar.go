@@ -42,7 +42,7 @@ type CommitterSubmitterListener interface {
 type PostCommitAggregator interface {
 	//AddSubmittedBlock adds a TX block to the aggregator and keeps a list of the (non-config, non-issue) TXs that have not been validated by the committer.
 	//Once we collect the statuses of all TXs from the committer, the block is marked as complete and can be output (after all previous blocks have been output).
-	AddSubmittedBlock(block *common.Block, expected int)
+	AddSubmittedBlock(block *common.Block, excluded []int)
 	//AddCommittedBatch registers to the aggregator a batch of (in)validated TXs that came from the committer.
 	//A batch contains TXs belonging to different blocks.
 	//Once we collect all TXs that belong to a specific block, that block is marked as complete.
@@ -113,8 +113,8 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 				//}
 				s.metrics.InTxs.Add(len(b.Data.Data))
 			}
-			block := mapBlock(b)
-			s.postCommitAggregator.AddSubmittedBlock(b, len(block.Txs))
+			block, excluded := mapBlock(b)
+			s.postCommitAggregator.AddSubmittedBlock(b, excluded)
 			if len(block.Txs) > 0 {
 				s.orderedBlocks <- &workload.BlockWithExpectedResult{
 					Block: block,
@@ -154,17 +154,18 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	})
 }
 
-func mapBlock(block *common.Block) *token.Block {
+func mapBlock(block *common.Block) (*token.Block, []int) {
+	excluded := make([]int, 0)
 	txs := make([]*token.Tx, 0, len(block.Data.Data))
-	for _, msg := range block.Data.Data {
+	for i, msg := range block.Data.Data {
 		//TODO: We can improve performance by checking the type only of the first TX, if we can guarantee that a block cannot contain config envelopes and message envelopes at the same time.
 		if data, channelHeader, err := serialization.UnwrapEnvelope(msg); err != nil {
 			logger.Infof("error occurred: %v", err)
-			return nil
+			panic(err)
 		} else if isConfigTx(channelHeader) {
-			continue
+			excluded = append(excluded, i)
 		} else if tx := serialization.UnmarshalTx(data); isIssueTx(tx) {
-			continue
+			excluded = append(excluded, i)
 		} else {
 			txs = append(txs, tx)
 		}
@@ -172,7 +173,7 @@ func mapBlock(block *common.Block) *token.Block {
 	return &token.Block{
 		Number: block.Header.Number,
 		Txs:    txs,
-	}
+	}, excluded
 }
 
 func isConfigTx(channelHeader *common.ChannelHeader) bool {
