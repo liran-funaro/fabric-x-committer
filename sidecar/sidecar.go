@@ -19,9 +19,9 @@ import (
 
 var logger = logging.New("sidecar")
 
-//OrdererListener connects to the orderer, and only listens for orderered blocks
-type OrdererListener interface {
-	RunOrdererOutputListener(onOrderedBlockReceive func(block *common.Block)) error
+//DeliverListener connects to the orderer, and only listens for orderered blocks
+type DeliverListener interface {
+	RunDeliverOutputListener(onOrderedBlockReceive func(block *common.Block)) error
 }
 
 //CommitterSubmitterListener connects to the committer (i.e. the coordinator of the committer), and submits blocks and listens for status batches.
@@ -51,7 +51,7 @@ type PostCommitAggregator interface {
 }
 
 type Sidecar struct {
-	ordererListener      OrdererListener
+	ordererListener      DeliverListener
 	committerAdapter     CommitterSubmitterListener
 	orderedBlocks        chan *workload.BlockWithExpectedResult
 	postCommitAggregator PostCommitAggregator
@@ -76,7 +76,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		"\tCommitter:\n"+
 		"\t\tEndpoint: %v\n"+
 		"\t\tOutput channel capacity: %d\n", orderer.Endpoint, orderer.ChannelID, orderer.Reconnect, committer.Endpoint, committer.OutputChannelCapacity)
-	ordererListener, err := NewFabricOrdererListener(&FabricOrdererConnectionOpts{
+	ordererListener, err := NewDeliverListener(&DeliverConnectionOpts{
 		ChannelID:   orderer.ChannelID,
 		Endpoint:    orderer.Endpoint,
 		Credentials: creds,
@@ -101,7 +101,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	logger.Infof("Starting up sidecar\n")
 	go func() {
-		utils.Must(s.ordererListener.RunOrdererOutputListener(func(b *common.Block) {
+		utils.Must(s.ordererListener.RunDeliverOutputListener(func(b *common.Block) {
 			logger.Infof("Received block %d from orderer", b.Header.Number)
 			logger.Debugf("Block: %v", b)
 			if s.metrics.Enabled {

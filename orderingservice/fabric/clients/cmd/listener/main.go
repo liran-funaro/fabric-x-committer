@@ -50,7 +50,7 @@ func main() {
 
 	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId)
 
-	listener, err := sidecar.NewFabricOrdererListener(&sidecar.FabricOrdererConnectionOpts{
+	listener, err := sidecar.NewDeliverListener(&sidecar.DeliverConnectionOpts{
 		ChannelID:   channelID,
 		Endpoint:    serverAddr,
 		Credentials: creds,
@@ -64,7 +64,7 @@ func main() {
 
 	m := cmd.LaunchSimpleThroughputMetrics(prometheusAddr, "listener", metrics.In)
 
-	utils.Must(listener.RunOrdererOutputListener(func(block *common.Block) {
+	utils.Must(listener.RunDeliverOutputListener(func(block *common.Block) {
 		if !quiet {
 			fmt.Println("Received block: ")
 			err := protolator.DeepMarshalJSON(os.Stdout, block)

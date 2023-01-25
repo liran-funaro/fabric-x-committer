@@ -28,6 +28,7 @@ type OrdererClientConfig struct {
 type CommitterClientConfig struct {
 	Endpoint              connection.Endpoint `mapstructure:"endpoint"`
 	OutputChannelCapacity int                 `mapstructure:"output-channel-capacity"`
+	LedgerPath            string              `mapstructure:"ledger-path"`
 }
 
 func ReadConfig() SidecarConfig {
@@ -48,4 +49,5 @@ func init() {
 
 	viper.SetDefault("sidecar.committer.endpoint", ":5002")
 	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
+	viper.SetDefault("sidecar.committer.ledger-path", "./ledger/")
 }

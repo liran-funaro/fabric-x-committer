@@ -87,6 +87,7 @@ all:
               service_port: 5050
               prometheus_exporter_port: 2114
               creds_dir: "{{root_path}}/orderer-creds/"
+              ledger_dir: "{{config_dir + '/ledger'}}"
 
         monitoring:
           hosts:

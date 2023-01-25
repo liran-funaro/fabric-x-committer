@@ -1,21 +1,24 @@
 package main
 
 import (
-	"fmt"
-	"sync"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	"github.com/hyperledger/fabric/common/util"
-	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
+
+var logger = logging.New("server")
+
+type deliverServer interface {
+	ab.AtomicBroadcastServer
+	Input() chan<- *common.Block
+}
 
 func main() {
 	config.ServerConfig("sidecar")
@@ -33,91 +36,15 @@ func main() {
 
 	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Sidecar, m)
 
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
-		ab.RegisterAtomicBroadcastServer(grpcServer, newSidecarService(c.Orderer, c.Committer, creds, signer, m))
+	service := newLedgerDeliverServer(c.Orderer.ChannelID, c.Committer.LedgerPath)
+	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
+		ab.RegisterAtomicBroadcastServer(grpcServer, service)
 	})
 
-}
+	s, err := sidecar.New(c.Orderer, c.Committer, creds, signer, m)
+	utils.Must(err)
 
-type serviceImpl struct {
-	ab.UnimplementedAtomicBroadcastServer
-	streams []ab.AtomicBroadcast_DeliverServer
-	mu      *sync.RWMutex
-}
-
-func newSidecarService(ordererConfig *sidecar.OrdererClientConfig, committerConfig *sidecar.CommitterClientConfig, credentials credentials.TransportCredentials, signer msp.SigningIdentity, metrics *metrics.Metrics) *serviceImpl {
-	s, err := sidecar.New(ordererConfig, committerConfig, credentials, signer, metrics)
-	if err != nil {
-		panic(err)
-	}
-
-	i := &serviceImpl{
-		streams: make([]ab.AtomicBroadcast_DeliverServer, 0),
-		mu:      &sync.RWMutex{},
-	}
-
-	go s.Start(func(commonBlock *common.Block) {
-		fmt.Printf("Sending out block %v to %d clients\n", commonBlock.Header.Number, len(i.streams))
-		response := &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{commonBlock}}
-		i.mu.RLock()
-		for _, stream := range i.streams {
-			_ = stream.Send(response)
-		}
-		i.mu.RUnlock()
+	s.Start(func(commonBlock *common.Block) {
+		service.Input() <- commonBlock
 	})
-	return i
-}
-
-func (i *serviceImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	address := util.ExtractRemoteAddress(stream.Context())
-	fmt.Printf("Opening new stream: %s\n", address)
-	for {
-		//TODO: We should normally read the request, because it defines the range of blocks the client wants to receive. However, we currently don't store the blocks and the statuses of their TXs.
-		if _, err := stream.Recv(); err == nil {
-			if i.findStreamIndex(stream) < 0 {
-				fmt.Printf("Adding stream: %s\n", address)
-				i.addStream(stream)
-			} else {
-				fmt.Printf("Cannot add stream: %s\n", address)
-			}
-		} else {
-			fmt.Printf("Error occurred: %v\n", err)
-			if index := i.findStreamIndex(stream); index >= 0 {
-				fmt.Printf("Removing stream: %s\n", address)
-				i.removeStream(index)
-			} else {
-				fmt.Printf("Could not remove stream: %s\n", address)
-			}
-			return err
-		}
-	}
-}
-
-func (i *serviceImpl) addStream(stream ab.AtomicBroadcast_DeliverServer) {
-	i.mu.Lock()
-	i.streams = append(i.streams, stream)
-	i.mu.Unlock()
-}
-
-func (i *serviceImpl) removeStream(index int) {
-	i.mu.Lock()
-	i.streams[index] = i.streams[len(i.streams)-1]
-	i.streams = i.streams[:len(i.streams)-1]
-	i.mu.Unlock()
-}
-
-func (i *serviceImpl) findStreamIndex(needle ab.AtomicBroadcast_DeliverServer) int {
-	address := util.ExtractRemoteAddress(needle.Context())
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	for i, stream := range i.streams {
-		if util.ExtractRemoteAddress(stream.Context()) == address {
-			return i
-		}
-	}
-	return -1
-}
-
-func (*serviceImpl) Broadcast(ab.AtomicBroadcast_BroadcastServer) error {
-	panic("not implemented")
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
@@ -23,11 +24,6 @@ type VerificationKeySetter interface {
 	SetVerificationKey(signature.PublicKey) error
 }
 
-//SidecarListener connects to the sidecar and listens for committed blocks
-type SidecarListener interface {
-	StartListening(onBlockReceived func(*common.Block), onError func(error))
-}
-
 //OrdererSubmitter connects to the orderers, establishes one or more streams with each, and broadcasts serialized envelopes to all streams.
 type OrdererSubmitter interface {
 	//Streams returns all streams to the ordering service
@@ -38,13 +34,16 @@ type OrdererSubmitter interface {
 
 type ClientInitOptions struct {
 	CommitterEndpoint connection.Endpoint
-	SidecarEndpoint   connection.Endpoint
 
-	Credentials      credentials.TransportCredentials
-	Signer           msp.SigningIdentity
-	ChannelID        string
-	SignedEnvelopes  bool
-	OrdererEndpoints []*connection.Endpoint
+	SidecarEndpoint    connection.Endpoint
+	SidecarCredentials credentials.TransportCredentials
+	SidecarSigner      msp.SigningIdentity
+
+	OrdererEndpoints   []*connection.Endpoint
+	OrdererCredentials credentials.TransportCredentials
+	OrdererSigner      msp.SigningIdentity
+	ChannelID          string
+	SignedEnvelopes    bool
 
 	Parallelism          int
 	InputChannelCapacity int
@@ -55,7 +54,7 @@ type ClientInitOptions struct {
 //2. the sidecar where it listens for committed blocks
 type Client struct {
 	committerClient    VerificationKeySetter
-	sidecarListener    SidecarListener
+	sidecarListener    sidecar.DeliverListener
 	ordererBroadcaster OrdererSubmitter
 	envelopeCreator    EnvelopeCreator
 }
@@ -67,7 +66,14 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		"\tOrderers: %v (channel: %s, signed envelopes: %v)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID, opts.SignedEnvelopes)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
-	listener, err := newSidecarListener(opts.SidecarEndpoint)
+	listener, err := sidecar.NewDeliverListener(&sidecar.DeliverConnectionOpts{
+		Credentials: opts.SidecarCredentials,
+		Signer:      opts.SidecarSigner,
+		ChannelID:   opts.ChannelID,
+		Endpoint:    opts.SidecarEndpoint,
+		Reconnect:   -1,
+		StartBlock:  0,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +81,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	sent := uint64(0)
 	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
 		Endpoints:            opts.OrdererEndpoints,
-		Credentials:          opts.Credentials,
+		Credentials:          opts.OrdererCredentials,
 		Parallelism:          len(opts.OrdererEndpoints),
 		InputChannelCapacity: opts.InputChannelCapacity,
 		OnAck: func(err error) {
@@ -85,7 +91,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 			}
 		},
 	})
-	envelopeCreator := NewEnvelopeCreator(opts.ChannelID, opts.Signer, opts.SignedEnvelopes)
+	envelopeCreator := NewEnvelopeCreator(opts.ChannelID, opts.OrdererSigner, opts.SignedEnvelopes)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +104,8 @@ func (c *Client) SetCommitterKey(publicKey signature.PublicKey) error {
 }
 
 //StartListening listens for incoming committed blocks from sidecar
-func (c *Client) StartListening(onBlock func(*common.Block), onError func(error)) {
-	c.sidecarListener.StartListening(onBlock, onError)
+func (c *Client) StartListening(onBlock func(*common.Block)) {
+	utils.Must(c.sidecarListener.RunDeliverOutputListener(onBlock))
 }
 
 //SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all streams.

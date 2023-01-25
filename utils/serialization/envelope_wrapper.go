@@ -31,11 +31,8 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := protoutil.UnmarshalPayload(envelope.Payload)
-	if err != nil {
-		return nil, nil, err
-	}
-	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+
+	payload, channelHdr, err := ParseEnvelope(envelope)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,4 +49,16 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 		// We are not interested in the data of a config tx
 		return nil, channelHdr, nil
 	}
+}
+
+func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelHeader, error) {
+	payload, err := protoutil.UnmarshalPayload(envelope.Payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		return nil, nil, err
+	}
+	return payload, channelHdr, nil
 }

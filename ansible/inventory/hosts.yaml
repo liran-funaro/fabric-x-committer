@@ -71,6 +71,7 @@ all:
               ansible_host: "tokentestbed7.sl.cloud9.ibm.com"
               service_port: 5050
               creds_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
 
         sidecarclients:
           vars:

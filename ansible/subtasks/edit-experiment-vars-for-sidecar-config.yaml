@@ -9,11 +9,14 @@
     orderer: "{{groups['orderingservices'] | default([]) | map('extract', hostvars) | first}}"
     orderer_endpoint: "{{orderer.ansible_host}}:{{orderer.service_port}}"
     creds_dir: "{{hostvars[sidecar_instance].creds_dir}}"
+    ledger_dir: "{{hostvars[sidecar_instance].ledger_dir}}"
   yedit:
     src: "{{filepath}}"
     edits:
       - key: sidecar.committer.endpoint
         value: "{{committer_endpoint}}"
+      - key: sidecar.committer.ledger-path
+        value: "{{ledger_dir}}"
       - key: sidecar.orderer.endpoint
         value: "{{orderer_endpoint}}"
       - key: sidecar.orderer.channel-id

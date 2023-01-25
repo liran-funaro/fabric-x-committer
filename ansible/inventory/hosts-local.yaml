@@ -118,6 +118,7 @@ all:
               prometheus_exporter_port: 2111
               config_dir: "{{client_config_dir + '/sidecar/'}}"
               creds_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
 
         sidecarclients:
           vars:

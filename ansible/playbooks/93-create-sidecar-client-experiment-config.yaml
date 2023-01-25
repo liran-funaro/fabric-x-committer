@@ -9,7 +9,7 @@
   tasks:
     - name: Modify sidecar-client config
       vars:
-        filepath: "{{src_dir}}{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].config}}"
+        filepath: "{{src_dir}}/{{sidecar_client_instance}}-{{hostvars[sidecar_client_instance].config}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-client-config.yaml
       loop: "{{groups['sidecarclients'] | default([])}}"
       loop_control:

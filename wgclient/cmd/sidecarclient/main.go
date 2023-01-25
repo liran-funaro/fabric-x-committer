@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -25,12 +26,17 @@ func main() {
 	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath, c.CredsPath+"/ca.crt", c.MspDir, c.MspId)
 
 	opts := &sidecarclient.ClientInitOptions{
-		CommitterEndpoint:    c.Committer,
-		SidecarEndpoint:      c.Sidecar,
-		Credentials:          creds,
-		Signer:               signer,
+		CommitterEndpoint: c.Committer,
+
+		OrdererEndpoints:   c.Orderers,
+		OrdererCredentials: creds,
+		OrdererSigner:      signer,
+
+		SidecarEndpoint:    c.Sidecar,
+		SidecarCredentials: insecure.NewCredentials(),
+		SidecarSigner:      nil,
+
 		ChannelID:            c.ChannelID,
-		OrdererEndpoints:     c.Orderers,
 		Parallelism:          c.Parallelism,
 		InputChannelCapacity: c.InputChannelCapacity,
 		SignedEnvelopes:      c.SignedEnvelopes,
@@ -51,15 +57,10 @@ func main() {
 		txs = make(chan *token.Tx)
 	}
 
-	done := make(chan struct{})
+	go client.SendReplicated(txs, func() { tracker.RequestSent(1) })
+
 	client.StartListening(func(block *common.Block) {
 		tracker.ResponseReceived(coordinatorservice.Status_VALID, len(block.Data.Data))
 		fmt.Printf("Block received %d:%d\n", block.Header.Number, len(block.Data.Data))
-	}, func(err error) {
-		close(done)
 	})
-
-	client.SendReplicated(txs, func() { tracker.RequestSent(1) })
-
-	<-done
 }

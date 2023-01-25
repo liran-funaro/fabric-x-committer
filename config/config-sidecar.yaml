@@ -13,6 +13,7 @@ sidecar:
     reconnect: 10s
   committer:
     endpoint: :5002                                             # Overridden by ansible
+    ledger-path: ./ledger                                       # Overridden by ansible
     output-channel-capacity: 20
 
 logging:

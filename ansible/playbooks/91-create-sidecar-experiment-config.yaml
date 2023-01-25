@@ -10,5 +10,5 @@
     - name: Modify sidecar config
       vars:
         sidecar_instance: "{{groups['sidecars'] | first}}"
-        filepath: "{{src_dir}}{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
+        filepath: "{{src_dir}}/{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
       include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml
