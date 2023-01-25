@@ -22,7 +22,7 @@ func main() {
 
 	c := sidecarclient.ReadConfig()
 
-	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath, c.MspDir, c.MspId)
+	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath, c.CredsPath+"/ca.crt", c.MspDir, c.MspId)
 
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint:    c.Committer,

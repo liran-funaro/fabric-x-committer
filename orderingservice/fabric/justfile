@@ -5,7 +5,7 @@
 # bootstrap
 
 # export FABRIC_PATH=your/path/to/fabric
-fabric_path := env_var_or_default('FABRIC_PATH', "/Users/bur/Developer/gocode/src/github.com/hyperledger/fabric")
+fabric_path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/github.com/hyperledger/fabric")
 fabric_bins := fabric_path + "/build/bin"
 
 out := "./out"
@@ -33,7 +33,7 @@ build_fabric:
 cryptogen:
     {{fabric_bins}}/cryptogen \
     generate \
-    --config="./crypto-config.yaml" \
+    --config="./testdata/crypto-config.yaml" \
     --output={{cryptogen_out}}
 
 genesis channel_id:

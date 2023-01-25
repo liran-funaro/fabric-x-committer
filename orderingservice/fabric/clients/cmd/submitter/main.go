@@ -21,6 +21,7 @@ func main() {
 		prometheusAddr   connection.Endpoint
 		credsPath        string
 		configPath       string
+		rootCAPath       string
 		localMspDir      string
 		localMspId       string
 		channelID        string
@@ -32,8 +33,9 @@ func main() {
 
 	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"0.0.0.0", 7050}, {"0.0.0.0", 7051}, {"0.0.0.0", 7052}}, "Orderers to send our TXs.")
 	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
-	flag.StringVar(&credsPath, "credsPath", connection.DefaultOutPath, "The path to the output folder containing the root CA and the client credentials.")
+	flag.StringVar(&credsPath, "credsPath", connection.DefaultCredsPath, "The path to the output folder containing the root CA and the client credentials.")
 	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	flag.StringVar(&rootCAPath, "rootCAPath", connection.DefaultRootCAPath, "The path to the root CA.")
 	flag.StringVar(&localMspDir, "mspDir", connection.DefaultLocalMspDir, "Local MSP Dir.")
 	flag.StringVar(&localMspId, "mspId", connection.DefaultLocalMspId, "Local MSP ID.")
 	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to broadcast to.")
@@ -43,7 +45,7 @@ func main() {
 	flag.BoolVar(&signedEnvs, "signed", true, "Sign envelopes to send to orderer")
 	flag.Parse()
 
-	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId)
+	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId)
 
 	msgsPerGo := messages / goroutines
 	roundMsgs := msgsPerGo * goroutines

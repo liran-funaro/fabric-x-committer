@@ -13,23 +13,24 @@ import (
 )
 
 var (
-	projectPath       = os.Getenv("GOPATH") + "/src/github.com/decentralized-trust-research/scalable-committer/orderingservice/fabric"
-	DefaultOutPath    = projectPath + "/out"
-	DefaultConfigPath = projectPath + "/out"
+	projectPath       = os.Getenv("GOPATH") + "/src/github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric"
+	DefaultCredsPath  = projectPath + "/out/orgs/peerOrganizations/org1.com/peers/peer0.org1.com/"
+	DefaultRootCAPath = projectPath + "/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/ca.crt"
+	DefaultConfigPath = projectPath
 )
 
 const (
 	DefaultLocalMspId  = "Org1"
 	DefaultLocalMspDir = "/msp"
-	rootCAPath         = "/ca.crt"
 )
 
-func GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId string) (credentials.TransportCredentials, msp.SigningIdentity) {
-	logger.Infof("Initialize creds:"+
+func GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId string) (credentials.TransportCredentials, msp.SigningIdentity) {
+	fmt.Printf("Initialize creds:"+
 		"\tMSP Dir: %s\n"+
 		"\tMSP ID: %s\n"+
-		"\tCreds Dir: %s(/msp, ca.crt)\n"+
-		"\tConfig Path: %s/orderer.yaml", localMspDir, localMspId, credsPath, configPath)
+		"\tCreds Dir: %s/msp\n"+
+		"\tRoot CA Path: %s\n"+
+		"\tConfig Path: %s/orderer.yaml", localMspDir, localMspId, credsPath, rootCAPath, configPath)
 
 	os.Setenv("FABRIC_CFG_PATH", configPath)
 	os.Setenv("ORDERER_GENERAL_TLS_ENABLED", "true")
@@ -63,7 +64,7 @@ func GetDefaultSecurityOpts(credsPath, configPath, localMspDir, localMspId strin
 		os.Exit(0)
 	}
 
-	tlsCredentials, err := tls.LoadTLSCredentials([]string{credsPath + rootCAPath})
+	tlsCredentials, err := tls.LoadTLSCredentials([]string{rootCAPath})
 	if err != nil {
 		fmt.Println("cannot load TLS credentials: :", err)
 		os.Exit(0)

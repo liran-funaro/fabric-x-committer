@@ -27,7 +27,7 @@ func main() {
 	config.ParseFlags()
 
 	c := sidecar.ReadConfig()
-	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath, c.Orderer.MspDir, c.Orderer.MspId)
+	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath, c.Orderer.CredsPath+"/ca.crt", c.Orderer.MspDir, c.Orderer.MspId)
 
 	m := metrics.New(c.Prometheus.IsEnabled())
 
