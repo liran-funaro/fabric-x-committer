@@ -1,5 +1,13 @@
 sidecar:
-  endpoint: :5000                                               # Overridden by ansible
+  server:
+    endpoint: :5000                                             # Overridden by ansible
+    keep-alive:
+      params:
+        time: 300s
+        timeout: 600s
+      enforcement-policy:
+        min-time: 60s
+        permit-without-stream: false
   prometheus:                                                   # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268

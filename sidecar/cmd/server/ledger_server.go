@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/hyperledger/fabric-protos-go/peer"
 	"io"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/common/metrics/disabled"
@@ -42,7 +42,9 @@ func newLedgerDeliverServer(channelId, ledgerDir string) deliverServer {
 	go func() {
 		for {
 			commonBlock := <-i.input
+			logger.Debugf("Appending block %d to ledger.\n", commonBlock.Header.Number)
 			utils.Must(i.ledger.Append(commonBlock))
+			logger.Debugf("Appended block %d to ledger.\n", commonBlock.Header.Number)
 		}
 	}()
 	return i
@@ -54,10 +56,11 @@ func (i *ledgerDeliverServer) Input() chan<- *common.Block {
 
 func (i *ledgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
-	logger.Debugf("Starting new deliver loop for %s", addr)
+	logger.Infof("Starting new deliver loop for %s", addr)
 	for {
-		logger.Debugf("Attempting to read seek info message from %s", addr)
+		logger.Infof("Attempting to read seek info message from %s", addr)
 		envelope, err := srv.Recv()
+		logger.Infof("Received seek info message from %s", addr)
 		if err == io.EOF {
 			logger.Infof("Received EOF from %s,", addr)
 			return nil
@@ -66,45 +69,42 @@ func (i *ledgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 			return err
 		}
 
-		status, err := i.deliverBlocks(addr, srv, envelope)
+		status, err := i.deliverBlocks(srv, envelope)
 		if err != nil {
+			logger.Infof("Failed delivering to %s with status %v: %v", addr, status, err)
 			return err
 		}
+		logger.Infof("Done delivering to %s", addr)
 
 		err = srv.Send(&peer.DeliverResponse{
 			Type: &peer.DeliverResponse_Status{Status: status},
 		})
-		if status != common.Status_SUCCESS {
-			return err
-		}
+
 		if err != nil {
 			logger.Infof("Error sending to %s: %s", addr, err)
 			return err
 		}
 
-		logger.Debugf("Waiting for new SeekInfo from %s", addr)
+		logger.Infof("Waiting for new SeekInfo from %s", addr)
 	}
 }
 
-func (i *ledgerDeliverServer) deliverBlocks(addr string, srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
+func (i *ledgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
 
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
-		logger.Infof("error parsing envelope from %s: %s", addr, err)
-		return common.Status_BAD_REQUEST, nil
+		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
 	}
 
 	if chdr.ChannelId != i.channelId {
 		// Note, we log this at DEBUG because SDKs will poll waiting for channels to be created
 		// So we would expect our log to be somewhat flooded with these
-		logger.Debugf("Rejecting deliver for %s because channel %s not found", addr, chdr.ChannelId)
-		return common.Status_NOT_FOUND, nil
+		return common.Status_NOT_FOUND, errors.New("channel not found")
 	}
 
 	cursor, stopNum, err := i.getCursor(payload.Data)
 	if err != nil {
-		logger.Infof("bad request: %v", err)
-		return common.Status_BAD_REQUEST, nil
+		return common.Status_BAD_REQUEST, err
 	}
 	logger.Debugf("Received seekInfo.")
 
@@ -112,22 +112,18 @@ func (i *ledgerDeliverServer) deliverBlocks(addr string, srv peer.Deliver_Delive
 		block, status := cursor.Next()
 
 		if status != common.Status_SUCCESS {
-			logger.Errorf("error reading from channel: %v", status)
-			return status, nil
+			return status, errors.New("error reading from channel")
 		}
 
 		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
-			logger.Infof("internal server error occurred %s", err)
-			return common.Status_INTERNAL_SERVER_ERROR, err
+			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
 		}
+		logger.Infof("Successfuly sent block %d:%d to client.\n", block.Header.Number, len(block.Data.Data))
 
 		if stopNum == block.Header.Number {
 			break
 		}
 	}
-
-	logger.Debugf("Done delivering to %s", addr)
-
 	return common.Status_SUCCESS, nil
 }
 
@@ -161,6 +157,6 @@ func (i *ledgerDeliverServer) getCursor(payload []byte) (blockledger.Iterator, u
 		}
 		return cursor, stop.Specified.Number, nil
 	default:
-		panic("unknown type")
+		return nil, 0, errors.New("unknown type")
 	}
 }

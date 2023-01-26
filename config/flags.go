@@ -28,7 +28,7 @@ func ParseFlags() {
 }
 
 func ServerConfig(component string) {
-	String("server", component+".endpoint", "Where the server listens for incoming connections")
+	String("server", component+".server.endpoint", "Where the server listens for incoming connections")
 	Bool("prometheus-latency-endpoint", component+".prometheus.latency-endpoint", "Where jaeger listens for incoming connections")
 	String("prometheus-endpoint", component+".prometheus.endpoint", "Where prometheus listens for incoming connections")
 }

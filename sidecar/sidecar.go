@@ -104,8 +104,6 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	logger.Infof("Starting up sidecar\n")
 	go func() {
 		utils.Must(s.ordererListener.RunDeliverOutputListener(func(b *common.Block) {
-			logger.Infof("Received block %d from orderer", b.Header.Number)
-			logger.Debugf("Block: %v", b)
 			if s.metrics.Enabled {
 				s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
 				//for txNum := uint64(0); txNum < uint64(len(t.Block.Data.Data)); txNum++ {

@@ -23,7 +23,7 @@ func BenchmarkCoordinator(b *testing.B) {
 	)
 	c := &pipeline.CoordinatorConfig{
 		Prometheus: monitoring.Prometheus{},
-		Endpoint:   connection.Endpoint{},
+		Server:     &connection.ServerConfig{Endpoint: connection.Endpoint{}},
 		SigVerifiers: &pipeline.SigVerifierMgrConfig{
 			Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
 		},

@@ -10,7 +10,7 @@
   yedit:
     src: "{{dst_filepath}}"
     edits:
-      - key: "{{config_root}}.endpoint"
+      - key: "{{config_root}}.server.endpoint"
         value: "{{endpoint}}"
       - key: "{{config_root}}.prometheus.endpoint"
         value: ":{{hostvar_instance.prometheus_exporter_port}}"

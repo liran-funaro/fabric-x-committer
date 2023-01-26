@@ -90,7 +90,7 @@ func main() {
 	c := pipeline.ReadConfig()
 
 	bQueue := make(chan *token.Block, 1000)
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
 		coordinatorservice.RegisterCoordinatorServer(grpcServer, &mockService{bQueue: bQueue})
 	})
 }

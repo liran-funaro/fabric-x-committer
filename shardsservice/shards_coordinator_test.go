@@ -24,10 +24,10 @@ type shardsCoordinatorGrpcServiceForTest struct {
 func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoordinatorGrpcServiceForTest {
 	c := ShardServiceConfig{
 		Prometheus: monitoring.Prometheus{},
-		Endpoint: connection.Endpoint{
+		Server: &connection.ServerConfig{Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: port,
-		},
+		}},
 		Database: &DatabaseConfig{
 			Type:    "rocksdb",
 			RootDir: "./",
@@ -44,13 +44,13 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 
 	var grpcServer *grpc.Server
 	sc := NewShardsCoordinator(c.Database, c.Limits, metrics.New(false))
-	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
+	go connection.RunServerMain(c.Server, func(server *grpc.Server) {
 		log.Print("created shards coordinator")
 		grpcServer = server
 		RegisterShardsServer(server, sc)
 	})
 
-	clientConn, err := connection.Connect(connection.NewDialConfig(c.Endpoint))
+	clientConn, err := connection.Connect(connection.NewDialConfig(c.Server.Endpoint))
 	require.NoError(t, err)
 
 	return &shardsCoordinatorGrpcServiceForTest{

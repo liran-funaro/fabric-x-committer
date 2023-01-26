@@ -10,10 +10,10 @@ import (
 )
 
 type SidecarConfig struct {
-	Prometheus monitoring.Prometheus  `mapstructure:"prometheus"`
-	Endpoint   connection.Endpoint    `mapstructure:"endpoint"`
-	Orderer    *OrdererClientConfig   `mapstructure:"orderer"`
-	Committer  *CommitterClientConfig `mapstructure:"committer"`
+	Prometheus monitoring.Prometheus    `mapstructure:"prometheus"`
+	Server     *connection.ServerConfig `mapstructure:"server"`
+	Orderer    *OrdererClientConfig     `mapstructure:"orderer"`
+	Committer  *CommitterClientConfig   `mapstructure:"committer"`
 }
 
 type OrdererClientConfig struct {
@@ -40,7 +40,7 @@ func ReadConfig() SidecarConfig {
 }
 
 func init() {
-	viper.SetDefault("sidecar.endpoint", ":1234")
+	viper.SetDefault("sidecar.server.endpoint", ":1234")
 	viper.SetDefault("sidecar.prometheus.endpoint", ":2112")
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")

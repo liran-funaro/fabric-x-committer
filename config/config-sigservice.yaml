@@ -1,5 +1,6 @@
 sig-verification:
-  endpoint: :5000                                             # Overridden by ansible
+  server:
+    endpoint: :5000                                           # Overridden by ansible
   prometheus:                                                 # Overridden by ansible
     endpoint: :2112
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268

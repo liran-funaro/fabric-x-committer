@@ -40,11 +40,11 @@ type ShardServerInstanceConfig struct {
 }
 
 type CoordinatorConfig struct {
-	Prometheus    monitoring.Prometheus  `mapstructure:"prometheus"`
-	Endpoint      connection.Endpoint    `mapstructure:"endpoint"`
-	SigVerifiers  *SigVerifierMgrConfig  `mapstructure:"sig-verifiers"`
-	ShardsServers *ShardsServerMgrConfig `mapstructure:"shards-servers"`
-	Limits        *LimitsConfig          `mapstructure:"limits"`
+	Prometheus    monitoring.Prometheus    `mapstructure:"prometheus"`
+	Server        *connection.ServerConfig `mapstructure:"server"`
+	SigVerifiers  *SigVerifierMgrConfig    `mapstructure:"sig-verifiers"`
+	ShardsServers *ShardsServerMgrConfig   `mapstructure:"shards-servers"`
+	Limits        *LimitsConfig            `mapstructure:"limits"`
 }
 
 type LimitsConfig struct {
@@ -73,7 +73,7 @@ func init() {
 		{"endpoint": "localhost:5001", "num-shards": 4},
 	})
 
-	viper.SetDefault("coordinator.endpoint", ":5002")
+	viper.SetDefault("coordinator.server.endpoint", ":5002")
 	viper.SetDefault("coordinator.prometheus.endpoint", ":2112")
 	viper.SetDefault("coordinator.prometheus.latency-endpoint", ":14268")
 

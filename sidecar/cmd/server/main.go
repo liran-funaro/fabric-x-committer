@@ -37,7 +37,7 @@ func main() {
 	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Sidecar, m)
 
 	service := newLedgerDeliverServer(c.Orderer.ChannelID, c.Committer.LedgerPath)
-	go connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
+	go connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
 		peer.RegisterDeliverServer(grpcServer, &serviceImpl{deliverDelegate: service})
 	})
 

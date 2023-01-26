@@ -38,8 +38,7 @@ func main() {
 	flag.Int64Var(&profile.Block.Size, "block-size", profile.Block.Size, "The size of the outgoing blocks")
 	flag.Parse()
 
-	creds := connection.LoadCreds(tlsDir+"/server.crt", tlsDir+"/server.key")
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Opts: []grpc.ServerOption{creds}}, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(&connection.ServerConfig{Endpoint: endpoint, Creds: &connection.ServerCredsConfig{tlsDir + "/server.crt", tlsDir + "/server.key"}}, func(grpcServer *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(grpcServer, NewMockOrderer(profile))
 	})
 }

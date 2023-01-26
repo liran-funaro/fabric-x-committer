@@ -72,7 +72,7 @@ func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorserv
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		logger.Debug("Spawning response listener...\n")
+		logger.Infof("Spawning response listener...\n")
 		for {
 			response, err := stream.Recv()
 			if err == io.EOF {
@@ -80,12 +80,12 @@ func (c *CoordinatorAdapter) startCommitterOutputListener(stream coordinatorserv
 				logger.Infof("RECV EOF\n")
 				break
 			}
-
 			if err != nil {
 				logger.Errorf("Closing listerer due to err: %v\n", err)
 				break
 			}
 
+			logger.Infof("Received batch from committer with %d TXs.\n", len(response.GetTxsValidationStatus()))
 			atomic.AddUint64(&c.receivedStatuses, uint64(len(response.GetTxsValidationStatus())))
 
 			onReceive(response)
@@ -146,6 +146,7 @@ func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice
 					return
 				}
 				utils.Must(err)
+				logger.Infof("Sent block %d:%d to coordinator.\n", b.Block.Number, len(b.Block.Txs))
 			}
 			cnt(t, b.Block)
 		}

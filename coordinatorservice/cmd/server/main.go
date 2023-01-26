@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Error while constructing coordinator: %s", err))
 	}
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
+	connection.RunServerMain(c.Server, func(server *grpc.Server) {
 		coordinatorservice.RegisterCoordinatorServer(server, &serviceImpl{Coordinator: coordinator})
 	})
 }

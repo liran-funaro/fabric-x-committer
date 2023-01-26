@@ -91,6 +91,8 @@ func (l *listener) openDeliverStream(onReceive func(*common.Block)) error {
 			logger.Infof("Got status %v", status)
 			return nil
 		}
+		logger.Infof("Received block %d from orderer", block.Header.Number)
+		logger.Debugf("Block: %v", block)
 		l.startBlock = int64(block.Header.Number) + 1
 		onReceive(block)
 	}

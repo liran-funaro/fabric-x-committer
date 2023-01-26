@@ -16,13 +16,13 @@ import (
 func BenchmarkShardsCoordinator(b *testing.B) {
 	c := shardsservice.ReadConfig()
 
-	connection.RunServerMainAndWait(&connection.ServerConfig{Endpoint: c.Endpoint}, func(server *grpc.Server) {
+	connection.RunServerMainAndWait(c.Server, func(server *grpc.Server) {
 		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.IsEnabled())))
 	})
 	//monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, metrics.New(c.Prometheus.Enabled).AllMetrics())
 
 	client, err := connectionUtils.NewClient(connectionUtils.ClientConfig{
-		Connections:        []*connection.DialConfig{connection.NewDialConfig(c.Endpoint)},
+		Connections:        []*connection.DialConfig{connection.NewDialConfig(c.Server.Endpoint)},
 		NumShardsPerServer: 4,
 		Input: connectionUtils.ClientInputConfig{
 			BlockCount:     100_000,

@@ -23,7 +23,7 @@ func main() {
 
 	monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, m)
 
-	connection.RunServerMain(&connection.ServerConfig{Endpoint: c.Endpoint}, func(grpcServer *grpc.Server) {
+	connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
 		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))
 	})
 }
