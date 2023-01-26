@@ -36,12 +36,12 @@ func main() {
 
 	connection.EndpointVar(&serverAddr, "server", connection.Endpoint{"0.0.0.0", 7050}, "The RPC server to connect to.")
 	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
-	flag.StringVar(&channelID, "channelID", "mychannel", "The channel ID to deliver from.")
-	flag.StringVar(&credsPath, "credsPath", connection.DefaultCredsPath, "The path to the output folder containing the root CA and the client credentials.")
-	flag.StringVar(&configPath, "configPath", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
-	flag.StringVar(&rootCAPath, "rootCAPath", connection.DefaultRootCAPath, "The path to the root CA.")
-	flag.StringVar(&localMspDir, "mspDir", connection.DefaultLocalMspDir, "Local MSP Dir.")
-	flag.StringVar(&localMspId, "mspId", connection.DefaultLocalMspId, "Local MSP ID.")
+	flag.StringVar(&channelID, "channel-id", "mychannel", "The channel ID to deliver from.")
+	flag.StringVar(&credsPath, "creds-path", connection.DefaultCredsPath, "The path to the output folder containing the msp directory with the client credentials.")
+	flag.StringVar(&configPath, "config-path", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
+	flag.StringVar(&rootCAPath, "root-ca-path", connection.DefaultRootCAPath, "The path to the root CA.")
+	flag.StringVar(&localMspDir, "msp-dir", connection.DefaultLocalMspDir, "Local MSP Dir.")
+	flag.StringVar(&localMspId, "msp-id", connection.DefaultLocalMspId, "Local MSP ID.")
 	flag.BoolVar(&quiet, "quiet", false, "Only print the block number, will not attempt to print its block contents.")
 	flag.Int64Var(&seek, "seek", -2, fmt.Sprintf("Specify the range of requested blocks."+
 		"Acceptable values:"+

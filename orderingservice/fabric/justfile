@@ -59,12 +59,9 @@ kill:
     tmux kill-session -t "orderer"
 
 run_orderer n=("0"):
-    just run_orderer_on_port {{n}} {{replace(orderer_port, "<<x>>", n)}}
-
-run_orderer_on_port n listen_port:
     ORDERER_GENERAL_LOCALMSPID="Orderer" \
     ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
-    ORDERER_GENERAL_LISTENPORT="{{listen_port}}" \
+    ORDERER_GENERAL_LISTENPORT="{{replace(orderer_port, "<<x>>", n)}}" \
     ORDERER_GENERAL_GENESISFILE="{{out}}/genesisblock" \
     ORDERER_GENERAL_TLS_ENABLED="true" \
     ORDERER_GENERAL_TLS_PRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
@@ -80,11 +77,27 @@ run_orderer_on_port n listen_port:
     ORDERER_CONSENSUS_SNAPDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/snapshot" \
     {{fabric_bins}}/orderer
 
-submit:
-    GOGC=10000 go run clients/cmd/submitter/main.go -channelID {{channelID}} -goroutines 24 -messages 1000000
 
-listen:
-    go run clients/cmd/listener/main.go -channelID {{channelID}} -quiet
+submit out_dir=('') orderers=('0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052') channel_id=(channelID):
+    GOGC=10000 go run clients/cmd/submitter/main.go \
+      {{ if out_dir == '' { '' } else { '-creds-path ' + out_dir } }} \
+      {{ if out_dir == '' { '' } else { '-config-path ' + out_dir } }} \
+      {{ if out_dir == '' { '' } else { '-root-ca-path ' + out_dir + '/ca.crt' } }} \
+      -channel-id {{channel_id}} \
+      -orderers {{orderers}} \
+      -goroutines 40 \
+      -messages 5000000 \
+      -prometheus-endpoint :2112
+
+listen out_dir=('') orderer=('0.0.0.0:7050') channel_id=(channelID):
+    go run clients/cmd/listener/main.go \
+      {{ if out_dir == '' { '' } else { '-creds-path ' + out_dir } }} \
+      {{ if out_dir == '' { '' } else { '-config-path ' + out_dir } }} \
+      {{ if out_dir == '' { '' } else { '-root-ca-path ' + out_dir + '/ca.crt' } }} \
+      -channel-id {{channel_id}} \
+      -quiet \
+      -server {{orderer}} \
+      -prometheus-endpoint :2123
 
 clean:
     rm -rf {{out}}
