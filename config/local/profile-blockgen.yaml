@@ -1,0 +1,16 @@
+block:
+  count: -1
+  size: 100
+conflicts:
+  statistical:
+    doublespends: 0.0
+    invalidsignature: 0.0
+description: some text
+name: profile1
+transaction:
+  signaturetype: ecdsa
+  size:
+  - probability: 1.0
+    value: 2
+  - probability: 0.0
+    value: 8

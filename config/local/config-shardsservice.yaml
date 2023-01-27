@@ -1,0 +1,20 @@
+logging:
+  development: true
+  enabled: true
+  level: INFO
+shards-service:
+  database:
+    root-dir: ./
+    type: rocksdb
+  limits:
+    max-pending-commits-buffer-size: 1000000
+    max-phase-one-processing-workers: 50
+    max-phase-one-response-batch-item-count: 50
+    max-phase-two-processing-workers: 50
+    max-shard-instances-buffer-size: 1000000
+    phase-one-response-cut-timeout: 50ms
+  prometheus:
+    endpoint: :2115
+    latency-endpoint: localhost:14268
+  server:
+    endpoint: :5001
