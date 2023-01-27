@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
 func main() {
@@ -65,6 +66,7 @@ func main() {
 	}
 
 	m := cmd.LaunchSimpleThroughputMetrics(prometheusAddr, "listener", metrics.In)
+	bar := workload.NewProgressBar("Received transactions...", -1, "tx")
 
 	utils.Must(listener.RunDeliverOutputListener(func(block *common.Block) {
 		if !quiet {
@@ -74,8 +76,9 @@ func main() {
 				fmt.Printf("  Error pretty printing block: %s", err)
 			}
 		} else {
-			fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", block.Header.Number, block.XXX_Size(), len(block.Data.Data), len(block.Data.Data[0]))
+			//fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", block.Header.Number, block.XXX_Size(), len(block.Data.Data), len(block.Data.Data[0]))
 		}
 		m.Throughput.Add(len(block.Data.Data))
+		bar.Add(len(block.Data.Data))
 	}))
 }

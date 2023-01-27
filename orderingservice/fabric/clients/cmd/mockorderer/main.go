@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -20,7 +21,7 @@ import (
 )
 
 func main() {
-	tlsDir := os.Getenv("GOPATH") + "/src/github.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls"
+	tlsDir := os.Getenv("GOPATH") + "/src/github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls"
 
 	profile := &workload.Profile{
 		Block: workload.BlockProfile{
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	var endpoint connection.Endpoint
-	connection.EndpointVar(&endpoint, "endpoint", *connection.CreateEndpoint("localhost:7050"), "Endpoint that the orderer listens to.")
+	connection.EndpointVar(&endpoint, "endpoint", *connection.CreateEndpoint("localhost:7051"), "Endpoint that the orderer listens to.")
 	flag.Int64Var(&profile.Block.Size, "block-size", profile.Block.Size, "The size of the outgoing blocks")
 	flag.Parse()
 
@@ -56,21 +57,37 @@ func NewMockOrderer(pp *workload.Profile) *mockOrdererImpl {
 	}
 }
 
-//Broadcast receives TXs and returns ACKs
+// Broadcast receives TXs and returns ACKs
 func (o *mockOrdererImpl) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
-	fmt.Printf("Starting listener for new TXs. No ACKs will be returned.\n")
+	fmt.Printf("Broadcast: Starting listener for new TXs. No ACKs will be returned.\n")
 
-	o.once.Do(func() {
-		workload.StartBockGeneratorOnQueue(o.profile, o.blocks)
-	})
+	//o.once.Do(func() {
+	//	workload.StartBockGeneratorOnQueue(o.profile, o.blocks)
+	//})
 
 	for {
-		_, _ = stream.Recv()
+		_, err := stream.Recv()
+		if err == io.EOF {
+			fmt.Printf("Received EOF from %v, hangup\n", stream)
+			return nil
+		}
+		if err != nil {
+			fmt.Printf("Error reading from %v: %s\n", stream, err)
+			return err
+		}
+
+		err = stream.Send(&ab.BroadcastResponse{
+			Status: common.Status_SUCCESS,
+		})
+		if err != nil {
+			return err
+		}
 	}
 }
 
-//Deliver receives a seek request and returns a stream of the orderered blocks
+// Deliver receives a seek request and returns a stream of the orderered blocks
 func (o *mockOrdererImpl) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
+	fmt.Printf("Deliver: Starting listener for new TXs. No ACKs will be returned.\n")
 
 	seekInfo, channelID, err := readSeekEnvelope(stream)
 	if err != nil {

@@ -6,6 +6,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"sync"
+
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -73,12 +77,34 @@ func main() {
 	message := make([]byte, msgSize)
 	envelopeCreator := sidecarclient.NewEnvelopeCreator(channelID, signer, signedEnvs)
 	env, _ := envelopeCreator.CreateEnvelope(message)
-	for i := uint64(0); i < msgsPerGo; i++ {
-		for _, ch := range s.Streams() {
-			ch.Input() <- env
-		}
-		m.Throughput.Add(len(s.Streams()))
+
+	serializedEnv, err := protoutil.Marshal(env)
+	utils.Must(err)
+	fmt.Printf("Message size: %d\n", len(serializedEnv))
+
+	var wg sync.WaitGroup
+	wg.Add(len(s.Streams()))
+	for _, ch := range s.Streams() {
+		input := ch.Input()
+		go func(out chan<- *common.Envelope) {
+			for i := uint64(0); i < msgsPerGo; i++ {
+				input <- env
+				m.Throughput.Add(1)
+			}
+			wg.Done()
+		}(input)
 	}
+
+	wg.Wait()
+
+	//for i := uint64(0); i < msgsPerGo; i++ {
+	//	// TODO submit asynchronously
+	//	for _, ch := range s.Streams() {
+	//		ch.Input() <- env
+	//	}
+	//	m.Throughput.Add(len(s.Streams()))
+	//}
+
 	utils.Must(s.CloseStreamsAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")

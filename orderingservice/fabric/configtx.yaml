@@ -288,7 +288,7 @@ Orderer: &OrdererDefaults
         # this value will be rejected by ordering.
         # It is recommended not to exceed 49 MB, given the default grpc max message size of 100 MB
         # configured on orderer and peer nodes (and allowing for message expansion during communication).
-        AbsoluteMaxBytes: 10 MB
+        AbsoluteMaxBytes: 16 MB
 
         # Preferred Max Bytes: The preferred maximum number of bytes allowed
         # for the serialized messages in a batch. Roughly, this field may be considered
@@ -301,7 +301,9 @@ Orderer: &OrdererDefaults
         # will contain only that message.  Because messages may be larger than
         # preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed
         # the preferred max bytes, but will always contain exactly one transaction.
-        PreferredMaxBytes: 2 MB
+#        PreferredMaxBytes: 2 MB
+#        PreferredMaxBytes: 4 MB
+        PreferredMaxBytes: 8 MB
 
     # Max Channels is the maximum number of channels to allow on the ordering
     # network. When set to 0, this implies no maximum number of channels.

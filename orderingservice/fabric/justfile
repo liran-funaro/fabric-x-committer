@@ -79,7 +79,7 @@ run_orderer n=("0"):
 
 
 submit out_dir=('') orderers=('0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052') channel_id=(channelID):
-    GOGC=10000 go run clients/cmd/submitter/main.go \
+    GOGC=15000 go run clients/cmd/submitter/main.go \
       {{ if out_dir == '' { '' } else { '-creds-path ' + out_dir } }} \
       {{ if out_dir == '' { '' } else { '-config-path ' + out_dir } }} \
       {{ if out_dir == '' { '' } else { '-root-ca-path ' + out_dir + '/ca.crt' } }} \
