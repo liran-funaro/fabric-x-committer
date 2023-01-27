@@ -6,7 +6,7 @@
     vars:
       target_hosts: sigservices
       service_name: sigservice
-      sigservice_instances: "{{groups[target_hosts] | length}}"
+      sigservice_instances: "{{groups[target_hosts] | d([]) | length}}"
     hosts: sigservices[0:{{sigservice_instances | int - 1}}]
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
@@ -15,7 +15,7 @@
     vars:
       target_hosts: shardsservices
       service_name: shardsservice
-      shardsservice_instances: "{{groups[target_hosts] | length}}"
+      shardsservice_instances: "{{groups[target_hosts] | d([]) | length}}"
     hosts: shardsservices[0:{{shardsservice_instances | int - 1}}]
     tasks:
       - include_tasks: ../subtasks/start-server.yaml
@@ -105,5 +105,59 @@
             - ORDERER_FILELEDGER_LOCATION={{ledger_dir}}
             - ORDERER_CONSENSUS_WALDIR={{ledger_dir}}/etcdraft/wal
             - ORDERER_CONSENSUS_SNAPDIR={{ledger_dir}}/snapshot
+        include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start orderer listeners
+    vars:
+      target_hosts: ordererlisteners
+      service_name: ordererlistener
+      ordererlistener_instances: "{{groups[target_hosts] | d([]) | length}}"
+      orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+      orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+      orderer_endpoint: "{{orderer_endpoints | last}}"
+      channel_id: mychannel
+    hosts: ordererlisteners[0:{{ordererlistener_instances | int - 1}}]
+    tasks:
+      - vars:
+          var_prefix: "-"
+          opts:
+            creds-path: "{{creds_dir}}"
+            config-path: "{{creds_dir}}"
+            root-ca-path: "{{creds_dir}}/ca.crt"
+            quiet: true
+            server: "{{orderer_endpoint}}"
+            channel-id: "{{channel_id}}"
+            prometheus-endpoint: ":{{prometheus_exporter_port}}"
+        include_tasks: ../subtasks/start-server.yaml
+        when: service_name in start
+  - name: Start orderer submitters
+    vars:
+      target_hosts: orderersubmitters
+      service_name: orderersubmitter
+      orderersubmitter_instances: "{{groups[target_hosts] | d([]) | length}}"
+      orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+      orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+      orderer_endpoint: "{{orderer_endpoints | first}}"
+      messages: 1000000
+      message_size: 160
+      connections: 1
+      streams_per_connection: 1
+      channel_id: mychannel
+    hosts: orderersubmitters[0:{{orderersubmitter_instances | int - 1}}]
+    tasks:
+      - vars:
+          var_prefix: "-"
+          opts:
+            creds-path: "{{creds_dir}}"
+            config-path: "{{creds_dir}}"
+            root-ca-path: "{{creds_dir}}/ca.crt"
+            messages: "{{messages}}"
+            size: "{{message_size}}"
+            channel-id: "{{channel_id}}"
+            orderers: "{{range(connections | int) | product([orderer_endpoint]) | map('last') | join(',')}}"
+            goroutines: "{{(streams_per_connection | int) * (connections | int)}}"
+            prometheus-endpoint: ":{{prometheus_exporter_port}}"
+          env:
+            - "GOGC=20000"
         include_tasks: ../subtasks/start-server.yaml
         when: service_name in start

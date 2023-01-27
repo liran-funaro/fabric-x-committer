@@ -13,5 +13,5 @@
   copy:
     src: "{{src_path}}"
     dest: "{{dst_path}}"
-    owner: "{{ansible_user}}"
+#    owner: "{{ansible_user}}"
     mode: "{{mode}}"

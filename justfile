@@ -106,13 +106,13 @@ deploy-base-setup include_bins=('false'):
     just clean-all {{include_bins}} true
     if [[ "{{include_bins}}" = "true" ]]; then \
       just build-committer-bins; \
-      just deploy-committer-bins; \
       just build-orderer-bins; \
-      just deploy-orderer-bins; \
+      just deploy-all-bins; \
     fi
 
-    just build-base-configs
-    just deploy-base-configs
+    just build-committer-configs
+    just build-orderer-configs
+    just deploy-all-configs
 
     just build-creds
     just deploy-creds
@@ -140,15 +140,15 @@ build-orderer-bins local=('true') docker=('true'):
       just build-raft-orderers-docker {{linux-bin-input-dir}}; \
     fi
 
-deploy-committer-bins:
+deploy-all-bins:
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'coordinator_setup', 'mockcoordinator'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-
-deploy-orderer-bins:
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'filenames': ['ordererlistener'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'filenames': ['orderersubmitter'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
 # builds the fabric binaries
@@ -171,6 +171,8 @@ build-committer-local output_dir:
     just build-result-gatherer {{output_dir}}
     just build-sidecar {{output_dir}}
     just build-mock-orderer {{output_dir}}
+    just build-orderer-listener {{output_dir}}
+    just build-orderer-submitter {{output_dir}}
     just build-sidecar-client {{output_dir}}
 
 build-committer-docker output_dir:
@@ -253,29 +255,24 @@ docker-init-orderer out_dir channel_id=(default-channel-id) crypto_config=('$PWD
 # Configs
 #########################
 
-build-base-configs include_orderer_configs=('true') local_src_dir=(config-input-dir) local_dst_dir=(base-setup-config-dir):
-    just empty-dir {{local_dst_dir}}
-    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{local_src_dir}}', 'dst_dir': '{{local_dst_dir}}', 'channel_id': '{{default-channel-id}}'}"
-    if [[ "{{include_orderer_configs}}" = "true" ]]; then \
-      just create-orderer-configs {{local_dst_dir}}; \
-    fi
-
+build-committer-configs:
+    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}'}"
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
-deploy-base-configs include_orderer_configs=('true') local_dst_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{local_dst_dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{local_dst_dir}}'}"
-    if [[ "{{include_orderer_configs}}" = "true" ]]; then \
-      ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{local_dst_dir}}'}"; \
-    fi
+deploy-all-configs:
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'src_dir': '{{base-setup-config-dir}}'}"
 
 # Create config files (configtx.yaml, orderer.yaml, crypto-config.yaml) based on the inventory
-create-orderer-configs output_dir input_dir=('$PWD/config/testdata'):
+build-orderer-configs output_dir=(base-setup-config-dir) input_dir=('$PWD/config/testdata'):
     spruce merge {{input_dir}}/configtx.yaml >> {{output_dir}}/configtx.yaml
     spruce merge {{input_dir}}/orderer.yaml >> {{output_dir}}/orderer.yaml
     spruce merge {{input_dir}}/crypto-config.yaml >> {{output_dir}}/crypto-config.yaml
@@ -305,11 +302,11 @@ docker CMD:
 
 docker-runner-image:
     just build-committer-bins false
-    just deploy-committer-bins
+    just deploy-all-bins
     docker build -f runner/Dockerfile -t sc_runner .
 
-    just build-base-configs false
-    just deploy-base-configs false
+    just build-committer-configs
+    just deploy-all-configs
 
 # creds_dir should contain: msp/, ca.crt, orderer.yaml
 docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(project-dir + '/eval/deployments/configs/'):
@@ -341,8 +338,21 @@ start-mock-coordinator local_src_dir=(base-setup-config-dir):
 start-mock-orderers:
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["mockorderingservice"]}'
 
-start-raft-orderers channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderer"]}'
+run-orderer-experiment connections=('1') streams_per_connection=('1') messages=('1000000') message_size=('160') orderers=('100') channel_id=(default-channel-id):
+    just kill-all
+    just clean-all false false
+    just start-raft-orderers {{orderers}} "{{channel_id}}"
+    just start-orderer-listeners 1 "{{channel_id}}"
+    just start-orderer-submitters 1 {{connections}} {{streams_per_connection}} {{messages}} {{message_size}} "{{channel_id}}"
+
+start-raft-orderers orderers=('100') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderer"], "orderingservice_instances": {{orderers}}}'
+
+start-orderer-listeners listeners=('100') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["ordererlistener"], "ordererlistener_instances": {{listeners}}, "channel_id": "{{channel_id}}"}'
+
+start-orderer-submitters submitters=('100') connections=('1') streams_per_connection=('1') messages=('1000000') message_size=('160') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "messages": {{messages}}, "channel_id": "{{channel_id}}"}'
 
 start-mir-orderers channel_id=(default-channel-id):
     #!/usr/bin/env bash
@@ -459,7 +469,7 @@ gather-results filename:
     {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens "(.ansible_host) + \\\":\\\" + (.prometheus_exporter_port|tostring)") -prometheus-endpoint=$(just list-hosts monitoring "(.ansible_host) + \\\":{{prometheus-scraper-port}}\\\"") -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
 
 kill-all:
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator", "mockcoordinator", "blockgen stream", "mockorderingservice", "sidecar", "sidecarclient", "orderer"], "only_kill": true}'
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator", "mockcoordinator", "blockgen stream", "mockorderingservice", "sidecar", "sidecarclient", "orderer", "ordererlistener", "orderersubmitter"], "only_kill": true}'
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):

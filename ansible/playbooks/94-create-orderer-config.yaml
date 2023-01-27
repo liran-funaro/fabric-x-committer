@@ -63,13 +63,12 @@
       loop_var: instance
   - name: Edit crypto-config
     vars:
-      sidecar: "{{groups['sidecars'] | map('extract', hostvars) | map(attribute='ansible_host') | first}}"
+      orderer_clients: "{{(groups['sidecars'] | d([])) + (groups['ordererlisteners'] | d([])) + (groups['orderersubmitters'] | d([]))}}"
+      orderer_client_hosts: "{{orderer_clients | map('extract', hostvars) | map(attribute='ansible_host') + ['0.0.0.0']}}"
     yedit:
       src: "{{crypto_config_path}}"
       edits:
         - key: OrdererOrgs[0].Specs
           value: "{{specs}}"
         - key: PeerOrgs[0].Template.SANS
-          value:
-            - "{{sidecar}}"
-            - 0.0.0.0 # TODO: AF
+          value: "{{orderer_client_hosts | unique}}"

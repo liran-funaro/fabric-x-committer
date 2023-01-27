@@ -20,9 +20,10 @@
 - name: Runs server
   vars:
     session_name: "{{inventory_hostname}}"
+    var_prefix: "--"
     env_vars: "{{env | d([]) | join(' ')}}"
     options: "{{opts | d({}) | combine({} if config | d('') | length == 0 else {'configs': config_dir + inventory_hostname + '-' + config})}}"
-    flags: "{{['--'] | product(options.keys() | d([])) | map('join') | zip(options.values() | d([])) | map('join', '=') | join(' ')}}"
+    flags: "{{[var_prefix] | product(options.keys() | d([])) | map('join') | zip(options.values() | d([])) | map('join', '=') | join(' ')}}"
   set_fact:
     command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{flags}}"
 - shell:

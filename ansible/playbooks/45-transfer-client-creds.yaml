@@ -3,7 +3,7 @@
 #
 ---
 - name: Transfer creds to sidecar clients
-  hosts: sidecarclients,sidecars
+  hosts: sidecarclients,sidecars,orderersubmitters,ordererlisteners
   vars:
     mode: a+rw
     orderer: "{{groups['orderingservices'] | map('extract', hostvars) | first}}"

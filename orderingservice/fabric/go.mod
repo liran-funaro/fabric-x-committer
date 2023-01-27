@@ -7,9 +7,10 @@ require (
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-config v0.1.0
 	github.com/hyperledger/fabric-protos-go v0.3.0
+	github.com/prometheus/client_golang v1.13.0
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
-	golang.org/x/text v0.4.0
+	go.opentelemetry.io/otel/sdk v1.11.2
 	google.golang.org/grpc v1.51.0
 )
 
@@ -55,7 +56,6 @@ require (
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_golang v1.13.0 // indirect
 	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
@@ -72,7 +72,6 @@ require (
 	go.opentelemetry.io/otel v1.11.2 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.11.2 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.8.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.11.2 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
@@ -81,6 +80,7 @@ require (
 	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/sys v0.2.0 // indirect
 	golang.org/x/term v0.2.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20221024183307-1bc688fe9f3e // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

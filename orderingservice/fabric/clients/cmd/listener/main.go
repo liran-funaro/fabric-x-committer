@@ -6,7 +6,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"os"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 

@@ -6,7 +6,6 @@ package main
 import (
 	"flag"
 	"fmt"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"

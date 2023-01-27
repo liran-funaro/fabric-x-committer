@@ -1,0 +1,98 @@
+all:
+  vars:
+    ansible_connection: local
+
+    # The user of the deployment machine
+    ansible_user: "{{lookup('env', 'USER')}}"
+
+    # Where to transfer the binary and config files on the deployment machines
+    root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer"
+    binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
+    top_config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
+    skip_prefix_when_copy: ['orderer.yaml']
+    os: osx
+
+  children:
+    services:
+      vars:
+        ansible_user: "root"
+      children:
+        orderingservices:
+          vars:
+            config: orderer.yaml
+            orderer_config_dir: "{{root_path + '/eval/experiments/local-orderer-configs'}}"
+          hosts:
+            orderingservice-machine1:
+              orderer_name: orderer__0
+              ansible_host: orderer__0
+              SANS:
+                - 0.0.0.0
+              config_dir: "{{orderer_config_dir + '/orderer0'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
+              service_port: 7050
+              ops_port: 8440
+              admin_port: 9440
+            orderingservice-machine2:
+              orderer_name: orderer__1
+              ansible_host: orderer__1
+              SANS:
+                - 0.0.0.0
+              config_dir: "{{orderer_config_dir + '/orderer1'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
+              service_port: 7051
+              ops_port: 8441
+              admin_port: 9441
+            orderingservice-machine3:
+              orderer_name: orderer__2
+              ansible_host: orderer__2
+              SANS:
+                - 0.0.0.0
+              config_dir: "{{orderer_config_dir + '/orderer2'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
+              service_port: 7052
+              ops_port: 8442
+              admin_port: 9442
+            orderingservice-machine4:
+              orderer_name: orderer__3
+              ansible_host: orderer__3
+              SANS:
+                - 0.0.0.0
+              config_dir: "{{orderer_config_dir + '/orderer3'}}"
+              creds_dir: "{{config_dir}}"
+              genesis_dir: "{{config_dir}}"
+              ledger_dir: "{{config_dir + '/ledger'}}"
+              service_port: 7053
+              ops_port: 8443
+              admin_port: 9443
+
+        ordererlisteners:
+          hosts:
+            ordererlistener-machine1:
+              ansible_host: localhost
+              prometheus_exporter_port: 2117
+              config_dir: "{{top_config_dir}}/listener0"
+              creds_dir: "{{config_dir}}"
+            ordererlistener-machine2:
+              ansible_host: localhost
+              prometheus_exporter_port: 2118
+              config_dir: "{{top_config_dir}}/listener1"
+              creds_dir: "{{config_dir}}"
+
+        orderersubmitters:
+          hosts:
+            orderersubmitter-machine1:
+              ansible_host: localhost
+              prometheus_exporter_port: 2119
+              config_dir: "{{top_config_dir}}/submitter0"
+              creds_dir: "{{config_dir}}"
+            orderersubmitter-machine2:
+              ansible_host: localhost
+              prometheus_exporter_port: 2120
+              config_dir: "{{top_config_dir}}/submitter1"
+              creds_dir: "{{config_dir}}"

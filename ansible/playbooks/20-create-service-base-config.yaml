@@ -16,6 +16,7 @@
     tasks:
       - name: Create base config
         include_tasks: ../subtasks/create-base-vars-for-group-config.yaml
+        when: "{{groups[config_item.target_hosts] | d([]) | length > 0}}"
         loop:
           - {target_hosts: sigservices, config_root: sig-verification}
           - {target_hosts: shardsservices, config_root: shards-service}
@@ -29,10 +30,12 @@
   - name: Further edit coordinator config
     hosts: localhost
     vars:
-      coordinator_instance: "{{groups['coordinators'] | first}}"
-      filepath: "{{dst_dir}}/{{coordinator_instance}}-{{hostvars[coordinator_instance].config}}"
+      coordinator_instance: "{{groups['coordinators'] | d(['']) | first}}"
     tasks:
-      - include_tasks: ../subtasks/edit-experiment-vars-for-coordinator-config.yaml
+      - vars:
+          filepath: "{{dst_dir}}/{{coordinator_instance}}-{{hostvars[coordinator_instance].config}}"
+        include_tasks: ../subtasks/edit-experiment-vars-for-coordinator-config.yaml
+        when: coordinator_instance | length > 0
   - name: Further edit blockgen config/profile
     hosts: localhost
     roles:
@@ -76,10 +79,12 @@
   - name: Further edit sidecar config
     hosts: localhost
     vars:
-      sidecar_instance: "{{groups['sidecars'] | first}}"
-      filepath: "{{dst_dir}}/{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
+      sidecar_instance: "{{groups['sidecars'] | d(['']) | first}}"
     tasks:
-      - include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml
+      - vars:
+          filepath: "{{dst_dir}}/{{sidecar_instance}}-{{hostvars[sidecar_instance].config}}"
+        include_tasks: ../subtasks/edit-experiment-vars-for-sidecar-config.yaml
+        when: sidecar_instance | length > 0
   - name: Further edit sidecar-client config
     hosts: localhost
     roles:
