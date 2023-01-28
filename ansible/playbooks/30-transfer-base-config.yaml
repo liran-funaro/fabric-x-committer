@@ -3,11 +3,12 @@
 #
 ---
 - name: Transfer config to destination server
-  hosts: "{{target_hosts}}"
   vars:
     mode: a+rw
     dst_dir: "{{config_dir | d()}}"
     hostvar: "{{hostvars[inventory_hostname]}}"
+    instances: 100
+  hosts: "{{target_hosts}}[0:{{instances | int - 1}}]"
   tasks:
     - vars:
         src_filename: "{{hostvar.config}}"

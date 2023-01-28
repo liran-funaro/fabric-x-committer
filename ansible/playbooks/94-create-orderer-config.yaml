@@ -7,7 +7,8 @@
   roles:
     - kwoodson.yedit
   vars:
-    orderers: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+    orderingservice_instances: "{{groups['orderingservices'] | d([]) | length}}"
+    orderers: "{{groups['orderingservices'][0:(orderingservice_instances | int)] | map('extract', hostvars)}}"
   tasks:
   - name: Prepare configtx
     vars:

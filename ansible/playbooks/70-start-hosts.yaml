@@ -112,7 +112,8 @@
       target_hosts: ordererlisteners
       service_name: ordererlistener
       ordererlistener_instances: "{{groups[target_hosts] | d([]) | length}}"
-      orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+      orderingservice_instances: "{{groups['orderingservices'] | d([]) | length}}"
+      orderer_hosts: "{{groups['orderingservices'][0:orderingservice_instances | int] | map('extract', hostvars)}}"
       orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
       orderer_endpoint: "{{orderer_endpoints | last}}"
       channel_id: mychannel
