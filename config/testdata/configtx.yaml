@@ -302,6 +302,8 @@ Orderer: &OrdererDefaults
         # preferred max bytes (up to AbsoluteMaxBytes), some batches may exceed
         # the preferred max bytes, but will always contain exactly one transaction.
         PreferredMaxBytes: 2 MB
+#        PreferredMaxBytes: 4 MB
+#        PreferredMaxBytes: 8 MB
 
     # Max Channels is the maximum number of channels to allow on the ordering
     # network. When set to 0, this implies no maximum number of channels.

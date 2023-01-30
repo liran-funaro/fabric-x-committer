@@ -399,6 +399,7 @@ run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_
     mkdir -p {{experiment-tracking-dir}}
     echo "connections,streams_per_connection,messages,message_size,orderers,start_time,"{{sampling-time-header}} > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
     echo {{orderers_arr}} | tr '{{array-separator}}' '\n' | while read orderers; do \
+      just kill-all; \
       just deploy-orderer-experiment-setup $orderers; \
       echo {{streams_per_connection_arr}} | tr '{{array-separator}}' '\n' | while read streams_per_connection; do \
         echo {{message_size_arr}} | tr '{{array-separator}}' '\n' | while read message_size; do \

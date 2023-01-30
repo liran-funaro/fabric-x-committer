@@ -139,7 +139,7 @@
       orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
       orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
       orderer_endpoint: "{{orderer_endpoints | first}}"
-      messages: 1000000
+      messages: 100000000
       message_size: 160
       connections: 1
       streams_per_connection: 1
