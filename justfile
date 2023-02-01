@@ -424,12 +424,12 @@ run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_
 # just run-orderer-experiment 1 1 5000 100
 # just deploy-orderer-experiment-setup 4
 # just run-orderer-experiment 1 1 160 4
-run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') orderers=(all-instances) channel_id=(default-channel-id) listeners=('1') submitters=('1'):
+run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') orderers=(all-instances) channel_id=(default-channel-id) listeners=(all-instances) submitters=(all-instances):
     just kill-all
     just clean all
     just start-raft-orderers {{orderers}} "{{channel_id}}"
     just start-orderer-listeners {{listeners}} {{orderers}} "{{channel_id}}"
-    just start-orderer-submitters {{submitters}} {{connections}} {{streams_per_connection}} {{message_size}} "{{channel_id}}"
+    just start-orderer-submitters {{submitters}} {{orderers}} {{connections}} {{streams_per_connection}} {{message_size}} "{{channel_id}}"
 
 start-raft-orderers orderers=(all-instances) channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderer"], "orderingservice_instances": {{orderers}}}'
@@ -437,8 +437,8 @@ start-raft-orderers orderers=(all-instances) channel_id=(default-channel-id):
 start-orderer-listeners listeners=(all-instances) orderers=(all-instances) channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["ordererlistener"], "ordererlistener_instances": {{listeners}}, "orderingservice_instances": {{orderers}}, "channel_id": "{{channel_id}}"}'
 
-start-orderer-submitters submitters=(all-instances) connections=('1') streams_per_connection=('1') message_size=('160') channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "channel_id": "{{channel_id}}"}'
+start-orderer-submitters submitters=(all-instances) orderers=(all-instances) connections=('1') streams_per_connection=('1') message_size=('160') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "orderingservice_instances": {{orderers}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "channel_id": "{{channel_id}}"}'
 
 start-mir-orderers channel_id=(default-channel-id):
     #!/usr/bin/env bash

@@ -5,11 +5,9 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-
-	"google.golang.org/grpc/credentials"
 )
 
-func LoadTLSCredentials(certs []string) (credentials.TransportCredentials, error) {
+func LoadTLSCredentials(certs []string) (*tls.Config, error) {
 	if len(certs) < 1 {
 		return nil, fmt.Errorf("no ROOT CAS")
 
@@ -27,9 +25,8 @@ func LoadTLSCredentials(certs []string) (credentials.TransportCredentials, error
 	}
 
 	// Create the credentials and return it
-	config := &tls.Config{
+	return &tls.Config{
 		RootCAs: certPool,
-	}
+	}, nil
 
-	return credentials.NewTLS(config), nil
 }

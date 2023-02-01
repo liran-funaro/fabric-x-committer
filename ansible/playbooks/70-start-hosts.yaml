@@ -86,6 +86,7 @@
       - vars:
           config: ''
           env:
+            - FABRIC_LOGGING_SPEC=WARNING
             - FABRIC_CFG_PATH={{config_dir}}
             - ORDERER_GENERAL_LOCALMSPID=Orderer
             - ORDERER_GENERAL_LOCALMSPDIR={{creds_dir}}/msp
@@ -115,7 +116,7 @@
       orderingservice_instances: "{{groups['orderingservices'] | d([]) | length}}"
       orderer_hosts: "{{groups['orderingservices'][0:orderingservice_instances | int] | map('extract', hostvars)}}"
       orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
-      orderer_endpoint: "{{orderer_endpoints | last}}"
+      orderer_ops_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='ops_port')) | map('join', ':')}}"
       channel_id: mychannel
     hosts: ordererlisteners[0:{{ordererlistener_instances | int - 1}}]
     tasks:
@@ -126,7 +127,9 @@
             config-path: "{{creds_dir}}"
             root-ca-path: "{{creds_dir}}/ca.crt"
             quiet: true
-            server: "{{orderer_endpoint}}"
+            server: "{{orderer_endpoints | last}}"
+#            orderer-endpoints: "{{orderer_endpoints}}"
+#            orderer-ops-endpoints: "{{orderer_ops_endpoints}}"
             channel-id: "{{channel_id}}"
             prometheus-endpoint: ":{{prometheus_exporter_port}}"
         include_tasks: ../subtasks/start-server.yaml
@@ -136,7 +139,8 @@
       target_hosts: orderersubmitters
       service_name: orderersubmitter
       orderersubmitter_instances: "{{groups[target_hosts] | d([]) | length}}"
-      orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+      orderingservice_instances: "{{groups['orderingservices'] | d([]) | length}}"
+      orderer_hosts: "{{groups['orderingservices'][0:orderingservice_instances | int] | map('extract', hostvars)}}"
       orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
       orderer_endpoint: "{{orderer_endpoints | first}}"
       messages: 100000000
@@ -155,7 +159,7 @@
             messages: "{{messages}}"
             size: "{{message_size}}"
             channel-id: "{{channel_id}}"
-            orderers: "{{range(connections | int) | product([orderer_endpoint]) | map('last') | join(',')}}"
+            orderers: "{{range(connections | int) | product(orderer_endpoints) | map('last') | join(',')}}"
             goroutines: "{{(streams_per_connection | int) * (connections | int)}}"
             prometheus-endpoint: ":{{prometheus_exporter_port}}"
           env:

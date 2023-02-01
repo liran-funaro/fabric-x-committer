@@ -2,6 +2,7 @@ package connection
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/hyperledger/fabric/bccsp/factory"
@@ -30,7 +31,7 @@ func GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, loca
 		"\tMSP ID: %s\n"+
 		"\tCreds Dir: %s/msp\n"+
 		"\tRoot CA Path: %s\n"+
-		"\tConfig Path: %s/orderer.yaml", localMspDir, localMspId, credsPath, rootCAPath, configPath)
+		"\tConfig Path: %s/orderer.yaml\n", localMspDir, localMspId, credsPath, rootCAPath, configPath)
 
 	os.Setenv("FABRIC_CFG_PATH", configPath)
 	os.Setenv("ORDERER_GENERAL_TLS_ENABLED", "true")
@@ -64,11 +65,21 @@ func GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, loca
 		os.Exit(0)
 	}
 
-	tlsCredentials, err := tls.LoadTLSCredentials([]string{rootCAPath})
+	tlsConfig, err := tls.LoadTLSCredentials([]string{rootCAPath})
 	if err != nil {
 		fmt.Println("cannot load TLS credentials: :", err)
 		os.Exit(0)
 	}
 
-	return tlsCredentials, signer
+	return credentials.NewTLS(tlsConfig), signer
+}
+
+func SecureClient(rootCAPaths ...string) *http.Client {
+	tlsConfig, err := tls.LoadTLSCredentials(rootCAPaths)
+	if err != nil {
+		fmt.Println("cannot load TLS credentials: :", err)
+		os.Exit(0)
+	}
+
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 }

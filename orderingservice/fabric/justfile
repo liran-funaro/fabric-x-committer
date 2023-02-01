@@ -59,6 +59,7 @@ kill:
     tmux kill-session -t "orderer"
 
 run_orderer n=("0"):
+    FABRIC_LOGGING_SPEC="WARNING" \
     ORDERER_GENERAL_LOCALMSPID="Orderer" \
     ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
     ORDERER_GENERAL_LISTENPORT="{{replace(orderer_port, "<<x>>", n)}}" \
@@ -97,6 +98,8 @@ listen out_dir=('') orderer=('0.0.0.0:7050') channel_id=(channelID):
       -channel-id {{channel_id}} \
       -quiet \
       -server {{orderer}} \
+    #      -orderer-endpoints 0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052 \
+    #      -orderer-ops-endpoints 0.0.0.0:8440,0.0.0.0:8441,0.0.0.0:8442 \
       -prometheus-endpoint :2123
 
 clean:

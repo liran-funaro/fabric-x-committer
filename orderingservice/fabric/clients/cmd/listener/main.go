@@ -23,19 +23,23 @@ import (
 func main() {
 
 	var (
-		serverAddr     connection.Endpoint
-		prometheusAddr connection.Endpoint
-		credsPath      string
-		configPath     string
-		rootCAPath     string
-		localMspDir    string
-		localMspId     string
-		channelID      string
-		quiet          bool
-		seek           int64
+		serverAddr         connection.Endpoint
+		ordererListenAddrs []*connection.Endpoint
+		prometheusAddr     connection.Endpoint
+		ordererOpsAddrs    []*connection.Endpoint
+		credsPath          string
+		configPath         string
+		rootCAPath         string
+		localMspDir        string
+		localMspId         string
+		channelID          string
+		quiet              bool
+		seek               int64
 	)
 
 	connection.EndpointVar(&serverAddr, "server", connection.Endpoint{"0.0.0.0", 7050}, "The RPC server to connect to.")
+	connection.EndpointVars(&ordererListenAddrs, "orderer-endpoints", []*connection.Endpoint{}, "The orderer listening endpoints to connect to.")
+	connection.EndpointVars(&ordererOpsAddrs, "orderer-ops-endpoints", []*connection.Endpoint{}, "The orderer operations endpoints to fetch prometheus metrics from.")
 	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
 	flag.StringVar(&channelID, "channel-id", "mychannel", "The channel ID to deliver from.")
 	flag.StringVar(&credsPath, "creds-path", connection.DefaultCredsPath, "The path to the output folder containing the msp directory with the client credentials.")
@@ -51,6 +55,19 @@ func main() {
 	flag.Parse()
 
 	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId)
+
+	if len(ordererListenAddrs) > 0 {
+		if len(ordererOpsAddrs) != len(ordererListenAddrs) {
+			panic("not all endpoints given")
+		}
+		fmt.Println("Will look for a follower node to connect to.")
+		leaderOrdererIdx, _, err := cmd.NewPrometheusMetricClient(channelID, rootCAPath).GetLeader(ordererOpsAddrs, 2*time.Second)
+		utils.Must(err)
+		serverAddr = *ordererListenAddrs[(leaderOrdererIdx+1)%len(ordererListenAddrs)]
+		fmt.Printf("Leader orderer found: [%d] -> %s. Connecting to follower: %s.\n", leaderOrdererIdx, ordererListenAddrs[leaderOrdererIdx], serverAddr.Address())
+	} else {
+		fmt.Printf("No orderer listen/ops addresses passed. Will listen on %d.\n", serverAddr.Address())
+	}
 
 	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
 		ClientProvider: &sidecar.OrdererDeliverClientProvider{},
