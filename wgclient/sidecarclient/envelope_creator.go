@@ -23,6 +23,10 @@ type envelopeCreator struct {
 }
 
 func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, signed bool) *envelopeCreator {
+	if !signed {
+		logger.Infof("No-op signer chosen.\n")
+		signer = &noOpSigner{}
+	}
 	return &envelopeCreator{
 		txType:      common.HeaderType_MESSAGE,
 		channelID:   channelID,
@@ -39,26 +43,26 @@ func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 func (c *envelopeCreator) CreateEnvelope(data []byte) (*common.Envelope, error) {
 	payload := serialization.WrapEnvelope(data, c.payloadHeader())
 
-	signature, err := c.sign(payload)
+	signature, err := c.signer.Sign(payload)
 	if err != nil {
 		return nil, err
 	}
 	return &common.Envelope{Payload: payload, Signature: signature}, nil
 }
 
-func (c *envelopeCreator) sign(payload []byte) ([]byte, error) {
-	if !c.signed {
-		return []byte{}, nil
-	}
-	return c.signer.Sign(payload)
-}
-
 func (c *envelopeCreator) payloadHeader() *common.Header {
 	signatureHeader := protoutil.NewSignatureHeaderOrPanic(c.signer)
 
 	channelHeader := protoutil.MakeChannelHeader(c.txType, c.msgVersion, c.channelID, c.epoch)
-	channelHeader.TlsCertHash = c.tlsCertHash
 	channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
+	if c.signed {
+		channelHeader.TlsCertHash = c.tlsCertHash
+	}
 
 	return protoutil.MakePayloadHeader(channelHeader, signatureHeader)
 }
+
+type noOpSigner struct{}
+
+func (s *noOpSigner) Serialize() ([]byte, error)  { return []byte{}, nil }
+func (s *noOpSigner) Sign([]byte) ([]byte, error) { return nil, nil }

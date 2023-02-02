@@ -34,7 +34,7 @@ experiment-tracking-dir := experiment-dir + "/trackers"
 experiment-results-dir := experiment-dir + "/results"
 
 # Experiment constants
-experiment-duration-seconds := "600"
+experiment-duration-seconds := "1200"
 
 fabric_path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/github.com/hyperledger/fabric")
 
@@ -177,8 +177,8 @@ build-raft-orderers-local output_dir:
       cp -r "{{fabric_path}}/build/bin/" "{{output_dir}}"; \
     fi
 
-build-raft-orderers-docker output_dir signed=('false'):
-    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/rebuild_binaries.sh {{signed}} /usr/local/out
+build-raft-orderers-docker output_dir unsigned=('false'):
+    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/rebuild_binaries.sh {{unsigned}} /usr/local/out
 
 build-committer-local output_dir:
     just build-blockgen {{output_dir}}
@@ -395,7 +395,7 @@ deploy-orderer-experiment-setup orderers=(all-instances) include_creds=('false')
 # Runs a series of orderer experiments. Make sure you have initialized all orderers before:
 # just deploy-orderer-experiment-setup 100 true true
 # just run-orderer-experiment-suite my-experiment 1,2 1,2,3 160,5000 1,3,5
-run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_connection_arr=('1') message_size_arr=('160') orderers_arr=('3') experiment_duration=(experiment-duration-seconds):
+run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_connection_arr=('1') message_size_arr=('160') orderers_arr=('3') signed=('true') experiment_duration=(experiment-duration-seconds):
     mkdir -p {{experiment-tracking-dir}}
     echo "connections,streams_per_connection,messages,message_size,orderers,start_time,"{{sampling-time-header}} > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
     echo {{orderers_arr}} | tr '{{array-separator}}' '\n' | while read orderers; do \
@@ -405,7 +405,7 @@ run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_
         echo {{message_size_arr}} | tr '{{array-separator}}' '\n' | while read message_size; do \
           echo {{connections_arr}} | tr '{{array-separator}}' '\n' | while read connections; do \
               echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\n\t$orderers orderers\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
-              just run-orderer-experiment $connections $streams_per_connection $message_size $orderers; \
+              just run-orderer-experiment $connections $streams_per_connection $message_size $orderers {{signed}}; \
               echo $connections,$streams_per_connection,$message_size,$orderers,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
               echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\n\t$orderers orderers\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
               sleep {{experiment_duration}} \
@@ -424,12 +424,12 @@ run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_
 # just run-orderer-experiment 1 1 5000 100
 # just deploy-orderer-experiment-setup 4
 # just run-orderer-experiment 1 1 160 4
-run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') orderers=(all-instances) channel_id=(default-channel-id) listeners=(all-instances) submitters=(all-instances):
+run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') orderers=(all-instances) signed=('true') channel_id=(default-channel-id) listeners=(all-instances) submitters=(all-instances):
     just kill-all
     just clean all
     just start-raft-orderers {{orderers}} "{{channel_id}}"
     just start-orderer-listeners {{listeners}} {{orderers}} "{{channel_id}}"
-    just start-orderer-submitters {{submitters}} {{orderers}} {{connections}} {{streams_per_connection}} {{message_size}} "{{channel_id}}"
+    just start-orderer-submitters {{submitters}} {{orderers}} {{connections}} {{streams_per_connection}} {{message_size}} "{{signed}}" "{{channel_id}}"
 
 start-raft-orderers orderers=(all-instances) channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderer"], "orderingservice_instances": {{orderers}}}'
@@ -437,8 +437,8 @@ start-raft-orderers orderers=(all-instances) channel_id=(default-channel-id):
 start-orderer-listeners listeners=(all-instances) orderers=(all-instances) channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["ordererlistener"], "ordererlistener_instances": {{listeners}}, "orderingservice_instances": {{orderers}}, "channel_id": "{{channel_id}}"}'
 
-start-orderer-submitters submitters=(all-instances) orderers=(all-instances) connections=('1') streams_per_connection=('1') message_size=('160') channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "orderingservice_instances": {{orderers}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "channel_id": "{{channel_id}}"}'
+start-orderer-submitters submitters=(all-instances) orderers=(all-instances) connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "orderingservice_instances": {{orderers}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "channel_id": "{{channel_id}}", "signed": "{{signed}}"}'
 
 start-mir-orderers channel_id=(default-channel-id):
     #!/usr/bin/env bash

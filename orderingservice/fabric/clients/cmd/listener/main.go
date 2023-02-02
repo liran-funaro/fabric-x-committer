@@ -11,11 +11,13 @@ import (
 
 	"github.com/hyperledger/fabric-config/protolator"
 	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
@@ -82,7 +84,8 @@ func main() {
 		return
 	}
 
-	m := cmd.LaunchSimpleThroughputMetrics(prometheusAddr, "listener", metrics.In)
+	m := newListenerMetrics()
+	monitoring.LaunchPrometheus(monitoring.Prometheus{Endpoint: prometheusAddr}, monitoring.Other, m)
 	bar := workload.NewProgressBar("Received transactions...", -1, "tx")
 
 	utils.Must(listener.RunDeliverOutputListener(func(block *common.Block) {
@@ -95,7 +98,29 @@ func main() {
 		} else {
 			//fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", block.Header.Number, block.XXX_Size(), len(block.Data.Data), len(block.Data.Data[0]))
 		}
-		m.Throughput.Add(len(block.Data.Data))
-		bar.Add(len(block.Data.Data))
+		blockSize := len(block.Data.Data)
+		m.Throughput.Add(blockSize)
+		m.BlockSizes.WithLabelValues().Observe(float64(blockSize))
+		bar.Add(blockSize)
 	}))
+}
+
+func newListenerMetrics() *ListenerMetrics {
+	return &ListenerMetrics{
+		&cmd.ThroughputMetrics{metrics.NewThroughputCounter("listener", metrics.In)},
+		prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "block_sizes",
+			Help:    "Sizes of incoming blocks",
+			Buckets: metrics.UniformBuckets(100, 0, 10000),
+		}, []string{"sub_component", "message_size"}).MustCurryWith(prometheus.Labels{"sub_component": "listener"}),
+	}
+}
+
+type ListenerMetrics struct {
+	*cmd.ThroughputMetrics
+	BlockSizes prometheus.ObserverVec
+}
+
+func (m *ListenerMetrics) AllMetrics() []prometheus.Collector {
+	return append(m.ThroughputMetrics.AllMetrics(), m.BlockSizes)
 }

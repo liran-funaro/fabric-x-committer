@@ -148,6 +148,7 @@
       connections: 1
       streams_per_connection: 1
       channel_id: mychannel
+      signed: true
     hosts: orderersubmitters[0:{{orderersubmitter_instances | int - 1}}]
     tasks:
       - vars:
@@ -162,6 +163,7 @@
             orderers: "{{range(connections | int) | product(orderer_endpoints) | map('last') | join(',')}}"
             goroutines: "{{(streams_per_connection | int) * (connections | int)}}"
             prometheus-endpoint: ":{{prometheus_exporter_port}}"
+            signed: "{{signed}}"
           env:
             - "GOGC=20000"
         include_tasks: ../subtasks/start-server.yaml

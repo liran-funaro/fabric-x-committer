@@ -20,7 +20,7 @@ all:
             genesis_dir: "{{config_dir}}"
             ledger_dir: "{{config_dir + '/ledger'}}"
             service_port: 7050
-            ops_port: 8440
+            ops_port: "{{prometheus_exporter_port}}"
             admin_port: 9440
           hosts:
             orderingservice-machine1:

@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
@@ -65,7 +66,8 @@ func main() {
 		},
 	}
 
-	m := cmd.LaunchSimpleThroughputMetrics(prometheusAddr, "submitter", metrics.Out)
+	m := newSubmitterMetrics()
+	monitoring.LaunchPrometheus(monitoring.Prometheus{Endpoint: prometheusAddr}, monitoring.Other, m)
 
 	s, err := sidecarclient.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
@@ -108,4 +110,14 @@ func main() {
 	utils.Must(s.CloseStreamsAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")
+}
+
+func newSubmitterMetrics() *SubmitterMetrics {
+	return &SubmitterMetrics{
+		&cmd.ThroughputMetrics{Throughput: metrics.NewThroughputCounter("submitter", metrics.Out)},
+	}
+}
+
+type SubmitterMetrics struct {
+	*cmd.ThroughputMetrics
 }
