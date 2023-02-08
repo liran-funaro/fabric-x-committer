@@ -4,12 +4,13 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"sync"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -20,44 +21,19 @@ import (
 )
 
 func main() {
-	var (
-		ordererEndpoints []*connection.Endpoint
-		prometheusAddr   connection.Endpoint
-		credsPath        string
-		configPath       string
-		rootCAPath       string
-		localMspDir      string
-		localMspId       string
-		channelID        string
-		messages         uint64
-		goroutines       uint64
-		msgSize          uint64
-		signedEnvs       bool
-	)
+	config.ParseFlags()
 
-	connection.EndpointVars(&ordererEndpoints, "orderers", []*connection.Endpoint{{"0.0.0.0", 7050}, {"0.0.0.0", 7051}, {"0.0.0.0", 7052}}, "Orderers to send our TXs.")
-	connection.EndpointVar(&prometheusAddr, "prometheus-endpoint", connection.Endpoint{"0.0.0.0", 2112}, "Prometheus endpoint.")
-	flag.StringVar(&credsPath, "creds-path", connection.DefaultCredsPath, "The path to the output folder containing the root CA and the client credentials.")
-	flag.StringVar(&configPath, "config-path", connection.DefaultConfigPath, "The path to the output folder containing the orderer config.")
-	flag.StringVar(&rootCAPath, "root-ca-path", connection.DefaultRootCAPath, "The path to the root CA.")
-	flag.StringVar(&localMspDir, "msp-dir", connection.DefaultLocalMspDir, "Local MSP Dir.")
-	flag.StringVar(&localMspId, "msp-id", connection.DefaultLocalMspId, "Local MSP ID.")
-	flag.StringVar(&channelID, "channel-id", "mychannel", "The channel ID to broadcast to.")
-	flag.Uint64Var(&messages, "messages", 100_000, "The number of messages to broadcast.")
-	flag.Uint64Var(&goroutines, "goroutines", 3, "The number of concurrent go routines to broadcast the messages on")
-	flag.Uint64Var(&msgSize, "size", 160, "The size in bytes of the data section for the payload")
-	flag.BoolVar(&signedEnvs, "signed", true, "Sign envelopes to send to orderer")
-	flag.Parse()
+	c := fabric.ReadSubmitterConfig()
+	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
+	creds, signer := connection.GetOrdererConnectionCreds(p)
 
-	creds, signer := connection.GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId)
-
-	msgsPerGo := messages / goroutines
-	roundMsgs := msgsPerGo * goroutines
+	msgsPerGo := c.Messages / c.GoRoutines
+	roundMsgs := msgsPerGo * c.GoRoutines
 	bar := workload.NewProgressBar("Submitting transactions...", int64(roundMsgs), "tx")
 	opts := &sidecarclient.FabricOrdererBroadcasterOpts{
-		Endpoints:            ordererEndpoints,
+		Endpoints:            c.Orderers,
 		Credentials:          creds,
-		Parallelism:          int(goroutines),
+		Parallelism:          c.GoRoutines,
 		InputChannelCapacity: 10,
 		OnAck: func(err error) {
 			if err == nil && bar != nil {
@@ -67,17 +43,17 @@ func main() {
 	}
 
 	m := newSubmitterMetrics()
-	monitoring.LaunchPrometheus(monitoring.Prometheus{Endpoint: prometheusAddr}, monitoring.Other, m)
+	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
 
 	s, err := sidecarclient.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
-	if roundMsgs != messages {
+	if roundMsgs != c.Messages {
 		fmt.Println("Rounding messages to", roundMsgs)
 	}
 
 	fmt.Printf("Sending the same message to all servers.\n")
-	message := make([]byte, msgSize)
-	envelopeCreator := sidecarclient.NewEnvelopeCreator(channelID, signer, signedEnvs)
+	message := make([]byte, c.MessageSize)
+	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
 	env, _ := envelopeCreator.CreateEnvelope(message)
 
 	serializedEnv, err := protoutil.Marshal(env)
@@ -89,7 +65,7 @@ func main() {
 	for _, ch := range s.Streams() {
 		input := ch.Input()
 		go func(out chan<- *common.Envelope) {
-			for i := uint64(0); i < msgsPerGo; i++ {
+			for i := 0; i < msgsPerGo; i++ {
 				input <- env
 				m.Throughput.Add(1)
 			}

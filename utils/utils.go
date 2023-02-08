@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -71,4 +72,17 @@ func Must(err error, msg ...string) {
 	if err != nil {
 		panic(errors.Wrapf(err, "%v", msg))
 	}
+}
+
+func ReadFile(filePath string) ([]byte, error) {
+	absoluteFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.Open(absoluteFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return ioutil.ReadAll(file)
 }

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"io/ioutil"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,20 +25,7 @@ func MergeYamlConfigs(filePaths ...string) ([]byte, error) {
 }
 
 func readYamlConfig(filePath string) (configMap, error) {
-	absoluteFilePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
-	}
-	file, err := os.Open(absoluteFilePath)
-	if err != nil {
-		return nil, err
-	}
-
-	content, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-
+	content, err := utils.ReadFile(filePath)
 	var current configMap
 	err = yaml.Unmarshal(content, &current)
 	if err != nil {

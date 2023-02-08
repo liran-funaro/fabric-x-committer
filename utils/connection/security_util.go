@@ -9,20 +9,10 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/tls"
 	"google.golang.org/grpc/credentials"
-)
-
-var (
-	projectPath       = os.Getenv("GOPATH") + "/src/github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric"
-	DefaultCredsPath  = projectPath + "/out/orgs/peerOrganizations/org1.com/peers/peer0.org1.com/"
-	DefaultRootCAPath = projectPath + "/out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/ca.crt"
-	DefaultConfigPath = projectPath
-)
-
-const (
-	DefaultLocalMspId  = "Org1"
-	DefaultLocalMspDir = "/msp"
+	"gopkg.in/yaml.v3"
 )
 
 func GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, localMspId string) (credentials.TransportCredentials, msp.SigningIdentity) {
@@ -74,6 +64,38 @@ func GetDefaultSecurityOpts(credsPath, configPath, rootCAPath, localMspDir, loca
 	return credentials.NewTLS(tlsConfig), signer
 }
 
+func GetOrdererConnectionCreds(config OrdererConnectionProfile) (credentials.TransportCredentials, msp.SigningIdentity) {
+	fmt.Printf("Initialize creds:\n"+
+		"\tMSP Dir: %s\n"+
+		"\tMSP ID: %s\n"+
+		"\tRoot CA Paths: %v\n"+
+		"\tBCCSP: %v\n", config.MSPDir, config.MSPID, config.RootCAPaths, config.BCCSP)
+	mspConfig, err := msp.GetLocalMspConfig(config.MSPDir, config.BCCSP, config.MSPID)
+	if err != nil {
+		fmt.Println("Failed to load MSP config:", err)
+		os.Exit(0)
+	}
+	err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
+	if err != nil { // Handle errors reading the config file
+		fmt.Println("Failed to initialize local MSP:", err)
+		os.Exit(0)
+	}
+
+	signer, err := mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
+	if err != nil {
+		fmt.Println("Failed to load local signing identity:", err)
+		os.Exit(0)
+	}
+
+	tlsConfig, err := tls.LoadTLSCredentials(config.RootCAPaths)
+	if err != nil {
+		fmt.Println("cannot load TLS credentials: :", err)
+		os.Exit(0)
+	}
+
+	return credentials.NewTLS(tlsConfig), signer
+}
+
 func SecureClient(rootCAPaths ...string) *http.Client {
 	tlsConfig, err := tls.LoadTLSCredentials(rootCAPaths)
 	if err != nil {
@@ -82,4 +104,22 @@ func SecureClient(rootCAPaths ...string) *http.Client {
 	}
 
 	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+}
+
+type OrdererConnectionProfile struct {
+	//RootCAPaths The path to the root CAs for the orderers
+	RootCAPaths []string             `yaml:"RootCAPaths"`
+	MSPDir      string               `yaml:"MSPDir"`
+	MSPID       string               `yaml:"MSPID"`
+	BCCSP       *factory.FactoryOpts `yaml:"BCCSP"`
+}
+
+func ReadConnectionProfile(filePath string) OrdererConnectionProfile {
+	content, err := utils.ReadFile(filePath)
+	if err != nil {
+		panic(err)
+	}
+	var profile OrdererConnectionProfile
+	utils.Must(yaml.Unmarshal(content, &profile))
+	return profile
 }

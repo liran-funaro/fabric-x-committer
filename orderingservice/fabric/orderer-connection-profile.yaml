@@ -1,0 +1,11 @@
+RootCAPaths:
+- ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/ca.crt
+MSPDir: ./out/orgs/peerOrganizations/org1.com/peers/peer0.org1.com/msp/
+MSPID: Org1
+BCCSP:
+  Default: SW
+  SW:
+    Hash: SHA2
+    Security: 256
+    FileKeyStore:
+      KeyStore:
