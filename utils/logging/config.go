@@ -3,9 +3,10 @@ package logging
 type Level = string
 
 const (
-	Debug Level = "DEBUG"
-	Info        = "INFO"
-	Error       = "ERROR"
+	Debug   Level = "DEBUG"
+	Info          = "INFO"
+	Warning       = "WARNING"
+	Error         = "ERROR"
 )
 
 type Config struct {
