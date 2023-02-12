@@ -1,0 +1,13 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start orderer listeners
+  hosts: "{{target_hosts}}:&ordererlisteners"
+  tasks:
+    - vars:
+        service_name: ordererlistener
+        options:
+          configs: "{{config_dir}}/{{config}}"
+          quiet: true
+      include_tasks: ../subtasks/start-server.yaml

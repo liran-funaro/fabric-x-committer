@@ -1,0 +1,22 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: "{{target_hosts}}:&orderingservices"
+  tasks:
+    - name: Start orderers
+      vars:
+        service_name: orderer
+        wait_until_running: true
+        env:
+          - "FABRIC_CFG_PATH={{config_dir}}/fabric.{{topology_name}}/orderers/{{organization}}.{{inventory_hostname}}"
+      when: mock | d(false) == false
+      include_tasks: ../subtasks/start-server.yaml
+    - name: Start mock orderers
+      vars:
+        options:
+          endpoint: "{{ansible_host}}:{{service_port}}"
+        wait_until_running: true
+        service_name: mockorderingservice
+      include_tasks: ../subtasks/start-server.yaml
+      when: mock | d(false) == true

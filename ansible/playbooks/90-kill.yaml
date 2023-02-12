@@ -1,0 +1,10 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Clean all generated files
+  hosts: "{{target_hosts}}"
+  tasks:
+    - vars:
+        only_kill: true
+      include_tasks: ../subtasks/start-server.yaml

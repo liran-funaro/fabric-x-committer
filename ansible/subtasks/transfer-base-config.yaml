@@ -1,0 +1,19 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: "Transfer config {{inventory_hostname}} to destination server"
+  vars:
+    src_dir: "{{input_dir}}/{{inventory_hostname}}"
+    dst_dir: "{{config_dir | d()}}"
+    hostvar: "{{hostvars[inventory_hostname]}}"
+    src_filename: "{{hostvar.config}}"
+    filename: "{{src_filename}}"
+  include_tasks: ../subtasks/copy-file.yaml
+  when: src_filename | length > 0 and dst_dir | d('') | length > 0
+  loop:
+    - "{{config | d('')}}"
+    - "{{profile | d('')}}"
+  loop_control:
+    loop_var: src_filename
+

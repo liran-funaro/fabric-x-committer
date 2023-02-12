@@ -1,22 +1,21 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/hyperledger-labs/fabric-smart-client/integration"
-	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/topology"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fsc"
+	"github.com/spf13/pflag"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 )
 
 func main() {
-	outputDir := flag.String("output-dir", os.Getenv("PWD")+"/out", "Output dir for config tree.")
-	fabBinDir := flag.String("fab-bin-dir", os.Getenv("GOPATH")+"/src/github.com/decentralized-trust-research/scalable-committer/eval/deployments/bins/osx/", "Path to directory with the fabric executables (configtx, peer, etc.)")
+	outputDir := pflag.String("output-dir", os.Getenv("PWD")+"/out", "Output dir for config tree.")
+	fabBinDir := pflag.String("fab-bin-dir", os.Getenv("GOPATH")+"/src/github.com/decentralized-trust-research/scalable-committer/eval/deployments/bins/osx/", "Path to directory with the fabric executables (configtx, peer, etc.)")
 	config.ParseFlags()
 
 	os.Setenv("FAB_BINS", *fabBinDir)
@@ -25,12 +24,12 @@ func main() {
 
 	raftTopology := CreateRaftTopology(c)
 	ii, _ := integration.New(0, *outputDir, raftTopology, fsc.NewTopology())
-	ii.RegisterPlatformFactory(topologysetup.NewCustomPlatformFactory())
+	ii.RegisterPlatformFactory(topologysetup.NewCustomPlatformFactory(c.RootDir, c.PeerIdMap(), c.OrdererIdMap()))
 	ii.DeleteOnStart = true
 
 	ii.Generate()
 
-	topologysetup.NewConnectionProfileGenerator(*outputDir, c.Name).GenerateOrdererClientProfiles(c.PeerMap)
+	topologysetup.NewConnectionProfileGenerator(*outputDir, c.RootDir, c.Name).GenerateOrdererClientProfiles(c.Peers)
 
 	printCommands(*outputDir, raftTopology)
 }
@@ -71,15 +70,11 @@ func CreateRaftTopology(config *topologysetup.Config) *topology.Topology {
 		TopologyName: config.Name,
 		Default:      true,
 		TopologyType: "fabric",
-		Driver:       "fabric.sc",
-		TLSEnabled:   true,
 		Logging: &topology.Logging{
 			Spec:   strings.ToLower(config.LogLevel),
 			Format: "'%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s} %{id:03x}%{color:reset} %{message}'",
 		},
-		Consortiums: []*topology.Consortium{{
-			Name: "SampleConsortium",
-		}},
+		Consortiums: config.Consortiums(),
 		Consensus: &topology.Consensus{
 			Type: "etcdraft",
 		},
@@ -88,25 +83,14 @@ func CreateRaftTopology(config *topologysetup.Config) *topology.Topology {
 			Profile: "OrgsOrdererGenesis",
 		},
 		Orderers: config.AllOrderers(),
-		Channels: []*topology.Channel{
-			{Name: config.ChannelID, Profile: "OrgsChannel", Default: true},
-		},
-		Profiles: []*topology.Profile{{
-			Name:     "OrgsOrdererGenesis",
-			Orderers: config.AllOrdererNames(),
-		}, {
-			Name:       "OrgsChannel",
-			Consortium: "SampleConsortium",
-			Policies: []*topology.Policy{
-				fabric.ImplicitMetaReaders,
-				fabric.ImplicitMetaWriters,
-				fabric.ImplicitMetaAdmins,
-				fabric.ImplicitMetaLifecycleEndorsement,
-				fabric.ImplicitMetaEndorsement,
-			},
-		}},
+		Channels: config.AllChannels(),
+		Profiles: append(config.AllChannelProfiles(),
+			&topology.Profile{
+				Name:     "OrgsOrdererGenesis",
+				Orderers: config.AllOrdererNames(),
+			}),
 	}
-	fabricTopology.AddOrganizationsByMapping(config.PeerMap)
+	fabricTopology.AddOrganizationsByMapping(config.PeerNameMap())
 	for _, org := range config.AllOrdererOrgs() {
 		fabricTopology.AddOrganization(org)
 	}

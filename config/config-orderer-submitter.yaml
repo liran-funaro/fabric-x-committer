@@ -1,0 +1,19 @@
+orderer-submitter:
+  channel-id: mychannel           # Overridden by ansible
+  orderers:                       # Overridden by ansible
+    - :7050
+    - :7051
+    - :7052
+  prometheus:                     # Overridden by ansible
+    endpoint: :2114
+  orderer-connection-profile: ./orderer-connection-profile.yaml   # Overridden by ansible
+  messages: 1000000
+  go-routines: 20
+  message-size: 160
+  signed: true
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt

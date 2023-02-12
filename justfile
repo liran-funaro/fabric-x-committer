@@ -18,6 +18,7 @@ deployment-dir := output-dir + "/deployments"
 base-setup-config-dir := deployment-dir + "/configs"
 # Stores the credentials for the communication with the orderers
 base-setup-creds-dir := deployment-dir + "/creds"
+base-setup-orderer-artifacts-dir := deployment-dir + "/orderer-artifacts"
 # Stores the genesis block for the orderers
 base-setup-genesis-dir := deployment-dir + "/genesis"
 # Stores the binaries that are deployed to the servers
@@ -48,7 +49,9 @@ sampling-time-header := "sample_time"
 array-separator := ","
 
 default-channel-id := "mychannel"
+default-topology-name := "mytopos"
 all-instances := '100'
+root-dir-env := '<<SC_ROOT_DIR>>'
 
 ### Admin
 update-dependencies:
@@ -67,8 +70,6 @@ setup:
 
 run arg=default:
 	./scripts/run.sh {{arg}}
-
-start arg=default: build setup (run arg)
 
 #########################
 # Generate protos
@@ -101,72 +102,61 @@ protos-wgclient:
     ./wgclient/workload/expected_results.proto
 
 clean target_hosts=('all') include_configs=('false') include_bins=('false'):
-    ansible-playbook "{{playbook-path}}/95-clean-all.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': '{{include_bins}}', 'include_configs': '{{include_configs}}'}"
+    ansible-playbook "{{playbook-path}}/95-clean.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': {{include_bins}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}'}"
 
-deploy-base-setup include_bins=('false'):
+build-deploy-all include_bins=('false'):
     just clean all true {{include_bins}}
     if [[ "{{include_bins}}" = "true" ]]; then \
-      just build-committer-bins; \
-      just build-orderer-bins; \
-      just deploy-committer-bins; \
-      just deploy-orderer-bins; \
+      just build-bins; \
+      just deploy-bins; \
     fi
 
-    just build-committer-configs
-    just build-orderer-configs
-    just deploy-committer-configs
-    just deploy-orderer-configs
-
-    just build-creds
-    just deploy-creds
-    just build-genesis-block
-    just deploy-genesis-block
-
-build-deploy-committer:
-    just build-committer-bins
-    just deploy-committer-bins
-    just build-committer-configs
-    just deploy-committer-configs
+    just build-configs
+    just build-orderer-artifacts
+    just deploy-configs
 
 #########################
 # Binaries
 #########################
 
-build-committer-bins local=('true') docker=('true'):
+build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true'):
     if [[ "{{local}}" = "true" ]]; then \
       just empty-dir {{osx-bin-input-dir}}; \
-      just build-committer-local {{osx-bin-input-dir}}; \
+      if [[ "{{include_committer}}" = "true" ]]; then \
+        just build-committer-local {{osx-bin-input-dir}}; \
+      fi; \
+      if [[ "{{include_orderer}}" = "true" ]]; then \
+          just build-raft-orderers-local {{osx-bin-input-dir}}; \
+          just build-orderer-clients-local {{osx-bin-input-dir}}; \
+      fi; \
     fi
 
     if [[ "{{docker}}" = "true" ]]; then \
       just empty-dir {{linux-bin-input-dir}}; \
-      just build-committer-docker {{linux-bin-input-dir}}; \
+      if [[ "{{include_committer}}" = "true" ]]; then \
+          just build-committer-docker {{linux-bin-input-dir}}; \
+      fi; \
+      if [[ "{{include_orderer}}" = "true" ]]; then \
+          just build-raft-orderers-docker {{linux-bin-input-dir}}; \
+          just build-orderer-clients-docker {{linux-bin-input-dir}}; \
+      fi; \
     fi
 
-build-orderer-bins local=('true') docker=('true'):
-    if [[ "{{local}}" = "true" ]]; then \
-      mkdir -p {{osx-bin-input-dir}}; \
-      just build-raft-orderers-local {{osx-bin-input-dir}}; \
-      just build-orderer-clients-local {{osx-bin-input-dir}}; \
+deploy-bins include_committer=('true') include_orderer=('true'):
+    if [[ "{{include_committer}}" = "true" ]]; then \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'coordinator_setup', 'mockcoordinator'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+        ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'peerservices', 'filenames': ['peer'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
     fi
-    if [[ "{{docker}}" = "true" ]]; then \
-      mkdir -p {{linux-bin-input-dir}}; \
-      just build-raft-orderers-docker {{linux-bin-input-dir}}; \
-      just build-orderer-clients-docker {{linux-bin-input-dir}}; \
+    if [[ "{{include_orderer}}" = "true" ]]; then \
+      ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'filenames': ['ordererlistener'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+      ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'filenames': ['orderersubmitter'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
+      ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"; \
     fi
-
-deploy-committer-bins:
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'coordinators', 'filenames': ['coordinator', 'coordinator_setup', 'mockcoordinator'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sigservices', 'filenames': ['sigservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'filenames': ['shardsservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecars', 'filenames': ['sidecar'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'filenames': ['sidecarclient'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-
-deploy-orderer-bins:
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'filenames': ['ordererlistener'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'filenames': ['orderersubmitter'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
@@ -242,68 +232,37 @@ docker-orderer-image:
     docker build -f ordererbuilder/Dockerfile -t orderer_builder .
 
 #########################
-# Credentials
+# Configs, Credentials, and Genesis
 #########################
 
-build-creds:
-    just empty-dir "{{base-setup-creds-dir}}/orgs"
-    docker run --rm -it \
-          -v {{base-setup-creds-dir}}:/usr/local/out \
-          -v {{base-setup-config-dir}}/:/usr/local/crypto-config \
-          orderer_builder:latest /usr/local/init.sh /usr/local/crypto-config/crypto-config.yaml "" /usr/local/out ""
-    just copy-client-creds
+build-configs target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/21-create-sigverifier-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/22-create-shardsservice-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/23-create-coordinator-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/24-create-blockgen-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/25-create-sidecar-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
 
-build-genesis-block channel_id=(default-channel-id):
-    docker run --rm -it \
-          -v {{base-setup-creds-dir}}:/usr/local/out \
-          -v {{base-setup-config-dir}}/:/usr/local/txgen-config \
-          orderer_builder:latest /usr/local/init.sh "" /usr/local/txgen-config/configtx.yaml /usr/local/out {{channel_id}}
-
-deploy-creds orderers=(all-instances):
-    ansible-playbook "{{playbook-path}}/45-transfer-client-creds.yaml" --extra-vars "{'input_creds_path': '{{base-setup-creds-dir}}', 'input_config_path': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/46-transfer-orderer-creds.yaml" --extra-vars "{'input_creds_path': '{{base-setup-creds-dir}}', 'instances': {{orderers}}}"
-
-deploy-genesis-block orderers=(all-instances):
-    ansible-playbook "{{playbook-path}}/47-transfer-orderer-genesis-block.yaml" --extra-vars "{'input_creds_path': '{{base-setup-creds-dir}}', 'instances': {{orderers}}}"
-
-# Copies the necessary files (creds and configs) for the orderer listener and submitter. Only needed for listener/main.go and submitter/main.go.
-copy-client-creds dst_path=(project-dir + '/orderingservice/fabric/out'):
-    #!/usr/bin/env bash
-    just empty-dir {{dst_path}}
-    any_orderer_name=$(just list-hosts orderingservices .orderer_name | tail -n 1)
-    cp {{base-setup-creds-dir}}/orgs/ordererOrganizations/orderer.org/orderers/$any_orderer_name.orderer.org/tls/ca.crt {{dst_path}}
-    cp -r {{base-setup-creds-dir}}/orgs/peerOrganizations/org1.com/users/User1@org1.com/msp {{dst_path}}
-    cp {{base-setup-config-dir}}/orderer.yaml {{dst_path}}
-
-#########################
-# Configs
-#########################
-
-build-committer-configs:
-    ansible-playbook "{{playbook-path}}/20-create-service-base-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}'}"
+build-orderer-artifacts topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml') output_dir=(base-setup-orderer-artifacts-dir) fab_bins_dir=(osx-bin-input-dir):
+    ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'channel_ids': ['{{default-channel-id}}'], 'root_dir': '{{root-dir-env}}'}"
+    just empty-dir {{output_dir}}
+    cd ./topologysetup; go run ./cmd/main/main.go --configs {{topology_config_path}} --output-dir {{output_dir}} --fab-bin-dir {{fab_bins_dir}}
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
-deploy-committer-configs:
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sigservices', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'shardsservices', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{base-setup-config-dir}}'}"
-
-deploy-orderer-configs orderers=(all-instances):
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'src_dir': '{{base-setup-config-dir}}', 'instances': {{orderers}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'src_dir': '{{base-setup-config-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'src_dir': '{{base-setup-config-dir}}'}"
-
-# Create config files (configtx.yaml, orderer.yaml, crypto-config.yaml) based on the inventory
-build-orderer-configs orderers=(all-instances) output_dir=(base-setup-config-dir) input_dir=('$PWD/config/testdata'):
-    mkdir -p {{output_dir}}
-    spruce merge {{input_dir}}/configtx.yaml >> {{output_dir}}/configtx.yaml
-    spruce merge {{input_dir}}/orderer.yaml >> {{output_dir}}/orderer.yaml
-    spruce merge {{input_dir}}/crypto-config.yaml >> {{output_dir}}/crypto-config.yaml
-    ansible-playbook "{{playbook-path}}/94-create-orderer-config.yaml" --extra-vars "{'configtx_path': '{{output_dir}}/configtx.yaml', 'orderer_path': '{{output_dir}}/orderer.yaml', 'crypto_config_path': '{{output_dir}}/crypto-config.yaml', 'orderingservice_instances': {{orderers}}}"
+deploy-configs target_hosts=('all') include_configs=('true') include_creds=('true') include_genesis=('true'):
+    ansible-playbook "{{playbook-path}}/41-transfer-sigverifier-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/42-transfer-shardsservice-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/44-transfer-blockgen-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/45-transfer-sidecar-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/46-transfer-sidecarclient-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/47-transfer-ordererlistener-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/48-transfer-orderersubmitter-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/49-transfer-peer-admin-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'channel_ids': ['{{default-channel-id}}'], 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/51-transfer-orderer-config-creds-genesis.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
 
 list-host-names name=("all"):
     ansible {{name}} --list-hosts | tail -n +2
@@ -328,12 +287,12 @@ docker CMD:
 #########################
 
 docker-runner-image:
-    just build-committer-bins false
-    just deploy-committer-bins
+    just build-bins true false false
+    just deploy-bins true false
     docker build -f runner/Dockerfile -t sc_runner .
 
     just build-committer-configs
-    just deploy-committer-configs
+    just deploy-configs
 
 # creds_dir should contain: msp/, ca.crt, orderer.yaml
 docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(project-dir + '/eval/deployments/configs/'):
@@ -344,10 +303,10 @@ docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup
     -v {{ if orderer_config_dir != '' { orderer_config_dir } else { runner-dir + '/orderer-creds'} }}:/root/orderer-creds \
     sc_runner:latest
 
-docker-build-blockgen inventory=("ansible/inventory/hosts-local-docker.yaml"):
+docker-build-blockgen inventory=("ansible/inventory/hosts-committer-local-docker.yaml"):
     just build-blockgen {{osx-bin-input-dir}}
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'filenames': ['blockgen'], 'osx_src_dir': '{{osx-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" -i {{inventory}} --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{base-setup-config-dir}}'}"
+    ansible-playbook -i {{inventory}} "{{playbook-path}}/44-transfer-blockgen-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}'}"
 
 docker-run-blockgen:
     GOGC=20000 {{osx-bin-input-dir}}/blockgen stream --configs {{base-setup-config-dir}}blockgen-machine-config-blockgen.yaml
@@ -357,88 +316,105 @@ docker-run-blockgen:
 # Run
 #########################
 
-start-mock-coordinator local_src_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/50-create-coordinator-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["mockcoordinator"]}'
-
-start-mock-orderers:
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["mockorderingservice"]}'
-
-run-all-orderer-experiment-suites:
-    just run-orderer-experiment-suite "all_orderer_experiments" "1,2,3,4" "1,2,3,4" "160,5000" "3,5,7,11"
-
-# Creates binaries, configs, creds for the orderers.
-# Before the first orderer experiment, run for all orderers, so that they all are set up with the right binaries and credentials.
-# just deploy-orderer-experiment-setup 100 true true
-# For subsequent runs with less orderers, it is not necessary to re-build the creds and bins, but we need to create new configs and genesis block. For instance:
-# just deploy-orderer-experiment-setup 3; just run-orderer-experiment 1 1 160 3
-# just deploy-orderer-experiment-setup 4; just run-orderer-experiment 1 1 160 4
-# ...
-# It is not necessary to re-build configs and genesis block between runs that have the same amount of orderers:
-# just deploy-orderer-experiment-setup 4; just run-orderer-experiment 1 1 160 4; just run-orderer-experiment 2 4 5000 4
-deploy-orderer-experiment-setup orderers=(all-instances) include_creds=('false') include_bins=('false'):
-    just clean all {{include_creds}} {{include_bins}}
-    if [[ "{{include_bins}}" = "true" ]]; then \
-      just build-orderer-bins; \
-      just deploy-orderer-bins; \
+start target_hosts=('all') include_configs=('false') committer=('sc') sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") orderer=('raft') connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
+    if [[ "{{committer}}" = "mock" ]]; then \
+      just start-mock-coordinator {{base-setup-config-dir}}; \
+    elif [[ "{{committer}}" = "sc" ]]; then \
+      just start-committer {{target_hosts}} {{include_configs}} {{all-instances}} {{all-instances}}; \
+    else \
+      echo "Committer type {{committer}} not defined"; \
+      exit 1; \
     fi
-    just build-orderer-configs {{orderers}}
-    just deploy-orderer-configs {{orderers}}
-    if [[ "{{include_creds}}" = "true" ]]; then \
-        just build-creds; \
-        just deploy-creds {{orderers}}; \
+
+    just start-blockgen {{target_hosts}} {{include_configs}} {{large_txs}} {{invalidity_ratio}} {{double_spends}} {{block_size}}
+
+    if [[ "{{orderer}}" = "mock" ]]; then \
+      just start-mock-orderers {{target_hosts}}; \
+    elif [[ "{{orderer}}" = "raft" ]]; then \
+      just start-raft-orderers {{target_hosts}} {{channel_id}}; \
+      just start-peers {{target_hosts}}; \
+      just create-channel {{channel_id}}; \
+      just join-channel {{target_hosts}} {{channel_id}}; \
+    elif [[ "{{orderer}}" = "mir" ]]; then \
+      just start-mir-orderers {{channel_id}}; \
+    else \
+      echo "Orderer type {{orderer}} not defined"; \
+      exit 1; \
     fi
-    just build-genesis-block;
-    just deploy-genesis-block {{orderers}}
 
-# Runs a series of orderer experiments. Make sure you have initialized all orderers before:
-# just deploy-orderer-experiment-setup 100 true true
-# just run-orderer-experiment-suite my-experiment 1,2 1,2,3 160,5000 1,3,5
-run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_connection_arr=('1') message_size_arr=('160') orderers_arr=('3') signed=('true') experiment_duration=(experiment-duration-seconds):
-    mkdir -p {{experiment-tracking-dir}}
-    echo "connections,streams_per_connection,messages,message_size,orderers,start_time,"{{sampling-time-header}} > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
-    echo {{orderers_arr}} | tr '{{array-separator}}' '\n' | while read orderers; do \
-      just kill-all; \
-      just deploy-orderer-experiment-setup $orderers; \
-      echo {{streams_per_connection_arr}} | tr '{{array-separator}}' '\n' | while read streams_per_connection; do \
-        echo {{message_size_arr}} | tr '{{array-separator}}' '\n' | while read message_size; do \
-          echo {{connections_arr}} | tr '{{array-separator}}' '\n' | while read connections; do \
-              echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\n\t$orderers orderers\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
-              just run-orderer-experiment $connections $streams_per_connection $message_size $orderers {{signed}}; \
-              echo $connections,$streams_per_connection,$message_size,$orderers,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
-              echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\n\t$orderers orderers\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
-              sleep {{experiment_duration}} \
-            ;done \
-        ;done \
-      ;done \
-    done
+    just start-orderer-listeners {{target_hosts}} {{include_configs}} {{channel_id}}
+    just start-orderer-submitters {{target_hosts}} {{include_configs}} {{connections}} {{streams_per_connection}} {{message_size}} {{signed}} {{channel_id}}
+    just start-sidecar {{target_hosts}} {{include_configs}} {{channel_id}}
+    just start-sidecar-clients {{target_hosts}} {{include_configs}} {{channel_id}}
 
-# Runs an orderer experiment from scratch:
-# - kills all existing orderer/listener/submitter instances
-# - cleans all existing ledgers
-# - starts all orderers, 1 listener, and 1 submitter.
-# To restart the experiment, we can run the same command again. Make sure the machines have been properly initialized (same amount of orderers):
-# just deploy-orderer-experiment-setup 100 true true
-# just run-orderer-experiment 1 1 160 100
-# just run-orderer-experiment 1 1 5000 100
-# just deploy-orderer-experiment-setup 4
-# just run-orderer-experiment 1 1 160 4
-run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') orderers=(all-instances) signed=('true') channel_id=(default-channel-id) listeners=(all-instances) submitters=(all-instances):
-    just kill-all
-    just clean all
-    just start-raft-orderers {{orderers}} "{{channel_id}}"
-    just start-orderer-listeners {{listeners}} {{orderers}} "{{channel_id}}"
-    just start-orderer-submitters {{submitters}} {{orderers}} {{connections}} {{streams_per_connection}} {{message_size}} "{{signed}}" "{{channel_id}}"
+start-sidecar target_hosts=('all') include_configs=('false') channel_id=(default-channel-id):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean sidecars; \
+        ansible-playbook "{{playbook-path}}/25-create-sidecar-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/45-transfer-sidecar-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': false, 'include_configs': true, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/65-start-sidecar.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-start-raft-orderers orderers=(all-instances) channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderer"], "orderingservice_instances": {{orderers}}}'
+start-sidecar-clients target_hosts=('all') include_configs=('false') channel_id=(default-channel-id):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean sidecarclients; \
+        ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/46-transfer-sidecarclient-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': false, 'include_configs':true, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/66-start-sidecarclient.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-start-orderer-listeners listeners=(all-instances) orderers=(all-instances) channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["ordererlistener"], "ordererlistener_instances": {{listeners}}, "orderingservice_instances": {{orderers}}, "channel_id": "{{channel_id}}"}'
+start-committer target_hosts=('all') include_configs=('false') sig_verifiers=(all-instances) shard_servers=(all-instances):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean coordinators; \
+        ansible-playbook "{{playbook-path}}/23-create-coordinator-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/61-start-sigverifier.yaml" --extra-vars "{'target_hosts': 'sigservices[0:{{sig_verifiers}}]'}"
+    ansible-playbook "{{playbook-path}}/62-start-shardsservice.yaml" --extra-vars "{'target_hosts': 'shardsservices[0:{{shard_servers}}]'}"
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'target_hosts': 'all'}"
 
-start-orderer-submitters submitters=(all-instances) orderers=(all-instances) connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["orderersubmitter"], "orderersubmitter_instances": {{submitters}}, "orderingservice_instances": {{orderers}}, "connections": {{connections}}, "streams_per_connection": {{streams_per_connection}}, "message_size": {{message_size}}, "channel_id": "{{channel_id}}", "signed": "{{signed}}"}'
+start-blockgen target_hosts=('all') include_configs=('false') large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100"):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean blockgens; \
+        ansible-playbook "{{playbook-path}}/24-create-blockgen-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}, 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/44-transfer-blockgen-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/64-start-blockgen.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+start-raft-orderers target_hosts=('all') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+
+start-orderer-listeners target_hosts=('all') include_configs=('false') channel_id=(default-channel-id):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean ordererlisteners; \
+        ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/47-transfer-ordererlistener-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': false, 'include_configs': true, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/67-start-ordererlistener.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+start-orderer-submitters target_hosts=('all') include_configs=('false') connections=('20') streams_per_connection=('8') message_size=('160') signed=('true') channel_id=(default-channel-id):
+    if [[ "{{include_configs}}" = "true" ]]; then \
+        just clean orderersubmitters; \
+        ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'connections': {{connections}}, 'streams_per_connection': {{streams_per_connection}}, 'message_size': {{message_size}}, 'channel_id': '{{channel_id}}', 'signed': '{{signed}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/48-transfer-orderersubmitter-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': false, 'include_configs': true, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
+    fi
+    ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+create-channel channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'create', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
+
+join-channel target_hosts=('all') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'fetch', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'join', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+
+start-peers target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/70-start-peer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+
+start-mock-coordinator:
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'mock': true, 'target_hosts': 'all'}"
+
+start-mock-orderers target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'mock': true, 'target_hosts': '{{target_hosts}}'}"
 
 start-mir-orderers channel_id=(default-channel-id):
     #!/usr/bin/env bash
@@ -460,45 +436,36 @@ start-mir-orderers channel_id=(default-channel-id):
       i=$((i+1)) \
     ; done
 
-start-sidecar channel_id=(default-channel-id) local_src_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/91-create-sidecar-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecars', 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sidecar"]}'
-
-start-sidecar-clients channel_id=(default-channel-id) local_src_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/93-create-sidecar-client-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'channel_id': '{{channel_id}}'}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'sidecarclients', 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sidecarclient"]}'
-
-start-all committer=('sc') orderer=('raft') channel_id=(default-channel-id) local_src_dir=(base-setup-config-dir):
-    just clean all
-
-    if [[ "{{committer}}" = "mock" ]]; then \
-      just start-mock-coordinator {{local_src_dir}}; \
-    elif [[ "{{committer}}" = "sc" ]]; then \
-      just start-committer 100 100 {{local_src_dir}}; \
-    else \
-      echo "Committer type {{committer}} not defined"; \
-      exit 1; \
-    fi
-
-    if [[ "{{orderer}}" = "mock" ]]; then \
-      just start-mock-orderers; \
-    elif [[ "{{orderer}}" = "raft" ]]; then \
-      just start-raft-orderers {{channel_id}}; \
-    elif [[ "{{orderer}}" = "mir" ]]; then \
-      just start-mir-orderers {{channel_id}}; \
-    else \
-      echo "Orderer type {{orderer}} not defined"; \
-      exit 1; \
-    fi
-
-    just start-sidecar {{channel_id}} {{local_src_dir}}
-    just start-sidecar-clients {{channel_id}} {{local_src_dir}}
-
-    tmux set-option remain-on-exit
+kill target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/90-kill.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
 ### Experiments
+
+run-all-orderer-experiment-suites:
+    just run-orderer-experiment-suite "all_orderer_experiments" "1,2,3,4" "1,2,3,4" "160,5000"
+
+# Runs a series of orderer experiments. Make sure you have initialized all orderers every time you change the inventory:
+# just build-deploy-all
+# just run-orderer-experiment-suite my-experiment 1,2 1,2,3 160,5000
+run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_connection_arr=('1') message_size_arr=('160') signed=('true') experiment_duration=(experiment-duration-seconds):
+    mkdir -p {{experiment-tracking-dir}}
+    echo "connections,streams_per_connection,messages,message_size,start_time,"{{sampling-time-header}} > "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
+    echo {{streams_per_connection_arr}} | tr '{{array-separator}}' '\n' | while read streams_per_connection; do \
+      echo {{message_size_arr}} | tr '{{array-separator}}' '\n' | while read message_size; do \
+        echo {{connections_arr}} | tr '{{array-separator}}' '\n' | while read connections; do \
+            echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
+            just run-orderer-experiment $connections $streams_per_connection $message_size {{signed}}; \
+            echo $connections,$streams_per_connection,$message_size,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
+            echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$connections connections\n\t$streams_per_connection streams per connection\n\t$message_size B message size\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
+            sleep {{experiment_duration}} \
+          ;done \
+      ;done \
+    done
+
+run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
+    just kill all
+    just clean all
+    just start all true sc 0 0 0 0 0 0 'raft' {{connections}} {{streams_per_connection}} {{message_size}} {{signed}} {{channel_id}}
 
 run-variable-sigverifier-experiment:
     just run-experiment-suite "variable_sigverifiers" "1,2,3,4"
@@ -523,7 +490,8 @@ run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=
             echo {{double_spends_arr}} | tr '{{array-separator}}' '\n' | while read double_spends; do \
                 echo {{block_sizes_arr}} | tr '{{array-separator}}' '\n' | while read block_size; do \
                     echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
-                    just run-experiment $sig_verifiers $shard_servers $large_txs $invalidity_ratio $double_spends $block_size; \
+                    just start-committer $sig_verifiers $shard_servers; \
+                    just start-blockgen all $large_txs $invalidity_ratio $double_spends $block_size; \
                     echo $sig_verifiers,$shard_servers,$large_txs,$invalidity_ratio,$double_spends,$block_size,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
                     echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
                     sleep {{experiment_duration}} \
@@ -535,20 +503,6 @@ run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=
     done
     just gather-results "{{experiment_name}}.csv"
 
-run-experiment sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") local_src_dir=(base-setup-config-dir):
-    just start-committer {{sig_verifiers}} {{shard_servers}} {{local_src_dir}}
-    just start-blockgen {{large_txs}} {{invalidity_ratio}} {{double_spends}} {{block_size}} {{local_src_dir}}
-
-start-committer  sig_verifiers=("3") shard_servers=("3") local_src_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/50-create-coordinator-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'coordinators', 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator"], "sigservice_instances": {{sig_verifiers}}, "shardsservice_instances": {{shard_servers}}}'
-
-start-blockgen large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") local_src_dir=(base-setup-config-dir):
-    ansible-playbook "{{playbook-path}}/60-create-blockgen-experiment-config.yaml" --extra-vars "{'src_dir': {{local_src_dir}}, 'large_txs': {{large_txs}}, 'small_txs': $(bc <<< "1 - {{large_txs}}"), 'invalidity_ratio': {{invalidity_ratio}}, 'double_spends': {{double_spends}}, 'block_size': {{block_size}}}"
-    ansible-playbook "{{playbook-path}}/30-transfer-base-config.yaml" --extra-vars "{'target_hosts': 'blockgens', 'src_dir': '{{local_src_dir}}'}"
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["blockgen stream"]}'
-
 # Goes through all of the entries of the tracker file and retrieves the corresponding metric for each line (as defined at the sampling-time field)
 gather-results filename:
     mkdir -p {{experiment-results-dir}}
@@ -556,9 +510,6 @@ gather-results filename:
 
 restart-monitoring remove_existing=('true'):
     go run utils/monitoring/cmd/main.go -config-dir utils/monitoring/config/ -remove-existing {{remove_existing}}
-
-kill-all:
-    ansible-playbook "{{playbook-path}}/70-start-hosts.yaml" --extra-vars '{"start": ["sigservice", "shardsservice", "coordinator", "mockcoordinator", "blockgen stream", "mockorderingservice", "sidecar", "sidecarclient", "orderer", "ordererlistener", "orderersubmitter"], "only_kill": true}'
 
 # Unix and OSX have different expressions to retrieve the timestamp
 get-timestamp plus_seconds=("0") format=(""):

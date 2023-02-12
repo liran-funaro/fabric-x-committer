@@ -1,0 +1,21 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: "Transfer crypto for {{inventory_hostname}}"
+  vars:
+    src_dir: "{{orderer_artifacts_path}}/fabric.{{topology_name}}"
+    dst_dir: "{{config_dir}}"
+    rsync_opts:
+      - --include='*/'
+      - "--include=**/fabric.{{topology_name}}/crypto/**/{{node_type}}/{{node_fqn}}/**"
+      - --exclude='*'
+      - --prune-empty-dirs
+  include_tasks: ../subtasks/copy-file.yaml
+- name: "Transfer Root CA certs for {{inventory_hostname}}"
+  vars:
+    src_dir: "{{orderer_artifacts_path}}/fabric.{{topology_name}}/crypto/"
+    dst_dir: "{{config_dir}}/fabric.{{topology_name}}/crypto/"
+    filename: ca-certs.pem
+  include_tasks: ../subtasks/copy-file.yaml
+  when: include_root_ca_certs | d(false) == true

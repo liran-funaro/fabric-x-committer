@@ -1,0 +1,115 @@
+all:
+  vars:
+    ansible_connection: local
+
+    # The user of the deployment machine
+    ansible_user: "{{lookup('env', 'USER')}}"
+
+    # Where to transfer the binary and config files on the deployment machines
+    root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer"
+    binary_dir: "{{root_path}}/eval/experiments/local-bin/"
+    top_config_dir: "{{root_path}}/eval/experiments/local-configs"
+    os: osx
+
+  children:
+    services:
+      vars:
+        ansible_host: localhost
+      children:
+
+        coordinators:
+          vars:
+            config: config-coordinator.yaml
+          hosts:
+            coordinator-machine:
+              config_dir: "{{top_config_dir}}/coordinator"
+              service_port: 5002
+              prometheus_exporter_port: 2112
+
+        sigservices:
+          vars:
+            config: config-sigservice.yaml
+          hosts:
+            sigservice-machine1:
+              config_dir: "{{top_config_dir}}/sigservice1"
+              service_port: 5000
+              prometheus_exporter_port: 2110
+            sigservice-machine2:
+              config_dir: "{{top_config_dir}}/sigservice2"
+              service_port: 5004
+              prometheus_exporter_port: 2114
+
+        shardsservices:
+          vars:
+            config: config-shardsservice.yaml
+          hosts:
+            shardsservice-machine:
+              config_dir: "{{top_config_dir}}/shardsservice"
+              service_port: 5001
+              prometheus_exporter_port: 2115
+
+        orderingservices:
+          vars:
+            config: orderer.yaml
+            organization: DefaultOrdererOrg
+            domain: example.com
+          hosts:
+            orderingservice-machine1:
+              config_dir: "{{top_config_dir}}/orderer0"
+              service_port: 7050
+              cluster_port: 7070
+              ops_port: 8440
+            orderingservice-machine2:
+              config_dir: "{{top_config_dir}}/orderer1"
+              service_port: 7051
+              cluster_port: 7071
+              ops_port: 8441
+            orderingservice-machine3:
+              config_dir: "{{top_config_dir}}/orderer2"
+              service_port: 7052
+              cluster_port: 7072
+              ops_port: 8442
+            orderingservice-machine4:
+              config_dir: "{{top_config_dir}}/orderer3"
+              service_port: 7053
+              cluster_port: 7073
+              ops_port: 8443
+
+        peerservices:
+          vars:
+            config: core.yaml
+            profile: profile.yaml
+            organization: DefaultPeerOrg
+            domain: example.com
+          hosts:
+            peerservice-machine1:
+              config_dir: "{{top_config_dir}}/peer0"
+              service_port: 7001
+
+        sidecars:
+          vars:
+            inherit_peer: peerservice-machine1
+            config: config-sidecar.yaml
+          hosts:
+            sidecar-machine:
+              config_dir: "{{top_config_dir}}/sidecar"
+              service_port: 1234
+              prometheus_exporter_port: 2111
+
+        sidecarclients:
+          vars:
+            config: config-sidecar-client.yaml
+            inherit_peer: peerservice-machine1
+          hosts:
+            sidecar-client-machine1:
+              profile: profile-sidecar-client.yaml
+              prometheus_exporter_port: 2116
+              config_dir: "{{top_config_dir}}/sidecarclient0/"
+            sidecar-client-machine2:
+              prometheus_exporter_port: 2117
+              config_dir: "{{top_config_dir}}/sidecarclient1/"
+
+        monitoring:
+          hosts:
+            monitoring-machine:
+              jaeger_exporter_port: 14268

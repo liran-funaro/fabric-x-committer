@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
@@ -15,15 +14,12 @@ import (
 )
 
 func main() {
-	config.String("orderer-creds-path", "sidecar-client.creds-path", "The path to the output folder containing the root CA and the client credentials.")
-	config.String("orderer-config-path", "sidecar-client.config-path", "The path to the output folder containing the orderer config.")
-	config.String("orderer-msp-dir", "sidecar-client.msp-dir", "The local MSP dir.")
-	config.String("orderer-msp-id", "sidecar-client.msp-id", "The local MSP ID.")
+	config.ServerConfig("sidecar")
 	config.ParseFlags()
 
 	c := sidecarclient.ReadConfig()
-
-	creds, signer := connection.GetDefaultSecurityOpts(c.CredsPath, c.ConfigPath, c.CredsPath+"/ca.crt", c.MspDir, c.MspId)
+	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
+	creds, signer := connection.GetOrdererConnectionCreds(p)
 
 	opts := &sidecarclient.ClientInitOptions{
 		CommitterEndpoint: c.Committer,

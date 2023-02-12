@@ -1,0 +1,12 @@
+orderer-listener:               # Overridden by ansible
+  orderer: :7050
+  channel-id: mychannel
+  prometheus:
+    endpoint: :2113
+  orderer-connection-profile: ./orderer-connection-profile.yaml
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt

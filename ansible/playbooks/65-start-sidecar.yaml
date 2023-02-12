@@ -1,0 +1,13 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start sidecar
+  hosts: "{{target_hosts}}:&sidecars"
+  tasks:
+    - vars:
+        service_name: sidecar
+        wait_until_running: true
+        options:
+          configs: "{{config_dir}}/{{config}}"
+      include_tasks: ../subtasks/start-server.yaml

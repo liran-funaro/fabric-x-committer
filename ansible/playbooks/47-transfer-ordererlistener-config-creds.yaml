@@ -1,0 +1,20 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Transfer orderer listener config to destination server
+  hosts: "{{target_hosts}}:&ordererlisteners"
+  tasks:
+    - include_tasks: ../subtasks/transfer-base-config.yaml
+    - vars:
+        node_type: peers
+        node_name: "{{inherit_peer}}"
+        file_type: profile
+      include_tasks: ../subtasks/transfer-node-config-profile.yaml
+      when: include_configs | d(false) == true
+    - vars:
+        node_fqn: "{{inherit_peer}}.{{hostvars[inherit_peer].organization | lower}}.{{hostvars[inherit_peer].domain}}"
+        node_type: peers
+        include_root_ca_certs: true
+      include_tasks: ../subtasks/transfer-node-creds.yaml
+      when: include_creds | d(false) == true

@@ -1,0 +1,54 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: "{{target_hosts}}:&peerservices"
+  vars:
+    use_tmux: false
+    output_path: "{{config_dir}}/{{channel_id}}-genesis-block.pb"
+    peer_id: "{{organization}}.{{inventory_hostname}}"
+    full_domain: "{{organization | lower}}.{{domain}}"
+    config_tree_root: "{{config_dir}}/fabric.{{topology_name}}"
+    env:
+      - "FABRIC_CFG_PATH={{config_tree_root}}/peers/{{peer_id}}"
+      - "CORE_PEER_MSPCONFIGPATH={{config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{full_domain}}/users/Admin@{{full_domain}}/msp"
+    orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+    orderer_endpoint: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | first}}"
+    ca_file: "{{config_tree_root}}/crypto/ca-certs.pem"
+    tls: true
+  tasks:
+    - name: Create channel
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: peer channel create
+        options:
+          channelID: "{{channel_id}}"
+          file: "{{config_tree_root}}/{{channel_id}}_tx.pb"
+          cafile: "{{ca_file}}"
+          orderer: "{{orderer_endpoint}}"
+          tls: "{{tls}}"
+      when: action == 'create'
+    - name: Join channel
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: peer channel join
+        options:
+          blockpath: "{{output_path}}"
+          cafile: "{{ca_file}}"
+          orderer: "{{orderer_endpoint}}"
+          tls: "{{tls}}"
+      when: action == 'join'
+    - name: Fetch channel
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: "peer channel fetch 0 {{output_path}}"
+        options:
+          channelID: "{{channel_id}}"
+          cafile: "{{ca_file}}"
+          orderer: "{{orderer_endpoint}}"
+          tls: "{{tls}}"
+      when: action == 'fetch'
+    - name: Wait for fetch
+      wait_for:
+        path: "{{output_path}}"
+      when: action == 'fetch'

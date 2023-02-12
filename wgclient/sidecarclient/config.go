@@ -13,15 +13,12 @@ type SidecarClientConfig struct {
 	Sidecar    connection.Endpoint    `mapstructure:"sidecar"`
 	Prometheus monitoring.Prometheus  `mapstructure:"prometheus"`
 
-	Profile              string `mapstructure:"profile"`
-	InputChannelCapacity int    `mapstructure:"input-channel-capacity"`
-	ChannelID            string `mapstructure:"channel-id"`
-	Parallelism          int    `mapstructure:"parallelism"`
-	SignedEnvelopes      bool   `mapstructure:"signed-envelopes"`
-	ConfigPath           string `mapstructure:"config-path"`
-	CredsPath            string `mapstructure:"creds-path"`
-	MspDir               string `mapstructure:"msp-dir"`
-	MspId                string `mapstructure:"msp-id"`
+	Profile                  string `mapstructure:"profile"`
+	InputChannelCapacity     int    `mapstructure:"input-channel-capacity"`
+	ChannelID                string `mapstructure:"channel-id"`
+	Parallelism              int    `mapstructure:"parallelism"`
+	SignedEnvelopes          bool   `mapstructure:"signed-envelopes"`
+	OrdererConnectionProfile string `mapstructure:"orderer-connection-profile"`
 }
 
 func ReadConfig() SidecarClientConfig {

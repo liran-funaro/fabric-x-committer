@@ -1,0 +1,93 @@
+all:
+  vars:
+    ansible_connection: local
+    ansible_user: "{{lookup('env', 'USER')}}"
+    root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer/runner/out"
+    binary_dir: "{{root_path}}/bin/"
+    top_config_dir: "{{root_path}}/config/"
+    skip_prefix_when_copy: ['orderer.yaml']
+    os: linux
+
+  children:
+    services:
+      children:
+#        blockgens:
+#          vars:
+#            # Runs on localhost
+#            root_path: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer
+#            binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
+#            config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
+#            os: osx
+#          hosts:
+#            blockgen-machine:
+#              ansible_host: "localhost"
+#              prometheus_exporter_port: 2113
+
+        coordinators:
+          hosts:
+            coordinator-machine:
+              config_dir: "{{top_config_dir}}/coordinator/"
+              config: config-coordinator.yaml
+              ansible_host: "0.0.0.0"
+              service_port: 5002
+              prometheus_exporter_port: 2112
+
+        sigservices:
+          vars:
+            config_dir: "{{top_config_dir}}/sigservice/"
+            config: config-sigservice.yaml
+          hosts:
+            sigservice-machine:
+              ansible_host: "localhost"
+              service_port: 5000
+              prometheus_exporter_port: 2110
+
+        shardsservices:
+          vars:
+            config_dir: "{{top_config_dir}}/shardsservice/"
+            config: config-shardsservice.yaml
+          hosts:
+            shardsservice-machine:
+              ansible_host: "localhost"
+              service_port: 5001
+              prometheus_exporter_port: 2111
+
+        orderingservices:
+          vars:
+            config: orderer.yaml
+          hosts:
+            orderingservice-machine1:
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
+              service_port: 7050
+              config_dir: "{{top_config_dir}}/orderer0/"
+              genesis_dir: "{{config_dir}}"
+              creds_dir: "{{config_dir}}"
+            orderingservice-machine2:
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
+              service_port: 7050
+              config_dir: "{{top_config_dir}}/orderer1/"
+              genesis_dir: "{{config_dir}}"
+              creds_dir: "{{config_dir}}"
+            orderingservice-machine3:
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
+              service_port: 7050
+              config_dir: "{{top_config_dir}}/orderer2/"
+              genesis_dir: "{{config_dir}}"
+              creds_dir: "{{config_dir}}"
+
+        sidecars:
+          hosts:
+            sidecar-machine:
+              config_dir: "{{top_config_dir}}/sidecar/"
+              config: config-sidecar.yaml
+              ansible_host: "0.0.0.0"
+              service_port: 5050
+              prometheus_exporter_port: 2114
+              creds_dir: "{{root_path}}/orderer-creds/"
+              ledger_dir: "{{config_dir + '/ledger'}}"
+
+        monitoring:
+          hosts:
+            monitoring-machine:
+              ansible_host: "localhost"
+              jaeger_exporter_port: 14268

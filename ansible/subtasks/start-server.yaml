@@ -5,10 +5,10 @@
 - name: Kill process
   shell:
     cmd: lsof -i :{{process_port}} -sTCP:LISTEN |awk 'NR > 1 {print $2}'  |xargs kill -f -15
-  when: process_port is defined and only_kill is defined or only_kill == true
+  when: process_port | d(0) | int > 0 and only_kill | d(0) == true
   ignore_errors: yes
   loop:
-    - "{{service_port | d()}}"
+    - "{{service_port}}"
     - "{{prometheus_exporter_port}}"
   loop_control:
     loop_var: process_port
@@ -17,30 +17,34 @@
     cmd: tmux kill-server
   when: only_kill is defined or only_kill == true
   ignore_errors: yes
-- name: Runs server
-  vars:
-    session_name: "{{inventory_hostname}}"
+- vars:
     var_prefix: "--"
     env_vars: "{{env | d([]) | join(' ')}}"
-    options: "{{opts | d({}) | combine({} if config | d('') | length == 0 else {'configs': config_dir + inventory_hostname + '-' + config})}}"
-    flags: "{{[var_prefix] | product(options.keys() | d([])) | map('join') | zip(options.values() | d([])) | map('join', '=') | join(' ')}}"
+    flags: "{{[var_prefix] | product((options | d({})).keys() | d([])) | map('join') | zip((options | d({})).values() | d([])) | map('join', '=') | join(' ')}}"
   set_fact:
-    command: tmux new-session -s {{session_name}} -d "{{env_vars}} {{binary_dir}}{{service_name}} {{flags}}"
+    command: "{{env_vars}} {{binary_dir}}{{service_name}} {{flags}}"
+  when: service_name | d('') | length > 0
+- vars:
+    session_name: "{{inventory_hostname}}"
+  set_fact:
+    command: tmux new-session -s {{session_name}} -d "{{command}}"
+  when: use_tmux | d(true) == true
 - shell:
     cmd: "{{command}}"
   async: 10
   poll: 0
   register: stdout
-  when: only_kill is undefined or only_kill == false
+  when: command | d('') | length > 0 and only_kill | d(false) == false
 - debug:
     msg:
       - " {{command}}"
       - " {{stdout}}"
+  when: command | d('') | length > 0
 - set_fact:
     command: ""
 - name: Wait until server is running
   vars:
-    server_port: "{{hostvars[inventory_hostname].service_port | d()}}"
+    server_port: "{{hostvars[inventory_hostname].service_port | d(0)}}"
   wait_for:
     port: "{{server_port}}"
-  when: (only_kill is undefined or only_kill == false) and (server_port != '')
+  when: command | d('') | length > 0 and only_kill | d(false) == false and wait_until_running | d(false) == true and server_port | d(0) | int > 0

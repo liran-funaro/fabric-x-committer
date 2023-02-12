@@ -1,23 +1,21 @@
 package topologysetup
 
 import (
-	"fmt"
-	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/api"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
-	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/fabricconfig"
-	"github.com/hyperledger/fabric/bccsp/factory"
-	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/tss"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"gopkg.in/yaml.v3"
 )
 
-type platformFactory struct{}
+type platformFactory struct {
+	rootDir      string
+	peerPorts    map[NodeID]NodeConfig
+	ordererPorts map[NodeID]NodeConfig
+}
 
-func NewCustomPlatformFactory() *platformFactory {
-	return &platformFactory{}
+func NewCustomPlatformFactory(rootDir string, peerPorts, ordererPorts map[NodeID]NodeConfig) *platformFactory {
+	return &platformFactory{rootDir, peerPorts, ordererPorts}
 }
 
 func (f platformFactory) Name() string {
@@ -25,92 +23,56 @@ func (f platformFactory) Name() string {
 }
 
 func (f platformFactory) New(registry api.Context, t api.Topology, builder api.Builder) api.Platform {
-	p := fabric.NewPlatform(&EnhancedRegistry{registry}, t, builder)
-	p.Network.AddExtension(tss.NewExtension(p))
+	p := fabric.NewPlatform(&EnhancedRegistry{registry, f.rootDir, f.peerPorts, f.ordererPorts}, t, builder)
+	//p.Network.AddExtension(tss.NewExtension(p))
 	return p
 }
 
-type OrdererClientProfileGenerator struct {
-	rootDir string
-	prefix  string
-}
-
-func NewConnectionProfileGenerator(rootDir, topologyName string) *OrdererClientProfileGenerator {
-	return &OrdererClientProfileGenerator{
-		rootDir: rootDir,
-		prefix:  "fabric." + topologyName,
-	}
-}
-
-func (g *OrdererClientProfileGenerator) GenerateOrdererClientProfiles(peerMap map[OrgName][]PeerName) error {
-	for org, peers := range peerMap {
-		for _, peer := range peers {
-			filePath := filepath.Join(g.rootDir, g.prefix, "peers", fmt.Sprintf("%s.%s", org, peer), "profile.yaml")
-			profile, err := g.connectionProfile(org, peer)
-			if err != nil {
-				return err
-			}
-			content, err := yaml.Marshal(profile)
-			if err != nil {
-				return err
-			}
-			return utils.WriteFile(filePath, content)
-		}
-	}
-	return nil
-}
-
-func (g *OrdererClientProfileGenerator) connectionProfile(peerOrg, peerName string) (*connection.OrdererConnectionProfile, error) {
-	content, err := utils.ReadFile(g.peerConfigPath(peerOrg, peerName))
-	if err != nil {
-		return nil, err
-	}
-	core := fabricconfig.Core{}
-	if err = yaml.Unmarshal(content, &core); err != nil {
-		return nil, err
-	}
-
-	return &connection.OrdererConnectionProfile{
-		RootCAPaths: []string{g.caCertBundlePath()},
-		MSPDir:      core.Peer.MSPConfigPath,
-		MSPID:       core.Peer.LocalMSPID,
-		BCCSP:       mapBccsp(core.Peer.BCCSP),
-	}, nil
-}
-
-func (g *OrdererClientProfileGenerator) peerConfigPath(peerOrg, peerName string) string {
-	return filepath.Join(g.rootDir, g.prefix, "peers", fmt.Sprintf("%s.%s", peerOrg, peerName), "core.yaml")
-}
-
-func (g *OrdererClientProfileGenerator) caCertBundlePath() string {
-	return filepath.Join(g.rootDir, g.prefix, "crypto", "ca-certs.pem")
-}
-
-func mapBccsp(bccsp *fabricconfig.BCCSP) *factory.FactoryOpts {
-	if bccsp == nil {
-		return nil
-	}
-	return &factory.FactoryOpts{
-		Default: bccsp.Default,
-		SW:      mapSoftwareProvider(bccsp.SW),
-	}
-}
-
-func mapSoftwareProvider(sw *fabricconfig.SoftwareProvider) *factory.SwOpts {
-	if sw == nil {
-		return nil
-	}
-	return &factory.SwOpts{
-		Security: sw.Security,
-		Hash:     sw.Hash,
-	}
-}
-
+//TODO: Temporary workaround until we refactor NWO
 type EnhancedRegistry struct {
 	api.Context
+	rootDir      string
+	peerPorts    map[NodeID]NodeConfig
+	ordererPorts map[NodeID]NodeConfig
 }
 
-//TODO
-func (r *EnhancedRegistry) ReservePort() uint16 {
-	return r.Context.ReservePort() + 7050
+func (r *EnhancedRegistry) PortsByPeerID(_ string, id NodeID) api.Ports {
+	return r.peerPorts[id].Ports
+}
+
+func (r *EnhancedRegistry) PortsByOrdererID(_ string, id NodeID) api.Ports {
+	return r.ordererPorts[id].Ports
+}
+
+func (r *EnhancedRegistry) HostByPeerID(_ string, id NodeID) string {
+	return r.peerPorts[id].Host
+}
+
+func (r *EnhancedRegistry) HostByOrdererID(_ string, id NodeID) string {
+	return r.ordererPorts[id].Host
+}
+
+func (r *EnhancedRegistry) RootDir() string {
+	if isInTemplate(1) {
+		return r.rootDir
+	}
+	return r.Context.RootDir()
+}
+
+func isInTemplate(skip int) bool {
+	rpc := make([]uintptr, 20)
+	n := runtime.Callers(skip+1, rpc[:])
+	if n < 1 {
+		return false
+	}
+	frames := runtime.CallersFrames(rpc)
+	for {
+		frame, more := frames.Next()
+		if !more {
+			return false
+		}
+		if strings.Contains(frame.Function, "(*Template).Execute") {
+			return true
+		}
+	}
 }

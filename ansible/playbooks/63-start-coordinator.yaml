@@ -1,0 +1,22 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: "{{target_hosts}}:&coordinators"
+  tasks:
+    - name: Start coordinator
+      vars:
+        service_name: coordinator
+        wait_until_running: true
+        options:
+          configs: "{{config_dir}}/{{config}}"
+      include_tasks: ../subtasks/start-server.yaml
+      when: mock | d(false) == false
+    - name: Start mock coordinator
+      vars:
+        service_name: mockcoordinator
+        wait_until_running: true
+        options:
+          configs: "{{config_dir}}/{{config}}"
+      include_tasks: ../subtasks/start-server.yaml
+      when: mock | d(false) == false

@@ -8,12 +8,10 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
-//decoder contains custom unmarshalling for types not supported by default by mapstructure, e.g. time.Duration, connection.Endpoint
-var decoder = decoderHook(durationDecoder, endpointDecoder)
+type DecoderFunc = func(dataType reflect.Type, targetType reflect.Type, rawData interface{}) (interface{}, bool, error)
 
-type decoderFunc = func(dataType reflect.Type, targetType reflect.Type, rawData interface{}) (interface{}, bool, error)
-
-func decoderHook(hooks ...decoderFunc) viper.DecoderConfigOption {
+//decoderHook contains custom unmarshalling for types not supported by default by mapstructure, e.g. time.Duration, connection.Endpoint
+func decoderHook(hooks ...DecoderFunc) viper.DecoderConfigOption {
 	return viper.DecodeHook(func(dataType reflect.Type, targetType reflect.Type, rawData interface{}) (interface{}, error) {
 		for _, hook := range hooks {
 			if result, done, err := hook(dataType, targetType, rawData); done {

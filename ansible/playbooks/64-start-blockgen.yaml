@@ -1,0 +1,15 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start block generator
+  hosts: "{{target_hosts}}:&blockgens"
+  tasks:
+    - vars:
+        service_name: blockgen stream
+        wait_until_running: true
+        options:
+          configs: "{{config_dir}}/{{config}}"
+        env:
+          - "GOGC=20000"
+      include_tasks: ../subtasks/start-server.yaml

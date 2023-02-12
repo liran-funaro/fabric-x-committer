@@ -1,0 +1,14 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start sidecar client
+  hosts: "{{target_hosts}}:&sidecarclients"
+  tasks:
+    - vars:
+        service_name: sidecarclient
+        options:
+          configs: "{{config_dir}}/{{config}}"
+        env:
+          - "GOGC=20000"
+      include_tasks: ../subtasks/start-server.yaml

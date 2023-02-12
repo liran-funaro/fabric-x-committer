@@ -18,8 +18,8 @@ func OnConfigUpdated(listener func()) {
 	configUpdateListener = append(configUpdateListener, listener)
 }
 
-func Unmarshal(c interface{}) {
-	utils.Must(viper.Unmarshal(c, decoder))
+func Unmarshal(c interface{}, decoderFuncs ...DecoderFunc) {
+	utils.Must(viper.Unmarshal(c, decoderHook(append(decoderFuncs, durationDecoder, endpointDecoder)...)))
 }
 
 //configUpdated updates all listeners and pointers to configurations.

@@ -22,15 +22,11 @@ type deliverServer interface {
 
 func main() {
 	config.ServerConfig("sidecar")
-	config.String("channel-id", "sidecar.orderer.channel-id", "Channel ID")
-	config.String("orderer-creds-path", "sidecar.orderer.creds-path", "The path to the output folder containing the root CA and the client credentials.")
-	config.String("orderer-config-path", "sidecar.orderer.config-path", "The path to the output folder containing the orderer config.")
-	config.String("orderer-msp-dir", "sidecar.orderer.msp-dir", "The local MSP dir.")
-	config.String("orderer-msp-id", "sidecar.orderer.msp-id", "The local MSP ID.")
 	config.ParseFlags()
 
 	c := sidecar.ReadConfig()
-	creds, signer := connection.GetDefaultSecurityOpts(c.Orderer.CredsPath, c.Orderer.ConfigPath, c.Orderer.CredsPath+"/ca.crt", c.Orderer.MspDir, c.Orderer.MspId)
+	p := connection.ReadConnectionProfile(c.Orderer.OrdererConnectionProfile)
+	creds, signer := connection.GetOrdererConnectionCreds(p)
 
 	m := metrics.New(c.Prometheus.IsEnabled())
 

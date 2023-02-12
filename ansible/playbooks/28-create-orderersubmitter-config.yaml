@@ -1,0 +1,39 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create configs for orderer submitters
+  hosts: localhost
+  vars:
+    selected_hosts: "{{groups['orderersubmitters'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars)}}"
+  roles:
+    - kwoodson.yedit
+  tasks:
+    - name: Copy configs
+      vars:
+        config_root: orderer-submitter
+      include_tasks: ../subtasks/create-orderer-client-config.yaml
+    - name: Edit further submitter parameters
+      vars:
+        connections: 2
+        message_size: 160
+        signed: true
+        streams_per_connection: 8
+        config_dst_filepath: "{{dst_dir}}/{{orderersubmitter_instance.inventory_hostname}}/{{orderersubmitter_instance.config}}"
+        orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+        orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+        orderers: "{{range(connections | int) | product(orderer_endpoints) | map('last')}}"
+      yedit:
+        src: "{{config_dst_filepath}}"
+        edits:
+          - key: orderer-submitter.orderers
+            value: "{{orderers}}"
+          - key: orderer-submitter.message-size
+            value: "{{message_size}}"
+          - key: orderer-submitter.signed
+            value: "{{signed}}"
+          - key: orderer-submitter.goroutines
+            value: "{{streams_per_connection}}"
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: orderersubmitter_instance

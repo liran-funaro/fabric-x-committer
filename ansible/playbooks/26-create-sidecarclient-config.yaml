@@ -1,0 +1,51 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create configs for sidecarclients
+  hosts: localhost
+  vars:
+    selected_hosts: "{{groups['sidecarclients'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars)}}"
+  roles:
+    - kwoodson.yedit
+  tasks:
+    - name: Create base config
+      vars:
+        config_root: sidecar-client
+      include_tasks: ../subtasks/create-base-config.yaml
+      when: "{{selected_hosts | length > 0}}"
+    - name: Further edit sidecar-client config
+      vars:
+        filepath: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.config}}"
+        orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
+        sidecar_host: "{{groups['sidecars'] | map('extract', hostvars) | first}}"
+        committer_host: "{{groups['coordinators'] | map('extract', hostvars) | first}}"
+        inherit_peer: "{{hostvars[sidecarclient_instance.inherit_peer]}}"
+      yedit:
+        src: "{{filepath}}"
+        edits:
+          - key: sidecar-client.profile
+            value: "{{'' if sidecarclient_instance.profile | d('') | length == 0 else sidecarclient_instance.config_dir + '/' + sidecarclient_instance.profile}}"
+          - key: sidecar-client.orderers
+            value: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+          - key: sidecar-client.channel-id
+            value: "{{channel_id}}"
+          - key: sidecar-client.sidecar
+            value: "{{sidecar_host.ansible_host}}:{{sidecar_host.service_port}}"
+          - key: sidecar-client.committer
+            value: "{{committer_host.ansible_host}}:{{committer_host.service_port}}"
+          - key: sidecar-client.orderer-connection-profile
+            value: "{{sidecarclient_instance.config_dir}}/fabric.{{topology_name}}/peers/{{inherit_peer.organization}}.{{inherit_peer.inventory_hostname}}/profile.yaml"
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: sidecarclient_instance
+    - name: Copy sidecar-client profile from local filesystem
+      vars:
+        mode: a+rw
+        src_path: "{{src_dir}}/{{sidecarclient_instance.profile}}"
+        dst_path: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.profile}}"
+      include_tasks: ../subtasks/copy-file.yaml
+      when: sidecarclient_instance.profile | d('') | length > 0
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: sidecarclient_instance

@@ -3,4 +3,4 @@ orderer-listener:
   channel-id: mychannel
   prometheus:
     endpoint: :2113
-  orderer-connection-profile: ./orderer-connection-profile.yaml
+  orderer-connection-profile: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer/eval/deployments/orderer-artifacts/fabric.mytopos//peers/DefaultPeerOrg.peerservice-machine1/profile.yaml

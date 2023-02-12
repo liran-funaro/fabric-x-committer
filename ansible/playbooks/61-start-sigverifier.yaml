@@ -1,0 +1,13 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Start sig verifiers
+  hosts: "{{target_hosts}}:&sigservices"
+  tasks:
+    - vars:
+        service_name: sigservice
+        wait_until_running: true
+        options:
+          configs: "{{config_dir}}/{{config}}"
+      include_tasks: ../subtasks/start-server.yaml

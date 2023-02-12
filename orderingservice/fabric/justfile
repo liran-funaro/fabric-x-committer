@@ -80,10 +80,10 @@ run_orderer n=("0"):
 
 
 submit out_dir=('') orderers=('0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052') channel_id=(channelID):
-    GOGC=15000 go run clients/cmd/submitter/main.go --configs ./orderer-submitter-config.yaml
+    GOGC=15000 go run clients/cmd/submitter/main.go --configs ./config-orderer-submitter.yaml
 
 listen out_dir=('') orderer=('0.0.0.0:7050') channel_id=(channelID):
-    go run clients/cmd/listener/main.go --configs ./orderer-listener-config.yaml --quiet
+    go run clients/cmd/listener/main.go --configs ./config-orderer-listener.yaml --quiet
     #      -orderer-endpoints 0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052 \
     #      -orderer-ops-endpoints 0.0.0.0:8440,0.0.0.0:8441,0.0.0.0:8442 \
 

@@ -6,12 +6,15 @@
   file:
     path: "{{dst_dir}}"
     state: directory
+- debug:
+    msg:
+      - "Copy {{src_dir}}/{{filename | d('')}} to {{dst_dir}}/{{filename | d('')}}"
 - name: Transfer file
   vars:
     src_path: "{{src_dir if filename is not defined or filename | length == 0 else src_dir + '/' + filename}}"
     dst_path: "{{dst_dir if filename is not defined or filename | length == 0 else dst_dir + '/' + filename}}"
-  copy:
+  synchronize:
     src: "{{src_path}}"
     dest: "{{dst_path}}"
+    rsync_opts: "{{rsync_opts | d([])}}"
 #    owner: "{{ansible_user}}"
-    mode: "{{mode}}"

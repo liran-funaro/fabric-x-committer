@@ -1,0 +1,72 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create config destination folder
+  hosts: localhost
+  tasks:
+    - name: Create tmp
+      file:
+        path: "{{dst_dir}}"
+        state: directory
+- name: Create base configs and replace endpoints for all services
+  hosts: localhost
+  vars:
+    filepath: "{{dst_dir}}/topology-setup-config.yaml"
+    topology_name: default
+    log_level: WARNING
+  roles:
+    - kwoodson.yedit
+  tasks:
+    - name: Prepare orderers
+      set_fact:
+        orderers: "{{orderers | d([])  + [{
+          'name': instance.inventory_hostname,
+          'organization': instance.organization,
+          'host': instance.ansible_host,
+          'ports': {
+            'Listen': instance.service_port,
+            'Profile': instance.profile_port | d(0),
+            'Operations': instance.ops_port | d(0),
+            'Cluster': instance.cluster_port | d(0)
+          }
+        }]}}"
+      loop: "{{groups['orderingservices'] | d([]) | map('extract', hostvars)}}"
+      loop_control:
+        loop_var: instance
+    - name: Prepare peers
+      set_fact:
+        peers: "{{peers | d([])  + [{
+          'name': instance.inventory_hostname,
+          'organization': instance.organization,
+          'host': instance.ansible_host,
+          'ports': {
+            'Listen': instance.service_port,
+            'Profile': instance.profile_port | d(0),
+            'Operations': instance.ops_port | d(0),
+            'Chaincode': instance.chaincode_port | d(0),
+            'Events': instance.events_port | d(0),
+            'P2P': instance.p2p_port | d(0),
+            'Web': instance.web_port | d(0),
+          }
+        }]}}"
+      loop: "{{groups['peerservices'] | d([]) | map('extract', hostvars)}}"
+      loop_control:
+        loop_var: instance
+    - name: Create base config
+      yedit:
+        src: "{{filepath}}"
+        edits:
+          - key: topology-setup.name
+            value: "{{topology_name}}"
+          - key: topology-setup.root-dir
+            value: "{{root_dir}}"
+          - key: topology-setup.log-level
+            value: "{{log_level}}"
+          - key: topology-setup.channel-ids
+            value: "{{channel_ids}}"
+          - key: topology-setup.peers
+            value: "{{peers}}"
+          - key: topology-setup.orderers
+            value: "{{orderers}}"
+      when: peers | d([]) | length > 0 and orderers | d([]) | length > 0
