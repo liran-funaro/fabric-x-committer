@@ -54,8 +54,11 @@ all-instances := '100'
 root-dir-env := '<<SC_ROOT_DIR>>'
 
 ### Admin
-update-dependencies:
-    ansible-playbook "{{playbook-path}}/0-update-deps.yaml"
+update-dependencies target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/0-update-deps.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+update-passwords target_hosts=('all'):
+    ansible-playbook "{{playbook-path}}/01-update-passwords.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
 ### Build
 

@@ -3,7 +3,7 @@
 #
 ---
 - name: Update deps
-  hosts: all
+  hosts: "{{target_hosts}}"
   tasks:
     - name: "apt-get update && apt-get dist-upgrade"
       apt:
