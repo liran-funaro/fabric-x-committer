@@ -635,6 +635,8 @@ github.com/hyperledger-labs/fabric-smart-client v0.2.0 h1:A1EKrJtEg5nJzVFT9P4o5F
 github.com/hyperledger-labs/fabric-smart-client v0.2.0/go.mod h1:WtNWdKVbF9R1/2hIBVQUlR9Zl3T0TdkzUcCQTc2Eqk4=
 github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230120070017-ab1bf849d536 h1:mFozkhdZZF3+jyZCmqupiEPQAS2iJdmm3W+PG+33+oI=
 github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230120070017-ab1bf849d536/go.mod h1:WtNWdKVbF9R1/2hIBVQUlR9Zl3T0TdkzUcCQTc2Eqk4=
+github.com/hyperledger-labs/fabric-token-sdk v0.2.0 h1:kgzQVd0RvvhX9NiMbW+0BkbdrEviWjXxpCFx9it6egE=
+github.com/hyperledger-labs/fabric-token-sdk v0.2.0/go.mod h1:UXldTMDGgr7Cq+hN6+9XEchARekIF0Dy0dMCaJPGLss=
 github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230117093814-1b225ff4166c h1:TqprUEr76tgqsk+43g6AEwv81T73fqsfgeMHR+jh8UA=
 github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230117093814-1b225ff4166c/go.mod h1:UXldTMDGgr7Cq+hN6+9XEchARekIF0Dy0dMCaJPGLss=
 github.com/hyperledger/fabric v1.4.0-rc1.0.20201118191903-ec81f3e74fa1/go.mod h1:ppiyrJ+sUSk/rAX9cTd8xwAwSQ7chEbOQMAqtQ3pLG4=

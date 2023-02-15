@@ -56,6 +56,7 @@ func main() {
 	go client.SendReplicated(txs, func() { tracker.RequestSent(1) })
 
 	client.StartListening(func(block *common.Block) {
+
 		tracker.ResponseReceived(coordinatorservice.Status_VALID, len(block.Data.Data))
 		fmt.Printf("Block received %d:%d\n", block.Header.Number, len(block.Data.Data))
 	})

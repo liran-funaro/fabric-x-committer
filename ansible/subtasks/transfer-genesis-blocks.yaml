@@ -4,9 +4,9 @@
 ---
 - name: "Transfer genesis blocks for {{inventory_hostname}}, channels: {{channel_ids}}, system_channel: {{include_system_channel}}"
   vars:
-    src_dir: "{{orderer_artifacts_path}}/fabric.{{topology_name}}"
-    dst_dir: "{{config_dir}}/fabric.{{topology_name}}"
-    tx_channel_blocks: "{{channel_ids | d([]) | product(['_tx.pb']) | map('join')}}"
+    src_dir: "{{orderer_artifacts_path}}/{{topology_dir}}"
+    dst_dir: "{{config_dir}}/{{topology_dir}}"
+    tx_channel_blocks: "{{channel_ids | d([]) | product(['_tx.pb']) | map('join') | list}}"
     system_channel_blocks: "{{['systemchannel_block.pb'] if include_system_channel | d(false) == true else []}}"
   include_tasks: ../subtasks/copy-file.yaml
   loop: "{{tx_channel_blocks + system_channel_blocks}}"

@@ -58,4 +58,4 @@ all:
             inherit_peer: peerservice-machine1
           hosts:
             orderersubmitter-machine1:
-              ansible_host: tokentestbed14.sl.cloud9.ibm.com
+              ansible_host: tokentestbed13.sl.cloud9.ibm.com

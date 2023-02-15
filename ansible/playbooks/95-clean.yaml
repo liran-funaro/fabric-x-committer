@@ -16,7 +16,7 @@
         loop_var: dir
 - hosts: "{{target_hosts}}:&orderingservices"
   tasks:
-    - name: Clean orderer cache
+    - name: Clear orderer cache
       vars:
         top_dir: "{{config_dir}}/fabric.{{topology_name | d('')}}/orderers/{{organization}}.{{inventory_hostname}}"
       file:
@@ -27,4 +27,27 @@
         - "{{top_dir}}/system"
       loop_control:
         loop_var: dir
-      when: include_configs | d(false) == false
+- hosts: "{{target_hosts}}:&sidecars"
+  tasks:
+    - name: Clear sidecar ledger
+      file:
+        state: absent
+        path: "{{config_dir}}/ledger"
+- hosts: "{{target_hosts}}:&peerservices"
+  tasks:
+    - name: Clear peer filesystem
+      file:
+        state: absent
+        path: "{{config_dir}}/fabric.{{topology_name | d('')}}/peers/{{organization}}.{{inventory_hostname}}/filesystem/"
+- hosts: "{{target_hosts}}:&fscservices"
+  tasks:
+    - name: Clear FSC-node kvs
+      file:
+        state: absent
+        path: "{{path}}"
+      loop:
+        - "{{config_dir}}/fsc/nodes/{{inventory_hostname}}/fabric.{{topology_name | d('')}}"
+        - "{{config_dir}}/fsc/nodes/{{inventory_hostname}}/kvs"
+      loop_control:
+        loop_var: path
+

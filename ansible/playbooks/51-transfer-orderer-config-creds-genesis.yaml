@@ -3,22 +3,21 @@
 #
 ---
 - name: Transfer configs, creds, and genesis to orderers
+  vars:
+    topology_dir: "fabric.{{topology_name}}"
   hosts: "{{target_hosts}}:&orderingservices"
   tasks:
-    - vars:
-        node_type: orderers
-        node_name: "{{inventory_hostname}}"
-      include_tasks: ../subtasks/transfer-node-config-profile.yaml
-      loop:
-        - config
-      loop_control:
-        loop_var: file_type
-      when: include_configs | d(false) == true
     - vars:
         node_fqn: "{{inventory_hostname}}.{{organization | lower}}.{{domain}}"
         node_type: orderers
       include_tasks: ../subtasks/transfer-node-creds.yaml
       when: include_creds | d(false) == true
+    - vars:
+        node_type: orderers
+        node_name: "{{inventory_hostname}}"
+        file_type: config
+      include_tasks: ../subtasks/transfer-node-config-profile.yaml
+      when: include_configs | d(false) == true
     - name: "Transfer genesis blocks for {{inventory_hostname}}"
       vars:
         include_system_channel: true

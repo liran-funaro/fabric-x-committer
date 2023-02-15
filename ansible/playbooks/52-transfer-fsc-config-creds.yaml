@@ -1,0 +1,36 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Transfer configs and creds to peers
+  hosts: "{{target_hosts}}:&fscservices"
+  tasks:
+    - vars:
+        topology_dir: "{{topology.topology_dir}}"
+        node_fqn: "{{inventory_hostname}}.{{topology.organization | lower}}.{{domain}}"
+        node_type: peers
+        include_root_ca_certs: true
+      include_tasks: ../subtasks/transfer-node-creds.yaml
+      when: include_creds | d(false) == true
+      loop:
+        - {'topology_dir': 'fsc', 'organization': 'fsc'} #TODO: Workaround. fsc should be organization | lower
+        - "{'topology_dir': 'fabric.{{topology_name}}', 'organization': '{{organization}}'}"
+      loop_control:
+        loop_var: topology
+    - vars:
+        topology_dir: "{{topology.topology_dir}}"
+        node_domain: "{{topology.organization | lower}}.{{domain}}"
+      include_tasks: ../subtasks/transfer-fsc-node-creds.yaml
+      when: include_creds | d(false) == true
+      loop:
+        - {'topology_dir': 'fsc', 'organization': 'fsc', 'node_type': 'users'} #TODO: Workaround. fsc should be organization | lower
+        - "{'topology_dir': 'fabric.{{topology_name}}', 'organization': '{{organization}}'}"
+      loop_control:
+        loop_var: topology
+    - vars:
+        topology_dir: fsc
+        node_type: nodes
+        node_name: "{{inventory_hostname}}"
+        file_type: config
+      include_tasks: ../subtasks/transfer-node-config-profile.yaml
+      when: include_configs | d(false) == true

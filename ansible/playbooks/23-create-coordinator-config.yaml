@@ -5,7 +5,7 @@
 - name: Create configs for coordinator
   hosts: localhost
   vars:
-    selected_hosts: "{{groups['coordinators'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars)}}"
+    selected_hosts: "{{groups['coordinators'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars) | list}}"
   roles:
     - kwoodson.yedit
   tasks:
@@ -19,7 +19,7 @@
         num_shards: 1
         shard_servers: 3
         shardsservice_hosts: "{{groups['shardsservices'] | d([]) | map('extract', hostvars) | list}}"
-        shardsservice_endpoints: "{{shardsservice_hosts[0:shard_servers | int - 1] | map(attribute='ansible_host') | zip(shardsservice_hosts | map(attribute='service_port')) | map('join', ':')}}"
+        shardsservice_endpoints: "{{shardsservice_hosts[0:shard_servers | int - 1] | map(attribute='ansible_host') | zip(shardsservice_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
       set_fact:
         shardsservice_configs: "{{shardsservice_configs | d([])  + [{'endpoint': endpoint, 'num-shards': num_shards}]}}"
       loop: "{{shardsservice_endpoints}}"

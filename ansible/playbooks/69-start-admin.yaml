@@ -12,7 +12,7 @@
     env:
       - "FABRIC_CFG_PATH={{config_tree_root}}/peers/{{peer_id}}"
       - "CORE_PEER_MSPCONFIGPATH={{config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{full_domain}}/users/Admin@{{full_domain}}/msp"
-    orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars)}}"
+    orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars) | list}}"
     orderer_endpoint: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | first}}"
     ca_file: "{{config_tree_root}}/crypto/ca-certs.pem"
     tls: true

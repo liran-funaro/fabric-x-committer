@@ -5,7 +5,7 @@
 - name: Create configs for sidecar
   hosts: localhost
   vars:
-    selected_hosts: "{{groups['sidecars'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars)}}"
+    selected_hosts: "{{groups['sidecars'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars) | list}}"
   roles:
     - kwoodson.yedit
   tasks:

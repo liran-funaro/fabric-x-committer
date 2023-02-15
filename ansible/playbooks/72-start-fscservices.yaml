@@ -1,0 +1,13 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: "{{target_hosts}}:&fscservices"
+  tasks:
+    - name: Start FSC nodes
+      vars:
+        service_name: "{{inventory_hostname}} node start"
+        wait_until_running: true
+        env:
+          - "FSCNODE_CFG_PATH={{config_dir}}/fsc/nodes/{{inventory_hostname}}"
+      include_tasks: ../subtasks/start-server.yaml

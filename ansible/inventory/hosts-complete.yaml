@@ -44,7 +44,7 @@ all:
             domain: example.com
             service_port: 7050
             cluster_port: 7070
-            ops_port: "{{prometheus_exporter_port}}"
+#            ops_port: "{{prometheus_exporter_port}}" #TODO: Adapt template to use 0.0.0.0 before activating
           hosts:
             orderingservice-machine1:
               ansible_host: tokentestbed4.sl.cloud9.ibm.com
@@ -84,8 +84,8 @@ all:
               profile: profile-sidecar-client.yaml
               ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
-        monitoring:
-          hosts:
-            monitoring-machine:
-              ansible_host: tokentestbed16.sl.cloud9.ibm.com
-              jaeger_exporter_port: 14268
+#        monitoring:
+#          hosts:
+#            monitoring-machine:
+#              ansible_host: tokentestbed16.sl.cloud9.ibm.com
+#              jaeger_exporter_port: 14268

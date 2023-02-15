@@ -21,52 +21,81 @@
     - name: Prepare orderers
       set_fact:
         orderers: "{{orderers | d([])  + [{
-          'name': instance.inventory_hostname,
-          'organization': instance.organization,
-          'host': instance.ansible_host,
-          'ports': {
-            'Listen': instance.service_port,
-            'Profile': instance.profile_port | d(0),
-            'Operations': instance.ops_port | d(0),
-            'Cluster': instance.cluster_port | d(0)
+          'config': {
+            'name': instance.inventory_hostname,
+            'organization': instance.organization,
+            'host': instance.ansible_host,
+            'ports': {
+              'Listen': instance.service_port | d(0),
+              'Profile': instance.profile_port | d(0),
+              'Operations': instance.ops_port | d(0),
+              'Cluster': instance.cluster_port | d(0)
+            }
           }
         }]}}"
-      loop: "{{groups['orderingservices'] | d([]) | map('extract', hostvars)}}"
+      loop: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:
         loop_var: instance
     - name: Prepare peers
       set_fact:
         peers: "{{peers | d([])  + [{
-          'name': instance.inventory_hostname,
-          'organization': instance.organization,
-          'host': instance.ansible_host,
-          'ports': {
-            'Listen': instance.service_port,
-            'Profile': instance.profile_port | d(0),
-            'Operations': instance.ops_port | d(0),
-            'Chaincode': instance.chaincode_port | d(0),
-            'Events': instance.events_port | d(0),
-            'P2P': instance.p2p_port | d(0),
-            'Web': instance.web_port | d(0),
+          'config': {
+            'name': instance.inventory_hostname,
+            'organization': instance.organization,
+            'host': instance.ansible_host,
+            'ports': {
+              'Listen': instance.service_port | d(0),
+              'Profile': instance.profile_port | d(0),
+              'Operations': instance.ops_port | d(0),
+              'Chaincode': instance.chaincode_port | d(0),
+              'Events': instance.events_port | d(0),
+              'P2P': instance.p2p_port | d(0),
+              'Web': instance.web_port | d(0),
+            }
           }
         }]}}"
-      loop: "{{groups['peerservices'] | d([]) | map('extract', hostvars)}}"
+      loop: "{{groups['peerservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:
         loop_var: instance
-    - name: Create base config
+    - name: Create Fabric setup
       yedit:
         src: "{{filepath}}"
         edits:
-          - key: topology-setup.name
+          - key: topology-setup.fabric.name
             value: "{{topology_name}}"
-          - key: topology-setup.root-dir
-            value: "{{root_dir}}"
-          - key: topology-setup.log-level
+          - key: topology-setup.fabric.log-level
             value: "{{log_level}}"
-          - key: topology-setup.channel-ids
+          - key: topology-setup.fabric.channel-ids
             value: "{{channel_ids}}"
-          - key: topology-setup.peers
+          - key: topology-setup.fabric.peers
             value: "{{peers}}"
-          - key: topology-setup.orderers
+          - key: topology-setup.fabric.orderers
             value: "{{orderers}}"
       when: peers | d([]) | length > 0 and orderers | d([]) | length > 0
+    - name: Prepare FSC nodes
+      set_fact:
+        fsc_nodes: "{{fsc_nodes | d([])  + [{
+          'config': {
+            'name': instance.inventory_hostname,
+            'organization': instance.organization,
+            'host': instance.ansible_host,
+            'ports': {
+              'Listen': instance.service_port | d(0),
+              'Web': instance.web_port | d(0),
+              'P2P': instance.p2p_port | d(0),
+              'Operations': instance.ops_port | d(0),
+            }
+          },
+          'view-factories': instance.view_factories | d([]),
+          'responders': instance.responders | d([])
+        }]}}"
+      loop: "{{groups['fscservices'] | d([]) | map('extract', hostvars) | list}}"
+      loop_control:
+        loop_var: instance
+    - name: Create FSC setup
+      yedit:
+        src: "{{filepath}}"
+        edits:
+          - key: topology-setup.fsc.nodes
+            value: "{{fsc_nodes}}"
+      when: fsc_nodes | d([]) | length > 0

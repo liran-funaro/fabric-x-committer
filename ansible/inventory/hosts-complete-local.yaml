@@ -14,7 +14,7 @@ all:
   children:
     services:
       vars:
-        ansible_host: localhost
+        ansible_host: 127.0.0.1
       children:
 
         coordinators:
@@ -85,6 +85,184 @@ all:
             peerservice-machine1:
               config_dir: "{{top_config_dir}}/peer0"
               service_port: 7001
+
+        fscservices:
+          vars:
+            config: core.yaml
+            views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
+            organization: DefaultPeerOrg
+            domain: example.com
+          hosts:
+            lib-p2p-bootstrap-node: # Must be first, because it's the bootstrap node (NWO particularity)
+              config_dir: "{{top_config_dir}}/lib_p2p"
+              service_port: 8007
+              p2p_port: 8027
+            issuer:
+              config_dir: "{{top_config_dir}}/issuer"
+              ops_port: 8080
+              web_port: 9080
+              service_port: 8000
+              p2p_port: 8020
+              view_factories:
+                - id: issue
+                  factory: "{{views}}/IssueCashViewFactory"
+                - id: transfer
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: historyIssuedToken
+                  factory: "{{views}}/ListIssuedTokensViewFactory"
+                - id: issuedTokenQuery
+                  factory: "{{views}}/ListIssuedTokensViewFactory"
+                - id: balance
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: RegisterIssuerWallet
+                  factory: "{{views}}/RegisterIssuerWalletViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
+
+            alice:
+              config_dir: "{{top_config_dir}}/alice"
+              ops_port: 8081
+              web_port: 9081
+              service_port: 8001
+              p2p_port: 8021
+              responders:
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/IssueCashView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferWithSelectorView"
+                - responder: "{{views}}/AcceptPreparedCashView"
+                  initiator: "{{views}}/PrepareTransferView"
+              view_factories:
+                - id: transfer
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: swap
+                  factory: "{{views}}/SwapInitiatorViewFactory"
+                - id: history
+                  factory: "{{views}}/ListUnspentTokensViewFactory"
+                - id: balance
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: prepareTransfer
+                  factory: "{{views}}/PrepareTransferViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: SetTransactionOwnerStatus
+                  factory: "{{views}}/SetTransactionOwnerStatusViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
+                - id: ListVaultUnspentTokens
+                  factory: "{{views}}/ListVaultUnspentTokensViewFactory"
+
+                - id: broadcastPreparedTransfer
+                  factory: "{{views}}/BroadcastPreparedTransferViewFactory"
+
+            bob:
+              config_dir: "{{top_config_dir}}/bob"
+              ops_port: 8082
+              web_port: 9082
+              service_port: 8002
+              p2p_port: 8022
+              responders:
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/IssueCashView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferWithSelectorView"
+                - responder: "{{views}}/AcceptPreparedCashView"
+                  initiator: "{{views}}/PrepareTransferView"
+
+                - responder: "{{views}}/SwapResponderView"
+                  initiator: "{{views}}/SwapInitiatorView"
+              view_factories:
+                - id: transfer
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: swap
+                  factory: "{{views}}/SwapInitiatorViewFactory"
+                - id: history
+                  factory: "{{views}}/ListUnspentTokensViewFactory"
+                - id: balance
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: prepareTransfer
+                  factory: "{{views}}/PrepareTransferViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: SetTransactionOwnerStatus
+                  factory: "{{views}}/SetTransactionOwnerStatusViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
+                - id: ListVaultUnspentTokens
+                  factory: "{{views}}/ListVaultUnspentTokensViewFactory"
+
+                - id: TokenSelectorUnlock
+                  factory: "{{views}}/TokenSelectorUnlockViewFactory"
+                - id: FinalityWithTimeout
+                  factory: "{{views}}/FinalityWithTimeoutViewFactory"
+            endorser-1:
+              config_dir: "{{top_config_dir}}/endorser1"
+              template: endorser
+              service_port: 8003
+              p2p_port: 8023
+            endorser-2:
+              config_dir: "{{top_config_dir}}/endorser2"
+              template: endorser
+              service_port: 8004
+              p2p_port: 8024
+            endorser-3:
+              config_dir: "{{top_config_dir}}/endorser3"
+              template: endorser
+              service_port: 8005
+              p2p_port: 8025
+            endorser-4:
+              config_dir: "{{top_config_dir}}/endorser4"
+              template: endorser
+              service_port: 8006
+              p2p_port: 8026
 
         sidecars:
           vars:

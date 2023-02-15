@@ -4,7 +4,7 @@
 ---
 - name: Copy configs
   include: ../subtasks/copy-configs.yaml
-  when: groups[selected_hosts] | d([]) | length > 0
+  when: selected_hosts | d([]) | length > 0
 - name: Edit orderer client config
   vars:
     config_dst_filepath: "{{dst_dir}}/{{hostvar_instance.inventory_hostname}}/{{hostvar_instance.config}}"

@@ -1,10 +1,11 @@
-package topologysetup
+package fabric
 
 import (
 	"path/filepath"
 
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/fabricconfig"
 	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"gopkg.in/yaml.v3"
@@ -24,7 +25,7 @@ func NewConnectionProfileGenerator(outputDir, rootDir, topologyName string) *Ord
 	}
 }
 
-func (g *OrdererClientProfileGenerator) GenerateOrdererClientProfiles(peers []NodeConfig) error {
+func (g *OrdererClientProfileGenerator) GenerateOrdererClientProfiles(peers []topologysetup.Node) error {
 	for _, peer := range peers {
 		profile, err := g.connectionProfile(peer.ID())
 		if err != nil {
@@ -39,7 +40,7 @@ func (g *OrdererClientProfileGenerator) GenerateOrdererClientProfiles(peers []No
 	return nil
 }
 
-func (g *OrdererClientProfileGenerator) connectionProfile(peerID NodeID) (*connection.OrdererConnectionProfile, error) {
+func (g *OrdererClientProfileGenerator) connectionProfile(peerID topologysetup.NodeID) (*connection.OrdererConnectionProfile, error) {
 	content, err := utils.ReadFile(g.peerConfigPath(peerID))
 	if err != nil {
 		return nil, err
@@ -61,11 +62,11 @@ func (g *OrdererClientProfileGenerator) peerProfilePath(peerID string) string {
 	return filepath.Join(g.peerDir(peerID), "profile.yaml")
 }
 
-func (g *OrdererClientProfileGenerator) peerConfigPath(peerID NodeID) string {
+func (g *OrdererClientProfileGenerator) peerConfigPath(peerID topologysetup.NodeID) string {
 	return filepath.Join(g.peerDir(peerID), "core.yaml")
 }
 
-func (g *OrdererClientProfileGenerator) peerDir(peerID NodeID) string {
+func (g *OrdererClientProfileGenerator) peerDir(peerID topologysetup.NodeID) string {
 	return filepath.Join(g.outputDir, g.prefix, "peers", peerID)
 }
 

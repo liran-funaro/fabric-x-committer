@@ -4,25 +4,40 @@
 ---
 - name: "Transfer {{file_type}} for {{inventory_hostname}}"
   vars:
-    src_dir: "{{orderer_artifacts_path}}/fabric.{{topology_name}}"
+    src_dir: "{{orderer_artifacts_path}}/{{topology_dir}}"
     dst_dir: "{{config_dir}}"
     rsync_opts:
       - --include='*/'
-      - "--include=**/fabric.{{topology_name}}/{{node_type}}/**{{node_name}}**/{{hostvars[node_name][file_type]}}"
+      - "--include=**/{{topology_dir}}/{{node_type}}/**{{node_name}}**/{{hostvars[node_name][file_type]}}"
       - --exclude='*'
       - --prune-empty-dirs
   include_tasks: ../subtasks/copy-file.yaml
-- name: Find all files with extension .yaml under folder and all sub folders
-  find:
-    paths: "{{config_dir}}/fabric.{{topology_name}}"
-    patterns: '*.yaml'
-    recurse: yes
-  register: files_to_change
-- name: Replace <<SC_ROOT_DIR>> in files
-  replace:
-    dest: "{{ item.path }}"
-    regexp: '<<SC_ROOT_DIR>>'
-    replace: '{{config_dir}}'
-  loop_control:
-    label: "{{ item.path }}"
-  with_items: "{{ files_to_change.files }}"
+- set_fact:
+    replace_command: "sed -i 's#{{current_config_dir}}#{{config_dir}}#g' $(find {{config_dir}} -name '*.yaml')"
+- debug:
+    msg:
+      - "{{replace_command}}"
+- name: "Replace {{current_config_dir}} in files"
+  shell:
+    cmd: "{{replace_command}}"
+
+#- name: Find all files with extension .yaml under folder and all sub folders
+#  find:
+#    paths: "{{config_dir}}/{{topology_dir}}"
+#    patterns: '*.yaml'
+#    recurse: yes
+#  register: files_to_change
+#- name: "Replace {{current_config_dir}} in files"
+#  shell:
+#    cmd: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
+#  loop_control:
+#    label: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
+#  loop: "{{ files_to_change.files }}"
+#- name: "Replace {{current_config_dir}} in files"
+#  replace:
+#    dest: "{{ item.path }}"
+#    regexp: '{{current_config_dir}}'
+#    replace: '{{config_dir}}'
+#  loop_control:
+#    label: "{{ item.path }}"
+#  with_items: "{{ files_to_change.files }}"

@@ -5,13 +5,9 @@
 
 - name: Transfer configs and creds to peers
   hosts: "{{target_hosts}}:&peerservices"
+  vars:
+    topology_dir: "fabric.{{topology_name}}"
   tasks:
-    - vars:
-        node_type: peers
-        node_name: "{{inventory_hostname}}"
-        file_type: config
-      include_tasks: ../subtasks/transfer-node-config-profile.yaml
-      when: include_configs | d(false) == true
     - vars:
         node_fqn: "{{instance.node_fqn}}"
         node_type: "{{instance.node_type}}"
@@ -23,6 +19,12 @@
         - {'node_type': 'users', 'node_fqn': 'Admin@{{organization | lower}}.{{domain}}'}
       loop_control:
         loop_var: instance
+    - vars:
+        node_type: peers
+        node_name: "{{inventory_hostname}}"
+        file_type: config
+      include_tasks: ../subtasks/transfer-node-config-profile.yaml
+      when: include_configs | d(false) == true
     - name: "Transfer genesis blocks for {{inventory_hostname}}"
       include_tasks: ../subtasks/transfer-genesis-blocks.yaml
       when: include_genesis | d(false) == true
