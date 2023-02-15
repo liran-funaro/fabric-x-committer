@@ -75,7 +75,7 @@ func (a *TemplateConfig) alias(pkg string) string {
 	suffix := suffix(pkg)
 	if count, seen := a.suffixSeen[suffix]; seen {
 		a.suffixSeen[suffix] = count + 1
-		a.aliases[pkg] = suffix + strconv.Itoa(count+1)
+		a.aliases[pkg] = pkg + strconv.Itoa(count+1)
 		return a.aliases[pkg]
 	}
 	a.suffixSeen[suffix] = 0

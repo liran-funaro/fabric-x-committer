@@ -5,24 +5,14 @@ import (
 )
 
 type Config struct {
-	SDKDriver string `mapstructure:"sdk-driver"`
-	Nodes     []Node `mapstructure:"nodes"`
+	Nodes []Node `mapstructure:"nodes"`
 }
-
-type Identity string
-
-const DefaultIdentity Identity = "default"
 
 type Node struct {
 	topologysetup.NodeConfig `mapstructure:"config"`
+	Template                 string        `mapstructure:"template"`
 	Responders               []Responder   `mapstructure:"responders"`
 	ViewFactories            []ViewFactory `mapstructure:"view-factories"`
-	OwnerIdentities          []Identity    `mapstructure:"owner-identities"`
-	IssuerIdentities         []Identity    `mapstructure:"issuer-identities"`
-	Auditor                  bool          `mapstructure:"auditor"`
-	Certifier                bool          `mapstructure:"certifier"`
-	Endorser                 bool          `mapstructure:"endorser"`
-	Bootstrap                bool          `mapstructure:"bootstrap"`
 }
 
 func (n *Node) ID() string {
@@ -30,7 +20,7 @@ func (n *Node) ID() string {
 }
 
 type ViewFactory struct {
-	Id      string `mapstructure:"id"`
+	Name    string `mapstructure:"name"`
 	Factory Ref    `mapstructure:"factory"`
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	var out = pflag.String("out-dir", "./tmp/nwogenerator/", "Generated output path")
+	var out = pflag.String("out-dir", "./generatetopology/tmp/nwogenerator/", "Generated output path")
 	config.ParseFlags()
 
 	c := generatetopology.ReadConfig()

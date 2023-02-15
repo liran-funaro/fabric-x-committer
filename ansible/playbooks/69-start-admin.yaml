@@ -157,6 +157,7 @@
       vars:
         chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
         service_name: peer chaincode invoke
+        log_output: false
         options:
           channelID: "{{channel_id}}"
           orderer: "{{orderer_endpoint}}"

@@ -45,7 +45,6 @@ all:
           hosts:
             shardsservice-machine:
               config_dir: "{{top_config_dir}}/shardsservice"
-              db_dir: "{{config_dir}}/db"
               service_port: 5001
               prometheus_exporter_port: 2115
 
@@ -90,8 +89,7 @@ all:
         fscservices:
           vars:
             config: core.yaml
-            token_views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
-            demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
+            views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
             organization: DefaultPeerOrg
             domain: example.com
           hosts:
@@ -99,35 +97,43 @@ all:
               config_dir: "{{top_config_dir}}/lib_p2p"
               service_port: 8007
               p2p_port: 8027
-              bootstrap: true
-            auditor:
-              config_dir: "{{top_config_dir}}/auditor"
-              ops_port: 8088
-              web_port: 9088
-              service_port: 8008
-              p2p_port: 8028
-              auditor: true
-              certifier: true
-              view_factories:
-                - id: initRegisterAuditor
-                  factory: "{{token_views}}/RegisterAuditorViewFactory"
-                - id: initRegisterCertifier
-                  factory: "{{token_views}}/RegisterCertifierViewFactory"
             issuer:
               config_dir: "{{top_config_dir}}/issuer"
               ops_port: 8080
               web_port: 9080
               service_port: 8000
               p2p_port: 8020
-              issuer_identities:
-                - default
-                - id1
-              owner_identities:
-                - default
-                - owner
               view_factories:
                 - id: issue
-                  factory: "{{token_views}}/IssueCashViewFactory"
+                  factory: "{{views}}/IssueCashViewFactory"
+                - id: transfer
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: historyIssuedToken
+                  factory: "{{views}}/ListIssuedTokensViewFactory"
+                - id: issuedTokenQuery
+                  factory: "{{views}}/ListIssuedTokensViewFactory"
+                - id: balance
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: RegisterIssuerWallet
+                  factory: "{{views}}/RegisterIssuerWalletViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
 
             alice:
               config_dir: "{{top_config_dir}}/alice"
@@ -135,24 +141,51 @@ all:
               web_port: 9081
               service_port: 8001
               p2p_port: 8021
-              owner_identities:
-                - id1
               responders:
-                - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
-                - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/IssueCashView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferWithSelectorView"
+                - responder: "{{views}}/AcceptPreparedCashView"
+                  initiator: "{{views}}/PrepareTransferView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: swap
+                  factory: "{{views}}/SwapInitiatorViewFactory"
+                - id: history
+                  factory: "{{views}}/ListUnspentTokensViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
-                - id: registerQRCode
-                  factory: "{{demo_views}}/QRCodeRegisterViewFactory"
-                - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
-                - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: prepareTransfer
+                  factory: "{{views}}/PrepareTransferViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: SetTransactionOwnerStatus
+                  factory: "{{views}}/SetTransactionOwnerStatusViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
+                - id: ListVaultUnspentTokens
+                  factory: "{{views}}/ListVaultUnspentTokensViewFactory"
+
+                - id: broadcastPreparedTransfer
+                  factory: "{{views}}/BroadcastPreparedTransferViewFactory"
 
             bob:
               config_dir: "{{top_config_dir}}/bob"
@@ -160,34 +193,76 @@ all:
               web_port: 9082
               service_port: 8002
               p2p_port: 8022
-              owner_identities:
-                - id1
               responders:
-                - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
-                - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/IssueCashView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferView"
+                - responder: "{{views}}/AcceptCashView"
+                  initiator: "{{views}}/TransferWithSelectorView"
+                - responder: "{{views}}/AcceptPreparedCashView"
+                  initiator: "{{views}}/PrepareTransferView"
+
+                - responder: "{{views}}/SwapResponderView"
+                  initiator: "{{views}}/SwapInitiatorView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{views}}/TransferViewFactory"
+                - id: transferWithSelector
+                  factory: "{{views}}/TransferWithSelectorViewFactory"
+                - id: redeem
+                  factory: "{{views}}/RedeemViewFactory"
+                - id: swap
+                  factory: "{{views}}/SwapInitiatorViewFactory"
+                - id: history
+                  factory: "{{views}}/ListUnspentTokensViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
-                - id: registerQRCode
-                  factory: "{{demo_views}}/QRCodeRegisterViewFactory"
-                - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
-                - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+                  factory: "{{views}}/BalanceViewFactory"
+                - id: GetEnrollmentID
+                  factory: "{{views}}/GetEnrollmentIDViewFactory"
+                - id: acceptedTransactionHistory
+                  factory: "{{views}}/ListAcceptedTransactionsViewFactory"
+                - id: transactionInfo
+                  factory: "{{views}}/TransactionInfoViewFactory"
+                - id: prepareTransfer
+                  factory: "{{views}}/PrepareTransferViewFactory"
+                - id: CheckPublicParamsMatch
+                  factory: "{{views}}/CheckPublicParamsMatchViewFactory"
+                - id: CheckTTXDB
+                  factory: "{{views}}/CheckTTXDBViewFactory"
+                - id: SetTransactionOwnerStatus
+                  factory: "{{views}}/SetTransactionOwnerStatusViewFactory"
+                - id: PruneInvalidUnspentTokens
+                  factory: "{{views}}/PruneInvalidUnspentTokensViewFactory"
+                - id: WhoDeletedToken
+                  factory: "{{views}}/WhoDeletedTokenViewFactory"
+                - id: ListVaultUnspentTokens
+                  factory: "{{views}}/ListVaultUnspentTokensViewFactory"
+
+                - id: TokenSelectorUnlock
+                  factory: "{{views}}/TokenSelectorUnlockViewFactory"
+                - id: FinalityWithTimeout
+                  factory: "{{views}}/FinalityWithTimeoutViewFactory"
             endorser-1:
               config_dir: "{{top_config_dir}}/endorser1"
-              endorser: true
+              template: endorser
               service_port: 8003
               p2p_port: 8023
             endorser-2:
               config_dir: "{{top_config_dir}}/endorser2"
-              endorser: true
+              template: endorser
               service_port: 8004
               p2p_port: 8024
+            endorser-3:
+              config_dir: "{{top_config_dir}}/endorser3"
+              template: endorser
+              service_port: 8005
+              p2p_port: 8025
+            endorser-4:
+              config_dir: "{{top_config_dir}}/endorser4"
+              template: endorser
+              service_port: 8006
+              p2p_port: 8026
 
         sidecars:
           vars:
@@ -211,15 +286,6 @@ all:
             sidecar-client-machine2:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/sidecarclient1/"
-
-        orderersubmitters:
-          vars:
-            config: config-orderer-submitter.yaml
-            inherit_peer: peerservice-machine1
-          hosts:
-            orderersubmitter-machine1:
-              prometheus_exporter_port: 2119
-              config_dir: "{{top_config_dir}}/submitter0"
 
         monitoring:
           hosts:

@@ -21,6 +21,7 @@ import (
 	{{- range .Imports }}
 	{{ Alias . }} "{{ . }}"{{ end }}
 )
+// Here are some random comments
 
 func main() {
 	n := fscnode.New()
@@ -30,30 +31,10 @@ func main() {
 	n.Execute(func() error {
 		{{- if InstallView }}
 		registry := viewregistry.GetRegistry(n)
-
 		{{- range .Factories }}
 		if err := registry.RegisterFactory("{{ .Id }}", {{ .Type }}); err != nil {
 			return err
-		}
-		{{- end }}
-
-		{{ $initializedManager := false }}
-		{{- range .Factories }}
-		{{- if and (gt (len .Id) 4) (eq (slice .Id 0 4) "init") }}
-		{{- if eq $initializedManager false }}
-		// Instantiate factory views with ID starting with 'init'
-		manager := viewregistry.GetManager(n)
-
-		{{- $initializedManager = true }}
-		{{- end }}
-		if view, err := manager.NewView("{{ .Id }}", nil); err != nil {
-			return err
-		} else if _, err = manager.InitiateView(view); err != nil {
-			return err
-		}
-		{{- end }}
-		{{- end }}
-
+		}{{ end }}
 		{{- range .Responders }}
 		registry.RegisterResponder({{ .Responder }}, {{ .Initiator }}){{ end }}
 		{{ end }}
