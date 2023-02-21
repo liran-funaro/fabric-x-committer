@@ -6,7 +6,7 @@ shards-service:
     latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
   database:
     type: "rocksdb"
-    root-dir: "./"
+    root-dir: "./"                                            # Overridden by ansible
   limits:
     # When there are more than (max-shard-instances-buffer-size) TXs waiting for phase 1 (for all shards in total), we stop accepting more TXs until some TXs resolve.
     max-shard-instances-buffer-size: 1000000

@@ -2,6 +2,7 @@ package shardsservice
 
 import (
 	"io/ioutil"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -60,6 +61,9 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, dbConfig *Data
 	// shard requests to handle failure and recovery.
 	// The below part of the code needs to be rewritten for
 	// production environment
+	if err := os.MkdirAll(dbConfig.RootDir, 0755); err != nil {
+		return nil, err
+	}
 	files, err := ioutil.ReadDir(dbConfig.RootDir)
 	if err != nil {
 		return nil, err

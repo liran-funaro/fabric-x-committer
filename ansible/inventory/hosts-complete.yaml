@@ -33,6 +33,7 @@ all:
           vars:
             service_port: 5001
             config: config-shardsservice.yaml
+            db_dir: "{{config_dir}}/db"
           hosts:
             shardsservice-machine1:
               ansible_host: tokentestbed3.sl.cloud9.ibm.com

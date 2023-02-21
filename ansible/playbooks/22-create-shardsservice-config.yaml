@@ -14,3 +14,12 @@
         config_root: shards-service
       include_tasks: ../subtasks/create-base-config.yaml
       when: "{{selected_hosts | length > 0}}"
+    - name: Further edit shardsservice config
+      yedit:
+        src: "{{dst_dir}}/{{shardsservice_instance.inventory_hostname}}/{{shardsservice_instance.config}}"
+        edits:
+          - key: shards-service.database.root-dir
+            value: "{{shardsservice_instance.db_dir}}"
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: shardsservice_instance

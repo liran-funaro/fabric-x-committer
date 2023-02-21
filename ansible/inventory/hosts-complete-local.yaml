@@ -45,6 +45,7 @@ all:
           hosts:
             shardsservice-machine:
               config_dir: "{{top_config_dir}}/shardsservice"
+              db_dir: "{{config_dir}}/db"
               service_port: 5001
               prometheus_exporter_port: 2115
 

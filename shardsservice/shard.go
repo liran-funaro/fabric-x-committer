@@ -40,6 +40,9 @@ type database interface {
 }
 
 func openDb(dbType ShardDbType, path string) (database, error) {
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return nil, err
+	}
 	switch strings.ToLower(dbType) {
 	case MockDb:
 		return mockdb.Open(path)

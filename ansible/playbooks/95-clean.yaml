@@ -14,6 +14,12 @@
         - "{{binary_dir if include_bins | d(false) == true else ''}}"
       loop_control:
         loop_var: dir
+- hosts: "{{target_hosts}}:&shardsservices"
+  tasks:
+    - name: Clear shard db
+      file:
+        state: absent
+        path: "{{db_dir}}"
 - hosts: "{{target_hosts}}:&orderingservices"
   tasks:
     - name: Clear orderer cache
