@@ -518,3 +518,6 @@ empty-dir dir:
       rm -r "{{dir}}"; \
     fi
     mkdir -p {{dir}}
+
+restart-monitoring remove_existing=('true'):
+    go run utils/monitoring/cmd/main.go -config-dir utils/monitoring/config/ -remove-existing {{remove_existing}}

@@ -3,12 +3,11 @@ package main
 import (
 	"sync/atomic"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
-
 	"github.com/filecoin-project/mir/pkg/checkpoint"
 	"github.com/filecoin-project/mir/pkg/pb/requestpb"
 	t "github.com/filecoin-project/mir/pkg/types"
 	"github.com/filecoin-project/mir/pkg/util/maputil"
+	cb "github.com/hyperledger/fabric-protos-go/common"
 )
 
 type OrderingService struct {

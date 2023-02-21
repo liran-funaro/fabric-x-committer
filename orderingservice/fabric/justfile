@@ -33,13 +33,13 @@ build_fabric:
 cryptogen:
     {{fabric_bins}}/cryptogen \
     generate \
-    --config="./testdata/crypto-config.yaml" \
+    --config="./crypto-config.yaml" \
     --output={{cryptogen_out}}
 
 genesis channel_id:
     {{fabric_bins}}/configtxgen \
     -outputBlock {{configtxgen_out}} \
-    -profile SampleDevModeEtcdRaft \
+    -profile SampleDevModeSmartBFT \
     -channelID {{channel_id}}
 
 start:
@@ -47,23 +47,50 @@ start:
     split-window -t "orderer:0" -v \; \
     split-window -t "orderer:0.0" -h \; \
     split-window -t "orderer:0.2" -h \; \
-    split-window -t "orderer:0.3" -v \; \
+    split-window -t "orderer:0.3" -h \; \
+    split-window -t "orderer:0.4" -v \; \
+    split-window -t "orderer:0.5" -v \; \
     \
     send-keys -t "orderer:0.0" "just run_orderer 0" Enter \; \
     send-keys -t "orderer:0.1" "just run_orderer 1" Enter \; \
     send-keys -t "orderer:0.2" "just run_orderer 2" Enter \; \
+    send-keys -t "orderer:0.3" "just run_orderer 3" Enter \; \
     \
-    attach-session -t "orderer:0.3"
+    attach-session -t "orderer:0.5"
 
 kill:
     tmux kill-session -t "orderer"
 
+kill-remote-host host=("tokentestbed1.sl.cloud9.ibm.com"):
+   ssh root@{{host}} 'tmux kill-session -t "orderer"'
+
+kill-session:
+    just kill-remote-host tokentestbed1.sl.cloud9.ibm.com
+    just kill-remote-host tokentestbed2.sl.cloud9.ibm.com
+    just kill-remote-host tokentestbed3.sl.cloud9.ibm.com
+    just kill-remote-host tokentestbed4.sl.cloud9.ibm.com
+    just kill-remote-host tokentestbed13.sl.cloud9.ibm.com
+    just kill-remote-host tokentestbed14.sl.cloud9.ibm.com
+
+init-session-host host=("tokentestbed1.sl.cloud9.ibm.com"):
+    ssh root@{{host}} 'tmux new-session -d -s "orderer"' &
+
+init-session:
+    just init-session-host tokentestbed1.sl.cloud9.ibm.com
+    just init-session-host tokentestbed2.sl.cloud9.ibm.com
+    just init-session-host tokentestbed3.sl.cloud9.ibm.com
+    just init-session-host tokentestbed4.sl.cloud9.ibm.com
+    just init-session-host tokentestbed13.sl.cloud9.ibm.com
+    just init-session-host tokentestbed14.sl.cloud9.ibm.com
+
 run_orderer n=("0"):
-    FABRIC_LOGGING_SPEC="WARNING" \
-    ORDERER_GENERAL_LOCALMSPID="Orderer" \
+    #ORDERER_GENERAL_GENESISFILE="{{out}}/genesisblock"
+    FABRIC_LOGGING_SPEC="INFO" \
+    ORDERER_GENERAL_LOCALMSPID="orderer" \
     ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
     ORDERER_GENERAL_LISTENPORT="{{replace(orderer_port, "<<x>>", n)}}" \
-    ORDERER_GENERAL_GENESISFILE="{{out}}/genesisblock" \
+    ORDERER_GENERAL_BOOTSTRAPMETHOD=none \
+    ORDERER_CHANNELPARTICIPATION_ENABLED=true \
     ORDERER_GENERAL_TLS_ENABLED="true" \
     ORDERER_GENERAL_TLS_PRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
     ORDERER_GENERAL_TLS_CERTIFICATE="{{replace(orderer_tls, "<<id>>", n)}}/server.crt" \
@@ -78,14 +105,89 @@ run_orderer n=("0"):
     ORDERER_CONSENSUS_SNAPDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/snapshot" \
     {{fabric_bins}}/orderer
 
+run_orderer_remote n=("0") host=("tokentestbed1.sl.cloud9.ibm.com"):
+    ssh root@{{host}} "rm -rf {{out}} ./config/out/hyperledger"
+    ssh root@{{host}} "tmux send -t orderer '\
+    FABRIC_LOGGING_SPEC="INFO" \
+    FABRIC_CFG_PATH=config/ \
+    ORDERER_GENERAL_LOCALMSPID="orderer" \
+    ORDERER_GENERAL_LOCALMSPDIR="{{replace(orderer_msp, "<<id>>", n)}}" \
+    ORDERER_GENERAL_BOOTSTRAPMETHOD=none \
+    ORDERER_CHANNELPARTICIPATION_ENABLED=true \
+    ORDERER_GENERAL_TLS_ENABLED="true" \
+    ORDERER_GENERAL_TLS_PRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
+    ORDERER_GENERAL_TLS_CERTIFICATE="{{replace(orderer_tls, "<<id>>", n)}}/server.crt" \
+    ORDERER_GENERAL_TLS_ROOTCAS="[{{replace(orderer_tls, "<<id>>", n)}}/ca.crt]" \
+    ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE="{{replace(orderer_tls, "<<id>>", n)}}/server.crt" \
+    ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY="{{replace(orderer_tls, "<<id>>", n)}}/server.key" \
+    ORDERER_GENERAL_CLUSTER_ROOTCAS="[{{replace(orderer_tls, "<<id>>", n)}}/ca.crt]" \
+    ORDERER_FILELEDGER_LOCATION="{{out}}/hyperledger/production/orderer_{{n}}" \
+    ORDERER_CONSENSUS_WALDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/wal" \
+    ORDERER_CONSENSUS_SNAPDIR="{{out}}/hyperledger/production/orderer_{{n}}/etcdraft/snapshot" \
+    bin/orderer' ENTER"
+
+run-remote:
+    just run_orderer_remote 0 tokentestbed1.sl.cloud9.ibm.com
+    just run_orderer_remote 1 tokentestbed2.sl.cloud9.ibm.com
+    just run_orderer_remote 2 tokentestbed3.sl.cloud9.ibm.com
+    just run_orderer_remote 3 tokentestbed4.sl.cloud9.ibm.com
+
+join-i n=("0"):
+    {{fabric_bins}}/osnadmin channel join --channelID mychannel --config-block ./out/genesisblock -o {{replace("localhost:944<<x>>", "<<x>>", n)}}
+
+join:
+    just join-i 0
+    just join-i 1
+    just join-i 2
+    just join-i 3
+
+join-remote:
+    {{fabric_bins}}/osnadmin channel join --channelID mychannel --config-block ./out/genesisblock -o tokentestbed1.sl.cloud9.ibm.com:9443
+    {{fabric_bins}}/osnadmin channel join --channelID mychannel --config-block ./out/genesisblock -o tokentestbed2.sl.cloud9.ibm.com:9443
+    {{fabric_bins}}/osnadmin channel join --channelID mychannel --config-block ./out/genesisblock -o tokentestbed3.sl.cloud9.ibm.com:9443
+    {{fabric_bins}}/osnadmin channel join --channelID mychannel --config-block ./out/genesisblock -o tokentestbed4.sl.cloud9.ibm.com:9443
+
 
 submit out_dir=('') orderers=('0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052') channel_id=(channelID):
-    GOGC=15000 go run clients/cmd/submitter/main.go --configs ./config-orderer-submitter.yaml
+    GOGC=15000 go run clients/cmd/submitter/main.go --configs /Users/bur/Developer/gocode/src/github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/orderer-submitter-config.yaml
+
+submit-remote host=("tokentestbed14.sl.cloud9.ibm.com"):
+    ssh root@{{host}} "tmux send -t orderer 'cd config && GOGC=15000 ../bin/orderersubmitter --configs /root/config/orderer-submitter-config.yaml' ENTER"
+
 
 listen out_dir=('') orderer=('0.0.0.0:7050') channel_id=(channelID):
-    go run clients/cmd/listener/main.go --configs ./config-orderer-listener.yaml --quiet
+    go run clients/cmd/listener/main.go --configs /Users/bur/Developer/gocode/src/github.ibm.com/decentralized-trust-research/scalable-committer/orderingservice/fabric/orderer-listener-config.yaml --quiet
     #      -orderer-endpoints 0.0.0.0:7050,0.0.0.0:7051,0.0.0.0:7052 \
     #      -orderer-ops-endpoints 0.0.0.0:8440,0.0.0.0:8441,0.0.0.0:8442 \
 
+listen-remote host=("tokentestbed13.sl.cloud9.ibm.com"):
+    ssh root@{{host}} "tmux send -t orderer 'cd config && ../bin/ordererlistener --configs /root/config/orderer-listener-config.yaml --quiet' ENTER"
+
 clean:
     rm -rf {{out}}
+
+link-configs path=("configs/smartbft/local"):
+    echo "{{path}}"
+    for file in `ls {{path}}`; do echo $file; ln -sf {{path}}/$file $file; done
+
+deploy: pack
+    just upload tokentestbed1.sl.cloud9.ibm.com
+    just upload tokentestbed2.sl.cloud9.ibm.com
+    just upload tokentestbed3.sl.cloud9.ibm.com
+    just upload tokentestbed4.sl.cloud9.ibm.com
+    just upload tokentestbed13.sl.cloud9.ibm.com
+    just upload tokentestbed14.sl.cloud9.ibm.com
+
+pack path=("configs/smartbft/testbed1-4"):
+    rm -rf tmp;
+    mkdir -p tmp; cp {{path}}/* tmp; cp -R ./out tmp
+    cd tmp && /opt/homebrew/opt/gnu-tar/libexec/gnubin/tar -czf conf.tar.gz *;
+
+
+upload host=("tokentestbed1.sl.cloud9.ibm.com"):
+    rsync -avz --progress tmp/conf.tar.gz root@{{host}}:~/
+    ssh root@{{host}} "mkdir -p config && tar -xzf conf.tar.gz -C config"
+
+build:
+    go build -o build/bins/orderersubmitter clients/cmd/submitter/main.go
+    go build -o build/bins/ordererlistener clients/cmd/listener/main.go

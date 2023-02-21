@@ -15,9 +15,17 @@ OrdererOrgs:
         SANS:
           - 0.0.0.0
           - localhost
+      - Hostname: raft3
+        SANS:
+          - 0.0.0.0
+          - localhost
+      - Hostname: raft4
+        SANS:
+          - 0.0.0.0
+          - localhost
 
 PeerOrgs:
-  - Name: Org1
+  - Name: org1
     Domain: org1.com
     EnableNodeOUs: true
     Template:

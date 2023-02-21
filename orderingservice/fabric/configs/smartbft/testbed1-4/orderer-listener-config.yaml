@@ -1,0 +1,6 @@
+orderer-listener:
+  orderer: tokentestbed4.sl.cloud9.ibm.com:7050
+  channel-id: mychannel
+  prometheus:
+    endpoint: :2112
+  orderer-connection-profile: ./orderer-connection-profile.yaml

@@ -56,6 +56,7 @@ func main() {
 	//	fmt.Printf("No orderer listen/ops addresses passed. Will listen on %d.\n", c.Orderer.Address())
 	//}
 
+	fmt.Printf("Connecting to orderer ...\n")
 	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
 		ClientProvider: &sidecar.OrdererDeliverClientProvider{},
 		ChannelID:      c.ChannelID,
@@ -69,10 +70,12 @@ func main() {
 		return
 	}
 
+	fmt.Printf("Exporting metrics ...\n")
 	m := newListenerMetrics()
 	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
 	bar := workload.NewProgressBar("Received transactions...", -1, "tx")
 
+	fmt.Printf("Start listing...\n")
 	utils.Must(listener.RunDeliverOutputListener(func(block *common.Block) {
 		if !*quiet {
 			fmt.Println("Received block: ")
@@ -82,7 +85,7 @@ func main() {
 			}
 			//} else {
 		}
-		fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", block.Header.Number, block.XXX_Size(), len(block.Data.Data), len(block.Data.Data[0]))
+		//fmt.Printf("Received block: %d (size=%d) (tx count=%d; tx size=%d)\n", block.Header.Number, block.XXX_Size(), len(block.Data.Data), len(block.Data.Data[0]))
 		blockSize := len(block.Data.Data)
 		m.Throughput.Add(blockSize)
 		m.BlockSizes.Set(float64(blockSize))

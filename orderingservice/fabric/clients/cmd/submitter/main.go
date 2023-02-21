@@ -4,8 +4,10 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -56,6 +58,30 @@ func main() {
 	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
 	env, _ := envelopeCreator.CreateEnvelope(message)
 
+	fmt.Printf("Prebuffer tx with %d worker\n", c.GoRoutines)
+	buffered := make(chan *common.Envelope, c.Messages)
+	{
+		bar := workload.NewProgressBar("Prepping transactions...", int64(roundMsgs), "tx")
+		var ops uint64
+		var wg sync.WaitGroup
+		for i := 0; i < c.GoRoutines; i++ {
+			wg.Add(1)
+			go func() {
+				message := make([]byte, c.MessageSize)
+				for j := 0; j < msgsPerGo; j++ {
+					n := atomic.AddUint64(&ops, 1)
+					binary.LittleEndian.PutUint32(message, uint32(n))
+					envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
+					env, _ := envelopeCreator.CreateEnvelope(message)
+					buffered <- env
+					bar.Add(1)
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+	}
+
 	serializedEnv, err := protoutil.Marshal(env)
 	utils.Must(err)
 	fmt.Printf("Message size: %d\n", len(serializedEnv))
@@ -66,7 +92,8 @@ func main() {
 		input := ch.Input()
 		go func(out chan<- *common.Envelope) {
 			for i := 0; i < msgsPerGo; i++ {
-				input <- env
+				input <- <-buffered
+				//input <- env
 				m.Throughput.Add(1)
 			}
 			wg.Done()

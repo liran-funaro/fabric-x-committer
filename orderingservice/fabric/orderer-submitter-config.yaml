@@ -1,13 +1,1 @@
-orderer-submitter:
-  channel-id: mychannel
-  orderers:
-    - :7050
-    - :7051
-    - :7052
-  prometheus:
-    endpoint: :2114
-  orderer-connection-profile: ./orderer-connection-profile.yaml
-  messages: 1000000
-  go-routines: 20
-  message-size: 160
-  signed: true
+configs/smartbft/testbed1-4/orderer-submitter-config.yaml

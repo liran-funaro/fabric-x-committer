@@ -10,7 +10,7 @@ git clone https://github.com/hyperledger/fabric.git $FABRIC_PATH
 cd $FABRIC_PATH
 git checkout v2.4.7 -b v2.4.7-branch
 git apply $SC/orderingservice/fabric/orderer_no_sig_check.patch
-make natives 
+make native
 ```
 
 ## Prepare and run

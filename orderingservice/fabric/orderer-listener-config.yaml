@@ -1,6 +1,1 @@
-orderer-listener:
-  orderer: :7050
-  channel-id: mychannel
-  prometheus:
-    endpoint: :2113
-  orderer-connection-profile: ./orderer-connection-profile.yaml
+configs/smartbft/testbed1-4/orderer-listener-config.yaml

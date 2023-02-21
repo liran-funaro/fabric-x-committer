@@ -7,7 +7,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 )
 
-//EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
+// EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
 type EnvelopeCreator interface {
 	CreateEnvelope(data []byte) (*common.Envelope, error)
 }
@@ -57,6 +57,10 @@ func (c *envelopeCreator) payloadHeader() *common.Header {
 	channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
 	if c.signed {
 		channelHeader.TlsCertHash = c.tlsCertHash
+	}
+
+	if !c.signed {
+		return protoutil.MakePayloadHeader(channelHeader, &common.SignatureHeader{})
 	}
 
 	return protoutil.MakePayloadHeader(channelHeader, signatureHeader)
