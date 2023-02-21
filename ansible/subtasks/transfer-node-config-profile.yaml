@@ -34,9 +34,9 @@
   loop_control:
     label: "{{ item.path }}"
   with_items: "{{ files_to_change.files }}"
-- name: "Replace {{current_config_dir}} in files"
-  shell:
-    cmd: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
-  loop_control:
-    label: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
-  loop: "{{ files_to_change.files }}"
+#- name: "Replace {{current_config_dir}} in files"
+#  shell:
+#    cmd: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
+#  loop_control:
+#    label: "sed -i '' 's#{{current_config_dir}}#{{config_dir}}#g' {{item.path}}"
+#  loop: "{{ files_to_change.files }}"

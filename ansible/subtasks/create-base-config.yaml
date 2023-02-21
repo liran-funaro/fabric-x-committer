@@ -9,7 +9,8 @@
     filename: "{{host_instance.config}}"
     endpoint: "{{config_item.endpoint | d(':%d' | format(host_instance.service_port | d(0)))}}"
     dst_filepath: "{{dst_dir}}/{{host_instance.inventory_hostname}}/{{filename}}"
-    monitoring_host: "{{hostvars[groups['monitoring'][0]]}}"
+    monitoring_hosts: "{{groups['monitoring'] | d([]) | map('extract', hostvars) | list}}"
+    jaeger_endpoints: "{{monitoring_hosts | map(attribute='ansible_host') | zip(monitoring_hosts | map(attribute='jaeger_exporter_port')) | map('join', ':') | list}}"
   yedit:
     src: "{{dst_filepath}}"
     edits:
@@ -18,7 +19,7 @@
       - key: "{{config_root}}.prometheus.endpoint"
         value: ":{{host_instance.prometheus_exporter_port}}"
       - key: "{{config_root}}.prometheus.latency-endpoint"
-        value: "{{monitoring_host.ansible_host}}:{{monitoring_host.jaeger_exporter_port}}"
+        value: "{{'' if jaeger_endpoints | length == 0 else jaeger_endpoints | first}}"
   loop: "{{selected_hosts}}"
   loop_control:
     loop_var: host_instance
