@@ -109,9 +109,9 @@ all:
               auditor: true
               certifier: true
               view_factories:
-                - id: registerAuditor
+                - id: initRegisterAuditor
                   factory: "{{token_views}}/RegisterAuditorViewFactory"
-                - id: registerCertifier
+                - id: initRegisterCertifier
                   factory: "{{token_views}}/RegisterCertifierViewFactory"
             issuer:
               config_dir: "{{top_config_dir}}/issuer"

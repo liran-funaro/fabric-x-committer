@@ -30,7 +30,7 @@ func (n *Node) ID() string {
 }
 
 type ViewFactory struct {
-	Name    string `mapstructure:"name"`
+	Id      string `mapstructure:"id"`
 	Factory Ref    `mapstructure:"factory"`
 }
 

@@ -33,7 +33,7 @@ func CreateTopology(config *Config, provider Provider) *fsc.Topology {
 			node.RegisterResponder(provider.GetView(responder.Responder), provider.GetView(responder.Initiator))
 		}
 		for _, viewFactory := range nodeConfig.ViewFactories {
-			node.RegisterViewFactory(viewFactory.Name, provider.GetViewFactory(viewFactory.Factory))
+			node.RegisterViewFactory(viewFactory.Id, provider.GetViewFactory(viewFactory.Factory))
 		}
 		if nodeConfig.Bootstrap {
 			fscTopology.SetBootstrapNode(node)
