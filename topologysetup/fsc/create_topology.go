@@ -38,6 +38,9 @@ func CreateTopology(config *Config, provider Provider) *fsc.Topology {
 		if nodeConfig.Bootstrap {
 			fscTopology.SetBootstrapNode(node)
 		}
+		if nodeConfig.Bootstrap {
+			fscTopology.SetBootstrapNode(node)
+		}
 	}
 
 	fscTopology.AddSDK(&sdk.SDK{})

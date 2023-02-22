@@ -20,7 +20,7 @@ replace (
 	github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
 	github.com/btcsuite/btcd v0.23.4 => github.com/btcsuite/btcd v0.22.1
 	github.com/cucumber/godog v0.8.0 => github.com/cucumber/godog v0.8.1
-	github.com/hyperledger-labs/fabric-smart-client => ../../../hyperledger-labs/fabric-smart-client
+	github.com/hyperledger-labs/fabric-smart-client => github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230221153815-4d702b85e7fb
 	github.com/hyperledger-labs/fabric-token-sdk => github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230210082243-69c3baf0b58b
 	github.ibm.com/decentralized-trust-research/fts-sc => github.ibm.com/decentralized-trust-research/fts-sc v0.0.0-20230216165136-8e8d691a6fcb
 	github.ibm.com/distributed-trust-research/scalable-committer => ../

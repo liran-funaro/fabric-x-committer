@@ -86,9 +86,9 @@ all:
               auditor: true
               certifier: true
               view_factories:
-                - id: initRegisterAuditor
+                - id: registerAuditor
                   factory: "{{token_views}}/RegisterAuditorViewFactory"
-                - id: initRegisterCertifier
+                - id: registerCertifier
                   factory: "{{token_views}}/RegisterCertifierViewFactory"
             issuer:
               ansible_host: tokentestbed10.sl.cloud9.ibm.com
