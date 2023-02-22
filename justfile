@@ -272,7 +272,7 @@ build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
-deploy-configs target_hosts=('all') include_configs=('true') include_creds=('true') include_genesis=('true'):
+deploy-configs target_hosts=('all') include_configs=('true') include_creds=('true') include_genesis=('true') include_chaincode=('true'):
     ansible-playbook "{{playbook-path}}/41-transfer-sigverifier-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/42-transfer-shardsservice-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
@@ -281,7 +281,7 @@ deploy-configs target_hosts=('all') include_configs=('true') include_creds=('tru
     ansible-playbook "{{playbook-path}}/46-transfer-sidecarclient-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/47-transfer-ordererlistener-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/48-transfer-orderersubmitter-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
-    ansible-playbook "{{playbook-path}}/49-transfer-peer-admin-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'channel_ids': ['{{default-channel-id}}'], 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
+    ansible-playbook "{{playbook-path}}/49-transfer-peer-admin-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'include_chaincode': {{include_chaincode}}, 'channel_ids': ['{{default-channel-id}}'], 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/51-transfer-orderer-config-creds-genesis.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/52-transfer-fsc-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
 
@@ -361,6 +361,7 @@ start target_hosts=('all') include_configs=('false') committer=('sc') sig_verifi
       just create-channel {{channel_id}}; \
       just join-channel {{target_hosts}} {{channel_id}}; \
       just start-fsc-nodes {{target_hosts}}; \
+      just install-chaincode; \
     elif [[ "{{orderer}}" = "mir" ]]; then \
       just start-mir-orderers {{channel_id}}; \
     else \
@@ -440,6 +441,9 @@ create-channel channel_id=(default-channel-id):
 join-channel target_hosts=('all') channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'fetch', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'join', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+
+install-chaincode chaincode_name=('token-chaincode') channel_id=(default-channel-id):
+    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'install', 'channel_id': '{{channel_id}}', 'chaincode_name': '{{chaincode_name}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
 
 start-peers target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/70-start-peer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"

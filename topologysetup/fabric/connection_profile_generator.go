@@ -13,14 +13,12 @@ import (
 
 type OrdererClientProfileGenerator struct {
 	outputDir string
-	rootDir   string
 	prefix    string
 }
 
-func NewConnectionProfileGenerator(outputDir, rootDir, topologyName string) *OrdererClientProfileGenerator {
+func NewConnectionProfileGenerator(outputDir, topologyName string) *OrdererClientProfileGenerator {
 	return &OrdererClientProfileGenerator{
 		outputDir: outputDir,
-		rootDir:   rootDir,
 		prefix:    "fabric." + topologyName,
 	}
 }
@@ -71,7 +69,7 @@ func (g *OrdererClientProfileGenerator) peerDir(peerID topologysetup.NodeID) str
 }
 
 func (g *OrdererClientProfileGenerator) caCertBundlePath() string {
-	return filepath.Join(g.rootDir, g.prefix, "crypto", "ca-certs.pem")
+	return filepath.Join(g.outputDir, g.prefix, "crypto", "ca-certs.pem")
 }
 
 func mapBccsp(bccsp *fabricconfig.BCCSP) *factory.FactoryOpts {

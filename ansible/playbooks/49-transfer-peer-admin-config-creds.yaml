@@ -28,4 +28,12 @@
     - name: "Transfer genesis blocks for {{inventory_hostname}}"
       include_tasks: ../subtasks/transfer-genesis-blocks.yaml
       when: include_genesis | d(false) == true
+    - name: "Transfer chaincode package for {{inventory_hostname}}"
+      vars:
+        os: "{{hostvars[inventory_hostname].os}}"
+        src_dir: "{{orderer_artifacts_path}}/token/chaincodes"
+        dst_dir: "{{config_dir}}/token"
+      include_tasks: ../subtasks/copy-file.yaml
+      when: include_chaincode | d(false) == true
+
 

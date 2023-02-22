@@ -48,11 +48,11 @@ all:
 #            ops_port: "{{prometheus_exporter_port}}" #TODO: Adapt template to use 0.0.0.0 before activating
           hosts:
             orderingservice-machine1:
-              ansible_host: tokentestbed4.sl.cloud9.ibm.com
-            orderingservice-machine2:
               ansible_host: tokentestbed5.sl.cloud9.ibm.com
-            orderingservice-machine3:
+            orderingservice-machine2:
               ansible_host: tokentestbed6.sl.cloud9.ibm.com
+            orderingservice-machine3:
+              ansible_host: tokentestbed7.sl.cloud9.ibm.com
 
         peerservices:
           vars:
@@ -63,7 +63,95 @@ all:
             service_port: 7050
           hosts:
             peerservice-machine1:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+
+
+        fscservices:
+          vars:
+            config: core.yaml
+            token_views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
+            demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
+            organization: DefaultPeerOrg
+            domain: example.com
+            service_port: 8000
+            p2p_port: 8020
+          hosts:
+            lib-p2p-bootstrap-node:
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              bootstrap: true
+            auditor:
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
+              ops_port: 8080
+              web_port: 9080
+              auditor: true
+              certifier: true
+              view_factories:
+                - id: registerAuditor
+                  factory: "{{token_views}}/RegisterAuditorViewFactory"
+                - id: registerCertifier
+                  factory: "{{token_views}}/RegisterCertifierViewFactory"
+            issuer:
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
+              ops_port: 8080
+              web_port: 9080
+              issuer_identities:
+                - default
+                - id1
+              owner_identities:
+                - default
+                - owner
+              view_factories:
+                - id: issue
+                  factory: "{{token_views}}/IssueCashViewFactory"
+
+            alice:
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
+              ops_port: 8081
+              web_port: 9081
+              owner_identities:
+                - id1
+              responders:
+                - responder: "{{demo_views}}/AcceptIssuedCashView"
+                  initiator: "{{token_views}}/IssueCashView"
+                - responder: "{{demo_views}}/AcceptTransferCashView"
+                  initiator: "{{token_views}}/TransferView"
+              view_factories:
+                - id: transfer
+                  factory: "{{token_views}}/TransferViewFactory"
+                - id: balance
+                  factory: "{{token_views}}/BalanceViewFactory"
+                - id: registerQRCode
+                  factory: "{{demo_views}}/QRCodeRegisterViewFactory"
+                - id: acceptedTransactionsHistory
+                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                - id: enrollmentID
+                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+
+            bob:
+              ansible_host: tokentestbed11.sl.cloud9.ibm.com
+              ops_port: 8082
+              web_port: 9082
+              owner_identities:
+                - id1
+              responders:
+                - responder: "{{demo_views}}/AcceptIssuedCashView"
+                  initiator: "{{token_views}}/IssueCashView"
+                - responder: "{{demo_views}}/AcceptTransferCashView"
+                  initiator: "{{token_views}}/TransferView"
+              view_factories:
+                - id: transfer
+                  factory: "{{token_views}}/TransferViewFactory"
+                - id: balance
+                  factory: "{{token_views}}/BalanceViewFactory"
+                - id: registerQRCode
+                  factory: "{{demo_views}}/QRCodeRegisterViewFactory"
+                - id: acceptedTransactionsHistory
+                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                - id: enrollmentID
+                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+            endorser-1:
+              ansible_host: tokentestbed12.sl.cloud9.ibm.com
+              endorser: true
 
         sidecars:
           vars:
@@ -72,7 +160,7 @@ all:
             service_port: 5050
           hosts:
             sidecar-machine:
-              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+              ansible_host: tokentestbed13.sl.cloud9.ibm.com
 
         sidecarclients:
           vars:
@@ -80,13 +168,17 @@ all:
             inherit_peer: peerservice-machine1
           hosts:
             sidecar-client-machine1:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
-            sidecar-client-machine2:
               profile: profile-sidecar-client.yaml
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
-
+              ansible_host: tokentestbed11.sl.cloud9.ibm.com
+#        orderersubmitters:
+#          vars:
+#            config: config-orderer-submitter.yaml
+#            inherit_peer: peerservice-machine1
+#          hosts:
+#            orderersubmitter-machine1:
+#              ansible_host: tokentestbed11.sl.cloud9.ibm.com
 #        monitoring:
 #          hosts:
 #            monitoring-machine:
-#              ansible_host: tokentestbed16.sl.cloud9.ibm.com
+#              ansible_host: tokentestbed15.sl.cloud9.ibm.com
 #              jaeger_exporter_port: 14268

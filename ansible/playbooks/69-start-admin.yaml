@@ -9,9 +9,10 @@
     peer_id: "{{organization}}.{{inventory_hostname}}"
     full_domain: "{{organization | lower}}.{{domain}}"
     config_tree_root: "{{config_dir}}/fabric.{{topology_name}}"
+    peer_orgs_path: "{{config_tree_root}}/crypto/peerOrganizations/{{full_domain}}"
     env:
       - "FABRIC_CFG_PATH={{config_tree_root}}/peers/{{peer_id}}"
-      - "CORE_PEER_MSPCONFIGPATH={{config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{full_domain}}/users/Admin@{{full_domain}}/msp"
+      - "CORE_PEER_MSPCONFIGPATH={{peer_orgs_path}}/users/Admin@{{full_domain}}/msp"
     orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars) | list}}"
     orderer_endpoint: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | first}}"
     ca_file: "{{config_tree_root}}/crypto/ca-certs.pem"
@@ -52,3 +53,13 @@
       wait_for:
         path: "{{output_path}}"
       when: action == 'fetch'
+    - name: Install chaincode
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode_path: "{{config_dir}}/token/chaincodes/tcc/{{topology_name}}/{{channel_id}}/{{chaincode_name}}/{{chaincode_name}}.tar.gz"
+        service_name: "peer lifecycle chaincode install {{chaincode_path}}"
+        options:
+          peerAddresses: "{{ansible_host}}:{{service_port}}"
+          tlsRootCertFiles: "{{peer_orgs_path}}/peers/{{inventory_hostname}}.{{full_domain}}/tls/ca.crt"
+          tls: "{{tls}}"
+      when: action == 'install'
