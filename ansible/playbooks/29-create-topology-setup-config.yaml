@@ -87,7 +87,13 @@
             }
           },
           'view-factories': instance.view_factories | d([]),
-          'responders': instance.responders | d([])
+          'responders': instance.responders | d([]),
+          'owner-identities': instance.owner_identities | d([]),
+          'issuer-identities': instance.issuer_identities | d([]),
+          'auditor': instance.auditor | d(false),
+          'certifier': instance.certifier | d(false),
+          'endorser': instance.endorser | d(false),
+          'bootstrap': instance.bootstrap | d(false)
         }]}}"
       loop: "{{groups['fscservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:
@@ -96,6 +102,8 @@
       yedit:
         src: "{{filepath}}"
         edits:
+          - key: topology-setup.fsc.sdk-driver
+            value: snarkgh
           - key: topology-setup.fsc.nodes
             value: "{{fsc_nodes}}"
       when: fsc_nodes | d([]) | length > 0

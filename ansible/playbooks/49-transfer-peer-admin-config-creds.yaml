@@ -30,23 +30,10 @@
       when: include_genesis | d(false) == true
     - name: "Transfer chaincode package for {{inventory_hostname}}"
       vars:
+        os: "{{hostvars[inventory_hostname].os}}"
         src_dir: "{{orderer_artifacts_path}}/token/chaincodes"
         dst_dir: "{{config_dir}}/token"
       include_tasks: ../subtasks/copy-file.yaml
       when: include_chaincode | d(false) == true
-    - name: "Transfer topology for {{inventory_hostname}}"
-      vars:
-        src_dir: "{{orderer_artifacts_path}}"
-        dst_dir: "{{config_dir}}"
-        filename: topology.yaml
-      include_tasks: ../subtasks/copy-file.yaml
-      when: include_configs | d(false) == true
-    - name: "Replace double curly brackets in files"
-      # Needed in order to avoid parsing problems
-      replace:
-        dest: "{{config_dir}}/topology.yaml"
-        regexp: "{{'{{'}}"
-        replace: open_curly
-      when: include_configs | d(false) == true
 
 
