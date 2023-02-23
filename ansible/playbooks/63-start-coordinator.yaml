@@ -19,4 +19,4 @@
         options:
           configs: "{{config_dir}}/{{config}}"
       include_tasks: ../subtasks/start-server.yaml
-      when: mock | d(false) == false
+      when: mock | d(false) == true

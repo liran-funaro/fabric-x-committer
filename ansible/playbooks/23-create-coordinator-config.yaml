@@ -18,8 +18,8 @@
       vars:
         num_shards: 1
         shard_servers: 3
-        shardsservice_hosts: "{{groups['shardsservices'] | d([]) | map('extract', hostvars) | list}}"
-        shardsservice_endpoints: "{{shardsservice_hosts[0:shard_servers | int - 1] | map(attribute='ansible_host') | zip(shardsservice_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
+        shardsservice_hosts: "{{(groups['shardsservices'] | d([]))[0:shard_servers | int - 1] | map('extract', hostvars) | list}}"
+        shardsservice_endpoints: "{{shardsservice_hosts | map(attribute='ansible_host') | zip(shardsservice_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
       set_fact:
         shardsservice_configs: "{{shardsservice_configs | d([])  + [{'endpoint': endpoint, 'num-shards': num_shards}]}}"
       loop: "{{shardsservice_endpoints}}"
@@ -28,8 +28,8 @@
     - name: Calculate sigservice configs
       vars:
         sig_verifiers: 3
-        sigverifier_hosts: "{{groups['sigservices'] | d([]) | map('extract', hostvars) | list}}"
-        sigverifier_endpoints: "{{sigverifier_hosts[0:sig_verifiers | int - 1] | map(attribute='ansible_host') | zip(sigverifier_hosts | map(attribute='service_port')) | map('join', ':')}}"
+        sigverifier_hosts: "{{(groups['sigservices'] | d([]))[0:sig_verifiers | int - 1] | map('extract', hostvars) | list}}"
+        sigverifier_endpoints: "{{sigverifier_hosts | map(attribute='ansible_host') | zip(sigverifier_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
       set_fact:
         sigservice_configs: "{{sigverifier_endpoints}}"
     - name: Set shard servers and sigverifiers

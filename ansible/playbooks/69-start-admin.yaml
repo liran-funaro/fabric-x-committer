@@ -10,9 +10,11 @@
     full_domain: "{{organization | lower}}.{{domain}}"
     config_tree_root: "{{config_dir}}/fabric.{{topology_name}}"
     peer_orgs_path: "{{config_tree_root}}/crypto/peerOrganizations/{{full_domain}}"
+    user_crypto_dir: "{{peer_orgs_path}}/users/Admin@{{full_domain}}"
     env:
       - "FABRIC_CFG_PATH={{config_tree_root}}/peers/{{peer_id}}"
-      - "CORE_PEER_MSPCONFIGPATH={{peer_orgs_path}}/users/Admin@{{full_domain}}/msp"
+      - "CORE_PEER_MSPCONFIGPATH={{user_crypto_dir}}/msp"
+      - "FABRIC_LOGGING_SPEC=DEBUG"
     orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars) | list}}"
     orderer_endpoint: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | first}}"
     ca_file: "{{config_tree_root}}/crypto/ca-certs.pem"
@@ -28,17 +30,7 @@
           cafile: "{{ca_file}}"
           orderer: "{{orderer_endpoint}}"
           tls: "{{tls}}"
-      when: action == 'create'
-    - name: Join channel
-      include_tasks: ../subtasks/start-server.yaml
-      vars:
-        service_name: peer channel join
-        options:
-          blockpath: "{{output_path}}"
-          cafile: "{{ca_file}}"
-          orderer: "{{orderer_endpoint}}"
-          tls: "{{tls}}"
-      when: action == 'join'
+      when: action == 'create-channel'
     - name: Fetch channel
       include_tasks: ../subtasks/start-server.yaml
       vars:
@@ -48,7 +40,17 @@
           cafile: "{{ca_file}}"
           orderer: "{{orderer_endpoint}}"
           tls: "{{tls}}"
-      when: action == 'fetch'
+      when: action in ['fetch-channel', 'join-channel']
+    - name: Join channel
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: peer channel join
+        options:
+          blockpath: "{{output_path}}"
+          cafile: "{{ca_file}}"
+          orderer: "{{orderer_endpoint}}"
+          tls: "{{tls}}"
+      when: action == 'join-channel'
     - name: Wait for fetch
       wait_for:
         path: "{{output_path}}"
@@ -62,4 +64,122 @@
           peerAddresses: "{{ansible_host}}:{{service_port}}"
           tlsRootCertFiles: "{{peer_orgs_path}}/peers/{{inventory_hostname}}.{{full_domain}}/tls/ca.crt"
           tls: "{{tls}}"
-      when: action == 'install'
+      when: action == 'install-chaincode'
+    - name: Query installed versions until ready
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: peer lifecycle chaincode queryinstalled
+#        until: (stdout.stdout_lines | join | from_json).installed_chaincodes | selectattr('label', '==', chaincode_name) | length > 0
+        options:
+          output: json
+      when: action in ['approve-chaincode-for-org', 'install-chaincode', 'query-installed-chaincodes']
+    - set_fact:
+        package_id: "{{(stdout.stdout_lines | join | from_json).installed_chaincodes | selectattr('label', '==', chaincode_name) | map(attribute='package_id') | first}}"
+      when: action == 'approve-chaincode-for-org'
+    - name: Approve chaincode for my org
+      shell: "cat {{config_dir}}/topology.yaml"
+      register: topology_result
+      when: action in ['approve-chaincode-for-org', 'check-chaincode-commit-readiness', 'commit-chaincode', 'invoke-chaincode']
+    - name: Read topology
+      set_fact:
+        content: "{{topology_result.stdout | from_yaml}}"
+      when: topology_result is defined and topology_result.stdout | d('') | length > 0
+    - name: Approve chaincode for org
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
+        service_name: peer lifecycle chaincode approveformyorg
+        options:
+            channelID: "{{channel_id}}"
+            orderer: "{{orderer_endpoint}}"
+            cafile: "{{ca_file}}"
+            tls: "{{tls}}"
+            name: "{{chaincode.name}}"
+            version: "{{chaincode.version}}"
+            package-id: "{{package_id}}"
+            sequence: "{{chaincode.sequence}}"
+            endorsement-plugin: "\"{{chaincode.endorsementplugin | d('')}}\""
+            validation-plugin: "\"{{chaincode.validationplugin | d('')}}\""
+            signature-policy: "\"{{chaincode.signaturepolicy | d('')}}\""
+            channel-config-policy: "\"{{chaincode.channelconfigpolicy | d('')}}\""
+            init-required: true #"{{chaincode.initrequired}}"
+#            collections-config: "{{chaincode.collectionsconfig}}"
+      when: action == 'approve-chaincode-for-org'
+    - name: Check commit readiness until ready
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
+        msp_id: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='organizations') | flatten | selectattr('id', '==', organization) | map(attribute='msp_id') | first }}"
+        service_name: peer lifecycle chaincode checkcommitreadiness
+#        until: (stdout.stdout_lines | join | from_json).approvals[msp_id] | d(false)
+        options:
+          channelID: "{{channel_id}}"
+          orderer: "{{orderer_endpoint}}"
+          cafile: "{{ca_file}}"
+          tls: "{{tls}}"
+          name: "{{chaincode.name}}"
+          version: "{{chaincode.version}}"
+          sequence: "{{chaincode.sequence}}"
+          endorsement-plugin: "\"{{chaincode.endorsementplugin | d('')}}\""
+          validation-plugin: "\"{{chaincode.validationplugin | d('')}}\""
+          signature-policy: "\"{{chaincode.signaturepolicy | d('')}}\""
+          channel-config-policy: "\"{{chaincode.channelconfigpolicy | d('')}}\""
+          init-required: true #"{{chaincode.initrequired}}"
+#            collections-config: "{{chaincode.collectionsconfig}}"
+          peerAddresses: "{{ansible_host}}:{{service_port}}"
+          tlsRootCertFiles: "{{peer_orgs_path}}/peers/{{inventory_hostname}}.{{full_domain}}/tls/ca.crt"
+          output: json
+      when: action in ['check-chaincode-commit-readiness', 'commit-chaincode']
+    - name: Commit chaincode
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
+        service_name: peer lifecycle chaincode commit
+        options:
+          channelID: "{{channel_id}}"
+          orderer: "{{orderer_endpoint}}"
+          cafile: "{{ca_file}}"
+          tls: "{{tls}}"
+          name: "{{chaincode.name}}"
+          version: "{{chaincode.version}}"
+          sequence: "{{chaincode.sequence}}"
+          endorsement-plugin: "\"{{chaincode.endorsementplugin | d('')}}\""
+          validation-plugin: "\"{{chaincode.validationplugin | d('')}}\""
+          signature-policy: "\"{{chaincode.signaturepolicy | d('')}}\""
+          channel-config-policy: "\"{{chaincode.channelconfigpolicy | d('')}}\""
+          init-required: true #"{{chaincode.initrequired}}"
+#          collections-config: "{{chaincode.collectionsconfig}}"
+          peerAddresses: "{{ansible_host}}:{{service_port}}"
+          tlsRootCertFiles: "{{peer_orgs_path}}/peers/{{inventory_hostname}}.{{full_domain}}/tls/ca.crt"
+      when: action in ['commit-chaincode']
+    - name: Invoke chaincode
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
+        service_name: peer chaincode invoke
+        options:
+          channelID: "{{channel_id}}"
+          orderer: "{{orderer_endpoint}}"
+          cafile: "{{ca_file}}"
+          tls: "{{tls}}"
+          name: "{{chaincode.name}}"
+          ctor: "'{{chaincode.ctor}}'"
+          waitForEvent: true
+          isInit: true
+          peerAddresses: "{{ansible_host}}:{{service_port}}"
+          tlsRootCertFiles: "{{peer_orgs_path}}/peers/{{inventory_hostname}}.{{full_domain}}/tls/ca.crt"
+      when: action in ['invoke-chaincode']
+    - name: Invoke chaincode
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
+        service_name: peer chaincode queryapproved
+        options:
+          channelID: "{{channel_id}}"
+          orderer: "{{orderer_endpoint}}"
+          cafile: "{{ca_file}}"
+          tls: "{{tls}}"
+          name: "{{chaincode.name}}"
+          output: json
+      when: action in ['query-approved-chaincodes']
+

@@ -27,7 +27,7 @@
           - key: sidecar-client.profile
             value: "{{'' if sidecarclient_instance.profile | d('') | length == 0 else sidecarclient_instance.config_dir + '/' + sidecarclient_instance.profile}}"
           - key: sidecar-client.orderers
-            value: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':')}}"
+            value: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
           - key: sidecar-client.channel-id
             value: "{{channel_id}}"
           - key: sidecar-client.sidecar

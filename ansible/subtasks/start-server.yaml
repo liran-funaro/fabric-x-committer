@@ -29,16 +29,22 @@
   set_fact:
     command: tmux new-session -s {{session_name}} -d "{{command}}"
   when: use_tmux | d(true) == true
-- shell:
-    cmd: "{{command}}"
-  async: 10
-  poll: 0
+- debug:
+    msg: "Executing {{command}}"
+- vars:
+    until: true
+  shell: "{{command}}"
+#  async: 10
+#  poll: 0
   register: stdout
+  until: until
   when: command | d('') | length > 0 and only_kill | d(false) == false
 - debug:
     msg:
-      - " {{command}}"
-      - " {{stdout}}"
+      - "Command:  {{stdout.cmd}}"
+      - "Stdout:   {{stdout.stdout_lines | join}}"
+      - "Stderr:   {{stdout.stderr_lines | join}}"
+      - "Detailed: {{stdout}}"
   when: command | d('') | length > 0
 - set_fact:
     command: ""

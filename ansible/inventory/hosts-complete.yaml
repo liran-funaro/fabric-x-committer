@@ -3,7 +3,8 @@ all:
     ansible_connection: ssh
     ansible_user: "{{lookup('env', 'USER')}}"
     binary_dir: /root/bin/
-    config_dir: /root/config/ # Opening the file from the app does not work if we use ~/
+    top_config_dir: /root/config
+    config_dir: "{{top_config_dir}}"
     os: linux
     prometheus_exporter_port: 2112
 
@@ -19,7 +20,9 @@ all:
             config: config-coordinator.yaml
           hosts:
             coordinator-machine:
-              ansible_host: tokentestbed1.sl.cloud9.ibm.com
+              config_dir: "{{top_config_dir}}/coordinator"
+              prometheus_exporter_port: 2110
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
 
         sigservices:
           vars:
@@ -27,16 +30,20 @@ all:
             config: config-sigservice.yaml
           hosts:
             sigservice-machine1:
-              ansible_host: tokentestbed2.sl.cloud9.ibm.com
+              config_dir: "{{top_config_dir}}/sigverifier"
+              prometheus_exporter_port: 2111
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
 
         shardsservices:
           vars:
             service_port: 5001
             config: config-shardsservice.yaml
-            db_dir: "{{config_dir}}/db"
           hosts:
             shardsservice-machine1:
-              ansible_host: tokentestbed3.sl.cloud9.ibm.com
+              config_dir: "{{top_config_dir}}/shardsserver"
+              db_dir: "{{config_dir}}/db"
+              prometheus_exporter_port: 2113
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
 
         orderingservices:
           vars:
@@ -63,6 +70,7 @@ all:
             service_port: 7050
           hosts:
             peerservice-machine1:
+              config_dir: "{{top_config_dir}}/peer0"
               ansible_host: tokentestbed8.sl.cloud9.ibm.com
 
 
@@ -73,16 +81,20 @@ all:
             demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
             organization: DefaultPeerOrg
             domain: example.com
-            service_port: 8000
-            p2p_port: 8020
           hosts:
             lib-p2p-bootstrap-node:
               ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8000
+              p2p_port: 8020
+              config_dir: "{{top_config_dir}}/lib-p2p"
               bootstrap: true
             auditor:
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
-              ops_port: 8080
-              web_port: 9080
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8001
+              p2p_port: 8021
+              ops_port: 8081
+              web_port: 9081
+              config_dir: "{{top_config_dir}}/auditor"
               auditor: true
               certifier: true
               view_factories:
@@ -160,7 +172,7 @@ all:
             service_port: 5050
           hosts:
             sidecar-machine:
-              ansible_host: tokentestbed13.sl.cloud9.ibm.com
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
         sidecarclients:
           vars:
@@ -170,15 +182,9 @@ all:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml
               ansible_host: tokentestbed11.sl.cloud9.ibm.com
-#        orderersubmitters:
-#          vars:
-#            config: config-orderer-submitter.yaml
-#            inherit_peer: peerservice-machine1
-#          hosts:
-#            orderersubmitter-machine1:
-#              ansible_host: tokentestbed11.sl.cloud9.ibm.com
-#        monitoring:
-#          hosts:
-#            monitoring-machine:
-#              ansible_host: tokentestbed15.sl.cloud9.ibm.com
-#              jaeger_exporter_port: 14268
+
+        monitoring:
+          hosts:
+            monitoring-machine:
+              ansible_host: tokentestbed15.sl.cloud9.ibm.com
+              jaeger_exporter_port: 14268
