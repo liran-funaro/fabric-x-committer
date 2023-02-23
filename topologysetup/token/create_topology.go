@@ -28,16 +28,16 @@ func CreateTopology(fabricTopology *topology.Topology, fscTopology *fsc.Topology
 	tms.AddCertifier(auditor)
 	token2.SetCustodian(tms, auditor)
 
-	fabric.SetOrgs(tms, getOrgs(fabricTopology)...)
+	fabric.SetOrgs(tms, getPeerOrgs(fabricTopology)...)
 
 	tokenTopology.SetSDK(fscTopology, &token3.SDK{})
 	return tokenTopology
 }
 
-func getOrgs(t *topology.Topology) []string {
-	orgs := make([]string, len(t.Organizations))
-	for i, org := range t.Organizations {
-		orgs[i] = org.Name
+func getPeerOrgs(t *topology.Topology) []string {
+	orgs := make([]string, 0)
+	for _, peer := range t.Peers {
+		orgs = append(orgs, peer.Organization)
 	}
 	return orgs
 }

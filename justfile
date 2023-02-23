@@ -109,6 +109,7 @@ clean target_hosts=('all') include_configs=('false') include_bins=('false'):
     ansible-playbook "{{playbook-path}}/95-clean.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': {{include_bins}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}'}"
 
 build-deploy-all local_bins=('false') docker_bins=('false'):
+    #!/usr/bin/env bash
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
 
     just build-bins true true {{local_bins}} {{docker_bins}}; \
@@ -117,11 +118,9 @@ build-deploy-all local_bins=('false') docker_bins=('false'):
     just build-orderer-artifacts
     just deploy-configs
 
-    just build-fsc-bins {{local_bins}} {{docker_bins}}
-
     if [[ "{{local_bins}}" = "true" || "{{docker_bins}}" = "true" ]]; then \
+      just build-fsc-bins {{local_bins}} {{docker_bins}}
       just deploy-bins; \
-      just deploy-fsc-bins; \
     fi
 
 #########################
@@ -153,6 +152,7 @@ build-bins include_committer=('true') include_orderer=('true') local=('true') do
     fi
 
 build-fsc-bins local=('true') docker=('true'):
+    #!/usr/bin/env bash
     if [[ "{{local}}" = "true" ]]; then \
       just build-fsc-bins-local {{local-bin-input-dir}}; \
     fi
@@ -285,9 +285,6 @@ deploy-configs target_hosts=('all') include_configs=('true') include_creds=('tru
     ansible-playbook "{{playbook-path}}/51-transfer-orderer-config-creds-genesis.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/52-transfer-fsc-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
 
-deploy-fsc-bins target_hosts=('all'):
-    ansible-playbook "{{playbook-path}}/53-transfer-fsc-bin.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-
 list-host-names name=("all"):
     ansible {{name}} --list-hosts | tail -n +2
 
@@ -358,10 +355,13 @@ start target_hosts=('all') include_configs=('false') committer=('sc') sig_verifi
     elif [[ "{{orderer}}" = "raft" ]]; then \
       just start-raft-orderers {{target_hosts}} {{channel_id}}; \
       just start-peers {{target_hosts}}; \
-      just create-channel {{channel_id}}; \
-      just join-channel {{target_hosts}} {{channel_id}}; \
+      just admin create-channel {{channel_id}}; \
+      just admin join-channel {{target_hosts}} {{channel_id}}; \
+      just admin install-chaincode {{channel_id}}; \
+      just admin approve-chaincode-for-org {{channel_id}}; \
+      just admin commit-chaincode {{channel_id}}; \
+      just admin invoke-chaincode {{channel_id}}; \
       just start-fsc-nodes {{target_hosts}}; \
-      just install-chaincode; \
     elif [[ "{{orderer}}" = "mir" ]]; then \
       just start-mir-orderers {{channel_id}}; \
     else \
@@ -435,15 +435,8 @@ start-orderer-submitters target_hosts=('all') include_configs=('false') connecti
     fi
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-create-channel channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'create', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
-
-join-channel target_hosts=('all') channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'fetch', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'join', 'channel_id': '{{channel_id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-
-install-chaincode chaincode_name=('token-chaincode') channel_id=(default-channel-id):
-    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': 'install', 'channel_id': '{{channel_id}}', 'chaincode_name': '{{chaincode_name}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
+admin action channel_id=(default-channel-id) chaincode_name=('token-chaincode'):
+    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': '{{action}}', 'channel_id': '{{channel_id}}', 'chaincode_name': '{{chaincode_name}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
 
 start-peers target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/70-start-peer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"

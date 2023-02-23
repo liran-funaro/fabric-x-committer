@@ -20,7 +20,7 @@ replace (
 	github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
 	github.com/btcsuite/btcd v0.23.4 => github.com/btcsuite/btcd v0.22.1
 	github.com/cucumber/godog v0.8.0 => github.com/cucumber/godog v0.8.1
-	github.com/hyperledger-labs/fabric-smart-client => github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230221153815-4d702b85e7fb
+	github.com/hyperledger-labs/fabric-smart-client => github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230223141149-ccffadb2557c
 	github.com/hyperledger-labs/fabric-token-sdk => github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230210082243-69c3baf0b58b
 	github.ibm.com/decentralized-trust-research/fts-sc => github.ibm.com/decentralized-trust-research/fts-sc v0.0.0-20230216165136-8e8d691a6fcb
 	github.ibm.com/distributed-trust-research/scalable-committer => ../
@@ -36,8 +36,6 @@ require (
 	github.com/Microsoft/hcsshim v0.8.25 // indirect
 	github.com/ReneKroon/ttlcache/v2 v2.11.0 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
-	github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922 // indirect
 	github.com/appleboy/gin-jwt/v2 v2.9.1 // indirect
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
@@ -246,7 +244,6 @@ require (
 	google.golang.org/genproto v0.0.0-20220808204814-fd01256a5276 // indirect
 	google.golang.org/grpc v1.48.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
-	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect
