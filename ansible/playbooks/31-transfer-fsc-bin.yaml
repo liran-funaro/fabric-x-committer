@@ -8,7 +8,7 @@
     - vars:
         mode: a+x
         os: "{{hostvars[inventory_hostname].os}}"
-        src_dir: "{{linux_src_dir if os == 'linux' else osx_src_dir}}/cmd"
+        src_dir: "{{linux_src_dir if os == 'linux' else osx_src_dir}}"
         dst_dir: "{{binary_dir}}"
         filename: "{{inventory_hostname}}"
       include_tasks: ../subtasks/copy-file.yaml
