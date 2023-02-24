@@ -7,9 +7,9 @@
     src_dir: "{{orderer_artifacts_path}}/{{topology_dir}}"
     dst_dir: "{{config_dir}}"
     rsync_opts:
-      - --include='*/'
-      - "--include=**/{{topology_dir}}/crypto/**/{{node_type}}/*{{node_domain}}/msp/**"
-      - --exclude='*'
+#      - --include='*/'
+#      - "--include=**/{{topology_dir}}/crypto/**/{{node_type}}/*{{node_domain}}/msp/**"
+#      - --exclude='*'
       - --prune-empty-dirs
   include_tasks: ../subtasks/copy-file.yaml
   loop:
