@@ -3,7 +3,8 @@ all:
     ansible_connection: ssh
     ansible_user: "{{lookup('env', 'USER')}}"
     binary_dir: /root/bin/
-    config_dir: /root/config/ # Opening the file from the app does not work if we use ~/
+    top_config_dir: /root/config
+    config_dir: "{{top_config_dir}}"
     os: linux
     prometheus_exporter_port: 2112
 
@@ -19,7 +20,10 @@ all:
             config: config-coordinator.yaml
           hosts:
             coordinator-machine:
-              ansible_host: tokentestbed1.sl.cloud9.ibm.com
+              inherit_endorser: endorser-1
+              config_dir: "{{top_config_dir}}/coordinator"
+              prometheus_exporter_port: 2110
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
 
         sigservices:
           vars:
@@ -27,7 +31,9 @@ all:
             config: config-sigservice.yaml
           hosts:
             sigservice-machine1:
-              ansible_host: tokentestbed2.sl.cloud9.ibm.com
+              config_dir: "{{top_config_dir}}/sigverifier"
+              prometheus_exporter_port: 2111
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
 
         shardsservices:
           vars:
@@ -36,7 +42,10 @@ all:
             db_dir: "{{config_dir}}/db"
           hosts:
             shardsservice-machine1:
-              ansible_host: tokentestbed3.sl.cloud9.ibm.com
+              config_dir: "{{top_config_dir}}/shardsserver"
+              db_dir: "{{config_dir}}/db"
+              prometheus_exporter_port: 2113
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
 
         orderingservices:
           vars:
@@ -63,37 +72,46 @@ all:
             service_port: 7050
           hosts:
             peerservice-machine1:
+              config_dir: "{{top_config_dir}}/peer0"
               ansible_host: tokentestbed8.sl.cloud9.ibm.com
 
 
         fscservices:
           vars:
             config: core.yaml
-            token_views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
             demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
             organization: DefaultPeerOrg
             domain: example.com
-            service_port: 8000
-            p2p_port: 8020
           hosts:
             lib-p2p-bootstrap-node:
               ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8000
+              p2p_port: 8020
+              config_dir: "{{top_config_dir}}/lib-p2p"
               bootstrap: true
             auditor:
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
-              ops_port: 8080
-              web_port: 9080
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8001
+              p2p_port: 8021
+              ops_port: 8081
+              web_port: 9081
+              config_dir: "{{top_config_dir}}/auditor"
               auditor: true
               certifier: true
               view_factories:
                 - id: initRegisterAuditor
-                  factory: "{{token_views}}/RegisterAuditorViewFactory"
+                  factory: "{{demo_views}}/RegisterAuditorViewFactory"
                 - id: initRegisterCertifier
-                  factory: "{{token_views}}/RegisterCertifierViewFactory"
+                  factory: "{{demo_views}}/RegisterCertifierViewFactory"
+                - id: historyAuditing
+                  factory: "{{demo_views}}/ListAuditedTransactionsViewFactory"
             issuer:
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
-              ops_port: 8080
-              web_port: 9080
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8002
+              p2p_port: 8022
+              ops_port: 8082
+              web_port: 9082
+              config_dir: "{{top_config_dir}}/issuer"
               issuer_identities:
                 - default
                 - id1
@@ -102,55 +120,68 @@ all:
                 - owner
               view_factories:
                 - id: issue
-                  factory: "{{token_views}}/IssueCashViewFactory"
+                  factory: "{{demo_views}}/IssueCashViewFactory"
 
             alice:
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
-              ops_port: 8081
-              web_port: 9081
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8003
+              p2p_port: 8023
+              ops_port: 8083
+              web_port: 9083
+              config_dir: "{{top_config_dir}}/alice"
               owner_identities:
                 - id1
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
+                  initiator: "{{demo_views}}/IssueCashView"
                 - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                  initiator: "{{demo_views}}/TransferView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{demo_views}}/TransferViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
+                  factory: "{{demo_views}}/BalanceViewFactory"
                 - id: registerQRCode
                   factory: "{{demo_views}}/QRCodeRegisterViewFactory"
                 - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                  factory: "{{demo_views}}/ListAcceptedTransactionsViewFactory"
                 - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+                  factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
+                - id: txStatusByNonce
+                  factory: "{{demo_views}}/TxStatusByNonceViewFactory"
 
             bob:
-              ansible_host: tokentestbed11.sl.cloud9.ibm.com
-              ops_port: 8082
-              web_port: 9082
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8004
+              p2p_port: 8024
+              ops_port: 8084
+              web_port: 9084
+              config_dir: "{{top_config_dir}}/bob"
               owner_identities:
                 - id1
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
+                  initiator: "{{demo_views}}/IssueCashView"
                 - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                  initiator: "{{demo_views}}/TransferView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{demo_views}}/TransferViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
+                  factory: "{{demo_views}}/BalanceViewFactory"
                 - id: registerQRCode
                   factory: "{{demo_views}}/QRCodeRegisterViewFactory"
                 - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                  factory: "{{demo_views}}/ListAcceptedTransactionsViewFactory"
                 - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
-            endorser-1:
-              ansible_host: tokentestbed12.sl.cloud9.ibm.com
+                  factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
+                - id: txStatusByNonce
+                  factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+            endorser-1: # Only one endorser supported currently
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              service_port: 8005
+              p2p_port: 8025
+              config_dir: "{{top_config_dir}}/endorser1"
               endorser: true
 
         sidecars:
@@ -158,9 +189,11 @@ all:
             inherit_peer: peerservice-machine1
             config: config-sidecar.yaml
             service_port: 5050
+            organization: DefaultPeerOrg
+            domain: example.com
           hosts:
             sidecar-machine:
-              ansible_host: tokentestbed13.sl.cloud9.ibm.com
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
         sidecarclients:
           vars:
@@ -170,15 +203,9 @@ all:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml
               ansible_host: tokentestbed11.sl.cloud9.ibm.com
-#        orderersubmitters:
-#          vars:
-#            config: config-orderer-submitter.yaml
-#            inherit_peer: peerservice-machine1
-#          hosts:
-#            orderersubmitter-machine1:
-#              ansible_host: tokentestbed11.sl.cloud9.ibm.com
-#        monitoring:
-#          hosts:
-#            monitoring-machine:
-#              ansible_host: tokentestbed15.sl.cloud9.ibm.com
-#              jaeger_exporter_port: 14268
+
+        monitoring:
+          hosts:
+            monitoring-machine:
+              ansible_host: tokentestbed15.sl.cloud9.ibm.com
+              jaeger_exporter_port: 14268

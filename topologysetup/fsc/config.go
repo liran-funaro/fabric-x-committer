@@ -14,15 +14,15 @@ type Identity string
 const DefaultIdentity Identity = "default"
 
 type Node struct {
-	topologysetup.NodeConfig `mapstructure:"config"`
-	Responders               []Responder   `mapstructure:"responders"`
-	ViewFactories            []ViewFactory `mapstructure:"view-factories"`
-	OwnerIdentities          []Identity    `mapstructure:"owner-identities"`
-	IssuerIdentities         []Identity    `mapstructure:"issuer-identities"`
-	Auditor                  bool          `mapstructure:"auditor"`
-	Certifier                bool          `mapstructure:"certifier"`
-	Endorser                 bool          `mapstructure:"endorser"`
-	Bootstrap                bool          `mapstructure:"bootstrap"`
+	*topologysetup.NodeConfig `mapstructure:"config"`
+	Responders                []Responder   `mapstructure:"responders"`
+	ViewFactories             []ViewFactory `mapstructure:"view-factories"`
+	OwnerIdentities           []Identity    `mapstructure:"owner-identities"`
+	IssuerIdentities          []Identity    `mapstructure:"issuer-identities"`
+	Auditor                   bool          `mapstructure:"auditor"`
+	Certifier                 bool          `mapstructure:"certifier"`
+	Endorser                  bool          `mapstructure:"endorser"`
+	Bootstrap                 bool          `mapstructure:"bootstrap"`
 }
 
 func (n *Node) ID() string {
@@ -68,11 +68,11 @@ func (c *Config) AllViews() []Ref {
 }
 
 func (c *Config) AllSDKs() []Ref {
-	return []Ref{"github.com/hyperledger-labs/fabric-smart-client/platform/fabric/sdk/SDK"}
+	return []Ref{"github.ibm.com/decentralized-trust-research/fts-sc/platform/fabric/sdk/SDK"}
 }
 
-func (c *Config) PeerIdMap() map[topologysetup.NodeID]topologysetup.NodeConfig {
-	nodeIdMap := make(map[topologysetup.NodeID]topologysetup.NodeConfig, len(c.Nodes))
+func (c *Config) PeerIdMap() map[topologysetup.NodeID]*topologysetup.NodeConfig {
+	nodeIdMap := make(map[topologysetup.NodeID]*topologysetup.NodeConfig, len(c.Nodes))
 	for _, node := range c.Nodes {
 		nodeIdMap[node.ID()] = node.NodeConfig
 	}

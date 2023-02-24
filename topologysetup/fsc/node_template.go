@@ -14,9 +14,6 @@ import (
 	backend2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/backend"
 	server2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/server"
 	{{ end }}
-	//views "github.ibm.com/decentralized-trust-research/fts-sc/demo/views"
-	//sdk1 "github.ibm.com/decentralized-trust-research/fts-sc/platform/fabric/sdk"
-	//sdk "github.ibm.com/decentralized-trust-research/fts-sc/token/sdk"
 	{{ if InstallView }}viewregistry "github.com/hyperledger-labs/fabric-smart-client/platform/view"{{ end }}
 	{{- range .Imports }}
 	{{ Alias . }} "{{ . }}"{{ end }}

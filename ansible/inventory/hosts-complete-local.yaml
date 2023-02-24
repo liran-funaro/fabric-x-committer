@@ -22,6 +22,7 @@ all:
             config: config-coordinator.yaml
           hosts:
             coordinator-machine:
+              inherit_endorser: endorser-1
               config_dir: "{{top_config_dir}}/coordinator"
               service_port: 5002
               prometheus_exporter_port: 2112
@@ -34,10 +35,6 @@ all:
               config_dir: "{{top_config_dir}}/sigservice1"
               service_port: 5000
               prometheus_exporter_port: 2110
-            sigservice-machine2:
-              config_dir: "{{top_config_dir}}/sigservice2"
-              service_port: 5004
-              prometheus_exporter_port: 2114
 
         shardsservices:
           vars:
@@ -90,12 +87,11 @@ all:
         fscservices:
           vars:
             config: core.yaml
-            token_views: github.com/hyperledger-labs/fabric-token-sdk/integration/token/fungible/views
             demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
             organization: DefaultPeerOrg
             domain: example.com
           hosts:
-            lib-p2p-bootstrap-node: # Must be first, because it's the bootstrap node (NWO particularity)
+            lib-p2p-bootstrap-node:
               config_dir: "{{top_config_dir}}/lib_p2p"
               service_port: 8007
               p2p_port: 8027
@@ -110,9 +106,11 @@ all:
               certifier: true
               view_factories:
                 - id: initRegisterAuditor
-                  factory: "{{token_views}}/RegisterAuditorViewFactory"
+                  factory: "{{demo_views}}/RegisterAuditorViewFactory"
                 - id: initRegisterCertifier
-                  factory: "{{token_views}}/RegisterCertifierViewFactory"
+                  factory: "{{demo_views}}/RegisterCertifierViewFactory"
+                - id: historyAuditing
+                  factory: "{{demo_views}}/ListAuditedTransactionsViewFactory"
             issuer:
               config_dir: "{{top_config_dir}}/issuer"
               ops_port: 8080
@@ -121,13 +119,13 @@ all:
               p2p_port: 8020
               issuer_identities:
                 - default
-                - id1
+                - id1 #TODO: AF Remove redundant ID's
               owner_identities:
                 - default
                 - owner
               view_factories:
                 - id: issue
-                  factory: "{{token_views}}/IssueCashViewFactory"
+                  factory: "{{demo_views}}/IssueCashViewFactory"
 
             alice:
               config_dir: "{{top_config_dir}}/alice"
@@ -139,20 +137,22 @@ all:
                 - id1
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
+                  initiator: "{{demo_views}}/IssueCashView"
                 - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                  initiator: "{{demo_views}}/TransferView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{demo_views}}/TransferViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
+                  factory: "{{demo_views}}/BalanceViewFactory"
                 - id: registerQRCode
                   factory: "{{demo_views}}/QRCodeRegisterViewFactory"
                 - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                  factory: "{{demo_views}}/ListAcceptedTransactionsViewFactory"
                 - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
+                  factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
+                - id: txStatusByNonce
+                  factory: "{{demo_views}}/TxStatusByNonceViewFactory"
 
             bob:
               config_dir: "{{top_config_dir}}/bob"
@@ -164,35 +164,34 @@ all:
                 - id1
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
-                  initiator: "{{token_views}}/IssueCashView"
+                  initiator: "{{demo_views}}/IssueCashView"
                 - responder: "{{demo_views}}/AcceptTransferCashView"
-                  initiator: "{{token_views}}/TransferView"
+                  initiator: "{{demo_views}}/TransferView"
               view_factories:
                 - id: transfer
-                  factory: "{{token_views}}/TransferViewFactory"
+                  factory: "{{demo_views}}/TransferViewFactory"
                 - id: balance
-                  factory: "{{token_views}}/BalanceViewFactory"
+                  factory: "{{demo_views}}/BalanceViewFactory"
                 - id: registerQRCode
                   factory: "{{demo_views}}/QRCodeRegisterViewFactory"
                 - id: acceptedTransactionsHistory
-                  factory: "{{token_views}}/ListAcceptedTransactionsViewFactory"
+                  factory: "{{demo_views}}/ListAcceptedTransactionsViewFactory"
                 - id: enrollmentID
-                  factory: "{{token_views}}/GetEnrollmentIDViewFactory"
-            endorser-1:
+                  factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
+                - id: txStatusByNonce
+                  factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+            endorser-1: # Only one endorser supported currently
               config_dir: "{{top_config_dir}}/endorser1"
               endorser: true
               service_port: 8003
               p2p_port: 8023
-            endorser-2:
-              config_dir: "{{top_config_dir}}/endorser2"
-              endorser: true
-              service_port: 8004
-              p2p_port: 8024
 
         sidecars:
           vars:
             inherit_peer: peerservice-machine1
             config: config-sidecar.yaml
+            organization: DefaultPeerOrg
+            domain: example.com
           hosts:
             sidecar-machine:
               config_dir: "{{top_config_dir}}/sidecar"
@@ -211,15 +210,6 @@ all:
             sidecar-client-machine2:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/sidecarclient1/"
-
-        orderersubmitters:
-          vars:
-            config: config-orderer-submitter.yaml
-            inherit_peer: peerservice-machine1
-          hosts:
-            orderersubmitter-machine1:
-              prometheus_exporter_port: 2119
-              config_dir: "{{top_config_dir}}/submitter0"
 
         monitoring:
           hosts:

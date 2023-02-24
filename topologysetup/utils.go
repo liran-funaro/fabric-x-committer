@@ -8,14 +8,17 @@ import (
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/network"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/topology"
 	"github.com/pkg/errors"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
 type NodeName = string
 type NodeID = string
 type OrgName = string
 
+var logger = logging.New("topologysetup")
+
 type Node struct {
-	NodeConfig `mapstructure:"config"`
+	*NodeConfig `mapstructure:"config"`
 }
 
 type NodeConfig struct {
@@ -33,24 +36,40 @@ func (c *NodeConfig) ID() NodeID {
 type EnhancedRegistry struct {
 	api.Context
 	TopRootDir   string
-	PeerPorts    map[NodeID]NodeConfig
-	OrdererPorts map[NodeID]NodeConfig
+	PeerPorts    map[NodeID]*NodeConfig
+	OrdererPorts map[NodeID]*NodeConfig
 }
 
 func (r *EnhancedRegistry) PortsByPeerID(_ string, id NodeID) api.Ports {
-	return r.PeerPorts[id].Ports
+	if c, ok := r.PeerPorts[id]; ok {
+		return c.Ports
+	}
+	logger.Warnf("Ports for peer %s not found.", id)
+	return api.Ports{}
 }
 
 func (r *EnhancedRegistry) PortsByOrdererID(_ string, id NodeID) api.Ports {
-	return r.OrdererPorts[id].Ports
+	if c, ok := r.OrdererPorts[id]; ok {
+		return c.Ports
+	}
+	logger.Warnf("Ports for orderer %s not found.", id)
+	return api.Ports{}
 }
 
 func (r *EnhancedRegistry) HostByPeerID(_ string, id NodeID) string {
-	return r.PeerPorts[id].Host
+	if c, ok := r.PeerPorts[id]; ok {
+		return c.Host
+	}
+	logger.Warnf("Host for peer %s not found.", id)
+	return ""
 }
 
 func (r *EnhancedRegistry) HostByOrdererID(_ string, id NodeID) string {
-	return r.OrdererPorts[id].Host
+	if c, ok := r.OrdererPorts[id]; ok {
+		return c.Host
+	}
+	logger.Warnf("Host for orderer %s not found.", id)
+	return ""
 }
 
 var portNameMap = createPortNameMap()

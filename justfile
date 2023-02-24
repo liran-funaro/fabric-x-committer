@@ -44,6 +44,9 @@ fabric_path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/githu
 # Well-known ports
 prometheus-scraper-port := "9091"
 
+github-user := env_var_or_default('SC_GITHUB_USER', '')
+github-token := env_var_or_default('SC_GITHUB_TOKEN', '')
+
 playbook-path := "./ansible/playbooks"
 export ANSIBLE_CONFIG := env_var_or_default('ANSIBLE_CONFIG', './ansible/ansible.cfg')
 
@@ -110,6 +113,7 @@ clean target_hosts=('all') include_configs=('false') include_bins=('false'):
 
 build-deploy-all local_bins=('false') docker_bins=('false'):
     #!/usr/bin/env bash
+    just kill
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
 
     just build-bins true true {{local_bins}} {{docker_bins}}; \
@@ -118,8 +122,9 @@ build-deploy-all local_bins=('false') docker_bins=('false'):
     just build-orderer-artifacts
     just deploy-configs
 
+    just build-fsc-bins {{local_bins}} {{docker_bins}}
+
     if [[ "{{local_bins}}" = "true" || "{{docker_bins}}" = "true" ]]; then \
-      just build-fsc-bins {{local_bins}} {{docker_bins}}
       just deploy-bins; \
     fi
 
@@ -157,7 +162,7 @@ build-fsc-bins local=('true') docker=('true'):
       just build-fsc-bins-local {{local-bin-input-dir}}; \
     fi
     if [[ "{{docker}}" = "true" ]]; then \
-      just docker "just build-fsc-bins-local ../../../eval/deployments/bins/linux/cmd"; \
+      just docker "just build-fsc-bins-local ../../../eval/deployments/bins/linux"; \
     fi
 
 build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path):
@@ -275,7 +280,7 @@ build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=
 deploy-configs target_hosts=('all') include_configs=('true') include_creds=('true') include_genesis=('true') include_chaincode=('true'):
     ansible-playbook "{{playbook-path}}/41-transfer-sigverifier-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/42-transfer-shardsservice-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}', 'include_creds': {{include_creds}}, 'topology_name': '{{default-topology-name}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/44-transfer-blockgen-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/45-transfer-sidecar-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/46-transfer-sidecarclient-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
@@ -301,7 +306,14 @@ docker-image:
 
 # Executes a command from within the docker image. Requires that docker-image be run once before, to ensure the image exists.
 docker CMD:
-    docker run --rm -it -v "$PWD":/scalable-committer --env GOPRIVATE=github.ibm.com/* -w /scalable-committer sc_builder:latest {{CMD}}
+    #!/usr/bin/env bash
+    if [[ "{{github-user}}" = "" || "{{github-token}}" = "" ]]; then \
+      echo "Building without private github repo"; \
+      docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder:latest {{CMD}}; \
+    else \
+      echo "Building with private github repo. User: {{github-user}}. Token: {{github-token}}"; \
+      docker run --rm -it -v "$PWD":/scalable-committer --env GOPRIVATE=github.ibm.com/* -w /scalable-committer sc_builder:latest sh -c "git config --global url.\"https://{{github-user}}:{{github-token}}@github.ibm.com/\".insteadOf https://github.ibm.com/; {{CMD}}"; \
+    fi
 
 #########################
 # Simple containerized SC
@@ -337,31 +349,20 @@ docker-run-blockgen:
 # Run
 #########################
 
-start target_hosts=('all') include_configs=('false') committer=('sc') sig_verifiers=("3") shard_servers=("3") large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") orderer=('raft') connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
+start-servers target_hosts=('all') include_configs=('false') orderer=('raft') committer=('sc') sig_verifiers=("3") shard_servers=("3") channel_id=(default-channel-id):
     #!/usr/bin/env bash
-    if [[ "{{committer}}" = "mock" ]]; then \
-      just start-mock-coordinator {{base-setup-config-dir}}; \
-    elif [[ "{{committer}}" = "sc" ]]; then \
-      just start-committer {{target_hosts}} {{include_configs}} {{all-instances}} {{all-instances}}; \
-    else \
-      echo "Committer type {{committer}} not defined"; \
-      exit 1; \
-    fi
-
-    just start-blockgen {{target_hosts}} {{include_configs}} {{large_txs}} {{invalidity_ratio}} {{double_spends}} {{block_size}}
 
     if [[ "{{orderer}}" = "mock" ]]; then \
       just start-mock-orderers {{target_hosts}}; \
     elif [[ "{{orderer}}" = "raft" ]]; then \
-      just start-raft-orderers {{target_hosts}} {{channel_id}}; \
+      just start-raft-orderers {{target_hosts}} {{channel_id}}; sleep 15; \
       just start-peers {{target_hosts}}; \
       just admin create-channel {{channel_id}}; \
-      just admin join-channel {{target_hosts}} {{channel_id}}; \
+      just admin join-channel {{channel_id}}; \
       just admin install-chaincode {{channel_id}}; \
       just admin approve-chaincode-for-org {{channel_id}}; \
       just admin commit-chaincode {{channel_id}}; \
       just admin invoke-chaincode {{channel_id}}; \
-      just start-fsc-nodes {{target_hosts}}; \
     elif [[ "{{orderer}}" = "mir" ]]; then \
       just start-mir-orderers {{channel_id}}; \
     else \
@@ -369,10 +370,24 @@ start target_hosts=('all') include_configs=('false') committer=('sc') sig_verifi
       exit 1; \
     fi
 
+    if [[ "{{committer}}" = "mock" ]]; then \
+      just start-mock-coordinator {{base-setup-config-dir}}; \
+    elif [[ "{{committer}}" = "sc" ]]; then \
+      just start-committer {{target_hosts}} {{include_configs}} false {{all-instances}} {{all-instances}}; \
+      just set-committer-key; \
+    else \
+      echo "Committer type {{committer}} not defined"; \
+      exit 1; \
+    fi
+    just start-sidecar {{target_hosts}} {{include_configs}} {{channel_id}}
+
+    just start-fsc-nodes {{target_hosts}}
+
+start-clients target_hosts=('all') include_configs=('false') channel_id=(default-channel-id) large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100") connections=('1') streams_per_connection=('1') message_size=('160') signed=('true'):
+    just start-blockgen {{target_hosts}} {{include_configs}} {{large_txs}} {{invalidity_ratio}} {{double_spends}} {{block_size}}
+    just start-sidecar-clients {{target_hosts}} {{include_configs}} {{channel_id}}
     just start-orderer-listeners {{target_hosts}} {{include_configs}} {{channel_id}}
     just start-orderer-submitters {{target_hosts}} {{include_configs}} {{connections}} {{streams_per_connection}} {{message_size}} {{signed}} {{channel_id}}
-    just start-sidecar {{target_hosts}} {{include_configs}} {{channel_id}}
-    just start-sidecar-clients {{target_hosts}} {{include_configs}} {{channel_id}}
 
 start-sidecar target_hosts=('all') include_configs=('false') channel_id=(default-channel-id):
     if [[ "{{include_configs}}" = "true" ]]; then \
@@ -390,15 +405,15 @@ start-sidecar-clients target_hosts=('all') include_configs=('false') channel_id=
     fi
     ansible-playbook "{{playbook-path}}/66-start-sidecarclient.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-start-committer target_hosts=('all') include_configs=('false') sig_verifiers=(all-instances) shard_servers=(all-instances):
+start-committer target_hosts=('all') include_configs=('false') include_creds=('false') sig_verifiers=(all-instances) shard_servers=(all-instances):
     if [[ "{{include_configs}}" = "true" ]]; then \
         just clean coordinators; \
         ansible-playbook "{{playbook-path}}/23-create-coordinator-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'sig_verifiers': {{sig_verifiers}}, 'shard_servers': {{shard_servers}}, 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
-        ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
+        ansible-playbook "{{playbook-path}}/43-transfer-coordinator-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}', 'include_creds': '{{include_creds}}', 'topology_name': '{{default-topology-name}}'}"; \
     fi
     ansible-playbook "{{playbook-path}}/61-start-sigverifier.yaml" --extra-vars "{'target_hosts': 'sigservices[0:{{sig_verifiers}}]'}"
     ansible-playbook "{{playbook-path}}/62-start-shardsservice.yaml" --extra-vars "{'target_hosts': 'shardsservices[0:{{shard_servers}}]'}"
-    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'target_hosts': 'all'}"
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'target_hosts': 'all', 'action': 'start'}"
 
 start-blockgen target_hosts=('all') include_configs=('false') large_txs=("0.0") invalidity_ratio=("0.0") double_spends=("0.0") block_size=("100"):
     if [[ "{{include_configs}}" = "true" ]]; then \
@@ -407,6 +422,9 @@ start-blockgen target_hosts=('all') include_configs=('false') large_txs=("0.0") 
         ansible-playbook "{{playbook-path}}/44-transfer-blockgen-config.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"; \
     fi
     ansible-playbook "{{playbook-path}}/64-start-blockgen.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+set-committer-key:
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'action': 'set-key', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'all'}"
 
 start-raft-orderers target_hosts=('all') channel_id=(default-channel-id):
     ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
@@ -442,7 +460,7 @@ start-peers target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/70-start-peer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
 
 start-mock-coordinator:
-    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'mock': true, 'target_hosts': 'all'}"
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'action': 'start-mock', 'target_hosts': 'all'}"
 
 start-mock-orderers target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'mock': true, 'target_hosts': '{{target_hosts}}'}"
@@ -494,9 +512,8 @@ run-orderer-experiment-suite  experiment_name connections_arr=('1') streams_per_
     done
 
 run-orderer-experiment connections=('1') streams_per_connection=('1') message_size=('160') signed=('true') channel_id=(default-channel-id):
-    just kill all
-    just clean all
-    just start all true sc 0 0 0 0 0 0 'raft' {{connections}} {{streams_per_connection}} {{message_size}} {{signed}} {{channel_id}}
+    just start-servers all true raft sc 0 0 {{channel_id}}
+    just start-clients all true {{channel_id}} 0 0 0 0 {{connections}} {{streams_per_connection}} {{message_size}} {{signed}}
 
 run-variable-sigverifier-experiment:
     just run-experiment-suite "variable_sigverifiers" "1,2,3,4"
@@ -521,7 +538,7 @@ run-experiment-suite  experiment_name sig_verifiers_arr=("3") shard_servers_arr=
             echo {{double_spends_arr}} | tr '{{array-separator}}' '\n' | while read double_spends; do \
                 echo {{block_sizes_arr}} | tr '{{array-separator}}' '\n' | while read block_size; do \
                     echo "Running experiment {{experiment_name}} for {{experiment_duration}} seconds. Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \
-                    just start-committer $sig_verifiers $shard_servers; \
+                    just start-committer all true false $sig_verifiers $shard_servers; \
                     just start-blockgen all $large_txs $invalidity_ratio $double_spends $block_size; \
                     echo $sig_verifiers,$shard_servers,$large_txs,$invalidity_ratio,$double_spends,$block_size,$(just get-timestamp 0 +%s),$(just get-timestamp {{experiment_duration}} +%s) >> "{{experiment-tracking-dir}}/{{experiment_name}}.csv"; \
                     echo "Waiting experiment {{experiment_name}} until $(just get-timestamp {{experiment_duration}}). Settings:\n\t$sig_verifiers Sig verifiers\n\t$shard_servers Shard servers\n\t$large_txs/1 Large TXs\n\t$invalidity_ratio/1 Invalidity ratio\n\t$double_spends/1 Double spends\n\t$block_size TXs per block\nExperiment records are stored in {{experiment-tracking-dir}}/{{experiment_name}}.csv.\n"; \

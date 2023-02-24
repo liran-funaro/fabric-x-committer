@@ -2,18 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-- name: Clean generated files
-  hosts: "{{target_hosts}}"
-  tasks:
-    - file:
-        state: absent
-        path: "{{dir}}/"
-      when: dir is defined and dir | length > 0
-      loop:
-        - "{{config_dir if include_configs | d(false) == true else ''}}"
-        - "{{binary_dir if include_bins | d(false) == true else ''}}"
-      loop_control:
-        loop_var: dir
 - hosts: "{{target_hosts}}:&shardsservices"
   tasks:
     - name: Clear shard db
@@ -56,4 +44,16 @@
         - "{{config_dir}}/fsc/nodes/{{inventory_hostname}}/kvs"
       loop_control:
         loop_var: path
+- name: Clean all generated files
+  hosts: "{{target_hosts}}"
+  tasks:
+    - file:
+        state: absent
+        path: "{{dir}}/"
+      when: dir is defined and dir | length > 0
+      loop:
+        - "{{config_dir if include_configs | d(false) == true else ''}}"
+        - "{{binary_dir if include_bins | d(false) == true else ''}}"
+      loop_control:
+        loop_var: dir
 

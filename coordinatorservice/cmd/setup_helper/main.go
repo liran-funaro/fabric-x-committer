@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/crypto"
@@ -50,8 +51,9 @@ func main() {
 		keyPath             string
 	)
 	connection.EndpointVar(&coordinatorEndpoint, "coordinator", connection.Endpoint{"0.0.0.0", 5002}, "Coordinator endpoint.")
-	flag.StringVar(&keyPath, "key-path", "./sc_pubkey.pem", "The path to the public key to set to the committer.")
-	flag.Parse()
+	pflag.StringVar(&keyPath, "key-path", "./sc_pubkey.pem", "The path to the public key to set to the committer.")
+	pflag.CommandLine.AddGoFlag(flag.CommandLine.Lookup("coordinator"))
+	pflag.Parse()
 
 	fmt.Printf("Starting setup helper:\n\tCoordinator: %s\n\tKey path: %s\n", coordinatorEndpoint.Address(), keyPath)
 	pemContent, err := os.ReadFile(keyPath)

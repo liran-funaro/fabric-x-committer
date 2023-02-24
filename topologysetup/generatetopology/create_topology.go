@@ -23,7 +23,7 @@ func GenerateAll(fabricConfig *fabric.Config, fscConfig *fsc.Config, depProvider
 	tokenTopology := token3.CreateTopology(fabricTopology, fscTopology, fscConfig.SDKDriver)
 
 	ii, _ := integration.New(0, outputDir, fabricTopology, fscTopology, tokenTopology)
-	ii.RegisterPlatformFactory(fabric.NewPlatformFactory(outputDir, fabricConfig.PeerIdMap(), fabricConfig.OrdererIdMap()))
+	ii.RegisterPlatformFactory(fabric.NewPlatformFactory(outputDir, fabricConfig.PeerIdMap(), fabricConfig.OrdererIdMap(), fabricConfig.Sidecar.NodeConfig))
 	ii.RegisterPlatformFactory(fsc.NewPlatformFactory(outputDir, fscConfig.PeerIdMap()))
 	ii.RegisterPlatformFactory(token2.NewPlatformFactory())
 	ii.DeleteOnStart = true

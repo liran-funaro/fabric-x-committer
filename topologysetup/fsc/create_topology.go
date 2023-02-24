@@ -7,9 +7,9 @@ import (
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fsc"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fsc/node"
-	sdk "github.com/hyperledger-labs/fabric-smart-client/platform/fabric/sdk"
 	"github.com/hyperledger-labs/fabric-token-sdk/integration/nwo/token"
 	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/tss"
+	sdk "github.ibm.com/decentralized-trust-research/fts-sc/platform/fabric/sdk"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 )
 
@@ -28,6 +28,7 @@ func CreateTopology(config *Config, provider Provider) *fsc.Topology {
 		} else {
 			node = fscTopology.AddNodeByName(nodeConfig.Name)
 		}
+
 		node.AddOptions(nodeConfig.AllOptions(node.Name, config.SDKDriver)...)
 		for _, responder := range nodeConfig.Responders {
 			node.RegisterResponder(provider.GetView(responder.Responder), provider.GetView(responder.Initiator))
@@ -75,10 +76,10 @@ func (n *Node) AllOptions(nodeName, sdkDriver string) []node.Option {
 
 type fscPlatformFactory struct {
 	rootDir   string
-	peerPorts map[topologysetup.NodeID]topologysetup.NodeConfig
+	peerPorts map[topologysetup.NodeID]*topologysetup.NodeConfig
 }
 
-func NewPlatformFactory(rootDir string, peerPorts map[topologysetup.NodeID]topologysetup.NodeConfig) *fscPlatformFactory {
+func NewPlatformFactory(rootDir string, peerPorts map[topologysetup.NodeID]*topologysetup.NodeConfig) *fscPlatformFactory {
 	return &fscPlatformFactory{rootDir, peerPorts}
 }
 

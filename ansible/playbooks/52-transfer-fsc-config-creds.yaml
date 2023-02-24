@@ -27,6 +27,8 @@
         - "{'topology_dir': 'fabric.{{topology_name}}', 'organization': '{{organization}}'}"
       loop_control:
         loop_var: topology
+    - include_tasks: ../subtasks/transfer-token-creds.yaml
+      when: include_creds | d(false) == true
     - vars:
         topology_dir: fsc
         node_type: nodes

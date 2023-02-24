@@ -3,7 +3,6 @@ package fsc
 import (
 	"strings"
 
-	"github.com/hyperledger-labs/fabric-smart-client/pkg/api"
 	"github.com/hyperledger-labs/fabric-smart-client/platform/view"
 )
 
@@ -25,7 +24,6 @@ func (r *Ref) split() ([]string, string) {
 }
 
 type Provider interface {
-	GetSDK(Ref) api.SDK
 	GetViewFactory(Ref) view.Factory
 	GetView(Ref) view.View
 }

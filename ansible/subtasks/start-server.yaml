@@ -45,7 +45,7 @@
       - "Stdout:   {{stdout.stdout_lines | join}}"
       - "Stderr:   {{stdout.stderr_lines | join}}"
       - "Detailed: {{stdout}}"
-  when: command | d('') | length > 0
+  when: command | d('') | length > 0 and log_output | d(true) == true
 - set_fact:
     command: ""
 - name: Wait until server is running

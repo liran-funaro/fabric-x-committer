@@ -19,6 +19,7 @@ type Config struct {
 	Name       string               `mapstructure:"name"`
 	ChannelIDs []string             `mapstructure:"channel-ids"`
 	Peers      []topologysetup.Node `mapstructure:"peers"`
+	Sidecar    topologysetup.Node   `mapstructure:"sidecar"`
 	Orderers   []topologysetup.Node `mapstructure:"orderers"`
 	LogLevel   logging.Level        `mapstructure:"log-level"`
 }
@@ -73,16 +74,20 @@ func (c *Config) PeerNameMap() map[topologysetup.OrgName][]topologysetup.NodeNam
 	}
 	return peers
 }
-func (c *Config) PeerIdMap() map[topologysetup.NodeID]topologysetup.NodeConfig {
-	return nodeIdMap(c.Peers)
+func (c *Config) PeerIdMap() map[topologysetup.NodeID]*topologysetup.NodeConfig {
+	clients := c.Peers
+	if c.Sidecar.NodeConfig != nil {
+		clients = append(clients, c.Sidecar)
+	}
+	return nodeIdMap(clients)
 }
 
-func (c *Config) OrdererIdMap() map[topologysetup.NodeID]topologysetup.NodeConfig {
+func (c *Config) OrdererIdMap() map[topologysetup.NodeID]*topologysetup.NodeConfig {
 	return nodeIdMap(c.Orderers)
 }
 
-func nodeIdMap(nodes []topologysetup.Node) map[topologysetup.NodeID]topologysetup.NodeConfig {
-	nodeIdMap := make(map[topologysetup.NodeID]topologysetup.NodeConfig, len(nodes))
+func nodeIdMap(nodes []topologysetup.Node) map[topologysetup.NodeID]*topologysetup.NodeConfig {
+	nodeIdMap := make(map[topologysetup.NodeID]*topologysetup.NodeConfig, len(nodes))
 	for _, node := range nodes {
 		nodeIdMap[node.ID()] = node.NodeConfig
 	}
@@ -133,10 +138,10 @@ func init() {
 	viper.SetDefault("topology-setup.log-level", logging.Warning)
 	viper.SetDefault("topology-setup.channel-ids", []string{"mychannel"})
 	viper.SetDefault("topology-setup.peers", []topologysetup.Node{
-		{topologysetup.NodeConfig{Organization: "Org1", Name: "peer0", Host: "tokentestbed3.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 7000, network.ChaincodePort: 7001, network.ProfilePort: 7002, network.OperationsPort: 7003, network.EventsPort: 7004, network.P2PPort: 7005, network.WebPort: 7006}}},
+		{&topologysetup.NodeConfig{Organization: "Org1", Name: "peer0", Host: "tokentestbed3.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 7000, network.ChaincodePort: 7001, network.ProfilePort: 7002, network.OperationsPort: 7003, network.EventsPort: 7004, network.P2PPort: 7005, network.WebPort: 7006}}},
 	})
 	viper.SetDefault("topology-setup.orderers", []topologysetup.Node{
-		{topologysetup.NodeConfig{Organization: "ordererOrg1", Name: "orderer_1", Host: "tokentestbed1.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 7050, network.ProfilePort: 7051, network.OperationsPort: 7052, network.ClusterPort: 7053}}},
-		{topologysetup.NodeConfig{Organization: "ordererOrg1", Name: "orderer_2", Host: "tokentestbed2.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 8050, network.ProfilePort: 8051, network.OperationsPort: 8052, network.ClusterPort: 8053}}},
+		{&topologysetup.NodeConfig{Organization: "ordererOrg1", Name: "orderer_1", Host: "tokentestbed1.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 7050, network.ProfilePort: 7051, network.OperationsPort: 7052, network.ClusterPort: 7053}}},
+		{&topologysetup.NodeConfig{Organization: "ordererOrg1", Name: "orderer_2", Host: "tokentestbed2.sl.cloud9.ibm.com", Ports: api.Ports{network.ListenPort: 8050, network.ProfilePort: 8051, network.OperationsPort: 8052, network.ClusterPort: 8053}}},
 	}) // "orderer_2", "orderer_3", "orderer_4", "orderer_5", "orderer_6", "orderer_7", "orderer_8", "orderer_9", "orderer_10", "orderer_11"}})
 }

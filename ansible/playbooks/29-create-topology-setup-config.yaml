@@ -57,6 +57,19 @@
       loop: "{{groups['peerservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:
         loop_var: instance
+    - name: Prepare peers
+      vars:
+        instance: "{{groups['sidecars'] | d([]) | map('extract', hostvars) | first}}"
+      set_fact:
+        sidecar: "{{{
+          'config': {
+            'name': instance.inventory_hostname,
+            'organization': instance.organization,
+            'host': instance.ansible_host,
+            'ports': {'Listen': instance.service_port | d(0)}
+          }
+        }}}"
+      when: "{{groups['sidecars'] | d([]) | length > 0}}"
     - name: Create Fabric setup
       yedit:
         src: "{{filepath}}"
@@ -69,6 +82,8 @@
             value: "{{channel_ids}}"
           - key: topology-setup.fabric.peers
             value: "{{peers}}"
+          - key: topology-setup.fabric.sidecar
+            value: "{{sidecar}}"
           - key: topology-setup.fabric.orderers
             value: "{{orderers}}"
       when: peers | d([]) | length > 0 and orderers | d([]) | length > 0

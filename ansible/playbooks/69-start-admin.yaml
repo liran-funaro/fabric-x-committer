@@ -69,7 +69,7 @@
       include_tasks: ../subtasks/start-server.yaml
       vars:
         service_name: peer lifecycle chaincode queryinstalled
-        until: (stdout.stdout_lines | join | from_json).installed_chaincodes | selectattr('label', '==', chaincode_name) | length > 0
+#        until: (stdout.stdout_lines | join | from_json).installed_chaincodes | selectattr('label', '==', chaincode_name) | length > 0
         options:
           output: json
       when: action in ['approve-chaincode-for-org', 'install-chaincode', 'query-installed-chaincodes']
@@ -77,10 +77,13 @@
         package_id: "{{(stdout.stdout_lines | join | from_json).installed_chaincodes | selectattr('label', '==', chaincode_name) | map(attribute='package_id') | first}}"
       when: action == 'approve-chaincode-for-org'
     - name: Approve chaincode for my org
-      include_vars:
-        file: "{{config_dir}}/topology.yaml"
-        name: content
+      shell: "cat {{config_dir}}/topology.yaml"
+      register: topology_result
       when: action in ['approve-chaincode-for-org', 'check-chaincode-commit-readiness', 'commit-chaincode', 'invoke-chaincode']
+    - name: Read topology
+      set_fact:
+        content: "{{topology_result.stdout | from_yaml}}"
+      when: topology_result is defined and topology_result.stdout | d('') | length > 0
     - name: Approve chaincode for org
       include_tasks: ../subtasks/start-server.yaml
       vars:
@@ -108,7 +111,7 @@
         chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
         msp_id: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='organizations') | flatten | selectattr('id', '==', organization) | map(attribute='msp_id') | first }}"
         service_name: peer lifecycle chaincode checkcommitreadiness
-        until: (stdout.stdout_lines | join | from_json).approvals[msp_id] | d(false)
+#        until: (stdout.stdout_lines | join | from_json).approvals[msp_id] | d(false)
         options:
           channelID: "{{channel_id}}"
           orderer: "{{orderer_endpoint}}"
@@ -154,6 +157,7 @@
       vars:
         chaincode: "{{content.topologies | selectattr('name', '==', topology_name) | map(attribute='chaincodes') | flatten | map(attribute='chaincode') | selectattr('name', '==', chaincode_name) | first }}"
         service_name: peer chaincode invoke
+        log_output: false
         options:
           channelID: "{{channel_id}}"
           orderer: "{{orderer_endpoint}}"

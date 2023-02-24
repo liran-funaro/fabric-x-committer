@@ -11,7 +11,7 @@
         options:
           configs: "{{config_dir}}/{{config}}"
       include_tasks: ../subtasks/start-server.yaml
-      when: mock | d(false) == false
+      when: action == 'start'
     - name: Start mock coordinator
       vars:
         service_name: mockcoordinator
@@ -19,4 +19,15 @@
         options:
           configs: "{{config_dir}}/{{config}}"
       include_tasks: ../subtasks/start-server.yaml
-      when: mock | d(false) == true
+      when: action == 'start-mock'
+    - name: Set up sigverifier key
+      vars:
+        endorser: "{{hostvars[inherit_endorser]}}"
+        service_name: coordinator_setup
+        use_tmux: false
+        node_domain: "{{endorser.organization | lower}}.{{endorser.domain}}"
+        options:
+          coordinator: "{{ansible_host}}:{{service_port}}"
+          key-path: "{{config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{node_domain}}/peers/{{endorser.inventory_hostname}}.{{node_domain}}/tss/endorser/msp/signcerts/endorser-cert.pem"
+      include_tasks: ../subtasks/start-server.yaml
+      when: action == 'set-key'

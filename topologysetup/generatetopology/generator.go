@@ -14,7 +14,6 @@ import (
 type TemplateInput struct {
 	Views         []fsc.Ref `yaml:"views"`
 	ViewFactories []fsc.Ref `yaml:"view-factories"`
-	SDKs          []fsc.Ref `yaml:"sdks"`
 }
 
 type TemplateConfig struct {
@@ -33,7 +32,7 @@ func NewTemplateConfig(input *TemplateInput) *TemplateConfig {
 
 func (a *TemplateConfig) Imports() []string {
 	pkgs := make(map[string]bool)
-	for _, imp := range append(a.input.ViewFactories, append(a.input.Views, a.input.SDKs...)...) {
+	for _, imp := range append(a.input.ViewFactories, a.input.Views...) {
 		pkgs[imp.Pkg()] = true
 	}
 	imps := make([]string, 0)
@@ -52,20 +51,12 @@ func (a *TemplateConfig) Views() map[fsc.Ref]string {
 	return a.getMap(a.input.Views)
 }
 
-func (a *TemplateConfig) SDKs() map[fsc.Ref]string {
-	return a.getMap(a.input.SDKs)
-}
-
 func (a *TemplateConfig) getMap(m []fsc.Ref) map[fsc.Ref]string {
 	refs := make(map[fsc.Ref]string, len(m))
 	for _, view := range m {
 		refs[view] = fmt.Sprintf("&%s.%s{}", a.alias(view.Pkg()), view.Name())
 	}
 	return refs
-}
-
-func RefKey(view fsc.Ref) string {
-	return string(view)
 }
 
 func (a *TemplateConfig) alias(pkg string) string {
@@ -107,7 +98,6 @@ func Generate(config *fsc.Config, out string) error {
 	return t.Execute(io.MultiWriter(generated), NewTemplateConfig(&TemplateInput{
 		ViewFactories: config.AllViewFactories(),
 		Views:         config.AllViews(),
-		SDKs:          config.AllSDKs(),
 	}))
 }
 
@@ -121,7 +111,6 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/fsc"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/generatetopology"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
-	"github.com/hyperledger-labs/fabric-smart-client/pkg/api"
 	"github.com/hyperledger-labs/fabric-smart-client/platform/view"
 {{ range .Imports }}
 	{{ . }}
@@ -141,7 +130,6 @@ func main() {
 type MyProvider struct{
 	viewFactories map[fsc.Ref]view.Factory
 	views map[fsc.Ref]view.View
-	sdks map[fsc.Ref]api.SDK
 }
 
 func NewProvider() fsc.Provider {
@@ -156,11 +144,6 @@ func NewProvider() fsc.Provider {
 			"{{ $Key }}": {{ $Value }},
 {{- end }}
 		},
-		sdks: map[fsc.Ref]api.SDK{
-{{ range $Key, $Value := .SDKs }}
-			"{{ $Key }}": {{ $Value }},
-{{- end }}
-		},
 	}
 }
 
@@ -169,8 +152,5 @@ func (p *MyProvider) GetViewFactory(ref fsc.Ref) view.Factory {
 }
 func (p *MyProvider) GetView(ref fsc.Ref) view.View {
 	return p.views[ref]
-}
-func (p *MyProvider) GetSDK(ref fsc.Ref) api.SDK {
-	return p.sdks[ref]
 }
 `

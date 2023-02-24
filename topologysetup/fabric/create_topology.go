@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/api"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/topology"
+	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/tss"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 )
 
@@ -46,6 +47,7 @@ func CreateTopology(config *Config) *topology.Topology {
 	fabricTopology := &topology.Topology{
 		TopologyName: config.Name,
 		Default:      true,
+		Driver:       "fabric.sc",
 		TopologyType: "fabric",
 		TLSEnabled:   true,
 		Logging: &topology.Logging{
@@ -78,12 +80,13 @@ func CreateTopology(config *Config) *topology.Topology {
 
 type fabricPlatformFactory struct {
 	rootDir      string
-	peerPorts    map[topologysetup.NodeID]topologysetup.NodeConfig
-	ordererPorts map[topologysetup.NodeID]topologysetup.NodeConfig
+	peerPorts    map[topologysetup.NodeID]*topologysetup.NodeConfig
+	ordererPorts map[topologysetup.NodeID]*topologysetup.NodeConfig
+	sidecarPorts *topologysetup.NodeConfig
 }
 
-func NewPlatformFactory(rootDir string, peerPorts, ordererPorts map[topologysetup.NodeID]topologysetup.NodeConfig) *fabricPlatformFactory {
-	return &fabricPlatformFactory{rootDir, peerPorts, ordererPorts}
+func NewPlatformFactory(rootDir string, peerPorts, ordererPorts map[topologysetup.NodeID]*topologysetup.NodeConfig, sidecarPorts *topologysetup.NodeConfig) *fabricPlatformFactory {
+	return &fabricPlatformFactory{rootDir, peerPorts, ordererPorts, sidecarPorts}
 }
 
 func (f fabricPlatformFactory) Name() string {
@@ -92,6 +95,9 @@ func (f fabricPlatformFactory) Name() string {
 
 func (f fabricPlatformFactory) New(registry api.Context, t api.Topology, builder api.Builder) api.Platform {
 	p := fabric.NewPlatform(&topologysetup.EnhancedRegistry{registry, f.rootDir, f.peerPorts, f.ordererPorts}, t, builder)
-	//p.Network.AddExtension(tss.NewExtension(p))
+	p.Network.AddExtension(tss.NewExtension(p))
+	if f.sidecarPorts != nil {
+		p.Network.AddExtension(NewExtension(p, f.sidecarPorts))
+	}
 	return p
 }
