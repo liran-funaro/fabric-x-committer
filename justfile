@@ -485,6 +485,9 @@ start-mir-orderers channel_id=(default-channel-id):
       i=$((i+1)) \
     ; done
 
+call-api target_host action recipient=('') value=('0') nonce=(''):
+    ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}'}"
+
 kill target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/90-kill.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 

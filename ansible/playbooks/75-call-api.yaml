@@ -1,0 +1,96 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: localhost
+  vars:
+    target_instance: "{{hostvars[target_host]}}"
+    target_endpoint: "http://{{target_instance.ansible_host}}:{{target_instance.ops_port}}"
+  tasks:
+    - name: Log in
+      uri:
+        url: "{{target_endpoint}}/login"
+        method: POST
+        body:
+          username: "{{target_instance.inventory_hostname}}"
+          password: "{{target_instance.inventory_hostname}}"
+        body_format: json
+      register: login_result
+    - set_fact:
+        token: "{{login_result.json.token}}"
+    - name: "Issue {{value}} tokens to {{recipient}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/issue"
+        method: POST
+        body:
+          value: "{{value}}"
+          recipient: "{{recipient}}"
+        body_format: form-urlencoded
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'issue'
+      register: result
+    - debug: var=result.json
+      when: action == 'issue'
+    - name: "Initiate payment of {{value}} tokens to {{recipient}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/payments/initiation"
+        method: POST
+        body:
+          value: "{{value}}"
+          recipient: "{{recipient}}"
+          nonce: "{{nonce}}"
+        body_format: form-urlencoded
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'initiate'
+      register: result
+    - debug: var=result.json
+      when: action == 'initiate'
+    - name: "Accept payment of {{value}} tokens to {{recipient}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/payments/transfer"
+        method: POST
+        body:
+          value: "{{value}}"
+          recipient: "{{recipient}}"
+          nonce: "{{nonce}}"
+        body_format: form-urlencoded
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'transfer'
+      register: result
+    - debug: var=result.json
+      when: action == 'transfer'
+    - name: "Get balance of {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/balance"
+        method: GET
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'balance'
+      register: result
+    - debug: var=result.json
+      when: action == 'balance'
+    - name: "Get all payments of {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/payments"
+        method: GET
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'payments'
+      register: result
+    - debug: var=result.json
+      when: action == 'payments'
+    - name: "Get all payments of {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/payments/status?nonce={{nonce}}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'status'
+      register: result
+    - debug: var=result.json
+      when: action == 'status'
+
+
