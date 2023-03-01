@@ -2,9 +2,6 @@ orderer-submitter:
   channel-id: mychannel
   orderers:
     - tokentestbed1.sl.cloud9.ibm.com:7050
-    - tokentestbed2.sl.cloud9.ibm.com:7050
-    - tokentestbed3.sl.cloud9.ibm.com:7050
-    - tokentestbed4.sl.cloud9.ibm.com:7050
   prometheus:
     endpoint: :2112
   orderer-connection-profile: /root/config/orderer-connection-profile.yaml

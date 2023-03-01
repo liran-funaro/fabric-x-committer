@@ -28,6 +28,10 @@ func main() {
 	c := fabric.ReadSubmitterConfig()
 	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
 	creds, signer := connection.GetOrdererConnectionCreds(p)
+	_ = signer
+
+	m := newSubmitterMetrics()
+	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
 
 	msgsPerGo := c.Messages / c.GoRoutines
 	roundMsgs := msgsPerGo * c.GoRoutines
@@ -40,12 +44,10 @@ func main() {
 		OnAck: func(err error) {
 			if err == nil && bar != nil {
 				bar.Add(1)
+				m.Throughput.Add(1)
 			}
 		},
 	}
-
-	m := newSubmitterMetrics()
-	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
 
 	s, err := sidecarclient.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
@@ -53,38 +55,39 @@ func main() {
 		fmt.Println("Rounding messages to", roundMsgs)
 	}
 
-	fmt.Printf("Sending the same message to all servers.\n")
+	//fmt.Printf("Sending the same message to all servers.\n")
 	message := make([]byte, c.MessageSize)
 	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
 	env, _ := envelopeCreator.CreateEnvelope(message)
-
-	fmt.Printf("Prebuffer tx with %d worker\n", c.GoRoutines)
-	buffered := make(chan *common.Envelope, c.Messages)
-	{
-		bar := workload.NewProgressBar("Prepping transactions...", int64(roundMsgs), "tx")
-		var ops uint64
-		var wg sync.WaitGroup
-		for i := 0; i < c.GoRoutines; i++ {
-			wg.Add(1)
-			go func() {
-				message := make([]byte, c.MessageSize)
-				for j := 0; j < msgsPerGo; j++ {
-					n := atomic.AddUint64(&ops, 1)
-					binary.LittleEndian.PutUint32(message, uint32(n))
-					envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
-					env, _ := envelopeCreator.CreateEnvelope(message)
-					buffered <- env
-					bar.Add(1)
-				}
-				wg.Done()
-			}()
-		}
-		wg.Wait()
-	}
-
+	//env := &common.Envelope{Payload: message, Signature: nil}
 	serializedEnv, err := protoutil.Marshal(env)
 	utils.Must(err)
 	fmt.Printf("Message size: %d\n", len(serializedEnv))
+
+	//fmt.Printf("Prebuffer tx with %d worker\n", c.GoRoutines)
+	//buffered := make(chan *common.Envelope, c.Messages)
+	var ops uint64
+	//{
+	//	bar := workload.NewProgressBar("Prepping transactions...", int64(roundMsgs), "tx")
+	//	var wg sync.WaitGroup
+	//	for i := 0; i < c.GoRoutines; i++ {
+	//		wg.Add(1)
+	//		go func() {
+	//			for j := 0; j < msgsPerGo; j++ {
+	//				message := make([]byte, c.MessageSize)
+	//				n := atomic.AddUint64(&ops, 1)
+	//				binary.LittleEndian.PutUint32(message, uint32(n))
+	//				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
+	//				env, _ := envelopeCreator.CreateEnvelope(message)
+	//				//env := &common.Envelope{Payload: message, Signature: nil}
+	//				buffered <- env
+	//				bar.Add(1)
+	//			}
+	//			wg.Done()
+	//		}()
+	//	}
+	//	wg.Wait()
+	//}
 
 	var wg sync.WaitGroup
 	wg.Add(len(s.Streams()))
@@ -92,9 +95,14 @@ func main() {
 		input := ch.Input()
 		go func(out chan<- *common.Envelope) {
 			for i := 0; i < msgsPerGo; i++ {
-				input <- <-buffered
-				//input <- env
-				m.Throughput.Add(1)
+				message := make([]byte, c.MessageSize)
+				n := atomic.AddUint64(&ops, 1)
+				binary.LittleEndian.PutUint32(message, uint32(n))
+				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
+				env, _ := envelopeCreator.CreateEnvelope(message)
+				// TODO send to all nodes?
+				//input <- <-buffered
+				input <- env
 			}
 			wg.Done()
 		}(input)

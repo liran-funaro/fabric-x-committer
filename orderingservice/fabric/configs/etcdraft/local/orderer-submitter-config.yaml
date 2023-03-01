@@ -4,8 +4,8 @@ orderer-submitter:
     - localhost:7051
   prometheus:
     endpoint: :2112
-  orderer-connection-profile: ./orderer-connection-profile.yaml
-  messages: 5000000
-  go-routines: 20
-  message-size: 160
+  orderer-connection-profile: orderer-connection-profile.yaml
+  messages: 10000000
+  go-routines: 500
+  message-size: 240
   signed: false

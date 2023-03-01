@@ -13,7 +13,7 @@
 ################################################################################
 General:
     # Listen address: The IP on which to bind to listen.
-    ListenAddress: localhost
+    ListenAddress: 0.0.0.0
 
     # Listen port: The port on which to bind to listen.
     ListenPort: 7050
@@ -94,7 +94,7 @@ General:
     # system channel is specified. The option can be one of:
     #   "file" - path to a file containing the genesis block or config block of system channel
     #   "none" - allows an orderer to start without a system channel configuration
-    BootstrapMethod: file
+    BootstrapMethod: none
 
     # Bootstrap file: The file containing the bootstrap block to use when
     # initializing the orderer system channel and BootstrapMethod is set to
@@ -103,7 +103,7 @@ General:
     # Generate a genesis block by updating $FABRIC_CFG_PATH/configtx.yaml and
     # using configtxgen command with "-outputBlock" option.
     # Defaults to file "genesisblock" (in $FABRIC_CFG_PATH directory) if not specified.
-    BootstrapFile: out/genesisblock
+    BootstrapFile:
 
     # LocalMSPDir is where to find the private crypto material needed by the
     # orderer. It is set relative here as a default for dev environments but
@@ -205,7 +205,7 @@ Debug:
 ################################################################################
 Operations:
     # host and port for the operations server
-    ListenAddress: 127.0.0.1:8443
+    ListenAddress: 0.0.0.0:8443
 
     # TLS configuration for the operations endpoint
     TLS:
@@ -235,8 +235,8 @@ Operations:
 ################################################################################
 Metrics:
     # The metrics provider is one of statsd, prometheus, or disabled
+#    Provider: disabled
     Provider: prometheus
-#    Provider: prometheus
 
     # The statsd configuration
     Statsd:
@@ -262,7 +262,7 @@ Metrics:
 ################################################################################
 Admin:
     # host and port for the admin server
-    ListenAddress: 127.0.0.1:9443
+    ListenAddress: 0.0.0.0:9443
 
     # TLS configuration for the admin endpoint
     TLS:
@@ -314,6 +314,8 @@ ChannelParticipation:
 Consensus:
     # The allowed key-value pairs here depend on consensus plugin. For etcd/raft,
     # we use following options:
+
+    Type: etcdraft
 
     # WALDir specifies the location at which Write Ahead Logs for etcd/raft are
     # stored. Each channel will have its own subdir named after channel ID.

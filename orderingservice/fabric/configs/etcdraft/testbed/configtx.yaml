@@ -6,7 +6,7 @@ Organizations:
         Name: orderer
         ID: orderer
 
-        MSPDir: out/orgs/ordererOrganizations/orderer.org/msp
+        MSPDir: ../../../out/orgs/ordererOrganizations/orderer.org/msp
 
         Policies:
             Readers:
@@ -23,7 +23,6 @@ Organizations:
             - tokentestbed1.sl.cloud9.ibm.com:7050
             - tokentestbed2.sl.cloud9.ibm.com:7050
             - tokentestbed3.sl.cloud9.ibm.com:7050
-            - tokentestbed4.sl.cloud9.ibm.com:7050
 
     - &Org1
         Name: Org1
@@ -39,7 +38,7 @@ Organizations:
         ID: Org1
 
         # MSPDir is the filesystem path which contains the MSP configuration.
-        MSPDir: out/orgs/peerOrganizations/org1.com/msp
+        MSPDir: ../../../out/orgs/peerOrganizations/org1.com/msp
 
         # Policies defines the set of policies at this level of the config tree
         # For organization policies, their canonical path is usually
@@ -61,7 +60,7 @@ Organizations:
         # OrdererEndpoints is a list of all orderers this org runs which clients
         # and peers may to connect to to push transactions and receive blocks respectively.
         OrdererEndpoints:
-            - tokentestbed1.sl.cloud9.ibm.com:7050
+#            - "127.0.0.1:7050"
 
         # AnchorPeers defines the location of peers which can be used for
         # cross-org gossip communication.
@@ -71,7 +70,7 @@ Organizations:
         # to instead use the channel configuration update process to set the
         # anchor peers for each organization.
         AnchorPeers:
-            - Host: tokentestbed1.sl.cloud9.ibm.com
+            - Host: localhost
               Port: 7050
 
 ################################################################################
@@ -268,7 +267,7 @@ Orderer: &OrdererDefaults
          - localhost:7050
 
     # Batch Timeout: The amount of time to wait before creating a batch.
-    BatchTimeout: 500ms
+    BatchTimeout: 750ms
 
     # Batch Size: Controls the number of messages batched into a block.
     # The orderer views messages opaquely, but typically, messages may
@@ -304,56 +303,11 @@ Orderer: &OrdererDefaults
         # the preferred max bytes, but will always contain exactly one transaction.
 #        PreferredMaxBytes: 2 MB
 #        PreferredMaxBytes: 4 MB
-        PreferredMaxBytes: 8 MB
+        PreferredMaxBytes: 4 MB
 
     # Max Channels is the maximum number of channels to allow on the ordering
     # network. When set to 0, this implies no maximum number of channels.
     MaxChannels: 0
-
-    SmartBFT:
-        RequestBatchMaxCount: 64000
-        RequestBatchMaxInterval: 100ms
-        RequestBatchMaxBytes: 16777216
-        RequestForwardTimeout: 2s
-        RequestComplainTimeout: 20s
-        RequestAutoRemoveTimeout: 3m0s
-        ViewChangeResendInterval: 5s
-        ViewChangeTimeout: 20s
-        LeaderHeartbeatTimeout: 1m0s
-        CollectTimeout: 2s
-        IncomingMessageBufferSize: 200
-        RequestPoolSize: 1000000
-        LeaderHeartbeatCount: 10
-
-    ConsenterMapping:
-        - ID: 1
-          Host: tokentestbed1.sl.cloud9.ibm.com
-          Port: 7050
-          MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/msp/signcerts/raft0.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-        - ID: 2
-          Host: tokentestbed2.sl.cloud9.ibm.com
-          Port: 7050
-          MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/msp/signcerts/raft1.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-        - ID: 3
-          Host: tokentestbed3.sl.cloud9.ibm.com
-          Port: 7050
-          MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/msp/signcerts/raft2.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-        - ID: 4
-          Host: tokentestbed4.sl.cloud9.ibm.com
-          Port: 7050
-          MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/msp/signcerts/raft3.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
 
     # EtcdRaft defines configuration which must be set when the "etcdraft"
     # orderertype is chosen.
@@ -365,24 +319,16 @@ Orderer: &OrdererDefaults
         Consenters:
             - Host: tokentestbed1.sl.cloud9.ibm.com
               Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
             - Host: tokentestbed2.sl.cloud9.ibm.com
               Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
             - Host: tokentestbed3.sl.cloud9.ibm.com
               Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-            - Host: tokentestbed4.sl.cloud9.ibm.com
-              Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
-#            - Host: tokentestbed5.sl.cloud9.ibm.com
-#              Port: 7050
-#              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
-#              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
 
         # Options to be specified for all the etcd/raft nodes. The values here
         # are the defaults for all new channels and can be modified on a
@@ -405,7 +351,7 @@ Orderer: &OrdererDefaults
 
             # MaxInflightBlocks limits the max number of in-flight append messages
             # during optimistic replication phase.
-            MaxInflightBlocks: 5
+            MaxInflightBlocks: 50
 
             # SnapshotIntervalSize defines number of bytes per which a snapshot is taken
             SnapshotIntervalSize: 16 MB
@@ -487,11 +433,7 @@ Profiles:
             Organizations:
                 - *Org1
             Capabilities: *ApplicationCapabilities
-#        Consortiums:
-#            SampleConsortium:
-#                Organizations:
-#                    - *OrdererOrg
-#                    - *Org1
+
 
     SampleDevModeSmartBFT:
         <<: *ChannelDefaults

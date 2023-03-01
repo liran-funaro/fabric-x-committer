@@ -28,7 +28,7 @@ func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 		signer = &noOpSigner{}
 	}
 	return &envelopeCreator{
-		txType:      common.HeaderType_MESSAGE,
+		txType:      common.HeaderType_ENDORSER_TRANSACTION,
 		channelID:   channelID,
 		signer:      signer,
 		msgVersion:  0,

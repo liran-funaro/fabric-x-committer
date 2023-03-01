@@ -1,6 +1,7 @@
 package deliver
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -23,7 +24,7 @@ type Client interface {
 	Recv() (*common.Block, *common.Status, error)
 }
 
-//listener connects to an orderer and listens for one or more blocks
+// listener connects to an orderer and listens for one or more blocks
 type listener struct {
 	clientProvider ClientProvider
 	connection     *grpc.ClientConn
@@ -55,6 +56,9 @@ func (l *listener) RunDeliverOutputListener(onReceive func(*common.Block)) error
 	reconnectAttempts := 0
 	for {
 		err := l.openDeliverStream(onReceive)
+		if err != nil {
+			fmt.Printf("Connection failed ... %v", err)
+		}
 
 		if l.reconnect < 0 {
 			logger.Infof("Error: %v.\nNot reconnecting.", err)
