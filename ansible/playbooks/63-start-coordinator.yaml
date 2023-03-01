@@ -30,4 +30,4 @@
           coordinator: "{{ansible_host}}:{{service_port}}"
           key-path: "{{config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{node_domain}}/peers/{{endorser.inventory_hostname}}.{{node_domain}}/tss/endorser/msp/signcerts/endorser-cert.pem"
       include_tasks: ../subtasks/start-server.yaml
-      when: action == 'set-key'
+      when: action == 'set-key' and inherit_endorser | d('') | length > 0

@@ -33,7 +33,7 @@
         src_dir: "{{orderer_artifacts_path}}/token/chaincodes"
         dst_dir: "{{config_dir}}/token"
       include_tasks: ../subtasks/copy-file.yaml
-      when: include_chaincode | d(false) == true
+      when: include_chaincode | d(false) == true and groups['fscservices'] | d([]) | length > 0
     - name: "Transfer topology for {{inventory_hostname}}"
       vars:
         src_dir: "{{orderer_artifacts_path}}"

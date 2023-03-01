@@ -38,6 +38,7 @@ func (s *StreamHandler) handleInputs(stream Stream) {
 	for {
 		//TODO: Add cancel
 		input, err := stream.Recv()
+		logger.Debugf("Received batch with %d TXs.", len(input.Requests))
 		if err != nil {
 			logger.Infof("failed to serve request: %v", err)
 			return
@@ -54,7 +55,7 @@ func (s *StreamHandler) handleOutputs(stream Stream) {
 		logger.Debugf("Received output: %v", output)
 		err := stream.Send(output)
 		if err != nil {
-			logger.Infof("Failed to send output to client.")
+			logger.Infof("Failed to send output to client: %v", err)
 			//TODO: Replace panics with error handling
 			return
 		}

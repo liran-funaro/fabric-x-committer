@@ -8,8 +8,8 @@ import (
 )
 
 type Config struct {
-	Fabric *fabric.Config `mapstructure:"fabric"`
-	Fsc    *fsc.Config    `mapstructure:"fsc"`
+	Fabric fabric.Config `mapstructure:"fabric"`
+	Fsc    fsc.Config    `mapstructure:"fsc"`
 }
 
 func ReadConfig() *Config {

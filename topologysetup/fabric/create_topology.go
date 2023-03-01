@@ -43,7 +43,7 @@ func anyPeer(raftTopology *topology.Topology) (*topology.Peer, *topology.Organiz
 	panic("not found")
 }
 
-func CreateTopology(config *Config) *topology.Topology {
+func CreateTopology(config Config) *topology.Topology {
 	fabricTopology := &topology.Topology{
 		TopologyName: config.Name,
 		Default:      true,

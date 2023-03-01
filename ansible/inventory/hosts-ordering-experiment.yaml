@@ -43,6 +43,8 @@ all:
             peerservice-machine1:
               ansible_host: tokentestbed12.sl.cloud9.ibm.com
 
+    clients:
+      children:
         ordererlisteners:
           vars:
             config: config-orderer-listener.yaml

@@ -15,7 +15,7 @@ import (
 
 const EndorserLabel = "endorser"
 
-func CreateTopology(config *Config, provider Provider) *fsc.Topology {
+func CreateTopology(config Config, provider Provider) *fsc.Topology {
 	fscTopology := fsc.NewTopology()
 
 	endorserTemplate := fscTopology.NewTemplate(EndorserLabel)

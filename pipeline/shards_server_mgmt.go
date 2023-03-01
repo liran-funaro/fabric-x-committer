@@ -171,6 +171,7 @@ func (m *shardsServerMgr) sendPhaseOneMessages(txs map[TxSeqNum][][]byte) {
 func (m *shardsServerMgr) startPhaseTwoProcessingRoutine() {
 
 	writeToOutputChansAndSendPhaseTwoMessages := func(phaseOneProcessedTxs []*phaseOneProcessedTx) {
+		logger.Debugf("Returned batch of %d statuses from shards service P1.", len(phaseOneProcessedTxs))
 		status := []*TxStatus{}
 		phaseTwoMessages := map[*shardsServer]*shardsservice.PhaseTwoRequestBatch{}
 
@@ -356,6 +357,7 @@ func (oc *phaseOneComm) startRequestSenderRoutine() {
 				oc.stopWG.Done()
 				return
 			case b := <-oc.sendCh:
+				logger.Debugf("Sending %v TXs to shards service P1.", len(b.Requests))
 				err := oc.stream.Send(b)
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))
@@ -466,6 +468,7 @@ func (tc *phaseTwoComm) startRequestSenderRoutine() {
 				tc.stopWG.Done()
 				return
 			case b := <-tc.sendCh:
+				logger.Debugf("Sending %v TXs to shards service P2.", len(b.Requests))
 				err := tc.stream.Send(b)
 				if err != nil {
 					panic(fmt.Sprintf("Error while sending sig verification request batch on stream: %s", err))

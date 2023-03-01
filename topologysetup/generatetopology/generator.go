@@ -79,7 +79,7 @@ func suffix(pkg string) string {
 	return path[len(path)-1]
 }
 
-func Generate(config *fsc.Config, out string) error {
+func Generate(config fsc.Config, out string) error {
 	os.Remove(out)
 	if err := os.MkdirAll(out, 0755); err != nil {
 		return err

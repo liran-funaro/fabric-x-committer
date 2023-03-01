@@ -14,17 +14,6 @@ all:
   children:
     services:
       children:
-
-        blockgens:
-          vars:
-            config: config-blockgen.yaml
-          hosts:
-            blockgen-machine:
-              config_dir: "{{top_config_dir}}/blockgen"
-              profile: profile-blockgen.yaml
-              ansible_host: localhost
-              prometheus_exporter_port: 2113
-
         coordinators:
           vars:
             config: config-coordinator.yaml
@@ -61,9 +50,20 @@ all:
               service_port: 5001
               prometheus_exporter_port: 2115
 
-
-        monitoring:
+    clients:
+      children:
+        blockgens:
+          vars:
+            config: config-blockgen.yaml
           hosts:
-            monitoring-machine:
+            blockgen-machine:
+              config_dir: "{{top_config_dir}}/blockgen"
+              profile: profile-blockgen.yaml
               ansible_host: localhost
-              jaeger_exporter_port: 14268
+              prometheus_exporter_port: 2113
+
+    monitoring:
+      hosts:
+        monitoring-machine:
+          ansible_host: localhost
+          jaeger_exporter_port: 14268

@@ -9,12 +9,11 @@ all:
     root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer"
     binary_dir: "{{root_path}}/eval/experiments/local-bin/"
     top_config_dir: "{{root_path}}/eval/experiments/local-configs"
+    ansible_host: 127.0.0.1
     os: osx
 
   children:
     services:
-      vars:
-        ansible_host: 127.0.0.1
       children:
 
         coordinators:
@@ -198,6 +197,8 @@ all:
               service_port: 1234
               prometheus_exporter_port: 2111
 
+    clients:
+      children:
         sidecarclients:
           vars:
             config: config-sidecar-client.yaml
@@ -211,7 +212,7 @@ all:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/sidecarclient1/"
 
-        monitoring:
-          hosts:
-            monitoring-machine:
-              jaeger_exporter_port: 14268
+    monitoring:
+      hosts:
+        monitoring-machine:
+          jaeger_exporter_port: 14268

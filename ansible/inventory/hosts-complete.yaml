@@ -195,6 +195,8 @@ all:
             sidecar-machine:
               ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
+    clients:
+      children:
         sidecarclients:
           vars:
             config: config-sidecar-client.yaml
@@ -204,8 +206,8 @@ all:
               profile: profile-sidecar-client.yaml
               ansible_host: tokentestbed11.sl.cloud9.ibm.com
 
-        monitoring:
-          hosts:
-            monitoring-machine:
-              ansible_host: tokentestbed15.sl.cloud9.ibm.com
-              jaeger_exporter_port: 14268
+    monitoring:
+      hosts:
+        monitoring-machine:
+          ansible_host: tokentestbed15.sl.cloud9.ibm.com
+          jaeger_exporter_port: 14268

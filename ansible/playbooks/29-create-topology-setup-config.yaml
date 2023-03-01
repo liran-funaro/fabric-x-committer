@@ -83,7 +83,7 @@
           - key: topology-setup.fabric.peers
             value: "{{peers}}"
           - key: topology-setup.fabric.sidecar
-            value: "{{sidecar}}"
+            value: "{{sidecar | d({})}}"
           - key: topology-setup.fabric.orderers
             value: "{{orderers}}"
       when: peers | d([]) | length > 0 and orderers | d([]) | length > 0

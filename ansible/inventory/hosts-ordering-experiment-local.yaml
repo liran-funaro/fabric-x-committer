@@ -7,7 +7,7 @@ all:
 
     # Where to transfer the binary and config files on the deployment machines
     root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer"
-    binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
+    top_binary_dir: "{{root_path + '/eval/experiments/local-bin/'}}"
     top_config_dir: "{{root_path + '/eval/experiments/local-configs/'}}"
     os: osx
 
@@ -25,12 +25,14 @@ all:
             domain: example.com #TODO: Adapt topology
           hosts:
             orderingservice-machine1:
-              config_dir: "{{top_config_dir + '/orderer0'}}"
+              config_dir: "{{top_config_dir}}/orderer0"
+              binary_dir: "{{top_binary_dir}}/orderer0"
               service_port: 7050
               cluster_port: 7060
               ops_port: 8440
             orderingservice-machine2:
               config_dir: "{{top_config_dir}}/orderer1"
+              binary_dir: "{{top_binary_dir}}/orderer1"
               service_port: 7051
               cluster_port: 7061
               ops_port: 8441
@@ -44,8 +46,11 @@ all:
           hosts:
             peerservice-machine1:
               config_dir: "{{top_config_dir}}/peer0"
+              binary_dir: "{{top_binary_dir}}/peer0"
               service_port: 7001
 
+    clients:
+      children:
         ordererlisteners:
           vars:
             config: config-orderer-listener.yaml
@@ -54,9 +59,11 @@ all:
             ordererlistener-machine1:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/listener0"
+              binary_dir: "{{top_binary_dir}}/listener0"
             ordererlistener-machine2:
               prometheus_exporter_port: 2118
               config_dir: "{{top_config_dir}}/listener1"
+              binary_dir: "{{top_binary_dir}}/listener1"
 
         orderersubmitters:
           vars:
@@ -66,6 +73,8 @@ all:
             orderersubmitter-machine1:
               prometheus_exporter_port: 2119
               config_dir: "{{top_config_dir}}/submitter0"
+              binary_dir: "{{top_binary_dir}}/submitter0"
             orderersubmitter-machine2:
               prometheus_exporter_port: 2120
               config_dir: "{{top_config_dir}}/submitter1"
+              binary_dir: "{{top_binary_dir}}/submitter1"

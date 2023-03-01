@@ -183,6 +183,7 @@ func (c *Coordinator) startTxValidationProcessorRoutine() {
 }
 
 func (c *Coordinator) processValidationStatus(txStatus []*TxStatus) {
+	logger.Debugf("Processing %d TX statuses.", len(txStatus))
 	c.dependencyMgr.inputChanStatusUpdate <- txStatus
 	if c.metrics.Enabled {
 		c.metrics.CoordinatorOutTxs.Add(len(txStatus))

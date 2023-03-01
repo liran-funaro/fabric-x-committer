@@ -107,7 +107,7 @@ func (e *parallelExecutor) handleTimeManualCutoff() {
 			logger.Debugf("Attempts to cut a batch, because it was requested manually. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case <-time.After(e.batchTimeCutoff):
-			logger.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
+			//logger.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case output := <-e.outputAggregationCh:
 			logger.Debugf("Attempts to emit a batch, because a go routine finished a calculation. (Buffer size: %d)", len(outputBuffer)+1)

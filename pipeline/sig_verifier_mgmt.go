@@ -77,6 +77,7 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine(v *sigVerifier) {
 			case <-m.stopSignalCh:
 				return
 			case b := <-m.inputChan:
+				logger.Debugf("Sending block %d:%d TXs to sig verifiers.", b.Number, len(b.Txs))
 				v.sendCh <- b
 				if m.metrics.Enabled {
 					m.metrics.SigVerifierMgrInTxs.Add(len(b.Txs))
@@ -110,6 +111,7 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 						invalids = append(invalids, n)
 					}
 				}
+				logger.Debugf("Received a batch with %d valid and %d invalid TXs from sig verifier.", len(valids), len(invalids))
 
 				//if m.metrics.Enabled {
 				//	for _, tx := range valids {

@@ -22,7 +22,7 @@
     env_vars: "{{env | d([]) | join(' ')}}"
     flags: "{{[var_prefix] | product((options | d({})).keys() | d([])) | map('join') | zip((options | d({})).values() | d([])) | map('join', '=') | join(' ')}}"
   set_fact:
-    command: "{{env_vars}} {{binary_dir}}{{service_name}} {{flags}}"
+    command: "{{env_vars}} {{binary_dir}}/{{service_name}} {{flags}}"
   when: service_name | d('') | length > 0
 - vars:
     session_name: "{{inventory_hostname}}"

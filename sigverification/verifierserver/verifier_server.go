@@ -66,9 +66,7 @@ func (s *verifierServer) SetVerificationKey(context context.Context, verificatio
 	return &sigverification.Empty{}, nil
 }
 func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {
-	//if s.verifier == nil {
-	//	return errors.New("no verification key set")
-	//}
+	logger.Infof("Starting new stream.")
 	if s.metrics.Enabled {
 		s.metrics.ActiveStreams.Inc()
 		defer s.metrics.ActiveStreams.Dec()
@@ -86,7 +84,10 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 	txSeqNum := token.TxSeqNum{request.BlockNum, request.TxNum}
 	start := time.Now()
 
-	if err := s.verifier.VerifyTx(request.Tx); err != nil {
+	if s.verifier == nil {
+		logger.Warnf("No verifier set! Returning invalid status.")
+		response.ErrorMessage = "no verifier set"
+	} else if err := s.verifier.VerifyTx(request.Tx); err != nil {
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true

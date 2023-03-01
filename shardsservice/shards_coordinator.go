@@ -82,6 +82,7 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 
 	for {
 		requestBatch, err := stream.Recv()
+		logger.Debugf("Received batch of %d TXs for P1.", len(requestBatch.Requests))
 		if err != nil {
 			return err
 		}
@@ -98,6 +99,7 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 	go s.shards.accumulatedPhaseOneResponses(s.limits.MaxPhaseOneResponseBatchItemCount, s.limits.PhaseOneResponseCutTimeout)
 	for {
 		responses := <-s.phaseOneResponses
+		logger.Debugf("Returning batch of %d TXs from P1.", len(responses))
 		end := time.Now()
 		if err := stream.Send(
 			&PhaseOneResponseBatch{

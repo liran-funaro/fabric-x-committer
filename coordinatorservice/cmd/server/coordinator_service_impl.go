@@ -35,6 +35,7 @@ func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 	// start listening
 	for {
 		block, err := stream.Recv()
+		logger.Debugf("Received block %d:%d.", block.Number, len(block.Txs))
 		if err == io.EOF {
 			// end of stream
 			logger.Infof("BlockProcessing EOF\n")
@@ -93,6 +94,7 @@ func (s *serviceImpl) sendTxsValidationStatus(stream coordinatorservice.Coordina
 				}
 			}
 
+			logger.Debugf("Returning batch of %d TXs.", len(batch.TxsValidationStatus))
 			err := stream.Send(batch)
 			if err != nil {
 				logger.Infof("Error while sending tx txStatus batch: %v\n", err)

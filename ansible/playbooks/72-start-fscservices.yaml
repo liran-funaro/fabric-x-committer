@@ -11,3 +11,6 @@
         env:
           - "FSCNODE_CFG_PATH={{config_dir}}/fsc/nodes/{{inventory_hostname}}"
       include_tasks: ../subtasks/start-server.yaml
+      when: mode | d('') | length == 0 or
+        mode | d('') == 'bootstrap_only' and bootstrap | d(false) == true or
+        mode | d('') == 'exclude_bootstrap' and bootstrap | d(false) == false
