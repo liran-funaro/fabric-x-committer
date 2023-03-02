@@ -31,5 +31,5 @@ func (v *ecdsaTxVerifier) publicKey() []byte {
 }
 
 func (v *ecdsaTxVerifier) VerifyTx(tx *token.Tx) error {
-	return crypto.VerifyMessage(v.verificationKey, SignatureData(tx.GetSerialNumbers()), tx.GetSignature())
+	return crypto.VerifyMessage(v.verificationKey, SignatureData(tx.GetSerialNumbers(), tx.GetOutputs()), tx.GetSignature())
 }

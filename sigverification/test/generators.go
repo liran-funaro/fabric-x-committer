@@ -19,9 +19,10 @@ import (
 // Tx
 
 type TxGenerator struct {
-	TxSigner               TxSigner
-	TxInputGenerator       TxInputGenerator
-	ValidSigRatioGenerator *test.BooleanGenerator
+	TxSigner                TxSigner
+	TxSerialNumberGenerator TxInputGenerator
+	TxOutputGenerator       TxInputGenerator
+	ValidSigRatioGenerator  *test.BooleanGenerator
 }
 
 type TxInputGenerator interface {
@@ -29,28 +30,32 @@ type TxInputGenerator interface {
 }
 
 type TxGeneratorParams struct {
-	SigningKey       PrivateKey
-	Scheme           signature.Scheme
-	ValidSigRatio    test.Percentage
-	TxSize           test.Distribution
-	SerialNumberSize test.Distribution
+	SigningKey        PrivateKey
+	Scheme            signature.Scheme
+	ValidSigRatio     test.Percentage
+	SerialNumberCount test.Distribution
+	OutputCount       test.Distribution
+	SerialNumberSize  test.Distribution
+	OutputSize        test.Distribution
 }
 
 func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
 	txSigner, _ := GetSignatureFactory(params.Scheme).NewSigner(params.SigningKey)
 	return &TxGenerator{
-		TxSigner:               txSigner,
-		TxInputGenerator:       NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.TxSize, SerialNumberSize: params.SerialNumberSize}),
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
+		TxSigner:                txSigner,
+		TxSerialNumberGenerator: NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.SerialNumberCount, SerialNumberSize: params.SerialNumberSize}),
+		TxOutputGenerator:       NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.OutputCount, SerialNumberSize: params.OutputSize}),
+		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
 }
 
 func (g *TxGenerator) Next() (*token.Tx, coordinatorservice.Status) {
 	tx := &token.Tx{
-		SerialNumbers: g.TxInputGenerator.Next(),
+		SerialNumbers: g.TxSerialNumberGenerator.Next(),
+		Outputs:       g.TxOutputGenerator.Next(),
 	}
 
-	tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers)
+	tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers, tx.Outputs)
 	expectedStatus := coordinatorservice.Status_VALID
 	if !g.ValidSigRatioGenerator.Next() {
 		// we just Reverse signature

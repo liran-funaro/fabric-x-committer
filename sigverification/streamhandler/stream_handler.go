@@ -38,7 +38,6 @@ func (s *StreamHandler) handleInputs(stream Stream) {
 	for {
 		//TODO: Add cancel
 		input, err := stream.Recv()
-		logger.Debugf("Received batch with %d TXs.", len(input.Requests))
 		if err != nil {
 			logger.Infof("failed to serve request: %v", err)
 			return

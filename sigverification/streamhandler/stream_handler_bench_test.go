@@ -82,11 +82,13 @@ func NewInputGenerator(p *inputGeneratorParams) *inputGenerator {
 	privateKey, _ := sigverification_test.GetSignatureFactory(sigverification_test.VerificationScheme).NewKeys()
 	batchGen := sigverification_test.NewRequestBatchGenerator(&sigverification_test.RequestBatchGeneratorParams{
 		Tx: sigverification_test.TxGeneratorParams{
-			SigningKey:       privateKey,
-			Scheme:           sigverification_test.VerificationScheme,
-			ValidSigRatio:    sigverification_test.SignatureValidRatio,
-			TxSize:           sigverification_test.TxSizeDistribution,
-			SerialNumberSize: sigverification_test.SerialNumberSize,
+			SigningKey:        privateKey,
+			Scheme:            sigverification_test.VerificationScheme,
+			ValidSigRatio:     sigverification_test.SignatureValidRatio,
+			SerialNumberCount: sigverification_test.SerialNumberCountDistribution,
+			OutputCount:       sigverification_test.OutputCountDistribution,
+			SerialNumberSize:  sigverification_test.SerialNumberSize,
+			OutputSize:        sigverification_test.OutputSize,
 		},
 		BatchSize: p.BatchSize,
 	}, 100)

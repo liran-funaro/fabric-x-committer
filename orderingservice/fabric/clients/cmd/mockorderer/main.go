@@ -29,8 +29,9 @@ func main() {
 			Size:  100,
 		},
 		Transaction: workload.TransactionProfile{
-			Size:          []test.DiscreteValue{{2, 1}},
-			SignatureType: signature.Ecdsa,
+			SerialNumberSize: []test.DiscreteValue{{2, 1}},
+			OutputSize:       []test.DiscreteValue{{1, 1}},
+			SignatureType:    signature.Ecdsa,
 		},
 	}
 

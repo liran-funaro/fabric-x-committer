@@ -16,9 +16,10 @@ func GetBlockSize(pp *Profile, sampleSize int) float64 {
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
-		TxSigner:               signer,
-		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.Size),
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
+		TxSigner:                signer,
+		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator(pp.Transaction.SerialNumberSize),
+		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator(pp.Transaction.OutputSize),
+		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
 	}
 
 	sum := 0

@@ -49,9 +49,10 @@ func BenchmarkGenSingle(b *testing.B) {
 	vr := 1.0
 
 	g := &sigverification_test.TxGenerator{
-		TxSigner:               signer,
-		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, vr, 10),
+		TxSigner:                signer,
+		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
+		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
+		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, vr, 10),
 	}
 
 	var tx *token.Tx

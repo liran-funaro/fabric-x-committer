@@ -36,8 +36,9 @@ type BlockProfile struct {
 	Size  int64
 }
 type TransactionProfile struct {
-	Size          []test.DiscreteValue
-	SignatureType signature.Scheme
+	SerialNumberSize []test.DiscreteValue
+	OutputSize       []test.DiscreteValue
+	SignatureType    signature.Scheme
 }
 type ScenarioConflicts map[string]struct {
 	InvalidSignature bool

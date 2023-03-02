@@ -3,6 +3,7 @@ package token
 import "fmt"
 
 type SerialNumber = []byte
+type TxOutput = []byte
 
 type TxSeqNum struct {
 	BlkNum, TxNum uint64

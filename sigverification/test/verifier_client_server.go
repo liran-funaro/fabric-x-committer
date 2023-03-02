@@ -15,8 +15,10 @@ import (
 
 // De facto constants
 
-var TxSizeDistribution = test.Constant(int64(test.TxSize))
+var SerialNumberCountDistribution = test.Constant(int64(test.TxSize))
 var SerialNumberSize = test.Constant(32)
+var OutputCountDistribution = test.Constant(int64(test.TxSize))
+var OutputSize = test.Constant(32)
 var SignatureValidRatio = test.Always
 var BatchSizeDistribution = test.Constant(int64(test.BatchSize))
 var VerificationScheme = signature.Ecdsa

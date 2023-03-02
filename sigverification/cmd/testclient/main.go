@@ -34,8 +34,10 @@ func main() {
 	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
 	signature.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", sigverification_test.VerificationScheme, "Verification scheme")
 	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", sigverification_test.SignatureValidRatio, "Percentage of transactions that should be valid (values from 0 to 1)")
-	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.TxSize, "tx-size", sigverification_test.TxSizeDistribution, "How many serial numbers are in each TX")
-	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", sigverification_test.SerialNumberSize, "How many bytes contains each serial number")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberCount, "sn-count", sigverification_test.SerialNumberCountDistribution, "How many serial numbers are in each TX")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", sigverification_test.SerialNumberSize, "How many bytes each serial number contains")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.OutputCount, "output-count", sigverification_test.OutputCountDistribution, "How many are in each TX")
+	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.OutputSize, "output-size", sigverification_test.OutputSize, "How many bytes each output contains")
 
 	verificationKeyPath := flag.String("verification-verificationKey", "./key.pub", "Path to the verification verificationKey")
 	signingKeyPath := flag.String("signing-verificationKey", "./key.priv", "Path to the signing verificationKey")
@@ -74,7 +76,7 @@ func main() {
 
 	_, blocks := workload.StartBlockGenerator(&workload.Profile{
 		Block:       workload.BlockProfile{-1, 100},
-		Transaction: workload.TransactionProfile{workload.Always(2), signature.Ecdsa},
+		Transaction: workload.TransactionProfile{workload.Always(2), workload.Always(1), signature.Ecdsa},
 	})
 	for {
 		b := <-blocks

@@ -19,7 +19,7 @@ var baseConfig = benchmarkConfig{
 	Name: "basic",
 	InputGeneratorParams: &inputGeneratorParams{
 		SomeTxInputGeneratorParams: &sigverification_test.SomeTxInputGeneratorParams{
-			TxSize:           sigverification_test.TxSizeDistribution,
+			TxSize:           sigverification_test.SerialNumberCountDistribution,
 			SerialNumberSize: sigverification_test.SerialNumberSize,
 		},
 		ValidSigRatio: sigverification_test.SignatureValidRatio,
@@ -45,7 +45,7 @@ func BenchmarkTxVerifier(b *testing.B) {
 			tx := &token.Tx{SerialNumbers: g.NextTxInput()}
 			isValid := g.NextValid()
 			if isValid {
-				tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers)
+				tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers, tx.Outputs)
 			}
 			b.StartTimer()
 

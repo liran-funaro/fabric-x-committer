@@ -35,11 +35,13 @@ var baseConfig = benchmarkConfig{
 		InputDelay: test.NoDelay,
 		RequestBatch: sigverification_test.RequestBatchGeneratorParams{
 			Tx: sigverification_test.TxGeneratorParams{
-				SigningKey:       privateKey,
-				Scheme:           sigverification_test.VerificationScheme,
-				ValidSigRatio:    sigverification_test.SignatureValidRatio,
-				TxSize:           sigverification_test.TxSizeDistribution,
-				SerialNumberSize: sigverification_test.SerialNumberSize,
+				SigningKey:        privateKey,
+				Scheme:            sigverification_test.VerificationScheme,
+				ValidSigRatio:     sigverification_test.SignatureValidRatio,
+				SerialNumberCount: sigverification_test.SerialNumberCountDistribution,
+				OutputCount:       sigverification_test.OutputCountDistribution,
+				SerialNumberSize:  sigverification_test.SerialNumberSize,
+				OutputSize:        sigverification_test.OutputSize,
 			},
 			BatchSize: sigverification_test.BatchSizeDistribution,
 		},

@@ -74,12 +74,12 @@ func TestMinimalInput(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	stream, _ := c.Client.StartStream(context.Background())
-	var emptyData []token.SerialNumber
-	emptyDataSig, _ := txSigner.SignTx(emptyData)
+	var emptyData [][]byte
+	emptyDataSig, _ := txSigner.SignTx(emptyData, emptyData)
 	err = stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
-		{BlockNum: 1, TxNum: 1, Tx: &token.Tx{Signature: emptyDataSig, SerialNumbers: emptyData}},
-		{BlockNum: 1, TxNum: 2, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
-		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}}},
+		{BlockNum: 1, TxNum: 1, Tx: &token.Tx{Signature: emptyDataSig, SerialNumbers: emptyData, Outputs: emptyData}},
+		{BlockNum: 1, TxNum: 2, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}, Outputs: [][]byte{}}},
+		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}, Outputs: [][]byte{}}},
 	}})
 	Expect(err).To(BeNil())
 

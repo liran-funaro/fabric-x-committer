@@ -21,9 +21,10 @@ func StartTxGenerator(profile *TransactionProfile, bufferSize int64) (signature.
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
-		TxSigner:               signer,
-		TxInputGenerator:       sigverification_test.NewLinearTxInputGenerator(profile.Size),
-		ValidSigRatioGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
+		TxSigner:                signer,
+		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator(profile.SerialNumberSize),
+		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator(profile.OutputSize),
+		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, test.Always, 10),
 	}
 
 	numWorker := runtime.NumCPU()

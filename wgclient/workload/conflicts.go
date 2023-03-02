@@ -12,7 +12,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-type SignerFunc func([][]byte) ([]byte, error)
+type SignerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)
 
 type ConflictHandler interface {
 	// ApplyConflicts modifies tx if a conflict is specified within the configHelper.
@@ -196,7 +196,7 @@ func (h *scenarioHandler) ApplyConflicts(txId token.TxSeqNum, tx *token.Tx) coor
 		}
 		// re-sign
 		var err error
-		tx.Signature, err = h.signFnc(tx.SerialNumbers)
+		tx.Signature, err = h.signFnc(tx.SerialNumbers, tx.Outputs)
 		utils.Must(err)
 
 		return coordinatorservice.Status_DOUBLE_SPEND

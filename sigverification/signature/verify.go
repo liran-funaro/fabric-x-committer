@@ -1,6 +1,7 @@
 package signature
 
 import (
+	"crypto/sha256"
 	"encoding/asn1"
 	"flag"
 	"strings"
@@ -62,11 +63,23 @@ func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
 	}
 }
 
-func SignatureData(inputs []token.SerialNumber) Message {
-	data, err := asn1.Marshal(inputs)
+func SignatureData(inputs []token.SerialNumber, outputs []token.TxOutput) Message {
+	marshaledInputs, err := asn1.Marshal(inputs)
 	if err != nil {
 		log.Error("failed to serialize the inputs")
 		return []byte{}
 	}
-	return data
+	marshaledOutputs, err := asn1.Marshal(outputs)
+	if err != nil {
+		log.Error("failed to serialize the outputs")
+		return []byte{}
+	}
+	h := sha256.New()
+	h.Reset()
+	h.Write(marshaledInputs)
+	hashedInputs := h.Sum(nil)
+	h.Reset()
+	h.Write(marshaledOutputs)
+	hashedOutputs := h.Sum(nil)
+	return append(hashedInputs, hashedOutputs...)
 }
