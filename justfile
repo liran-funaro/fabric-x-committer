@@ -72,7 +72,6 @@ test:
 bootstrap:
     just docker-orderer-image
     just docker-image
-    just all-protos
 
 launch target_hosts orderer=('raft') committer=('sc'):
     just run {{target_hosts}} {{orderer}} false false {{committer}} false

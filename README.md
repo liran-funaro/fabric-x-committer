@@ -1,71 +1,49 @@
-# scalable-committer
+# Prerequisites
 
-## Quickstart
-
-### Run on localhost
-#### Install prerequisites
-* Just (further details [here](https://github.com/casey/just#installation))
+## Mac
+1. Just (further details [here](https://github.com/casey/just#installation))
 ```shell
 brew install just
 ```
-* go 1.18
+2. Golang 1.18
 ```shell
 brew install go@1.18
 ```
-* rocksdb
+3. rocksdb (*not required if you never build for the local machine, because the Docker image contains the dependency*)
 ```shell
 brew install rocksdb
 ```
-
-#### Build and run
-* Build binaries
-```shell
-just build-all
-```
-* Optional: Monitoring (For further details see section Monitoring > Setup)
-* Run services
-```shell
-./bin/sigservice --configs ./config/config-sigservice.yaml,./config/config-sigservice-local.yaml
-./bin/shardsservice --configs ./config/config-shardsservice.yaml,./config/config-shardsservice-local.yaml
-./bin/coordinator --configs ./config/config-coordinator.yaml,./config/config-coordinator-local.yaml
-./bin/blockgen stream --configs ./config/config-blockgen.yaml,./config/config-blockgen-local.yaml
-```
-
-### Run on remote hosts
-#### Install prerequisites (on Mac)
-This is when we build the code on our local machine and then send the binaries to the remote hosts for execution. This is easier for debugging, but it requires our localhost be on during the experiment runs.
-
-* Golang 1.18 (see above)
-* Just (see above)
-* Docker engine (see above)
-* Clone project
-```shell
-mkdir -p ~/go/src/github.com/decentralized-trust-search/scalable-committer
-git clone https://github.ibm.com/decentralized-trust-research/scalable-committer.git ~/go/src/github.com/decentralized-trust-search/scalable-committer/
-cd ~/go/src/github.com/decentralized-trust-search/scalable-committer/
-```
-* Docker image
-```shell
-just docker-image
-```
-* Ansible with its requirements (further details [here](./ansible/README.md))
+4. Ansible (for more info [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pip-install)), and all the dependencies required by the project
 ```shell
 brew install ansible
-ansible-galaxy install -r ./ansible/requirements.yml
+ansible-galaxy install -r requirements.yaml
 ```
-* Add SSH keys to known hosts (generate with `ssh-keygen` if none existing. Choose a name like `id_rsa`, so that it is picked by default)
+5. Docker client
+6. Required docker images
 ```shell
-ssh-keygen -t ed25519 -C "my_name"
-ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed1.sl.cloud9.ibm.com
-...
-ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed15.sl.cloud9.ibm.com
+just bootstrap
 ```
-* Optional: Monitoring (For further details see section Monitoring > Setup > Remote)
+7. tmux
+```shell
+brew install tmux
+```
+8. *Optional:* `jq` (only for some functionalities):
+```shell
+brew install jq
+```
+9. *Optional:* Monitoring
+```shell
+just restart-monitoring
+```
 
-#### Install prerequisites (on Ubuntu)
-This is when we want to build the code on a remote host and then send the binaries from there to the service hosts.
-* Golang 1.18
-
+## Linux
+1. Just
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/just
+export PATH=$PATH:/usr/local/just
+# just —version
+```
+2. Golang 1.18
 ```shell
 apt-get update
 wget https://go.dev/dl/go1.18.8.linux-amd64.tar.gz
@@ -76,89 +54,135 @@ export GOPATH=$HOME/go
 export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 # go version
 ```
-* Just
+3. rocksdb (*not required if you use this machine only for deployments, because the Docker image contains the dependency*)
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/just
-export PATH=$PATH:/usr/local/just
-# just —version
+apt-get update && apt-get install -y \
+      libgflags-dev \
+      libsnappy-dev \
+      zlib1g-dev \
+      libbz2-dev \
+      libzstd-dev \
+      liblz4-dev
+
+cd /tmp && git clone https://github.com/facebook/rocksdb.git
+cd /tmp/rocksdb && git checkout 7555243bcfb7086e8bad38d43a518ff4c53dc17a && DEBUG_LEVEL=0 make shared_lib && make install-shared
+ldconfig
 ```
-* Docker client (details [here](https://docs.docker.com/engine/install/ubuntu/))
-* Clone project (same as on Mac)
-* Docker image (same as on Mac)
-* Ansible with its requirements
+4. Ansible with its requirements
 ```shell
 apt-install ansible
 ansible-galaxy install -r requirements.yaml
 ```
-* Add SSH keys to known hosts (same as on Mac)
-* JQ
+5. Docker client (details [here](https://docs.docker.com/engine/install/ubuntu/))
+6. Required docker images (*same as for Mac*)
+7. tmux
+```shell
+apt install tmux
+```
+8. *Optional*: `jq` (only for some functionalities)
 ```shell
 apt install jq
 ```
+9. *Optional*: Monitoring (*same as for Mac*)
 
-#### Build and run (with Ansible)
+# Deployment
+1. **Pick a topology (inventory)**
+ 
+Find a topology under `ansible/inventory` (a brief description of the existing topologies [here](./ansible/README.md#Topologies)).
 
-* Deploy base setup on the hosts as described in `hosts.yaml` (Make sure your certificate is added on the hosts, or you added the right password in `hosts.yaml`):
+Depending the topology you will pick, you can make a local or a remote deployment.
+
+There are two ways to set the inventory as default:
+* In the Ansible config file (`ansible/ansible.cfg`) set the `inventory` to the path of the inventory of your preference.
+* Create a new Ansible config file (e.g. `ansible/my-ansible.cfg`) that points to your preferred inventory and set the environment variable:
 ```shell
-just deploy-base-setup
+export ANSIBLE_CONFIG=ansible/my-ansible.cfg
 ```
-* Run experiment or experiment suite, resp:
+2. Build executables and non-executables:
 ```shell
-just run-experiment
-just run-experiment-suite "my_exp_suite"
-```
+# During build we access private repo's under github.ibm.com
+# A github token with access to these repo's needs to be issued and the following env vars must be set
+export SC_GITHUB_USER=...
+export SC_GITHUB_TOKEN=...
 
-#### Build and run (without Ansible)
-This is the same process we follow as we do with Ansible, but done manually, for the sake of better understanding and possible troubleshooting.
-* Build binaries
+just setup true true
+```
+The parameters passed in the aforementioned command define whether we will build the binaries for our local machine, and for the remote machines (using Docker).
+Setting both options to `true` will make the build last longer.
+* If you only need to deploy on your local machine, you don't need to build the binaries using Docker: `just setup true false` or `just setup true`.
+* If you only need to deploy on the remote machines, you don't need to build the binaries for your local: `just setup false true`.
+* If you already have the binaries you need (you built them for a previous deployment, and you didn't change your code), you can skip both: `just setup false false` or `just setup`.
+
+The deployment has two stages:
+* Build (generate) bins and non-executables (e.g. configs, credentials). These are stored under `eval/deployments`. When a `just` command starts with `build`, then its result will be under this directory.
+* Deploy (transfer) these into the corresponding hosts. When a `just` command starts with `deploy` then its result will be on the (remote or local) host. For the case of local deployments, the root directory for all transferred files is `eval/experiments`.
+
+3. Run the services and the clients:
 ```shell
-just docker "just build-all"
+just run
 ```
-* Modify your configs, depending on the experiment setup and transfer binaries and configs
+If you don't need to run already the clients, you can only run the servers: `just run services`. Later you can run your clients: `just run clients`.
+
+4. See the `tmux` sessions for all hosts on each machine (or localhost for local deployments):
 ```shell
-# Repeat for each signature verifier
-scp ./bin/sigservice root@tokentestbed3.sl.cloud9.ibm.com:~/bin/
-scp ./config/config-sigservice.yaml root@tokentestbed3.sl.cloud9.ibm.com:~/
-
-# Repeat for each shards service
-scp ./bin/shardsservice root@tokentestbed6.sl.cloud9.ibm.com:~/bin/
-scp ./config/config-shardsservice.yaml root@tokentestbed6.sl.cloud9.ibm.com:~/
-
-# Coordinator
-scp ./bin/coordinator root@tokentestbed2.sl.cloud9.ibm.com:~/bin/
-scp ./config/config-coordinator.yaml root@tokentestbed2.sl.cloud9.ibm.com:~/
-
-# Blockgen
-scp ./bin/blockgen root@tokentestbed1.sl.cloud9.ibm.com:~/bin/
-scp ./config/config-blockgen.yaml root@tokentestbed1.sl.cloud9.ibm.com:~/
-scp ./config/profile-blockgen.yaml root@tokentestbed1.sl.cloud9.ibm.com:~/
+tmux ls
 ```
-* Run services
+
+## Useful commands
+* Kill execution
 ```shell
-# Repeat for each signature verifier
-ssh root@tokentestbed3.sl.cloud9.ibm.com
-tmux kill-session
-tmux
-./bin/sigservice --configs ./config-sigservice.yaml
-
-# Repeat for each shards service
-ssh root@tokentestbed6.sl.cloud9.ibm.com
-tmux kill-session
-tmux
-./bin/shardsservice --configs ./config-shardsservice.yaml
-
-# Coordinator
-ssh root@tokentestbed2.sl.cloud9.ibm.com
-tmux kill-session
-tmux
-./bin/coordinator --configs ./config-coordinator.yaml
-
-# Blockgen
-ssh root@tokentestbed1.sl.cloud9.ibm.com
-tmux kill-session
-tmux
-./bin/blockgen --configs ./config-blockgen.yaml
+# Kills all servers
+just kill all
+# Kills all clients (not services)
+just kill clients
+# Kills FSC node issuer
+just kill issuer
+# Kills all orderers
+just kill orderingservices
 ```
+* Launch host: `run` command includes some extra commands for the initiation of a channel, chaincode and setting a committer key. If you only want to launch a server:
+```shell
+# Launches all orderers
+just launch orderingservices
+# Launches FSC node alice
+just launch alice
+```
+
+* Clean generated files
+```shell
+# Cleans all temporary files (e.g. DB files)
+just clean all
+# Cleans all temporary files for shards
+just clean shardsservices
+# Cleans all temporary files, and non-executables
+just clean all true
+# Cleans everything deployed for orderers (temporary files, non-executables, executables)
+just clean orderingservices true true 
+```
+* Call API (only used with the FSC-node REST APIs)
+```shell
+# Issue 1000 tokens to alice
+just call-api issuer issue alice 1000
+# Bob asks Alice for 100 tokens with nonce=randomnonce
+just call-api bob initiate bob 100 randomnonce
+# Alice approves the request from Bob to transfer 100 tokens with nonce=ranodmnonce
+just call-api alice transfer bob 100 randomnonce
+# Fetch the status of the transaction with nonce=randomnonce
+just call-api alice status 0 0 randomnonce
+# Fetch Alice's balance
+just call-api alice balance
+# Fetch all Alices' payments
+just call-api alice payments
+```
+* Add SSH keys to known hosts (generate with `ssh-keygen` if none existing. Choose a name like `id_rsa`, so that it is picked by default)
+```shell
+ssh-keygen -t ed25519 -C "my_name"
+ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed1.sl.cloud9.ibm.com
+...
+ssh-copy-id -i ~/.ssh/deploy_key.pub root@tokentestbed15.sl.cloud9.ibm.com
+```
+
+# Scalable committer
 
 ## Background
 The lifecycle of a transaction consists of 3 main stages:
