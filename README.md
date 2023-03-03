@@ -90,7 +90,15 @@ apt install jq
  
 Find a topology under `ansible/inventory` (a brief description of the existing topologies [here](./ansible/README.md#Topologies)).
 
-Depending the topology you will pick, you can make a local or a remote deployment.
+**Important:** Some inventory groups have special requirements.
+If these are not installed, the services will fail on runtime:
+
+* `shardsservices`: rocksdb
+* `coordinators`: rocksdb
+* `peerservices`: Docker client
+* `all`: tmux
+
+Depending on the topology you will pick, you can make a local or a remote deployment.
 
 There are two ways to set the inventory as default:
 * In the Ansible config file (`ansible/ansible.cfg`) set the `inventory` to the path of the inventory of your preference.
