@@ -2,11 +2,18 @@ package sigverification_test
 
 import (
 	"crypto/ecdsa"
+	"os"
+	"strings"
 
+	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/crypto"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("signtest")
 
 type PrivateKey = []byte
 
@@ -27,7 +34,7 @@ var cryptoFactories = map[signature.Scheme]SignerFactory{
 }
 
 func GetSignatureFactory(scheme signature.Scheme) SignerFactory {
-	factory, ok := cryptoFactories[scheme]
+	factory, ok := cryptoFactories[strings.ToUpper(scheme)]
 	if !ok {
 		panic("scheme not supported")
 	}
@@ -91,4 +98,48 @@ type dummyTxSigner struct {
 
 func (s *dummyTxSigner) SignTx([]token.SerialNumber, []token.TxOutput) (signature.Signature, error) {
 	return []byte{}, nil
+}
+
+func ReadOrGenerateKeys(profile SignatureProfile) (PrivateKey, signature.PublicKey, error) {
+	// Read keys
+	if profile.KeyPath != nil && utils.FileExists(profile.KeyPath.VerificationKey) && utils.FileExists(profile.KeyPath.SigningKey) {
+		logger.Infof("Verification/signing keys found in files %s/%s. Importing...", profile.KeyPath.VerificationKey, profile.KeyPath.SigningKey)
+		verificationKey, err := os.ReadFile(profile.KeyPath.VerificationKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read public key from %s", profile.KeyPath.VerificationKey)
+		}
+		signingKey, err := os.ReadFile(profile.KeyPath.SigningKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read private key from %s", profile.KeyPath.SigningKey)
+		}
+		logger.Infoln("Keys successfully imported!")
+		return signingKey, verificationKey, nil
+	}
+
+	// Generate keys
+	logger.Info("No verification/signing keys found. Generating...")
+	signingKey, verificationKey := GetSignatureFactory(profile.Scheme).NewKeys()
+
+	// Store generated keys
+	if profile.KeyPath != nil && profile.KeyPath.SigningKey != "" && profile.KeyPath.VerificationKey != "" {
+		err := utils.WriteFile(profile.KeyPath.VerificationKey, verificationKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not write public key into %s.", profile.KeyPath.VerificationKey)
+		}
+		err = utils.WriteFile(profile.KeyPath.SigningKey, signingKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not write private key into %s", profile.KeyPath.SigningKey)
+		}
+		logger.Infoln("Keys successfully exported!")
+	}
+	return signingKey, verificationKey, nil
+}
+
+type SignatureProfile struct {
+	Scheme  signature.Scheme
+	KeyPath *KeyPath
+}
+type KeyPath struct {
+	SigningKey      string
+	VerificationKey string
 }

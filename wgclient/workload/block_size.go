@@ -1,8 +1,6 @@
 package workload
 
 import (
-	"strings"
-
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
@@ -10,10 +8,8 @@ import (
 )
 
 func GetBlockSize(pp *Profile, sampleSize int) float64 {
-	sigType := strings.ToUpper(pp.Transaction.SignatureType)
-
-	privateKey, _ := sigverification_test.GetSignatureFactory(sigType).NewKeys()
-	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
+	privateKey, _, _ := sigverification_test.ReadOrGenerateKeys(pp.Transaction.Signature)
+	signer, _ := sigverification_test.GetSignatureFactory(pp.Transaction.Signature.Scheme).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:                signer,

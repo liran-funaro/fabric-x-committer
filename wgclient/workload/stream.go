@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"strconv"
-	"strings"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
@@ -15,10 +14,8 @@ import (
 )
 
 func StartTxGenerator(profile *TransactionProfile, bufferSize int64) (signature.PublicKey, sigverification_test.TxSigner, chan *token.Tx) {
-	sigType := strings.ToUpper(profile.SignatureType)
-
-	privateKey, publicKey := sigverification_test.GetSignatureFactory(sigType).NewKeys()
-	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
+	privateKey, publicKey, _ := sigverification_test.ReadOrGenerateKeys(profile.Signature)
+	signer, _ := sigverification_test.GetSignatureFactory(profile.Signature.Scheme).NewSigner(privateKey)
 
 	g := &sigverification_test.TxGenerator{
 		TxSigner:                signer,

@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
@@ -49,7 +47,14 @@ func main() {
 		clientConfig.Connections[i] = connection.NewDialConfig(*endpoint)
 	}
 
-	signingKey, verificationKey, err := readOrGenerateKeys(*verificationKeyPath, *signingKeyPath)
+	signatureProfile := sigverification_test.SignatureProfile{
+		Scheme: clientConfig.Input.RequestBatch.Tx.Scheme,
+		KeyPath: &sigverification_test.KeyPath{
+			SigningKey:      *signingKeyPath,
+			VerificationKey: *verificationKeyPath,
+		},
+	}
+	signingKey, verificationKey, err := sigverification_test.ReadOrGenerateKeys(signatureProfile)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -76,7 +81,7 @@ func main() {
 
 	_, blocks := workload.StartBlockGenerator(&workload.Profile{
 		Block:       workload.BlockProfile{-1, 100},
-		Transaction: workload.TransactionProfile{workload.Always(2), workload.Always(1), signature.Ecdsa},
+		Transaction: workload.TransactionProfile{workload.Always(2), workload.Always(1), signatureProfile},
 	})
 	for {
 		b := <-blocks
@@ -114,33 +119,4 @@ func startStream(conn *connection.DialConfig, verificationKey signature.PublicKe
 	}
 	logger.Infof("Started stream to %s", conn.Address())
 	return stream, nil
-}
-
-func readOrGenerateKeys(verificationKeyPath string, signingKeyPath string) (sigverification_test.PrivateKey, signature.PublicKey, error) {
-	if !utils.FileExists(verificationKeyPath) || !utils.FileExists(signingKeyPath) {
-		logger.Info("No verification/signing keys found in files %s/%s. Generating...", verificationKeyPath, signingKeyPath)
-		signingKey, verificationKey := sigverification_test.GetSignatureFactory(clientConfig.Input.RequestBatch.Tx.Scheme).NewKeys()
-		err := utils.WriteFile(verificationKeyPath, verificationKey)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not write public key into %s.", verificationKeyPath)
-		}
-		err = utils.WriteFile(signingKeyPath, signingKey)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not write private key into %s", signingKeyPath)
-		}
-		logger.Infoln("Keys successfully exported!")
-		return signingKey, verificationKey, nil
-	}
-
-	logger.Infof("Verification/signing keys found in files %s/%s. Importing...", verificationKeyPath, signingKeyPath)
-	verificationKey, err := os.ReadFile(verificationKeyPath)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "could not read public key from %s", verificationKeyPath)
-	}
-	signingKey, err := os.ReadFile(signingKeyPath)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "could not read private key from %s", signingKeyPath)
-	}
-	logger.Infoln("Keys successfully imported!")
-	return signingKey, verificationKey, nil
 }

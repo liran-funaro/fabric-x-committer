@@ -83,7 +83,7 @@ func New(executor ExecutorFunc, config *Config, metrics *metrics.Metrics) Parall
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
+		logger.Debugf("Received request %v with %d inputs and %d outputs in go routine %d. Sending for execution.", input, len(input.Tx.SerialNumbers), len(input.Tx.Outputs), idx)
 		output, err := e.executor(input)
 		if err != nil {
 			logger.Debugf("Received error from executor %d.", idx)

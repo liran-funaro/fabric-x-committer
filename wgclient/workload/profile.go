@@ -3,11 +3,11 @@ package workload
 import (
 	"encoding/json"
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"io"
 	"io/ioutil"
 	"path/filepath"
 
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"gopkg.in/yaml.v3"
@@ -38,7 +38,7 @@ type BlockProfile struct {
 type TransactionProfile struct {
 	SerialNumberSize []test.DiscreteValue
 	OutputSize       []test.DiscreteValue
-	SignatureType    signature.Scheme
+	Signature        sigverification_test.SignatureProfile
 }
 type ScenarioConflicts map[string]struct {
 	InvalidSignature bool
