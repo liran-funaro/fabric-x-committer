@@ -6,6 +6,6 @@ orderer-submitter:
     endpoint: :2112
   orderer-connection-profile: orderer-connection-profile.yaml
   messages: 10000000
-  go-routines: 500
+  go-routines: 100
   message-size: 240
   signed: false

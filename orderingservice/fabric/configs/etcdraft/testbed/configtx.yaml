@@ -23,6 +23,8 @@ Organizations:
             - tokentestbed1.sl.cloud9.ibm.com:7050
             - tokentestbed2.sl.cloud9.ibm.com:7050
             - tokentestbed3.sl.cloud9.ibm.com:7050
+            - tokentestbed4.sl.cloud9.ibm.com:7050
+            - tokentestbed5.sl.cloud9.ibm.com:7050
 
     - &Org1
         Name: Org1
@@ -267,7 +269,7 @@ Orderer: &OrdererDefaults
          - localhost:7050
 
     # Batch Timeout: The amount of time to wait before creating a batch.
-    BatchTimeout: 750ms
+    BatchTimeout: 2s
 
     # Batch Size: Controls the number of messages batched into a block.
     # The orderer views messages opaquely, but typically, messages may
@@ -329,6 +331,14 @@ Orderer: &OrdererDefaults
               Port: 7050
               ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
               ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+            - Host: tokentestbed4.sl.cloud9.ibm.com
+              Port: 7050
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+            - Host: tokentestbed5.sl.cloud9.ibm.com
+              Port: 7050
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
 
         # Options to be specified for all the etcd/raft nodes. The values here
         # are the defaults for all new channels and can be modified on a
@@ -354,7 +364,7 @@ Orderer: &OrdererDefaults
             MaxInflightBlocks: 50
 
             # SnapshotIntervalSize defines number of bytes per which a snapshot is taken
-            SnapshotIntervalSize: 16 MB
+            SnapshotIntervalSize: 160 MB
 
     # Organizations lists the orgs participating on the orderer side of the
     # network.

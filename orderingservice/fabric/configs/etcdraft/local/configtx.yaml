@@ -267,7 +267,7 @@ Orderer: &OrdererDefaults
          - localhost:7050
 
     # Batch Timeout: The amount of time to wait before creating a batch.
-    BatchTimeout: 750ms
+    BatchTimeout: 2s
 
     # Batch Size: Controls the number of messages batched into a block.
     # The orderer views messages opaquely, but typically, messages may
@@ -335,7 +335,7 @@ Orderer: &OrdererDefaults
         # per-channel basis via configuration updates.
         Options:
             # TickInterval is the time interval between two Node.Tick invocations.
-            TickInterval: 500ms
+            TickInterval: 100ms
 
             # ElectionTick is the number of Node.Tick invocations that must pass
             # between elections. That is, if a follower does not receive any
@@ -354,7 +354,7 @@ Orderer: &OrdererDefaults
             MaxInflightBlocks: 50
 
             # SnapshotIntervalSize defines number of bytes per which a snapshot is taken
-            SnapshotIntervalSize: 16 MB
+            SnapshotIntervalSize: 160 MB
 
     # Organizations lists the orgs participating on the orderer side of the
     # network.
