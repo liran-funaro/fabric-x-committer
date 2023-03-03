@@ -169,11 +169,6 @@ kill target_hosts=('all'):
 # Generate protos
 #########################
 
-all-protos:
-    just protos-coordinator
-    just protos-token
-    just protos-wgclient
-
 protos-coordinator:
     protoc \
     --go_out=. --go_opt=paths=source_relative \
@@ -306,6 +301,13 @@ docker-orderer-image:
 docker-image:
     docker build -f builder/Dockerfile -t sc_builder .
 
+# Simple containerized SC
+docker-runner-image:
+    just build-bins true false false true
+    mkdir -p {{runner-dir}}/bin
+    cp {{linux-bin-input-dir}}/* {{runner-dir}}/bin
+    docker build -f runner/Dockerfile -t sc_runner .
+
 #########################
 # Configs, Credentials, and Genesis
 #########################
@@ -321,12 +323,19 @@ build-configs target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
 
 build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
+    #!/usr/bin/env bash
     ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'channel_ids': ['{{default-channel-id}}']}"
-    just empty-dir {{base-setup-orderer-artifacts-dir}}
-    cd ./topologysetup; \
-    go run ./generatetopology/cmd/generate/main.go --configs {{topology_config_path}} --out-dir {{default-generated-main-path}}/; \
-    cd {{default-generated-main-path}}; \
-    go run ./main.go --output-dir {{base-setup-orderer-artifacts-dir}} --fab-bin-dir {{fab_bins_dir}} --configs {{topology_config_path}}
+
+    if [[ -f "{{topology_config_path}}" ]]; then \
+      echo "Creating NWO artifacts based on topology setup in {{topology_config_path}}..."; \
+      just empty-dir {{base-setup-orderer-artifacts-dir}}; \
+      cd ./topologysetup; \
+      go run ./generatetopology/cmd/generate/main.go --configs {{topology_config_path}} --out-dir {{default-generated-main-path}}/; \
+      cd {{default-generated-main-path}}; \
+      go run ./main.go --output-dir {{base-setup-orderer-artifacts-dir}} --fab-bin-dir {{fab_bins_dir}} --configs {{topology_config_path}}; \
+    else \
+      echo "No Fabric topology setup found. Skipping..."; \
+    fi
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
@@ -457,30 +466,6 @@ run-committer-experiment sig_verifiers=('3') shards_services=('3') large_txs=('0
 gather-results filename:
     mkdir -p {{experiment-results-dir}}
     {{bin-input-dir}}resultgatherer -client-endpoint=$(just list-hosts blockgens "(.ansible_host) + \\\":\\\" + (.prometheus_exporter_port|tostring)") -prometheus-endpoint=$(just list-hosts monitoring "(.ansible_host) + \\\":{{prometheus-scraper-port}}\\\"") -output={{experiment-results-dir}}{{filename}} -rate-interval=2m -input={{experiment-tracking-dir}}{{filename}} -sampling-time-header={{sampling-time-header}}
-
-#########################
-# Simple containerized SC
-#########################
-
-docker-runner-image:
-    just build-bins true false false
-    just deploy-bins true false
-    docker build -f runner/Dockerfile -t sc_runner .
-
-    just build-committer-configs
-    just deploy-configs
-
-# creds_dir should contain: msp/, ca.crt, orderer.yaml
-docker-run-services public_key_dir=(project-dir + '/coordinatorservice/cmd/setup_helper/testdata/') orderer_config_dir=(project-dir + '/eval/deployments/configs/'):
-    docker run --rm -dit \
-    -p 5050:5050 \
-    -v {{runner-dir}}/config:/root/config \
-    -v {{public_key_dir}}:/root/pubkey \
-    -v {{ if orderer_config_dir != '' { orderer_config_dir } else { runner-dir + '/orderer-creds'} }}:/root/orderer-creds \
-    sc_runner:latest
-
-docker-run-blockgen:
-    GOGC=20000 {{local-bin-input-dir}}/blockgen stream --configs {{base-setup-config-dir}}blockgen-machine-config-blockgen.yaml
 
 #########################
 # Admin

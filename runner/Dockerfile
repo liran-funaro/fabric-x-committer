@@ -2,7 +2,6 @@ FROM sc_builder
 
 ENV CONFIGS_PATH=/root/config/
 ENV BINS_PATH=/root/bin/
-ENV ORDERER_CONFIGS_PATH=/root/orderer-creds/
 ENV PUBKEY_PATH=/root/pubkey/
 
 ADD runner/out/bin/sigservice \
