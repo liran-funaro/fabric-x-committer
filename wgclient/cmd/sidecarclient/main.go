@@ -53,7 +53,7 @@ func main() {
 		txs = make(chan *token.Tx)
 	}
 
-	go client.SendReplicated(txs, func() { tracker.RequestSent(1) })
+	go client.Send(txs, func() { tracker.RequestSent(1) })
 
 	client.StartListening(func(block *common.Block) {
 

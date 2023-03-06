@@ -38,7 +38,7 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 	}
 
 	switch channelHdr.Type {
-	case int32(common.HeaderType_MESSAGE):
+	case int32(common.HeaderType_ENDORSER_TRANSACTION):
 		data := &common.ConfigValue{}
 		if err = proto.Unmarshal(payload.Data, data); err != nil {
 			return nil, nil, err

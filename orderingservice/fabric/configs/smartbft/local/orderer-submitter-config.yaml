@@ -8,4 +8,4 @@ orderer-submitter:
   messages: 5000000
   go-routines: 20
   message-size: 160
-  signed: false
+  signed-envelopes: false

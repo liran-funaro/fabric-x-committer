@@ -17,7 +17,6 @@
       vars:
         connections: 2
         message_size: 160
-        signed: true
         streams_per_connection: 8
         config_dst_filepath: "{{dst_dir}}/{{orderersubmitter_instance.inventory_hostname}}/{{orderersubmitter_instance.config}}"
         orderer_hosts: "{{groups['orderingservices'] | map('extract', hostvars) | list}}"
@@ -30,8 +29,8 @@
             value: "{{orderers}}"
           - key: orderer-submitter.message-size
             value: "{{message_size}}"
-          - key: orderer-submitter.signed
-            value: "{{signed}}"
+          - key: orderer-submitter.signed-envelopes
+            value: "{{signed_envelopes | d(true)}}"
           - key: orderer-submitter.goroutines
             value: "{{streams_per_connection}}"
       loop: "{{selected_hosts}}"

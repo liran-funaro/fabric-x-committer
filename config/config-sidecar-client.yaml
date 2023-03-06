@@ -9,14 +9,10 @@ sidecar-client:
     - :7051
     - :7052
   channel-id: mychannel                       # Overridden by ansible
-
   profile: ../../config/profile-sidecar-client.yaml # Overridden by ansible
   input-channel-capacity: 20
-  parallelism: 10
-  signed-envelopes: true
-  msp-dir: /msp
-  msp-id: Org1
-
+  parallelism: 20
+  signed-envelopes: true                      # Overriden by ansible
 logging:
   enabled: true
   level: INFO

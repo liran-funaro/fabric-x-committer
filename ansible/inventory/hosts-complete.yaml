@@ -22,8 +22,8 @@ all:
             coordinator-machine:
               inherit_endorser: endorser-1
               config_dir: "{{top_config_dir}}/coordinator"
-              prometheus_exporter_port: 2110
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              prometheus_exporter_port: 2113
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
         sigservices:
           vars:
@@ -32,36 +32,54 @@ all:
           hosts:
             sigservice-machine1:
               config_dir: "{{top_config_dir}}/sigverifier"
-              prometheus_exporter_port: 2111
-              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+              ansible_host: tokentestbed11.sl.cloud9.ibm.com
 
         shardsservices:
           vars:
             service_port: 5001
             config: config-shardsservice.yaml
-            db_dir: "{{config_dir}}/db"
           hosts:
             shardsservice-machine1:
-              config_dir: "{{top_config_dir}}/shardsserver"
+              config_dir: "{{top_config_dir}}/shardsserver1"
               db_dir: "{{config_dir}}/db"
-              prometheus_exporter_port: 2113
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed12.sl.cloud9.ibm.com
+            shardsservice-machine2:
+              config_dir: "{{top_config_dir}}/shardsserver2"
+              db_dir: "{{config_dir}}/db"
+              ansible_host: tokentestbed13.sl.cloud9.ibm.com
 
         orderingservices:
           vars:
             config: orderer.yaml
             organization: DefaultOrdererOrg
             domain: example.com
-            service_port: 7050
-            cluster_port: 7070
 #            ops_port: "{{prometheus_exporter_port}}" #TODO: Adapt template to use 0.0.0.0 before activating
           hosts:
             orderingservice-machine1:
-              ansible_host: tokentestbed5.sl.cloud9.ibm.com
-            orderingservice-machine2:
-              ansible_host: tokentestbed6.sl.cloud9.ibm.com
-            orderingservice-machine3:
+              config_dir: "{{top_config_dir}}/orderer1"
+              service_port: 7050
+              cluster_port: 7070
               ansible_host: tokentestbed7.sl.cloud9.ibm.com
+            orderingservice-machine2:
+              config_dir: "{{top_config_dir}}/orderer2"
+              service_port: 7050
+              cluster_port: 7070
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+            orderingservice-machine3:
+              config_dir: "{{top_config_dir}}/orderer3"
+              service_port: 7050
+              cluster_port: 7070
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+            orderingservice-machine4:
+              config_dir: "{{top_config_dir}}/orderer4"
+              service_port: 7051
+              cluster_port: 7071
+              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+            orderingservice-machine5:
+              config_dir: "{{top_config_dir}}/orderer5"
+              service_port: 7051
+              cluster_port: 7071
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
 
         peerservices:
           vars:
@@ -73,7 +91,7 @@ all:
           hosts:
             peerservice-machine1:
               config_dir: "{{top_config_dir}}/peer0"
-              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
 
 
         fscservices:
@@ -84,13 +102,13 @@ all:
             domain: example.com
           hosts:
             lib-p2p-bootstrap-node:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed3.sl.cloud9.ibm.com
               service_port: 8000
               p2p_port: 8020
               config_dir: "{{top_config_dir}}/lib-p2p"
               bootstrap: true
             auditor:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
               service_port: 8001
               p2p_port: 8021
               ops_port: 8081
@@ -106,7 +124,7 @@ all:
                 - id: historyAuditing
                   factory: "{{demo_views}}/ListAuditedTransactionsViewFactory"
             issuer:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed3.sl.cloud9.ibm.com
               service_port: 8002
               p2p_port: 8022
               ops_port: 8082
@@ -123,7 +141,7 @@ all:
                   factory: "{{demo_views}}/IssueCashViewFactory"
 
             alice:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed6.sl.cloud9.ibm.com
               service_port: 8003
               p2p_port: 8023
               ops_port: 8083
@@ -151,7 +169,7 @@ all:
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
 
             bob:
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed5.sl.cloud9.ibm.com
               service_port: 8004
               p2p_port: 8024
               ops_port: 8084
@@ -178,7 +196,7 @@ all:
                 - id: txStatusByNonce
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
             endorser-1: # Only one endorser supported currently
-              ansible_host: tokentestbed9.sl.cloud9.ibm.com
+              ansible_host: tokentestbed3.sl.cloud9.ibm.com
               service_port: 8005
               p2p_port: 8025
               config_dir: "{{top_config_dir}}/endorser1"
@@ -204,7 +222,16 @@ all:
           hosts:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml
-              ansible_host: tokentestbed11.sl.cloud9.ibm.com
+              ansible_host: tokentestbed1.sl.cloud9.ibm.com
+
+        ordererlisteners:
+          vars:
+            config: config-orderer-listener.yaml
+            inherit_peer: peerservice-machine1
+          hosts:
+            ordererlistener-machine1:
+              config_dir: "{{top_config_dir}}/ordererlistener1"
+              ansible_host: tokentestbed2.sl.cloud9.ibm.com
 
     monitoring:
       hosts:

@@ -14,7 +14,7 @@ type SubmitterConfig struct {
 	Messages                 int                    `mapstructure:"messages"`
 	GoRoutines               int                    `mapstructure:"go-routines"`
 	MessageSize              int                    `mapstructure:"message-size"`
-	Signed                   bool                   `mapstructure:"signed"`
+	SignedEnvelopes          bool                   `mapstructure:"signed-envelopes"`
 }
 
 type ListenerConfig struct {

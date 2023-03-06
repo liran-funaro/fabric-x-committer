@@ -1,6 +1,6 @@
 #!/bin/bash
 
-unsigned_envs=$1
+signed_envs=$1
 bin_out=$2
 
 cd "$FABRIC_PATH" || exit
@@ -8,7 +8,7 @@ git reset --hard
 if [ -d build ]; then \
       rm -r build; \
     fi
-if [ -n "$unsigned_envs" ] && [ "$unsigned_envs" = "true" ]; then \
+if [ -n "$signed_envs" ] && [ "$signed_envs" = "false" ]; then \
   echo "Applying patch and building orderer binaries for unsigned envelopes..."
   git apply /usr/local/orderer_no_sig_check.patch
 else \

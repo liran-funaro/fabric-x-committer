@@ -17,10 +17,10 @@ transaction:
     - value: 2
       probability: 1
   outputsize:
-    - value: 1
-      probability: 0.9
+    - value: 2
+      probability: 1.0
     - value: 0
-      probability: 0.1
+      probability: 0
   # signature scheme
   signature:
     keypath:

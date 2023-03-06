@@ -117,17 +117,47 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		for tx := range txs {
-			item := serialization.MarshalTx(tx)
-			env, err := c.envelopeCreator.CreateEnvelope(item)
-			onRequestSend()
-			utils.Must(err)
+		defer wg.Done()
+		for {
 			for _, messageCh := range c.ordererBroadcaster.Streams() {
+				tx, ok := <-txs
+				if !ok {
+					return
+				}
+				item := serialization.MarshalTx(tx)
+				env, err := c.envelopeCreator.CreateEnvelope(item)
+				onRequestSend()
+				utils.Must(err)
 				messageCh.Input() <- env
 			}
 		}
-		wg.Done()
 	}()
+	wg.Wait()
+	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
+}
+
+func (c *Client) Send(txs chan *token.Tx, onRequestSend func()) {
+	logger.Infof("Sending messages to all open streams.\n")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	for _, ch := range c.ordererBroadcaster.Streams() {
+		input := ch.Input()
+		go func(out chan<- *common.Envelope) {
+			for {
+				select {
+				case tx := <-txs:
+					item := serialization.MarshalTx(tx)
+					env, err := c.envelopeCreator.CreateEnvelope(item)
+					onRequestSend()
+					utils.Must(err)
+					input <- env
+				}
+			}
+			wg.Done()
+		}(input)
+	}
+
 	wg.Wait()
 	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
 }

@@ -50,6 +50,7 @@ func CreateTopology(config Config) *topology.Topology {
 		Driver:       "fabric.sc",
 		TopologyType: "fabric",
 		TLSEnabled:   true,
+		Templates:    &topology.Templates{ConfigTx: ConfigTxTemplate},
 		Logging: &topology.Logging{
 			Spec:   strings.ToLower(config.LogLevel),
 			Format: "'%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s} %{id:03x}%{color:reset} %{message}'",

@@ -10,7 +10,7 @@ orderer-submitter:
   messages: 1000000
   go-routines: 20
   message-size: 160
-  signed: true
+  signed-envelopes: true          # Overriden by ansible
 
 logging:
   enabled: true

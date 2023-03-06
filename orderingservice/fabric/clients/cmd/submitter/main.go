@@ -57,7 +57,7 @@ func main() {
 
 	//fmt.Printf("Sending the same message to all servers.\n")
 	message := make([]byte, c.MessageSize)
-	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
+	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
 	env, _ := envelopeCreator.CreateEnvelope(message)
 	//env := &common.Envelope{Payload: message, Signature: nil}
 	serializedEnv, err := protoutil.Marshal(env)
@@ -98,7 +98,7 @@ func main() {
 				message := make([]byte, c.MessageSize)
 				n := atomic.AddUint64(&ops, 1)
 				binary.LittleEndian.PutUint32(message, uint32(n))
-				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
+				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
 				env, _ := envelopeCreator.CreateEnvelope(message)
 				// TODO send to all nodes?
 				//input <- <-buffered

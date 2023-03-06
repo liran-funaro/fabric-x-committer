@@ -9,6 +9,8 @@ project-dir := env_var_or_default('PWD', '.')
 runner-dir := project-dir + "/runner/out"
 config-input-dir := project-dir + "/config"
 
+orderer-builder-dir := project-dir + "/ordererbuilder"
+
 output-dir := project-dir + "/eval"
 
 
@@ -39,7 +41,8 @@ default-generated-main-path := project-dir + "/topologysetup/tmp"
 # Experiment constants
 experiment-duration-seconds := "1200"
 
-fabric_path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/github.com/hyperledger/fabric")
+fabric-path := env_var_or_default('FABRIC_PATH', env_var('GOPATH') + "/src/github.com/hyperledger/fabric")
+fabric-bins-path := fabric-path + "/build/bin"
 
 # Well-known ports
 prometheus-scraper-port := "9091"
@@ -72,6 +75,9 @@ test:
 bootstrap:
     just docker-orderer-image
     just docker-image
+    git clone https://github.com/hyperledger/fabric.git {{fabric-path}} && \
+        cd {{fabric-path}} && \
+        git checkout v2.4.7 -b v2.4.7-branch
 
 launch target_hosts orderer=('raft') committer=('sc'):
     just run {{target_hosts}} {{orderer}} false false {{committer}} false
@@ -139,14 +145,14 @@ run target_hosts=('all') orderer=('raft') init_channel=('true') init_chaincode=(
     # Start orderer submitters
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-setup local_bins=('false') docker_bins=('false'):
+setup local_bins=('false') docker_bins=('false') signed_envelopes=('true'):
     #!/usr/bin/env bash
     just kill
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
 
-    just build-bins true true {{local_bins}} {{docker_bins}}; \
+    just build-bins true true {{local_bins}} {{docker_bins}} {{signed_envelopes}}; \
 
-    just build-configs
+    just build-configs all {{signed_envelopes}}
     just build-orderer-artifacts
     just deploy-configs
 
@@ -199,7 +205,7 @@ protos-wgclient:
 # Binaries
 #########################
 
-build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true'):
+build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true') signed_envelopes=('true'):
     #!/usr/bin/env bash
     if [[ "{{local}}" = "true" ]]; then \
       just empty-dir {{local-bin-input-dir}}; \
@@ -207,7 +213,7 @@ build-bins include_committer=('true') include_orderer=('true') local=('true') do
         just build-committer-local {{local-bin-input-dir}}; \
       fi; \
       if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-local {{local-bin-input-dir}}; \
+          just build-raft-orderers-local {{local-bin-input-dir}} {{signed_envelopes}}; \
           just build-orderer-clients-local {{local-bin-input-dir}}; \
       fi; \
     fi
@@ -218,7 +224,7 @@ build-bins include_committer=('true') include_orderer=('true') local=('true') do
           just docker "just build-committer-local ./eval/deployments/bins/linux"; \
       fi; \
       if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-docker {{linux-bin-input-dir}}; \
+          just build-raft-orderers-docker {{linux-bin-input-dir}} {{signed_envelopes}}; \
           just docker "just build-orderer-clients-local ./eval/deployments/bins/linux"; \
       fi; \
     fi
@@ -238,14 +244,29 @@ build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
 # git checkout v2.4.7 -b v2.4.7-branch
-build-raft-orderers-local output_dir:
-    make -C {{fabric_path}} native
-    if [ -d "{{output_dir}}" ]; then \
-      cp -r "{{fabric_path}}/build/bin/" "{{output_dir}}"; \
+build-raft-orderers-local output_dir unsigned=('false'):
+    #!/usr/bin/env bash
+    cd "{{fabric-path}}" || exit; \
+    git reset --hard; \
+    if [[ -d "build" ]]; then \
+          rm -r build; \
+    fi; \
+
+    if [[ "{{unsigned}}" = "true" ]]; then \
+      echo "Applying patch and building orderer binaries for unsigned envelopes..."; \
+      git apply {{orderer-builder-dir}}/orderer_no_sig_check.patch; \
+    else \
+      echo "Building orderer binaries for signed envelopes..."; \
+    fi; \
+    make -C {{fabric-path}} native; \
+    echo "Bins created under {{fabric-bins-path}}"; \
+    if [[ -d "{{output_dir}}" ]]; then \
+      echo "Copying bins to {{output_dir}}..."; \
+    cp -a "{{fabric-bins-path}}/." "{{output_dir}}/"
     fi
 
-build-raft-orderers-docker output_dir unsigned=('false'):
-    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{unsigned}} /usr/local/out
+build-raft-orderers-docker output_dir signed_envelopes=('true'):
+    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed_envelopes}} /usr/local/out
 
 build-committer-local output_dir:
     go build -o {{output_dir}}/blockgen ./wgclient/cmd/generator
@@ -295,7 +316,7 @@ docker CMD:
 
 # The docker image required for compilation of the orderer and the related bins
 docker-orderer-image:
-    docker build -f ordererbuilder/Dockerfile -t orderer_builder .
+    docker build -f {{orderer-builder-dir}}/Dockerfile -t orderer_builder .
 
 # The docker image required for compilation of SC components on the Unix machines
 docker-image:
@@ -312,15 +333,15 @@ docker-runner-image:
 # Configs, Credentials, and Genesis
 #########################
 
-build-configs target_hosts=('all'):
+build-configs target_hosts=('all') signed_envelopes=('true'):
     ansible-playbook "{{playbook-path}}/21-create-sigverifier-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/22-create-shardsservice-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/23-create-coordinator-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/24-create-blockgen-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/25-create-sidecar-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'signed_envelopes': {{signed_envelopes}}}"
     ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'signed_envelopes': {{signed_envelopes}}}"
 
 build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
     #!/usr/bin/env bash
