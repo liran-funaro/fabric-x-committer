@@ -3,14 +3,14 @@ module github.ibm.com/distributed-trust-research/scalable-committer/topologysetu
 go 1.18
 
 require (
-	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230223185939-e5facc9afa9c
+	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230302133248-f5bbc240530d
 	github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230223200323-2e738d02b9b7
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/onsi/gomega v1.24.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/fts-sc v0.1.0
+	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230306075550-e9e3767312e6
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	gopkg.in/yaml.v3 v3.0.1
 
