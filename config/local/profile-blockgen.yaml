@@ -8,7 +8,7 @@ conflicts:
 description: some text
 name: profile1
 transaction:
-  signatureprofile:
+  signature:
     scheme: ecdsa
   serialnumbersize:
   - probability: 1.0

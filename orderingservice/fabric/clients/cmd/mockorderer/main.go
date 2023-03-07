@@ -12,7 +12,6 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -32,7 +31,7 @@ func main() {
 		Transaction: workload.TransactionProfile{
 			SerialNumberSize: []test.DiscreteValue{{2, 1}},
 			OutputSize:       []test.DiscreteValue{{1, 1}},
-			Signature:        sigverification_test.SignatureProfile{Scheme: signature.Ecdsa},
+			Signature:        signature.Profile{Scheme: signature.Ecdsa},
 		},
 	}
 

@@ -47,9 +47,9 @@ func main() {
 		clientConfig.Connections[i] = connection.NewDialConfig(*endpoint)
 	}
 
-	signatureProfile := sigverification_test.SignatureProfile{
+	signatureProfile := signature.Profile{
 		Scheme: clientConfig.Input.RequestBatch.Tx.Scheme,
-		KeyPath: &sigverification_test.KeyPath{
+		KeyPath: &signature.KeyPath{
 			SigningKey:      *signingKeyPath,
 			VerificationKey: *verificationKeyPath,
 		},

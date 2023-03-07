@@ -53,3 +53,20 @@
       loop: "{{selected_hosts}}"
       loop_control:
         loop_var: sidecarclient_instance
+    - name: Further edit sidecar-client profile
+      vars:
+        filepath: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.profile}}"
+        endorser: "{{hostvars[sidecarclient_instance.inherit_endorser]}}"
+        node_domain: "{{endorser.organization | lower}}.{{endorser.domain}}"
+        creds_dir: "{{sidecarclient_instance.config_dir}}/fabric.{{topology_name}}/crypto/peerOrganizations/{{node_domain}}/peers/{{endorser.inventory_hostname}}.{{node_domain}}/tss/endorser/msp"
+      yedit:
+        src: "{{filepath}}"
+        edits:
+          - key: transaction.signature.keypath.signcertificate
+            value: "{{creds_dir}}/signcerts/endorser-cert.pem"
+          - key: transaction.signature.keypath.signingkey
+            value: "{{creds_dir}}/keystore/priv_sk"
+      when: sidecarclient_instance.profile | d('') | length > 0 and sidecarclient_instance.inherit_endorser | d('') | length > 0
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: sidecarclient_instance

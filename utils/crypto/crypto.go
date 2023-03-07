@@ -55,13 +55,23 @@ func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
 	}), nil
 }
 
-func ParseSigningKey(key []byte) (*ecdsa.PrivateKey, error) {
-	block, _ := pem.Decode(key)
-	if block == nil || block.Type != "EC PRIVATE KEY" {
-		return nil, errors.Errorf("failed to decode PEM block containing private key, got %v", block)
+func ParseSigningKey(keyContent []byte) (*ecdsa.PrivateKey, error) {
+	block, _ := pem.Decode(keyContent)
+	if block == nil {
+		return nil, errors.New("nil block")
 	}
-
-	return x509.ParseECPrivateKey(block.Bytes)
+	switch block.Type {
+	case "PRIVATE KEY":
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		return key.(*ecdsa.PrivateKey), nil
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(block.Bytes)
+	default:
+		return nil, errors.Errorf("unknown block type: %s", block.Type)
+	}
 }
 
 func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {

@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"gopkg.in/yaml.v3"
@@ -38,7 +38,7 @@ type BlockProfile struct {
 type TransactionProfile struct {
 	SerialNumberSize []test.DiscreteValue
 	OutputSize       []test.DiscreteValue
-	Signature        sigverification_test.SignatureProfile
+	Signature        signature.Profile
 }
 type ScenarioConflicts map[string]struct {
 	InvalidSignature bool

@@ -15,6 +15,13 @@
       include_tasks: ../subtasks/transfer-node-creds.yaml
       when: include_creds | d(false) == true
     - vars:
+        endorser: "{{hostvars[inherit_endorser]}}"
+        topology_dir: "fabric.{{topology_name}}"
+        node_domain: "{{endorser.organization | lower}}.{{endorser.domain}}"
+        node_type: peers
+      include_tasks: ../subtasks/transfer-fsc-node-creds.yaml
+      when: include_creds | d(false) == true and profile | d('') | length > 0 and inherit_endorser | d('') | length > 0
+    - vars:
         node_type: peers
         node_name: "{{inherit_peer}}"
         file_type: profile

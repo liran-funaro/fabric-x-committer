@@ -47,7 +47,7 @@ coordinator:
     # To reduce the overhead of this update, we batch them together, and we trigger a dependency-graph update only if we have accumulated enough TXs.
     # In the case of very scarce invalid signatures, the batch size may not be accumulated, so the invalid TXs will wait long before they are integrated into the dependency graph.
     # To this end, we will also integrate all existing invalid TXs every time we receive a batch of valid TXs (from the shard server), as well.
-    invalid-sig-batch-cutoff-size: 1000
+    invalid-sig-batch-cutoff-size: 1
 
 logging:
   enabled: true

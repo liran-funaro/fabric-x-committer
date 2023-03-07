@@ -244,7 +244,7 @@ build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
 # git checkout v2.4.7 -b v2.4.7-branch
-build-raft-orderers-local output_dir unsigned=('false'):
+build-raft-orderers-local output_dir signed_envelopes=('true'):
     #!/usr/bin/env bash
     cd "{{fabric-path}}" || exit; \
     git reset --hard; \
@@ -252,11 +252,11 @@ build-raft-orderers-local output_dir unsigned=('false'):
           rm -r build; \
     fi; \
 
-    if [[ "{{unsigned}}" = "true" ]]; then \
+    if [[ "{{signed_envelopes}}" = "true" ]]; then \
+      echo "Building orderer binaries for signed envelopes..."; \
+    else \
       echo "Applying patch and building orderer binaries for unsigned envelopes..."; \
       git apply {{orderer-builder-dir}}/orderer_no_sig_check.patch; \
-    else \
-      echo "Building orderer binaries for signed envelopes..."; \
     fi; \
     make -C {{fabric-path}} native; \
     echo "Bins created under {{fabric-bins-path}}"; \

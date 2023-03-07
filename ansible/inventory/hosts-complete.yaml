@@ -20,7 +20,7 @@ all:
             config: config-coordinator.yaml
           hosts:
             coordinator-machine:
-              inherit_endorser: endorser-1
+              inherit_endorser: endorser-1 # Used for setting the sig verification key
               config_dir: "{{top_config_dir}}/coordinator"
               prometheus_exporter_port: 2113
               ansible_host: tokentestbed10.sl.cloud9.ibm.com
@@ -218,7 +218,8 @@ all:
         sidecarclients:
           vars:
             config: config-sidecar-client.yaml
-            inherit_peer: peerservice-machine1
+            inherit_peer: peerservice-machine1 # Used for connecting to the orderer
+            inherit_endorser: endorser-1 # Used for signing the TXs for the sig verifier
           hosts:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml

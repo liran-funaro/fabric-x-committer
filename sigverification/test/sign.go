@@ -100,13 +100,28 @@ func (s *dummyTxSigner) SignTx([]token.SerialNumber, []token.TxOutput) (signatur
 	return []byte{}, nil
 }
 
-func ReadOrGenerateKeys(profile SignatureProfile) (PrivateKey, signature.PublicKey, error) {
+func ReadOrGenerateKeys(profile signature.Profile) (PrivateKey, signature.PublicKey, error) {
 	// Read keys
 	if profile.KeyPath != nil && utils.FileExists(profile.KeyPath.VerificationKey) && utils.FileExists(profile.KeyPath.SigningKey) {
 		logger.Infof("Verification/signing keys found in files %s/%s. Importing...", profile.KeyPath.VerificationKey, profile.KeyPath.SigningKey)
 		verificationKey, err := os.ReadFile(profile.KeyPath.VerificationKey)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "could not read public key from %s", profile.KeyPath.VerificationKey)
+		}
+		signingKey, err := os.ReadFile(profile.KeyPath.SigningKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read private key from %s", profile.KeyPath.SigningKey)
+		}
+		logger.Infoln("Keys successfully imported!")
+		return signingKey, verificationKey, nil
+	}
+
+	// Read private key and certificate
+	if profile.KeyPath != nil && utils.FileExists(profile.KeyPath.SignCertificate) && utils.FileExists(profile.KeyPath.SigningKey) {
+		logger.Infof("Sign cert and key found in files %s/%s. Importing...", profile.KeyPath.SignCertificate, profile.KeyPath.SigningKey)
+		verificationKey, err := signature.GetSerializedKeyFromCert(profile.KeyPath.SignCertificate)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read sign cert from %s", profile.KeyPath.SignCertificate)
 		}
 		signingKey, err := os.ReadFile(profile.KeyPath.SigningKey)
 		if err != nil {
@@ -133,13 +148,4 @@ func ReadOrGenerateKeys(profile SignatureProfile) (PrivateKey, signature.PublicK
 		logger.Infoln("Keys successfully exported!")
 	}
 	return signingKey, verificationKey, nil
-}
-
-type SignatureProfile struct {
-	Scheme  signature.Scheme
-	KeyPath *KeyPath
-}
-type KeyPath struct {
-	SigningKey      string
-	VerificationKey string
 }
