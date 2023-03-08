@@ -77,28 +77,16 @@ func NewPrefixSampler(prefix string) TxTracingSampler {
 	}
 }
 
-func NewDefaultLatencyTracerWithSampler(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, sampler TxTracingSampler, labels ...string) *latencyTracer {
+func NewDefaultLatencyTracer(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, labels ...string) *latencyTracer {
 	return NewLatencyTracer(LatencyTracerOpts{
 		Name:           name,
 		Help:           "Total latency on the component",
 		Count:          1000,
 		From:           0,
 		To:             maxValue,
-		Sampler:        sampler,
+		Sampler:        ScarceSampler,
 		IgnoreNotFound: true,
 		Labels:         labels,
-	}, tp)
-}
-
-func NewDefaultLatencyTracer(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, labels ...string) *latencyTracer {
-	return NewLatencyTracer(LatencyTracerOpts{
-		Name:    name,
-		Help:    "Total latency on the component",
-		Count:   1000,
-		From:    0,
-		To:      maxValue,
-		Sampler: ScarceSampler,
-		Labels:  labels,
 	}, tp)
 }
 
