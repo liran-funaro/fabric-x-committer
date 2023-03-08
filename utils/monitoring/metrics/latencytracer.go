@@ -79,13 +79,14 @@ func NewPrefixSampler(prefix string) TxTracingSampler {
 
 func NewDefaultLatencyTracerWithSampler(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, sampler TxTracingSampler, labels ...string) *latencyTracer {
 	return NewLatencyTracer(LatencyTracerOpts{
-		Name:    name,
-		Help:    "Total latency on the component",
-		Count:   1000,
-		From:    0,
-		To:      maxValue,
-		Sampler: sampler,
-		Labels:  labels,
+		Name:           name,
+		Help:           "Total latency on the component",
+		Count:          1000,
+		From:           0,
+		To:             maxValue,
+		Sampler:        sampler,
+		IgnoreNotFound: true,
+		Labels:         labels,
 	}, tp)
 }
 

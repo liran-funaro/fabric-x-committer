@@ -82,10 +82,10 @@ func (s *shardsCoordinator) StartPhaseOneStream(stream Shards_StartPhaseOneStrea
 
 	for {
 		requestBatch, err := stream.Recv()
-		logger.Debugf("Received batch of %d TXs for P1.", len(requestBatch.Requests))
 		if err != nil {
 			return err
 		}
+		logger.Debugf("Received batch of %d TXs for P1.", len(requestBatch.Requests))
 
 		s.phaseOnePool.Run(func(requestBatch *PhaseOneRequestBatch) func() {
 			return func() {
