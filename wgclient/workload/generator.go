@@ -9,17 +9,16 @@ import (
 	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
-
-const snFormatter = "%s-%d"
 
 func Generate(profilePath, outputPath string) {
 
 	pp := LoadProfileFromYaml(profilePath)
 
-	publicKey, signer, txQueue := StartTxGenerator(&pp.Transaction, pp.Block.Size)
+	publicKey, txQueue := StartTxGenerator(&pp.Transaction, pp.Conflicts, pp.Block.Size)
 	outputPath = createIfNotExists(outputPath)
 
 	// store public key
@@ -35,9 +34,6 @@ func Generate(profilePath, outputPath string) {
 
 	// write profile first as our header
 	WriteProfileToBlockFile(writer, pp)
-
-	// prepare ConflictHandler
-	conflicts := NewConflictHandler(pp.Conflicts.Scenario, pp.Conflicts.Statistical, signer.SignTx)
 
 	blockCount := pp.Block.Count
 	blockSize := pp.Block.Size
@@ -58,13 +54,13 @@ func Generate(profilePath, outputPath string) {
 	}()
 
 	for blockNo := int64(1); blockNo <= blockCount; blockNo++ {
-		bQueue <- createBlock(uint64(blockNo), uint64(blockSize), txQueue, conflicts)
+		bQueue <- createBlock(uint64(blockNo), uint64(blockSize), txQueue)
 	}
 	close(bQueue)
 	wg.Wait()
 }
 
-func createBlock(blockNo, numTx uint64, txQueue chan *token.Tx, conflicts ConflictHandler) *BlockWithExpectedResult {
+func createBlock(blockNo, numTx uint64, txQueue chan *sigverification_test.TxWithStatus) *BlockWithExpectedResult {
 
 	b := &BlockWithExpectedResult{
 		Block: &token.Block{
@@ -79,13 +75,12 @@ func createBlock(blockNo, numTx uint64, txQueue chan *token.Tx, conflicts Confli
 		tx := <-txQueue
 
 		txSeqNum := token.TxSeqNum{BlkNum: blockNo, TxNum: i}
-		txStatus := conflicts.ApplyConflicts(txSeqNum, tx)
 
-		b.Block.Txs[i] = tx
+		b.Block.Txs[i] = tx.Tx
 		b.ExpectedResults[i] = &coordinatorservice.TxValidationStatus{
 			BlockNum: txSeqNum.BlkNum,
 			TxNum:    txSeqNum.TxNum,
-			Status:   txStatus,
+			Status:   tx.Status,
 		}
 	}
 

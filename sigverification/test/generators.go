@@ -18,11 +18,18 @@ import (
 
 // Tx
 
-type TxGenerator struct {
+type TxWithStatus struct {
+	Tx     *token.Tx
+	Status coordinatorservice.Status
+}
+type TxGenerator interface {
+	Next() *TxWithStatus
+}
+
+type ValidTxGenerator struct {
 	TxSigner                TxSigner
 	TxSerialNumberGenerator TxInputGenerator
 	TxOutputGenerator       TxInputGenerator
-	ValidSigRatioGenerator  *test.BooleanGenerator
 }
 
 type TxInputGenerator interface {
@@ -39,31 +46,23 @@ type TxGeneratorParams struct {
 	OutputSize        test.Distribution
 }
 
-func NewTxGenerator(params *TxGeneratorParams) *TxGenerator {
+func NewValidTxGenerator(params *TxGeneratorParams) *ValidTxGenerator {
 	txSigner, _ := GetSignatureFactory(params.Scheme).NewSigner(params.SigningKey)
-	return &TxGenerator{
+	return &ValidTxGenerator{
 		TxSigner:                txSigner,
 		TxSerialNumberGenerator: NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.SerialNumberCount, SerialNumberSize: params.SerialNumberSize}),
 		TxOutputGenerator:       NewSomeTxInputGenerator(&SomeTxInputGeneratorParams{TxSize: params.OutputCount, SerialNumberSize: params.OutputSize}),
-		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, params.ValidSigRatio, 10),
 	}
 }
 
-func (g *TxGenerator) Next() (*token.Tx, coordinatorservice.Status) {
+func (g *ValidTxGenerator) Next() *TxWithStatus {
 	tx := &token.Tx{
 		SerialNumbers: g.TxSerialNumberGenerator.Next(),
 		Outputs:       g.TxOutputGenerator.Next(),
 	}
 
 	tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers, tx.Outputs)
-	expectedStatus := coordinatorservice.Status_VALID
-	if !g.ValidSigRatioGenerator.Next() {
-		// we just Reverse signature
-		Reverse(tx.Signature)
-		expectedStatus = coordinatorservice.Status_INVALID_SIGNATURE
-	}
-
-	return tx, expectedStatus
+	return &TxWithStatus{tx, coordinatorservice.Status_VALID}
 }
 
 func Reverse(s []byte) {
@@ -141,13 +140,13 @@ type RequestBatchGenerator struct {
 }
 
 func NewRequestBatchGenerator(params *RequestBatchGeneratorParams, sampleSize int) *RequestBatchGenerator {
-	txGenerator := NewTxGenerator(&params.Tx)
+	txGenerator := NewValidTxGenerator(&params.Tx)
 	valueGen := func() *sigverification.Request {
-		tx, _ := txGenerator.Next()
+		tx := txGenerator.Next()
 		return &sigverification.Request{
 			BlockNum: 0,
 			TxNum:    0,
-			Tx:       tx,
+			Tx:       tx.Tx,
 		}
 	}
 	return &RequestBatchGenerator{

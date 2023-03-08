@@ -88,6 +88,7 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		logger.Warnf("No verifier set! Returning invalid status.")
 		response.ErrorMessage = "no verifier set"
 	} else if err := s.verifier.VerifyTx(request.Tx); err != nil {
+		logger.Debugf("Invalid signature found: %v", txSeqNum)
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true

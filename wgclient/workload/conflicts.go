@@ -1,206 +1,131 @@
 package workload
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
 	sigverificationtest "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )
 
-type SignerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)
-
-type ConflictHandler interface {
-	// ApplyConflicts modifies tx if a conflict is specified within the configHelper.
-	// If a conflict is applied, the corresponding status is returned; otherwise it returns valid status
-	ApplyConflicts(txId token.TxSeqNum, tx *token.Tx) coordinatorservice.Status
-}
+type signerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)
 
 type statisticalConflictHandler struct {
+	delegate                  sigverificationtest.TxGenerator
 	invalidSignatureGenerator *test.BooleanGenerator
 	doubleSpendGenerator      *test.BooleanGenerator
 	doubleSpendTx             token.Tx
-	signFnc                   SignerFunc
+	signFnc                   signerFunc
 }
 
-func NewStatisticalConflicts(profile *StatisticalConflicts, signerFunc SignerFunc) ConflictHandler {
+func newStatisticalConflicts(txGenerator sigverificationtest.TxGenerator, profile *StatisticalConflicts, signerFunc signerFunc) sigverificationtest.TxGenerator {
+	doubleSpendTx := txGenerator.Next().Tx
 	return &statisticalConflictHandler{
-		invalidSignatureGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.InvalidSignature, 100),
+		delegate:                  txGenerator,
+		invalidSignatureGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.InvalidSignatures, 100),
 		doubleSpendGenerator:      test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.DoubleSpends, 101),
 		signFnc:                   signerFunc,
+		doubleSpendTx:             *doubleSpendTx,
 	}
 }
 
-func (h *statisticalConflictHandler) ApplyConflicts(_ token.TxSeqNum, tx *token.Tx) coordinatorservice.Status {
-	// Store the first TX to use it for double spends
-	if len(h.doubleSpendTx.SerialNumbers) == 0 {
-		h.doubleSpendTx = *tx
-		return coordinatorservice.Status_VALID
+func (h *statisticalConflictHandler) Next() *sigverificationtest.TxWithStatus {
+	if h.doubleSpendGenerator.Next() {
+		// Copy SNs and signatures (we avoid to calculate the signature again, because it slows down the generator significantly)
+		return &sigverificationtest.TxWithStatus{
+			Tx: &token.Tx{
+				SerialNumbers: h.doubleSpendTx.SerialNumbers,
+				Outputs:       h.doubleSpendTx.Outputs,
+				Signature:     h.doubleSpendTx.Signature,
+			},
+			Status: coordinatorservice.Status_DOUBLE_SPEND,
+		}
 	}
 
 	if h.invalidSignatureGenerator.Next() {
+		tx := h.delegate.Next().Tx
 		sigverificationtest.Reverse(tx.Signature)
-		return coordinatorservice.Status_INVALID_SIGNATURE
+		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_INVALID_SIGNATURE}
 	}
 
-	if h.doubleSpendGenerator.Next() {
-		// Copy SNs and signatures (we avoid to calculate the signature again, because it slows down the generator significantly)
-		tx.SerialNumbers = h.doubleSpendTx.GetSerialNumbers()
-		tx.Signature = h.doubleSpendTx.GetSignature()
-		return coordinatorservice.Status_DOUBLE_SPEND
+	return h.delegate.Next()
+}
+
+func NewConflictDecorator(txGenerator sigverificationtest.TxGenerator, conflicts *ConflictProfile, signerFunc signerFunc) sigverificationtest.TxGenerator {
+	if conflicts == nil || conflicts.Scenario == nil && conflicts.Statistical == nil {
+		return txGenerator
 	}
-
-	return coordinatorservice.Status_VALID
-}
-
-type noConflictHandler struct{}
-
-func NewNoConflicts() ConflictHandler {
-	return &noConflictHandler{}
-}
-
-func (h *noConflictHandler) ApplyConflicts(token.TxSeqNum, *token.Tx) coordinatorservice.Status {
-	// let's do nothing if there are no conflicts specified for this run
-	return coordinatorservice.Status_VALID
+	if conflicts.Scenario != nil && conflicts.Statistical != nil {
+		panic("only one type supported")
+	}
+	if conflicts.Scenario != nil {
+		return newScenarioConflicts(txGenerator, conflicts.Scenario, signerFunc)
+	}
+	return newStatisticalConflicts(txGenerator, conflicts.Statistical, signerFunc)
 }
 
 type scenarioHandler struct {
-	isSigConflict     map[string]bool
-	hasDoubleConflict map[string][]int
-	doublesMapping    map[string]string
-	doubles           map[string][]byte
-	signFnc           SignerFunc
+	counter       TxAbsoluteOrder
+	delegate      sigverificationtest.TxGenerator
+	isSigConflict map[TxAbsoluteOrder]bool
+	doubles       map[TxAbsoluteOrder]map[SNRelativeOrder]*token.SerialNumber
+	signFnc       signerFunc
 }
 
-func NewConflictHandler(scenario *ScenarioConflicts, statistical *StatisticalConflicts, signerFunc SignerFunc) ConflictHandler {
-	if scenario == nil && statistical == nil {
-		return NewNoConflicts()
-	}
-	if scenario != nil && statistical != nil {
-		panic("only one type supported")
-	}
-	if scenario != nil {
-		return NewScenarioConflicts(scenario, signerFunc)
-	}
-	return NewStatisticalConflicts(statistical, signerFunc)
-}
+const separator = "-"
 
-func NewScenarioConflicts(pp *ScenarioConflicts, signerFnc SignerFunc) ConflictHandler {
-
-	// TODO let's think about a different construction of this conflict mapper
-	// as Alex suggested we could use `map[BlkNum]map[TxNum]map[SnNum]SerialNumber`
-
+func newScenarioConflicts(txGenerator sigverificationtest.TxGenerator, pp *ScenarioConflicts, signerFnc signerFunc) sigverificationtest.TxGenerator {
 	c := &scenarioHandler{
-		// TODO find better name for these helpers
-		isSigConflict:     make(map[string]bool),   // txid to invalid sig
-		hasDoubleConflict: make(map[string][]int),  // txid to list of sn positions
-		doublesMapping:    make(map[string]string), // txid to snid
-		doubles:           make(map[string][]byte), // snid to bytes
-		signFnc:           signerFnc,
+		delegate:      txGenerator,
+		isSigConflict: make(map[TxAbsoluteOrder]bool),                                    // txid to invalid sig
+		doubles:       make(map[TxAbsoluteOrder]map[SNRelativeOrder]*token.SerialNumber), // snid to bytes
+		signFnc:       signerFnc,
 	}
 
-	for txid, o := range *pp {
-		if o.InvalidSignature {
-			c.isSigConflict[txid] = true
-		}
-
-		if len(o.DoubleSpends) == 0 {
-			continue
-		}
-
-		// current txid
-
-		var sns []int
-		for sn, targetSnid := range o.DoubleSpends {
-			snid := fmt.Sprintf(snFormatter, txid, sn)
-			// sanity check targetSnid < snid
-			if !inThePast(snid, targetSnid) {
-				panic("INVALID Your conflict does not make sense. " + snid + " references " + targetSnid)
+	for _, txOrder := range pp.InvalidSignatures {
+		c.isSigConflict[txOrder] = true
+	}
+	for _, doubleSpendGroup := range pp.DoubleSpends {
+		sn := &txGenerator.Next().Tx.SerialNumbers[0]
+		for _, txSnOrder := range doubleSpendGroup {
+			parts := strings.Split(txSnOrder, separator)
+			if len(parts) != 2 {
+				panic("invalid conflict format")
 			}
-
-			sns = append(sns, sn)
-			c.doubles[targetSnid] = nil
-			c.doublesMapping[snid] = targetSnid
+			txOrder, _ := strconv.Atoi(parts[0])
+			snOrder, _ := strconv.Atoi(parts[1])
+			txDoubles, ok := c.doubles[uint64(txOrder)]
+			if !ok {
+				txDoubles = make(map[SNRelativeOrder]*token.SerialNumber)
+				c.doubles[uint64(txOrder)] = txDoubles
+			}
+			txDoubles[uint32(snOrder)] = sn
 		}
-		c.hasDoubleConflict[txid] = sns
 	}
 
 	return c
 }
 
-// inThePast checks that transaction a is before transaction a.
-// Returns true if b < a; otherwise false
-func inThePast(a, b string) bool {
-	aaa := strings.Split(a, "-")
-	bbb := strings.Split(b, "-")
+func (h *scenarioHandler) Next() *sigverificationtest.TxWithStatus {
+	order := atomic.AddUint64(&h.counter, 1)
 
-	if len(aaa) != len(bbb) && len(aaa) != 3 {
-		panic("inThePast inputs are bad! a: " + a + " b: " + b)
-	}
-
-	toNum := func(s string) int64 {
-		num, err := strconv.ParseInt(s, 10, 64)
-		utils.Must(err)
-		return num
-	}
-
-	aBlNum, bBlNum := toNum(aaa[0]), toNum(bbb[0])
-	aTxNum, bTxNum := toNum(aaa[1]), toNum(bbb[1])
-	// note that we don't care about the sn here
-
-	return bBlNum <= aBlNum && bTxNum < aTxNum
-}
-
-func (h *scenarioHandler) ApplyConflicts(txId token.TxSeqNum, tx *token.Tx) coordinatorservice.Status {
-	txid := fmt.Sprintf("%d-%d", txId.BlkNum, txId.TxNum)
-
-	// collect sn as double candidate as we need to use it later
-	for i, sn := range tx.SerialNumbers {
-		// store the sn for later if we need it
-		snid := fmt.Sprintf(snFormatter, txid, i)
-		if _, ok := h.doubles[snid]; ok {
-			h.doubles[snid] = sn
-		}
-	}
-
-	// note that we currently create conflicts which are either INVALID_SIGNATURE or DOUBLE_SPEND
-
-	// apply signature conflicts
-	if _, ok := h.isSigConflict[txid]; ok {
+	tx := h.delegate.Next().Tx
+	if h.isSigConflict[order] {
 		sigverificationtest.Reverse(tx.Signature)
-		return coordinatorservice.Status_INVALID_SIGNATURE
+		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_INVALID_SIGNATURE}
 	}
-
-	// apply double spends
-	if sns, ok := h.hasDoubleConflict[txid]; ok {
-		// replace
-		for _, j := range sns {
-			snid := fmt.Sprintf(snFormatter, txid, j)
-			targetSnid, ok := h.doublesMapping[snid]
-			if !ok {
-				panic("mama mia! cannot apply conflict as we have not seen" + targetSnid)
+	if txDoubles, ok := h.doubles[order]; ok {
+		for snOrder, sn := range txDoubles {
+			if snOrder < uint32(len(tx.SerialNumbers)) {
+				tx.SerialNumbers[snOrder] = *sn
 			}
-
-			// lookup
-			newSn, ok := h.doubles[targetSnid]
-			if !ok {
-				panic("ohhh gosh: " + snid + " cannot find")
-			}
-
-			// replace
-			tx.SerialNumbers[j-1] = newSn
 		}
-		// re-sign
-		var err error
-		tx.Signature, err = h.signFnc(tx.SerialNumbers, tx.Outputs)
-		utils.Must(err)
-
-		return coordinatorservice.Status_DOUBLE_SPEND
+		tx.Signature, _ = h.signFnc(tx.SerialNumbers, tx.Outputs)
+		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_DOUBLE_SPEND}
 	}
 
-	return coordinatorservice.Status_VALID
+	return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_VALID}
 }

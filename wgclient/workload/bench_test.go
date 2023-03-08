@@ -48,17 +48,16 @@ func BenchmarkGenSingle(b *testing.B) {
 
 	vr := 1.0
 
-	g := &sigverification_test.TxGenerator{
+	g := NewConflictDecorator(&sigverification_test.ValidTxGenerator{
 		TxSigner:                signer,
 		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
 		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
-		ValidSigRatioGenerator:  test.NewBooleanGenerator(test.PercentageUniformDistribution, vr, 10),
-	}
+	}, &ConflictProfile{Statistical: &StatisticalConflicts{InvalidSignatures: vr}}, signer.SignTx)
 
 	var tx *token.Tx
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		tx, _ = g.Next()
+		tx = g.Next().Tx
 	}
 	r = tx
 }

@@ -4,7 +4,7 @@ block:
 conflicts:
   statistical:
     doublespends: 0.0
-    invalidsignature: 0.0
+    invalidsignatures: 0.0
 description: some text
 name: profile1
 transaction:

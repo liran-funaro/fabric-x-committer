@@ -21,11 +21,7 @@ transaction:
 # Introduce conflicts into our block stream
 conflicts:
   scenario:
-    # maps txid (block-tx) to conflict
-    1-4:
-      invalidsignature: true
-    1-8:
-      # maps sn in other transactions (block-tx-sn)
-      invalidsignature: true
-    77-0:
-      invalidsignature: true
+    invalidsignatures:
+      - 7
+      - 8
+      - 770

@@ -14,17 +14,17 @@ import (
 const ScrapingInterval = 15 * time.Second
 
 type Metrics struct {
-	generatorRequests  prometheus.Counter
+	generatorRequests  *prometheus.CounterVec
 	generatorResponses *prometheus.CounterVec
 	requestTracer      metrics.AppTracer
 }
 
 func NewMetrics() *Metrics {
 	return &Metrics{
-		generatorRequests: prometheus.NewCounter(prometheus.CounterOpts{
+		generatorRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "e2e_requests",
 			Help: "E2E requests sent by the generator",
-		}),
+		}, []string{"status"}),
 		generatorResponses: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "e2e_responses",
 			Help: "E2E responses received by the generator",
@@ -61,18 +61,18 @@ func (t *MetricTracker) RegisterEvent(e *Event) {
 		for i := uint64(0); i < uint64(e.SubmittedBlock.Size); i++ {
 			t.metrics.requestTracer.StartAt(token.TxSeqNum{e.SubmittedBlock.Id, i}, e.Timestamp)
 		}
-		t.RequestSent(e.SubmittedBlock.Size)
+		t.RequestSent(e.SubmittedBlock.Size, coordinatorservice.Status_UNKNOWN)
 	case EventReceived:
 		for _, status := range e.StatusBatch.TxsValidationStatus {
 			t.metrics.requestTracer.EndAt(token.TxSeqNum{status.BlockNum, status.TxNum}, e.Timestamp, status.Status.String())
-			t.ResponseReceived(status.Status, 1)
+			t.ResponseReceived(1, status.Status)
 		}
 	}
 }
 
-func (t *MetricTracker) RequestSent(size int) {
-	t.metrics.generatorRequests.Add(float64(size))
+func (t *MetricTracker) RequestSent(size int, status coordinatorservice.Status) {
+	t.metrics.generatorRequests.WithLabelValues(status.String()).Add(float64(size))
 }
-func (t *MetricTracker) ResponseReceived(status coordinatorservice.Status, size int) {
+func (t *MetricTracker) ResponseReceived(size int, status coordinatorservice.Status) {
 	t.metrics.generatorResponses.WithLabelValues(status.String()).Add(float64(size))
 }

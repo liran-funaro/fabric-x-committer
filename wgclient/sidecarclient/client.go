@@ -1,7 +1,6 @@
 package sidecarclient
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"sync"
 	"sync/atomic"
 
@@ -9,9 +8,11 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
+	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
@@ -136,7 +137,7 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
 }
 
-func (c *Client) Send(txs chan *token.Tx, onRequestSend func()) {
+func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend func(*sigverification_test.TxWithStatus)) {
 	logger.Infof("Sending messages to all open streams.\n")
 
 	var wg sync.WaitGroup
@@ -147,9 +148,9 @@ func (c *Client) Send(txs chan *token.Tx, onRequestSend func()) {
 			for {
 				select {
 				case tx := <-txs:
-					item := serialization.MarshalTx(tx)
+					item := serialization.MarshalTx(tx.Tx)
 					env, err := c.envelopeCreator.CreateEnvelope(item)
-					onRequestSend()
+					onRequestSend(tx)
 					utils.Must(err)
 					input <- env
 				}

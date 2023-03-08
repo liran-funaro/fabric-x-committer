@@ -21,22 +21,17 @@ transaction:
 # Introduce conflicts into our block stream
 conflicts:
 #  scenario:
-#    # maps txid (block-tx) to conflict
-#    1-8:
-#      # maps sn in other transactions (block-tx-sn)
-#      doublespends:
-#        1: 1-1-0
-#        2: 1-2-1
-#    1-4:
-#      invalidsignature: true
-#    400-8:
-#      doublespends:
-#        3: 1-1-0
-#    765-0:
-#      invalidsignature: true
-#    999-8:
-#      doublespends:
-#        3: 4-2-2
+#    invalidsignatures:
+#      - 1
+#      - 3
+#      - 5
+#    doublespends:
+#      - - 2:1
+#        - 4:1
+#        - 6:2
+#      - - 7:1
+#        - 7:2
+#        - 8:1
   statistical:
-    invalidsignature: 0.5
+    invalidsignatures: 0.5
     doublespends: 0.7

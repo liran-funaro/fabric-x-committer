@@ -58,7 +58,7 @@
                 probability: "{{small_txs}}"
               - value: 8
                 probability: "{{large_txs}}"
-          - key: conflicts.statistical.invalidsignature
+          - key: conflicts.statistical.invalidsignatures
             value: "{{invalidity_ratio}}"
           - key: conflicts.statistical.doublespends
             value: "{{double_spends}}"

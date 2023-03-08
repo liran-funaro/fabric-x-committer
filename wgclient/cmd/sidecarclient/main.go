@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
+	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
@@ -43,21 +43,22 @@ func main() {
 	client, err := sidecarclient.NewClient(opts)
 	utils.Must(err)
 
-	var txs chan *token.Tx
+	var txs chan *sigverification_test.TxWithStatus
 	if len(c.Profile) > 0 {
 		profile := workload.LoadProfileFromYaml(c.Profile)
-		publicKey, _, txCh := workload.StartTxGenerator(&profile.Transaction, 100)
+		publicKey, txCh := workload.StartTxGenerator(&profile.Transaction, profile.Conflicts, 100)
 		utils.Must(client.SetCommitterKey(publicKey))
 		txs = txCh
 	} else {
-		txs = make(chan *token.Tx)
+		txs = make(chan *sigverification_test.TxWithStatus)
 	}
 
-	go client.Send(txs, func() { tracker.RequestSent(1) })
+	go client.Send(txs, func(tx *sigverification_test.TxWithStatus) { tracker.RequestSent(1, tx.Status) })
 
 	client.StartListening(func(block *common.Block) {
-
-		tracker.ResponseReceived(coordinatorservice.Status_VALID, len(block.Data.Data))
+		for _, statusCode := range block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] {
+			tracker.ResponseReceived(1, sidecar.StatusInverseMap[statusCode])
+		}
 		fmt.Printf("Block received %d:%d\n", block.Header.Number, len(block.Data.Data))
 	})
 }

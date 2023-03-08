@@ -18,6 +18,15 @@ var statusMap = map[coordinatorservice.Status]validationCode{
 	coordinatorservice.Status_INVALID_SIGNATURE: validationCode(peer.TxValidationCode_BAD_CREATOR_SIGNATURE),
 	coordinatorservice.Status_UNKNOWN:           validationCode(peer.TxValidationCode_UNSUPPORTED_TX_PAYLOAD),
 }
+var StatusInverseMap = inverseStatusMap(statusMap)
+
+func inverseStatusMap(m map[coordinatorservice.Status]validationCode) map[validationCode]coordinatorservice.Status {
+	r := make(map[validationCode]coordinatorservice.Status, len(m))
+	for status, code := range m {
+		r[code] = status
+	}
+	return r
+}
 
 const (
 	excludedStatus  = validationCode(peer.TxValidationCode_VALID)

@@ -21,10 +21,7 @@ type Profile struct {
 
 	Transaction TransactionProfile
 
-	Conflicts struct {
-		Scenario    *ScenarioConflicts
-		Statistical *StatisticalConflicts
-	}
+	Conflicts *ConflictProfile
 }
 
 func Always(size int) []test.DiscreteValue {
@@ -40,17 +37,21 @@ type TransactionProfile struct {
 	OutputSize       []test.DiscreteValue
 	Signature        signature.Profile
 }
-type ScenarioConflicts map[string]struct {
-	InvalidSignature bool
-	DoubleSpends     map[int]string
+type TxAbsoluteOrder = uint64               // The absolute order of the TX since the beginning
+type SNRelativeOrder = uint32               // The order of the SN within this TX
+type TxSnAbsoluteOrder = string             // TxAbsoluteOrder:SNRelativeOrder
+type DoubleSpendGroup = []TxSnAbsoluteOrder // TXs that share the same SN
+type ScenarioConflicts struct {
+	InvalidSignatures []TxAbsoluteOrder
+	DoubleSpends      []DoubleSpendGroup
 }
 type ConflictProfile struct {
 	Scenario    *ScenarioConflicts
 	Statistical *StatisticalConflicts
 }
 type StatisticalConflicts struct {
-	InvalidSignature test.Percentage
-	DoubleSpends     test.Percentage
+	InvalidSignatures test.Percentage
+	DoubleSpends      test.Percentage //TODO: AF Fix
 }
 
 func LoadProfileFromYaml(yamlPath string) *Profile {
