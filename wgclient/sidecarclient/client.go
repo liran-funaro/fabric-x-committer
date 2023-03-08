@@ -137,7 +137,7 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
 }
 
-func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend func(*sigverification_test.TxWithStatus)) {
+func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend func(*sigverification_test.TxWithStatus, *common.Envelope)) {
 	logger.Infof("Sending messages to all open streams.\n")
 
 	var wg sync.WaitGroup
@@ -150,7 +150,7 @@ func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend
 				case tx := <-txs:
 					item := serialization.MarshalTx(tx.Tx)
 					env, err := c.envelopeCreator.CreateEnvelope(item)
-					onRequestSend(tx)
+					onRequestSend(tx, env)
 					utils.Must(err)
 					input <- env
 				}

@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,25 +21,31 @@ type traceData struct {
 	span  trace.Span
 }
 
-type latencyTracer struct {
-	histogram *prometheus.HistogramVec
-	name      string
-	enabled   bool
-	traces    map[token.TxSeqNum]*traceData
-	worker    workerpool.WorkerPool
-	sampler   TxSeqNumSampler
-	tracer    trace.Tracer
-	labels    []string
+type TxTracingId = interface {
+	String() string
 }
 
-type TxSeqNumSampler = func(key token.TxSeqNum) bool
+type latencyTracer struct {
+	histogram    *prometheus.HistogramVec
+	name         string
+	enabled      bool
+	traces       map[TxTracingId]*traceData
+	errorHandler func(interface{})
+	worker       workerpool.WorkerPool
+	sampler      TxTracingSampler
+	tracer       trace.Tracer
+	labels       []string
+}
+
+type TxTracingSampler = func(key TxTracingId) bool
 type LatencyTracerOpts struct {
-	Name     string
-	Help     string
-	Count    int
-	From, To time.Duration
-	Sampler  TxSeqNumSampler
-	Labels   []string
+	Name           string
+	Help           string
+	Count          int
+	From, To       time.Duration
+	Sampler        TxTracingSampler
+	IgnoreNotFound bool
+	Labels         []string
 }
 
 const (
@@ -47,19 +54,39 @@ const (
 	samplePeriod = 100_000
 )
 
-var AlwaysSampler = func(key token.TxSeqNum) bool {
+var AlwaysSampler = func(key TxTracingId) bool {
 	return true
 }
 
-func OnceSampler(uniqueKey token.TxSeqNum) TxSeqNumSampler {
-	return func(key token.TxSeqNum) bool {
+func OnceSampler(uniqueKey TxTracingId) TxTracingSampler {
+	return func(key TxTracingId) bool {
 		return uniqueKey == key
 	}
 }
 
-var ScarceSampler = func(key token.TxSeqNum) bool {
-	hash := key.BlkNum % samplePeriod
+var ScarceSampler = func(key TxTracingId) bool {
+	hash := key.(token.TxSeqNum).BlkNum % samplePeriod
 	return hash < sampleSize && hash%ratio == 0
+}
+
+func NewPrefixSampler(prefix string) TxTracingSampler {
+	prefixLength := len(prefix)
+	return func(id TxTracingId) bool {
+		str := id.String()
+		return len(str) >= prefixLength && str[:prefixLength] == prefix
+	}
+}
+
+func NewDefaultLatencyTracerWithSampler(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, sampler TxTracingSampler, labels ...string) *latencyTracer {
+	return NewLatencyTracer(LatencyTracerOpts{
+		Name:    name,
+		Help:    "Total latency on the component",
+		Count:   1000,
+		From:    0,
+		To:      maxValue,
+		Sampler: sampler,
+		Labels:  labels,
+	}, tp)
 }
 
 func NewDefaultLatencyTracer(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, labels ...string) *latencyTracer {
@@ -76,23 +103,23 @@ func NewDefaultLatencyTracer(name string, maxValue time.Duration, tp *sdktrace.T
 
 type NoopLatencyTracer struct{}
 
-func (t *NoopLatencyTracer) Start(token.TxSeqNum)                         {}
-func (t *NoopLatencyTracer) StartAt(token.TxSeqNum, time.Time)            {}
-func (t *NoopLatencyTracer) AddEvent(token.TxSeqNum, string)              {}
-func (t *NoopLatencyTracer) AddEventAt(token.TxSeqNum, string, time.Time) {}
-func (t *NoopLatencyTracer) End(token.TxSeqNum, ...string)                {}
-func (t *NoopLatencyTracer) EndAt(token.TxSeqNum, time.Time, ...string)   {}
+func (t *NoopLatencyTracer) Start(TxTracingId)                         {}
+func (t *NoopLatencyTracer) StartAt(TxTracingId, time.Time)            {}
+func (t *NoopLatencyTracer) AddEvent(TxTracingId, string)              {}
+func (t *NoopLatencyTracer) AddEventAt(TxTracingId, string, time.Time) {}
+func (t *NoopLatencyTracer) End(TxTracingId, ...string)                {}
+func (t *NoopLatencyTracer) EndAt(TxTracingId, time.Time, ...string)   {}
 func (t *NoopLatencyTracer) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{}
 }
 
 type AppTracer interface {
-	Start(token.TxSeqNum)
-	StartAt(token.TxSeqNum, time.Time)
-	AddEvent(token.TxSeqNum, string)
-	AddEventAt(token.TxSeqNum, string, time.Time)
-	End(token.TxSeqNum, ...string)
-	EndAt(token.TxSeqNum, time.Time, ...string)
+	Start(TxTracingId)
+	StartAt(TxTracingId, time.Time)
+	AddEvent(TxTracingId, string)
+	AddEventAt(TxTracingId, string, time.Time)
+	End(TxTracingId, ...string)
+	EndAt(TxTracingId, time.Time, ...string)
 	Collectors() []prometheus.Collector
 }
 
@@ -106,26 +133,39 @@ func NewLatencyTracer(opts LatencyTracerOpts, tp *sdktrace.TracerProvider) *late
 		}, opts.Labels),
 		name:   opts.Name,
 		tracer: tp.Tracer(opts.Name),
-		traces: map[token.TxSeqNum]*traceData{},
+		traces: map[TxTracingId]*traceData{},
 		worker: *workerpool.New(&workerpool.Config{
 			Parallelism:     1,
 			ChannelCapacity: 1000,
 		}),
-		sampler: opts.Sampler,
-		labels:  opts.Labels,
+		sampler:      opts.Sampler,
+		errorHandler: newErrorHandler(opts.IgnoreNotFound),
+		labels:       opts.Labels,
 	}
 }
 
-func (h *latencyTracer) Start(key token.TxSeqNum) {
+func newErrorHandler(ignore bool) func(interface{}) {
+	if ignore {
+		return func(s interface{}) {
+			logger.Debug(s)
+		}
+	} else {
+		return func(s interface{}) {
+			panic(s)
+		}
+	}
+}
+
+func (h *latencyTracer) Start(key TxTracingId) {
 	h.StartAt(key, time.Now())
 }
 
-func (h *latencyTracer) StartAt(key token.TxSeqNum, timestamp time.Time) {
+func (h *latencyTracer) StartAt(key TxTracingId, timestamp time.Time) {
 	if !h.enabled || !h.sampler(key) {
 		return
 	}
 
-	h.worker.Run(func(key token.TxSeqNum, timestamp time.Time) func() {
+	h.worker.Run(func(key TxTracingId, timestamp time.Time) func() {
 		return func() {
 			ctx := context.WithValue(context.Background(), "id", key.String())
 			_, span := h.tracer.Start(ctx, "TxRequest", trace.WithTimestamp(timestamp), trace.WithAttributes(attribute.String("id", key.String())))
@@ -134,20 +174,20 @@ func (h *latencyTracer) StartAt(key token.TxSeqNum, timestamp time.Time) {
 	}(key, timestamp))
 }
 
-func (h *latencyTracer) AddEvent(key token.TxSeqNum, name string) {
+func (h *latencyTracer) AddEvent(key TxTracingId, name string) {
 	h.AddEventAt(key, name, time.Now())
 }
 
-func (h *latencyTracer) AddEventAt(key token.TxSeqNum, name string, timestamp time.Time) {
+func (h *latencyTracer) AddEventAt(key TxTracingId, name string, timestamp time.Time) {
 	if !h.enabled || !h.sampler(key) {
 		return
 	}
 
-	h.worker.Run(func(key token.TxSeqNum, timestamp time.Time) func() {
+	h.worker.Run(func(key TxTracingId, timestamp time.Time) func() {
 		return func() {
 			t, ok := h.traces[key]
 			if !ok {
-				h.handleError("error with tracer: " + h.name + " at event: " + name)
+				h.errorHandler(fmt.Sprintf("error with tracer: %s at event: %s", h.name, name))
 			} else {
 				t.span.AddEvent(name, trace.WithTimestamp(timestamp))
 			}
@@ -155,11 +195,11 @@ func (h *latencyTracer) AddEventAt(key token.TxSeqNum, name string, timestamp ti
 	}(key, timestamp))
 }
 
-func (h *latencyTracer) End(key token.TxSeqNum, labels ...string) {
+func (h *latencyTracer) End(key TxTracingId, labels ...string) {
 	h.EndAt(key, time.Now(), labels...)
 }
 
-func (h *latencyTracer) EndAt(key token.TxSeqNum, timestamp time.Time, labels ...string) {
+func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, labels ...string) {
 	if !h.enabled || !h.sampler(key) {
 		return
 	}
@@ -169,16 +209,17 @@ func (h *latencyTracer) EndAt(key token.TxSeqNum, timestamp time.Time, labels ..
 		attributes[i] = attribute.String(label, labels[i])
 	}
 
-	h.worker.Run(func(key token.TxSeqNum, timestamp time.Time) func() {
+	h.worker.Run(func(key TxTracingId, timestamp time.Time) func() {
 		return func() {
 			t, ok := h.traces[key]
 			if !ok {
-				panic("error with tracer: " + h.name + " at end")
+				h.errorHandler(fmt.Sprintf("error with tracer: %s: %s at end", h.name, key.String()))
+			} else {
+				t.span.SetAttributes(attributes...)
+				t.span.End(trace.WithTimestamp(timestamp))
+				delete(h.traces, key)
+				h.histogram.WithLabelValues(labels...).Observe(float64(timestamp.Sub(t.start)))
 			}
-			t.span.SetAttributes(attributes...)
-			t.span.End(trace.WithTimestamp(timestamp))
-			delete(h.traces, key)
-			h.histogram.WithLabelValues(labels...).Observe(float64(timestamp.Sub(t.start)))
 		}
 	}(key, timestamp))
 
