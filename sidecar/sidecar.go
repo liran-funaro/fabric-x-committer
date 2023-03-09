@@ -1,7 +1,6 @@
 package sidecar
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -11,6 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"

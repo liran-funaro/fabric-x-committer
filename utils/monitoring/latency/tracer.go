@@ -30,7 +30,6 @@ type latencyTracer struct {
 	worker       workerpool.WorkerPool
 	sampler      TxTracingSampler
 	tracer       trace.Tracer
-	labels       []string
 }
 
 type TracerOpts struct {
@@ -45,12 +44,12 @@ type TracerOpts struct {
 
 type NoOpTracer struct{}
 
-func (t *NoOpTracer) Start(TxTracingId)                         {}
-func (t *NoOpTracer) StartAt(TxTracingId, time.Time)            {}
-func (t *NoOpTracer) AddEvent(TxTracingId, string)              {}
-func (t *NoOpTracer) AddEventAt(TxTracingId, string, time.Time) {}
-func (t *NoOpTracer) End(TxTracingId, ...string)                {}
-func (t *NoOpTracer) EndAt(TxTracingId, time.Time, ...string)   {}
+func (t *NoOpTracer) Start(TxTracingId)                                   {}
+func (t *NoOpTracer) StartAt(TxTracingId, time.Time)                      {}
+func (t *NoOpTracer) AddEvent(TxTracingId, string)                        {}
+func (t *NoOpTracer) AddEventAt(TxTracingId, string, time.Time)           {}
+func (t *NoOpTracer) End(TxTracingId, ...attribute.KeyValue)              {}
+func (t *NoOpTracer) EndAt(TxTracingId, time.Time, ...attribute.KeyValue) {}
 func (t *NoOpTracer) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{}
 }
@@ -72,7 +71,6 @@ func NewLatencyTracer(opts TracerOpts, tp *sdktrace.TracerProvider) *latencyTrac
 		}),
 		sampler:      opts.Sampler,
 		errorHandler: newErrorHandler(opts.IgnoreNotFound),
-		labels:       opts.Labels,
 	}
 }
 
@@ -127,18 +125,18 @@ func (h *latencyTracer) AddEventAt(key TxTracingId, name string, timestamp time.
 	}(key, timestamp))
 }
 
-func (h *latencyTracer) End(key TxTracingId, labels ...string) {
-	h.EndAt(key, time.Now(), labels...)
+func (h *latencyTracer) End(key TxTracingId, attributes ...attribute.KeyValue) {
+	h.EndAt(key, time.Now(), attributes...)
 }
 
-func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, labels ...string) {
+func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, attributes ...attribute.KeyValue) {
 	if !h.enabled || !h.sampler(key) {
 		return
 	}
 
-	attributes := make([]attribute.KeyValue, len(h.labels))
-	for i, label := range h.labels {
-		attributes[i] = attribute.String(label, labels[i])
+	labels := make(prometheus.Labels, len(attributes))
+	for _, attr := range attributes {
+		labels[string(attr.Key)] = attr.Value.AsString()
 	}
 
 	h.worker.Run(func(key TxTracingId, timestamp time.Time) func() {
@@ -150,7 +148,7 @@ func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, labels ...st
 				t.span.SetAttributes(attributes...)
 				t.span.End(trace.WithTimestamp(timestamp))
 				delete(h.traces, key)
-				h.histogram.WithLabelValues(labels...).Observe(float64(timestamp.Sub(t.start)))
+				h.histogram.With(labels).Observe(float64(timestamp.Sub(t.start)))
 			}
 		}
 	}(key, timestamp))

@@ -41,6 +41,8 @@ type Metrics struct {
 	SigVerifierMgrInvalidOutputChLength *metrics.ChannelBufferGauge
 }
 
+const StatusLabel = "status"
+
 type Provider struct {
 }
 
@@ -48,7 +50,7 @@ func (p *Provider) ComponentName() string {
 	return "coordinator"
 }
 func (p *Provider) LatencyLabels() []string {
-	return []string{"status"}
+	return []string{StatusLabel}
 }
 func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	if !enabled {

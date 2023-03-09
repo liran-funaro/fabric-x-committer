@@ -1,6 +1,7 @@
 package workload
 
 import (
+	"go.opentelemetry.io/otel/attribute"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,6 +13,7 @@ import (
 )
 
 const ScrapingInterval = 15 * time.Second
+const StatusLabel = "status"
 
 type Metrics struct {
 	generatorRequests  *prometheus.CounterVec
@@ -26,18 +28,18 @@ func (p *Provider) ComponentName() string {
 	return "generator"
 }
 func (p *Provider) LatencyLabels() []string {
-	return []string{"status"}
+	return []string{StatusLabel}
 }
 func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	return &Metrics{
 		generatorRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "e2e_requests",
 			Help: "E2E requests sent by the generator",
-		}, []string{"status"}),
+		}, []string{StatusLabel}),
 		generatorResponses: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "e2e_responses",
 			Help: "E2E responses received by the generator",
-		}, []string{"status"}),
+		}, []string{StatusLabel}),
 		requestTracer: tracer,
 	}
 }
@@ -76,6 +78,6 @@ func (t *MetricTracker) RequestSent(txId latency.TxTracingId, status coordinator
 	t.metrics.requestTracer.StartAt(txId, timestamp)
 }
 func (t *MetricTracker) ResponseReceived(txId latency.TxTracingId, status coordinatorservice.Status, timestamp time.Time) {
-	t.metrics.requestTracer.EndAt(txId, timestamp, status.String())
+	t.metrics.requestTracer.EndAt(txId, timestamp, attribute.String(StatusLabel, status.String()))
 	t.metrics.generatorResponses.WithLabelValues(status.String()).Add(1)
 }

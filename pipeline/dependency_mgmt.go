@@ -6,6 +6,7 @@ import (
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type dependencyMgr struct {
@@ -232,7 +233,7 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	if m.metrics.Enabled {
 		sent := time.Now()
 		for _, status := range processedTxs {
-			m.metrics.RequestTracer.EndAt(status.TxSeqNum, sent, status.Status.String())
+			m.metrics.RequestTracer.EndAt(status.TxSeqNum, sent, attribute.String(metrics.StatusLabel, status.Status.String()))
 		}
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))

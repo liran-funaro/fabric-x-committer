@@ -1,8 +1,10 @@
 package latency
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type AppTracer interface {
@@ -10,8 +12,8 @@ type AppTracer interface {
 	StartAt(TxTracingId, time.Time)
 	AddEvent(TxTracingId, string)
 	AddEventAt(TxTracingId, string, time.Time)
-	End(TxTracingId, ...string)
-	EndAt(TxTracingId, time.Time, ...string)
+	End(TxTracingId, ...attribute.KeyValue)
+	EndAt(TxTracingId, time.Time, ...attribute.KeyValue)
 	Collectors() []prometheus.Collector
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var logger = logging.New("shard coordinator")
@@ -113,7 +114,7 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream Shards_StartPhaseOne
 			for _, response := range responses {
 				txID := pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}
 				s.metrics.RequestTracer.AddEventAt(txID, "Finished calculation on all shards.", end)
-				s.metrics.RequestTracer.End(txID, response.Status.String())
+				s.metrics.RequestTracer.End(txID, attribute.String(metrics.StatusLabel, response.Status.String()))
 			}
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var logger = logging.New("verifierserver")
@@ -43,7 +44,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			if s.metrics.Enabled {
 				m.VerifierServerOutTxs.Add(len(outputs))
 				for _, output := range outputs {
-					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, metrics.ValidStatusMap[output.IsValid])
+					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, attribute.String(metrics.ValidLabel, metrics.ValidStatusMap[output.IsValid]))
 				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
