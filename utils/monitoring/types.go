@@ -11,11 +11,11 @@ const (
 	Other
 )
 
-var componentTypeName = map[ComponentType]string{
-	Coordinator:   "Coordinator",
-	SigVerifier:   "SigVerifier",
-	ShardsService: "ShardsService",
-	Generator:     "Generator",
-	Sidecar:       "Sidecar",
-	Other:         "Other",
+var componentTypeMap = map[ComponentType]string{
+	Coordinator:   "coordinator",
+	SigVerifier:   "sigverifier",
+	ShardsService: "shards-service",
+	Generator:     "generator",
+	Sidecar:       "sidecar",
+	Other:         "other",
 }

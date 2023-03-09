@@ -10,17 +10,14 @@ import (
 
 	"github.com/hyperledger/fabric-config/protolator"
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric"
-	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
 
@@ -71,8 +68,8 @@ func main() {
 	}
 
 	fmt.Printf("Exporting metrics ...\n")
-	m := newListenerMetrics()
-	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
+
+	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Other, &Provider{}).(*Metrics)
 	bar := workload.NewProgressBar("Received transactions...", -1, "tx")
 
 	fmt.Printf("Start listing...\n")
@@ -91,23 +88,4 @@ func main() {
 		m.BlockSizes.Set(float64(blockSize))
 		bar.Add(blockSize)
 	}))
-}
-
-func newListenerMetrics() *ListenerMetrics {
-	return &ListenerMetrics{
-		&cmd.ThroughputMetrics{metrics.NewThroughputCounter("listener", metrics.In)},
-		prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "block_sizes",
-			Help: "Sizes of incoming blocks",
-		}, []string{"sub_component"}).With(prometheus.Labels{"sub_component": "listener"}),
-	}
-}
-
-type ListenerMetrics struct {
-	*cmd.ThroughputMetrics
-	BlockSizes prometheus.Gauge
-}
-
-func (m *ListenerMetrics) AllMetrics() []prometheus.Collector {
-	return append(m.ThroughputMetrics.AllMetrics(), m.BlockSizes)
 }

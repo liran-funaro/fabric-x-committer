@@ -8,9 +8,19 @@ sidecar:
       enforcement-policy:
         min-time: 60s
         permit-without-stream: false
-  prometheus:                                                   # Overridden by ansible
-    endpoint: :2112
-    latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
+  monitoring:
+    metrics:
+      endpoint: :2112                                         # Overridden by ansible
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      max-latency: 20s
+      bucket-count: 1000
   orderer:
     endpoint: :7050                                             # Overridden by ansible
     channel-id: mychannel                                       # Overridden by ansible

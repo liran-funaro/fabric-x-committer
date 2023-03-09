@@ -3,6 +3,7 @@ package verifierserver_test
 import (
 	"context"
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -63,7 +64,8 @@ func BenchmarkVerifierServer(b *testing.B) {
 			config.InputGeneratorParams.RequestBatch.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
-				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, metrics.New(false))
+				m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, m)
 				c := sigverification_test.NewTestState(server)
 				t := connection.NewRequestTracker()
 				defer c.TearDown()

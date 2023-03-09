@@ -13,11 +13,9 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric"
-	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric/clients/cmd"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 )
@@ -30,8 +28,7 @@ func main() {
 	creds, signer := connection.GetOrdererConnectionCreds(p)
 	_ = signer
 
-	m := newSubmitterMetrics()
-	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Other, m)
+	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Other, &Provider{}).(*Metrics)
 
 	msgsPerGo := c.Messages / c.GoRoutines
 	roundMsgs := msgsPerGo * c.GoRoutines
@@ -121,14 +118,4 @@ func main() {
 	utils.Must(s.CloseStreamsAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")
-}
-
-func newSubmitterMetrics() *SubmitterMetrics {
-	return &SubmitterMetrics{
-		&cmd.ThroughputMetrics{Throughput: metrics.NewThroughputCounter("submitter", metrics.Out)},
-	}
-}
-
-type SubmitterMetrics struct {
-	*cmd.ThroughputMetrics
 }

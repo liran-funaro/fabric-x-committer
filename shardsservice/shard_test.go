@@ -1,6 +1,7 @@
 package shardsservice
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -16,7 +17,8 @@ type shardForTest struct {
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
 	c := ReadConfig()
-	s, err := newShard(id, &DatabaseConfig{Type: GoLevelDb, RootDir: path}, c.Limits, metrics.New(false))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	s, err := newShard(id, &DatabaseConfig{Type: GoLevelDb, RootDir: path}, c.Limits, m)
 	require.NoError(t, err)
 
 	return &shardForTest{

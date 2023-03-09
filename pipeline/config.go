@@ -40,7 +40,7 @@ type ShardServerInstanceConfig struct {
 }
 
 type CoordinatorConfig struct {
-	Prometheus    monitoring.Prometheus    `mapstructure:"prometheus"`
+	Monitoring    monitoring.Config        `mapstructure:"monitoring"`
 	Server        *connection.ServerConfig `mapstructure:"server"`
 	SigVerifiers  *SigVerifierMgrConfig    `mapstructure:"sig-verifiers"`
 	ShardsServers *ShardsServerMgrConfig   `mapstructure:"shards-servers"`
@@ -74,8 +74,8 @@ func init() {
 	})
 
 	viper.SetDefault("coordinator.server.endpoint", ":5002")
-	viper.SetDefault("coordinator.prometheus.endpoint", ":2112")
-	viper.SetDefault("coordinator.prometheus.latency-endpoint", ":14268")
+	viper.SetDefault("coordinator.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("coordinator.monitoring.latency.endpoint", ":14268")
 
 	viper.SetDefault("coordinator.limits.shard-request-cut-timeout", 1*time.Millisecond)
 	viper.SetDefault("coordinator.limits.max-dependency-graph-size", 1000000) // 32 bytes per serial number, would cause roughly 32MB memory

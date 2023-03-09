@@ -1,17 +1,15 @@
 package metrics
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
-	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 type Metrics struct {
 	Enabled bool
 
-	RequestTracer metrics.AppTracer
+	RequestTracer latency.AppTracer
 
 	SigVerifiedPendingTxs     prometheus.Gauge
 	DependencyGraphPendingSNs prometheus.Gauge
@@ -43,13 +41,22 @@ type Metrics struct {
 	SigVerifierMgrInvalidOutputChLength *metrics.ChannelBufferGauge
 }
 
-func New(enabled bool) *Metrics {
+type Provider struct {
+}
+
+func (p *Provider) ComponentName() string {
+	return "coordinator"
+}
+func (p *Provider) LatencyLabels() []string {
+	return []string{"status"}
+}
+func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	if !enabled {
 		return &Metrics{Enabled: false}
 	}
 	return &Metrics{
-		Enabled: true,
-
+		Enabled:       true,
+		RequestTracer: tracer,
 		SigVerifiedPendingTxs: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "coordinator_pending_txs",
 			Help: "The total number of TXs with valid sigs, waiting on the dependency graph",
@@ -126,10 +133,7 @@ func New(enabled bool) *Metrics {
 }
 
 func (m *Metrics) AllMetrics() []prometheus.Collector {
-	if !m.Enabled {
-		return []prometheus.Collector{}
-	}
-	return append(m.RequestTracer.Collectors(),
+	return []prometheus.Collector{
 		m.SigVerifiedPendingTxs,
 		m.DependencyGraphPendingSNs,
 		m.DependencyGraphPendingTXs,
@@ -156,13 +160,5 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.SigVerifierMgrInputChLength,
 		m.SigVerifierMgrValidOutputChLength,
 		m.SigVerifierMgrInvalidOutputChLength,
-	)
-}
-
-func (m *Metrics) IsEnabled() bool {
-	return m.Enabled
-}
-
-func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
-	m.RequestTracer = metrics.NewDefaultLatencyTracer("coordinator_latency", 5*time.Second, tp, "status")
+	}
 }

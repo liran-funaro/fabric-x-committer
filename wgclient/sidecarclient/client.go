@@ -85,7 +85,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
 		Endpoints:            opts.OrdererEndpoints,
 		Credentials:          opts.OrdererCredentials,
-		Parallelism:          len(opts.OrdererEndpoints),
+		Parallelism:          len(opts.OrdererEndpoints) * opts.Parallelism,
 		InputChannelCapacity: opts.InputChannelCapacity,
 		OnAck: func(err error) {
 			atomic.AddUint64(&sent, 1)
@@ -141,10 +141,10 @@ func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend
 	logger.Infof("Sending messages to all open streams.\n")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(len(c.ordererBroadcaster.Streams()))
 	for _, ch := range c.ordererBroadcaster.Streams() {
-		input := ch.Input()
-		go func(out chan<- *common.Envelope) {
+		go func(input chan<- *common.Envelope) {
+			defer wg.Done()
 			for {
 				select {
 				case tx := <-txs:
@@ -155,8 +155,7 @@ func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend
 					input <- env
 				}
 			}
-			wg.Done()
-		}(input)
+		}(ch.Input())
 	}
 
 	wg.Wait()

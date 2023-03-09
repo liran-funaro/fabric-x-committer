@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/binary"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"sort"
 	"testing"
 
@@ -42,11 +43,12 @@ func TestShardsServerMgr(t *testing.T) {
 	shardsServers[1].ShardsServerImpl.PhaseOneBehavior = testServerImpl1.PhaseOneBehavior
 	shardsServers[2].ShardsServerImpl.PhaseOneBehavior = testServerImpl2.PhaseOneBehavior
 
-	m, err := newShardsServerMgr(config, metrics.New(false))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	mgr, err := newShardsServerMgr(config, m)
 	require.NoError(t, err)
-	defer m.stop()
+	defer mgr.stop()
 
-	m.inputChan <- map[TxSeqNum][][]byte{
+	mgr.inputChan <- map[TxSeqNum][][]byte{
 		{BlkNum: 1, TxNum: 1}: {getForTestBytesStartingWith(0), getForTestBytesStartingWith(1)}, // should split across server0 and server1
 		{BlkNum: 1, TxNum: 2}: {getForTestBytesStartingWith(2), getForTestBytesStartingWith(3)}, // should go to server1 only
 		{BlkNum: 1, TxNum: 3}: {getForTestBytesStartingWith(3), getForTestBytesStartingWith(8)}, // should split across server1 and server2
@@ -54,7 +56,7 @@ func TestShardsServerMgr(t *testing.T) {
 
 	status := []*TxStatus{}
 	for len(status) < 3 {
-		status = append(status, <-m.outputChan...)
+		status = append(status, <-mgr.outputChan...)
 	}
 	require.ElementsMatch(t,
 		status,

@@ -18,9 +18,9 @@ type GeneratorConfig struct {
 }
 
 type BlockgenStreamConfig struct {
-	Prometheus monitoring.Prometheus `mapstructure:"prometheus"`
-	Endpoint   connection.Endpoint   `mapstructure:"endpoint"`
-	Generator  GeneratorConfig       `mapstructure:"generator"`
+	Monitoring monitoring.Config   `mapstructure:"monitoring"`
+	Endpoint   connection.Endpoint `mapstructure:"endpoint"`
+	Generator  GeneratorConfig     `mapstructure:"generator"`
 }
 
 func ReadConfig(filepaths []string) BlockgenStreamConfig {
@@ -38,6 +38,6 @@ func init() {
 	//viper.SetDefault("blockgen.generator.limits.channel-buffer-size", 10)
 
 	viper.SetDefault("blockgen.endpoint", ":5002")
-	viper.SetDefault("blockgen.prometheus.endpoint", ":2112")
-	viper.SetDefault("blockgen.prometheus.latency-endpoint", ":14268")
+	viper.SetDefault("blockgen.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("blockgen.monitoring.latency.endpoint", ":14268")
 }

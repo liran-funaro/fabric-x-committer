@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 )
 
 var conf = &pipeline.CoordinatorConfig{
@@ -43,7 +44,8 @@ func TestCoordinator(t *testing.T) {
 	require.NoError(t, err)
 	defer shardsServer.Stop()
 
-	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, conf.Limits, metrics.New(false))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	coordinator, err := pipeline.NewCoordinator(conf.SigVerifiers, conf.ShardsServers, conf.Limits, m)
 	require.NoError(t, err)
 	defer coordinator.Stop()
 

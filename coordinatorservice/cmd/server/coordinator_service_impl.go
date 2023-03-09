@@ -35,7 +35,6 @@ func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 	// start listening
 	for {
 		block, err := stream.Recv()
-		logger.Debugf("Received block %d:%d.", block.Number, len(block.Txs))
 		if err == io.EOF {
 			// end of stream
 			logger.Infof("BlockProcessing EOF\n")
@@ -46,6 +45,7 @@ func (s *serviceImpl) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 			logger.Infof("error while recieving block from stream: %v\n", err)
 			break
 		}
+		logger.Debugf("Received block %d:%d.", block.Number, len(block.Txs))
 		s.Coordinator.ProcessBlockAsync(block)
 		numTxReceived += uint64(len(block.GetTxs()))
 	}

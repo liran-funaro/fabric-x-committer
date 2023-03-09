@@ -1,18 +1,26 @@
 sidecar-client:
-  prometheus:                                 # Overridden by ansible
-    endpoint: :2113
-
-  sidecar: :1234                              # Overridden by ansible
-  committer: :5002                            # Overridden by ansible
-  orderers:                                   # Overridden by ansible
+  monitoring:
+    metrics:
+      endpoint: :2112                                         # Overridden by ansible
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: prefixed
+        prefix: a
+      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      max-latency: 20s
+      bucket-count: 1000
+  sidecar: :1234                                              # Overridden by ansible
+  committer: :5002                                            # Overridden by ansible
+  orderers:                                                   # Overridden by ansible
     - :7050
     - :7051
     - :7052
-  channel-id: mychannel                       # Overridden by ansible
-  profile: ../../config/profile-sidecar-client.yaml # Overridden by ansible
+  channel-id: mychannel                                       # Overridden by ansible
+  profile: ../../config/profile-sidecar-client.yaml           # Overridden by ansible
   input-channel-capacity: 20
-  parallelism: 20
-  signed-envelopes: true                      # Overriden by ansible
+  parallelism: 1
+  signed-envelopes: true                                      # Overriden by ansible
 logging:
   enabled: true
   level: INFO

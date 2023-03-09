@@ -8,23 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
-	"go.opentelemetry.io/otel/sdk/trace"
 )
-
-type ThroughputMetrics struct {
-	Throughput *metrics.ThroughputCounter
-}
-
-func (m *ThroughputMetrics) AllMetrics() []prometheus.Collector {
-	return []prometheus.Collector{m.Throughput}
-}
-func (m *ThroughputMetrics) IsEnabled() bool {
-	return true
-}
-func (m *ThroughputMetrics) SetTracerProvider(*trace.TracerProvider) {}
 
 type LabelSet = map[string]string
 

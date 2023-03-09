@@ -21,7 +21,7 @@ func main() {
 	)
 
 	var c = &pipeline.CoordinatorConfig{
-		Prometheus: monitoring.Prometheus{},
+		Monitoring: monitoring.Config{},
 		Server:     &connection.ServerConfig{Endpoint: connection.Endpoint{}},
 		SigVerifiers: &pipeline.SigVerifierMgrConfig{
 			Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
@@ -49,7 +49,8 @@ func main() {
 	}
 	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, metrics.New(false))
+	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Coordinator, &metrics.Provider{}).(*metrics.Metrics)
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, m)
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))
 	}

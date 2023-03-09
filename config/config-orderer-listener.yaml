@@ -1,8 +1,9 @@
 orderer-listener:               # Overridden by ansible
   orderer: :7050
   channel-id: mychannel
-  prometheus:
-    endpoint: :2113
+  monitoring:
+    metrics:
+      endpoint: :2112                                         # Overridden by ansible
   orderer-connection-profile: ./orderer-connection-profile.yaml
 
 logging:

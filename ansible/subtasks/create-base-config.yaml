@@ -4,22 +4,35 @@
 ---
 - name: Copy configs
   include: ./copy-configs.yaml
-- name: Adapt endpoints
+- name: Adapt server endpoint
+  yedit:
+    src: "{{dst_dir}}/{{host_instance.inventory_hostname}}/{{host_instance.config}}"
+    edits:
+      - key: "{{config_root}}.server.endpoint"
+        value: "{{config_item.endpoint | d(':%d' | format(host_instance.service_port | d(0)))}}"
+  loop: "{{selected_hosts}}"
+  loop_control:
+    loop_var: host_instance
+- name: Adapt metrics endpoint
+  yedit:
+    src: "{{dst_dir}}/{{host_instance.inventory_hostname}}/{{host_instance.config}}"
+    edits:
+      - key: "{{config_root}}.monitoring.metrics.endpoint"
+        value: ":{{host_instance.prometheus_exporter_port}}"
+  when: host_instance.prometheus_exporter_port | d(0) > 0
+  loop: "{{selected_hosts}}"
+  loop_control:
+    loop_var: host_instance
+- name: Adapt jaeger endpoint
   vars:
-    filename: "{{host_instance.config}}"
-    endpoint: "{{config_item.endpoint | d(':%d' | format(host_instance.service_port | d(0)))}}"
-    dst_filepath: "{{dst_dir}}/{{host_instance.inventory_hostname}}/{{filename}}"
     monitoring_hosts: "{{groups['monitoring'] | d([]) | map('extract', hostvars) | list}}"
     jaeger_endpoints: "{{monitoring_hosts | map(attribute='ansible_host') | zip(monitoring_hosts | map(attribute='jaeger_exporter_port')) | map('join', ':') | list}}"
   yedit:
-    src: "{{dst_filepath}}"
+    src: "{{dst_dir}}/{{host_instance.inventory_hostname}}/{{host_instance.config}}"
     edits:
-      - key: "{{config_root}}.server.endpoint"
-        value: "{{endpoint}}"
-      - key: "{{config_root}}.prometheus.endpoint"
-        value: ":{{host_instance.prometheus_exporter_port}}"
-      - key: "{{config_root}}.prometheus.latency-endpoint"
-        value: "{{'' if jaeger_endpoints | length == 0 else jaeger_endpoints | first}}"
+      - key: "{{config_root}}.monitoring.latency.endpoint"
+        value: "{{jaeger_endpoints | first}}"
+  when: jaeger_endpoints | length == 0
   loop: "{{selected_hosts}}"
   loop_control:
     loop_var: host_instance

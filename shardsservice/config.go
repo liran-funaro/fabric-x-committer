@@ -33,7 +33,7 @@ type LimitsConfig struct {
 }
 
 type ShardServiceConfig struct {
-	Prometheus monitoring.Prometheus    `mapstructure:"prometheus"`
+	Monitoring monitoring.Config        `mapstructure:"monitoring"`
 	Server     *connection.ServerConfig `mapstructure:"server"`
 	Database   *DatabaseConfig          `mapstructure:"database"`
 	Limits     *LimitsConfig            `mapstructure:"limits"`
@@ -59,6 +59,6 @@ func init() {
 	viper.SetDefault("shards-service.limits.max-phase-two-processing-workers", 50)
 
 	viper.SetDefault("shards-service.server.endpoint", ":5001")
-	viper.SetDefault("shards-service.prometheus.endpoint", ":2112")
-	viper.SetDefault("shards-service.prometheus.latency-endpoint", ":14268")
+	viper.SetDefault("shards-service.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("shards-service.monitoring.latency.endpoint", ":14268")
 }

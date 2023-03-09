@@ -1,22 +1,24 @@
 package main
 
 import (
-	"time"
-
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	connectionUtils "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
+	"time"
 )
 
 func main() {
 	c := shardsservice.ReadConfig()
 
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+
 	connection.RunServerMainAndWait(c.Server, func(server *grpc.Server) {
-		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.IsEnabled())))
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))
 	})
 	//monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, metrics.New(c.Prometheus.Enabled).AllMetrics())
 

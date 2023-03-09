@@ -1,6 +1,7 @@
 package shardsservice_test
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -16,8 +17,9 @@ import (
 func BenchmarkShardsCoordinator(b *testing.B) {
 	c := shardsservice.ReadConfig()
 
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
 	connection.RunServerMainAndWait(c.Server, func(server *grpc.Server) {
-		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, metrics.New(c.Prometheus.IsEnabled())))
+		shardsservice.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))
 	})
 	//monitoring.LaunchPrometheus(c.Prometheus, monitoring.ShardsService, metrics.New(c.Prometheus.Enabled).AllMetrics())
 

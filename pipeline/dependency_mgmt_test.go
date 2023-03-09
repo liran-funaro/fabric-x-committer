@@ -7,11 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 )
 
 func TestDependencyMgr(t *testing.T) {
 	setup := func() *dependencyMgr {
-		m := newDependencyMgr(1000000, 1*time.Millisecond, metrics.New(false))
+		m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+		mgr := newDependencyMgr(1000000, 1*time.Millisecond, m)
 		block0 := &token.Block{
 			Number: 0,
 			Txs: []*token.Tx{
@@ -29,9 +31,9 @@ func TestDependencyMgr(t *testing.T) {
 				},
 			},
 		}
-		m.inputChan <- block0
+		mgr.inputChan <- block0
 		time.Sleep(10 * time.Millisecond)
-		return m
+		return mgr
 	}
 
 	t.Run("fetchDependencyFreeTxsThatIntersect", func(t *testing.T) {
@@ -177,8 +179,9 @@ func TestDependencyMgr(t *testing.T) {
 	})
 
 	t.Run("timeout", func(t *testing.T) {
-		m := newDependencyMgr(1000000, 1*time.Millisecond, metrics.New(false))
-		m.inputChanStatusUpdate <- []*TxStatus{
+		m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+		mgr := newDependencyMgr(1000000, 1*time.Millisecond, m)
+		mgr.inputChanStatusUpdate <- []*TxStatus{
 			{
 				TxSeqNum: TxSeqNum{
 					BlkNum: 100,
@@ -187,7 +190,7 @@ func TestDependencyMgr(t *testing.T) {
 				Status: DOUBLE_SPEND,
 			},
 		}
-		m.inputChan <- &token.Block{
+		mgr.inputChan <- &token.Block{
 			Number: 100,
 			Txs: []*token.Tx{
 				{
@@ -198,7 +201,7 @@ func TestDependencyMgr(t *testing.T) {
 			},
 		}
 
-		status := <-m.outputChanStatusUpdate
+		status := <-mgr.outputChanStatusUpdate
 		require.Equal(
 			t,
 			[]*TxStatus{

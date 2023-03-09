@@ -24,14 +24,14 @@ type verifierServer struct {
 	metrics            *metrics.Metrics
 }
 
-func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, metrics *metrics.Metrics) *verifierServer {
-	s := &verifierServer{verificationScheme: verificationScheme, metrics: metrics}
+func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, m *metrics.Metrics) *verifierServer {
+	s := &verifierServer{verificationScheme: verificationScheme, metrics: m}
 
-	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, metrics)
+	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, m)
 	s.streamHandler = streamhandler.New(
 		func(batch *sigverification.RequestBatch) {
 			if s.metrics.Enabled {
-				metrics.VerifierServerInTxs.Add(len(batch.Requests))
+				m.VerifierServerInTxs.Add(len(batch.Requests))
 				for _, request := range batch.Requests {
 					s.metrics.RequestTracer.Start(token.TxSeqNum{BlkNum: request.BlockNum, TxNum: request.TxNum})
 				}
@@ -41,9 +41,9 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 		func() streamhandler.Output {
 			outputs := <-executor.Outputs()
 			if s.metrics.Enabled {
-				metrics.VerifierServerOutTxs.Add(len(outputs))
+				m.VerifierServerOutTxs.Add(len(outputs))
 				for _, output := range outputs {
-					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum})
+					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, metrics.ValidStatusMap[output.IsValid])
 				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}

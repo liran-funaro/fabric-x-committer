@@ -41,7 +41,7 @@ func main() {
 		SignedEnvelopes:      c.SignedEnvelopes,
 	}
 
-	tracker := workload.NewMetricTracker(c.Prometheus)
+	tracker := workload.NewMetricTracker(c.Monitoring)
 
 	client, err := sidecarclient.NewClient(opts)
 	utils.Must(err)

@@ -4,8 +4,9 @@ orderer-submitter:
     - :7050
     - :7051
     - :7052
-  prometheus:                     # Overridden by ansible
-    endpoint: :2114
+  monitoring:
+    metrics:
+      endpoint: :2112                                         # Overridden by ansible
   orderer-connection-profile: ./orderer-connection-profile.yaml   # Overridden by ansible
   messages: 1000000
   go-routines: 20

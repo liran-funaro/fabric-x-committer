@@ -10,7 +10,7 @@ import (
 )
 
 type SigVerificationConfig struct {
-	Prometheus       monitoring.Prometheus    `mapstructure:"prometheus"`
+	Monitoring       monitoring.Config        `mapstructure:"monitoring"`
 	Server           *connection.ServerConfig `mapstructure:"server"`
 	Scheme           signature.Scheme         `mapstructure:"scheme"`
 	ParallelExecutor parallelexecutor.Config  `mapstructure:"parallel-executor"`
@@ -26,8 +26,8 @@ func ReadConfig() SigVerificationConfig {
 
 func init() {
 	viper.SetDefault("sig-verification.server.endpoint", ":5000")
-	viper.SetDefault("sig-verification.prometheus.endpoint", ":2112")
-	viper.SetDefault("sig-verification.prometheus.latency-endpoint", ":14268")
+	viper.SetDefault("sig-verification.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("sig-verification.monitoring.latency.endpoint", ":14268")
 
 	viper.SetDefault("sig-verification.scheme", "Ecdsa")
 

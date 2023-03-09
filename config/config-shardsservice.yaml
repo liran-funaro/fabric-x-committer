@@ -1,9 +1,19 @@
 shards-service:
   server:
     endpoint: :5001                                           # Overridden by ansible
-  prometheus:                                                 # Overridden by ansible
-    endpoint: :2112
-    latency-endpoint: tokentestbed15.sl.cloud9.ibm.com:14268
+  monitoring:
+    metrics:
+      endpoint: :2112                                         # Overridden by ansible
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      max-latency: 5s
+      bucket-count: 1000
   database:
     type: "rocksdb"
     root-dir: "./"                                            # Overridden by ansible

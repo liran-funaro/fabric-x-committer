@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func BenchmarkCoordinator(b *testing.B) {
 		numBlocks      = 50000
 	)
 	c := &pipeline.CoordinatorConfig{
-		Prometheus: monitoring.Prometheus{},
+		Monitoring: monitoring.Config{},
 		Server:     &connection.ServerConfig{Endpoint: connection.Endpoint{}},
 		SigVerifiers: &pipeline.SigVerifierMgrConfig{
 			Endpoints: []*connection.Endpoint{connection.CreateEndpoint("localhost:5000")},
@@ -48,7 +49,8 @@ func BenchmarkCoordinator(b *testing.B) {
 	}
 	defer grpcServers.StopAll()
 
-	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, metrics.New(false))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, m)
 
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))

@@ -1,17 +1,18 @@
 package metrics
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
-	"go.opentelemetry.io/otel/sdk/trace"
 )
+
+const StatusLabel = "status"
+const TxIdLabel = "txid"
 
 type Metrics struct {
 	Enabled bool
 
-	RequestTracer metrics.AppTracer
+	RequestTracer latency.AppTracer
 
 	TxStatusAggregatorSize prometheus.Gauge
 
@@ -23,14 +24,23 @@ type Metrics struct {
 	OrdereredBlocksChLength *metrics.ChannelBufferGauge
 }
 
-func New(enabled bool) *Metrics {
+type Provider struct {
+}
+
+func (p *Provider) ComponentName() string {
+	return "sidecar"
+}
+func (p *Provider) LatencyLabels() []string {
+	return []string{StatusLabel, TxIdLabel}
+}
+func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	if !enabled {
 		return &Metrics{Enabled: false}
 	}
 	return &Metrics{
 		Enabled: true,
 
-		RequestTracer: &metrics.NoopLatencyTracer{},
+		RequestTracer: tracer,
 
 		TxStatusAggregatorSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "tx_status_aggregator",
@@ -52,23 +62,12 @@ func New(enabled bool) *Metrics {
 }
 
 func (m *Metrics) AllMetrics() []prometheus.Collector {
-	if !m.Enabled {
-		return []prometheus.Collector{}
-	}
-	return append(m.RequestTracer.Collectors(),
+	return []prometheus.Collector{
 		m.TxStatusAggregatorSize,
 		m.InTxs,
 		m.OutTxs,
 		m.CommitterOutTxs,
 		m.CommitterInTxs,
 		m.OrdereredBlocksChLength,
-	)
-}
-
-func (m *Metrics) IsEnabled() bool {
-	return m.Enabled
-}
-
-func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
-	m.RequestTracer = metrics.NewDefaultLatencyTracer("sidecar_latency", 10*time.Second, tp)
+	}
 }

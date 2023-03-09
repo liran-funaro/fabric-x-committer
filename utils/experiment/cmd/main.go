@@ -15,10 +15,10 @@ import (
 
 const resultJoiner = ","
 
-// -prometheus-endpoint=tokentestbed16.sl.cloud9.ibm.com:9094 -sampling-times=1667579016,1667579026,1667579116 -output=./tmp.txt
+// -metrics-endpoint=tokentestbed16.sl.cloud9.ibm.com:9094 -sampling-times=1667579016,1667579026,1667579116 -output=./tmp.txt
 func main() {
 	clientHost := flag.String("client-endpoint", "", "The client endpoint.")
-	prometheusHost := flag.String("prometheus-endpoint", "", "The host that runs prometheus and serves the metrics.")
+	prometheusHost := flag.String("metrics-endpoint", "", "The host that runs prometheus and serves the metrics.")
 	trackerFilePath := flag.String("input", "", "The path to the tracker file")
 	samplingTimeHeader := flag.String("sampling-time-header", "", "The name of the header that corresponds to the sampling time")
 	rateInterval := flag.Duration("rate-interval", 30*time.Second, "The window in which we calculate the rate.")

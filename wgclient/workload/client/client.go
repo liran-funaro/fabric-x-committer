@@ -11,6 +11,8 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	_ "github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client/codec"
 	"google.golang.org/protobuf/proto"
@@ -23,9 +25,13 @@ func GetBlockSize(path string, sampleSize int) float64 {
 
 func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	// read blocks from file into channel
-	tracker := workload.NewMetricTracker(monitoring.Prometheus{
-		LatencyEndpoint: *connection.CreateEndpoint(latencyEndpoint),
-		Endpoint:        *connection.CreateEndpoint(prometheusEndpoint),
+	tracker := workload.NewMetricTracker(monitoring.Config{
+		Latency: &latency.Config{
+			Endpoint: connection.CreateEndpoint(latencyEndpoint),
+		},
+		Metrics: &metrics.Config{
+			Endpoint: connection.CreateEndpoint(prometheusEndpoint),
+		},
 	})
 	serializedKey, bQueue, pp := workload.GetBlockWorkload(path)
 
@@ -52,7 +58,7 @@ func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 func GenerateAndPump(config workload.BlockgenStreamConfig) {
 	pp := workload.LoadProfileFromYaml(config.Generator.Profile)
 
-	tracker := workload.NewMetricTracker(config.Prometheus)
+	tracker := workload.NewMetricTracker(config.Monitoring)
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)
 

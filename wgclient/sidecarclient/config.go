@@ -11,7 +11,7 @@ type SidecarClientConfig struct {
 	Orderers   []*connection.Endpoint `mapstructure:"orderers"`
 	Committer  connection.Endpoint    `mapstructure:"committer"`
 	Sidecar    connection.Endpoint    `mapstructure:"sidecar"`
-	Prometheus monitoring.Prometheus  `mapstructure:"prometheus"`
+	Monitoring monitoring.Config      `mapstructure:"monitoring"`
 
 	Profile                  string `mapstructure:"profile"`
 	InputChannelCapacity     int    `mapstructure:"input-channel-capacity"`
@@ -33,7 +33,7 @@ func init() {
 	viper.SetDefault("sidecar-client.sidecar", ":1234")
 	viper.SetDefault("sidecar-client.committer", ":5002")
 	viper.SetDefault("sidecar-client.orderers", []string{":7050"})
-	viper.SetDefault("sidecar-client.prometheus.endpoint", ":2113")
+	viper.SetDefault("sidecar-client.monitoring.metrics.endpoint", ":2113")
 
 	viper.SetDefault("sidecar-client.profile", "")
 	viper.SetDefault("sidecar-client.input-channel-capacity", 20)

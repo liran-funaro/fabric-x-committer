@@ -2,6 +2,7 @@ package parallelexecutor_test
 
 import (
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -49,7 +50,8 @@ func BenchmarkParallelExecutor(b *testing.B) {
 			config.InputGeneratorParams.BatchSize = test.Constant(batchSize)
 			b.Run(fmt.Sprintf("%s-p%d-b%d", config.Name, parallelism, batchSize), func(b *testing.B) {
 				g := NewInputGenerator(&config.InputGeneratorParams)
-				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig, metrics.New(false))
+				m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+				e := parallelexecutor.New(g.Executor(), &config.ParallelExecutionConfig, m)
 				t := connection.NewRequestTracker()
 
 				t.StartWithOutputReceived(sigverification_test.ChannelOutputLength(e.Outputs()))

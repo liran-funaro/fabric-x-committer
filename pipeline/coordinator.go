@@ -29,8 +29,7 @@ func NewCoordinator(sigVerifierMgrConfig *SigVerifierMgrConfig, shardsServerMgrC
 		"\t\t Shard request cut timeout: %v\n"+
 		"\t\t Dependency graph update timeout: %v\n"+
 		"\t\t Max dependency graph size: %d\n"+
-		"\t\t Invalid Sig Response Cutoff Size: %d\n"+
-		"\t Total metrics: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), limitsConfig.ShardRequestCutTimeout, limitsConfig.DependencyGraphUpdateTimeout, limitsConfig.MaxDependencyGraphSize, limitsConfig.InvalidSigBatchCutoffSize, len(metrics.AllMetrics()))
+		"\t\t Invalid Sig Response Cutoff Size: %d\n", len(sigVerifierMgrConfig.Endpoints), sigVerifierMgrConfig.Endpoints, len(shardsServerMgrConfig.Servers), shardsServerMgrConfig.GetEndpoints(), limitsConfig.ShardRequestCutTimeout, limitsConfig.DependencyGraphUpdateTimeout, limitsConfig.MaxDependencyGraphSize, limitsConfig.InvalidSigBatchCutoffSize)
 	sigVerifierMgr, err := newSigVerificationMgr(sigVerifierMgrConfig, metrics)
 	if err != nil {
 		return nil, err

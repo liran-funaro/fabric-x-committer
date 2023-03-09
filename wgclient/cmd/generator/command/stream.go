@@ -2,6 +2,8 @@ package command
 
 import (
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -25,10 +27,14 @@ var (
 				config.Endpoint = *connection.CreateEndpoint(host)
 			}
 			if prometheusEndpoint != "" {
-				config.Prometheus.Endpoint = *connection.CreateEndpoint(prometheusEndpoint)
+				config.Monitoring.Metrics = &metrics.Config{
+					Endpoint: connection.CreateEndpoint(prometheusEndpoint),
+				}
 			}
 			if latencyEndpoint != "" {
-				config.Prometheus.LatencyEndpoint = *connection.CreateEndpoint(latencyEndpoint)
+				config.Monitoring.Latency = &latency.Config{
+					Endpoint: connection.CreateEndpoint(latencyEndpoint),
+				}
 			}
 
 			fmt.Println("GOGC = " + os.Getenv("GOGC"))
@@ -44,6 +50,6 @@ func init() {
 	streamCmd.Flags().StringSliceVarP(&configs, "configs", "c", []string{}, "config file paths")
 	streamCmd.Flags().StringVarP(&profilePath, "profile", "p", "", "path to workload profile")
 	streamCmd.Flags().StringVarP(&host, "host", "", "", "coordinator host addr")
-	streamCmd.Flags().StringVar(&prometheusEndpoint, "prometheus-endpoint", "", "path to prometheus metrics")
-	streamCmd.Flags().StringVar(&latencyEndpoint, "prometheus-latency-endpoint", "", "path to prometheus metrics")
+	streamCmd.Flags().StringVar(&prometheusEndpoint, "metrics-endpoint", "", "path to prometheus metrics")
+	streamCmd.Flags().StringVar(&latencyEndpoint, "latency-endpoint", "", "path to prometheus metrics")
 }

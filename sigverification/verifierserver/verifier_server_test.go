@@ -2,6 +2,7 @@ package verifierserver_test
 
 import (
 	"context"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -28,7 +29,8 @@ var parallelExecutionConfig = &parallelexecutor.Config{
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Skip("Temporarily skipping. Related to commented-out error in StartStream.")
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, m))
 
 	stream, err := c.Client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -44,7 +46,8 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, m))
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
@@ -65,7 +68,8 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, metrics.New(false)))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, signature.Ecdsa, m))
 	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, _ := factory.NewSigner(signingKey)

@@ -1,6 +1,7 @@
 package shardsservice
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
@@ -14,7 +15,8 @@ func TestExecutePhaseOneAndTwoWithMultiShards(t *testing.T) {
 	c := ReadConfig()
 	//t.Run("simple phase one execution", func(t *testing.T) {
 	dbConfig := &DatabaseConfig{Type: GoLevelDb, RootDir: "./"}
-	si, err := newShardInstances(phaseOneResponses, dbConfig, c.Limits, metrics.New(false))
+	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
+	si, err := newShardInstances(phaseOneResponses, dbConfig, c.Limits, m)
 	require.NoError(t, err)
 	defer si.deleteAll()
 

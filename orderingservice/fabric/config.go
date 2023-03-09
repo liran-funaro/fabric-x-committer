@@ -10,7 +10,7 @@ type SubmitterConfig struct {
 	Orderers                 []*connection.Endpoint `mapstructure:"orderers"`
 	ChannelID                string                 `mapstructure:"channel-id"`
 	OrdererConnectionProfile string                 `mapstructure:"orderer-connection-profile"`
-	Prometheus               monitoring.Prometheus  `mapstructure:"prometheus"`
+	Monitoring               monitoring.Config      `mapstructure:"monitoring"`
 	Messages                 int                    `mapstructure:"messages"`
 	GoRoutines               int                    `mapstructure:"go-routines"`
 	MessageSize              int                    `mapstructure:"message-size"`
@@ -18,10 +18,10 @@ type SubmitterConfig struct {
 }
 
 type ListenerConfig struct {
-	Orderer                  connection.Endpoint   `mapstructure:"orderer"`
-	ChannelID                string                `mapstructure:"channel-id"`
-	Prometheus               monitoring.Prometheus `mapstructure:"prometheus"`
-	OrdererConnectionProfile string                `mapstructure:"orderer-connection-profile"`
+	Orderer                  connection.Endpoint `mapstructure:"orderer"`
+	ChannelID                string              `mapstructure:"channel-id"`
+	Monitoring               monitoring.Config   `mapstructure:"monitoring"`
+	OrdererConnectionProfile string              `mapstructure:"orderer-connection-profile"`
 }
 
 func ReadListenerConfig() ListenerConfig {

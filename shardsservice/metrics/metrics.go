@@ -5,33 +5,23 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
-	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-var dbRequestSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Name:    "shard_db_request_size",
-	Help:    "Request size for read/write in the shard DB",
-	Buckets: metrics.UniformBuckets(1000, 0, 1000),
-}, []string{"sub_component", "operation"})
+const StatusLabel = "status"
 
-type Metrics struct {
-	Enabled                        bool
-	IncomingTxs                    *metrics.ThroughputCounter
-	CommittedSNs                   *metrics.ThroughputCounter
-	RequestTracer                  metrics.AppTracer
-	PendingCommitsSNs              *metrics.InMemoryDataStructureGauge
-	PendingCommitsTxIds            *metrics.InMemoryDataStructureGauge
-	ShardInstanceTxShard           *metrics.InMemoryDataStructureGauge
-	ShardInstanceTxResponse        *metrics.InMemoryDataStructureGauge
-	SNReadDuration                 prometheus.ObserverVec
-	SNCommitDuration               prometheus.ObserverVec
-	SNReadSize                     prometheus.ObserverVec
-	SNCommitSize                   prometheus.ObserverVec
-	ShardsPhaseOneResponseChLength *metrics.ChannelBufferGauge
+type Provider struct {
 }
 
-func New(enabled bool) *Metrics {
+func (p *Provider) ComponentName() string {
+	return "shards-service"
+}
+func (p *Provider) LatencyLabels() []string {
+	return []string{StatusLabel}
+}
+func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	if !enabled {
 		return &Metrics{Enabled: false}
 	}
@@ -39,7 +29,7 @@ func New(enabled bool) *Metrics {
 		Enabled:                 true,
 		IncomingTxs:             metrics.NewThroughputCounterVec(metrics.In),
 		CommittedSNs:            metrics.NewThroughputCounterVec(metrics.Out),
-		RequestTracer:           &metrics.NoopLatencyTracer{},
+		RequestTracer:           tracer,
 		PendingCommitsSNs:       metrics.NewInMemoryDataStructureGauge("pending_commits", "serial_numbers"),
 		PendingCommitsTxIds:     metrics.NewInMemoryDataStructureGauge("pending_commits", "tx_ids"),
 		ShardInstanceTxShard:    metrics.NewInMemoryDataStructureGauge("shard_instances", "tx_id_shard_id"),
@@ -48,12 +38,12 @@ func New(enabled bool) *Metrics {
 		SNReadDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "shard_db_read_latency",
 			Help:    "Latency for read/write in the shard DB (ns)",
-			Buckets: metrics.UniformBuckets(1000, 0, float64(1*time.Millisecond)),
+			Buckets: utils.UniformBuckets(1000, 0, float64(1*time.Millisecond)),
 		}, []string{"sub_component"}),
 		SNCommitDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "shard_db_write_latency",
 			Help:    "Latency for read/write in the shard DB (ns)",
-			Buckets: metrics.UniformBuckets(1000, 0, float64(100*time.Millisecond)),
+			Buckets: utils.UniformBuckets(1000, 0, float64(100*time.Millisecond)),
 		}, []string{"sub_component"}),
 		SNReadSize:   dbRequestSize.MustCurryWith(prometheus.Labels{"operation": "read"}),
 		SNCommitSize: dbRequestSize.MustCurryWith(prometheus.Labels{"operation": "write"}),
@@ -65,15 +55,34 @@ func New(enabled bool) *Metrics {
 	}
 }
 
+var dbRequestSize = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "shard_db_request_size",
+	Help:    "Request size for read/write in the shard DB",
+	Buckets: utils.UniformBuckets(1000, 0, 1000),
+}, []string{"sub_component", "operation"})
+
+type Metrics struct {
+	Enabled                        bool
+	IncomingTxs                    *metrics.ThroughputCounter
+	CommittedSNs                   *metrics.ThroughputCounter
+	RequestTracer                  latency.AppTracer
+	PendingCommitsSNs              *metrics.InMemoryDataStructureGauge
+	PendingCommitsTxIds            *metrics.InMemoryDataStructureGauge
+	ShardInstanceTxShard           *metrics.InMemoryDataStructureGauge
+	ShardInstanceTxResponse        *metrics.InMemoryDataStructureGauge
+	SNReadDuration                 prometheus.ObserverVec
+	SNCommitDuration               prometheus.ObserverVec
+	SNReadSize                     prometheus.ObserverVec
+	SNCommitSize                   prometheus.ObserverVec
+	ShardsPhaseOneResponseChLength *metrics.ChannelBufferGauge
+}
+
 func ShardId(id uint32) prometheus.Labels {
 	return prometheus.Labels{"sub_component": strconv.Itoa(int(id))}
 }
 
 func (m *Metrics) AllMetrics() []prometheus.Collector {
-	if !m.Enabled {
-		return []prometheus.Collector{}
-	}
-	return append(m.RequestTracer.Collectors(),
+	return []prometheus.Collector{
 		m.SNReadDuration,
 		m.SNCommitDuration,
 		m.IncomingTxs,
@@ -83,13 +92,5 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.ShardInstanceTxShard,
 		m.ShardInstanceTxResponse,
 		m.ShardsPhaseOneResponseChLength,
-	)
-}
-
-func (m *Metrics) IsEnabled() bool {
-	return m.Enabled
-}
-
-func (m *Metrics) SetTracerProvider(tp *trace.TracerProvider) {
-	m.RequestTracer = metrics.NewDefaultLatencyTracer("shard_latency", 1*time.Second, tp, "status")
+	}
 }

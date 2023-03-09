@@ -1,12 +1,12 @@
-package metrics
+package latency
 
 import (
 	"context"
 	"fmt"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 	"go.opentelemetry.io/otel/attribute"
@@ -21,10 +21,6 @@ type traceData struct {
 	span  trace.Span
 }
 
-type TxTracingId = interface {
-	String() string
-}
-
 type latencyTracer struct {
 	histogram    *prometheus.HistogramVec
 	name         string
@@ -37,8 +33,7 @@ type latencyTracer struct {
 	labels       []string
 }
 
-type TxTracingSampler = func(key TxTracingId) bool
-type LatencyTracerOpts struct {
+type TracerOpts struct {
 	Name           string
 	Help           string
 	Count          int
@@ -48,77 +43,25 @@ type LatencyTracerOpts struct {
 	Labels         []string
 }
 
-const (
-	ratio        = 10
-	sampleSize   = 100
-	samplePeriod = 100_000
-)
+type NoOpTracer struct{}
 
-var AlwaysSampler = func(key TxTracingId) bool {
-	return true
-}
-
-func OnceSampler(uniqueKey TxTracingId) TxTracingSampler {
-	return func(key TxTracingId) bool {
-		return uniqueKey == key
-	}
-}
-
-var ScarceSampler = func(key TxTracingId) bool {
-	hash := key.(token.TxSeqNum).BlkNum % samplePeriod
-	return hash < sampleSize && hash%ratio == 0
-}
-
-func NewPrefixSampler(prefix string) TxTracingSampler {
-	prefixLength := len(prefix)
-	return func(id TxTracingId) bool {
-		str := id.String()
-		return len(str) >= prefixLength && str[:prefixLength] == prefix
-	}
-}
-
-func NewDefaultLatencyTracer(name string, maxValue time.Duration, tp *sdktrace.TracerProvider, labels ...string) *latencyTracer {
-	return NewLatencyTracer(LatencyTracerOpts{
-		Name:           name,
-		Help:           "Total latency on the component",
-		Count:          1000,
-		From:           0,
-		To:             maxValue,
-		Sampler:        ScarceSampler,
-		IgnoreNotFound: true,
-		Labels:         labels,
-	}, tp)
-}
-
-type NoopLatencyTracer struct{}
-
-func (t *NoopLatencyTracer) Start(TxTracingId)                         {}
-func (t *NoopLatencyTracer) StartAt(TxTracingId, time.Time)            {}
-func (t *NoopLatencyTracer) AddEvent(TxTracingId, string)              {}
-func (t *NoopLatencyTracer) AddEventAt(TxTracingId, string, time.Time) {}
-func (t *NoopLatencyTracer) End(TxTracingId, ...string)                {}
-func (t *NoopLatencyTracer) EndAt(TxTracingId, time.Time, ...string)   {}
-func (t *NoopLatencyTracer) Collectors() []prometheus.Collector {
+func (t *NoOpTracer) Start(TxTracingId)                         {}
+func (t *NoOpTracer) StartAt(TxTracingId, time.Time)            {}
+func (t *NoOpTracer) AddEvent(TxTracingId, string)              {}
+func (t *NoOpTracer) AddEventAt(TxTracingId, string, time.Time) {}
+func (t *NoOpTracer) End(TxTracingId, ...string)                {}
+func (t *NoOpTracer) EndAt(TxTracingId, time.Time, ...string)   {}
+func (t *NoOpTracer) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{}
 }
 
-type AppTracer interface {
-	Start(TxTracingId)
-	StartAt(TxTracingId, time.Time)
-	AddEvent(TxTracingId, string)
-	AddEventAt(TxTracingId, string, time.Time)
-	End(TxTracingId, ...string)
-	EndAt(TxTracingId, time.Time, ...string)
-	Collectors() []prometheus.Collector
-}
-
-func NewLatencyTracer(opts LatencyTracerOpts, tp *sdktrace.TracerProvider) *latencyTracer {
+func NewLatencyTracer(opts TracerOpts, tp *sdktrace.TracerProvider) *latencyTracer {
 	return &latencyTracer{
 		enabled: true,
 		histogram: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    opts.Name,
 			Help:    opts.Help,
-			Buckets: UniformBuckets(opts.Count, float64(opts.From), float64(opts.To)),
+			Buckets: utils.UniformBuckets(opts.Count, float64(opts.From), float64(opts.To)),
 		}, opts.Labels),
 		name:   opts.Name,
 		tracer: tp.Tracer(opts.Name),
@@ -216,21 +159,4 @@ func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, labels ...st
 
 func (t *latencyTracer) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{t.histogram}
-}
-
-//TODO: AF Panic
-func (h *latencyTracer) handleError(s string) {
-	logger.Error(s)
-}
-
-func UniformBuckets(count int, from, to float64) []float64 {
-	if to < from {
-		panic("invalid input")
-	}
-	result := make([]float64, 0, count)
-	step := (to - from) / float64(count-1)
-	for low := from; low < to; low += step {
-		result = append(result, low)
-	}
-	return append(result, to)
 }

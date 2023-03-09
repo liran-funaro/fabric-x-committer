@@ -18,9 +18,7 @@ func main() {
 	config.ParseFlags()
 
 	c := pipeline.ReadConfig()
-	m := metrics.New(c.Prometheus.IsEnabled())
-
-	monitoring.LaunchPrometheus(c.Prometheus, monitoring.Coordinator, m)
+	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Coordinator, &metrics.Provider{}).(*metrics.Metrics)
 
 	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, m)
 	if err != nil {
