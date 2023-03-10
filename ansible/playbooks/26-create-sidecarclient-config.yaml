@@ -16,7 +16,7 @@
       when: "{{selected_hosts | length > 0}}"
     - name: Further edit sidecar-client config
       vars:
-        connections: 4
+        connections: 3
         filepath: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.config}}"
         orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
         orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
