@@ -25,7 +25,7 @@ func main() {
 
 	c := serverconfig.ReadConfig()
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.SigVerifier, &metrics.Provider{}).(*metrics.Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
 	connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
 		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, m))

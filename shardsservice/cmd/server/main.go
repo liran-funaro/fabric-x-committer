@@ -20,7 +20,7 @@ func main() {
 
 	c := shardsservice.ReadConfig()
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.ShardsService, &metrics.Provider{}).(*metrics.Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
 	connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
 		shardsservice.RegisterShardsServer(grpcServer, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))

@@ -69,7 +69,7 @@ func main() {
 
 	fmt.Printf("Exporting metrics ...\n")
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Other, &Provider{}).(*Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &Provider{}).(*Metrics)
 	bar := workload.NewProgressBar("Received transactions...", -1, "tx")
 
 	fmt.Printf("Start listing...\n")

@@ -28,7 +28,7 @@ func main() {
 	creds, signer := connection.GetOrdererConnectionCreds(p)
 	_ = signer
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Other, &Provider{}).(*Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &Provider{}).(*Metrics)
 
 	msgsPerGo := c.Messages / c.GoRoutines
 	roundMsgs := msgsPerGo * c.GoRoutines

@@ -28,7 +28,7 @@ func main() {
 	p := connection.ReadConnectionProfile(c.Orderer.OrdererConnectionProfile)
 	creds, signer := connection.GetOrdererConnectionCreds(p)
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Sidecar, &metrics.Provider{}).(*metrics.Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
 	service := newLedgerDeliverServer(c.Orderer.ChannelID, c.Committer.LedgerPath)
 	go connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {

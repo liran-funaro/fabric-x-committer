@@ -43,7 +43,7 @@ func main() {
 		panic(fmt.Sprintf("Error in starting grpc servers: %s", err))
 	}
 	defer grpcServers.StopAll()
-	m := monitoring.LaunchMonitoring(c.Monitoring, monitoring.Coordinator, &metrics.Provider{}).(*metrics.Metrics)
+	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 	coordinator, err := pipeline.NewCoordinator(c.SigVerifiers, c.ShardsServers, c.Limits, m)
 	if err != nil {
 		panic(fmt.Sprintf("Error in constructing coordinator: %s", err))

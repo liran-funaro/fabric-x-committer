@@ -53,7 +53,7 @@ type MetricTracker struct {
 }
 
 func NewMetricTracker(p monitoring.Config) *MetricTracker {
-	m := monitoring.LaunchMonitoring(p, monitoring.Generator, &Provider{}).(*Metrics)
+	m := monitoring.LaunchMonitoring(p, &Provider{}).(*Metrics)
 
 	return &MetricTracker{m}
 }
