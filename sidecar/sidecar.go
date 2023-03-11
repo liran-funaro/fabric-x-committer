@@ -104,14 +104,17 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	logger.Infof("Starting up sidecar\n")
 	go func() {
 		utils.Must(s.ordererListener.RunDeliverOutputListener(func(b *common.Block) {
+			block, excluded := mapBlock(b)
 			if s.metrics.Enabled {
-				s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
-				//for txNum := uint64(0); txNum < uint64(len(t.Block.Data.Data)); txNum++ {
-				//	s.metrics.RequestTracer.Start(token.TxSeqNum{t.Block.Header.Number, txNum})
+				//for txNum := uint64(0); txNum < uint64(len(block.Txs)); txNum++ {
+				//	s.metrics.RequestTracer.Start(token.TxSeqNum{block.Number, txNum})
 				//}
+				for txNum := uint64(0); txNum < uint64(len(b.Data.Data)); txNum++ {
+					s.metrics.RequestTracer.Start(token.TxSeqNum{b.Header.Number, txNum})
+				}
+				s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
 				s.metrics.InTxs.Add(len(b.Data.Data))
 			}
-			block, excluded := mapBlock(b)
 			s.postCommitAggregator.AddSubmittedBlock(b, excluded)
 			if len(block.Txs) > 0 {
 				s.orderedBlocks <- &workload.BlockWithExpectedResult{
@@ -142,9 +145,17 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 
 	s.postCommitAggregator.RunCommittedBlockListener(func(block *common.Block) {
 		if s.metrics.Enabled {
-			//for txNum := uint64(0); txNum < uint64(len(block.Data.Data)); txNum++ {
-			//	s.metrics.RequestTracer.End(token.TxSeqNum{block.Header.Number, txNum})
+			//for txNum, statusCode := range block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] {
+			//	if _, channelHeader, err := serialization.UnwrapEnvelope(block.Data.Data[txNum]); err == nil {
+			//		// TODO: AF Will not work if we mix config or issue TXs with transfer TXs. Config TXs are never mixed. Issue TXs are not mixed for now, and they will be later sent to the committer.
+			//		s.metrics.RequestTracer.End(token.TxSeqNum{block.Header.Number, uint64(txNum)},
+			//			attribute.String(metrics.StatusLabel, StatusInverseMap[statusCode].String()),
+			//			attribute.String(metrics.TxIdLabel, channelHeader.TxId))
+			//	}
 			//}
+			for txNum := uint64(0); txNum < uint64(len(block.Data.Data)); txNum++ {
+				s.metrics.RequestTracer.End(token.TxSeqNum{block.Header.Number, txNum})
+			}
 			s.metrics.OutTxs.Add(len(block.Data.Data))
 		}
 		logger.Infof("Received complete block from committer: %d:%d.", block.Header.Number, len(block.Data.Data))
