@@ -12,12 +12,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
 	"go.uber.org/ratelimit"
@@ -31,7 +29,7 @@ func main() {
 	creds, signer := connection.GetOrdererConnectionCreds(p)
 	_ = signer
 
-	m := monitoring.LaunchMonitoring(c.Monitoring, &Provider{}).(*Metrics)
+	//m := monitoring.LaunchMonitoring(c.Monitoring, &Provider{}).(*Metrics)
 
 	msgsPerGo := c.Messages / c.GoRoutines
 	roundMsgs := msgsPerGo * c.GoRoutines
@@ -44,7 +42,7 @@ func main() {
 		OnAck: func(err error) {
 			if err == nil && bar != nil {
 				bar.Add(1)
-				m.Throughput.Add(1)
+				//m.Throughput.Add(1)
 			}
 		},
 	}
@@ -56,13 +54,13 @@ func main() {
 	}
 
 	//fmt.Printf("Sending the same message to all servers.\n")
-	message := make([]byte, c.MessageSize)
-	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
-	env, _ := envelopeCreator.CreateEnvelope(message)
+	//message := make([]byte, c.MessageSize)
+	//envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
+	//env, _ := envelopeCreator.CreateEnvelope(message)
 	//env := &common.Envelope{Payload: message, Signature: nil}
-	serializedEnv, err := protoutil.Marshal(env)
-	utils.Must(err)
-	fmt.Printf("Message size: %d\n", len(serializedEnv))
+	//serializedEnv, err := protoutil.Marshal(env)
+	//utils.Must(err)
+	//fmt.Printf("Message size: %d\n", len(serializedEnv))
 
 	//fmt.Printf("Prebuffer tx with %d worker\n", c.GoRoutines)
 	//buffered := make(chan *common.Envelope, c.Messages)
@@ -128,11 +126,11 @@ func main() {
 	for _, ch := range s.Streams() {
 		input := ch.Input()
 		go func(input chan<- *common.Envelope) {
+			envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
 			for i := 0; i < msgsPerGo; i++ {
 				message := make([]byte, c.MessageSize)
 				n := atomic.AddUint64(&ops, 1)
 				binary.LittleEndian.PutUint32(message, uint32(n))
-				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
 				env, _ := envelopeCreator.CreateEnvelope(message)
 				// TODO send to all nodes?
 				//input <- <-buffered
