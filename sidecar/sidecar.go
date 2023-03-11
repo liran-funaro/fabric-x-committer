@@ -106,11 +106,8 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 		utils.Must(s.ordererListener.RunDeliverOutputListener(func(b *common.Block) {
 			block, excluded := mapBlock(b)
 			if s.metrics.Enabled {
-				//for txNum := uint64(0); txNum < uint64(len(block.Txs)); txNum++ {
-				//	s.metrics.RequestTracer.Start(token.TxSeqNum{block.Number, txNum})
-				//}
-				for txNum := uint64(0); txNum < uint64(len(b.Data.Data)); txNum++ {
-					s.metrics.RequestTracer.Start(token.TxSeqNum{b.Header.Number, txNum})
+				for txNum := uint64(0); txNum < uint64(len(block.Txs)); txNum++ {
+					s.metrics.RequestTracer.Start(token.TxSeqNum{block.Number, txNum})
 				}
 				s.metrics.OrdereredBlocksChLength.Set(len(s.orderedBlocks))
 				s.metrics.InTxs.Add(len(b.Data.Data))
@@ -127,39 +124,40 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 	go func() {
 		s.committerAdapter.RunCommitterSubmitterListener(s.orderedBlocks, func(t time.Time, b *token.Block) {
 			if s.metrics.Enabled {
-				//for txNum := uint64(0); txNum < uint64(len(b.Txs)); txNum++ {
-				//	s.metrics.RequestTracer.AddEvent(token.TxSeqNum{b.Number, txNum}, "Sent to committer.")
-				//}
+				for txNum := uint64(0); txNum < uint64(len(b.Txs)); txNum++ {
+					s.metrics.RequestTracer.AddEvent(token.TxSeqNum{b.Number, txNum}, "Sent to committer.")
+				}
 				s.metrics.CommitterInTxs.Add(len(b.Txs))
 			}
 		}, func(batch *coordinatorservice.TxValidationStatusBatch) {
 			if s.metrics.Enabled {
-				//for _, tx := range batch.TxsValidationStatus {
-				//	s.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Received from committer.")
-				//}
+				for _, tx := range batch.TxsValidationStatus {
+					s.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Received from committer.")
+				}
 				s.metrics.CommitterOutTxs.Add(len(batch.TxsValidationStatus))
 			}
 			s.postCommitAggregator.AddCommittedBatch(batch)
 		})
 	}()
 
-	s.postCommitAggregator.RunCommittedBlockListener(func(block *common.Block) {
+	s.postCommitAggregator.RunCommittedBlockListener(func(b *common.Block) {
 		if s.metrics.Enabled {
-			//for txNum, statusCode := range block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] {
-			//	if _, channelHeader, err := serialization.UnwrapEnvelope(block.Data.Data[txNum]); err == nil {
+			//for txNum, statusCode := range b.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] {
+			//	if _, channelHeader, err := serialization.UnwrapEnvelope(b.Data.Data[txNum]); err == nil {
 			//		// TODO: AF Will not work if we mix config or issue TXs with transfer TXs. Config TXs are never mixed. Issue TXs are not mixed for now, and they will be later sent to the committer.
-			//		s.metrics.RequestTracer.End(token.TxSeqNum{block.Header.Number, uint64(txNum)},
+			//		s.metrics.RequestTracer.End(token.TxSeqNum{b.Header.Number, uint64(txNum)},
 			//			attribute.String(metrics.StatusLabel, StatusInverseMap[statusCode].String()),
 			//			attribute.String(metrics.TxIdLabel, channelHeader.TxId))
 			//	}
 			//}
-			for txNum := uint64(0); txNum < uint64(len(block.Data.Data)); txNum++ {
-				s.metrics.RequestTracer.End(token.TxSeqNum{block.Header.Number, txNum})
+			block, _ := mapBlock(b)
+			for txNum := uint64(0); txNum < uint64(len(block.Txs)); txNum++ {
+				s.metrics.RequestTracer.End(token.TxSeqNum{block.Number, txNum})
 			}
-			s.metrics.OutTxs.Add(len(block.Data.Data))
+			s.metrics.OutTxs.Add(len(b.Data.Data))
 		}
-		logger.Infof("Received complete block from committer: %d:%d.", block.Header.Number, len(block.Data.Data))
-		onBlockCommitted(block)
+		logger.Infof("Received complete b from committer: %d:%d.", b.Header.Number, len(b.Data.Data))
+		onBlockCommitted(b)
 	})
 }
 
