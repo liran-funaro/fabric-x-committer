@@ -1,7 +1,8 @@
 #!/bin/bash
 
 signed_envs=$1
-bin_out=$2
+boosted=$2
+bin_out=$3
 
 cd "$FABRIC_PATH" || exit
 git reset --hard
@@ -13,6 +14,12 @@ if [ -n "$signed_envs" ] && [ "$signed_envs" = "false" ]; then \
   git apply /usr/local/orderer_no_sig_check.patch
 else \
   echo "Building orderer binaries for signed envelopes..."
+fi
+if [ -n "$boosted" ] && [ "$boosted" = "true" ]; then \
+  echo "Applying booster patch and building orderer binaries..."
+  git apply /usr/local/orderer_booster.patch
+else \
+  echo "Building orderer binaries without booster patch..."
 fi
 make native
 

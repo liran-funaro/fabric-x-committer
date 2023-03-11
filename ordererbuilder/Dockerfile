@@ -16,6 +16,8 @@ WORKDIR /usr/local
 
 # Patch to disable signatures
 ADD ordererbuilder/orderer_no_sig_check.patch .
+# Patch for boosting orderer performance
+ADD ordererbuilder/orderer_booster.patch .
 # Script to build binaries
 ADD ordererbuilder/build_orderer_binaries.sh .
 RUN chmod +x ./build_orderer_binaries.sh

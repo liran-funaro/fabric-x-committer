@@ -145,12 +145,12 @@ run target_hosts=('all') orderer=('raft') init_channel=('true') init_chaincode=(
     # Start orderer submitters
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-setup local_bins=('false') docker_bins=('false') signed_envelopes=('true'):
+setup local_bins=('false') docker_bins=('false') signed_envelopes=('true') boosted_orderer=('true'):
     #!/usr/bin/env bash
     just kill
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
 
-    just build-bins true true {{local_bins}} {{docker_bins}} {{signed_envelopes}}; \
+    just build-bins true true {{local_bins}} {{docker_bins}} {{signed_envelopes}} {{boosted_orderer}}; \
 
     just build-configs all {{signed_envelopes}}
     just build-orderer-artifacts
@@ -205,7 +205,7 @@ protos-wgclient:
 # Binaries
 #########################
 
-build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true') signed_envelopes=('true'):
+build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true') signed_envelopes=('true') boosted_orderer=('true'):
     #!/usr/bin/env bash
     if [[ "{{local}}" = "true" ]]; then \
       just empty-dir {{local-bin-input-dir}}; \
@@ -213,7 +213,7 @@ build-bins include_committer=('true') include_orderer=('true') local=('true') do
         just build-committer-local {{local-bin-input-dir}}; \
       fi; \
       if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-local {{local-bin-input-dir}} {{signed_envelopes}}; \
+          just build-raft-orderers-local {{local-bin-input-dir}} {{signed_envelopes}} {{boosted_orderer}}; \
           just build-orderer-clients-local {{local-bin-input-dir}}; \
       fi; \
     fi
@@ -224,7 +224,7 @@ build-bins include_committer=('true') include_orderer=('true') local=('true') do
           just docker "just build-committer-local ./eval/deployments/bins/linux"; \
       fi; \
       if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-docker {{linux-bin-input-dir}} {{signed_envelopes}}; \
+          just build-raft-orderers-docker {{linux-bin-input-dir}} {{signed_envelopes}} {{boosted_orderer}}; \
           just docker "just build-orderer-clients-local ./eval/deployments/bins/linux"; \
       fi; \
     fi
@@ -244,7 +244,7 @@ build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
 # git checkout v2.4.7 -b v2.4.7-branch
-build-raft-orderers-local output_dir signed_envelopes=('true'):
+build-raft-orderers-local output_dir signed_envelopes=('true') boosted_orderer=('true'):
     #!/usr/bin/env bash
     cd "{{fabric-path}}" || exit; \
     git reset --hard; \
@@ -258,6 +258,12 @@ build-raft-orderers-local output_dir signed_envelopes=('true'):
       echo "Applying patch and building orderer binaries for unsigned envelopes..."; \
       git apply {{orderer-builder-dir}}/orderer_no_sig_check.patch; \
     fi; \
+    if [[ "{{boosted_orderer}}" = "true" ]]; then \
+      echo "Applying booster patch and building orderer binaries..."; \
+      git apply {{orderer-builder-dir}}/orderer_booster.patch; \
+    else \
+      echo "Building orderer binaries without booster patch..."; \
+    fi; \
     make -C {{fabric-path}} native; \
     echo "Bins created under {{fabric-bins-path}}"; \
     if [[ -d "{{output_dir}}" ]]; then \
@@ -265,8 +271,8 @@ build-raft-orderers-local output_dir signed_envelopes=('true'):
     cp -a "{{fabric-bins-path}}/." "{{output_dir}}/"
     fi
 
-build-raft-orderers-docker output_dir signed_envelopes=('true'):
-    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed_envelopes}} /usr/local/out
+build-raft-orderers-docker output_dir signed_envelopes=('true') boosted_orderer=('true'):
+    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed_envelopes}} {{boosted_orderer}} /usr/local/out
 
 build-committer-local output_dir:
     go build -o {{output_dir}}/blockgen ./wgclient/cmd/generator
@@ -324,7 +330,7 @@ docker-image:
 
 # Simple containerized SC
 docker-runner-image:
-    just build-bins true false false true
+    just build-bins true false false true true
     mkdir -p {{runner-dir}}/bin
     cp {{linux-bin-input-dir}}/* {{runner-dir}}/bin
     docker build -f runner/Dockerfile -t sc_runner .
