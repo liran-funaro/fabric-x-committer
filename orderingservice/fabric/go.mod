@@ -12,7 +12,6 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
-	go.opentelemetry.io/otel/sdk v1.11.2
 	go.uber.org/ratelimit v0.2.0
 	google.golang.org/grpc v1.51.0
 )
@@ -84,10 +83,11 @@ require (
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/sykesm/zap-logfmt v0.0.4 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	github.com/ugorji/go/codec v1.2.9 // indirect
+	github.com/ugorji/go/codec v1.2.11 // indirect
 	go.opentelemetry.io/otel v1.11.2 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.11.2 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.8.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.11.2 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
