@@ -19,6 +19,7 @@ type SidecarClientConfig struct {
 	Parallelism              int    `mapstructure:"parallelism"`
 	SignedEnvelopes          bool   `mapstructure:"signed-envelopes"`
 	OrdererConnectionProfile string `mapstructure:"orderer-connection-profile"`
+	RemoteControllerListener string `mapstructure:"remote-controller-listener"`
 }
 
 func ReadConfig() SidecarClientConfig {

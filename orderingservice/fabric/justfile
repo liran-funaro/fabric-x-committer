@@ -67,6 +67,16 @@ start: init
     attach-session -t "orderer:0.5"
 #    send-keys -t "orderer:0.3" "just run_orderer 3" Enter \; \
 
+start-mock: init
+    tmux new-session -d -s "orderer" \; \
+    split-window -t "orderer:0" -v \; \
+    split-window -t "orderer:0.0" -h \; \
+    split-window -t "orderer:0.2" -h \; \
+    \
+    send-keys -t "orderer:0.0" "go run clients/cmd/mockorderer/main.go" Enter \; \
+    \
+    attach-session -t "orderer:0.2"
+
 start-remote: init-remote run-remote
 
 kill:
@@ -168,6 +178,13 @@ submit:
     GOGC=15000 \
     SC_ORDERER_SUBMITTER_ORDERER_CONNECTION_PROFILE="{{config_path}}/orderer-connection-profile.yaml" \
     go run clients/cmd/submitter/main.go --configs "{{config_path}}/orderer-submitter-config.yaml"
+
+submit-sidecar:
+    GOGC=15000 \
+    SC_SIDECAR_CLIENT_PROFILE="{{config_path}}/profile-sidecar-client.yaml" \
+    SC_SIDECAR_CLIENT_ORDERER_CONNECTION_PROFILE="{{config_path}}/orderer-connection-profile.yaml" \
+    go run ../../wgclient/cmd/sidecarclient/main.go --configs "{{config_path}}/config-sidecar-client.yaml"
+
 
 submit-remote host=("tokentestbed14.sl.cloud9.ibm.com"):
     ssh root@{{host}} "tmux send -t orderer ' \

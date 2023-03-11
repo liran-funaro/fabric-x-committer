@@ -21,6 +21,12 @@ sidecar-client:
   input-channel-capacity: 20
   parallelism: 1
   signed-envelopes: true                                      # Overriden by ansible
+  parallelism: 20
+  signed-envelopes: true                      # Overriden by ansible
+
+  # enables the remote limiter controller; if empty it is disabled
+  remote-controller-listener: :6997
+
 logging:
   enabled: true
   level: INFO

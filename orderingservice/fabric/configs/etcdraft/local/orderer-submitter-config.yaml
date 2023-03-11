@@ -4,6 +4,8 @@ orderer-submitter:
     - localhost:7051
   prometheus:
     endpoint: :2112
+  # enables the remote limiter controller; if empty it is disabled
+  remote-controller-listener: localhost:6997
   orderer-connection-profile: orderer-connection-profile.yaml
   messages: 10000000
   go-routines: 100

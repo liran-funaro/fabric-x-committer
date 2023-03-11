@@ -1,0 +1,23 @@
+sidecar-client:
+  prometheus:                                 # Overridden by ansible
+    endpoint: :2112
+
+  sidecar: :1234                              # Overridden by ansible
+  committer: :5002                            # Overridden by ansible
+  orderers:                                   # Overridden by ansible
+    - localhost:7051
+  channel-id: mychannel                       # Overridden by ansible
+  profile: where/ever/config/profile-sidecar-client.yaml # Overridden by ansible
+  input-channel-capacity: 100
+  parallelism: 8
+  signed-envelopes: false                      # Overriden by ansible
+  orderer-connection-profile: somewhere
+
+  # enables the remote limiter controller; if empty it is disabled
+  remote-controller-listener: :6997
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt

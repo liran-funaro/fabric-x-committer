@@ -1,9 +1,12 @@
 package sidecarclient
 
 import (
+	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
+	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
@@ -16,6 +19,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
+	"go.uber.org/ratelimit"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -49,16 +53,19 @@ type ClientInitOptions struct {
 
 	Parallelism          int
 	InputChannelCapacity int
+
+	RemoteControllerListener string
 }
 
-//Client connects to:
-//1. the orderer where it sends transactions to be ordered, and
-//2. the sidecar where it listens for committed blocks
+// Client connects to:
+// 1. the orderer where it sends transactions to be ordered, and
+// 2. the sidecar where it listens for committed blocks
 type Client struct {
-	committerClient    VerificationKeySetter
-	sidecarListener    sidecar.DeliverListener
-	ordererBroadcaster OrdererSubmitter
-	envelopeCreator    EnvelopeCreator
+	committerClient          VerificationKeySetter
+	sidecarListener          sidecar.DeliverListener
+	ordererBroadcaster       OrdererSubmitter
+	envelopeCreator          EnvelopeCreator
+	RemoteControllerListener string
 }
 
 func NewClient(opts *ClientInitOptions) (*Client, error) {
@@ -99,19 +106,19 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{committer, listener, submitter, envelopeCreator}, nil
+	return &Client{committer, listener, submitter, envelopeCreator, opts.RemoteControllerListener}, nil
 }
 
 func (c *Client) SetCommitterKey(publicKey signature.PublicKey) error {
 	return c.committerClient.SetVerificationKey(publicKey)
 }
 
-//StartListening listens for incoming committed blocks from sidecar
+// StartListening listens for incoming committed blocks from sidecar
 func (c *Client) StartListening(onBlock func(*common.Block)) {
 	utils.Must(c.sidecarListener.RunDeliverOutputListener(onBlock))
 }
 
-//SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all streams.
+// SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all streams.
 func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 	logger.Infof("Sending replicated message to all orderers.\n")
 
@@ -140,6 +147,38 @@ func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
 func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend func(*sigverification_test.TxWithStatus, *common.Envelope)) {
 	logger.Infof("Sending messages to all open streams.\n")
 
+	var rl ratelimit.Limiter
+	rl = ratelimit.NewUnlimited()
+
+	// start remote-limiter controller
+	if c.RemoteControllerListener != "" {
+		fmt.Printf("Start remote controller listener on %v\n", c.RemoteControllerListener)
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.Default()
+		router.POST("/setLimits", func(c *gin.Context) {
+
+			type Limiter struct {
+				Limit int `json:"limit"`
+			}
+
+			var limit Limiter
+			if err := c.BindJSON(&limit); err != nil {
+				return
+			}
+
+			if limit.Limit < 1 {
+				rl = ratelimit.NewUnlimited()
+				return
+			}
+
+			// create our new limiter
+			rl = ratelimit.New(limit.Limit)
+
+			c.IndentedJSON(http.StatusOK, limit)
+		})
+		go router.Run(c.RemoteControllerListener)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(len(c.ordererBroadcaster.Streams()))
 	for _, ch := range c.ordererBroadcaster.Streams() {
@@ -150,9 +189,11 @@ func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend
 				case tx := <-txs:
 					item := serialization.MarshalTx(tx.Tx)
 					env, err := c.envelopeCreator.CreateEnvelope(item)
-					onRequestSend(tx, env)
 					utils.Must(err)
+					_ = rl.Take() // our rate limiter
 					input <- env
+					// let's track this request once we have sent it
+					onRequestSend(tx, env)
 				}
 			}
 		}(ch.Input())

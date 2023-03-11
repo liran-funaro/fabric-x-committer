@@ -6,9 +6,11 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
+	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
@@ -18,6 +20,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"go.uber.org/ratelimit"
 )
 
 func main() {
@@ -86,11 +89,45 @@ func main() {
 	//	wg.Wait()
 	//}
 
+	// we start by default with unlimited rate
+	var rl ratelimit.Limiter
+	rl = ratelimit.NewUnlimited()
+
+	// start remote-limiter controller
+	if c.RemoteControllerListener != "" {
+		fmt.Printf("Start remote controller listener on %v\n", c.RemoteControllerListener)
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.Default()
+		router.POST("/setLimits", func(c *gin.Context) {
+
+			type Limiter struct {
+				Limit int `json:"limit"`
+			}
+
+			var limit Limiter
+			if err := c.BindJSON(&limit); err != nil {
+				return
+			}
+
+			if limit.Limit < 1 {
+				rl = ratelimit.NewUnlimited()
+				return
+			}
+
+			// create our new limiter
+			rl = ratelimit.New(limit.Limit)
+
+			c.IndentedJSON(http.StatusOK, limit)
+		})
+		fmt.Printf("Start remote controller on ")
+		go router.Run(c.RemoteControllerListener)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(len(s.Streams()))
 	for _, ch := range s.Streams() {
 		input := ch.Input()
-		go func(out chan<- *common.Envelope) {
+		go func(input chan<- *common.Envelope) {
 			for i := 0; i < msgsPerGo; i++ {
 				message := make([]byte, c.MessageSize)
 				n := atomic.AddUint64(&ops, 1)
@@ -99,6 +136,7 @@ func main() {
 				env, _ := envelopeCreator.CreateEnvelope(message)
 				// TODO send to all nodes?
 				//input <- <-buffered
+				_ = rl.Take() // our rate limiter
 				input <- env
 			}
 			wg.Done()

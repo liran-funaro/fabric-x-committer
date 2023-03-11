@@ -15,6 +15,7 @@ type SubmitterConfig struct {
 	GoRoutines               int                    `mapstructure:"go-routines"`
 	MessageSize              int                    `mapstructure:"message-size"`
 	SignedEnvelopes          bool                   `mapstructure:"signed-envelopes"`
+	RemoteControllerListener string                 `mapstructure:"remote-controller-listener"`
 }
 
 type ListenerConfig struct {
