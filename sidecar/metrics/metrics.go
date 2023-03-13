@@ -31,7 +31,7 @@ func (p *Provider) ComponentName() string {
 	return "sidecar"
 }
 func (p *Provider) LatencyLabels() []string {
-	return []string{StatusLabel, TxIdLabel}
+	return []string{}
 }
 func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
 	if !enabled {
