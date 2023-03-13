@@ -145,7 +145,7 @@ run target_hosts=('all') orderer=('raft') init_channel=('true') init_chaincode=(
     # Start orderer submitters
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-setup local_bins=('false') docker_bins=('false') signed_envelopes=('true') boosted_orderer=('true'):
+setup local_bins=('false') docker_bins=('false') signed_envelopes=('true') boosted_orderer=('false'):
     #!/usr/bin/env bash
     just kill
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
