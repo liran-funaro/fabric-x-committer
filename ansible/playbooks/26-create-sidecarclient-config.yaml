@@ -16,10 +16,11 @@
       when: "{{selected_hosts | length > 0}}"
     - name: Further edit sidecar-client config
       vars:
-        connections: 3
+        client_connections: 12
         filepath: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.config}}"
         orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
         orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
+        clients: "{{range((client_connections | int) // (orderer_endpoints | length | int) + 1) | product(orderer_endpoints) | map('last') | list}}"
         sidecar_host: "{{groups['sidecars'] | map('extract', hostvars) | first}}"
         committer_host: "{{groups['coordinators'] | map('extract', hostvars) | first}}"
         inherit_peer: "{{hostvars[sidecarclient_instance.inherit_peer]}}"
@@ -29,7 +30,7 @@
           - key: sidecar-client.profile
             value: "{{'' if sidecarclient_instance.profile | d('') | length == 0 else sidecarclient_instance.config_dir + '/' + sidecarclient_instance.profile}}"
           - key: sidecar-client.orderers
-            value: "{{range(connections | int) | product(orderer_endpoints) | map('last') | list}}"
+            value: "{{clients[:(client_connections | int)]}}"
           - key: sidecar-client.channel-id
             value: "{{channel_id}}"
           - key: sidecar-client.sidecar
