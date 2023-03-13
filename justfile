@@ -349,6 +349,11 @@ build-configs target_hosts=('all') signed_envelopes=('true'):
     ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'signed_envelopes': {{signed_envelopes}}}"
 
+serve-ui-config port=('8080'):
+    ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}'}"
+    echo "Serving UI config under http://localhost:{{port}}/ui-config.yaml"
+    docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{base-setup-config-dir}}:/app/static nginx:alpine
+
 build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
     #!/usr/bin/env bash
     ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'channel_ids': ['{{default-channel-id}}']}"
