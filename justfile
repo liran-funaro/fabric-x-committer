@@ -162,6 +162,9 @@ setup local_bins=('false') docker_bins=('false') signed_envelopes=('true') boost
       just deploy-bins; \
     fi
 
+check-ports:
+    ansible-playbook "{{playbook-path}}/91-check-ports.yaml"
+
 clean target_hosts=('all') include_configs=('false') include_bins=('false'):
     ansible-playbook "{{playbook-path}}/95-clean.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': {{include_bins}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}'}"
 
