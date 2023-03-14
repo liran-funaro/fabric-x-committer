@@ -1,9 +1,10 @@
 name: EU Saturday Peak Load
 description: load of a "black friday"
-endpoint: localhost:8080
+endpoint: tokentestbed1.sl.cloud9.ibm.com:6997
+loop: true
 
 load:
-  interval: 5s
+  interval: 30s
   tps: [
       5563.36,
       2614.37,

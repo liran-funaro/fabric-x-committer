@@ -24,6 +24,7 @@ type workload struct {
 	Description string `yaml:"description"`
 	Load        load   `yaml:"load"`
 	Endpoint    string `yaml:"endpoint"`
+	Loop        bool   `yaml:"loop"`
 }
 
 type load struct {
@@ -84,18 +85,27 @@ func main() {
 	s := spinner.New(spinner.CharSets[26], 200*time.Millisecond)
 	s.Color("green")
 
-	fmt.Println(colorstring.Color("[green]-> starting"))
-	for i, t := range p.Load.TargetTps {
-		// call remote
-		targetTPS := int(math.Round(t))
-		setLimit(targetTPS)
+	for {
+		fmt.Println(colorstring.Color("[green]-> starting"))
+		for i, t := range p.Load.TargetTps {
+			// call remote
+			targetTPS := int(math.Round(t))
+			setLimit(targetTPS)
 
-		// update ui and sleep
-		s.Prefix = colorstring.Color(fmt.Sprintf("[green][[reset]%d/%d[green]][reset] set limit to %v TPS and wait %v ", i+1, numLoads, targetTPS, wait))
-		s.Restart()
-		time.Sleep(wait)
-		s.Stop()
+			// update ui and sleep
+			s.Prefix = colorstring.Color(fmt.Sprintf("[green][[reset]%d/%d[green]][reset] set limit to %v TPS and wait %v ", i+1, numLoads, targetTPS, wait))
+			s.Restart()
+			time.Sleep(wait)
+			s.Stop()
+		}
+
+		if !p.Loop {
+			break
+		}
 	}
+
+	// unset limter
+	setLimit(0)
 
 	fmt.Println(colorstring.Color("[green]-> done! [reset]thanks and goodbye"))
 }
