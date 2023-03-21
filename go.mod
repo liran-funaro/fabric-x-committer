@@ -12,7 +12,7 @@ require (
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-protos-go v0.3.0
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213
-	github.com/linxGnu/grocksdb v1.7.10
+	github.com/linxGnu/grocksdb v1.7.15
 	github.com/onsi/gomega v1.24.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0

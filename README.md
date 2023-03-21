@@ -9,10 +9,24 @@ brew install just
 ```shell
 brew install go@1.18
 ```
-3. rocksdb (*not required if you never build for the local machine, because the Docker image contains the dependency*)
+3. rocksdb and gorocksdb (*not required if you never build for the local machine, because the Docker image contains the dependency*)
+
+First, we have to install rocksdb 7.9.2
 ```shell
-brew install rocksdb
+wget https://raw.githubusercontent.com/Homebrew/homebrew-core/d23af025f1956dff0a6afade287192b61915cf09/Formula/rocksdb.rb
 ```
+```shell 
+brew install --build-from-source ./rocksdb.rb
+```
+Second, install gorocksdb
+```shell
+go get -u github.com/linxGnu/grocksdb@v1.7.15
+```
+Finally, make dynamic linker to pick the shared library
+```shell
+update_dyld_shared_cache
+```
+
 4. Ansible (for more info [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pip-install)), and all the dependencies required by the project
 ```shell
 brew install ansible
