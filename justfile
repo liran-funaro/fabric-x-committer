@@ -168,8 +168,8 @@ check-ports:
 clean target_hosts=('all') include_configs=('false') include_bins=('false'):
     ansible-playbook "{{playbook-path}}/95-clean.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': {{include_bins}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}'}"
 
-call-api target_host action recipient=('') value=('0') nonce=(''):
-    ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}'}"
+call-api target_host user action recipient=('') value=('0') nonce=(''):
+    ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'user': '{{user}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}'}"
 
 kill target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/90-kill.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"

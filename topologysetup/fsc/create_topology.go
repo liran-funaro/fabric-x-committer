@@ -1,14 +1,13 @@
 package fsc
 
 import (
-	"fmt"
-
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/api"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fsc"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fsc/node"
 	"github.com/hyperledger-labs/fabric-token-sdk/integration/nwo/token"
 	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/tss"
+	token2 "github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/token"
 	sdk "github.ibm.com/decentralized-trust-research/fts-sc/platform/fabric/sdk"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 )
@@ -61,14 +60,17 @@ func (n *Node) AllOptions(nodeName, sdkDriver string) []node.Option {
 		if ownerIdentity == DefaultIdentity {
 			options = append(options, token.WithDefaultOwnerIdentity(sdkDriver))
 		} else {
-			options = append(options, token.WithOwnerIdentity(sdkDriver, fmt.Sprintf("%s.%s", nodeName, ownerIdentity)))
+			options = append(options, token.WithOwnerIdentity(sdkDriver, string(ownerIdentity)))
 		}
+	}
+	if len(n.IntermediaryIdentity) > 0 {
+		options = append(options, token2.WithIntermediaryIdentity(string(n.IntermediaryIdentity)))
 	}
 	for _, issuerIdentity := range n.IssuerIdentities {
 		if issuerIdentity == DefaultIdentity {
 			options = append(options, token.WithDefaultIssuerIdentity())
 		} else {
-			options = append(options, token.WithIssuerIdentity(fmt.Sprintf("%s.%s", nodeName, issuerIdentity)))
+			options = append(options, token.WithIssuerIdentity(string(issuerIdentity)))
 		}
 	}
 	if n.Auditor {

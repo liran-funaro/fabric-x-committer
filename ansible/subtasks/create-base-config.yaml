@@ -32,7 +32,7 @@
     edits:
       - key: "{{config_root}}.monitoring.latency.endpoint"
         value: "{{jaeger_endpoints | first}}"
-  when: jaeger_endpoints | length == 0
+  when: jaeger_endpoints | length > 0
   loop: "{{selected_hosts}}"
   loop_control:
     loop_var: host_instance

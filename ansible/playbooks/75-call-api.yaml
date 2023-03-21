@@ -12,8 +12,8 @@
         url: "{{target_endpoint}}/login"
         method: POST
         body:
-          username: "{{target_instance.inventory_hostname}}"
-          password: "{{target_instance.inventory_hostname}}"
+          username: "{{user}}"
+          password: "{{user}}"
         body_format: json
       register: login_result
     - set_fact:
@@ -70,7 +70,7 @@
       when: action == 'transfer'
     - name: "Get balance of {{target_host}}"
       uri:
-        url: "{{target_endpoint}}/zkat/balance"
+        url: "{{target_endpoint}}/zkat/balance?user={{user}}"
         method: GET
         headers:
           Authorization: "Bearer {{token}}"
@@ -80,7 +80,7 @@
       when: action == 'balance'
     - name: "Get all payments of {{target_host}}"
       uri:
-        url: "{{target_endpoint}}/zkat/payments"
+        url: "{{target_endpoint}}/zkat/intermediary/payments"
         method: GET
         headers:
           Authorization: "Bearer {{token}}"
@@ -98,5 +98,23 @@
       register: result
     - debug: var=result.json
       when: action == 'status'
-
-
+    - name: "Get all payments of {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/intermediary/ownerWalletIDs"
+        method: GET
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'wallets'
+      register: result
+    - debug: var=result.json
+      when: action == 'wallets'
+    - name: "Get all validation records of {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/settlement/validationRecords"
+        method: GET
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'wallets'
+      register: result
+    - debug: var=result.json
+      when: action == 'records'

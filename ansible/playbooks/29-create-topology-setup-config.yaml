@@ -103,6 +103,7 @@
           },
           'view-factories': instance.view_factories | d([]),
           'responders': instance.responders | d([]),
+          'intermediary-identity': instance.intermediary_identity | d(''),
           'owner-identities': instance.owner_identities | d([]),
           'issuer-identities': instance.issuer_identities | d([]),
           'auditor': instance.auditor | d(false),

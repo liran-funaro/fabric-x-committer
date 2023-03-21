@@ -116,12 +116,10 @@ github.com/akavel/rsrc v0.8.0/go.mod h1:uLoCtb9J+EyAqh+26kdrTgmzRBFPGOolLWKpdxkK
 github.com/alcortesm/tgz v0.0.0-20161220082320-9c5fe88206d7 h1:uSoVVbwJiQipAclBbw+8quDsfcvFjOpI5iCf4p/cqCs=
 github.com/alcortesm/tgz v0.0.0-20161220082320-9c5fe88206d7/go.mod h1:6zEj6s6u/ghQa61ZWa/C2Aw3RkjiTBOix7dkqa1VLIs=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
-github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 h1:JYp7IbQjafoB+tBA3gMyHYHrpOtNuDiK/uB5uXxq5wM=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d/go.mod h1:rBZYJk541a8SKzHPHnH3zbiI+7dagKZ0cgpgrD7Fyho=
-github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922 h1:8ypNbf5sd3Sm3cKJ9waOGoQv6dKAFiFty9L6NP1AqJ4=
 github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922/go.mod h1:OMCwj8VM1Kc9e19TLln2VL61YJF0x1XFtfdL4JdbSyE=
 github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239 h1:kFOfPq6dUM1hTo4JG6LR5AXSUEsOjtdm0kw0FtQtMJA=
@@ -706,10 +704,10 @@ github.com/hudl/fargo v1.3.0/go.mod h1:y3CKSmjA+wD2gak7sUSXTAoopbhU08POFhmITJgmK
 github.com/huin/goupnp v1.0.0 h1:wg75sLpL6DZqwHQN6E1Cfk6mtfzS45z8OV+ic+DtHRo=
 github.com/huin/goupnp v1.0.0/go.mod h1:n9v9KO1tAxYH82qOn+UTIFQDmx5n1Zxd/ClZDMX7Bnc=
 github.com/huin/goutil v0.0.0-20170803182201-1ca381bf3150/go.mod h1:PpLOETDnJ0o3iZrZfqZzyLl6l7F3c6L1oWn7OICBi6o=
-github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230320195444-90456f6ef748 h1:B4dgeUoliEb7alHRndiLYopUnTUoahOr2xZjDkk9IVY=
-github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230320195444-90456f6ef748/go.mod h1:xWk3ZJ/lxbWVqc412bdWR01d5gy95j8cOgfQEvR8Wdo=
-github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230223200323-2e738d02b9b7 h1:CTiAyFmdkFqY3sCo8PpH+PrU2LVoBp6LQDXwqGecKTo=
-github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230223200323-2e738d02b9b7/go.mod h1:yqKcxs2Nedw+XW29DxhfwD73IocddabTyf0bDLvT5ok=
+github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230321124846-ad52a832bad1 h1:B0cg1pF6ICyobrvu0WIMkHFLl7HkdE9P8NuSDXa1TUw=
+github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230321124846-ad52a832bad1/go.mod h1:xWk3ZJ/lxbWVqc412bdWR01d5gy95j8cOgfQEvR8Wdo=
+github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230321135717-8f6701790fa9 h1:WrIAlJIuapAp4zfsdJdNMZ7RIfrJNhAIeSqv/77Zvew=
+github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230321135717-8f6701790fa9/go.mod h1:zaBlCJaL43fnxtGWPi1mKDKrelzccZLksvy1VAGmn3M=
 github.com/hyperledger-labs/orion-sdk-go v0.2.5 h1:HFGRTuMZgzo9EtyJeFAhVSlbrj6x3jtY0aDcghdjzRE=
 github.com/hyperledger-labs/orion-sdk-go v0.2.5/go.mod h1:At8hiFATfkDXQ4AFLVbaTiC9GDhVDo8aN/supb1KBb4=
 github.com/hyperledger-labs/orion-server v0.2.5 h1:aFudmB9SAnsT5v8jhazkuszEu0pdJNFqaYZF2GpvAuI=
@@ -1717,8 +1715,8 @@ github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521/go.mod h1:3YZ9o3WnatTIZhu
 github.com/zmap/zcertificate v0.0.0-20180516150559-0e3d58b1bac4/go.mod h1:5iU54tB79AMBcySS0R2XIyZBAVmeHranShAFELYx7is=
 github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e/go.mod h1:w7kd3qXHh8FNaczNjslXqvFQiv5mMWRXlL9klTUAHc8=
 github.com/zmap/zlint v0.0.0-20190806154020-fd021b4cfbeb/go.mod h1:29UiAJNsiVdvTBFCJW8e3q6dcDbOoPkhMgttOSCIMMY=
-github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230306075550-e9e3767312e6 h1:mZ01QJKvFySztTPskrBM0ZqK3CXWP+QSinBQosikjog=
-github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230306075550-e9e3767312e6/go.mod h1:Nlmd+e6WKs4iy1gL1tsnywgPNXhl9/tVjgJjU3dyfu8=
+github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230321193132-a6947da22d6a h1:BALeo3xI2pETe4RXzpg15e8Kijz5wXcc3Ljb3vcfZ48=
+github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230321193132-a6947da22d6a/go.mod h1:VM8b6Lu87wx1ZF2K/ICS/CiP2i1Cp5x53uPo+6o1loc=
 go.etcd.io/bbolt v1.3.1-etcd.7/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
@@ -2408,7 +2406,6 @@ google.golang.org/protobuf v1.28.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqw
 google.golang.org/protobuf v1.28.1 h1:d0NfwRgPtno5B1Wa6L2DAG+KivqkdutMf1UhdNx175w=
 google.golang.org/protobuf v1.28.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
 gopkg.in/airbrake/gobrake.v2 v2.0.9/go.mod h1:/h5ZAUhDkGaJfjzjKLSjv6zCL6O0LLBxU4K+aSYdM/U=
-gopkg.in/alecthomas/kingpin.v2 v2.2.6 h1:jMFz6MfLP0/4fUyZle81rXUoxOBFi19VUFKVDOQfozc=
 gopkg.in/alecthomas/kingpin.v2 v2.2.6/go.mod h1:FMv+mEhP44yOT+4EoQTLFTRgOQ1FBLkstjWtayDeSgw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

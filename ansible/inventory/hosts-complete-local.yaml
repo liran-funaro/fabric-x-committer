@@ -104,8 +104,8 @@ all:
               service_port: 8007
               p2p_port: 8027
               bootstrap: true
-            auditor:
-              config_dir: "{{top_config_dir}}/auditor"
+            dw:
+              config_dir: "{{top_config_dir}}/dw"
               ops_port: 8088
               web_port: 9088
               service_port: 8008
@@ -127,22 +127,25 @@ all:
               p2p_port: 8020
               issuer_identities:
                 - default
-                - id1 #TODO: AF Remove redundant ID's
               owner_identities:
                 - default
-                - owner
               view_factories:
                 - id: issue
                   factory: "{{demo_views}}/IssueCashViewFactory"
+              responders:
+                - responder: "{{demo_views}}/WithdrawalResponderView"
+                  initiator: "{{demo_views}}/WithdrawalInitiatorView"
 
-            alice:
-              config_dir: "{{top_config_dir}}/alice"
+            banka:
+              config_dir: "{{top_config_dir}}/banka"
               ops_port: 8081
               web_port: 9081
               service_port: 8001
               p2p_port: 8021
+              intermediary_identity: bankA
               owner_identities:
-                - id1
+                - alice
+                - charlie
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
                   initiator: "{{demo_views}}/IssueCashView"
@@ -161,15 +164,21 @@ all:
                   factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
                 - id: txStatusByNonce
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
+                - id: ListOwnerWalletIDsView
+                  factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
 
-            bob:
-              config_dir: "{{top_config_dir}}/bob"
+            bankb:
+              config_dir: "{{top_config_dir}}/bankb"
               ops_port: 8082
               web_port: 9082
               service_port: 8002
               p2p_port: 8022
+              intermediary_identity: bankB
               owner_identities:
-                - id1
+                - bob
+                - dave
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
                   initiator: "{{demo_views}}/IssueCashView"
@@ -188,11 +197,20 @@ all:
                   factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
                 - id: txStatusByNonce
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
+                - id: ListOwnerWalletIDsView
+                  factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+
             endorser-1: # Only one endorser supported currently
               config_dir: "{{top_config_dir}}/endorser1"
               endorser: true
+              ops_port: 8083
               service_port: 8003
               p2p_port: 8023
+              view_factories:
+                - id: listValidatedRequests
+                  factory: "{{demo_views}}/ListValidatedRequestsViewFactory"
 
         sidecars:
           vars:

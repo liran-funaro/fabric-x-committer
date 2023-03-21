@@ -107,13 +107,13 @@ all:
               p2p_port: 8020
               config_dir: "{{top_config_dir}}/lib-p2p"
               bootstrap: true
-            auditor:
+            dw:
               ansible_host: tokentestbed4.sl.cloud9.ibm.com
               service_port: 8001
               p2p_port: 8021
               ops_port: 8081
               web_port: 9081
-              config_dir: "{{top_config_dir}}/auditor"
+              config_dir: "{{top_config_dir}}/dw"
               auditor: true
               certifier: true
               view_factories:
@@ -132,23 +132,26 @@ all:
               config_dir: "{{top_config_dir}}/issuer"
               issuer_identities:
                 - default
-                - id1
               owner_identities:
                 - default
-                - owner
               view_factories:
                 - id: issue
                   factory: "{{demo_views}}/IssueCashViewFactory"
+              responders:
+                - responder: "{{demo_views}}/WithdrawalResponderView"
+                  initiator: "{{demo_views}}/WithdrawalInitiatorView"
 
-            alice:
+            banka:
               ansible_host: tokentestbed6.sl.cloud9.ibm.com
               service_port: 8003
               p2p_port: 8023
               ops_port: 8083
               web_port: 9083
-              config_dir: "{{top_config_dir}}/alice"
+              config_dir: "{{top_config_dir}}/banka"
+              intermediary_identity: bankA
               owner_identities:
-                - id1
+                - alice
+                - charlie
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
                   initiator: "{{demo_views}}/IssueCashView"
@@ -167,16 +170,20 @@ all:
                   factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
                 - id: txStatusByNonce
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+                - id: ListOwnerWalletIDsView
+                  factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
 
-            bob:
+            bankb:
               ansible_host: tokentestbed5.sl.cloud9.ibm.com
               service_port: 8004
               p2p_port: 8024
               ops_port: 8084
               web_port: 9084
-              config_dir: "{{top_config_dir}}/bob"
+              config_dir: "{{top_config_dir}}/bankb"
+              intermediary_identity: bankB
               owner_identities:
-                - id1
+                - bob
+                - dave
               responders:
                 - responder: "{{demo_views}}/AcceptIssuedCashView"
                   initiator: "{{demo_views}}/IssueCashView"
@@ -195,12 +202,21 @@ all:
                   factory: "{{demo_views}}/GetEnrollmentIDViewFactory"
                 - id: txStatusByNonce
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
+                - id: ListOwnerWalletIDsView
+                  factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+
             endorser-1: # Only one endorser supported currently
               ansible_host: tokentestbed3.sl.cloud9.ibm.com
               service_port: 8005
               p2p_port: 8025
+              ops_port: 8083
               config_dir: "{{top_config_dir}}/endorser1"
               endorser: true
+              view_factories:
+                - id: listValidatedRequests
+                  factory: "{{demo_views}}/ListValidatedRequestsViewFactory"
 
         sidecars:
           vars:

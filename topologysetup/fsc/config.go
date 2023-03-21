@@ -19,6 +19,7 @@ type Node struct {
 	*topologysetup.NodeConfig `mapstructure:"config"`
 	Responders                []Responder   `mapstructure:"responders"`
 	ViewFactories             []ViewFactory `mapstructure:"view-factories"`
+	IntermediaryIdentity      Identity      `mapstructure:"intermediary-identity"`
 	OwnerIdentities           []Identity    `mapstructure:"owner-identities"`
 	IssuerIdentities          []Identity    `mapstructure:"issuer-identities"`
 	Auditor                   bool          `mapstructure:"auditor"`

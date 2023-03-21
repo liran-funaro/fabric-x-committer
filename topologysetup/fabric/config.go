@@ -1,6 +1,7 @@
 package fabric
 
 import (
+	"fmt"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/api"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/network"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"strings"
 )
 
 const (
@@ -39,6 +41,11 @@ func (c *Config) Consortiums() []*topology.Consortium {
 }
 
 func (c *Config) AllChannelProfiles() []*topology.Profile {
+	peerOrgs := c.AllPeerOrgs()
+	peerOrgMembers := make([]string, len(peerOrgs))
+	for i, peerOrg := range peerOrgs {
+		peerOrgMembers[i] = fmt.Sprintf("'%sMSP.member'", peerOrg) // TODO: Find MSP name
+	}
 	return []*topology.Profile{{
 		Name:          channelProfile,
 		Consortium:    consortiumName,
@@ -47,7 +54,7 @@ func (c *Config) AllChannelProfiles() []*topology.Profile {
 			fabric.ImplicitMetaReaders,
 			fabric.ImplicitMetaWriters,
 			fabric.ImplicitMetaAdmins,
-			fabric.ImplicitMetaLifecycleEndorsement,
+			{Name: "LifecycleEndorsement", Type: "Signature", Rule: fmt.Sprintf("AND (%s)", strings.Join(peerOrgMembers, ","))},
 			fabric.ImplicitMetaEndorsement,
 		},
 	}}

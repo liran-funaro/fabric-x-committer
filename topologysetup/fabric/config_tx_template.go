@@ -138,9 +138,9 @@ Profiles:{{ range .Profiles }}
       Addresses:{{ range .Orderers }}{{ with $w.Orderer . }}
       - {{ $w.OrdererAddress . "Listen" }}
       {{- end }}{{ end }}
-      BatchTimeout: 2s
+      BatchTimeout: 500ms
       BatchSize:
-        MaxMessageCount: 100000
+        MaxMessageCount: 3500
         AbsoluteMaxBytes: 16 MB
         PreferredMaxBytes: 4 MB
       MaxChannels: 0
@@ -214,8 +214,8 @@ Profiles:{{ range .Profiles }}
           Type: ImplicitMeta
           Rule: MAJORITY Admins
         LifecycleEndorsement:
-          Type: ImplicitMeta
-          Rule: "MAJORITY Endorsement"
+          Type: Signature
+          Rule: AND ({{range $i, $org := .PeerOrgs}}{{if $i}},{{end}}'{{$org.Name}}.member'{{end}})
         Endorsement:
           Type: ImplicitMeta
           Rule: "MAJORITY Endorsement"
