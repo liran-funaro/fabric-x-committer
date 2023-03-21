@@ -45,7 +45,10 @@
           Authorization: "Bearer {{token}}"
       when: action == 'initiate'
       register: result
-    - debug: var=result.json
+    - debug:
+        msg:
+          - "{{result.json}}"
+          - 'curl -X POST -H "Content-Type: application/x-www-form-urlencoded;charset=UTF-8" -H "Authorization: Bearer {{token}}" -d "value={{value}}&recipient={{recipient}}&nonce={{nonce}}" {{target_endpoint}}/zkat/payments/initiation'
       when: action == 'initiate'
     - name: "Accept payment of {{value}} tokens to {{recipient}}"
       uri:
@@ -60,7 +63,10 @@
           Authorization: "Bearer {{token}}"
       when: action == 'transfer'
       register: result
-    - debug: var=result.json
+    - debug:
+        msg:
+          - "{{result.json}}"
+          - 'curl -X POST -H "Content-Type: application/x-www-form-urlencoded;charset=UTF-8" -H "Authorization: Bearer {{token}}" -d "value={{value}}&recipient={{recipient}}&nonce={{nonce}}" {{target_endpoint}}/zkat/payments/transfer'
       when: action == 'transfer'
     - name: "Get balance of {{target_host}}"
       uri:

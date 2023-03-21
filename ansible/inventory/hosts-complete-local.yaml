@@ -7,7 +7,7 @@ all:
 
     # Where to transfer the binary and config files on the deployment machines
     root_path: "{{lookup('env', 'GOPATH')}}/src/github.com/decentralized-trust-research/scalable-committer"
-    binary_dir: "{{root_path}}/eval/experiments/local-bin/"
+    top_binary_dir: "{{root_path}}/eval/experiments/local-bin/"
     top_config_dir: "{{root_path}}/eval/experiments/local-configs"
     ansible_host: 127.0.0.1
     os: osx
@@ -23,6 +23,7 @@ all:
             coordinator-machine:
               inherit_endorser: endorser-1 # Used for setting the sig verification key
               config_dir: "{{top_config_dir}}/coordinator"
+              binary_dir: "{{top_binary_dir}}/coordinator"
               service_port: 5002
               prometheus_exporter_port: 2112
 
@@ -32,6 +33,7 @@ all:
           hosts:
             sigservice-machine1:
               config_dir: "{{top_config_dir}}/sigservice1"
+              binary_dir: "{{top_binary_dir}}/sigservice1"
               service_port: 5000
               prometheus_exporter_port: 2110
 
@@ -41,6 +43,7 @@ all:
           hosts:
             shardsservice-machine:
               config_dir: "{{top_config_dir}}/shardsservice"
+              binary_dir: "{{top_binary_dir}}/shardsservice"
               db_dir: "{{config_dir}}/db"
               service_port: 5001
               prometheus_exporter_port: 2115
@@ -53,21 +56,25 @@ all:
           hosts:
             orderingservice-machine1:
               config_dir: "{{top_config_dir}}/orderer0"
+              binary_dir: "{{top_binary_dir}}/orderer0"
               service_port: 7050
               cluster_port: 7070
               ops_port: 8440
             orderingservice-machine2:
               config_dir: "{{top_config_dir}}/orderer1"
+              binary_dir: "{{top_binary_dir}}/orderer1"
               service_port: 7051
               cluster_port: 7071
               ops_port: 8441
             orderingservice-machine3:
               config_dir: "{{top_config_dir}}/orderer2"
+              binary_dir: "{{top_binary_dir}}/orderer2"
               service_port: 7052
               cluster_port: 7072
               ops_port: 8442
             orderingservice-machine4:
               config_dir: "{{top_config_dir}}/orderer3"
+              binary_dir: "{{top_binary_dir}}/orderer3"
               service_port: 7053
               cluster_port: 7073
               ops_port: 8443
@@ -81,6 +88,7 @@ all:
           hosts:
             peerservice-machine1:
               config_dir: "{{top_config_dir}}/peer0"
+              binary_dir: "{{top_binary_dir}}/peer0"
               service_port: 7001
 
         fscservices:
@@ -89,6 +97,7 @@ all:
             demo_views: github.ibm.com/decentralized-trust-research/fts-sc/demo/views
             organization: DefaultPeerOrg
             domain: example.com
+            binary_dir: "{{top_binary_dir}}/fscnodes"
           hosts:
             lib-p2p-bootstrap-node:
               config_dir: "{{top_config_dir}}/lib_p2p"
@@ -194,6 +203,7 @@ all:
           hosts:
             sidecar-machine:
               config_dir: "{{top_config_dir}}/sidecar"
+              binary_dir: "{{top_binary_dir}}/sidecar"
               service_port: 1234
               prometheus_exporter_port: 2111
 
@@ -209,11 +219,14 @@ all:
               profile: profile-sidecar-client.yaml
               prometheus_exporter_port: 2116
               config_dir: "{{top_config_dir}}/sidecarclient0/"
+              binary_dir: "{{top_binary_dir}}/sidecarclient0"
             sidecar-client-machine2:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/sidecarclient1/"
+              binary_dir: "{{top_binary_dir}}/sidecarclient1"
 
     monitoring:
       hosts:
         monitoring-machine:
           jaeger_exporter_port: 14268
+          jaeger_optl_exporter_port: 4318

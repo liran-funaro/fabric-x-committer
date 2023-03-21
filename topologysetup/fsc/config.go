@@ -2,11 +2,13 @@ package fsc
 
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
 type Config struct {
-	SDKDriver string `mapstructure:"sdk-driver"`
-	Nodes     []Node `mapstructure:"nodes"`
+	SDKDriver string               `mapstructure:"sdk-driver"`
+	Nodes     []Node               `mapstructure:"nodes"`
+	Tracing   *connection.Endpoint `mapstructure:"tracing"`
 }
 
 type Identity string

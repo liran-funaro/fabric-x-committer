@@ -114,6 +114,9 @@
       loop_control:
         loop_var: instance
     - name: Create FSC setup
+      vars:
+        monitoring_hosts: "{{groups['monitoring'] | d([]) | map('extract', hostvars) | list}}"
+        jaeger_endpoints: "{{monitoring_hosts | map(attribute='ansible_host') | zip(monitoring_hosts | map(attribute='jaeger_optl_exporter_port')) | map('join', ':') | list}}"
       yedit:
         src: "{{filepath}}"
         edits:
@@ -121,4 +124,6 @@
             value: snarkgh
           - key: topology-setup.fsc.nodes
             value: "{{fsc_nodes}}"
+          - key: topology-setup.fsc.otracing
+            value: "{{'' if jaeger_endpoints | length == 0 else jaeger_endpoints | first}}"
       when: fsc_nodes | d([]) | length > 0

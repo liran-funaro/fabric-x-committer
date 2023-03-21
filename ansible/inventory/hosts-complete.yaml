@@ -239,3 +239,4 @@ all:
         monitoring-machine:
           ansible_host: tokentestbed15.sl.cloud9.ibm.com
           jaeger_exporter_port: 14268
+          jaeger_optl_exporter_port: 4318
