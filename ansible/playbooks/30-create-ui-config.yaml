@@ -4,37 +4,46 @@
 ---
 - name: Create config destination folder
   hosts: localhost
+  vars:
+    yaml_filepath: "{{dst_dir}}/ui-config.yaml"
+    json_filepath: "{{dst_dir}}/ui-config.json"
+  roles:
+    - kwoodson.yedit
   tasks:
     - name: Create tmp
       file:
         path: "{{dst_dir}}"
         state: directory
-    - name: Create file
+    - name: Create files
       file:
-        path: "{{dst_dir}}/ui-config.yaml"
+        path: "{{filepath}}"
         state: touch
-- name: Create base configs and replace endpoints for all services
-  hosts: localhost
-  vars:
-    filepath: "{{dst_dir}}/ui-config.yaml"
-    topology_name: default
-    log_level: WARNING
-  roles:
-    - kwoodson.yedit
-  tasks:
+      loop:
+        - "{{yaml_filepath}}"
+        - "{{json_filepath}}"
+      loop_control:
+        loop_var: filepath
     - name: Prepare FSC endpoints
       set_fact:
         fsc_endpoints: "{{fsc_endpoints | d([])  + [{
           'name': instance.inventory_hostname,
+          'auditor': instance.auditor | d(false),
+          'certifier': instance.certifier | d(false),
+          'issuer': instance.issuer_identities | d([]) | length > 0,
+          'endorser': instance.endorser | d(false),
           'endpoint': instance.ansible_host + ':' + (instance.ops_port | string)
         }]}}"
       loop: "{{groups['fscservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:
         loop_var: instance
       when: instance.ops_port | d(0) > 0
-    - name: Create UI config
+    - name: Create UI config YAML
       yedit:
-        src: "{{filepath}}"
+        src: "{{yaml_filepath}}"
         edits:
           - key: fsc-endpoints
             value: "{{fsc_endpoints | d([])}}"
+    - name: Create UI config JSON
+      copy:
+        content: "{{ {'fscEndpoints': fsc_endpoints | d([]) } | to_json }}"
+        dest: "{{json_filepath}}"

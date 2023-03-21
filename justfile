@@ -354,7 +354,7 @@ build-configs target_hosts=('all') signed_envelopes=('true'):
 
 serve-ui-config port=('8080'):
     ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}'}"
-    echo "Serving UI config under http://localhost:{{port}}/ui-config.yaml"
+    echo "Serving UI configs under http://localhost:{{port}}/ui-config.yaml, http://localhost:{{port}}/ui-config.json"
     docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{base-setup-config-dir}}:/app/static nginx:alpine
 
 build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
