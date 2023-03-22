@@ -25,11 +25,23 @@ type FabricOrdererBroadcasterOpts struct {
 
 type fabricOrdererBroadcaster struct {
 	streams          []OrdererStream
+	streamsByOrderer [][]OrdererStream
 	closeConnections func() error
 }
 type OrdererStream interface {
 	Input() chan<- *common.Envelope
 	WaitStreamClosed()
+}
+
+type OrdererStreams [][]OrdererStream
+
+func (os OrdererStreams) Flatten() []OrdererStream {
+	var res []OrdererStream
+
+	for _, streams := range os {
+		res = append(res, streams...)
+	}
+	return res
 }
 
 func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrdererBroadcaster, error) {
@@ -38,14 +50,21 @@ func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrd
 		return nil, err
 	}
 
+	streamsByOrderer := openStreamsByOrderer(connections, opts.Parallelism, opts.InputChannelCapacity, opts.OnAck)
+
 	return &fabricOrdererBroadcaster{
-		streams:          openStreams(connections, opts.Parallelism, opts.InputChannelCapacity, opts.OnAck),
+		streamsByOrderer: streamsByOrderer,
+		streams:          streamsByOrderer.Flatten(),
 		closeConnections: func() error { return closeConnections(connections) },
 	}, nil
 }
 
 func (b *fabricOrdererBroadcaster) Streams() []OrdererStream {
 	return b.streams
+}
+
+func (b *fabricOrdererBroadcaster) StreamsByOrderer() [][]OrdererStream {
+	return b.streamsByOrderer
 }
 
 func (b *fabricOrdererBroadcaster) CloseStreamsAndWait() error {
@@ -90,19 +109,20 @@ func closeConnections(connections []*grpc.ClientConn) error {
 	return nil
 }
 
-func openStreams(connections []*grpc.ClientConn, parallelism, capacity int, onAck func(error)) []OrdererStream {
+func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism, capacity int, onAck func(error)) OrdererStreams {
 	logger.Infof("Opening %d streams using the %d connections to the orderers.\n", parallelism, len(connections))
-	submitters := make([]OrdererStream, parallelism)
 
-	var wg sync.WaitGroup
-	wg.Add(parallelism)
-	for i := 0; i < parallelism; i++ {
-		go func(conn *grpc.ClientConn, i int) {
-			submitters[i] = newFabricOrdererStream(conn, capacity, onAck)
-			wg.Done()
-		}(connections[i%len(connections)], i)
+	var submitters [][]OrdererStream
+
+	for i := 0; i < len(connections); i++ {
+		var submittersForOrderer []OrdererStream
+
+		for j := 0; j < parallelism/len(connections); j++ {
+			submittersForOrderer = append(submittersForOrderer, newFabricOrdererStream(connections[i], capacity, onAck))
+		}
+
+		submitters = append(submitters, submittersForOrderer)
 	}
-	wg.Wait()
 	return submitters
 }
 

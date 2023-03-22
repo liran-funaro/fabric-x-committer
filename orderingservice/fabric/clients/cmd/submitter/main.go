@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -27,9 +28,6 @@ func main() {
 	c := fabric.ReadSubmitterConfig()
 	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
 	creds, signer := connection.GetOrdererConnectionCreds(p)
-	_ = signer
-
-	//m := monitoring.LaunchMonitoring(c.Monitoring, &Provider{}).(*Metrics)
 
 	msgsPerGo := c.Messages / c.GoRoutines
 	roundMsgs := msgsPerGo * c.GoRoutines
@@ -42,7 +40,6 @@ func main() {
 		OnAck: func(err error) {
 			if err == nil && bar != nil {
 				bar.Add(1)
-				//m.Throughput.Add(1)
 			}
 		},
 	}
@@ -53,39 +50,7 @@ func main() {
 		fmt.Println("Rounding messages to", roundMsgs)
 	}
 
-	//fmt.Printf("Sending the same message to all servers.\n")
-	//message := make([]byte, c.MessageSize)
-	//envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
-	//env, _ := envelopeCreator.CreateEnvelope(message)
-	//env := &common.Envelope{Payload: message, Signature: nil}
-	//serializedEnv, err := protoutil.Marshal(env)
-	//utils.Must(err)
-	//fmt.Printf("Message size: %d\n", len(serializedEnv))
-
-	//fmt.Printf("Prebuffer tx with %d worker\n", c.GoRoutines)
-	//buffered := make(chan *common.Envelope, c.Messages)
 	var ops uint64
-	//{
-	//	bar := workload.NewProgressBar("Prepping transactions...", int64(roundMsgs), "tx")
-	//	var wg sync.WaitGroup
-	//	for i := 0; i < c.GoRoutines; i++ {
-	//		wg.Add(1)
-	//		go func() {
-	//			for j := 0; j < msgsPerGo; j++ {
-	//				message := make([]byte, c.MessageSize)
-	//				n := atomic.AddUint64(&ops, 1)
-	//				binary.LittleEndian.PutUint32(message, uint32(n))
-	//				envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.Signed)
-	//				env, _ := envelopeCreator.CreateEnvelope(message)
-	//				//env := &common.Envelope{Payload: message, Signature: nil}
-	//				buffered <- env
-	//				bar.Add(1)
-	//			}
-	//			wg.Done()
-	//		}()
-	//	}
-	//	wg.Wait()
-	//}
 
 	// we start by default with unlimited rate
 	var rl ratelimit.Limiter
@@ -121,35 +86,68 @@ func main() {
 		go router.Run(c.RemoteControllerListener)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(s.Streams()))
-	for _, ch := range s.Streams() {
-		input := ch.Input()
-		go func(input chan<- *common.Envelope) {
-			envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
+	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
+
+	envelopesToSend := make(chan *common.Envelope, 10000)
+
+	for workerID := 0; workerID < c.GoRoutines; workerID++ {
+		go func() {
 			for i := 0; i < msgsPerGo; i++ {
 				message := make([]byte, c.MessageSize)
 				n := atomic.AddUint64(&ops, 1)
 				binary.LittleEndian.PutUint32(message, uint32(n))
 				env, _ := envelopeCreator.CreateEnvelope(message)
-				// TODO send to all nodes?
-				//input <- <-buffered
-				_ = rl.Take() // our rate limiter
-				input <- env
+
+				envelopesToSend <- env
 			}
-			wg.Done()
-		}(input)
+		}()
 	}
 
-	wg.Wait()
+	var sendtoAll bool
 
-	//for i := uint64(0); i < msgsPerGo; i++ {
-	//	// TODO submit asynchronously
-	//	for _, ch := range s.Streams() {
-	//		ch.Input() <- env
-	//	}
-	//	m.Throughput.Add(len(s.Streams()))
-	//}
+	bftEnvVarValue := os.Getenv("BFT")
+	if bftEnvVarValue != "" {
+		fmt.Println("BFT =", bftEnvVarValue, ", will send to all orderers")
+	}
+
+	streams := s.Streams()
+
+	var wg sync.WaitGroup
+	wg.Add(c.GoRoutines)
+
+	for workerID := 0; workerID < c.GoRoutines; workerID++ {
+
+		go func() {
+
+			defer wg.Done()
+
+			for sendCounter := 0; sendCounter < msgsPerGo; sendCounter++ {
+
+				// Get a transaction to send to the ordering service
+				env := <-envelopesToSend
+
+				if sendtoAll {
+					// Enqueue envelope into some stream for each orderer
+					for _, streamsForOrderer := range s.StreamsByOrderer() {
+						streamsForOrderer[sendCounter%len(streamsForOrderer)].Input() <- env
+					}
+
+					// Rate limit
+					_ = rl.Take()
+
+				} else {
+					// Pick some orderer to send the envelope to
+					streams[sendCounter%len(streams)].Input() <- env
+
+					// Rate limit
+					_ = rl.Take()
+				}
+			} // send iteration for worker
+
+		}()
+	} // for all workers
+
+	wg.Wait()
 
 	utils.Must(s.CloseStreamsAndWait())
 

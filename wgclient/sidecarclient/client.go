@@ -34,6 +34,9 @@ type VerificationKeySetter interface {
 type OrdererSubmitter interface {
 	//Streams returns all streams to the ordering service
 	Streams() []OrdererStream
+
+	StreamsByOrderer() [][]OrdererStream
+
 	//CloseStreamsAndWait waits for all acks to be received and closes all streams
 	CloseStreamsAndWait() error
 }
