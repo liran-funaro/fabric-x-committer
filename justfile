@@ -357,7 +357,7 @@ serve-ui-config port=('8080'):
     echo "Serving UI configs under http://localhost:{{port}}/ui-config.yaml, http://localhost:{{port}}/ui-config.json"
     docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{base-setup-config-dir}}:/app/static nginx:alpine
 
-build-orderer-artifacts fab_bins_dir=(local-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
+build-orderer-artifacts fab_bins_dir=(linux-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
     #!/usr/bin/env bash
     ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'channel_ids': ['{{default-channel-id}}']}"
 

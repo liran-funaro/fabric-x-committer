@@ -80,7 +80,7 @@
       when: action == 'balance'
     - name: "Get all payments of {{target_host}}"
       uri:
-        url: "{{target_endpoint}}/zkat/intermediary/payments"
+        url: "{{target_endpoint}}/zkat/intermediary/payments?user=alice"
         method: GET
         headers:
           Authorization: "Bearer {{token}}"
@@ -114,7 +114,7 @@
         method: GET
         headers:
           Authorization: "Bearer {{token}}"
-      when: action == 'wallets'
+      when: action == 'records'
       register: result
     - debug: var=result.json
       when: action == 'records'
