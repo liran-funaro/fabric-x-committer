@@ -168,6 +168,8 @@ all:
                   factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
                 - id: ListOwnerWalletIDsView
                   factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             bankb:
               config_dir: "{{top_config_dir}}/bankb"
@@ -201,6 +203,8 @@ all:
                   factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
                 - id: ListOwnerWalletIDsView
                   factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             endorser-1: # Only one endorser supported currently
               config_dir: "{{top_config_dir}}/endorser1"

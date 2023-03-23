@@ -172,6 +172,8 @@ all:
                   factory: "{{demo_views}}/TxStatusByNonceViewFactory"
                 - id: ListOwnerWalletIDsView
                   factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             bankb:
               ansible_host: tokentestbed7.sl.cloud9.ibm.com
@@ -206,6 +208,8 @@ all:
                   factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
                 - id: ListOwnerWalletIDsView
                   factory: "{{demo_views}}/ListOwnerWalletIDsViewFactory"
+                - id: withdrawal
+                  factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             endorser-1: # Only one endorser supported currently
               ansible_host: tokentestbed7.sl.cloud9.ibm.com
