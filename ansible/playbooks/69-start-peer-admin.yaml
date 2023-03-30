@@ -5,10 +5,10 @@
 - hosts: "{{target_hosts}}:&peerservices"
   vars:
     use_tmux: false
-    output_path: "{{config_dir}}/{{channel_id}}-genesis-block.pb"
     peer_id: "{{organization}}.{{inventory_hostname}}"
     full_domain: "{{organization | lower}}.{{domain}}"
     config_tree_root: "{{config_dir}}/fabric.{{topology_name}}"
+    output_path: "{{config_tree_root}}/{{channel_id}}_block.pb"
     peer_orgs_path: "{{config_tree_root}}/crypto/peerOrganizations/{{full_domain}}"
     user_crypto_dir: "{{peer_orgs_path}}/users/Admin@{{full_domain}}"
     env:
@@ -40,7 +40,7 @@
           cafile: "{{ca_file}}"
           orderer: "{{orderer_endpoint}}"
           tls: "{{tls}}"
-      when: action in ['fetch-channel', 'join-channel']
+      when: action == 'fetch-channel'
     - name: Join channel
       include_tasks: ../subtasks/start-server.yaml
       vars:

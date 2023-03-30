@@ -39,6 +39,8 @@ func main() {
 		Parallelism:          c.Parallelism,
 		InputChannelCapacity: c.InputChannelCapacity,
 		SignedEnvelopes:      c.SignedEnvelopes,
+		OrdererType:          c.OrdererType,
+		StartBlock:           0,
 
 		RemoteControllerListener: c.RemoteControllerListener,
 	}

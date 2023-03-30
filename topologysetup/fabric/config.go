@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/topology"
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"strings"
 )
@@ -18,12 +19,13 @@ const (
 )
 
 type Config struct {
-	Name       string               `mapstructure:"name"`
-	ChannelIDs []string             `mapstructure:"channel-ids"`
-	Peers      []topologysetup.Node `mapstructure:"peers"`
-	Sidecar    topologysetup.Node   `mapstructure:"sidecar"`
-	Orderers   []topologysetup.Node `mapstructure:"orderers"`
-	LogLevel   logging.Level        `mapstructure:"log-level"`
+	Name        string               `mapstructure:"name"`
+	OrdererType utils.ConsensusType  `mapstructure:"orderer-type"`
+	ChannelIDs  []string             `mapstructure:"channel-ids"`
+	Peers       []topologysetup.Node `mapstructure:"peers"`
+	Sidecar     topologysetup.Node   `mapstructure:"sidecar"`
+	Orderers    []topologysetup.Node `mapstructure:"orderers"`
+	LogLevel    logging.Level        `mapstructure:"log-level"`
 }
 
 func (c *Config) AllChannels() []*topology.Channel {
@@ -50,6 +52,7 @@ func (c *Config) AllChannelProfiles() []*topology.Profile {
 		Name:          channelProfile,
 		Consortium:    consortiumName,
 		Organizations: c.AllPeerOrgs(),
+		Orderers:      c.AllOrdererNames(), // TODO: AF New addition
 		Policies: []*topology.Policy{
 			fabric.ImplicitMetaReaders,
 			fabric.ImplicitMetaWriters,

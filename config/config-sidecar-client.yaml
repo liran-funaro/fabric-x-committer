@@ -19,7 +19,7 @@ sidecar-client:
   channel-id: mychannel                                       # Overridden by ansible
   profile: ../../config/profile-sidecar-client.yaml           # Overridden by ansible
   input-channel-capacity: 20
-  parallelism: 1
+  parallelism: 10
   signed-envelopes: true                                      # Overriden by ansible
 
   # enables the remote limiter controller; if empty it is disabled

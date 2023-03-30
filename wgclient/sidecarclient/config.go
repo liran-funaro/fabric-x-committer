@@ -3,28 +3,30 @@ package sidecarclient
 import (
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
-type SidecarClientConfig struct {
+type Config struct {
 	Orderers   []*connection.Endpoint `mapstructure:"orderers"`
 	Committer  connection.Endpoint    `mapstructure:"committer"`
 	Sidecar    connection.Endpoint    `mapstructure:"sidecar"`
 	Monitoring monitoring.Config      `mapstructure:"monitoring"`
 
-	Profile                  string `mapstructure:"profile"`
-	InputChannelCapacity     int    `mapstructure:"input-channel-capacity"`
-	ChannelID                string `mapstructure:"channel-id"`
-	Parallelism              int    `mapstructure:"parallelism"`
-	SignedEnvelopes          bool   `mapstructure:"signed-envelopes"`
-	OrdererConnectionProfile string `mapstructure:"orderer-connection-profile"`
-	RemoteControllerListener string `mapstructure:"remote-controller-listener"`
+	Profile                  string              `mapstructure:"profile"`
+	InputChannelCapacity     int                 `mapstructure:"input-channel-capacity"`
+	ChannelID                string              `mapstructure:"channel-id"`
+	Parallelism              int                 `mapstructure:"parallelism"`
+	SignedEnvelopes          bool                `mapstructure:"signed-envelopes"`
+	OrdererType              utils.ConsensusType `mapstructure:"orderer-type"`
+	OrdererConnectionProfile string              `mapstructure:"orderer-connection-profile"`
+	RemoteControllerListener connection.Endpoint `mapstructure:"remote-controller-listener"`
 }
 
-func ReadConfig() SidecarClientConfig {
+func ReadConfig() Config {
 	wrapper := new(struct {
-		Config SidecarClientConfig `mapstructure:"sidecar-client"`
+		Config Config `mapstructure:"sidecar-client"`
 	})
 	config.Unmarshal(wrapper)
 	return wrapper.Config

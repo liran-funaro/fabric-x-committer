@@ -8,8 +8,10 @@
       vars:
         service_name: orderer
         wait_until_running: true
+        output_log: "{{config_dir}}/logs.txt"
         env:
           - "FABRIC_CFG_PATH={{config_dir}}/fabric.{{topology_name}}/orderers/{{organization}}.{{inventory_hostname}}"
+#          - "FABRIC_LOGGING_SPEC=DEBUG"
       when: mock | d(false) == false
       include_tasks: ../subtasks/start-server.yaml
     - name: Start mock orderers

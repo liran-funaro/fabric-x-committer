@@ -1,23 +1,21 @@
 package sidecarclient
 
 import (
-	"fmt"
-	"net/http"
 	"sync"
 	"sync/atomic"
 
-	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
+	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
 	"go.uber.org/ratelimit"
 	"google.golang.org/grpc/credentials"
@@ -32,10 +30,7 @@ type VerificationKeySetter interface {
 
 //OrdererSubmitter connects to the orderers, establishes one or more streams with each, and broadcasts serialized envelopes to all streams.
 type OrdererSubmitter interface {
-	//Streams returns all streams to the ordering service
-	Streams() []OrdererStream
-
-	StreamsByOrderer() [][]OrdererStream
+	EnvelopeSender() func(*common.Envelope)
 
 	//CloseStreamsAndWait waits for all acks to be received and closes all streams
 	CloseStreamsAndWait() error
@@ -52,23 +47,26 @@ type ClientInitOptions struct {
 	OrdererCredentials credentials.TransportCredentials
 	OrdererSigner      msp.SigningIdentity
 	ChannelID          string
+	OrdererType        utils.ConsensusType
 	SignedEnvelopes    bool
+	StartBlock         int64
 
 	Parallelism          int
 	InputChannelCapacity int
 
-	RemoteControllerListener string
+	RemoteControllerListener connection.Endpoint
 }
 
 // Client connects to:
 // 1. the orderer where it sends transactions to be ordered, and
 // 2. the sidecar where it listens for committed blocks
 type Client struct {
-	committerClient          VerificationKeySetter
-	sidecarListener          sidecar.DeliverListener
-	ordererBroadcaster       OrdererSubmitter
-	envelopeCreator          EnvelopeCreator
-	RemoteControllerListener string
+	committerClient    VerificationKeySetter
+	sidecarListener    sidecar.DeliverListener
+	ordererBroadcaster OrdererSubmitter
+	envelopeCreator    EnvelopeCreator
+	rateLimiter        ratelimit.Limiter
+	totalStreams       int
 }
 
 func NewClient(opts *ClientInitOptions) (*Client, error) {
@@ -76,6 +74,12 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		"\tCommitter: %v\n"+
 		"\tSidecar: %v\n"+
 		"\tOrderers: %v (channel: %s, signed envelopes: %v)\n", &opts.CommitterEndpoint, &opts.SidecarEndpoint, opts.OrdererEndpoints, opts.ChannelID, opts.SignedEnvelopes)
+
+	if opts.OrdererType == utils.Bft && !areEndpointsUnique(opts.OrdererEndpoints) {
+		return nil, errors.New("bft only supports one connection per orderer")
+	}
+
+	rateLimiter := limiter.New(&opts.RemoteControllerListener)
 	committer := client.OpenCoordinatorAdapter(opts.CommitterEndpoint)
 
 	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
@@ -85,17 +89,19 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		ChannelID:      opts.ChannelID,
 		Endpoint:       opts.SidecarEndpoint,
 		Reconnect:      -1,
-		StartBlock:     0,
+		StartBlock:     opts.StartBlock,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	sent := uint64(0)
+	totalStreams := len(opts.OrdererEndpoints) * opts.Parallelism
 	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
 		Endpoints:            opts.OrdererEndpoints,
 		Credentials:          opts.OrdererCredentials,
-		Parallelism:          len(opts.OrdererEndpoints) * opts.Parallelism,
+		Parallelism:          totalStreams,
+		OrdererType:          opts.OrdererType,
 		InputChannelCapacity: opts.InputChannelCapacity,
 		OnAck: func(err error) {
 			atomic.AddUint64(&sent, 1)
@@ -109,7 +115,18 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{committer, listener, submitter, envelopeCreator, opts.RemoteControllerListener}, nil
+	return &Client{committer, listener, submitter, envelopeCreator, rateLimiter, totalStreams}, nil
+}
+
+func areEndpointsUnique(endpoints []*connection.Endpoint) bool {
+	uniqueEndpoints := make(map[connection.Endpoint]bool, len(endpoints))
+	for _, endpoint := range endpoints {
+		if uniqueEndpoints[*endpoint] {
+			return false
+		}
+		uniqueEndpoints[*endpoint] = true
+	}
+	return true
 }
 
 func (c *Client) SetCommitterKey(publicKey signature.PublicKey) error {
@@ -121,85 +138,28 @@ func (c *Client) StartListening(onBlock func(*common.Block)) {
 	utils.Must(c.sidecarListener.RunDeliverOutputListener(onBlock))
 }
 
-// SendReplicated fans out the TXs of the input channel, and then replicates and sends its result to all streams.
-func (c *Client) SendReplicated(txs chan *token.Tx, onRequestSend func()) {
-	logger.Infof("Sending replicated message to all orderers.\n")
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			for _, messageCh := range c.ordererBroadcaster.Streams() {
-				tx, ok := <-txs
-				if !ok {
-					return
-				}
-				item := serialization.MarshalTx(tx)
-				env, err := c.envelopeCreator.CreateEnvelope(item)
-				onRequestSend()
-				utils.Must(err)
-				messageCh.Input() <- env
-			}
-		}
-	}()
-	wg.Wait()
-	utils.Must(c.ordererBroadcaster.CloseStreamsAndWait())
-}
-
 func (c *Client) Send(txs chan *sigverification_test.TxWithStatus, onRequestSend func(*sigverification_test.TxWithStatus, *common.Envelope)) {
 	logger.Infof("Sending messages to all open streams.\n")
 
-	var rl ratelimit.Limiter
-	rl = ratelimit.NewUnlimited()
-
-	// start remote-limiter controller
-	if c.RemoteControllerListener != "" {
-		fmt.Printf("Start remote controller listener on %v\n", c.RemoteControllerListener)
-		gin.SetMode(gin.ReleaseMode)
-		router := gin.Default()
-		router.POST("/setLimits", func(c *gin.Context) {
-
-			type Limiter struct {
-				Limit int `json:"limit"`
-			}
-
-			var limit Limiter
-			if err := c.BindJSON(&limit); err != nil {
-				return
-			}
-
-			if limit.Limit < 1 {
-				rl = ratelimit.NewUnlimited()
-				return
-			}
-
-			// create our new limiter
-			rl = ratelimit.New(limit.Limit)
-
-			c.IndentedJSON(http.StatusOK, limit)
-		})
-		go router.Run(c.RemoteControllerListener)
-	}
-
 	var wg sync.WaitGroup
-	wg.Add(len(c.ordererBroadcaster.Streams()))
-	for _, ch := range c.ordererBroadcaster.Streams() {
-		go func(input chan<- *common.Envelope) {
+	wg.Add(c.totalStreams)
+	for workerID := 0; workerID < c.totalStreams; workerID++ {
+		go func() {
 			defer wg.Done()
+			send := c.ordererBroadcaster.EnvelopeSender()
 			for {
 				select {
 				case tx := <-txs:
 					item := serialization.MarshalTx(tx.Tx)
 					env, err := c.envelopeCreator.CreateEnvelope(item)
 					utils.Must(err)
-					_ = rl.Take() // our rate limiter
-					input <- env
+					_ = c.rateLimiter.Take()
+					send(env)
 					// let's track this request once we have sent it
 					onRequestSend(tx, env)
 				}
 			}
-		}(ch.Input())
+		}()
 	}
 
 	wg.Wait()

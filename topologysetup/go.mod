@@ -3,9 +3,9 @@ module github.ibm.com/distributed-trust-research/scalable-committer/topologysetu
 go 1.18
 
 require (
-	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230322161224-7e494e0148bc
+	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230404133425-239d7582e8c6
 	github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230321135717-8f6701790fa9
-	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
+	github.com/hyperledger/fabric v1.4.0-rc1.0.20230330011544-f632469b3b3e
 	github.com/onsi/gomega v1.24.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
@@ -20,6 +20,7 @@ replace (
 	github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
 	github.com/btcsuite/btcd v0.23.4 => github.com/btcsuite/btcd v0.22.1
 	github.com/cucumber/godog v0.8.0 => github.com/cucumber/godog v0.8.1
+	github.com/mitchellh/mapstructure => github.com/mitchellh/mapstructure v1.1.2
 	github.ibm.com/distributed-trust-research/scalable-committer => ../
 	github.ibm.com/distributed-trust-research/scalable-committer/token => ../token
 )
@@ -29,12 +30,15 @@ require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/IBM/TSS v0.0.0-20230220080903-3d91c3cea0d8 // indirect
 	github.com/IBM/TSS/mpc/binance/ecdsa v0.0.0-20230220083019-674e5367fe3b // indirect
-	github.com/IBM/idemix v0.0.0-20220113150823-80dd4cb2d74e // indirect
-	github.com/IBM/mathlib v0.0.2 // indirect
+	github.com/IBM/idemix v0.0.2-0.20230403120754-d7dbe0340c4a // indirect
+	github.com/IBM/mathlib v0.0.3-0.20230403084452-40ed1be38cf2 // indirect
+	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Microsoft/hcsshim v0.8.25 // indirect
 	github.com/ReneKroon/ttlcache/v2 v2.11.0 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922 // indirect
 	github.com/appleboy/gin-jwt/v2 v2.9.1 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -63,7 +67,7 @@ require (
 	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/docker v20.10.17+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
-	github.com/docker/go-units v0.4.0 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/elastic/gosigar v0.12.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
@@ -131,6 +135,7 @@ require (
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd // indirect
+	github.com/kilic/bls12-381 v0.1.0 // indirect
 	github.com/klauspost/compress v1.15.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/koron/go-ssdp v0.0.0-20191105050749-2e1c40ed0b5d // indirect
@@ -172,7 +177,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/moby/sys/mount v0.2.0 // indirect
-	github.com/moby/sys/mountinfo v0.5.0 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -193,7 +198,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.4.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
-	github.com/opencontainers/runc v1.1.2 // indirect
+	github.com/opencontainers/runc v1.1.5 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/otiai10/primes v0.0.0-20180210170552-f6d2a1ba97c4 // indirect
@@ -252,6 +257,7 @@ require (
 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
 	google.golang.org/grpc v1.52.3 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect

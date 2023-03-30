@@ -60,24 +60,28 @@ all:
               service_port: 7050
               cluster_port: 7070
               ops_port: 8440
+              admin_port: 9440
             orderingservice-machine2:
               config_dir: "{{top_config_dir}}/orderer1"
               binary_dir: "{{top_binary_dir}}/orderer1"
               service_port: 7051
               cluster_port: 7071
               ops_port: 8441
+              admin_port: 9441
             orderingservice-machine3:
               config_dir: "{{top_config_dir}}/orderer2"
               binary_dir: "{{top_binary_dir}}/orderer2"
               service_port: 7052
               cluster_port: 7072
               ops_port: 8442
+              admin_port: 9442
             orderingservice-machine4:
               config_dir: "{{top_config_dir}}/orderer3"
               binary_dir: "{{top_binary_dir}}/orderer3"
               service_port: 7053
               cluster_port: 7073
               ops_port: 8443
+              admin_port: 9443
 
         peerservices:
           vars:

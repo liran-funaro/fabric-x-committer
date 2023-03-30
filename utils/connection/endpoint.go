@@ -16,6 +16,10 @@ type Endpoint struct {
 
 const endpointSplitter = ":"
 
+func (e *Endpoint) Empty() bool {
+	return e.Port == 0
+}
+
 func (e *Endpoint) Address() string {
 	return fmt.Sprintf("%s%s%d", e.Host, endpointSplitter, e.Port)
 }

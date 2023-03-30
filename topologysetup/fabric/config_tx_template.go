@@ -1,6 +1,7 @@
 package fabric
 
 const ConfigTxTemplate = `---
+{{ define "inc" }}{{ len (printf "%*s " . "") }}{{ end -}}
 {{ with $w := . -}}
 Organizations:{{ range .PeerOrgs }}
 - &{{ .MSPID }}
@@ -166,6 +167,32 @@ Profiles:{{ range .Profiles }}
           ClientTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
           ServerTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
         {{- end }}{{- end }}
+      {{- end }}
+      {{- if eq $w.Consensus.Type "BFT" }}
+      SmartBFT:
+        RequestBatchMaxCount: 8000
+        RequestBatchMaxInterval: 500ms
+        RequestForwardTimeout: 2s
+        RequestComplainTimeout: 20s
+        RequestAutoRemoveTimeout: 3m0s
+        ViewChangeResendInterval: 5s
+        ViewChangeTimeout: 20s
+        LeaderHeartbeatTimeout: 1m0s
+        CollectTimeout: 1s
+        RequestBatchMaxBytes: 10485760
+        IncomingMessageBufferSize: 200
+        RequestPoolSize: 500000
+        LeaderHeartbeatCount: 10
+
+      ConsenterMapping:{{ range $index, $orderer := .Orderers }}{{ with $w.Orderer $orderer }}
+      - ID: {{ template "inc" $index }}
+        Host: {{ $w.OrdererHost . }}
+        Port: {{ $w.OrdererPort . "Cluster" }}
+        MSPID: {{ ($w.Organization .Organization).MSPID }}
+        Identity: {{ $w.OrdererLocalMSPDir . }}/signcerts/{{ .Name }}.{{($w.Organization .Organization).Domain}}-cert.pem
+        ClientTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
+        ServerTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
+      {{- end }}{{- end }}
       {{- end }}
       Organizations:{{ range $w.OrgsForOrderers .Orderers }}
       - *{{ .MSPID }}

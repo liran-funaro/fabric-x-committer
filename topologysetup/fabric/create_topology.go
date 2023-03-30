@@ -57,19 +57,11 @@ func CreateTopology(config Config) *topology.Topology {
 		},
 		Consortiums: config.Consortiums(),
 		Consensus: &topology.Consensus{
-			Type: "etcdraft",
-		},
-		SystemChannel: &topology.SystemChannel{
-			Name:    "systemchannel",
-			Profile: "OrgsOrdererGenesis",
+			Type: config.OrdererType,
 		},
 		Orderers: config.AllOrderers(),
 		Channels: config.AllChannels(),
-		Profiles: append(config.AllChannelProfiles(),
-			&topology.Profile{
-				Name:     "OrgsOrdererGenesis",
-				Orderers: config.AllOrdererNames(),
-			}),
+		Profiles: config.AllChannelProfiles(),
 	}
 	fabricTopology.AddOrganizationsByMapping(config.PeerNameMap())
 	for _, org := range config.AllOrdererOrgs() {

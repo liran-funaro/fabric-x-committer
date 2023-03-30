@@ -1,0 +1,19 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- hosts: "{{target_hosts}}:&orderingservices"
+  vars:
+    use_tmux: false
+    output_path: "{{config_dir}}/fabric.{{topology_name}}/{{channel_id}}_block.pb"
+  tasks:
+    - name: Join channel
+      include_tasks: ../subtasks/start-server.yaml
+      vars:
+        service_name: osnadmin channel join
+        options:
+          channelID: "{{channel_id}}"
+          orderer-address: ":{{admin_port}}"
+          config-block: "{{output_path}}"
+      when: action == 'join-channel'
+

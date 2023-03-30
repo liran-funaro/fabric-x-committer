@@ -11,3 +11,4 @@ orderer-submitter:
   go-routines: 100
   message-size: 240
   signed: false
+  orderer-type: etcdraft

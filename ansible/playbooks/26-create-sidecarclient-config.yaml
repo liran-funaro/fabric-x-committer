@@ -16,7 +16,7 @@
       when: "{{selected_hosts | length > 0}}"
     - name: Further edit sidecar-client config
       vars:
-        client_connections: 12
+        client_connections: "{{groups['orderingservices'] | d([]) | length}}" # One connection per orderer
         filepath: "{{dst_dir}}/{{sidecarclient_instance.inventory_hostname}}/{{sidecarclient_instance.config}}"
         orderer_hosts: "{{groups['orderingservices'] | d([]) | map('extract', hostvars) | list}}"
         orderer_endpoints: "{{orderer_hosts | map(attribute='ansible_host') | zip(orderer_hosts | map(attribute='service_port')) | map('join', ':') | list}}"
@@ -39,6 +39,8 @@
             value: "{{committer_host.ansible_host}}:{{committer_host.service_port}}"
           - key: sidecar-client.orderer-connection-profile
             value: "{{sidecarclient_instance.config_dir}}/fabric.{{topology_name}}/peers/{{inherit_peer.organization}}.{{inherit_peer.inventory_hostname}}/profile.yaml"
+          - key: sidecar-client.orderer-type
+            value: "{{orderer_type}}"
           - key: sidecar-client.signed-envelopes
             value: "{{signed_envelopes | d(true)}}"
       loop: "{{selected_hosts}}"

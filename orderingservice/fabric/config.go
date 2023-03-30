@@ -2,6 +2,7 @@ package fabric
 
 import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
@@ -14,8 +15,9 @@ type SubmitterConfig struct {
 	Messages                 int                    `mapstructure:"messages"`
 	GoRoutines               int                    `mapstructure:"go-routines"`
 	MessageSize              int                    `mapstructure:"message-size"`
+	OrdererType              utils.ConsensusType    `mapstructure:"orderer-type"`
 	SignedEnvelopes          bool                   `mapstructure:"signed-envelopes"`
-	RemoteControllerListener string                 `mapstructure:"remote-controller-listener"`
+	RemoteControllerListener connection.Endpoint    `mapstructure:"remote-controller-listener"`
 }
 
 type ListenerConfig struct {

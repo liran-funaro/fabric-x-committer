@@ -24,13 +24,17 @@
   set_fact:
     command: "{{env_vars}} {{binary_dir}}/{{service_name}} {{flags}}"
   when: service_name | d('') | length > 0
+- set_fact:
+    command: "{{command}} &> {{output_log}}"
+  when: command | d('') | length > 0 and output_log | d('') | length > 0
 - vars:
     session_name: "{{inventory_hostname}}"
   set_fact:
     command: tmux new-session -s {{session_name}} -d "{{command}}"
-  when: use_tmux | d(true) == true
+  when: command | d('') | length > 0 and use_tmux | d(true) == true
 - debug:
     msg: "Executing {{command}}"
+  when: command | d('') | length > 0
 - vars:
     until: true
   shell: "{{command}}"
@@ -46,8 +50,6 @@
       - "Stderr:   {{stdout.stderr_lines | join}}"
       - "Detailed: {{stdout}}"
   when: command | d('') | length > 0 and log_output | d(true) == true
-- set_fact:
-    command: ""
 - name: Wait until server is running
   vars:
     server_port: "{{hostvars[inventory_hostname].service_port | d(0)}}"

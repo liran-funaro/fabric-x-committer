@@ -6,20 +6,18 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 
-	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/msp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/orderingservice/fabric"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
-	"go.uber.org/ratelimit"
 )
 
 func main() {
@@ -37,6 +35,7 @@ func main() {
 		Credentials:          creds,
 		Parallelism:          c.GoRoutines,
 		InputChannelCapacity: 10,
+		OrdererType:          c.OrdererType,
 		OnAck: func(err error) {
 			if err == nil && bar != nil {
 				bar.Add(1)
@@ -46,104 +45,23 @@ func main() {
 
 	s, err := sidecarclient.NewFabricOrdererBroadcaster(opts)
 	utils.Must(err)
-	if roundMsgs != c.Messages {
-		fmt.Println("Rounding messages to", roundMsgs)
-	}
 
-	var ops uint64
+	rl := limiter.New(&c.RemoteControllerListener)
 
-	// we start by default with unlimited rate
-	var rl ratelimit.Limiter
-	rl = ratelimit.NewUnlimited()
-
-	// start remote-limiter controller
-	if c.RemoteControllerListener != "" {
-		fmt.Printf("Start remote controller listener on %v\n", c.RemoteControllerListener)
-		gin.SetMode(gin.ReleaseMode)
-		router := gin.Default()
-		router.POST("/setLimits", func(c *gin.Context) {
-
-			type Limiter struct {
-				Limit int `json:"limit"`
-			}
-
-			var limit Limiter
-			if err := c.BindJSON(&limit); err != nil {
-				return
-			}
-
-			if limit.Limit < 1 {
-				rl = ratelimit.NewUnlimited()
-				return
-			}
-
-			// create our new limiter
-			rl = ratelimit.New(limit.Limit)
-
-			c.IndentedJSON(http.StatusOK, limit)
-		})
-		fmt.Printf("Start remote controller on ")
-		go router.Run(c.RemoteControllerListener)
-	}
-
-	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
-
-	envelopesToSend := make(chan *common.Envelope, 10000)
-
-	for workerID := 0; workerID < c.GoRoutines; workerID++ {
-		go func() {
-			for i := 0; i < msgsPerGo; i++ {
-				message := make([]byte, c.MessageSize)
-				n := atomic.AddUint64(&ops, 1)
-				binary.LittleEndian.PutUint32(message, uint32(n))
-				env, _ := envelopeCreator.CreateEnvelope(message)
-
-				envelopesToSend <- env
-			}
-		}()
-	}
-
-	var sendtoAll bool
-
-	bftEnvVarValue := os.Getenv("BFT")
-	if bftEnvVarValue != "" {
-		fmt.Println("BFT =", bftEnvVarValue, ", will send to all orderers")
-	}
-
-	streams := s.Streams()
+	envelopes := launchEnvelopeGenerator(c, signer, msgsPerGo, c.GoRoutines, c.MessageSize)
 
 	var wg sync.WaitGroup
 	wg.Add(c.GoRoutines)
-
 	for workerID := 0; workerID < c.GoRoutines; workerID++ {
-
 		go func() {
-
 			defer wg.Done()
-
+			send := s.EnvelopeSender()
 			for sendCounter := 0; sendCounter < msgsPerGo; sendCounter++ {
+				send(<-envelopes)
 
-				// Get a transaction to send to the ordering service
-				env := <-envelopesToSend
-
-				if sendtoAll {
-					// Enqueue envelope into some stream for each orderer
-					for _, streamsForOrderer := range s.StreamsByOrderer() {
-						streamsForOrderer[sendCounter%len(streamsForOrderer)].Input() <- env
-					}
-
-					// Rate limit
-					_ = rl.Take()
-
-				} else {
-					// Pick some orderer to send the envelope to
-					streams[sendCounter%len(streams)].Input() <- env
-
-					// Rate limit
-					_ = rl.Take()
-				}
+				// Rate limit
+				_ = rl.Take()
 			} // send iteration for worker
-
 		}()
 	} // for all workers
 
@@ -152,4 +70,24 @@ func main() {
 	utils.Must(s.CloseStreamsAndWait())
 
 	fmt.Printf("----------------------broadcast message finish-------------------------------")
+}
+
+func launchEnvelopeGenerator(c fabric.SubmitterConfig, signer msp.SigningIdentity, msgsPerGo, goRoutines, messageSize int) chan *common.Envelope {
+	envelopeCreator := sidecarclient.NewEnvelopeCreator(c.ChannelID, signer, c.SignedEnvelopes)
+	var ops uint64
+	envelopesToSend := make(chan *common.Envelope, 10000)
+
+	for workerID := 0; workerID < goRoutines; workerID++ {
+		go func() {
+			for i := 0; i < msgsPerGo; i++ {
+				message := make([]byte, messageSize)
+				n := atomic.AddUint64(&ops, 1)
+				binary.LittleEndian.PutUint32(message, uint32(n))
+				env, _ := envelopeCreator.CreateEnvelope(message)
+
+				envelopesToSend <- env
+			}
+		}()
+	}
+	return envelopesToSend
 }

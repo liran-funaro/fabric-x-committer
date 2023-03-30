@@ -5,17 +5,17 @@
 * Build binaries, configs, and run topology: You have changed the code or the topology.
 ```shell
 export SC_GITHUB_USER=alexandros-filios
-export SC_GITHUB_TOKEN=...
-cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.0-20220113150823-80dd4cb2d74e; cd ..
-just setup false true false
+export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
+cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; cd ..
+just setup BFT false true
 just run
 ```
 * Build configs, and run topology. You have changed config files, but not the code or the topology.
 ```shell
 export SC_GITHUB_USER=alexandros-filios
-export SC_GITHUB_TOKEN=...
-cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.0-20220113150823-80dd4cb2d74e; cd ..
-just setup
+export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
+cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; cd ..
+just setup BFT
 just run
 ```
 * Run topology: You haven't made any changes to any config, the code, or the topology.

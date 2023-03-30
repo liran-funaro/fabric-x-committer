@@ -69,6 +69,7 @@ type InitOptions struct {
 }
 
 func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds credentials.TransportCredentials, signer msp.SigningIdentity, metrics *metrics.Metrics) (*Sidecar, error) {
+	startBlock := 0
 	logger.Infof("Initializing sidecar:\n"+
 		"\tOrderer:\n"+
 		"\t\tEndpoint: %v\n"+
@@ -84,6 +85,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		Credentials:    creds,
 		Signer:         signer,
 		Reconnect:      orderer.Reconnect,
+		StartBlock:     int64(startBlock),
 	})
 	if err != nil {
 		return nil, err
@@ -95,7 +97,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 		ordererListener:      ordererListener,
 		committerAdapter:     client.OpenCoordinatorAdapter(committer.Endpoint),
 		orderedBlocks:        make(chan *workload.BlockWithExpectedResult, committer.OutputChannelCapacity),
-		postCommitAggregator: NewTxStatusAggregator(),
+		postCommitAggregator: NewTxStatusAggregator(uint64(startBlock)),
 		metrics:              metrics,
 	}, nil
 }

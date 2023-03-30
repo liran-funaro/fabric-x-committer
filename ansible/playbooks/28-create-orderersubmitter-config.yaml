@@ -31,6 +31,8 @@
             value: "{{message_size}}"
           - key: orderer-submitter.signed-envelopes
             value: "{{signed_envelopes | d(true)}}"
+          - key: orderer-submitter.orderer-type
+            value: "{{orderer_type}}"
           - key: orderer-submitter.goroutines
             value: "{{streams_per_connection}}"
       loop: "{{selected_hosts}}"

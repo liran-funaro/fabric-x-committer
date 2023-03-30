@@ -62,6 +62,9 @@ all-instances := '100'
 
 N_A := '0'
 
+signed-envelopes := 'false'
+boosted-orderer := 'false'
+
 #########################
 # Quickstart
 #########################
@@ -73,56 +76,44 @@ test:
     go test -v ./...
 
 bootstrap:
+    just docker
+    git clone https://github.com/hyperledger/fabric.git {{fabric-path}}
+
+docker:
     just docker-orderer-image
-    just docker-image
-    git clone https://github.com/hyperledger/fabric.git {{fabric-path}} && \
-        cd {{fabric-path}} && \
-        git checkout v2.4.7 -b v2.4.7-branch
+    just docker-builder-image
 
 launch target_hosts orderer=('raft') committer=('sc'):
-    just run {{target_hosts}} {{orderer}} false false {{committer}} false
+    just run {{target_hosts}} false false false
 
-run target_hosts=('all') orderer=('raft') init_channel=('true') init_chaincode=('true') committer=('sc') init_committer_key=('true'):
+run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_committer_key=('true'):
     #!/usr/bin/env bash
 
     # Start orderer
-    if [[ "{{orderer}}" = "mock" ]]; then \
-      ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'mock': true, 'target_hosts': '{{target_hosts}}'}"; \
-    elif [[ "{{orderer}}" = "raft" ]]; then \
-      ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"; \
-      sleep 15; \
-    elif [[ "{{orderer}}" = "mir" ]]; then \
-      just start-mir-orderers; \
-    else \
-      echo "No valid orderer type defined ({{orderer}}). Skipping."; \
+    ansible-playbook "{{playbook-path}}/71-start-orderer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
+    sleep 15
+
+    if [[ "{{join_channel}}" = "true" ]]; then \
+      just orderer-admin join-channel; \
     fi
 
     # Start Fabric peers
     ansible-playbook "{{playbook-path}}/70-start-peer.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
 
-    if [[ "{{init_channel}}" = "true" ]]; then \
-      # Init channel
-      just admin create-channel; \
-      just admin join-channel; \
+    if [[ "{{join_channel}}" = "true" ]]; then \
+      just peer-admin join-channel; \
     fi
     if [[ "{{init_chaincode}}" = "true" ]]; then \
-      # Init chaincode
-      just admin install-chaincode; \
-      just admin approve-chaincode-for-org; \
-      just admin commit-chaincode; \
-      just admin invoke-chaincode; \
+      just peer-admin install-chaincode; \
+      just peer-admin approve-chaincode-for-org; \
+      just peer-admin commit-chaincode; \
+      just peer-admin invoke-chaincode; \
     fi
 
     # Start committer
-    if [[ "{{committer}}" = "mock" ]]; then \
-      ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'action': 'start-mock', 'target_hosts': 'all'}"; \
-    elif [[ "{{committer}}" = "sc" ]]; then \
-      ansible-playbook "{{playbook-path}}/61-start-sigverifier.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"; \
-      ansible-playbook "{{playbook-path}}/62-start-shardsservice.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"; \
-      ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'action': 'start'}"; \
-    else \
-      echo "No valid committer type definec ({{committer}}). Skipping."; \
-    fi
+    ansible-playbook "{{playbook-path}}/61-start-sigverifier.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/62-start-shardsservice.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+    ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'action': 'start'}"
 
     # Start sidecar
     ansible-playbook "{{playbook-path}}/65-start-sidecar.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
@@ -145,15 +136,16 @@ run target_hosts=('all') orderer=('raft') init_channel=('true') init_chaincode=(
     # Start orderer submitters
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
-setup local_bins=('false') docker_bins=('false') signed_envelopes=('true') boosted_orderer=('false'):
+setup orderer_type=('etcdraft') local_bins=('false') docker_bins=('false'):
     #!/usr/bin/env bash
     just kill
     just clean all true {{ if local_bins == 'true' { 'true' } else if docker_bins == 'true' { 'true' } else { 'false' } }}
 
-    just build-bins true true {{local_bins}} {{docker_bins}} {{signed_envelopes}} {{boosted_orderer}}; \
+    just build-committer-bins {{local_bins}} {{docker_bins}}
+    just build-orderer-bins {{local_bins}} {{docker_bins}}; \
 
-    just build-configs all {{signed_envelopes}}
-    just build-orderer-artifacts
+    just build-configs {{orderer_type}} all
+    just build-orderer-artifacts {{orderer_type}}
     just deploy-configs
 
     just build-fsc-bins {{local_bins}} {{docker_bins}}
@@ -208,28 +200,26 @@ protos-wgclient:
 # Binaries
 #########################
 
-build-bins include_committer=('true') include_orderer=('true') local=('true') docker=('true') signed_envelopes=('true') boosted_orderer=('true'):
+build-committer-bins local=('true') docker=('true'):
     #!/usr/bin/env bash
     if [[ "{{local}}" = "true" ]]; then \
-      just empty-dir {{local-bin-input-dir}}; \
-      if [[ "{{include_committer}}" = "true" ]]; then \
-        just build-committer-local {{local-bin-input-dir}}; \
-      fi; \
-      if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-local {{local-bin-input-dir}} {{signed_envelopes}} {{boosted_orderer}}; \
-          just build-orderer-clients-local {{local-bin-input-dir}}; \
-      fi; \
+      just build-committer-local {{local-bin-input-dir}}; \
     fi
 
     if [[ "{{docker}}" = "true" ]]; then \
-      just empty-dir {{linux-bin-input-dir}}; \
-      if [[ "{{include_committer}}" = "true" ]]; then \
-          just docker "just build-committer-local ./eval/deployments/bins/linux"; \
-      fi; \
-      if [[ "{{include_orderer}}" = "true" ]]; then \
-          just build-raft-orderers-docker {{linux-bin-input-dir}} {{signed_envelopes}} {{boosted_orderer}}; \
-          just docker "just build-orderer-clients-local ./eval/deployments/bins/linux"; \
-      fi; \
+      just docker-builder-run "just build-committer-local ./eval/deployments/bins/linux"; \
+    fi
+
+build-orderer-bins local=('true') docker=('true'):
+    #!/usr/bin/env bash
+    if [[ "{{local}}" = "true" ]]; then \
+      just build-orderers-local; \
+      just build-orderer-clients-local {{local-bin-input-dir}}; \
+    fi
+
+    if [[ "{{docker}}" = "true" ]]; then \
+      just build-orderers-docker; \
+      just docker-builder-run "just build-orderer-clients-local ./eval/deployments/bins/linux"; \
     fi
 
 build-fsc-bins local=('true') docker=('true'):
@@ -238,7 +228,7 @@ build-fsc-bins local=('true') docker=('true'):
       just build-fsc-bins-local {{local-bin-input-dir}}; \
     fi
     if [[ "{{docker}}" = "true" ]]; then \
-      just docker "just build-fsc-bins-local ../../../eval/deployments/bins/linux"; \
+      just docker-builder-run "just build-fsc-bins-local ../../../eval/deployments/bins/linux"; \
     fi
 
 build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path):
@@ -247,35 +237,33 @@ build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
 # git checkout v2.4.7 -b v2.4.7-branch
-build-raft-orderers-local output_dir signed_envelopes=('true') boosted_orderer=('true'):
+build-orderers-local:
     #!/usr/bin/env bash
     cd "{{fabric-path}}" || exit; \
     git reset --hard; \
-    if [[ -d "build" ]]; then \
-          rm -r build; \
-    fi; \
+    make clean; \
 
-    if [[ "{{signed_envelopes}}" = "true" ]]; then \
+    echo "Applying patch to accept MESSAGE type..."; \
+    git apply {{orderer-builder-dir}}/allow_MESSAGE_type.patch; \
+    if [[ "{{signed-envelopes}}" = "true" ]]; then \
       echo "Building orderer binaries for signed envelopes..."; \
     else \
       echo "Applying patch and building orderer binaries for unsigned envelopes..."; \
       git apply {{orderer-builder-dir}}/orderer_no_sig_check.patch; \
     fi; \
-    if [[ "{{boosted_orderer}}" = "true" ]]; then \
+    if [[ "{{boosted-orderer}}" = "true" ]]; then \
       echo "Applying booster patch and building orderer binaries..."; \
       git apply {{orderer-builder-dir}}/orderer_booster.patch; \
     else \
       echo "Building orderer binaries without booster patch..."; \
     fi; \
+    git status; \
     make -C {{fabric-path}} native; \
-    echo "Bins created under {{fabric-bins-path}}"; \
-    if [[ -d "{{output_dir}}" ]]; then \
-      echo "Copying bins to {{output_dir}}..."; \
-    cp -a "{{fabric-bins-path}}/." "{{output_dir}}/"
-    fi
+    echo "Bins created under {{fabric-bins-path}}. Copying to {{local-bin-input-dir}}..."; \
+    cp -a "{{fabric-bins-path}}/." "{{local-bin-input-dir}}/"
 
-build-raft-orderers-docker output_dir signed_envelopes=('true') boosted_orderer=('true'):
-    docker run --rm -it -v {{output_dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed_envelopes}} {{boosted_orderer}} /usr/local/out
+build-orderers-docker:
+    docker run --rm -it -v {{linux-bin-input-dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed-envelopes}} {{boosted-orderer}} /usr/local/out
 
 build-committer-local output_dir:
     go build -o {{output_dir}}/blockgen ./wgclient/cmd/generator
@@ -310,10 +298,10 @@ deploy-bins:
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'ordererlisteners', 'filenames': ['ordererlistener'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderersubmitters', 'filenames': ['orderersubmitter'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/31-transfer-fsc-bin.yaml" --extra-vars "{'target_hosts': 'all', 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice', 'osnadmin'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
-# Executes a command from within the docker image. Requires that docker-image be run once before, to ensure the image exists.
-docker CMD:
+# Executes a command from within the docker image. Requires that docker-builder-image be run once before, to ensure the image exists.
+docker-builder-run CMD:
     #!/usr/bin/env bash
     if [[ "{{github-user}}" = "" || "{{github-token}}" = "" ]]; then \
       echo "Building without private github repo"; \
@@ -328,12 +316,12 @@ docker-orderer-image:
     docker build -f {{orderer-builder-dir}}/Dockerfile -t orderer_builder .
 
 # The docker image required for compilation of SC components on the Unix machines
-docker-image:
+docker-builder-image:
     docker build -f builder/Dockerfile -t sc_builder .
 
 # Simple containerized SC
 docker-runner-image:
-    just build-bins true false false true true
+    just build-committer-bins true false
     mkdir -p {{runner-dir}}/bin
     cp {{linux-bin-input-dir}}/* {{runner-dir}}/bin
     docker build -f runner/Dockerfile -t sc_runner .
@@ -342,24 +330,24 @@ docker-runner-image:
 # Configs, Credentials, and Genesis
 #########################
 
-build-configs target_hosts=('all') signed_envelopes=('true'):
+build-configs orderer_type target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/21-create-sigverifier-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/22-create-shardsservice-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/23-create-coordinator-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/24-create-blockgen-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/25-create-sidecar-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'signed_envelopes': {{signed_envelopes}}}"
+    ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'orderer_type': '{{orderer_type}}', 'signed_envelopes': {{signed-envelopes}}}"
     ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
-    ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'signed_envelopes': {{signed_envelopes}}}"
+    ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'orderer_type': '{{orderer_type}}', 'signed_envelopes': {{signed-envelopes}}}"
 
 serve-ui-config port=('8080'):
     ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}'}"
     echo "Serving UI configs under http://localhost:{{port}}/ui-config.yaml, http://localhost:{{port}}/ui-config.json"
     docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{base-setup-config-dir}}:/app/static nginx:alpine
 
-build-orderer-artifacts fab_bins_dir=(linux-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
+build-orderer-artifacts orderer_type=('BFT') fab_bins_dir=(linux-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
     #!/usr/bin/env bash
-    ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'channel_ids': ['{{default-channel-id}}']}"
+    ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'orderer_type': '{{orderer_type}}', 'channel_ids': ['{{default-channel-id}}']}"
 
     if [[ -f "{{topology_config_path}}" ]]; then \
       echo "Creating NWO artifacts based on topology setup in {{topology_config_path}}..."; \
@@ -394,8 +382,11 @@ deploy-configs target_hosts=('all') include_configs=('true') include_creds=('tru
 set-committer-key:
     ansible-playbook "{{playbook-path}}/63-start-coordinator.yaml" --extra-vars "{'action': 'set-key', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'all'}"
 
-admin action chaincode_name=('token-chaincode'):
-    ansible-playbook "{{playbook-path}}/69-start-admin.yaml" --extra-vars "{'action': '{{action}}', 'channel_id': '{{default-channel-id}}', 'chaincode_name': '{{chaincode_name}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
+orderer-admin action:
+    ansible-playbook "{{playbook-path}}/73-start-orderer-admin.yaml" --extra-vars "{'action': '{{action}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'all'}"
+
+peer-admin action chaincode_name=('token-chaincode'):
+    ansible-playbook "{{playbook-path}}/69-start-peer-admin.yaml" --extra-vars "{'action': '{{action}}', 'channel_id': '{{default-channel-id}}', 'chaincode_name': '{{chaincode_name}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': 'peerservices[0]'}"
 
 start-mir-orderers:
     #!/usr/bin/env bash
@@ -447,7 +438,7 @@ run-orderer-experiment connections=('1') streams_per_connection=('1') message_si
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'connections': {{connections}}, 'streams_per_connection': {{streams_per_connection}}, 'message_size': {{message_size}}, 'channel_id': '{{default-channel-id}}', 'signed': '{{signed}}', 'target_hosts': 'all'}"
     just deploy-configs orderersubmitters
 
-    just run orderingservices raft true false {{N_A}} {{N_A}}
+    just run orderingservices false false {{N_A}}
     just launch ordererlisteners
     just launch orderersubmitters
 

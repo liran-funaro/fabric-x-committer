@@ -98,3 +98,10 @@ func UniformBuckets(count int, from, to float64) []float64 {
 	}
 	return append(result, to)
 }
+
+type ConsensusType = string
+
+const (
+	Raft ConsensusType = "etcdraft"
+	Bft                = "BFT"
+)

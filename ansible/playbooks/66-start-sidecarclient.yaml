@@ -7,6 +7,7 @@
   tasks:
     - vars:
         service_name: sidecarclient
+        output_log: "{{config_dir}}/logs.txt"
         options:
           configs: "{{config_dir}}/{{config}}"
         env:

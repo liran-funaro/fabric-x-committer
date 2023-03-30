@@ -29,7 +29,8 @@
               'Listen': instance.service_port | d(0),
               'Profile': instance.profile_port | d(0),
               'Operations': instance.ops_port | d(0),
-              'Cluster': instance.cluster_port | d(0)
+              'Cluster': instance.cluster_port | d(0),
+              'Admin': instance.admin_port | d(0)
             }
           }
         }]}}"
@@ -78,6 +79,8 @@
             value: "{{topology_name}}"
           - key: topology-setup.fabric.log-level
             value: "{{log_level}}"
+          - key: topology-setup.fabric.orderer-type
+            value: "{{orderer_type}}"
           - key: topology-setup.fabric.channel-ids
             value: "{{channel_ids}}"
           - key: topology-setup.fabric.peers

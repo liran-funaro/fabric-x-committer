@@ -155,7 +155,7 @@ type testInstance struct {
 
 func NewTestInstance() *testInstance {
 	return &testInstance{
-		aggregator: sidecar.NewTxStatusAggregator(),
+		aggregator: sidecar.NewTxStatusAggregator(0),
 	}
 }
 

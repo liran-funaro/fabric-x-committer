@@ -9,3 +9,4 @@ orderer-submitter:
   go-routines: 20
   message-size: 160
   signed: true
+  orderer-type: BFT

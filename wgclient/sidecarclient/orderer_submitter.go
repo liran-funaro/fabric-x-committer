@@ -20,23 +20,21 @@ type FabricOrdererBroadcasterOpts struct {
 	Credentials          credentials.TransportCredentials
 	Parallelism          int
 	InputChannelCapacity int
+	OrdererType          utils.ConsensusType
 	OnAck                func(error)
 }
 
 type fabricOrdererBroadcaster struct {
-	streams          []OrdererStream
-	streamsByOrderer [][]OrdererStream
-	closeConnections func() error
-}
-type OrdererStream interface {
-	Input() chan<- *common.Envelope
-	WaitStreamClosed()
+	sendEnvelope        func(*common.Envelope)
+	closeStreamsAndWait func() error
+	ordererType         utils.ConsensusType
+	streamsByOrderer    ordererStreams
 }
 
-type OrdererStreams [][]OrdererStream
+type ordererStreams [][]*fabricOrdererStream
 
-func (os OrdererStreams) Flatten() []OrdererStream {
-	var res []OrdererStream
+func (os ordererStreams) Flatten() []*fabricOrdererStream {
+	var res []*fabricOrdererStream
 
 	for _, streams := range os {
 		res = append(res, streams...)
@@ -53,26 +51,52 @@ func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrd
 	streamsByOrderer := openStreamsByOrderer(connections, opts.Parallelism, opts.InputChannelCapacity, opts.OnAck)
 
 	return &fabricOrdererBroadcaster{
-		streamsByOrderer: streamsByOrderer,
-		streams:          streamsByOrderer.Flatten(),
-		closeConnections: func() error { return closeConnections(connections) },
+		closeStreamsAndWait: connectionCloser(streamsByOrderer, connections),
+		ordererType:         opts.OrdererType,
+		streamsByOrderer:    streamsByOrderer,
 	}, nil
 }
 
-func (b *fabricOrdererBroadcaster) Streams() []OrdererStream {
-	return b.streams
+func connectionCloser(streamsByOrderer ordererStreams, connections []*grpc.ClientConn) func() error {
+	return func() error {
+		for _, s := range streamsByOrderer.Flatten() {
+			close(s.input)
+			<-s.channelClosed
+		}
+		return closeConnections(connections)
+	}
 }
 
-func (b *fabricOrdererBroadcaster) StreamsByOrderer() [][]OrdererStream {
-	return b.streamsByOrderer
+func (b *fabricOrdererBroadcaster) EnvelopeSender() func(*common.Envelope) {
+	var sendCounter uint64
+
+	switch b.ordererType {
+	case utils.Raft:
+		// Pick some orderer to send the envelope to
+		streams := b.streamsByOrderer.Flatten()
+		streamLength := uint64(len(streams))
+		return func(envelope *common.Envelope) {
+			streams[sendCounter%streamLength].input <- envelope
+			sendCounter++
+		}
+	case utils.Bft:
+		// Enqueue envelope into some stream for each orderer
+		return func(envelope *common.Envelope) {
+			for _, streamsForOrderer := range b.streamsByOrderer {
+				streamsForOrderer[sendCounter%uint64(len(streamsForOrderer))].input <- envelope
+				sendCounter++
+			}
+		}
+	default:
+		panic("Orderer type " + b.ordererType + " not defined")
+	}
+}
+func (b *fabricOrdererBroadcaster) SendEnvelope(envelope *common.Envelope) {
+	b.sendEnvelope(envelope)
 }
 
 func (b *fabricOrdererBroadcaster) CloseStreamsAndWait() error {
-	for _, s := range b.Streams() {
-		close(s.Input())
-		s.WaitStreamClosed()
-	}
-	return b.closeConnections()
+	return b.closeStreamsAndWait()
 }
 
 func openConnections(endpoints []*connection.Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
@@ -109,13 +133,13 @@ func closeConnections(connections []*grpc.ClientConn) error {
 	return nil
 }
 
-func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism, capacity int, onAck func(error)) OrdererStreams {
+func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism, capacity int, onAck func(error)) ordererStreams {
 	logger.Infof("Opening %d streams using the %d connections to the orderers.\n", parallelism, len(connections))
 
-	var submitters [][]OrdererStream
+	var submitters [][]*fabricOrdererStream
 
 	for i := 0; i < len(connections); i++ {
-		var submittersForOrderer []OrdererStream
+		var submittersForOrderer []*fabricOrdererStream
 
 		for j := 0; j < parallelism/len(connections); j++ {
 			submittersForOrderer = append(submittersForOrderer, newFabricOrdererStream(connections[i], capacity, onAck))
@@ -153,14 +177,6 @@ func newFabricOrdererStream(conn *grpc.ClientConn, capacity int, onAck func(erro
 	return s
 }
 
-func (s *fabricOrdererStream) Input() chan<- *common.Envelope {
-	return s.input
-}
-
-func (s *fabricOrdererStream) WaitStreamClosed() {
-	<-s.channelClosed
-}
-
 func (s *fabricOrdererStream) startAckListener(onAck func(error)) {
 	go func() {
 		var err error
@@ -192,7 +208,8 @@ func (s *fabricOrdererStream) getAck() error {
 func (s *fabricOrdererStream) startEnvelopeSender() {
 	go func() {
 		for envelope := range s.input {
-			utils.Must(s.client.Send(envelope))
+			err := s.client.Send(envelope)
+			utils.Must(err)
 			atomic.AddUint64(&s.sent, 1)
 		}
 

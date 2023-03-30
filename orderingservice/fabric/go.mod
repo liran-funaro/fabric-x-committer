@@ -3,7 +3,6 @@ module github.ibm.com/distributed-trust-research/scalable-committer/orderingserv
 go 1.18
 
 require (
-	github.com/gin-gonic/gin v1.9.0
 	github.com/golang/protobuf v1.5.2
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-config v0.1.0
@@ -12,7 +11,6 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
-	go.uber.org/ratelimit v0.2.0
 	google.golang.org/grpc v1.51.0
 )
 
@@ -37,6 +35,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
+	github.com/gin-gonic/gin v1.9.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -91,6 +90,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
+	go.uber.org/ratelimit v0.2.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.5.0 // indirect

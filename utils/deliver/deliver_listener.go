@@ -49,7 +49,7 @@ func NewListener(opts *ConnectionOpts) (*listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &listener{opts.ClientProvider, conn, opts.Signer, opts.ChannelID, opts.Reconnect, 0}, nil
+	return &listener{opts.ClientProvider, conn, opts.Signer, opts.ChannelID, opts.Reconnect, opts.StartBlock}, nil
 }
 
 func (l *listener) RunDeliverOutputListener(onReceive func(*common.Block)) error {

@@ -48,8 +48,9 @@ type inProgressBlock struct {
 
 type validationCode = byte
 
-func NewTxStatusAggregator() *txStatusAggregator {
+func NewTxStatusAggregator(startBlock blockNumber) *txStatusAggregator {
 	return &txStatusAggregator{
+		nextBlock:        startBlock,
 		inProgressBlocks: make(map[blockNumber]*inProgressBlock, 100),
 		completedBlocks:  make(chan *common.Block, 10),
 	}
@@ -126,7 +127,12 @@ func (a *txStatusAggregator) tryCompleteBlock(currentBlock *inProgressBlock) {
 
 	// When we start listening, we will start from the first block that arrives
 	if !atomic.CompareAndSwapUint64(&a.nextBlock, 0, blockNum+1) && !atomic.CompareAndSwapUint64(&a.nextBlock, blockNum, blockNum+1) {
-		logger.Infof("Completed block %d, but block %d must be completed first (Remaining %d TXs).", blockNum, a.nextBlock, a.inProgressBlocks[a.nextBlock].remaining)
+		logger.Infof("Completed block %d, but block %d must be completed first.", blockNum, a.nextBlock)
+		if block, ok := a.inProgressBlocks[a.nextBlock]; ok {
+			logger.Infof("Block %d has %d remaining TXs.", a.nextBlock, block.remaining)
+		} else {
+			logger.Warnf("Block %d not seen.", a.nextBlock)
+		}
 		return
 	}
 
