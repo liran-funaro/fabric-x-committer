@@ -43,6 +43,8 @@
             value: "{{orderer_type}}"
           - key: sidecar-client.signed-envelopes
             value: "{{signed_envelopes | d(true)}}"
+          - key: sidecar-client.remote-controller-listener
+            value: ":{{sidecarclient_instance.limiter_port | d(0)}}"
       loop: "{{selected_hosts}}"
       loop_control:
         loop_var: sidecarclient_instance

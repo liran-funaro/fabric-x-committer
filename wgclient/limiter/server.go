@@ -13,20 +13,20 @@ import (
 var logger = logging.New("ratelimiter")
 
 type limiterHolder struct {
-	limiter *ratelimit.Limiter
+	limiter ratelimit.Limiter
 }
 
 func (h *limiterHolder) Take() time.Time {
-	return (*h.limiter).Take()
+	return h.limiter.Take()
 }
 
 func New(controllerEndpoint *connection.Endpoint) ratelimit.Limiter {
-	var rl *ratelimit.Limiter
+	var rl limiterHolder
 	// we start by default with unlimited rate
-	*rl = ratelimit.NewUnlimited()
+	rl.limiter = ratelimit.NewUnlimited()
 
 	if controllerEndpoint == nil || controllerEndpoint.Empty() {
-		return &limiterHolder{rl}
+		return &rl
 	}
 
 	// start remote-limiter controller
@@ -47,17 +47,17 @@ func New(controllerEndpoint *connection.Endpoint) ratelimit.Limiter {
 
 		if limit.Limit < 1 {
 			logger.Infof("Setting to unlimited (value passed: %d).", limit.Limit)
-			*rl = ratelimit.NewUnlimited()
+			rl.limiter = ratelimit.NewUnlimited()
 			return
 		}
 
 		logger.Infof("Setting limit to %d TPS.", limit.Limit)
 		// create our new limiter
-		*rl = ratelimit.New(limit.Limit)
+		rl.limiter = ratelimit.New(limit.Limit)
 
 		c.IndentedJSON(http.StatusOK, limit)
 	})
 	go router.Run(controllerEndpoint.Address())
 
-	return &limiterHolder{rl}
+	return &rl
 }

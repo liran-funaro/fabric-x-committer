@@ -79,7 +79,9 @@ all:
               prometheus_exporter_port: 2119
               config_dir: "{{top_config_dir}}/submitter0"
               binary_dir: "{{top_binary_dir}}/submitter0"
+              limiter_port: 6997
             orderersubmitter-machine2:
               prometheus_exporter_port: 2120
               config_dir: "{{top_config_dir}}/submitter1"
               binary_dir: "{{top_binary_dir}}/submitter1"
+              limiter_port: 6998

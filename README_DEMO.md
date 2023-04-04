@@ -2,7 +2,10 @@
 
 ## Backend
 ### Deploy and Run Topology
-* Build binaries, configs, and run topology: You have changed the code or the topology.
+First you will need to create a Github token on github.ibm.com as described [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token). Make sure to tick **repo**, as described in step 8.
+This will allow access to the private repos.
+This token is the one to use instead of `<<YOUR_TOKEN_HERE>>` when setting the env var SC_GITHUB_TOKEN.
+* Build binaries, configs, and run topology: You have changed the code or the topology. You can pass `BFT` or `etcdraft` as a parameter to the `setup` method.
 ```shell
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
@@ -32,10 +35,17 @@ Check that all servers are up and running:
 just check-ports
 ```
 
+### Limit load rate
+```shell
+just limit-rate 30000
+```
+
 ### Invoke REST-API
 ```shell
 # Issue 100 tokens to alice
 just call-api issuer issuer issue alice 100
+# Withdraw 100 tokens for alice
+just call-api banka alice withdraw '' 100
 # Request 10 tokens for bob
 just call-api bankb bob initiate bob 10 donut
 # Accept to transfer 10 tokens to bob from alice's account

@@ -163,6 +163,9 @@ clean target_hosts=('all') include_configs=('false') include_bins=('false'):
 call-api target_host user action recipient=('') value=('0') nonce=(''):
     ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'user': '{{user}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}'}"
 
+limit-rate limit=('-1'):
+    ansible-playbook "{{playbook-path}}/76-limit-rate.yaml" --extra-vars "{'limit': {{limit}}}"
+
 kill target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/90-kill.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 

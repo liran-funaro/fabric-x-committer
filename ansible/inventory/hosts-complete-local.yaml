@@ -246,10 +246,12 @@ all:
               prometheus_exporter_port: 2116
               config_dir: "{{top_config_dir}}/sidecarclient0/"
               binary_dir: "{{top_binary_dir}}/sidecarclient0"
+              limiter_port: 6997
             sidecar-client-machine2:
               prometheus_exporter_port: 2117
               config_dir: "{{top_config_dir}}/sidecarclient1/"
               binary_dir: "{{top_binary_dir}}/sidecarclient1"
+              limiter_port: 6998
 
     monitoring:
       hosts:

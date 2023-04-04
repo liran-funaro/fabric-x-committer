@@ -246,6 +246,7 @@ all:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml
               ansible_host: tokentestbed8.sl.cloud9.ibm.com
+              limiter_port: 6997
 
 #        ordererlisteners:
 #          vars:

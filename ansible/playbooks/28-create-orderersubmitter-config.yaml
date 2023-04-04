@@ -35,6 +35,8 @@
             value: "{{orderer_type}}"
           - key: orderer-submitter.goroutines
             value: "{{streams_per_connection}}"
+          - key: sidecar-client.remote-controller-listener
+            value: ":{{orderersubmitter_instance.limiter_port | d(0)}}"
       loop: "{{selected_hosts}}"
       loop_control:
         loop_var: orderersubmitter_instance
