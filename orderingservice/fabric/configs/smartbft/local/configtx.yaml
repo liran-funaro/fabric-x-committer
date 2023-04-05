@@ -6,7 +6,7 @@ Organizations:
         Name: orderer
         ID: orderer
 
-        MSPDir: out/orgs/ordererOrganizations/orderer.org/msp
+        MSPDir: ../../../out/orgs/ordererOrganizations/orderer.org/msp
 
         Policies:
             Readers:
@@ -40,7 +40,7 @@ Organizations:
         ID: Org1
 
         # MSPDir is the filesystem path which contains the MSP configuration.
-        MSPDir: out/orgs/peerOrganizations/org1.com/msp
+        MSPDir: ../../../out/orgs/peerOrganizations/org1.com/msp
 
         # Policies defines the set of policies at this level of the config tree
         # For organization policies, their canonical path is usually
@@ -331,30 +331,30 @@ Orderer: &OrdererDefaults
           Host: localhost
           Port: 7050
           MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/msp/signcerts/raft0.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+          Identity: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/msp/signcerts/raft0.orderer.org-cert.pem
+          ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+          ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
         - ID: 2
           Host: localhost
           Port: 7051
           MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/msp/signcerts/raft1.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+          Identity: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/msp/signcerts/raft1.orderer.org-cert.pem
+          ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+          ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
         - ID: 3
           Host: localhost
           Port: 7052
           MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/msp/signcerts/raft2.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+          Identity: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/msp/signcerts/raft2.orderer.org-cert.pem
+          ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+          ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
         - ID: 4
           Host: localhost
           Port: 7053
           MSPID: orderer
-          Identity: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/msp/signcerts/raft3.orderer.org-cert.pem
-          ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
-          ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+          Identity: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/msp/signcerts/raft3.orderer.org-cert.pem
+          ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+          ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
 
     # EtcdRaft defines configuration which must be set when the "etcdraft"
     # orderertype is chosen.
@@ -366,24 +366,24 @@ Orderer: &OrdererDefaults
         Consenters:
             - Host: localhost
               Port: 7050
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft0.orderer.org/tls/server.crt
             - Host: localhost
               Port: 7051
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft1.orderer.org/tls/server.crt
             - Host: localhost
               Port: 7052
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft2.orderer.org/tls/server.crt
             - Host: localhost
               Port: 7053
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft3.orderer.org/tls/server.crt
             - Host: localhost
               Port: 7054
-              ClientTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
-              ServerTLSCert: ./out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
+              ClientTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
+              ServerTLSCert: ../../../out/orgs/ordererOrganizations/orderer.org/orderers/raft4.orderer.org/tls/server.crt
 
         # Options to be specified for all the etcd/raft nodes. The values here
         # are the defaults for all new channels and can be modified on a
