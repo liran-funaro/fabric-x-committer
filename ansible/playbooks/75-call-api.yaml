@@ -118,3 +118,16 @@
       register: result
     - debug: var=result.json
       when: action == 'records'
+    - name: "Withdraw tokens for {{target_host}}"
+      uri:
+        url: "{{target_endpoint}}/zkat/withdraw?user={{user}}"
+        method: POST
+        body:
+          value: "{{value}}"
+        body_format: form-urlencoded
+        headers:
+          Authorization: "Bearer {{token}}"
+      when: action == 'withdraw'
+      register: result
+    - debug: var=result.json
+      when: action == 'withdraw'
