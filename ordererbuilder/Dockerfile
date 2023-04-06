@@ -1,4 +1,4 @@
-FROM golang:1.18.4-bullseye
+FROM golang:1.19.8-bullseye
 
 ## Check out fabric without building
 ENV FABRIC_PATH=$GOPATH/src/github.com/hyperledger/fabric
@@ -11,6 +11,8 @@ ENV BINS_PATH=$FABRIC_PATH/build/bin
 
 WORKDIR /usr/local
 
+# Patch to fix RequestMaxBytes
+ADD ordererbuilder/fix_RequestMaxBytes.patch .
 # Patch to disable signatures
 ADD ordererbuilder/orderer_no_sig_check.patch .
 # Patch for boosting orderer performance

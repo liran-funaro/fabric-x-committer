@@ -111,6 +111,7 @@ Organizations:{{ range .PeerOrgs }}
 Channel: &ChannelDefaults
   Capabilities:
     V2_0: true
+    V3_0: true
   Policies: &DefaultPolicies
     Readers:
       Type: ImplicitMeta
@@ -179,10 +180,11 @@ Profiles:{{ range .Profiles }}
         ViewChangeTimeout: 20s
         LeaderHeartbeatTimeout: 1m0s
         CollectTimeout: 1s
-        RequestBatchMaxBytes: 10485760
+        RequestBatchMaxBytes: 99999999999999
         IncomingMessageBufferSize: 200
         RequestPoolSize: 500000
         LeaderHeartbeatCount: 10
+        RequestMaxBytes: 99999999999999
 
       ConsenterMapping:{{ range $index, $orderer := .Orderers }}{{ with $w.Orderer $orderer }}
       - ID: {{ template "inc" $index }}

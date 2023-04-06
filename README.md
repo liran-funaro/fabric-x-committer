@@ -5,9 +5,9 @@
 ```shell
 brew install just
 ```
-2. Golang 1.18
+2. Golang 1.20
 ```shell
-brew install go@1.18
+brew install go@1.20
 ```
 3. rocksdb and gorocksdb (*not required if you never build for the local machine, because the Docker image contains the dependency*)
 
@@ -57,12 +57,12 @@ curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -
 export PATH=$PATH:/usr/local/just
 # just —version
 ```
-2. Golang 1.18
+2. Golang 1.20
 ```shell
 apt-get update
-wget https://go.dev/dl/go1.18.8.linux-amd64.tar.gz
-tar xvf ./go1.18.8.linux-amd64.tar.gz
-rm ~/go1.18.8.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.20.3.linux-amd64.tar.gz
+tar xvf ./go1.20.3.linux-amd64.tar.gz
+rm ./go1.20.3.linux-amd64.tar.gz
 mv ./go/ /usr/local/
 export GOPATH=$HOME/go
 export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin

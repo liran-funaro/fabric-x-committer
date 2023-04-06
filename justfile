@@ -246,6 +246,8 @@ build-orderers-local:
     git reset --hard; \
     make clean; \
 
+    echo "Applying patch to fix RequestMaxBytes config property..."; \
+    git apply {{orderer-builder-dir}}/fix_RequestMaxBytes.patch; \
     echo "Applying patch to accept MESSAGE type..."; \
     git apply {{orderer-builder-dir}}/allow_MESSAGE_type.patch; \
     if [[ "{{signed-envelopes}}" = "true" ]]; then \

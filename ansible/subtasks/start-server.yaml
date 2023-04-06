@@ -42,6 +42,7 @@
 #  poll: 0
   register: stdout
   until: until
+  no_log: "{{no_log | d(false)}}"
   when: command | d('') | length > 0 and only_kill | d(false) == false
 - debug:
     msg:
@@ -49,7 +50,7 @@
       - "Stdout:   {{stdout.stdout_lines | join}}"
       - "Stderr:   {{stdout.stderr_lines | join}}"
       - "Detailed: {{stdout}}"
-  when: command | d('') | length > 0 and log_output | d(true) == true
+  when: command | d('') | length > 0 and no_log | d(false) == false
 - name: Wait until server is running
   vars:
     server_port: "{{hostvars[inventory_hostname].service_port | d(0)}}"

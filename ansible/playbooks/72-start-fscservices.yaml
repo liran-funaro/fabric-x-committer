@@ -7,9 +7,11 @@
     - name: Start FSC nodes
       vars:
         service_name: "{{inventory_hostname}} node start"
+        output_log: "{{config_dir}}/logs.txt"
         wait_until_running: true
         env:
           - "FSCNODE_CFG_PATH={{config_dir}}/fsc/nodes/{{inventory_hostname}}"
+#          - "FSCNODE_LOGGING_SPEC=DEBUG"
       include_tasks: ../subtasks/start-server.yaml
       when: mode | d('') | length == 0 or
         mode | d('') == 'bootstrap_only' and bootstrap | d(false) == true or

@@ -8,6 +8,8 @@ cd "$FABRIC_PATH" || exit
 git reset --hard
 make clean
 
+echo "Applying patch to fix RequestMaxBytes config property..."
+git apply /usr/local/fix_RequestMaxBytes.patch
 echo "Applying patch to accept MESSAGE type..."
 git apply /usr/local/allow_MESSAGE_type.patch
 if [ -n "$signed_envs" ] && [ "$signed_envs" = "false" ]; then \

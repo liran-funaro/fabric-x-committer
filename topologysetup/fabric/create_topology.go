@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/api"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric"
 	"github.com/hyperledger-labs/fabric-smart-client/integration/nwo/fabric/topology"
+	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/extras"
 	"github.ibm.com/decentralized-trust-research/fts-sc/integration/nwo/fabric/tss"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 )
@@ -68,6 +69,7 @@ func CreateTopology(config Config) *topology.Topology {
 		fabricTopology.AddOrganization(org)
 	}
 
+	fabricTopology.SetNamespaceApproverOrgs(config.AllPeerOrgs()...)
 	return fabricTopology
 }
 
@@ -92,5 +94,6 @@ func (f fabricPlatformFactory) New(registry api.Context, t api.Topology, builder
 	if f.sidecarPorts != nil {
 		p.Network.AddExtension(NewExtension(p, f.sidecarPorts))
 	}
+	p.Network.AddExtension(extras.NewExtension(p))
 	return p
 }
