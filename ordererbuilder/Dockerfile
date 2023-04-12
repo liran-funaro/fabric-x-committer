@@ -1,10 +1,13 @@
-FROM golang:1.19.8-bullseye
+FROM golang:1.20.3-bullseye
 
 ## Check out fabric without building
 ENV FABRIC_PATH=$GOPATH/src/github.com/hyperledger/fabric
 RUN git clone https://github.com/hyperledger/fabric.git $FABRIC_PATH
 
 RUN apt-get update && apt-get install -y tmux
+
+# install just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
 ENV OUT_PATH=/usr/local/out
 ENV BINS_PATH=$FABRIC_PATH/build/bin

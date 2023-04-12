@@ -9,7 +9,6 @@ This token is the one to use instead of `<<YOUR_TOKEN_HERE>>` when setting the e
 ```shell
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
-cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; cd ..
 just setup BFT false true
 just run
 ```
@@ -17,7 +16,6 @@ just run
 ```shell
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
-cd topologysetup; go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; cd ..
 just setup BFT
 just run
 ```
@@ -33,6 +31,11 @@ Check that all servers are up and running:
 * On the remote machine (`tokentestbed16.sl.cloud9.ibm.com`) in the `scalable-committer` project:
 ```shell
 just check-ports
+```
+
+### Ping all servers
+```shell
+just ping
 ```
 
 ### Limit load rate
@@ -62,15 +65,9 @@ just call-api banka banka wallets
 just call-api endorser-1 seadmin records
 ```
 
-## Web UI
-### Build config with new topology
-On the remote machine, in the `scalable-committer` project:
-```shell
-just serve-ui-config 8080
-```
-The config will be available on http://tokentestbed16.sl.cloud9.ibm.com:8080/ui-config.json
 
 ### Build and Run Web UI
+The config with the FSC nodes and their endpoints is available on http://tokentestbed16.sl.cloud9.ibm.com:8080/ui-config.json.
 In the `fts-sc` project on your local machine:
 ```shell
 cd demo/app/ui

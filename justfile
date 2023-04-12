@@ -6,10 +6,12 @@
 
 default := ''
 project-dir := env_var_or_default('PWD', '.')
+docker-project-dir := project-dir
 runner-dir := project-dir + "/runner/out"
 config-input-dir := project-dir + "/config"
 
 orderer-builder-dir := project-dir + "/ordererbuilder"
+sc-builder-dir := project-dir + "/builder"
 
 output-dir := project-dir + "/eval"
 
@@ -18,6 +20,8 @@ deployment-dir := output-dir + "/deployments"
 
 # Stores the configs that are deployed to the servers
 base-setup-config-dir := deployment-dir + "/configs"
+# Stores the static UI info to be served for the web and mobile applications
+ui-setup-config-dir := base-setup-config-dir + "/ui-configs"
 # Stores the credentials for the communication with the orderers
 base-setup-creds-dir := deployment-dir + "/creds"
 base-setup-orderer-artifacts-dir := deployment-dir + "/orderer-artifacts"
@@ -36,7 +40,8 @@ experiment-tracking-dir := experiment-dir + "/trackers"
 # Each line corresponds one-to-one to the lines of the respective track file with the same name.
 experiment-results-dir := experiment-dir + "/results"
 
-default-generated-main-path := project-dir + "/topologysetup/tmp"
+topology-setup-dir := project-dir + "/topologysetup"
+default-generated-main-path := topology-setup-dir + "/tmp"
 
 # Experiment constants
 experiment-duration-seconds := "1200"
@@ -86,7 +91,7 @@ docker:
 launch target_hosts orderer=('raft') committer=('sc'):
     just run {{target_hosts}} false false false
 
-run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_committer_key=('true'):
+run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_committer_key=('true') ui_config=('false'):
     #!/usr/bin/env bash
 
     # Start orderer
@@ -136,6 +141,10 @@ run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_comm
     # Start orderer submitters
     ansible-playbook "{{playbook-path}}/68-start-orderersubmitter.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
 
+    if [[ "{{ui_config}}" = "true" ]]; then \
+      just serve-ui-configs; \
+    fi
+
 setup orderer_type=('etcdraft') local_bins=('false') docker_bins=('false'):
     #!/usr/bin/env bash
     just kill
@@ -143,13 +152,12 @@ setup orderer_type=('etcdraft') local_bins=('false') docker_bins=('false'):
 
     just build-committer-bins {{local_bins}} {{docker_bins}}
     just build-orderer-bins {{local_bins}} {{docker_bins}}; \
-
-    just build-configs {{orderer_type}} all
+    just build-configs {{orderer_type}}
     just build-orderer-artifacts {{orderer_type}}
-    just deploy-configs
-
     just build-fsc-bins {{local_bins}} {{docker_bins}}
+    just build-ui-configs
 
+    just deploy-configs
     if [[ "{{local_bins}}" = "true" || "{{docker_bins}}" = "true" ]]; then \
       just deploy-bins; \
     fi
@@ -168,6 +176,9 @@ limit-rate limit=('-1'):
 
 kill target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/90-kill.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
+
+ping target_hosts=('all'):
+    ansible {{target_hosts}} -m ping -v
 
 #########################
 # Generate protos
@@ -210,7 +221,7 @@ build-committer-bins local=('true') docker=('true'):
     fi
 
     if [[ "{{docker}}" = "true" ]]; then \
-      just docker-builder-run "just build-committer-local ./eval/deployments/bins/linux"; \
+      just docker-builder-run "just build-committer-local {{docker-project-dir}}/eval/deployments/bins/linux"; \
     fi
 
 build-orderer-bins local=('true') docker=('true'):
@@ -222,7 +233,7 @@ build-orderer-bins local=('true') docker=('true'):
 
     if [[ "{{docker}}" = "true" ]]; then \
       just build-orderers-docker; \
-      just docker-builder-run "just build-orderer-clients-local ./eval/deployments/bins/linux"; \
+      just docker-builder-run "just build-orderer-clients-local {{docker-project-dir}}/eval/deployments/bins/linux"; \
     fi
 
 build-fsc-bins local=('true') docker=('true'):
@@ -231,11 +242,11 @@ build-fsc-bins local=('true') docker=('true'):
       just build-fsc-bins-local {{local-bin-input-dir}}; \
     fi
     if [[ "{{docker}}" = "true" ]]; then \
-      just docker-builder-run "just build-fsc-bins-local ../../../eval/deployments/bins/linux"; \
+      just docker-builder-run "just build-fsc-bins-local {{docker-project-dir}}/eval/deployments/bins/linux"; \
     fi
 
 build-fsc-bins-local output_dir generated_main_path=(default-generated-main-path):
-    cd {{generated_main_path}}/cmd; for d in */ ; do go build -o "{{output_dir}}/${d%/*}" "$d/main.go"; done
+    cd {{generated_main_path}}/cmd; for d in */ ; do go build -buildvcs=false -o "{{output_dir}}/${d%/*}" "$d/main.go"; done
 
 # builds the fabric binaries
 # make sure you on the expected fabric version branch
@@ -268,18 +279,18 @@ build-orderers-local:
     cp -a "{{fabric-bins-path}}/." "{{local-bin-input-dir}}/"
 
 build-orderers-docker:
-    docker run --rm -it -v {{linux-bin-input-dir}}:/usr/local/out orderer_builder:latest /usr/local/build_orderer_binaries.sh {{signed-envelopes}} {{boosted-orderer}} /usr/local/out
+    just docker-orderer-run "/usr/local/build_orderer_binaries.sh {{signed-envelopes}} {{boosted-orderer}} {{docker-project-dir}}/eval/deployments/bins/linux/"
 
 build-committer-local output_dir:
-    go build -o {{output_dir}}/blockgen ./wgclient/cmd/generator
-    go build -o {{output_dir}}/mockcoordinator ./wgclient/cmd/mockcoordinator
-    go build -o {{output_dir}}/coordinator ./coordinatorservice/cmd/server
-    go build -o {{output_dir}}/coordinator_setup ./coordinatorservice/cmd/setup_helper
-    go build -o {{output_dir}}/sigservice ./sigverification/cmd/server
-    go build -o {{output_dir}}/shardsservice ./shardsservice/cmd/server
-    go build -o {{output_dir}}/resultgatherer ./utils/experiment/cmd
-    go build -o {{output_dir}}/sidecar ./sidecar/cmd/server
-    go build -o {{output_dir}}/sidecarclient ./wgclient/cmd/sidecarclient
+    go build -buildvcs=false -o {{output_dir}}/blockgen ./wgclient/cmd/generator
+    go build -buildvcs=false -o {{output_dir}}/mockcoordinator ./wgclient/cmd/mockcoordinator
+    go build -buildvcs=false -o {{output_dir}}/coordinator ./coordinatorservice/cmd/server
+    go build -buildvcs=false -o {{output_dir}}/coordinator_setup ./coordinatorservice/cmd/setup_helper
+    go build -buildvcs=false -o {{output_dir}}/sigservice ./sigverification/cmd/server
+    go build -buildvcs=false -o {{output_dir}}/shardsservice ./shardsservice/cmd/server
+    go build -buildvcs=false -o {{output_dir}}/resultgatherer ./utils/experiment/cmd
+    go build -buildvcs=false -o {{output_dir}}/sidecar ./sidecar/cmd/server
+    go build -buildvcs=false -o {{output_dir}}/sidecarclient ./wgclient/cmd/sidecarclient
 
 build-orderer-clients-local output_dir:
     just build-ordering-main ./clients/cmd/mockorderer mockorderingservice {{output_dir}}
@@ -288,7 +299,7 @@ build-orderer-clients-local output_dir:
 
 build-ordering-main main_path output_name output_path:
     just empty-dir ./orderingservice/fabric/temp
-    cd ./orderingservice/fabric; go build -o ./temp/{{output_name}} {{main_path}}; cd ../..
+    cd ./orderingservice/fabric; go build -buildvcs=false -o ./temp/{{output_name}} {{main_path}}; cd ../..
     cp ./orderingservice/fabric/temp/* {{output_path}}
     rm -r ./orderingservice/fabric/temp
 
@@ -307,22 +318,31 @@ deploy-bins:
 
 # Executes a command from within the docker image. Requires that docker-builder-image be run once before, to ensure the image exists.
 docker-builder-run CMD:
+    just docker-image-run sc_builder "{{CMD}}"
+
+docker-orderer-run CMD:
+    just docker-image-run orderer_builder "{{CMD}}"
+
+docker-image-run docker_image CMD:
     #!/usr/bin/env bash
     if [[ "{{github-user}}" = "" || "{{github-token}}" = "" ]]; then \
       echo "Building without private github repo"; \
-      docker run --rm -it -v "$PWD":/scalable-committer -w /scalable-committer sc_builder:latest {{CMD}}; \
+      docker run --rm -it -v "{{project-dir}}":{{docker-project-dir}} -w {{docker-project-dir}} orderer_builder:latest {{CMD}}; \
     else \
-      echo "Building with private github repo. User: {{github-user}}. Token: {{github-token}}"; \
-      docker run --rm -it -v "$PWD":/scalable-committer --env GOPRIVATE=github.ibm.com/* -w /scalable-committer sc_builder:latest sh -c "git config --global url.\"https://{{github-user}}:{{github-token}}@github.ibm.com/\".insteadOf https://github.ibm.com/; {{CMD}}"; \
+      echo "Building with private github repo. User: {{github-user}}"; \
+      docker run --rm -it -v "{{project-dir}}":{{docker-project-dir}} --env GOPRIVATE=github.ibm.com/* -w {{docker-project-dir}} {{docker_image}}:latest sh -c "git config --global url.\"https://{{github-user}}:{{github-token}}@github.ibm.com/\".insteadOf https://github.ibm.com/; {{CMD}}"; \
     fi
 
 # The docker image required for compilation of the orderer and the related bins
 docker-orderer-image:
-    docker build -f {{orderer-builder-dir}}/Dockerfile -t orderer_builder .
+    just docker-image-build {{orderer-builder-dir}} orderer_builder
 
 # The docker image required for compilation of SC components on the Unix machines
 docker-builder-image:
-    docker build -f builder/Dockerfile -t sc_builder .
+    just docker-image-build {{sc-builder-dir}} sc_builder
+
+docker-image-build dockerfile_dir docker_image:
+    docker build -f {{dockerfile_dir}}/Dockerfile -t {{docker_image}} .
 
 # Simple containerized SC
 docker-runner-image:
@@ -345,25 +365,38 @@ build-configs orderer_type target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'orderer_type': '{{orderer_type}}', 'signed_envelopes': {{signed-envelopes}}}"
 
-serve-ui-config port=('8080'):
-    ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}'}"
-    echo "Serving UI configs under http://localhost:{{port}}/ui-config.yaml, http://localhost:{{port}}/ui-config.json"
-    docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{base-setup-config-dir}}:/app/static nginx:alpine
+build-ui-configs:
+    ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{ui-setup-config-dir}}'}"
 
-build-orderer-artifacts orderer_type=('BFT') fab_bins_dir=(linux-bin-input-dir) topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
+serve-ui-configs port=('8080'):
+    #!/usr/bin/env bash
+    docker stop static-ui-config
+    docker rm static-ui-config
+    echo "Serving UI configs under http://localhost:{{port}}/ui-config.yaml, http://localhost:{{port}}/ui-config.json"
+    docker run -w /app -p {{port}}:8080 -v {{config-input-dir}}:/etc/nginx -v {{ui-setup-config-dir}}:/app/static --name static-ui-config nginx:alpine &
+
+build-orderer-artifacts orderer_type=('BFT') local_fab_bins=('false') topology_config_path=(base-setup-config-dir + '/topology-setup-config.yaml'):
     #!/usr/bin/env bash
     ansible-playbook "{{playbook-path}}/29-create-topology-setup-config.yaml" --extra-vars "{'dst_dir': '{{base-setup-config-dir}}', 'topology_name': '{{default-topology-name}}', 'orderer_type': '{{orderer_type}}', 'channel_ids': ['{{default-channel-id}}']}"
 
     if [[ -f "{{topology_config_path}}" ]]; then \
       echo "Creating NWO artifacts based on topology setup in {{topology_config_path}}..."; \
       just empty-dir {{base-setup-orderer-artifacts-dir}}; \
-      cd ./topologysetup; \
-      go run ./generatetopology/cmd/generate/main.go --configs {{topology_config_path}} --out-dir {{default-generated-main-path}}/; \
-      cd {{default-generated-main-path}}; \
-      go run ./main.go --output-dir {{base-setup-orderer-artifacts-dir}} --fab-bin-dir {{fab_bins_dir}} --configs {{topology_config_path}}; \
+
+      if [[ "{{local_fab_bins}}" = "true" ]]; then \
+        just build-orderer-artifacts-local {{project-dir}} {{local-bin-input-dir}}; \
+      else \
+        just docker-orderer-run "just build-orderer-artifacts-local {{docker-project-dir}} {{docker-project-dir}}/eval/deployments/bins/linux"; \
+      fi; \
     else \
       echo "No Fabric topology setup found. Skipping..."; \
     fi
+
+build-orderer-artifacts-local root_dir fab_bin_dir:
+    cd {{root_dir}}/topologysetup; \
+    go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; \
+    go run {{root_dir}}/topologysetup/generatetopology/cmd/generate/main.go --configs {{root_dir}}/eval/deployments/configs/topology-setup-config.yaml --out-dir {{root_dir}}/topologysetup/tmp/; \
+    go run ./tmp/main.go --output-dir {{root_dir}}/eval/deployments/orderer-artifacts --fab-bin-dir {{fab_bin_dir}} --configs {{root_dir}}/eval/deployments/configs/topology-setup-config.yaml
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs

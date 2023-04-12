@@ -54,8 +54,14 @@ just restart-monitoring
 1. Just
 ```shell
 curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/just
+```
+Add the following line to `~/.profile`:
+```shell
 export PATH=$PATH:/usr/local/just
-# just —version
+```
+Test the version:
+```shell
+just —-version
 ```
 2. Golang 1.20
 ```shell
@@ -64,9 +70,15 @@ wget https://go.dev/dl/go1.20.3.linux-amd64.tar.gz
 tar xvf ./go1.20.3.linux-amd64.tar.gz
 rm ./go1.20.3.linux-amd64.tar.gz
 mv ./go/ /usr/local/
+```
+Add the following lines in `~/.profile`:
+```shell
 export GOPATH=$HOME/go
 export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
-# go version
+```
+Test the version:
+```shell
+go version
 ```
 3. rocksdb (*not required if you use this machine only for deployments, because the Docker image contains the dependency*)
 ```shell
@@ -84,10 +96,14 @@ ldconfig
 ```
 4. Ansible with its requirements
 ```shell
-apt-install ansible
+apt install ansible
 ansible-galaxy install -r requirements.yaml
 ```
-5. Docker client (details [here](https://docs.docker.com/engine/install/ubuntu/))
+5. Docker client (details [here](https://docs.docker.com/engine/install/ubuntu/)). To grant access to a non-root user:
+```shell
+apt install acl
+setfacl --modify user:cbdcdemo:rw /var/run/docker.sock
+```
 6. Required docker images (*same as for Mac*)
 7. tmux
 ```shell
