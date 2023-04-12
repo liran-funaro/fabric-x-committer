@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: go
+    static_configs:
+      - targets: [
+        'host.docker.internal:2112',
+        'host.docker.internal:2113',
+        'host.docker.internal:2114',
+        'host.docker.internal:2115',
+        'host.docker.internal:2116',
+        'host.docker.internal:2117',
+        'host.docker.internal:2118',
+        'host.docker.internal:2119',
+        'host.docker.internal:2120'
+      ]

@@ -102,4 +102,10 @@ just check-ports
   * Make sure that the machines you assigned to the shards and coordinator have rocksdb installed. Currently, rocksdb is installed on tokentestbed9-14.
 * If you rebuild the Web UI, no change is needed neither on the backend nor on the UI-config.
 * When you open a new session or a tmux window, make sure you re-set the environment variables before building.
+* For servers with public IP's, we need to limit the accessibility of the exposed ports to the minimum. These ports may change depending on our topology. Taking one of our topologies as an example, all components will communicate with each other using their private IP's, while all ports of their public IP's will be blocked. It is essential that *only* following ports be kept open:
+  * `banka-host:8083`: REST API Port for BankA, accessible through the mobile app
+  * `bankb-host:8084`: REST API Port for BankB, accessible through the mobile app
+  * `deploy-host:22`: SSH Port for deployment server
+  * `deploy-host:3001`: HTTPS Port for Grafana UI
+  * `deploy-host:8081`: HTTP Port for WebUI
 

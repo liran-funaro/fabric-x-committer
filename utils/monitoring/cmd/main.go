@@ -14,17 +14,18 @@ const (
 	grafanaDefaultLocalPort         = 3000
 	jaegerDefaultLocalUiPort        = 16686
 	jaegerDefaultLocalCollectorPort = 14268
-	grafanaProvisioningDir          = "/etc/grafana/provisioning/"
 )
 
 var logger = logging.New("dockerrunner")
 
-func prometheusParams(dir string, port int) *monitoring.DockerRunParams {
+func prometheusParams(dir, prometheusConfig string, port int) *monitoring.DockerRunParams {
+	logger.Infof("Prometheus config: %s/%s", dir, prometheusConfig)
 	return &monitoring.DockerRunParams{
 		Image:    "prom/prometheus:latest",
 		Hostname: "prometheus",
 		Mounts: map[string]string{
-			filepath.Join(dir, "/prometheus.yml"): "/etc/prometheus/prometheus.yml",
+			filepath.Join(dir, prometheusConfig): "/etc/prometheus/prometheus.yml",
+			"/etc/hosts":                         "/etc/hosts",
 		},
 		PortMappings: map[int]int{
 			prometheusDefaultLocalPort: port,
@@ -46,20 +47,23 @@ func jaegerParams(uiPort, collectorPort int) *monitoring.DockerRunParams {
 		},
 	}
 }
-func grafanaParams(dir string, port int, prometheusInstanceName string) *monitoring.DockerRunParams {
+func grafanaParams(dir, keyPath, certPath string, port int, prometheusInstanceName string) *monitoring.DockerRunParams {
 	return &monitoring.DockerRunParams{
 		Image:    "grafana/grafana:latest",
 		Hostname: "grafana",
 		Envs: map[string]string{
 			"GF_AUTH_PROXY_ENABLED":   "true",
-			"GF_PATHS_PROVISIONING":   grafanaProvisioningDir,
+			"GF_PATHS_PROVISIONING":   "/etc/grafana/provisioning/",
 			"_GF_PROMETHEUS_ENDPOINT": fmt.Sprintf("http://%s:%d", prometheusInstanceName, prometheusDefaultLocalPort),
 		},
 		Mounts: map[string]string{
-			filepath.Join(dir, "grafana-datasources.yml"):      grafanaProvisioningDir + "datasources/datasource.yml",
-			filepath.Join(dir, "grafana-dashboards.yml"):       grafanaProvisioningDir + "dashboards/dashboard.yml",
-			filepath.Join(dir, "prometheus-dashboard.json"):    grafanaProvisioningDir + "dashboards/prometheus-dashboard.json",
-			filepath.Join(dir, "node-exporter-dashboard.json"): grafanaProvisioningDir + "dashboards/node-exporter-dashboard.json",
+			filepath.Join(dir, "grafana.ini"): "/etc/grafana/grafana.ini",
+			keyPath:                           "/etc/grafana/grafana.key",
+			certPath:                          "/etc/grafana/grafana.crt",
+			filepath.Join(dir, "grafana-datasources.yml"):      "/etc/grafana/provisioning/datasources/datasource.yml",
+			filepath.Join(dir, "grafana-dashboards.yml"):       "/etc/grafana/provisioning/dashboards/dashboard.yml",
+			filepath.Join(dir, "prometheus-dashboard.json"):    "/etc/grafana/provisioning/dashboards/prometheus-dashboard.json",
+			filepath.Join(dir, "node-exporter-dashboard.json"): "/etc/grafana/provisioning/dashboards/node-exporter-dashboard.json",
 		},
 		//TODO: Use user-defined network instead of link
 		Links: []string{prometheusInstanceName},
@@ -70,13 +74,20 @@ func grafanaParams(dir string, port int, prometheusInstanceName string) *monitor
 }
 
 func main() {
-	configPath := flag.String("config-dir", ".", "Relative dir path with config files.")
+	configPath := flag.String("config-dir", ".", "Relative dir path with static config files.")
 	prometheusPort := flag.Int("prometheus-port", 9091, "Port Prometheus listens to.")
+	prometheusConfig := flag.String("prometheus-config", "prometheus.yml", "File containing the prometheus YAML file.")
 	jaegerUiPort := flag.Int("jaeger-ui-port", jaegerDefaultLocalUiPort, "Port Jaeger UI listens to.")
 	jaegerCollectorPort := flag.Int("jaeger-collector-port", jaegerDefaultLocalCollectorPort, "Port Jaeger Collector listens to.")
 	grafanaPort := flag.Int("grafana-port", 3001, "Port Prometheus listens to.")
+	grafanaKeyPath := flag.String("grafana-key", "", "Path to private key for Grafana.")
+	grafanaCertPath := flag.String("grafana-cert", "", "Path to cert for Grafana.")
 	removeExisting := flag.Bool("remove-existing", false, "Remove existing images")
 	flag.Parse()
+
+	if *grafanaKeyPath == "" || *grafanaCertPath == "" {
+		panic("No paths passed for key and cert.")
+	}
 
 	runOpts := &monitoring.DockerRunOpts{RemoveIfExists: *removeExisting}
 
@@ -90,7 +101,7 @@ func main() {
 		panic(err)
 	}
 
-	prometheusInstanceName, err := runner.Start(prometheusParams(configAbsPath, *prometheusPort), runOpts)
+	prometheusInstanceName, err := runner.Start(prometheusParams(configAbsPath, *prometheusConfig, *prometheusPort), runOpts)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -104,9 +115,9 @@ func main() {
 
 	logger.Infof("Jaeger UI running on http://localhost:%d", *jaegerUiPort)
 
-	_, err = runner.Start(grafanaParams(configAbsPath, *grafanaPort, prometheusInstanceName), runOpts)
+	_, err = runner.Start(grafanaParams(configAbsPath, *grafanaKeyPath, *grafanaCertPath, *grafanaPort, prometheusInstanceName), runOpts)
 	if err != nil {
 		logger.Fatal(err)
 	}
-	logger.Infof("Grafana running on http://localhost:%d (user: admin, pass: admin)", *grafanaPort)
+	logger.Infof("Grafana running on https://localhost:%d (user: admin, pass: admin)", *grafanaPort)
 }

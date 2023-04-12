@@ -32,7 +32,7 @@ This command will download the Prometheus and Graphana docker images and start a
 
 Now you should be able to access ...
 - Prometheus client running on http://localhost:9091
-- Grafana running on http://localhost:3001 (user: admin, pass: admin)
+- Grafana running on https://localhost:3001 (user: admin, pass: admin)
 
 
 ## Stop monitoring

@@ -558,8 +558,15 @@ get-property host query:
 list-hosts name query:
      just list-host-names {{name}} | while read line; do just get-property "$line" "{{query}}";done
 
-restart-monitoring remove_existing=('true'):
-    go run utils/monitoring/cmd/main.go -config-dir utils/monitoring/config/ -remove-existing {{remove_existing}}
+restart-monitoring prometheus_config=('prometheus.yml') remove_existing=('true') creds_path=(project-dir + '/grafana-creds'):
+    echo "Creating Grafana credentials under {{creds_path}}"
+    just empty-dir {{creds_path}}
+    openssl genrsa -out {{creds_path}}/grafana.key 2048
+    openssl req -new -key {{creds_path}}/grafana.key -out {{creds_path}}/grafana.csr
+    openssl x509 -req -days 365 -in {{creds_path}}/grafana.csr -signkey {{creds_path}}/grafana.key -out {{creds_path}}/grafana.crt
+    chmod 400 {{creds_path}}/grafana.key {{creds_path}}/grafana.crt
+    echo "Launching Prometheus, Grafana, Jaeger..."
+    go run utils/monitoring/cmd/main.go -config-dir utils/monitoring/config/ -prometheus-config {{prometheus_config}} -grafana-key {{creds_path}}/grafana.key -grafana-cert {{creds_path}}/grafana.crt -remove-existing {{remove_existing}}
 
 get-timestamp plus_seconds=('0') format=(''):
     #!/usr/bin/env bash

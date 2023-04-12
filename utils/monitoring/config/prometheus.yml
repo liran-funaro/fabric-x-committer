@@ -5,8 +5,6 @@ scrape_configs:
   - job_name: go
     static_configs:
       - targets: [
-        'host.docker.internal:2112',
-        'host.docker.internal:2113',
         'tokentestbed1.sl.cloud9.ibm.com:9100',
         'tokentestbed1.sl.cloud9.ibm.com:2112',
         'tokentestbed2.sl.cloud9.ibm.com:9100',
