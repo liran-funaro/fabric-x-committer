@@ -94,7 +94,7 @@ docker:
 launch target_hosts orderer=('raft') committer=('sc'):
     just run {{target_hosts}} false false false
 
-run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_committer_key=('true') ui_config=('false'):
+run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_committer_key=('true') ui_config=('true'):
     #!/usr/bin/env bash
 
     # Start orderer

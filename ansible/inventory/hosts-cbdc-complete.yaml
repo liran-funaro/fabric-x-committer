@@ -93,6 +93,7 @@ all:
               bootstrap: true
             dw:
               ansible_host: ttbed3.frankfurt2
+              ops_host: "{{ansible_host}}.pub"
               service_port: 8001
               p2p_port: 8021
               ops_port: 8081
@@ -109,6 +110,7 @@ all:
                   factory: "{{demo_views}}/ListAuditedTransactionsViewFactory"
             issuer:
               ansible_host: ttbed3.paris1
+              ops_host: "{{ansible_host}}.pub"
               service_port: 8002
               p2p_port: 8022
               ops_port: 8082
@@ -127,6 +129,7 @@ all:
 
             banka:
               ansible_host: ttbed3.london2
+              ops_host: "{{ansible_host}}.pub"
               service_port: 8003
               p2p_port: 8023
               ops_port: 8083
@@ -161,6 +164,7 @@ all:
 
             bankb:
               ansible_host: ttbed3.amsterdam3
+              ops_host: "{{ansible_host}}.pub"
               service_port: 8004
               p2p_port: 8024
               ops_port: 8084
@@ -197,6 +201,7 @@ all:
 
             endorser-1: # Only one endorser supported currently
               ansible_host: ttbed3.paris1
+              ops_host: "{{ansible_host}}.pub"
               service_port: 8005
               p2p_port: 8025
               ops_port: 8083
