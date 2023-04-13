@@ -10,6 +10,14 @@
   roles:
     - kwoodson.yedit
   tasks:
+    - name: Check ports
+      shell: 'ping -c1 {{item.ansible_host}} | sed -nE "s/^PING[^(]+\(([^)]+)\).*/\1/p"'
+      register: stdout
+      with_items: "{{groups['all'] | map('extract', hostvars) | list}}"
+      when: item.ansible_host | d('') | length > 0 and item.service_port | d(0) | int > 0
+    - set_fact:
+        ip_addresses: "{{ip_addresses | default({}) | combine ({ item.item.ansible_host : item.stdout | d('') })}}"
+      with_items: "{{stdout.results}}"
     - name: Create tmp
       file:
         path: "{{dst_dir}}"
@@ -31,7 +39,7 @@
           'certifier': instance.certifier | d(false),
           'issuer': instance.issuer_identities | d([]) | length > 0,
           'endorser': instance.endorser | d(false),
-          'endpoint': instance.ansible_host + ':' + (instance.ops_port | string)
+          'endpoint': ip_addresses[instance.ansible_host] + ':' + (instance.ops_port | string)
         }]}}"
       loop: "{{groups['fscservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:

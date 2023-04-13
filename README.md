@@ -49,6 +49,10 @@ brew install jq
 ```shell
 just restart-monitoring
 ```
+10. *Optional:* `nmap` (only for some functionalities)
+```shell
+brew install nmap
+```
 
 ## Linux
 1. Just
@@ -114,6 +118,10 @@ apt install tmux
 apt install jq
 ```
 9. *Optional*: Monitoring (*same as for Mac*)
+10. *Optional:* `nmap` (only for some functionalities)
+```shell
+apt install nmap
+```
 
 # Deployment
 1. **Pick a topology (inventory)**
