@@ -7,13 +7,19 @@
     target_instance: "{{hostvars[target_host]}}"
     target_endpoint: "http://{{target_instance.ansible_host}}:{{target_instance.ops_port}}"
   tasks:
+    - name: Read password file
+      shell: "cat {{password_file}}"
+      register: password_result
+    - name: Store password
+      set_fact:
+        password: "{{(password_result.stdout | from_yaml).Users | selectattr('UserName', '==', user) | map(attribute='Password') | first}}"
     - name: Log in
       uri:
         url: "{{target_endpoint}}/login"
         method: POST
         body:
           username: "{{user}}"
-          password: "{{user}}"
+          password: "{{password}}"
         body_format: json
       register: login_result
     - set_fact:

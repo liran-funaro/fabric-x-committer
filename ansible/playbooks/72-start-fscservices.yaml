@@ -12,6 +12,7 @@
         env:
           - "FSCNODE_CFG_PATH={{config_dir}}/fsc/nodes/{{inventory_hostname}}"
 #          - "FSCNODE_LOGGING_SPEC=DEBUG"
+          - "PASSWORD_FILE={{config_dir}}/passwords.yml"
       include_tasks: ../subtasks/start-server.yaml
       when: mode | d('') | length == 0 or
         mode | d('') == 'bootstrap_only' and bootstrap | d(false) == true or

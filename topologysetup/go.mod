@@ -3,14 +3,14 @@ module github.ibm.com/distributed-trust-research/scalable-committer/topologysetu
 go 1.19
 
 require (
-	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230405075140-1a8530eed3a9
-	github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230405075401-83e7931c62a5
+	github.com/hyperledger-labs/fabric-smart-client v0.2.1-0.20230412105959-110f6327f420
+	github.com/hyperledger-labs/fabric-token-sdk v0.2.1-0.20230412115016-98aed33abd72
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20230405174026-695dd57e01c2
 	github.com/onsi/gomega v1.24.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230406161403-956eb224ff4d
+	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230413080439-dd5e4e8197cc
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	gopkg.in/yaml.v3 v3.0.1
 
@@ -38,8 +38,6 @@ require (
 	github.com/Microsoft/hcsshim v0.8.25 // indirect
 	github.com/ReneKroon/ttlcache/v2 v2.11.0 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
-	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect
 	github.com/appleboy/gin-jwt/v2 v2.9.1 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -250,7 +248,6 @@ require (
 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
 	google.golang.org/grpc v1.52.3 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
-	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect

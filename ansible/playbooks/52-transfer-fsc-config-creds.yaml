@@ -36,3 +36,11 @@
         file_type: config
       include_tasks: ../subtasks/transfer-node-config-profile.yaml
       when: include_configs | d(false) == true
+    - name: Transfer password file
+      vars:
+        mode: u+r
+        src_path: "{{password_file}}"
+        dst_dir: "{{config_dir}}"
+        filename: passwords.yml
+      include_tasks: ../subtasks/copy-file.yaml
+      when: ops_port | d(0) > 0

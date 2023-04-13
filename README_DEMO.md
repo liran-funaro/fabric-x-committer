@@ -7,6 +7,7 @@ This will allow access to the private repos.
 This token is the one to use instead of `<<YOUR_TOKEN_HERE>>` when setting the env var SC_GITHUB_TOKEN.
 * Build binaries, configs, and run topology: You have changed the code or the topology. You can pass `BFT` or `etcdraft` as a parameter to the `setup` method.
 ```shell
+export SC_FSC_PASSWORD_FILE=/path/to/file # If not passed, passwords.yml will be used by default
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
 just setup BFT false true
@@ -14,6 +15,7 @@ just run
 ```
 * Build configs, and run topology. You have changed config files, but not the code or the topology.
 ```shell
+export SC_FSC_PASSWORD_FILE=/path/to/file # If not passed, passwords.yml will be used by default
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
 just setup BFT
