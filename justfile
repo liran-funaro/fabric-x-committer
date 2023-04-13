@@ -319,6 +319,11 @@ deploy-bins:
     ansible-playbook "{{playbook-path}}/31-transfer-fsc-bin.yaml" --extra-vars "{'target_hosts': 'all', 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice', 'osnadmin'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
+#TODO: Remove workaround once we start building the orderers from the source code
+deploy-orderer-bins orderer_bin:
+    cp {{orderer_bin}} {{linux-bin-input-dir}}/orderer
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer'], 'linux_src_dir': '{{linux-bin-input-dir}}', 'osx_src_dir': ''}"
+
 # Executes a command from within the docker image. Requires that docker-builder-image be run once before, to ensure the image exists.
 docker-builder-run CMD:
     just docker-image-run sc_builder "{{CMD}}"
