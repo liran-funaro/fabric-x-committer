@@ -46,6 +46,8 @@ experiment-results-dir := experiment-dir + "/results"
 topology-setup-dir := project-dir + "/topologysetup"
 default-generated-main-path := topology-setup-dir + "/tmp"
 
+monitoring-config-dir := project-dir + "/utils/monitoring/config"
+
 # Experiment constants
 experiment-duration-seconds := "1200"
 
@@ -54,6 +56,9 @@ fabric-bins-path := fabric-path + "/build/bin"
 
 # Well-known ports
 prometheus-scraper-port := "9091"
+grafana-ui-port := '3001'
+jaeger-ui-port := '16686'
+jaeger-collector-port := '14268'
 
 github-user := env_var_or_default('SC_GITHUB_USER', '')
 github-token := env_var_or_default('SC_GITHUB_TOKEN', '')
@@ -563,15 +568,71 @@ get-property host query:
 list-hosts name query:
      just list-host-names {{name}} | while read line; do just get-property "$line" "{{query}}";done
 
-restart-monitoring prometheus_config=('prometheus.yml') remove_existing=('true') creds_path=(project-dir + '/grafana-creds'):
+restart-monitoring prometheus_config=('prometheus.yml') creds_path=(project-dir + '/grafana-creds'):
+    # Prometheus
+    echo "Launching prometheus"
+    just docker-remove-container {{prometheus-scraper-port}}
+    docker pull prom/prometheus:latest
+    docker run --rm -dit \
+        -p {{prometheus-scraper-port}}:9090 \
+        -v {{monitoring-config-dir}}/{{prometheus_config}}:/etc/prometheus/prometheus.yml \
+        -v /etc/hosts:/etc/hosts \
+        --name my-prometheus-instance \
+        prom/prometheus:latest
+    echo "Prometheus running on http://localhost:{{prometheus-scraper-port}}"
+
+    # Jaeger
+    echo "Launching Jaeger"
+    just docker-remove-container {{jaeger-ui-port}}
+    docker pull jaegertracing/all-in-one:1.22
+    docker run --rm -dit \
+        -p {{jaeger-ui-port}}:16686 \
+        -p {{jaeger-collector-port}}:14268 \
+        -p 14269:14269 \
+        -e JAEGER_SAMPLER_TYPE="const" \
+        -e JAEGER_SAMPLER_PARAM="1" \
+        jaegertracing/all-in-one:1.22
+    echo "Jaeger running on http://localhost:{{jaeger-ui-port}}"
+
+    # Grafana
     echo "Creating Grafana credentials under {{creds_path}}"
     just empty-dir {{creds_path}}
     openssl genrsa -out {{creds_path}}/grafana.key 2048
     openssl req -new -key {{creds_path}}/grafana.key -out {{creds_path}}/grafana.csr
     openssl x509 -req -days 365 -in {{creds_path}}/grafana.csr -signkey {{creds_path}}/grafana.key -out {{creds_path}}/grafana.crt
-    chmod 400 {{creds_path}}/grafana.key {{creds_path}}/grafana.crt
-    echo "Launching Prometheus, Grafana, Jaeger..."
-    go run utils/monitoring/cmd/main.go -config-dir utils/monitoring/config/ -prometheus-config {{prometheus_config}} -grafana-key {{creds_path}}/grafana.key -grafana-cert {{creds_path}}/grafana.crt -remove-existing {{remove_existing}}
+    chmod 444 {{creds_path}}/grafana.key {{creds_path}}/grafana.crt
+
+    echo "Launching Grafana"
+    just docker-remove-container {{grafana-ui-port}}
+    docker pull grafana/grafana:latest
+    docker run --rm -dit \
+        -p {{grafana-ui-port}}:3000 \
+        -e GF_AUTH_PROXY_ENABLED="true" \
+        -e GF_PATHS_PROVISIONING="/etc/grafana/provisioning/" \
+        -e _GF_PROMETHEUS_ENDPOINT="http://prometheus_instance:9090" \
+        --link my-prometheus-instance:prometheus_instance \
+        -v {{monitoring-config-dir}}/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasource.yml \
+        -v {{monitoring-config-dir}}/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboard.yml \
+        -v {{monitoring-config-dir}}/prometheus-dashboard.json:/etc/grafana/provisioning/dashboards/prometheus-dashboard.json \
+        -v {{monitoring-config-dir}}/node-exporter-dashboard.json:/etc/grafana/provisioning/dashboards/node-exporter-dashboard.json \
+        -v {{monitoring-config-dir}}/grafana.ini:/etc/grafana/grafana.ini \
+        -v {{creds_path}}/grafana.key:/etc/grafana/grafana.key \
+        -v {{creds_path}}/grafana.crt:/etc/grafana/grafana.crt \
+        grafana/grafana:latest
+    echo "Grafana running on https://localhost:{{grafana-ui-port}}"
+
+docker-remove-container port:
+    #!/usr/bin/env bash
+
+    for id in $(docker ps -q); do
+        if [[ $(docker port "${id}") == *"{{port}}"* ]]; then
+            echo "Stopping and removing container ${id}."
+            docker stop "${id}"
+            docker rm "${id}"
+            exit 0
+        fi
+    done
+    echo "No container found on port {{port}}."
 
 get-timestamp plus_seconds=('0') format=(''):
     #!/usr/bin/env bash
