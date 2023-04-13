@@ -84,6 +84,95 @@ docker run -p 8081:80 docker-eu.artifactory.swg-devops.com/res-decentralized-tru
 ```
 The UI will be available on http://tokentestbed16.sl.cloud9.ibm.com:8081/.
 
+## Firewall Rules
+If the hosts in our setup have both public and private IP's, we just need to access a few ports from the Internet. The rest of the communication can take place using the private IP's.
+
+### Update `iptables`
+
+* Connect to the machine using its private IP (we will later block the SSH port for the public IP and that would log us out)
+```shell
+ssh cbdcdemo@ttbed4.frankfurt2
+```
+* Check the interface that corresponds to the public IP (in our case it is `bond1`):
+```shell
+ifconfig
+```
+* Add the new chain and its corresponding rules. In this case, we want only `tcp:8081` to be publicly available:
+```shell
+iptables -N chain-cbdc # Create a new chain (if not existing)
+iptables -F chain-cbdc # Remove all rules from the chain (if existing)
+iptables -A INPUT -j chain-cbdc # Add a reference to the INPUT chain, so that this jumps to our custom chain
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT # Accept requests to tcp:8081
+iptables -A chain-cbdc -i bond1 -j DROP # Drop all other incoming requests
+```
+
+### Topology requirements
+*Disclaimer:* The following commands are correct and can be copied and pasted, but pay attention to the interface.
+Make sure that the interface (`bond1` in the following examples) is indeed the one that corresponds to the public IP, using `ifconfig`.
+
+For our demo topology, it is essential that *only* following ports be kept open:
+* `dw:8081`: REST API Port for auditor
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* `issuer:8082`: REST API Port for issuer
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8082 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* `banka-host:8083`: REST API Port for BankA, accessible through the mobile app
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8083 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* `bankb-host:8084`: REST API Port for BankB, accessible through the mobile app
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8084 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* `endorser-1:8083`: REST API Port for endorser
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8083 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* `deploy-host:22`: SSH Port for deployment server
+* `deploy-host:3001`: HTTPS Port for Grafana UI
+* `deploy-host:8081`: HTTP Port for WebUI
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -p tcp --dport 22 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 3001 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+* All other servers don't need any of their ports to be available for their public IP.
+```shell
+iptables -F chain-cbdc
+iptables -N chain-cbdc
+iptables -A INPUT -j chain-cbdc
+iptables -A chain-cbdc -i bond1 -j DROP
+```
+
+*Important:* If a host is both `endorser-1` and `issuer`, make sure to accept both required ports.
+
 ## Troubleshooting
 * Check all servers are up and running
 ```shell
@@ -103,10 +192,4 @@ just check-ports
   * Make sure that the machines you assigned to the shards and coordinator have rocksdb installed. Currently, rocksdb is installed on tokentestbed9-14.
 * If you rebuild the Web UI, no change is needed neither on the backend nor on the UI-config.
 * When you open a new session or a tmux window, make sure you re-set the environment variables before building.
-* For servers with public IP's, we need to limit the accessibility of the exposed ports to the minimum. These ports may change depending on our topology. Taking one of our topologies as an example, all components will communicate with each other using their private IP's, while all ports of their public IP's will be blocked. It is essential that *only* following ports be kept open:
-  * `banka-host:8083`: REST API Port for BankA, accessible through the mobile app
-  * `bankb-host:8084`: REST API Port for BankB, accessible through the mobile app
-  * `deploy-host:22`: SSH Port for deployment server
-  * `deploy-host:3001`: HTTPS Port for Grafana UI
-  * `deploy-host:8081`: HTTP Port for WebUI
 
