@@ -19,6 +19,7 @@
       loop:
         - "{{top_dir}}/etcdraft"
         - "{{top_dir}}/system"
+        - "/tmp/hash2seq"
       loop_control:
         loop_var: dir
 - hosts: "{{target_hosts}}:&sidecars"
