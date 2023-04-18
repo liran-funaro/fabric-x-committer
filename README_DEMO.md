@@ -161,6 +161,7 @@ iptables -A INPUT -j chain-cbdc
 iptables -A chain-cbdc -i bond1 -p tcp --dport 22 -j ACCEPT
 iptables -A chain-cbdc -i bond1 -p tcp --dport 3001 -j ACCEPT
 iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A chain-cbdc -i bond1 -j DROP
 ```
 * All other servers don't need any of their ports to be available for their public IP.
