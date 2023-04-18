@@ -12,7 +12,7 @@ done
 rootDir="$(pwd)"
 
 binDir="${rootDir}/bin"
-COORDINATOR_MAIN="${rootDir}/pipeline/cmd/server/main.go"
+COORDINATOR_MAIN="${rootDir}/coordinatorservice/cmd/server"
 COORDINATOR_BIN="coordinator"
 SHARDSSERVICE_MAIN="${rootDir}/shardsservice/cmd/server/main.go"
 SHARDSSERVICE_BIN="shardsservice"

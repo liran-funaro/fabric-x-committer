@@ -28,6 +28,8 @@ func init() {
 	viper.SetDefault("sig-verification.server.endpoint", ":5000")
 	viper.SetDefault("sig-verification.monitoring.metrics.endpoint", ":2112")
 	viper.SetDefault("sig-verification.monitoring.latency.endpoint", ":14268")
+	viper.SetDefault("sig-verification.monitoring.latency.span-exporter", "console")
+	viper.SetDefault("sig-verification.monitoring.latency.sampler.type", "never")
 
 	viper.SetDefault("sig-verification.scheme", "Ecdsa")
 
