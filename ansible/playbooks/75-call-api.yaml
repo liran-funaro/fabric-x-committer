@@ -5,7 +5,8 @@
 - hosts: localhost
   vars:
     target_instance: "{{hostvars[target_host]}}"
-    target_endpoint: "http://{{target_instance.ansible_host}}:{{target_instance.ops_port}}"
+    protocol: "{{'https' if tls | d(false) else 'http'}}"
+    target_endpoint: "{{protocol}}://{{target_instance.ops_host | d(target_instance.ansible_host)}}:{{target_instance.ops_port}}"
   tasks:
     - name: Read password file
       shell: "cat {{password_file}}"
@@ -17,6 +18,7 @@
       uri:
         url: "{{target_endpoint}}/login"
         method: POST
+        validate_certs: false
         body:
           username: "{{user}}"
           password: "{{password}}"
@@ -28,6 +30,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/issue"
         method: POST
+        validate_certs: false
         body:
           value: "{{value}}"
           recipient: "{{recipient}}"
@@ -42,6 +45,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/payments/initiation"
         method: POST
+        validate_certs: false
         body:
           value: "{{value}}"
           recipient: "{{recipient}}"
@@ -60,6 +64,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/payments/transfer"
         method: POST
+        validate_certs: false
         body:
           value: "{{value}}"
           recipient: "{{recipient}}"
@@ -78,6 +83,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/balance?user={{user}}"
         method: GET
+        validate_certs: false
         headers:
           Authorization: "Bearer {{token}}"
       when: action == 'balance'
@@ -88,6 +94,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/intermediary/payments?user=alice"
         method: GET
+        validate_certs: false
         headers:
           Authorization: "Bearer {{token}}"
       when: action == 'payments'
@@ -98,6 +105,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/payments/status?nonce={{nonce}}"
         method: GET
+        validate_certs: false
         headers:
           Authorization: "Bearer {{token}}"
       when: action == 'status'
@@ -108,6 +116,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/intermediary/ownerWalletIDs"
         method: GET
+        validate_certs: false
         headers:
           Authorization: "Bearer {{token}}"
       when: action == 'wallets'
@@ -118,6 +127,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/settlement/validationRecords"
         method: GET
+        validate_certs: false
         headers:
           Authorization: "Bearer {{token}}"
       when: action == 'records'
@@ -128,6 +138,7 @@
       uri:
         url: "{{target_endpoint}}/zkat/withdraw?user={{user}}"
         method: POST
+        validate_certs: false
         body:
           value: "{{value}}"
         body_format: form-urlencoded

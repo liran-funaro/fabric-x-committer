@@ -1,9 +1,23 @@
 package fsc
 
 import (
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
+
+type NodeConfig struct {
+	TLSKey  string `mapstructure:"tls-key"`
+	TLSCert string `mapstructure:"tls-cert"`
+}
+
+func ReadNodeConfig() *NodeConfig {
+	wrapper := new(struct {
+		Config *NodeConfig `mapstructure:"fsc-node"`
+	})
+	config.Unmarshal(wrapper)
+	return wrapper.Config
+}
 
 type Config struct {
 	SDKDriver string               `mapstructure:"sdk-driver"`

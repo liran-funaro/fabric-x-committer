@@ -32,6 +32,8 @@
       loop_control:
         loop_var: filepath
     - name: Prepare FSC endpoints
+      vars:
+        protocol: "{{'https' if tls | d(false) else 'http'}}"
       set_fact:
         fsc_endpoints: "{{fsc_endpoints | d([])  + [{
           'name': instance.inventory_hostname,
@@ -39,7 +41,7 @@
           'certifier': instance.certifier | d(false),
           'issuer': instance.issuer_identities | d([]) | length > 0,
           'endorser': instance.endorser | d(false),
-          'endpoint': ip_addresses[instance.ops_host | d(instance.ansible_host)] + ':' + (instance.ops_port | string)
+          'endpoint': protocol + '://' + ip_addresses[instance.ops_host | d(instance.ansible_host)] + ':' + (instance.ops_port | string)
         }]}}"
       loop: "{{groups['fscservices'] | d([]) | map('extract', hostvars) | list}}"
       loop_control:

@@ -78,6 +78,9 @@ N_A := '0'
 signed-envelopes := 'false'
 boosted-orderer := 'false'
 
+# Use HTTPS for the REST endpoints of the FSC nodes
+tls-fsc-rest-api := 'false'
+
 #########################
 # Quickstart
 #########################
@@ -137,8 +140,8 @@ run target_hosts=('all') join_channel=('true') init_chaincode=('true') init_comm
     fi
 
     # Start fsc nodes
-    ansible-playbook "{{playbook-path}}/72-start-fscservices.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'mode': 'bootstrap_only'}"
-    ansible-playbook "{{playbook-path}}/72-start-fscservices.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'mode': 'exclude_bootstrap'}"
+    ansible-playbook "{{playbook-path}}/72-start-fscservices.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'tls': {{tls-fsc-rest-api}}, 'mode': 'bootstrap_only'}"
+    ansible-playbook "{{playbook-path}}/72-start-fscservices.yaml" --extra-vars "{'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'tls': {{tls-fsc-rest-api}}, 'mode': 'exclude_bootstrap'}"
 
     # Start blockgen
     ansible-playbook "{{playbook-path}}/64-start-blockgen.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}'}"
@@ -177,7 +180,7 @@ clean target_hosts=('all') include_configs=('false') include_bins=('false'):
     ansible-playbook "{{playbook-path}}/95-clean.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'include_bins': {{include_bins}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}'}"
 
 call-api target_host user action recipient=('') value=('0') nonce=(''):
-    ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'user': '{{user}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}', 'password_file': '{{password-file-path}}'}"
+    ansible-playbook "{{playbook-path}}/75-call-api.yaml" --extra-vars "{'target_host': '{{target_host}}', 'user': '{{user}}', 'action': '{{action}}', 'value': {{value}}, 'recipient': '{{recipient}}', 'nonce': '{{nonce}}', 'tls': {{tls-fsc-rest-api}}, 'password_file': '{{password-file-path}}'}"
 
 limit-rate limit=('-1'):
     ansible-playbook "{{playbook-path}}/76-limit-rate.yaml" --extra-vars "{'limit': {{limit}}}"
@@ -325,9 +328,13 @@ deploy-bins:
     ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer', 'mockorderingservice', 'osnadmin'], 'osx_src_dir': '{{local-bin-input-dir}}', 'linux_src_dir': '{{linux-bin-input-dir}}'}"
 
 #TODO: Remove workaround once we start building the orderers from the source code
-deploy-orderer-bins orderer_bin:
-    cp {{orderer_bin}} {{linux-bin-input-dir}}/orderer
-    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': 'orderingservices', 'filenames': ['orderer'], 'linux_src_dir': '{{linux-bin-input-dir}}', 'osx_src_dir': ''}"
+replace-orderer-bins orderer_bin_path:
+    just replace-bins orderer orderingservices {{orderer_bin_path}}
+replace-issuer-bins issuer_bin_path:
+    just replace-bins issuer issuer {{issuer_bin_path}}
+replace-bins bin target_hosts bin_path:
+    cp {{bin_path}} {{linux-bin-input-dir}}/{{bin}}
+    ansible-playbook "{{playbook-path}}/40-transfer-service-bin.yaml" --extra-vars "{'target_hosts': '{{target_hosts}}', 'filenames': ['{{bin}}'], 'linux_src_dir': '{{linux-bin-input-dir}}', 'osx_src_dir': ''}"
 
 # Executes a command from within the docker image. Requires that docker-builder-image be run once before, to ensure the image exists.
 docker-builder-run CMD:
@@ -377,9 +384,10 @@ build-configs orderer_type target_hosts=('all'):
     ansible-playbook "{{playbook-path}}/26-create-sidecarclient-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'orderer_type': '{{orderer_type}}', 'signed_envelopes': {{signed-envelopes}}}"
     ansible-playbook "{{playbook-path}}/27-create-ordererlistener-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}'}"
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'orderer_type': '{{orderer_type}}', 'signed_envelopes': {{signed-envelopes}}}"
+    ansible-playbook "{{playbook-path}}/32-create-fsc-config.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'target_hosts': '{{target_hosts}}'}"
 
 build-ui-configs:
-    ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{ui-setup-config-dir}}'}"
+    ansible-playbook "{{playbook-path}}/30-create-ui-config.yaml" --extra-vars "{'dst_dir': '{{ui-setup-config-dir}}', 'tls': {{tls-fsc-rest-api}}}"
 
 serve-ui-configs port=('8080'):
     #!/usr/bin/env bash
@@ -409,7 +417,8 @@ build-orderer-artifacts-local root_dir fab_bin_dir:
     cd {{root_dir}}/topologysetup; \
     go get github.com/IBM/idemix/tools/idemixgen@v0.0.2-0.20230403120754-d7dbe0340c4a; \
     go run {{root_dir}}/topologysetup/generatetopology/cmd/generate/main.go --configs {{root_dir}}/eval/deployments/configs/topology-setup-config.yaml --out-dir {{root_dir}}/topologysetup/tmp/; \
-    go run ./tmp/main.go --output-dir {{root_dir}}/eval/deployments/orderer-artifacts --fab-bin-dir {{fab_bin_dir}} --configs {{root_dir}}/eval/deployments/configs/topology-setup-config.yaml
+    cd ./tmp; \
+    go run ./main.go --output-dir {{root_dir}}/eval/deployments/orderer-artifacts --fab-bin-dir {{fab_bin_dir}} --configs {{root_dir}}/eval/deployments/configs/topology-setup-config.yaml
 
 # Copies config/profile files from the local host to the corresponding remote servers
 # Each server will receive only the files it needs
@@ -424,7 +433,7 @@ deploy-configs target_hosts=('all') include_configs=('true') include_creds=('tru
     ansible-playbook "{{playbook-path}}/48-transfer-orderersubmitter-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/49-transfer-peer-admin-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'include_chaincode': {{include_chaincode}}, 'channel_ids': ['{{default-channel-id}}'], 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
     ansible-playbook "{{playbook-path}}/51-transfer-orderer-config-creds-genesis.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_genesis': {{include_genesis}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}'}"
-    ansible-playbook "{{playbook-path}}/52-transfer-fsc-config-creds.yaml" --extra-vars "{'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}', 'password_file': '{{password-file-path}}'}"
+    ansible-playbook "{{playbook-path}}/52-transfer-fsc-config-creds.yaml" --extra-vars "{'input_dir': '{{base-setup-config-dir}}', 'orderer_artifacts_path': '{{base-setup-orderer-artifacts-dir}}', 'include_creds': {{include_creds}}, 'include_configs': {{include_configs}}, 'topology_name': '{{default-topology-name}}', 'target_hosts': '{{target_hosts}}', 'current_config_dir': '{{base-setup-orderer-artifacts-dir}}', 'password_file': '{{password-file-path}}'}"
 
 #########################
 # Run
@@ -489,7 +498,7 @@ run-orderer-experiment connections=('1') streams_per_connection=('1') message_si
     ansible-playbook "{{playbook-path}}/28-create-orderersubmitter-config.yaml" --extra-vars "{'src_dir': '{{config-input-dir}}', 'dst_dir': '{{base-setup-config-dir}}', 'channel_id': '{{default-channel-id}}', 'topology_name': '{{default-topology-name}}', 'connections': {{connections}}, 'streams_per_connection': {{streams_per_connection}}, 'message_size': {{message_size}}, 'channel_id': '{{default-channel-id}}', 'signed': '{{signed}}', 'target_hosts': 'all'}"
     just deploy-configs orderersubmitters
 
-    just run orderingservices false false {{N_A}}
+    just run orderingservices false false false
     just launch ordererlisteners
     just launch orderersubmitters
 

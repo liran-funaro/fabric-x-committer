@@ -10,9 +10,11 @@ package main
 
 import (
 	fscnode "github.com/hyperledger-labs/fabric-smart-client/node"
+	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	{{- if ne (.NodePort .Peer "Operations") 0 }}
 	backend2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/backend"
 	server2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/server"
+	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/fsc"
 	{{ end }}
 	{{ if InstallView }}viewregistry "github.com/hyperledger-labs/fabric-smart-client/platform/view"{{ end }}
 	{{- range .Imports }}
@@ -20,6 +22,8 @@ import (
 )
 
 func main() {
+	config.ParseFlags()
+
 	n := fscnode.New()
 	{{- range .SDKs }}
 	n.InstallSDK({{ .Type }})
@@ -58,8 +62,15 @@ func main() {
 		{{- if ne (.NodePort .Peer "Operations") 0 }}
 		// Launch web server
 		go func() {
+			c := fsc.ReadNodeConfig()
 			backend := backend2.New(backend2.NewClient(viewregistry.GetManager(n)))
-			server := server2.NewServer(":{{ .NodePort .Peer "Operations" }}", backend)
+			var server *server2.Server
+			if c == nil || c.TLSCert == "" || c.TLSKey == "" {
+				server = server2.NewServer(":{{ .NodePort .Peer "Operations" }}", backend)
+			} else {
+				server = server2.NewTLSServer(":{{ .NodePort .Peer "Operations" }}", backend, c.TLSCert, c.TLSKey)
+			}
+			
 			if err := server.Start(); err != nil {
 				panic(err)
 			}

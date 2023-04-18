@@ -10,7 +10,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230417102328-d668e326966c
+	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230418172215-d1eaca644cb8
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	gopkg.in/yaml.v3 v3.0.1
 
@@ -38,6 +38,8 @@ require (
 	github.com/Microsoft/hcsshim v0.8.25 // indirect
 	github.com/ReneKroon/ttlcache/v2 v2.11.0 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect
 	github.com/appleboy/gin-jwt/v2 v2.9.1 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -248,6 +250,7 @@ require (
 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
 	google.golang.org/grpc v1.52.3 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect

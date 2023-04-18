@@ -1,0 +1,23 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create tmp
+  file:
+    path: "{{config_dir}}"
+    state: directory
+- name: Create files
+  file:
+    path: "{{config_dir}}/fsc-config.yaml"
+    state: touch
+- name: Create config YAML
+  vars:
+    topology_name: fsc
+    msp_dir: "{{orderer_artifacts_path}}/{{topology_name}}/crypto/peerOrganizations/{{topology_name}}.{{fscservice_instance.domain}}/peers/{{fscservice_instance.inventory_hostname}}.{{topology_name}}.{{fscservice_instance.domain}}/msp"
+  yedit:
+    src: "{{config_dir}}/fsc-config.yaml"
+    edits:
+      - key: fsc-node.tls-key
+        value: "{{msp_dir}}/keystore/priv_sk"
+      - key: fsc-node.tls-cert
+        value: "{{msp_dir}}/signcerts/{{fscservice_instance.inventory_hostname}}.{{topology_name}}.{{fscservice_instance.domain}}-cert.pem"

@@ -11,7 +11,8 @@ export SC_FSC_PASSWORD_FILE=/path/to/file # If not passed, passwords.yml will be
 export SC_GITHUB_USER=alexandros-filios
 export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
 just setup BFT false true
-just deploy-orderer-bins /home/cbdcdemo/orderer #Workaround until we start building the orderers from the source code
+just replace-orderer-bins /home/cbdcdemo/orderer #Workaround until we start building the orderers from the source code
+just replace-issuer-bins /home/cbdcdemo/issuer #Workaround until we start building the issuers from the source code
 just run
 ```
 * Build configs, and run topology. You have changed config files, but not the code or the topology.

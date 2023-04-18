@@ -1,0 +1,19 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+- name: Create config destination folder
+  hosts: localhost
+  vars:
+    selected_hosts: "{{groups['fscservices'] | d([]) | intersect(groups[target_hosts] | d([])) | map('extract', hostvars) | list}}"
+  roles:
+    - kwoodson.yedit
+  tasks:
+    - name: Create tmp
+      vars:
+        config_dir: "{{dst_dir}}/{{fscservice_instance.inventory_hostname}}"
+      include_tasks: ../subtasks/create-fsc-node-config.yaml
+      when: fscservice_instance.ops_port | d(0) > 0
+      loop: "{{selected_hosts}}"
+      loop_control:
+        loop_var: fscservice_instance

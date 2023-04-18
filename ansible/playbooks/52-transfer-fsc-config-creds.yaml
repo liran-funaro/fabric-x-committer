@@ -44,3 +44,17 @@
         filename: passwords.yml
       include_tasks: ../subtasks/copy-file.yaml
       when: ops_port | d(0) > 0
+    - name: Transfer password file
+      vars:
+        mode: u+r
+        src_path: "{{input_dir}}/{{inventory_hostname}}/fsc-config.yaml"
+        dst_dir: "{{config_dir}}"
+        filename: fsc-config.yaml
+      include_tasks: ../subtasks/copy-file.yaml
+      when: ops_port | d(0) > 0
+    - name: "Replace {{current_config_dir}} in files"
+      replace:
+        dest: "{{config_dir}}/fsc-config.yaml"
+        regexp: '{{current_config_dir}}'
+        replace: '{{config_dir}}'
+      when: ops_port | d(0) > 0
