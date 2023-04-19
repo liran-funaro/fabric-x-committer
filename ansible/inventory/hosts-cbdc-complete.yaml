@@ -204,7 +204,7 @@ all:
               ops_host: "{{ansible_host}}.pub"
               service_port: 8005
               p2p_port: 8025
-              ops_port: 8083
+              ops_port: 8085
               config_dir: "{{top_config_dir}}/endorser1"
               endorser: true
               view_factories:

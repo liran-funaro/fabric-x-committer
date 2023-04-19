@@ -104,73 +104,38 @@ iptables -N chain-cbdc # Create a new chain (if not existing)
 iptables -F chain-cbdc # Remove all rules from the chain (if existing)
 iptables -A INPUT -j chain-cbdc # Add a reference to the INPUT chain, so that this jumps to our custom chain
 iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT # Accept requests to tcp:8081
+iptables -A chain-cbdc -i bond1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT # Accept requests if a connection has been already opened from the server
 iptables -A chain-cbdc -i bond1 -j DROP # Drop all other incoming requests
+iptables -S chain-cbdc # Show all rules for the chain
 ```
 
 ### Topology requirements
 *Disclaimer:* The following commands are correct and can be copied and pasted, but pay attention to the interface.
 Make sure that the interface (`bond1` in the following examples) is indeed the one that corresponds to the public IP, using `ifconfig`.
 
-For our demo topology, it is essential that *only* following ports be kept open:
-* `dw:8081`: REST API Port for auditor
+For our demo topology, it is essential that *only* following ports be kept open for the public IP:
+* `lib-p2p`, `dw`, `issuer`, `banka`, `bankb`, `endorser`
+  * `p2p_port`: Port for the P2P communication of the FSC nodes
+  * `ops_port`: Port of the REST API (not applicable for `lib-p2p`)
+* `deploy-host`
+  * `tcp:22`: SSH Port for deployment server
+  * `tcp:3001`: HTTPS Port for Grafana UI
+  * `tcp:8081`: HTTP Port for WebUI
+  * All established connections (for Docker operations)
+
+For example, on the deploy host:
+
 ```shell
+sudo su
+iptables -N chain-cbdc # Only necessary the first time
 iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT
-iptables -A chain-cbdc -i bond1 -j DROP
-```
-* `issuer:8082`: REST API Port for issuer
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -p tcp --dport 8082 -j ACCEPT
-iptables -A chain-cbdc -i bond1 -j DROP
-```
-* `banka-host:8083`: REST API Port for BankA, accessible through the mobile app
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -p tcp --dport 8083 -j ACCEPT
-iptables -A chain-cbdc -i bond1 -j DROP
-```
-* `bankb-host:8084`: REST API Port for BankB, accessible through the mobile app
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -p tcp --dport 8084 -j ACCEPT
-iptables -A chain-cbdc -i bond1 -j DROP
-```
-* `endorser-1:8083`: REST API Port for endorser
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -p tcp --dport 8083 -j ACCEPT
-iptables -A chain-cbdc -i bond1 -j DROP
-```
-* `deploy-host:22`: SSH Port for deployment server
-* `deploy-host:3001`: HTTPS Port for Grafana UI
-* `deploy-host:8081`: HTTP Port for WebUI
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
 iptables -A INPUT -j chain-cbdc
 iptables -A chain-cbdc -i bond1 -p tcp --dport 22 -j ACCEPT
 iptables -A chain-cbdc -i bond1 -p tcp --dport 3001 -j ACCEPT
 iptables -A chain-cbdc -i bond1 -p tcp --dport 8081 -j ACCEPT
 iptables -A chain-cbdc -i bond1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A chain-cbdc -i bond1 -j DROP
-```
-* All other servers don't need any of their ports to be available for their public IP.
-```shell
-iptables -F chain-cbdc
-iptables -N chain-cbdc
-iptables -A INPUT -j chain-cbdc
-iptables -A chain-cbdc -i bond1 -j DROP
+iptables -S chain-cbdc
 ```
 
 *Important:* If a host is both `endorser-1` and `issuer`, make sure to accept both required ports.
