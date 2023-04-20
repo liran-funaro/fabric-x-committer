@@ -25,6 +25,8 @@ just run
 ```
 * Run topology: You haven't made any changes to any config, the code, or the topology.
 ```shell
+export SC_GITHUB_USER=alexandros-filios
+export SC_GITHUB_TOKEN=<<YOUR_TOKEN_HERE>>
 just kill
 just clean
 just run
@@ -138,6 +140,22 @@ iptables -A chain-cbdc -i bond1 -j DROP
 iptables -S chain-cbdc
 ```
 
+For the host where `lib-p2p`, `issuer`, and `endorser` reside:
+
+```shell
+sudo su
+iptables -N chain-cbdc # Only necessary the first time
+iptables -F chain-cbdc
+iptables -A INPUT -j chain-cbdc # Only necessary the first time
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8020 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8022 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8082 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8025 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -p tcp --dport 8085 -j ACCEPT
+iptables -A chain-cbdc -i bond1 -j DROP
+iptables -S chain-cbdc
+```
+
 *Important:* If a host is both `endorser-1` and `issuer`, make sure to accept both required ports.
 
 ## Troubleshooting
@@ -150,6 +168,8 @@ just check-ports
   * During `just build`, the binary files cannot be found under `FAB_BINS`. Make sure you have set the env vars and downloaded the package as described at the beginning.
 * Make sure that on the remote server (`http://tokentestbed16.sl.cloud9.ibm.com`) you have all Linux binaries, configs, and orderer-artifacts under `eval/deployments`.
 * When an experiment crashes because the hard disk of a machine (an orderer) is full, the server might become unresponsive until you remove manually some files.
+* If token transfers (using `call-api`) are successful but no data is shown on Grafana (the sidecar client failed), make sure you have the correct orderer binary.
+* If any problem occurs, make sure you have set the Github user and token env variables.
 
 ## Notes
 * When you change the topology
