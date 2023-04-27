@@ -1,8 +1,9 @@
 package shardsservice
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"time"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 
 	"github.com/spf13/viper"
 	"github.ibm.com/distributed-trust-research/scalable-committer/config"
@@ -61,4 +62,6 @@ func init() {
 	viper.SetDefault("shards-service.server.endpoint", ":5001")
 	viper.SetDefault("shards-service.monitoring.metrics.endpoint", ":2112")
 	viper.SetDefault("shards-service.monitoring.latency.endpoint", ":14268")
+	viper.SetDefault("shards-service.monitoring.latency.span-exporter", "console")
+	viper.SetDefault("shards-service.monitoring.latency.sampler.type", "never")
 }

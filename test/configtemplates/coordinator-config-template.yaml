@@ -1,0 +1,36 @@
+coordinator:
+  server:
+    endpoint: {{.ServerEndpoint}}
+  monitoring:
+    metrics:
+      endpoint: {{.MetricsEndpoint}}
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: {{.LatencyEndpoint}}
+      max-latency: 5s
+      bucket-count: 1000
+  sig-verifiers:
+    endpoints: {{range .SigVerifierEndpoints}}
+      - {{.}}{{end}}
+  shards-servers:
+    servers: {{range .ShardServerEndpoints}}
+      - endpoint: {{.Endpoint}}
+        num-shards: {{.NumShards}}{{end}}
+    delete-existing-shards: true
+    prefix-size-for-shard-calculation: 2
+  limits:
+    shard-request-cut-timeout: 1ms
+    max-dependency-graph-size: 1000000 # 32 bytes per serial number, would cause roughly 32MB memory
+    dependency-graph-update-timeout: 1ms
+    invalid-sig-batch-cutoff-size: 1
+
+logging:
+  enabled: true
+  level: INFO
+  development: true
+  output: log.txt
