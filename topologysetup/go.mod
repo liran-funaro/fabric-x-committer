@@ -10,7 +10,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230418172215-d1eaca644cb8
+	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230502140750-35351e91cfc2
 	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
 	gopkg.in/yaml.v3 v3.0.1
 

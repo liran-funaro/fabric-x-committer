@@ -23,6 +23,8 @@ deployment-dir := output-dir + "/deployments"
 
 # Stores the configs that are deployed to the servers
 base-setup-config-dir := deployment-dir + "/configs"
+# Stores the config files for the monitoring components
+monitoring-setup-config-dir := base-setup-config-dir + "/monitoring"
 # Stores the static UI info to be served for the web and mobile applications
 ui-setup-config-dir := base-setup-config-dir + "/ui-configs"
 # Stores the credentials for the communication with the orderers
@@ -405,6 +407,7 @@ build-orderer-artifacts orderer_type=('BFT') local_fab_bins=('false') topology_c
       just empty-dir {{base-setup-orderer-artifacts-dir}}; \
 
       if [[ "{{local_fab_bins}}" = "true" ]]; then \
+        export GOPRIVATE=github.ibm.com/*; \
         just build-orderer-artifacts-local {{project-dir}} {{local-bin-input-dir}}; \
       else \
         just docker-orderer-run "just build-orderer-artifacts-local {{docker-project-dir}} {{docker-project-dir}}/eval/deployments/bins/linux"; \
@@ -577,15 +580,37 @@ get-property host query:
 list-hosts name query:
      just list-host-names {{name}} | while read line; do just get-property "$line" "{{query}}";done
 
-restart-monitoring prometheus_config=('prometheus.yml') creds_path=(project-dir + '/grafana-creds'):
+restart-monitoring tls_ca_dir=(base-setup-orderer-artifacts-dir + '/fsc/crypto/peerOrganizations/fsc.example.com/tlsca') prometheus_creds_path=(project-dir + '/prometheus-creds') grafana_creds_path=(project-dir + '/grafana-creds'):
     # Prometheus
-    echo "Launching prometheus"
+    echo "Create prometheus.yml"
+    ansible-playbook "{{playbook-path}}/33-create-prometheus-config.yaml" --extra-vars "{'dst_dir': '{{monitoring-setup-config-dir}}'}"
+
+    echo "Creating Prometheus-client TLS credentials for FSC nodes"
+    just empty-dir {{prometheus_creds_path}}
+    openssl req \
+      -newkey rsa:2048 \
+      -nodes \
+      -keyout {{prometheus_creds_path}}/fsc_node_client.key \
+      -out {{prometheus_creds_path}}/fsc_node_client.csr
+    openssl x509 \
+      -req \
+      -in {{prometheus_creds_path}}/fsc_node_client.csr \
+      -out {{prometheus_creds_path}}/fsc_node_client.crt \
+      -CA {{tls_ca_dir}}/tlsca.fsc.example.com-cert.pem \
+      -CAkey {{tls_ca_dir}}/priv_sk \
+      -set_serial 01 \
+      -days 365 \
+      -sha256
+    chmod 444 {{prometheus_creds_path}}/fsc_node_client.key {{prometheus_creds_path}}/fsc_node_client.crt
+
+    echo "Launching Prometheus"
     just docker-remove-container {{prometheus-scraper-port}}
     docker pull prom/prometheus:latest
     docker run --rm -dit \
         -p {{prometheus-scraper-port}}:9090 \
-        -v {{monitoring-config-dir}}/{{prometheus_config}}:/etc/prometheus/prometheus.yml \
+        -v {{monitoring-setup-config-dir}}/prometheus.yml:/etc/prometheus/prometheus.yml \
         -v /etc/hosts:/etc/hosts \
+        -v {{prometheus_creds_path}}/:/var/tls_ca/ \
         --name my-prometheus-instance \
         prom/prometheus:latest
     echo "Prometheus running on http://localhost:{{prometheus-scraper-port}}"
@@ -604,12 +629,12 @@ restart-monitoring prometheus_config=('prometheus.yml') creds_path=(project-dir 
     echo "Jaeger running on http://localhost:{{jaeger-ui-port}}"
 
     # Grafana
-    echo "Creating Grafana credentials under {{creds_path}}"
-    just empty-dir {{creds_path}}
-    openssl genrsa -out {{creds_path}}/grafana.key 2048
-    openssl req -new -key {{creds_path}}/grafana.key -out {{creds_path}}/grafana.csr
-    openssl x509 -req -days 365 -in {{creds_path}}/grafana.csr -signkey {{creds_path}}/grafana.key -out {{creds_path}}/grafana.crt
-    chmod 444 {{creds_path}}/grafana.key {{creds_path}}/grafana.crt
+    echo "Creating Grafana credentials under {{grafana_creds_path}}"
+    just empty-dir {{grafana_creds_path}}
+    openssl genrsa -out {{grafana_creds_path}}/grafana.key 2048
+    openssl req -new -key {{grafana_creds_path}}/grafana.key -out {{grafana_creds_path}}/grafana.csr
+    openssl x509 -req -days 365 -in {{grafana_creds_path}}/grafana.csr -signkey {{grafana_creds_path}}/grafana.key -out {{grafana_creds_path}}/grafana.crt
+    chmod 444 {{grafana_creds_path}}/grafana.key {{grafana_creds_path}}/grafana.crt
 
     echo "Launching Grafana"
     just docker-remove-container {{grafana-ui-port}}
@@ -625,8 +650,8 @@ restart-monitoring prometheus_config=('prometheus.yml') creds_path=(project-dir 
         -v {{monitoring-config-dir}}/prometheus-dashboard.json:/etc/grafana/provisioning/dashboards/prometheus-dashboard.json \
         -v {{monitoring-config-dir}}/node-exporter-dashboard.json:/etc/grafana/provisioning/dashboards/node-exporter-dashboard.json \
         -v {{monitoring-config-dir}}/grafana.ini:/etc/grafana/grafana.ini \
-        -v {{creds_path}}/grafana.key:/etc/grafana/grafana.key \
-        -v {{creds_path}}/grafana.crt:/etc/grafana/grafana.crt \
+        -v {{grafana_creds_path}}/grafana.key:/etc/grafana/grafana.key \
+        -v {{grafana_creds_path}}/grafana.crt:/etc/grafana/grafana.crt \
         grafana/grafana:latest
     echo "Grafana running on https://localhost:{{grafana-ui-port}}"
 

@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: fsc_nodes
+    scheme: https
+    static_configs:
+      - targets: {{fsc_endpoints | map('regex_replace', '127.0.0.1', 'host.docker.internal')}}
+    tls_config:
+      cert_file: /var/tls_ca/fsc_node_client.crt
+      key_file: /var/tls_ca/fsc_node_client.key
+      insecure_skip_verify: true
+  - job_name: nodes
+    static_configs:
+      - targets: {{(orderer_endpoints + peer_endpoints + committer_endpoints + client_endpoints)  | map('regex_replace', '127.0.0.1', 'host.docker.internal')}}

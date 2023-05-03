@@ -16,7 +16,7 @@ const EndorserLabel = "endorser"
 
 func CreateTopology(config Config, provider Provider) *fsc.Topology {
 	fscTopology := fsc.NewTopology()
-	//fscTopology.EnablePrometheusMetrics() //TODO: Issue and transfer fail if prometheus is activated
+	fscTopology.EnablePrometheusMetrics()
 
 	if config.Tracing != nil {
 		fscTopology.EnableOPTLTracing()
