@@ -10,7 +10,7 @@ package main
 
 import (
 	fscnode "github.com/hyperledger-labs/fabric-smart-client/node"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	{{- if ne (.NodePort .Peer "Operations") 0 }}
 	backend2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/backend"
 	server2 "github.ibm.com/decentralized-trust-research/fts-sc/demo/app/server"

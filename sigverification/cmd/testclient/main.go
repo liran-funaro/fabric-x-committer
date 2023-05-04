@@ -4,11 +4,11 @@ import (
 	"context"
 	"flag"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	config2 "github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
@@ -26,7 +26,7 @@ var clientConfig ClientConfig
 
 func main() {
 	var endpoints []*connection.Endpoint
-	connection.EndpointVars(&endpoints, "servers", []*connection.Endpoint{{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}, "Server host to connect to")
+	connection.EndpointVars(&endpoints, "servers", []*connection.Endpoint{{Host: "localhost", Port: config2.DefaultGRPCPortSigVerifier}}, "Server host to connect to")
 	test.DistributionVar(&clientConfig.Input.InputDelay, "input-delay", test.ClientInputDelay, "Interval between two batches are sent")
 
 	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
@@ -40,7 +40,7 @@ func main() {
 	verificationKeyPath := flag.String("verification-verificationKey", "./key.pub", "Path to the verification verificationKey")
 	signingKeyPath := flag.String("signing-verificationKey", "./key.priv", "Path to the signing verificationKey")
 
-	config.ParseFlags()
+	config2.ParseFlags()
 
 	clientConfig.Connections = make([]*connection.DialConfig, len(endpoints))
 	for i, endpoint := range endpoints {

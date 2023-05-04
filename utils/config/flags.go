@@ -10,7 +10,7 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 
-//ParseFlags parses the flags and adds some default flags to the main.go,
+// ParseFlags parses the flags and adds some default flags to the main.go,
 func ParseFlags() {
 	Bool("verbose", "logging.enabled", "Turn on verbose mode")
 	configPaths := connection.SliceFlag("configs", []string{}, "Config file paths to load")

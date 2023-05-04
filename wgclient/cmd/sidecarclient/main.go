@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"

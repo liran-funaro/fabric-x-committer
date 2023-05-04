@@ -1395,8 +1395,8 @@ github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521/go.mod h1:3YZ9o3WnatTIZhu
 github.com/zmap/zcertificate v0.0.0-20180516150559-0e3d58b1bac4/go.mod h1:5iU54tB79AMBcySS0R2XIyZBAVmeHranShAFELYx7is=
 github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e/go.mod h1:w7kd3qXHh8FNaczNjslXqvFQiv5mMWRXlL9klTUAHc8=
 github.com/zmap/zlint v0.0.0-20190806154020-fd021b4cfbeb/go.mod h1:29UiAJNsiVdvTBFCJW8e3q6dcDbOoPkhMgttOSCIMMY=
-github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230502140750-35351e91cfc2 h1:JX6MtvtZfbsIELg56M7k6AjhhvjzHEQCdsaXVFScvH8=
-github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230502140750-35351e91cfc2/go.mod h1:lQecK3uTDIB9m4DF23xVap4PcWorKcW6TZQ8CsAbQn0=
+github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230504075804-96b5f513f039 h1:TAuBRCWpqj2qhb1ZHsdv6yo1cLwaMr03DOpMYnfM96k=
+github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230504075804-96b5f513f039/go.mod h1:lQecK3uTDIB9m4DF23xVap4PcWorKcW6TZQ8CsAbQn0=
 go.etcd.io/bbolt v1.3.1-etcd.7/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=

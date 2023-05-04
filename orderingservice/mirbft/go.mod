@@ -8,16 +8,20 @@ require (
 	github.com/hyperledger/fabric-protos-go v0.3.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/pkg/errors v0.9.1
-	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
+	github.ibm.com/distributed-trust-research/scalable-committer/utils v0.0.0-00010101000000-000000000000
 	google.golang.org/grpc v1.50.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
-replace github.ibm.com/distributed-trust-research/scalable-committer => ../..
+replace (
+	github.ibm.com/distributed-trust-research/scalable-committer => ../..
+	github.ibm.com/distributed-trust-research/scalable-committer/token => ../../token
+	github.ibm.com/distributed-trust-research/scalable-committer/utils => ../../utils
+)
 
 require (
-	github.com/IBM/idemix v0.0.0-20220112103229-701e7610d405 // indirect
-	github.com/IBM/mathlib v0.0.0-20220112091634-0a7378db6912 // indirect
+	github.com/IBM/idemix v0.0.2-0.20230403120754-d7dbe0340c4a // indirect
+	github.com/IBM/mathlib v0.0.3-0.20230403084452-40ed1be38cf2 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
@@ -27,7 +31,8 @@ require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
-	github.com/consensys/gnark-crypto v0.6.0 // indirect
+	github.com/consensys/bavard v0.1.13 // indirect
+	github.com/consensys/gnark-crypto v0.9.1 // indirect
 	github.com/containerd/cgroups v1.0.3 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
@@ -53,6 +58,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
+	github.com/kilic/bls12-381 v0.1.0 // indirect
 	github.com/klauspost/compress v1.15.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/koron/go-ssdp v0.0.2 // indirect
@@ -116,6 +122,7 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.13.0 // indirect
+	github.com/stretchr/testify v1.8.1 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/sykesm/zap-logfmt v0.0.4 // indirect
 	github.com/tidwall/gjson v1.14.1 // indirect
@@ -129,7 +136,7 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
-	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 // indirect
+	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.4.0 // indirect
@@ -145,4 +152,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
+	rsc.io/tmplfunc v0.0.3 // indirect
 )

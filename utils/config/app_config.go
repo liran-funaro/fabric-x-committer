@@ -12,8 +12,8 @@ import (
 
 var configUpdateListener []func()
 
-//OnConfigUpdated subscribes a listener whenever a change in the config takes place.
-//The config reference will be updated (see Unmarshal), but if further actions are needed, this method can be used.
+// OnConfigUpdated subscribes a listener whenever a change in the config takes place.
+// The config reference will be updated (see Unmarshal), but if further actions are needed, this method can be used.
 func OnConfigUpdated(listener func()) {
 	configUpdateListener = append(configUpdateListener, listener)
 }
@@ -22,9 +22,9 @@ func Unmarshal(c interface{}, decoderFuncs ...DecoderFunc) {
 	utils.Must(viper.Unmarshal(c, decoderHook(append(decoderFuncs, durationDecoder, endpointDecoder)...)))
 }
 
-//configUpdated updates all listeners and pointers to configurations.
-//It is called whenever a change in the config takes place (e.g. init, flags set, manual change).
-//An alternative solution would be the built-in viper.WatchConfig, but that would require an extra go routine.
+// configUpdated updates all listeners and pointers to configurations.
+// It is called whenever a change in the config takes place (e.g. init, flags set, manual change).
+// An alternative solution would be the built-in viper.WatchConfig, but that would require an extra go routine.
 func configUpdated() error {
 	for _, listener := range configUpdateListener {
 		listener()

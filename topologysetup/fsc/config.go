@@ -1,8 +1,8 @@
 package fsc
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 )
 

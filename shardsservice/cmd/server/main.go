@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"

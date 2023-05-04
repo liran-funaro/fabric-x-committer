@@ -80,7 +80,7 @@ func suffix(pkg string) string {
 }
 
 func Generate(config fsc.Config, out string) error {
-	os.Remove(out)
+	os.RemoveAll(out)
 	if err := os.MkdirAll(out, 0755); err != nil {
 		return err
 	}
@@ -88,7 +88,6 @@ func Generate(config fsc.Config, out string) error {
 	if err != nil {
 		return err
 	}
-	defer generated.Close()
 
 	t, err := template.New("topology-setup").Parse(topologyTemplate)
 	if err != nil {
@@ -110,7 +109,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/fsc"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/generatetopology"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.com/hyperledger-labs/fabric-smart-client/platform/view"
 {{ range .Imports }}
 	{{ . }}

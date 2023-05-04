@@ -301,7 +301,6 @@ build-committer-local output_dir:
     go build -buildvcs=false -o {{output_dir}}/coordinator_setup ./coordinatorservice/cmd/setup_helper
     go build -buildvcs=false -o {{output_dir}}/sigservice ./sigverification/cmd/server
     go build -buildvcs=false -o {{output_dir}}/shardsservice ./shardsservice/cmd/server
-    go build -buildvcs=false -o {{output_dir}}/resultgatherer ./utils/experiment/cmd
     go build -buildvcs=false -o {{output_dir}}/sidecar ./sidecar/cmd/server
     go build -buildvcs=false -o {{output_dir}}/sidecarclient ./wgclient/cmd/sidecarclient
 

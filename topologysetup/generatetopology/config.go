@@ -1,10 +1,10 @@
 package generatetopology
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/fabric"
 	"github.ibm.com/distributed-trust-research/scalable-committer/topologysetup/fsc"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 )
 
 type Config struct {

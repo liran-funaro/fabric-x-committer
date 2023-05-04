@@ -10,8 +10,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230502140750-35351e91cfc2
-	github.ibm.com/distributed-trust-research/scalable-committer v0.0.0-00010101000000-000000000000
+	github.ibm.com/decentralized-trust-research/fts-sc v0.1.1-0.20230504075804-96b5f513f039
+	github.ibm.com/distributed-trust-research/scalable-committer/utils v0.1.1
 	gopkg.in/yaml.v3 v3.0.1
 
 )
@@ -21,8 +21,8 @@ replace (
 	github.com/btcsuite/btcd v0.23.4 => github.com/btcsuite/btcd v0.22.1
 	github.com/cucumber/godog v0.8.0 => github.com/cucumber/godog v0.8.1
 	github.com/mitchellh/mapstructure => github.com/mitchellh/mapstructure v1.1.2
-	github.ibm.com/distributed-trust-research/scalable-committer => ../
 	github.ibm.com/distributed-trust-research/scalable-committer/token => ../token
+	github.ibm.com/distributed-trust-research/scalable-committer/utils => ../utils
 	kilic/bls12-377 => github.com/kilic/bls12-377 v0.0.0-20201230075656-5449decbf102
 )
 

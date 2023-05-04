@@ -3,11 +3,10 @@ package shardsservice
 import (
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
-
 	"github.com/spf13/viper"
-	"github.ibm.com/distributed-trust-research/scalable-committer/config"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 )
 
 type ShardDbType = string
