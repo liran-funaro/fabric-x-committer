@@ -22,7 +22,8 @@ all:
             coordinator-machine:
               inherit_endorser: endorser-1 # Used for setting the sig verification key
               config_dir: "{{top_config_dir}}/coordinator"
-              ansible_host: tokentestbed1.sl.cloud9.ibm.com
+              prometheus_exporter_port: 2113
+              ansible_host: tokentestbed9.sl.cloud9.ibm.com
 
         sigservices:
           vars:
@@ -52,22 +53,31 @@ all:
             config: orderer.yaml
             organization: DefaultOrdererOrg
             domain: example.com
-            service_port: 7050
-            cluster_port: 7070
-            admin_port: 9440
-            ops_port: "{{prometheus_exporter_port}}"
+          #            ops_port: "{{prometheus_exporter_port}}" #TODO: Adapt template to use 0.0.0.0 before activating
           hosts:
             orderingservice-machine1:
               config_dir: "{{top_config_dir}}/orderer1"
-              ansible_host: tokentestbed3.sl.cloud9.ibm.com
+              service_port: 7050
+              cluster_port: 7070
+              admin_port: 9440
+              ansible_host: tokentestbed7.sl.cloud9.ibm.com
             orderingservice-machine2:
               config_dir: "{{top_config_dir}}/orderer2"
-              ansible_host: tokentestbed4.sl.cloud9.ibm.com
+              service_port: 7050
+              cluster_port: 7070
+              admin_port: 9440
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
             orderingservice-machine3:
               config_dir: "{{top_config_dir}}/orderer3"
+              service_port: 7050
+              cluster_port: 7070
+              admin_port: 9440
               ansible_host: tokentestbed9.sl.cloud9.ibm.com
             orderingservice-machine4:
               config_dir: "{{top_config_dir}}/orderer4"
+              service_port: 7051
+              cluster_port: 7071
+              admin_port: 9441
               ansible_host: tokentestbed11.sl.cloud9.ibm.com
 
         peerservices:

@@ -348,7 +348,7 @@ docker-image-run docker_image CMD:
     #!/usr/bin/env bash
     if [[ "{{github-user}}" = "" || "{{github-token}}" = "" ]]; then \
       echo "Building without private github repo"; \
-      docker run --rm -it -v "{{project-dir}}":{{docker-project-dir}} -w {{docker-project-dir}} orderer_builder:latest {{CMD}}; \
+      docker run --rm -it -v "{{project-dir}}":{{docker-project-dir}} -w {{docker-project-dir}} {{docker_image}}:latest {{CMD}}; \
     else \
       echo "Building with private github repo. User: {{github-user}}"; \
       docker run --rm -it -v "{{project-dir}}":{{docker-project-dir}} --env GOPRIVATE=github.ibm.com/* -w {{docker-project-dir}} {{docker_image}}:latest sh -c "git config --global url.\"https://{{github-user}}:{{github-token}}@github.ibm.com/\".insteadOf https://github.ibm.com/; {{CMD}}"; \

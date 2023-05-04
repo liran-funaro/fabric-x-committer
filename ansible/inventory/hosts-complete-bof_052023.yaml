@@ -22,7 +22,7 @@ all:
             coordinator-machine:
               inherit_endorser: endorser-1 # Used for setting the sig verification key
               config_dir: "{{top_config_dir}}/coordinator"
-              ansible_host: tokentestbed1.sl.cloud9.ibm.com
+              ansible_host: tokentestbed11.sl.cloud9.ibm.com
 
         sigservices:
           vars:
@@ -31,7 +31,7 @@ all:
           hosts:
             sigservice-machine1:
               config_dir: "{{top_config_dir}}/sigverifier"
-              ansible_host: tokentestbed5.sl.cloud9.ibm.com
+              ansible_host: tokentestbed12.sl.cloud9.ibm.com
 
         shardsservices:
           vars:
@@ -41,11 +41,11 @@ all:
             shardsservice-machine1:
               config_dir: "{{top_config_dir}}/shardsserver1"
               db_dir: "{{config_dir}}/db"
-              ansible_host: tokentestbed12.sl.cloud9.ibm.com
+              ansible_host: tokentestbed13.sl.cloud9.ibm.com
             shardsservice-machine2:
               config_dir: "{{top_config_dir}}/shardsserver2"
               db_dir: "{{config_dir}}/db"
-              ansible_host: tokentestbed10.sl.cloud9.ibm.com
+              ansible_host: tokentestbed14.sl.cloud9.ibm.com
 
         orderingservices:
           vars:
@@ -56,19 +56,16 @@ all:
             cluster_port: 7070
             admin_port: 9440
             ops_port: "{{prometheus_exporter_port}}"
+            config_dir: "{{top_config_dir}}/orderer"
           hosts:
             orderingservice-machine1:
-              config_dir: "{{top_config_dir}}/orderer1"
-              ansible_host: tokentestbed3.sl.cloud9.ibm.com
+              ansible_host: tokentestbed7.sl.cloud9.ibm.com
             orderingservice-machine2:
-              config_dir: "{{top_config_dir}}/orderer2"
-              ansible_host: tokentestbed4.sl.cloud9.ibm.com
+              ansible_host: tokentestbed8.sl.cloud9.ibm.com
             orderingservice-machine3:
-              config_dir: "{{top_config_dir}}/orderer3"
               ansible_host: tokentestbed9.sl.cloud9.ibm.com
             orderingservice-machine4:
-              config_dir: "{{top_config_dir}}/orderer4"
-              ansible_host: tokentestbed11.sl.cloud9.ibm.com
+              ansible_host: tokentestbed10.sl.cloud9.ibm.com
 
         peerservices:
           vars:
@@ -91,13 +88,13 @@ all:
             domain: example.com
           hosts:
             lib-p2p-bootstrap-node:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed5.sl.cloud9.ibm.com
               service_port: 8000
               p2p_port: 8020
               config_dir: "{{top_config_dir}}/lib-p2p"
               bootstrap: true
             dw:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed6.sl.cloud9.ibm.com
               service_port: 8001
               p2p_port: 8021
               ops_port: 8081
@@ -113,7 +110,7 @@ all:
                 - id: historyAuditing
                   factory: "{{demo_views}}/ListAuditedTransactionsViewFactory"
             issuer:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed5.sl.cloud9.ibm.com
               service_port: 8002
               p2p_port: 8022
               ops_port: 8082
@@ -131,7 +128,7 @@ all:
                   initiator: "{{demo_views}}/WithdrawalInitiatorView"
 
             banka:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed4.sl.cloud9.ibm.com
               service_port: 8003
               p2p_port: 8023
               ops_port: 8083
@@ -165,7 +162,7 @@ all:
                   factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             bankb:
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed3.sl.cloud9.ibm.com
               service_port: 8004
               p2p_port: 8024
               ops_port: 8084
@@ -201,7 +198,7 @@ all:
                   factory: "{{demo_views}}/WithdrawalInitiatorViewFactory"
 
             endorser-1: # Only one endorser supported currently
-              ansible_host: tokentestbed7.sl.cloud9.ibm.com
+              ansible_host: tokentestbed5.sl.cloud9.ibm.com
               service_port: 8005
               p2p_port: 8025
               ops_port: 8085
@@ -221,7 +218,7 @@ all:
             domain: example.com
           hosts:
             sidecar-machine:
-              ansible_host: tokentestbed6.sl.cloud9.ibm.com
+              ansible_host: tokentestbed2.sl.cloud9.ibm.com
 
     clients:
       children:
@@ -234,7 +231,7 @@ all:
           hosts:
             sidecar-client-machine1:
               profile: profile-sidecar-client.yaml
-              ansible_host: tokentestbed8.sl.cloud9.ibm.com
+              ansible_host: tokentestbed1.sl.cloud9.ibm.com
               limiter_port: 6997
 
     monitoring:
