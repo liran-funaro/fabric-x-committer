@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -18,6 +19,8 @@ import (
 )
 
 const metricPrefix = "sc"
+
+var logger = logging.New("monitoring")
 
 func LaunchMonitoring(config Config, appMetrics Provider) metrics.AppMetrics {
 	//TODO: Support for metric providers instead of boolean

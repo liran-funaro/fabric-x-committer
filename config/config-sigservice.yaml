@@ -1,9 +1,16 @@
 sig-verification:
+  parallel-executor:
+    batch-size-cutoff: 50
+    batch-time-cutoff: 10ms
+    channel-buffer-size: 50
+    parallelism: 40
+  scheme: Ecdsa
   server:
-    endpoint: :5000                                           # Overridden by ansible
+    endpoint: :5000
+
   monitoring:
     metrics:
-      endpoint: :2112                                         # Overridden by ansible
+      endpoint: :2110
     latency:
       span-exporter: jaeger
       sampler:
@@ -11,21 +18,11 @@ sig-verification:
         ratio: 10
         sample-size: 100
         sample-period: 100000
-      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      endpoint: localhost:14268
       max-latency: 5s
       bucket-count: 1000
-  scheme: "Ecdsa"
-  parallel-executor:
-    parallelism: 40
-    # Whenever we receive a batch, we start validating the TXs independently in parallel.
-    # The verification results are not grouped based on their initial block, but they return immediately after they are calculated.
-    # To avoid the overhead of sending each TX separately, we group them in batches.
-    # If we don't have enough responses to create a batch for a period of (batch-time-cutoff), then we emit a batch with all results waiting to be included into the next batch.
-    batch-time-cutoff: 10ms
-    batch-size-cutoff: 50
-    channel-buffer-size: 50
 
 logging:
+  development: true
   enabled: true
   level: INFO
-  development: true

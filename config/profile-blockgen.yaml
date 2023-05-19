@@ -1,43 +1,22 @@
-name: profile1
-
-description: some text
-
-# block configuration
 block:
-  # number of blocks we generate
-  # -1 indicates streaming infinite number of blocks
   count: -1
-  # number of transactions per block
   size: 100
-
-# transaction configuration
+conflicts:
+  statistical:
+    doublespends: 0.0
+    invalidsignatures: 0.0
+description: some text
+name: profile1
 transaction:
-  # number of serial numbers per transaction
-  serialnumbersize:
-    - value: 2
-      probability: 1
-  outputsize:
-    - value: 2
-      probability: 1.0
-    - value: 0
-      probability: 0
-  # signature scheme
   signature:
     scheme: ecdsa
-# Introduce conflicts into our block stream
-#conflicts:
-#  statistical:
-#    invalidsignatures: 0.0
-#    doublespends: 0.0
-#  scenario:
-#    invalidsignatures:
-#      - 1
-#      - 3
-#      - 5
-#    doublespends:
-#      - - 2-1
-#        - 4-1
-#        - 6-2
-#      - - 7-1
-#        - 7-2
-#        - 8-1
+  serialnumbersize:
+  - probability: 1.0
+    value: 2
+  - probability: 0.0
+    value: 8
+  outputsize:
+    - value: 1
+      probability: 0.9
+    - value: 0
+      probability: 0.1

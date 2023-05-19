@@ -1,9 +1,20 @@
 shards-service:
   server:
-    endpoint: :5001                                           # Overridden by ansible
+    endpoint: :5001
+  database:
+    root-dir: ./
+    type: rocksdb
+  limits:
+    max-pending-commits-buffer-size: 1000000
+    max-phase-one-processing-workers: 50
+    max-phase-one-response-batch-item-count: 50
+    max-phase-two-processing-workers: 50
+    max-shard-instances-buffer-size: 1000000
+    phase-one-response-cut-timeout: 50ms
+
   monitoring:
     metrics:
-      endpoint: :2112                                         # Overridden by ansible
+      endpoint: :2111
     latency:
       span-exporter: jaeger
       sampler:
@@ -11,25 +22,11 @@ shards-service:
         ratio: 10
         sample-size: 100
         sample-period: 100000
-      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      endpoint: localhost:14268
       max-latency: 5s
       bucket-count: 1000
-  database:
-    type: "rocksdb"
-    root-dir: "./"                                            # Overridden by ansible
-  limits:
-    # When there are more than (max-shard-instances-buffer-size) TXs waiting for phase 1 (for all shards in total), we stop accepting more TXs until some TXs resolve.
-    max-shard-instances-buffer-size: 1000000
-    # When there are more than (max-shard-instances-buffer-size) TXs waiting for phase 1 (for a particular shard), we stop accepting more TXs for this shard until some TXs resolve.
-    max-pending-commits-buffer-size: 1000000
-    max-phase-one-processing-workers: 50
-    max-phase-two-processing-workers: 50
-    max-phase-one-response-batch-item-count: 50
-    # When a TXs passes through phase 1, we send the responses back to the coordinator in batches for efficiency.
-    # If we don't accumulate enough TXs within (phase-one-response-cut-timeout), then we emit a batch with any transactions waiting to be included in a batch.
-    phase-one-response-cut-timeout: 50ms
 
 logging:
+  development: true
   enabled: true
   level: INFO
-  development: true

@@ -1,8 +1,11 @@
 blockgen:
-  endpoint: tokentestbed2.sl.cloud9.ibm.com:5002              # Overridden by ansible
+  endpoint: localhost:5002
+  generator:
+    profile: config/profile-blockgen.yaml
+
   monitoring:
     metrics:
-      endpoint: :2112                                         # Overridden by ansible
+      endpoint: :2113
     latency:
       span-exporter: jaeger
       sampler:
@@ -10,17 +13,11 @@ blockgen:
         ratio: 10
         sample-size: 100
         sample-period: 100000
-      endpoint: tokentestbed15.sl.cloud9.ibm.com:14268        # Overridden by ansible
+      endpoint: localhost:14268
       max-latency: 5s
       bucket-count: 1000
-  generator:
-    profile: ./profile-blockgen.yaml                          # Overridden by ansible
-#    limits:
-#      parallelism: 3
-#      channel-buffer-size: 10
 
 logging:
+  development: true
   enabled: true
   level: INFO
-  development: true
-  output: log.txt

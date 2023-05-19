@@ -13,9 +13,9 @@ bin
 *.out
 
 # Output of the build and experiment runs
-eval
+out/
 
-runner/out
+docker/runner/out
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
