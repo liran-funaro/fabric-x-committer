@@ -2,6 +2,7 @@ package sidecar_test
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,12 +108,15 @@ func TestParallel(t *testing.T) {
 	test.FailHandler(t)
 	i := NewTestInstance()
 	outputCh := i.StartOutputWriter()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
 	go func() {
 		i.SubmitToOrderer(
 			ordererRequest{createBlock(0, 1), []int{0}},
 			ordererRequest{createBlock(1, 2), []int{}},
 			ordererRequest{createBlock(2, 2), []int{}})
+		wg.Done()
 		i.ReturnFromCommitter(
 			createValidStatus(1, 1),
 			createValidStatus(2, 0),
@@ -129,6 +133,7 @@ func TestParallel(t *testing.T) {
 			createValidStatus(3, 0),
 			createValidStatus(3, 1),
 		)
+		wg.Wait()
 		i.ReturnFromCommitter(
 			createValidStatus(1, 0))
 	}()
