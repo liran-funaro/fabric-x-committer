@@ -43,6 +43,9 @@ protos-token:
     --proto_path=./token \
     ./token/token.proto
 
+protos-blocktx:
+    sh ./scripts/compile_proto.sh
+
 protos-wgclient:
     protoc \
     --go_out=. --go_opt=paths=source_relative \

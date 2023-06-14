@@ -1,0 +1,50 @@
+
+syntax = "proto3";
+
+option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/pkg/types";
+
+package types;
+
+// Represents a block in the blockchain.
+message Block {
+    uint64 number = 1; // The block number.
+    repeated Tx txs = 2; // List of transactions within the block.
+}
+
+// Represents a transaction in the blockchain.
+message Tx {
+    repeated TxNamespace namespaces = 1; // Namespaces associated with the transaction.
+    bytes signature = 2; // The signature on the namespaces.
+}
+
+// Represents a namespace within a transaction.
+message TxNamespace {
+    uint32 ns_id = 1; // The namespace ID. Only 256 namespaces are supported, i.e., from 0 to 255.
+    // as variable-length encoding is used to serialize the namespace ID, it would occupy 1 byte only.
+    repeated Read reads = 2; // List of read operations within the namespace.
+    repeated ReadWrite read_writes = 3; // List of read-write operations within the namespace.
+    repeated Write writes = 4; // List of write operations within the namespace.
+}
+
+// Represents a read operation.
+message Read {
+    string key = 1; // The key being read.
+    bytes version = 2; // The version of the key being read.
+}
+
+// Represents a read-write operation.
+message ReadWrite {
+    string key = 1; // The key involved in the read-write operation.
+    // If the key is empty, the key would be constructed using the txID
+    // and the index of the read-write operation.
+    bytes version = 2; // The version of the key being read and written.
+    bytes value = 3; // The value associated with the key being written.
+}
+
+// Represents a write operation.
+message Write {
+    string key = 1; // The key being written.
+    // If the key is empty, the key would be constructed using the txID
+    // and the index of the read-write operation.
+    bytes value = 2; // The value associated with the key being written.
+}
