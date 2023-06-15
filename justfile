@@ -7,8 +7,9 @@
 project-dir := env_var_or_default('PWD', '.')
 runner-dir := project-dir + "/docker/runner"
 sc-builder-dir := project-dir + "/docker/builder"
-local-bin-output-dir := project-dir + "/out/local"
-linux-bin-output-dir := project-dir + "/out/linux"
+binary-dir := project-dir + "/bin"
+local-bin-output-dir := project-dir + "/bin/"
+linux-bin-output-dir := project-dir + "/bin/"
 
 #########################
 # Quickstart
@@ -55,10 +56,10 @@ protos-wgclient:
 # Binaries
 #########################
 
-build-linux output_dir=(linux-bin-output-dir):
+build-linux output_dir=(binary-dir):
     just docker-builder-run "just build-local {{output_dir}}"
 
-build-local output_dir=(local-bin-output-dir):
+build-local output_dir=(binary-dir):
     mkdir -p output_dir
     go build -buildvcs=false -o {{output_dir}}/blockgen ./wgclient/cmd/generator
     go build -buildvcs=false -o {{output_dir}}/mockcoordinator ./wgclient/cmd/mockcoordinator
@@ -79,5 +80,5 @@ docker-builder-image:
 
 # Simple containerized SC
 docker-runner-image:
-    just build-linux {{runner-dir}}/out/bin
+    just build-linux {{runner-dir}}/{{binary-dir}}}
     docker build -f {{runner-dir}}/Dockerfile -t sc_runner .

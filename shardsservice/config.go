@@ -12,10 +12,9 @@ import (
 type ShardDbType = string
 
 const (
-	RocksDb   ShardDbType = "rocksdb"
-	GoLevelDb             = "goleveldb"
-	MockDb                = "mockdb"
-	PebbleDb              = "pebbledb"
+	GoLevelDb = "goleveldb"
+	MockDb    = "mockdb"
+	PebbleDb  = "pebbledb"
 )
 
 type DatabaseConfig struct {
@@ -48,7 +47,7 @@ func ReadConfig() ShardServiceConfig {
 }
 
 func init() {
-	viper.SetDefault("shards-service.database.type", "rocksdb")
+	viper.SetDefault("shards-service.database.type", "goleveldb")
 	viper.SetDefault("shards-service.database.root-dir", "./")
 
 	viper.SetDefault("shards-service.limits.max-phase-one-response-batch-item-count", 100)

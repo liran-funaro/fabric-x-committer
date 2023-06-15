@@ -2,10 +2,11 @@ package shardsservice
 
 import (
 	"context"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"log"
 	"testing"
 	"time"
+
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
@@ -30,7 +31,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 			Port: port,
 		}},
 		Database: &DatabaseConfig{
-			Type:    "rocksdb",
+			Type:    "goleveldb",
 			RootDir: "./",
 		},
 		Limits: &LimitsConfig{

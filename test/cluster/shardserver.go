@@ -47,7 +47,7 @@ func (s *ShardServerProcess) createConfigFile() {
 		ServerEndpoint:  fmt.Sprintf(":%d", s.nextPort()),
 		MetricsEndpoint: fmt.Sprintf(":%d", s.nextPort()),
 		LatencyEndpoint: fmt.Sprintf(":%d", s.nextPort()),
-		DatabaseType:    "rocksdb",
+		DatabaseType:    "goleveldb",
 	}
 	s.Config.DatabaseRootDir = path.Join(s.RootDirPath, s.Name+s.Config.ServerEndpoint)
 	s.ConfigFilePath = constructConfigFilePath(s.RootDirPath, s.Name, s.Config.ServerEndpoint)

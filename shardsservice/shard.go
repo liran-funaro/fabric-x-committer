@@ -2,7 +2,6 @@ package shardsservice
 
 import (
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pebbledb"
 	"os"
 	"strings"
 	"sync"
@@ -12,8 +11,8 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/goleveldb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/mockdb"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pebbledb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/rocksdb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
@@ -48,8 +47,6 @@ func openDb(dbType ShardDbType, path string) (database, error) {
 		return mockdb.Open(path)
 	case GoLevelDb:
 		return goleveldb.Open(path)
-	case RocksDb:
-		return rocksdb.Open(path)
 	case PebbleDb:
 		return pebbledb.Open(path)
 	default:

@@ -1,6 +1,6 @@
 shards-service:
   database:
-    name: "rocksdb"
+    name: "goleveldb"
     root-dir: "./"
   limits:
     max-phase-one-response-batch-item-count: 100

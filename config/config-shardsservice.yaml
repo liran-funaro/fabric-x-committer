@@ -3,7 +3,7 @@ shards-service:
     endpoint: :5001
   database:
     root-dir: ./
-    type: rocksdb
+    type: goleveldb
   limits:
     max-pending-commits-buffer-size: 1000000
     max-phase-one-processing-workers: 50
