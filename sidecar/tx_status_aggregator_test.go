@@ -127,13 +127,13 @@ func TestParallel(t *testing.T) {
 		i.SubmitToOrderer(
 			ordererRequest{createBlock(3, 2), []int{}},
 			ordererRequest{createBlock(4, 2), []int{}})
+		wg.Wait()
 		i.ReturnFromCommitter(
 			createValidStatus(4, 0),
 			createValidStatus(4, 1),
 			createValidStatus(3, 0),
 			createValidStatus(3, 1),
 		)
-		wg.Wait()
 		i.ReturnFromCommitter(
 			createValidStatus(1, 0))
 	}()
