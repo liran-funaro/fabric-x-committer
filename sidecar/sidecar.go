@@ -166,15 +166,17 @@ func (s *Sidecar) Start(onBlockCommitted func(*common.Block)) {
 }
 
 func mapBlock(block *common.Block) (*token.Block, []int) {
-	excluded := make([]int, 0)
+	// A config block contains only a single transaction
+	if len(block.Data.Data) == 1 && serialization.IsConfigTx(block.Data.Data[0]) {
+		return &token.Block{Number: block.Header.Number}, []int{0}
+	}
+
+	excluded := make([]int, 0, len(block.Data.Data))
 	txs := make([]*token.Tx, 0, len(block.Data.Data))
 	for i, msg := range block.Data.Data {
-		//TODO: We can improve performance by checking the type only of the first TX, if we can guarantee that a block cannot contain config envelopes and message envelopes at the same time.
-		if data, channelHeader, err := serialization.UnwrapEnvelope(msg); err != nil {
+		if data, _, err := serialization.UnwrapEnvelope(msg); err != nil {
 			logger.Infof("error occurred: %v", err)
 			panic(err)
-		} else if isConfigTx(channelHeader) {
-			excluded = append(excluded, i)
 		} else if tx := serialization.UnmarshalTx(data); isIssueTx(tx) {
 			excluded = append(excluded, i)
 		} else {
@@ -187,7 +189,7 @@ func mapBlock(block *common.Block) (*token.Block, []int) {
 	}, excluded
 }
 
-func isConfigTx(channelHeader *common.ChannelHeader) bool {
+func isConfigHeader(channelHeader *common.ChannelHeader) bool {
 	return channelHeader.Type == int32(common.HeaderType_CONFIG)
 }
 

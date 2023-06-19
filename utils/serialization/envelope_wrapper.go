@@ -69,3 +69,17 @@ func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelH
 	}
 	return payload, channelHdr, nil
 }
+
+func IsConfigTx(envBytes []byte) bool {
+	envelope, err := protoutil.GetEnvelopeFromBlock(envBytes)
+	if err != nil {
+		return false
+	}
+
+	_, channelHdr, err := ParseEnvelope(envelope)
+	if err != nil {
+		return false
+	}
+
+	return common.HeaderType(channelHdr.Type) == common.HeaderType_CONFIG
+}
