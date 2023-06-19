@@ -31,8 +31,11 @@ func main() {
 	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
 	service := newLedgerDeliverServer(c.Orderer.ChannelID, c.Committer.LedgerPath)
-	go connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
-		peer.RegisterDeliverServer(grpcServer, &serviceImpl{deliverDelegate: service})
+	go connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
+		if c.Server.Endpoint.Port == 0 {
+			c.Server.Endpoint.Port = port
+		}
+		peer.RegisterDeliverServer(server, &serviceImpl{deliverDelegate: service})
 	})
 
 	s, err := sidecar.New(c.Orderer, c.Committer, creds, signer, m)

@@ -2,8 +2,7 @@ package shardsservice
 
 import (
 	"context"
-	"log"
-	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,37 +44,39 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 		},
 	}
 
-	var grpcServer *grpc.Server
+	var grpcSrv *grpc.Server
 	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
 	sc := NewShardsCoordinator(c.Database, c.Limits, m)
 
-	listener, err := net.Listen("tcp", c.Server.Endpoint.Address())
-	require.NoError(t, err)
-	if c.Server.Endpoint.Port == 0 {
-		c.Server.Endpoint.Port = listener.Addr().(*net.TCPAddr).Port
-	}
-
-	grpcServer = grpc.NewServer(c.Server.Opts()...)
-	shardsservice.RegisterShardsServer(grpcServer, sc)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	go func() {
-		err = grpcServer.Serve(listener)
-		if err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
+		connection.RunServerMain(c.Server, func(grpcServer *grpc.Server, actualListeningPort int) {
+			grpcSrv = grpcServer
+			port = actualListeningPort
+			shardsservice.RegisterShardsServer(grpcServer, sc)
+			wg.Done()
+		})
 	}()
+
+	wg.Wait()
+
+	if c.Server.Endpoint.Port == 0 {
+		c.Server.Endpoint.Port = port
+	}
 
 	clientConn, err := connection.Connect(connection.NewDialConfig(c.Server.Endpoint))
 	require.NoError(t, err)
 
 	return &shardsCoordinatorGrpcServiceForTest{
 		sc:         sc,
-		grpcServer: grpcServer,
+		grpcServer: grpcSrv,
 		clientConn: clientConn,
 		cleanup: func() {
 			sc.shards.deleteAll()
 			require.NoError(t, clientConn.Close())
-			grpcServer.Stop()
+			grpcSrv.Stop()
 		},
 	}
 }

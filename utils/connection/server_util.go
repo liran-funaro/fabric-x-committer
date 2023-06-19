@@ -84,7 +84,7 @@ func (c *ServerCredsConfig) serverOption() grpc.ServerOption {
 	return creds
 }
 
-func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) func() {
+func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
 	logger.Infof("Running server with:\n"+
 		"\tEndpoint: %s:%s\n"+
 		"\tTLS Creds: %v\n"+
@@ -96,21 +96,20 @@ func RunServerMain(serverConfig *ServerConfig, register func(*grpc.Server)) func
 	}
 
 	grpcServer := grpc.NewServer(serverConfig.Opts()...)
-	register(grpcServer)
+	register(grpcServer, listener.Addr().(*net.TCPAddr).Port)
 
 	err = grpcServer.Serve(listener)
 	if err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
-	return grpcServer.Stop
 }
 
-func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server)) {
+func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
 	serverStarted := sync.WaitGroup{}
 	serverStarted.Add(1)
 
-	go RunServerMain(serverConfig, func(server *grpc.Server) {
-		register(server)
+	go RunServerMain(serverConfig, func(server *grpc.Server, port int) {
+		register(server, port)
 		serverStarted.Done()
 	})
 

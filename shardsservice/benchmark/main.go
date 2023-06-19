@@ -53,7 +53,10 @@ func main() {
 	}
 	m := &metrics.Metrics{Enabled: false}
 
-	connection.RunServerMainAndWait(c.Server, func(server *grpc.Server) {
+	connection.RunServerMainAndWait(c.Server, func(server *grpc.Server, port int) {
+		if c.Server.Endpoint.Port == 0 {
+			c.Server.Endpoint.Port = port
+		}
 		shardsproto.RegisterShardsServer(server, shardsservice.NewShardsCoordinator(c.Database, c.Limits, m))
 	})
 

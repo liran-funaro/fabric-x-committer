@@ -27,7 +27,10 @@ func main() {
 
 	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
-	connection.RunServerMain(c.Server, func(grpcServer *grpc.Server) {
-		sigverification.RegisterVerifierServer(grpcServer, verifierserver.New(&c.ParallelExecutor, c.Scheme, m))
+	connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
+		if c.Server.Endpoint.Port == 0 {
+			c.Server.Endpoint.Port = port
+		}
+		sigverification.RegisterVerifierServer(server, verifierserver.New(&c.ParallelExecutor, c.Scheme, m))
 	})
 }

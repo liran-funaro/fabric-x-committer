@@ -24,7 +24,10 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Error while constructing coordinator: %s", err))
 	}
-	connection.RunServerMain(c.Server, func(server *grpc.Server) {
+	connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
+		if c.Server.Endpoint.Port == 0 {
+			c.Server.Endpoint.Port = port
+		}
 		coordinatorservice.RegisterCoordinatorServer(server, &serviceImpl{Coordinator: coordinator})
 	})
 }
