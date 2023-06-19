@@ -1,18 +1,14 @@
 package main
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/sidecarclient"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/ordererclient"
 	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -20,64 +16,60 @@ func main() {
 	config.ServerConfig("sidecar")
 	config.ParseFlags()
 
-	c := sidecarclient.ReadConfig()
+	c := ReadConfig()
+
+	if len(c.Profile) == 0 {
+		panic("no profile passed")
+	}
 	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
 	creds, signer := connection.GetOrdererConnectionCreds(p)
 
-	opts := &sidecarclient.ClientInitOptions{
-		CommitterEndpoint: c.Committer,
+	committerClient := client.OpenCoordinatorAdapter(c.Committer)
+	ordererClient, err := ordererclient.NewClient(&ordererclient.ClientInitOptions{
+
+		SignedEnvelopes: c.SignedEnvelopes,
+		OrdererSigner:   signer,
 
 		OrdererEndpoints:   c.Orderers,
 		OrdererCredentials: creds,
-		OrdererSigner:      signer,
 
-		SidecarEndpoint:    c.Sidecar,
-		SidecarCredentials: insecure.NewCredentials(),
-		SidecarSigner:      nil,
+		DeliverEndpoint:       c.Sidecar,
+		DeliverCredentials:    insecure.NewCredentials(),
+		DeliverSigner:         nil,
+		DeliverClientProvider: &PeerDeliverClientProvider{},
 
 		ChannelID:            c.ChannelID,
 		Parallelism:          c.Parallelism,
 		InputChannelCapacity: c.InputChannelCapacity,
-		SignedEnvelopes:      c.SignedEnvelopes,
 		OrdererType:          c.OrdererType,
 		StartBlock:           0,
 
 		RemoteControllerListener: c.RemoteControllerListener,
-	}
-
-	tracker := workload.NewMetricTracker(c.Monitoring)
-
-	client, err := sidecarclient.NewClient(opts)
+	})
 	utils.Must(err)
 
-	var txs chan *sigverification_test.TxWithStatus
-	if len(c.Profile) > 0 {
-		profile := workload.LoadProfileFromYaml(c.Profile)
-		publicKey, txCh := workload.StartTxGenerator(&profile.Transaction, profile.Conflicts, 100)
-		utils.Must(client.SetCommitterKey(publicKey))
-		txs = txCh
-	} else {
-		txs = make(chan *sigverification_test.TxWithStatus)
-	}
+	profile := workload.LoadProfileFromYaml(c.Profile)
+	publicKey, txCh := workload.StartTxGenerator(&profile.Transaction, profile.Conflicts, 100)
 
-	go client.Send(txs, func(tx *sigverification_test.TxWithStatus, env *common.Envelope) {
-		_, header, _ := serialization.ParseEnvelope(env)
-		tracker.RequestSent(TxId(header.TxId), tx.Status, time.Now())
-	})
+	utils.Must(committerClient.SetVerificationKey(publicKey))
 
-	client.StartListening(func(block *common.Block) {
-		blockReceivedAt := time.Now()
-		for i, statusCode := range block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] {
-			if _, channelHeader, err := serialization.UnwrapEnvelope(block.Data.Data[i]); err == nil {
-				tracker.ResponseReceived(TxId(channelHeader.TxId), sidecar.StatusInverseMap[statusCode], blockReceivedAt)
-			}
-		}
-		fmt.Printf("Block received %d:%d\n", block.Header.Number, len(block.Data.Data))
-	})
+	tracker := newMetricTracker(c.Monitoring)
+
+	ordererClient.Start(messageGenerator(txCh), tracker.TxSent, tracker.BlockReceived)
 }
 
-type TxId string
-
-func (i TxId) String() string {
-	return string(i)
+func messageGenerator(txs chan *sigverification_test.TxWithStatus) <-chan []byte {
+	messages := make(chan []byte, 100)
+	for workerID := 0; workerID < 10; workerID++ {
+		go func() {
+			for {
+				select {
+				case tx := <-txs:
+					message := serialization.MarshalTx(tx.Tx)
+					messages <- message
+				}
+			}
+		}()
+	}
+	return messages
 }

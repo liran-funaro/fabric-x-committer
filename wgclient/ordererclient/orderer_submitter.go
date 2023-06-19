@@ -1,4 +1,4 @@
-package sidecarclient
+package ordererclient
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package sidecarclient
+package main
 
 import (
 	"context"

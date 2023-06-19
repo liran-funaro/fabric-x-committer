@@ -25,7 +25,7 @@ func GetBlockSize(path string, sampleSize int) float64 {
 
 func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	// read blocks from file into channel
-	tracker := workload.NewMetricTracker(monitoring.Config{
+	tracker := newMetricTracker(monitoring.Config{
 		Latency: &latency.Config{
 			Endpoint: connection.CreateEndpoint(latencyEndpoint),
 		},
@@ -58,7 +58,7 @@ func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 func GenerateAndPump(config workload.BlockgenStreamConfig) {
 	pp := workload.LoadProfileFromYaml(config.Generator.Profile)
 
-	tracker := workload.NewMetricTracker(config.Monitoring)
+	tracker := newMetricTracker(config.Monitoring)
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)
 
@@ -163,4 +163,24 @@ func ReadAndForget(path string) {
 	}
 	elapsed := time.Since(start)
 	workload.PrintStats(pp.Block.Count*pp.Block.Size, pp.Block.Count, 0, elapsed, 0)
+}
+
+type metricTracker struct {
+	*workload.MetricTracker
+}
+
+func newMetricTracker(p monitoring.Config) *metricTracker {
+	return &metricTracker{workload.NewMetricTracker(p)}
+}
+func (t *metricTracker) RegisterEvent(e *workload.Event) {
+	switch e.Msg {
+	case workload.EventSubmitted:
+		for i := uint64(0); i < uint64(e.SubmittedBlock.Size); i++ {
+			t.TxSentAt(token.TxSeqNum{e.SubmittedBlock.Id, i}, e.Timestamp)
+		}
+	case workload.EventReceived:
+		for _, status := range e.StatusBatch.TxsValidationStatus {
+			t.TxReceivedAt(token.TxSeqNum{status.BlockNum, status.TxNum}, status.Status, e.Timestamp)
+		}
+	}
 }

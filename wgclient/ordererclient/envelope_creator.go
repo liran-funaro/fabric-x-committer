@@ -1,4 +1,4 @@
-package sidecarclient
+package ordererclient
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -7,9 +7,11 @@ import (
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
 )
 
+type EnvelopeTxId = string
+
 // EnvelopeCreator takes serialized data in its input, e.g. a marshaled TX and creates an envelope to send to the orderer.
 type EnvelopeCreator interface {
-	CreateEnvelope(data []byte) (*common.Envelope, error)
+	CreateEnvelope(data []byte) (*common.Envelope, EnvelopeTxId, error)
 }
 
 type envelopeCreator struct {
@@ -40,17 +42,18 @@ func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 
 // CreateEnvelope create an envelope with or without a signature and the corresponding header
 // An unsigned envelope can only be used with a patched fabric orderer
-func (c *envelopeCreator) CreateEnvelope(data []byte) (*common.Envelope, error) {
-	payload := serialization.WrapEnvelope(data, c.payloadHeader())
+func (c *envelopeCreator) CreateEnvelope(data []byte) (*common.Envelope, EnvelopeTxId, error) {
+	header, txId := c.payloadHeader()
+	payload := serialization.WrapEnvelope(data, header)
 
 	signature, err := c.signer.Sign(payload)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return &common.Envelope{Payload: payload, Signature: signature}, nil
+	return &common.Envelope{Payload: payload, Signature: signature}, txId, nil
 }
 
-func (c *envelopeCreator) payloadHeader() *common.Header {
+func (c *envelopeCreator) payloadHeader() (*common.Header, EnvelopeTxId) {
 	signatureHeader := protoutil.NewSignatureHeaderOrPanic(c.signer)
 
 	channelHeader := protoutil.MakeChannelHeader(c.txType, c.msgVersion, c.channelID, c.epoch)
@@ -60,10 +63,10 @@ func (c *envelopeCreator) payloadHeader() *common.Header {
 	}
 
 	if !c.signed {
-		return protoutil.MakePayloadHeader(channelHeader, &common.SignatureHeader{})
+		return protoutil.MakePayloadHeader(channelHeader, &common.SignatureHeader{}), EnvelopeTxId(channelHeader.TxId)
 	}
 
-	return protoutil.MakePayloadHeader(channelHeader, signatureHeader)
+	return protoutil.MakePayloadHeader(channelHeader, signatureHeader), EnvelopeTxId(channelHeader.TxId)
 }
 
 type noOpSigner struct{}

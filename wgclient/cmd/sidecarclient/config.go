@@ -1,4 +1,4 @@
-package sidecarclient
+package main
 
 import (
 	"github.com/spf13/viper"
@@ -9,19 +9,19 @@ import (
 )
 
 type Config struct {
-	Orderers   []*connection.Endpoint `mapstructure:"orderers"`
-	Committer  connection.Endpoint    `mapstructure:"committer"`
-	Sidecar    connection.Endpoint    `mapstructure:"sidecar"`
-	Monitoring monitoring.Config      `mapstructure:"monitoring"`
+	Committer connection.Endpoint `mapstructure:"committer"`
+	Sidecar   connection.Endpoint `mapstructure:"sidecar"`
+	Profile   string              `mapstructure:"profile"`
 
-	Profile                  string              `mapstructure:"profile"`
-	InputChannelCapacity     int                 `mapstructure:"input-channel-capacity"`
-	ChannelID                string              `mapstructure:"channel-id"`
-	Parallelism              int                 `mapstructure:"parallelism"`
-	SignedEnvelopes          bool                `mapstructure:"signed-envelopes"`
-	OrdererType              utils.ConsensusType `mapstructure:"orderer-type"`
-	OrdererConnectionProfile string              `mapstructure:"orderer-connection-profile"`
-	RemoteControllerListener connection.Endpoint `mapstructure:"remote-controller-listener"`
+	Monitoring               monitoring.Config      `mapstructure:"monitoring"`
+	Orderers                 []*connection.Endpoint `mapstructure:"orderers"`
+	InputChannelCapacity     int                    `mapstructure:"input-channel-capacity"`
+	ChannelID                string                 `mapstructure:"channel-id"`
+	Parallelism              int                    `mapstructure:"parallelism"`
+	SignedEnvelopes          bool                   `mapstructure:"signed-envelopes"`
+	OrdererType              utils.ConsensusType    `mapstructure:"orderer-type"`
+	OrdererConnectionProfile string                 `mapstructure:"orderer-connection-profile"`
+	RemoteControllerListener connection.Endpoint    `mapstructure:"remote-controller-listener"`
 }
 
 func ReadConfig() Config {
