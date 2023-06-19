@@ -21,4 +21,4 @@ docker/runner/out
 # vendor/
 
 **/generated/**
-shard_*
+.idea
