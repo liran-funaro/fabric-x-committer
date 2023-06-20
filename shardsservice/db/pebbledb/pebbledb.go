@@ -1,10 +1,15 @@
 package pebbledb
 
 import (
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
 	"runtime"
 	"sync"
+
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
+)
+
+const (
+	PebbleDb = "pebbledb"
 )
 
 type pebbledb struct {

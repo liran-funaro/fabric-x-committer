@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	defaultInitDbSizes = []int{10_000}
+	defaultInitDbSizes = []int{100_000}
 	defaultBatchSizes  = []int{100}
 	//dbSize             = prometheus.NewCounter(prometheus.CounterOpts{
 	//	Name: "db_size",

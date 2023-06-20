@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"sync"
 	"testing"
 
@@ -23,6 +22,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 		testutil.DefaultSigVerifierBehavior,
 		verifierServers,
 	)
+	assert.NotEmpty(t, sigVerifierServer)
 	require.NoError(t, err)
 	defer func() {
 		for _, s := range sigVerifierServer {
@@ -34,8 +34,9 @@ func TestSigVerifiersMgr(t *testing.T) {
 		&SigVerifierMgrConfig{
 			Endpoints: verifierServers,
 		},
-		(&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics),
+		&metrics.Metrics{Enabled: false},
 	)
+	assert.NotNil(t, mgr)
 	assert.NoError(t, err)
 	defer mgr.stop()
 
@@ -53,7 +54,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 		wg.Done()
 	}()
 
-	txSeqNums := []TxSeqNum{}
+	var txSeqNums []TxSeqNum
 	go func() {
 		for i := 0; i < 4; i++ {
 			txSeqNums = append(txSeqNums, <-mgr.outputChanValids...)

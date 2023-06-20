@@ -7,7 +7,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
 )
 
 type blockNumber = uint64

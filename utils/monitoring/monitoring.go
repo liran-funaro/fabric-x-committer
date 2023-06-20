@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
@@ -45,6 +46,7 @@ func startMetricExporter(m *metrics.Config, componentName string, metricCollecto
 	for _, collector := range allMetrics {
 		customMetricRegisterer.Register(collector)
 	}
+	registry.Register(collectors.NewGoCollector())
 	defaultMetrics.ComponentType.Set(0) // No value is needed. The registerer already adds the label 'component'.
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))

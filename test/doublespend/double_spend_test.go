@@ -9,10 +9,10 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/distributed-trust-research/scalable-committer/test/cluster"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 )
 
 func TestMain(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
@@ -20,12 +20,12 @@ import (
 
 var logger = logging.New("sidecar")
 
-//DeliverListener connects to the orderer, and only listens for orderered blocks
+// DeliverListener connects to the orderer, and only listens for orderered blocks
 type DeliverListener interface {
 	RunDeliverOutputListener(onOrderedBlockReceive func(block *common.Block)) error
 }
 
-//CommitterSubmitterListener connects to the committer (i.e. the coordinator of the committer), and submits blocks and listens for status batches.
+// CommitterSubmitterListener connects to the committer (i.e. the coordinator of the committer), and submits blocks and listens for status batches.
 type CommitterSubmitterListener interface {
 	//RunCommitterSubmitterListener commits blocks to the committer
 	RunCommitterSubmitterListener(
@@ -34,11 +34,11 @@ type CommitterSubmitterListener interface {
 		onReceive func(*coordinatorservice.TxValidationStatusBatch))
 }
 
-//PostCommitAggregator is an adapter between the scalable committer and the client
-//SC returns the status of a committed TX as fast as possible, without waiting for the rest of the TXs of the same block.
-//However, the client is listening for whole blocks.
-//This component collects the sharded TX statuses and aggregates them until it collects the entire block.
-//Then the entire block is output in the correct order (as defined by the orderer).
+// PostCommitAggregator is an adapter between the scalable committer and the client
+// SC returns the status of a committed TX as fast as possible, without waiting for the rest of the TXs of the same block.
+// However, the client is listening for whole blocks.
+// This component collects the sharded TX statuses and aggregates them until it collects the entire block.
+// Then the entire block is output in the correct order (as defined by the orderer).
 type PostCommitAggregator interface {
 	//AddSubmittedBlock adds a TX block to the aggregator and keeps a list of the (non-config, non-issue) TXs that have not been validated by the committer.
 	//Once we collect the statuses of all TXs from the committer, the block is marked as complete and can be output (after all previous blocks have been output).

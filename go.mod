@@ -23,7 +23,7 @@ require (
 	github.com/stretchr/testify v1.8.1
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
 	github.com/tedsuo/ifrit v0.0.0-20230330192023-5cba443a66c4
-	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
+	github.ibm.com/distributed-trust-research/scalable-committer/protos/token v0.0.0-00010101000000-000000000000
 	github.ibm.com/distributed-trust-research/scalable-committer/utils v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.11.2
 	go.uber.org/atomic v1.9.0
@@ -35,7 +35,7 @@ require (
 )
 
 replace (
-	github.ibm.com/distributed-trust-research/scalable-committer/token => ./token
+	github.ibm.com/distributed-trust-research/scalable-committer/protos/token => ./protos/token
 	github.ibm.com/distributed-trust-research/scalable-committer/utils => ./utils
 )
 

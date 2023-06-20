@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -54,7 +54,7 @@ var verifierFactories = map[Scheme]VerifierFactory{
 	NoScheme: &dummyVerifierFactory{},
 }
 
-//NewTxVerifier creates a new TX verifier according to the implementation scheme
+// NewTxVerifier creates a new TX verifier according to the implementation scheme
 func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
 	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory.NewVerifier(key)

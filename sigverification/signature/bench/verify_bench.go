@@ -1,4 +1,4 @@
-package signature_test
+package main
 
 import (
 	"testing"
@@ -79,4 +79,15 @@ func (g *inputGenerator) NextTxInput() []token.SerialNumber {
 
 func (g *inputGenerator) NextValid() bool {
 	return g.validGenerator.Next()
+}
+
+func main() {
+	var tests []testing.InternalBenchmark
+
+	tests = append(tests, testing.InternalBenchmark{
+		Name: "Verify",
+		F:    BenchmarkTxVerifier,
+	})
+
+	testing.MainStart(nil, nil, tests, nil, nil)
 }

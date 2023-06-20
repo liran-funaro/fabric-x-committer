@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

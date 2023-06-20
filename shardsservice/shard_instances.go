@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
@@ -23,7 +24,7 @@ type shardInstances struct {
 	txIDToPendingResponse *txIDToPendingResponse
 	dbConfig              *DatabaseConfig
 	c                     *sync.Cond
-	phaseOneResponses     chan []*PhaseOneResponse
+	phaseOneResponses     chan []*shardsservice.PhaseOneResponse
 	maxBufferSize         int
 	phaseOnePool          *workerpool.WorkerPool
 	phaseTwoPool          *workerpool.WorkerPool
@@ -31,7 +32,7 @@ type shardInstances struct {
 	metrics               *metrics.Metrics
 }
 
-func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) (*shardInstances, error) {
+func newShardInstances(phaseOneResponse chan []*shardsservice.PhaseOneResponse, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) (*shardInstances, error) {
 	logger := logging.New("shard instances")
 	logger.Info("Initializing shard instances manager")
 
@@ -57,7 +58,7 @@ func newShardInstances(phaseOneResponse chan []*PhaseOneResponse, dbConfig *Data
 		metrics: metrics,
 	}
 
-	// TODO: Use a db to keep track of existing shards and
+	// TODO: Use a database to keep track of existing shards and
 	// shard requests to handle failure and recovery.
 	// The below part of the code needs to be rewritten for
 	// production environment
@@ -115,7 +116,7 @@ func (i *shardInstances) deleteAll() error {
 	return nil
 }
 
-func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.Empty {
+func (i *shardInstances) executePhaseOne(requests *shardsservice.PhaseOneRequestBatch) *empty.Empty {
 	i.c.L.(*sync.RWMutex).Lock()
 	started := time.Now()
 	defer i.c.L.(*sync.RWMutex).Unlock()
@@ -141,7 +142,7 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.
 
 			sn, ok := txToSn[tID]
 			if !ok {
-				sn = &SerialNumbers{}
+				sn = &shardsservice.SerialNumbers{}
 				txToSn[tID] = sn
 			}
 
@@ -173,7 +174,7 @@ func (i *shardInstances) executePhaseOne(requests *PhaseOneRequestBatch) *empty.
 	return &empty.Empty{}
 }
 
-func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
+func (i *shardInstances) executePhaseTwo(requests *shardsservice.PhaseTwoRequestBatch) {
 	i.c.L.(*sync.RWMutex).RLock()
 
 	// 1. Transaction instructions are grouped by shardID
@@ -215,7 +216,7 @@ func (i *shardInstances) executePhaseTwo(requests *PhaseTwoRequestBatch) {
 func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, batchCutTimeout time.Duration) {
 	ticker := time.NewTicker(batchCutTimeout)
 
-	var responses []*PhaseOneResponse
+	var responses []*shardsservice.PhaseOneResponse
 
 	for {
 		select {
@@ -247,7 +248,7 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 							BlkNum: r.BlockNum,
 							TxNum:  r.TxNum,
 						}
-						if r.Status == PhaseOneResponse_CAN_COMMIT {
+						if r.Status == shardsservice.PhaseOneResponse_CAN_COMMIT {
 							noMorePendingResponse, isNotTracked := i.txIDToPendingResponse.removeDueToValid(tID, s.id)
 							if isNotTracked {
 								continue
@@ -256,7 +257,7 @@ func (i *shardInstances) accumulatedPhaseOneResponses(maxBatchItemCount uint32, 
 							if noMorePendingResponse {
 								responses = append(responses, r)
 							}
-						} else if r.Status == PhaseOneResponse_CANNOT_COMMITTED {
+						} else if r.Status == shardsservice.PhaseOneResponse_CANNOT_COMMITTED {
 							existRemoved := i.txIDToPendingResponse.removeDueToInvalid(tID)
 							if existRemoved {
 								responses = append(responses, r)
@@ -402,11 +403,11 @@ func (t *txIDToPendingResponse) removeDueToValid(tID pendingcommits.TxID, shardI
 
 type shardIDToTxIDSerialNumbers map[uint32]txIDToSerialNumbers
 
-type txIDToSerialNumbers map[pendingcommits.TxID]*SerialNumbers
+type txIDToSerialNumbers map[pendingcommits.TxID]*shardsservice.SerialNumbers
 
 type shardIDToTxIDInstruction map[uint32]txIDToInstruction
 
-type txIDToInstruction map[pendingcommits.TxID]PhaseTwoRequest_Instruction
+type txIDToInstruction map[pendingcommits.TxID]shardsservice.PhaseTwoRequest_Instruction
 
 type txIDToPendingShardIDResponse map[pendingcommits.TxID]pendingShardIDResponse
 

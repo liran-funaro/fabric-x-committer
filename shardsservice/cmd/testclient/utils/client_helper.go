@@ -8,8 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
@@ -83,7 +83,7 @@ func (c *ShardClient) Start() {
 
 func (c *ShardClient) LogDebug() {
 	stats := c.tracker.CurrentStats()
-	logger.Infof("Sent transactions with rate: %d TPS. (%v)", stats.RequestsPer(time.Second), stats)
+	fmt.Printf("time elepased: %v, processed: %v tx, TPS: %v\n", stats.TotalTime, stats.TotalRequests, stats.RequestsPer(time.Second))
 }
 
 func (c *ShardClient) WaitUntilDone() {

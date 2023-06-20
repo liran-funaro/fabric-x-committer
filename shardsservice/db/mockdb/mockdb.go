@@ -1,5 +1,9 @@
 package mockdb
 
+const (
+	MockDb = "mockdb"
+)
+
 type mockdb struct {
 }
 

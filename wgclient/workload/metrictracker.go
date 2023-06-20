@@ -1,15 +1,15 @@
 package workload
 
 import (
-	"go.opentelemetry.io/otel/attribute"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const ScrapingInterval = 15 * time.Second

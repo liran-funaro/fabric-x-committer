@@ -3,7 +3,7 @@ package signature
 import (
 	"crypto/ecdsa"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/crypto"
 )
 

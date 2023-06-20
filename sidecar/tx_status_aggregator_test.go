@@ -9,7 +9,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
 )

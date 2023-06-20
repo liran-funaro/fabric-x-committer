@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"go.opentelemetry.io/otel/attribute"
 )
 

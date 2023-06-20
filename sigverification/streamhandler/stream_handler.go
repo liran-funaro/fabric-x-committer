@@ -1,7 +1,7 @@
 package streamhandler
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
 
@@ -11,7 +11,7 @@ type Input = *sigverification.RequestBatch
 type Output = *sigverification.ResponseBatch
 type Stream = sigverification.Verifier_StartStreamServer
 
-//StreamHandler is an adapter between streams and a pair of pub/sub methods
+// StreamHandler is an adapter between streams and a pair of pub/sub methods
 type StreamHandler struct {
 	//InputSubscriber determines what to do with the incoming requests from the client
 	InputSubscriber func(Input)

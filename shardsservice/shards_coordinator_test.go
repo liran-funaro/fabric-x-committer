@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
-
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"google.golang.org/grpc"
 )
 
@@ -56,7 +56,7 @@ func NewShardsCoordinatorGrpcServiceForTest(t *testing.T, port int) *shardsCoord
 	}
 
 	grpcServer = grpc.NewServer(c.Server.Opts()...)
-	RegisterShardsServer(grpcServer, sc)
+	shardsservice.RegisterShardsServer(grpcServer, sc)
 
 	go func() {
 		err = grpcServer.Serve(listener)
@@ -84,23 +84,23 @@ func TestShardsCoordinator(t *testing.T) {
 	shardService := NewShardsCoordinatorGrpcServiceForTest(t, 0)
 	defer shardService.cleanup()
 
-	client := NewShardsClient(shardService.clientConn)
-	_, err := client.DeleteShards(context.Background(), &Empty{})
+	client := shardsservice.NewShardsClient(shardService.clientConn)
+	_, err := client.DeleteShards(context.Background(), &shardsservice.Empty{})
 	require.NoError(t, err)
 
-	_, err = client.SetupShards(context.Background(), &ShardsSetupRequest{FirstShardId: 1, LastShardId: 4})
+	_, err = client.SetupShards(context.Background(), &shardsservice.ShardsSetupRequest{FirstShardId: 1, LastShardId: 4})
 	require.NoError(t, err)
 
 	phaseOneStream, err := client.StartPhaseOneStream(context.Background())
 	require.NoError(t, err)
 	defer phaseOneStream.CloseSend()
 
-	phase1Requests := &PhaseOneRequestBatch{
-		Requests: []*PhaseOneRequest{
+	phase1Requests := &shardsservice.PhaseOneRequestBatch{
+		Requests: []*shardsservice.PhaseOneRequest{
 			{
 				BlockNum: 1,
 				TxNum:    1,
-				ShardidToSerialNumbers: map[uint32]*SerialNumbers{
+				ShardidToSerialNumbers: map[uint32]*shardsservice.SerialNumbers{
 					1: {
 						SerialNumbers: [][]byte{[]byte("key1"), []byte("key2")},
 					},
@@ -112,7 +112,7 @@ func TestShardsCoordinator(t *testing.T) {
 			{
 				BlockNum: 1,
 				TxNum:    2,
-				ShardidToSerialNumbers: map[uint32]*SerialNumbers{
+				ShardidToSerialNumbers: map[uint32]*shardsservice.SerialNumbers{
 					1: {
 						SerialNumbers: [][]byte{[]byte("key5"), []byte("key6")},
 					},
@@ -128,15 +128,15 @@ func TestShardsCoordinator(t *testing.T) {
 	phase1Responses, err := phaseOneStream.Recv()
 	require.NoError(t, err)
 
-	expectedPhase1Responses := map[pendingcommits.TxID]PhaseOneResponse_Status{
+	expectedPhase1Responses := map[pendingcommits.TxID]shardsservice.PhaseOneResponse_Status{
 		{
 			BlkNum: 1,
 			TxNum:  1,
-		}: PhaseOneResponse_CAN_COMMIT,
+		}: shardsservice.PhaseOneResponse_CAN_COMMIT,
 		{
 			BlkNum: 1,
 			TxNum:  2,
-		}: PhaseOneResponse_CAN_COMMIT,
+		}: shardsservice.PhaseOneResponse_CAN_COMMIT,
 	}
 
 	require.Equal(t, len(expectedPhase1Responses), len(phase1Responses.Responses))

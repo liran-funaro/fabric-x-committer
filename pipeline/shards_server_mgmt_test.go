@@ -2,15 +2,15 @@ package pipeline
 
 import (
 	"encoding/binary"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 )
 

@@ -7,6 +7,10 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
+const (
+	GoLevelDb = "goleveldb"
+)
+
 type goleveldb struct {
 	db *leveldb.DB
 	mu sync.RWMutex

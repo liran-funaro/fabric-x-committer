@@ -13,7 +13,6 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/distributed-trust-research/scalable-committer/token v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.11.2
 	go.opentelemetry.io/otel/exporters/jaeger v1.11.2
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.8.0
@@ -24,7 +23,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.ibm.com/distributed-trust-research/scalable-committer/token => ../token
+replace github.ibm.com/distributed-trust-research/scalable-committer/protos/token => ../protos/token
 
 require (
 	github.com/IBM/idemix v0.0.2-0.20230403120754-d7dbe0340c4a // indirect

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -101,7 +101,7 @@ func (m *sigVerifierMgr) startOutputWriterRoutine() {
 				valids := []TxSeqNum{}
 				invalids := []TxSeqNum{}
 				for _, res := range responseBatch.Responses {
-					n := TxSeqNum{
+					n := token.TxSeqNum{
 						BlkNum: res.BlockNum,
 						TxNum:  res.TxNum,
 					}
@@ -222,7 +222,7 @@ func (v *sigVerifier) startRequestSenderRoutine() {
 				err := v.stream.Send(&sigverification.RequestBatch{Requests: reqs})
 				if v.metrics.Enabled {
 					for _, req := range reqs {
-						txSeqNum := TxSeqNum{req.BlockNum, req.TxNum}
+						txSeqNum := token.TxSeqNum{req.BlockNum, req.TxNum}
 						v.metrics.RequestTracer.AddEventAt(txSeqNum, "Sending request to sigverifier", before)
 						v.metrics.RequestTracer.AddEvent(txSeqNum, "Sent request to sigverifier")
 					}

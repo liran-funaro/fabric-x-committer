@@ -3,26 +3,23 @@ package shardsservice
 import (
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/goleveldb"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/mockdb"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pebbledb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
 )
 
 type shard struct {
-	id   uint32
-	path string
-	db   database
-	mu   sync.RWMutex
+	id       uint32
+	path     string
+	database db.Database
+	mu       sync.RWMutex
 
 	pendingCommits    pendingcommits.PendingCommits
 	phaseOneResponses *phaseOneResponse
@@ -32,30 +29,8 @@ type shard struct {
 	metrics           *metrics.Metrics
 }
 
-type database interface {
-	DoNotExist(keys [][]byte) ([]bool, error)
-	Commit(keys [][]byte) error
-	Close()
-}
-
-func openDb(dbType ShardDbType, path string) (database, error) {
-	if err := os.MkdirAll(path, 0755); err != nil {
-		return nil, err
-	}
-	switch strings.ToLower(dbType) {
-	case MockDb:
-		return mockdb.Open(path)
-	case GoLevelDb:
-		return goleveldb.Open(path)
-	case PebbleDb:
-		return pebbledb.Open(path)
-	default:
-		return nil, errors.New("unknown db type")
-	}
-}
-
 func newShard(id uint32, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics *metrics.Metrics) (*shard, error) {
-	db, err := openDb(dbConfig.Type, shardFilePath(dbConfig.RootDir, id))
+	database, err := db.OpenDb(dbConfig.Type, shardFilePath(dbConfig.RootDir, id))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +40,7 @@ func newShard(id uint32, dbConfig *DatabaseConfig, limits *LimitsConfig, metrics
 	return &shard{
 		id:             id,
 		path:           shardFilePath(dbConfig.RootDir, id),
-		db:             db,
+		database:       database,
 		mu:             sync.RWMutex{},
 		pendingCommits: pendingcommits.NewCondPendingCommits(limits.MaxPendingCommitsBufferSize),
 		phaseOnePool: workerpool.New(&workerpool.Config{
@@ -92,12 +67,12 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 			s.metrics.RequestTracer.AddEvent(tID, fmt.Sprintf("Started phase one on shard %d", s.id))
 		}
 		s.wg.Add(1)
-		s.phaseOnePool.Run(func(tID pendingcommits.TxID, serialNumbers *SerialNumbers) func() {
+		s.phaseOnePool.Run(func(tID pendingcommits.TxID, serialNumbers *shardsservice.SerialNumbers) func() {
 			return func() {
 				s.logger.Debugf("shardID [%d] validating TxID [%v]", s.id, tID)
 				defer s.wg.Done()
 
-				resp := &PhaseOneResponse{
+				resp := &shardsservice.PhaseOneResponse{
 					BlockNum: tID.BlkNum,
 					TxNum:    tID.TxNum,
 				}
@@ -106,7 +81,7 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				s.pendingCommits.WaitTillNotExist(serialNumbers.GetSerialNumbers())
 
 				startRead := time.Now()
-				doNoExist, _ := s.db.DoNotExist(serialNumbers.GetSerialNumbers())
+				doNoExist, _ := s.database.DoNotExist(serialNumbers.GetSerialNumbers())
 				if s.metrics.Enabled {
 					s.metrics.RequestTracer.AddEventAt(tID, fmt.Sprintf("Start wait on shard %d", s.id), startWait)
 					s.metrics.RequestTracer.AddEventAt(tID, fmt.Sprintf("Start read on shard %d", s.id), startRead)
@@ -116,13 +91,13 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				for _, notExist := range doNoExist {
 					if !notExist {
 						s.logger.Debugf("shardID [%d] invalidates TxID [%v]", s.id, tID)
-						resp.Status = PhaseOneResponse_CANNOT_COMMITTED
+						resp.Status = shardsservice.PhaseOneResponse_CANNOT_COMMITTED
 						s.phaseOneResponses.add(resp)
 						return
 					}
 				}
 
-				resp.Status = PhaseOneResponse_CAN_COMMIT
+				resp.Status = shardsservice.PhaseOneResponse_CAN_COMMIT
 				s.pendingCommits.Add(tID, serialNumbers.SerialNumbers)
 				s.phaseOneResponses.add(resp)
 				if s.metrics.Enabled {
@@ -146,7 +121,7 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	for txID, instruction := range requests {
 		// TODO: commit in progress should be recorded for recovery
 		serialNumbers := s.pendingCommits.Get(txID)
-		if instruction == PhaseTwoRequest_COMMIT {
+		if instruction == shardsservice.PhaseTwoRequest_COMMIT {
 			validSNs = append(validSNs, serialNumbers...)
 		}
 		txIds = append(txIds, txID)
@@ -154,7 +129,7 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 
 	s.logger.Debugf("shard [%d] committing [%d] serial numbers", s.id, len(validSNs))
 	startCommit := time.Now()
-	if err := s.db.Commit(validSNs); err != nil {
+	if err := s.database.Commit(validSNs); err != nil {
 		panic(err)
 	}
 	s.pendingCommits.DeleteBatch(txIds)
@@ -168,7 +143,7 @@ func (s *shard) executePhaseTwo(requests txIDToInstruction) {
 	}
 }
 
-func (s *shard) accumulatedPhaseOneResponse() []*PhaseOneResponse {
+func (s *shard) accumulatedPhaseOneResponse() []*shardsservice.PhaseOneResponse {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -181,28 +156,28 @@ func (s *shard) delete() error {
 
 	s.wg.Wait()
 
-	s.db.Close()
+	s.database.Close()
 	s.phaseOneResponses = nil
 	return os.RemoveAll(s.path)
 }
 
 type phaseOneResponse struct {
-	responses []*PhaseOneResponse
+	responses []*shardsservice.PhaseOneResponse
 	mu        sync.RWMutex
 }
 
-func (r *phaseOneResponse) add(resp *PhaseOneResponse) {
+func (r *phaseOneResponse) add(resp *shardsservice.PhaseOneResponse) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.responses = append(r.responses, resp)
 }
 
-func (r *phaseOneResponse) getAndRemoveAll() []*PhaseOneResponse {
+func (r *phaseOneResponse) getAndRemoveAll() []*shardsservice.PhaseOneResponse {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	responses := r.responses
-	r.responses = []*PhaseOneResponse{}
+	r.responses = []*shardsservice.PhaseOneResponse{}
 	return responses
 }

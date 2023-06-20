@@ -1,7 +1,7 @@
 
 syntax = "proto3";
 
-option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/token";
+option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/protos/token";
 
 package token;
 

@@ -3,9 +3,9 @@ package parallelexecutor
 import (
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/token"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
 	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
 )
@@ -39,7 +39,7 @@ type ParallelExecutor interface {
 	Errors() <-chan error
 }
 
-//TODO: A channel-closing mechanism may be necessary for the future
+// TODO: A channel-closing mechanism may be necessary for the future
 type parallelExecutor struct {
 	inputCh             chan *Input
 	outputCh            chan []*Output
@@ -155,7 +155,7 @@ func (e *parallelExecutor) Submit(inputs []*Input) {
 	}
 }
 
-//CutBatch cuts a new batch regardless of the size (if not empty)
+// CutBatch cuts a new batch regardless of the size (if not empty)
 func (e *parallelExecutor) CutBatch() {
 	e.batchManualCutoffCh <- struct{}{}
 }

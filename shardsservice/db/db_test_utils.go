@@ -83,9 +83,3 @@ func TestCommit(opener DbOpener, t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []bool{false, false, false}, doNotExist)
 }
-
-type Database interface {
-	DoNotExist(keys [][]byte) ([]bool, error)
-	Commit(keys [][]byte) error
-	Close()
-}

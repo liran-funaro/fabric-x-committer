@@ -1,11 +1,12 @@
 package shardsservice
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/goleveldb"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
 	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
 )
@@ -16,9 +17,9 @@ type shardForTest struct {
 }
 
 func newShardForTest(t *testing.T, id uint32, path string) *shardForTest {
-	c := ReadConfig()
-	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
-	s, err := newShard(id, &DatabaseConfig{Type: GoLevelDb, RootDir: path}, c.Limits, m)
+	c := TestConfig
+	m := &metrics.Metrics{Enabled: false}
+	s, err := newShard(id, &DatabaseConfig{Type: goleveldb.GoLevelDb, RootDir: path}, c.Limits, m)
 	require.NoError(t, err)
 
 	return &shardForTest{
@@ -35,13 +36,13 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 	t.Run("only valid txs", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			pendingcommits.TxID{BlkNum: 1, TxNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 1, TxNum: 1}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key1"), []byte("key2")},
 			},
-			pendingcommits.TxID{BlkNum: 1, TxNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 1, TxNum: 3}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key3"), []byte("key4")},
 			},
-			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key5"), []byte("key6")},
 			},
 		}
@@ -53,21 +54,21 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		}
 		require.Eventually(t, ensure3PendingCommits, 5*time.Second, 500*time.Millisecond)
 
-		expectedPhaseOneResponses := []*PhaseOneResponse{
+		expectedPhaseOneResponses := []*shardsservice.PhaseOneResponse{
 			{
 				BlockNum: 1,
 				TxNum:    1,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 			{
 				BlockNum: 1,
 				TxNum:    3,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 			{
 				BlockNum: 2,
 				TxNum:    13,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 		}
 
@@ -78,9 +79,9 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseTwoRequests := txIDToInstruction{
-			pendingcommits.TxID{BlkNum: 1, TxNum: 1}:  PhaseTwoRequest_COMMIT,
-			pendingcommits.TxID{BlkNum: 1, TxNum: 3}:  PhaseTwoRequest_COMMIT,
-			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 1, TxNum: 1}:  shardsservice.PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 1, TxNum: 3}:  shardsservice.PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 2, TxNum: 13}: shardsservice.PhaseTwoRequest_COMMIT,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
@@ -90,13 +91,13 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 	t.Run("only invalid txs", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			pendingcommits.TxID{BlkNum: 10, TxNum: 11}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 10, TxNum: 11}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key1"), []byte("key2")},
 			},
-			pendingcommits.TxID{BlkNum: 11, TxNum: 32}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 11, TxNum: 32}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key3"), []byte("key4")},
 			},
-			pendingcommits.TxID{BlkNum: 12, TxNum: 23}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 12, TxNum: 23}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key5"), []byte("key6")},
 			},
 		}
@@ -108,21 +109,21 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		}
 		require.Never(t, ensure3PendingCommits, 2*time.Second, 500*time.Millisecond)
 
-		expectedPhaseOneResponses := []*PhaseOneResponse{
+		expectedPhaseOneResponses := []*shardsservice.PhaseOneResponse{
 			{
 				BlockNum: 10,
 				TxNum:    11,
-				Status:   PhaseOneResponse_CANNOT_COMMITTED,
+				Status:   shardsservice.PhaseOneResponse_CANNOT_COMMITTED,
 			},
 			{
 				BlockNum: 11,
 				TxNum:    32,
-				Status:   PhaseOneResponse_CANNOT_COMMITTED,
+				Status:   shardsservice.PhaseOneResponse_CANNOT_COMMITTED,
 			},
 			{
 				BlockNum: 12,
 				TxNum:    23,
-				Status:   PhaseOneResponse_CANNOT_COMMITTED,
+				Status:   shardsservice.PhaseOneResponse_CANNOT_COMMITTED,
 			},
 		}
 
@@ -133,10 +134,10 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 	t.Run("phase one response is `can_commit` but phase two request is forget", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key7"), []byte("key8")},
 			},
-			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key9"), []byte("key10")},
 			},
 		}
@@ -148,16 +149,16 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		}
 		require.Eventually(t, ensure3PendingCommits, 5*time.Second, 500*time.Millisecond)
 
-		expectedPhaseOneResponses := []*PhaseOneResponse{
+		expectedPhaseOneResponses := []*shardsservice.PhaseOneResponse{
 			{
 				BlockNum: 21,
 				TxNum:    1,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 			{
 				BlockNum: 22,
 				TxNum:    3,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 		}
 
@@ -168,8 +169,8 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseTwoRequests := txIDToInstruction{
-			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: PhaseTwoRequest_COMMIT,
-			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: PhaseTwoRequest_FORGET,
+			pendingcommits.TxID{BlkNum: 21, TxNum: 1}: shardsservice.PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 22, TxNum: 3}: shardsservice.PhaseTwoRequest_FORGET,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
@@ -180,10 +181,10 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 
 	t.Run("valid txs and invalid tx", func(t *testing.T) {
 		phaseOneRequests := txIDToSerialNumbers{
-			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
 			},
-			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
 			},
 		}
@@ -195,16 +196,16 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		}
 		require.Eventually(t, ensure2PendingCommits, 5*time.Second, 500*time.Millisecond)
 
-		expectedPhaseOneResponses := []*PhaseOneResponse{
+		expectedPhaseOneResponses := []*shardsservice.PhaseOneResponse{
 			{
 				BlockNum: 4,
 				TxNum:    1,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 			{
 				BlockNum: 4,
 				TxNum:    3,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 		}
 
@@ -215,10 +216,10 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		checkKeysNonExistanceForTest(t, keys, s.shard)
 
 		phaseOneRequests = txIDToSerialNumbers{
-			pendingcommits.TxID{BlkNum: 5, TxNum: 1}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 5, TxNum: 1}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key11"), []byte("key12")},
 			},
-			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: &SerialNumbers{
+			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: &shardsservice.SerialNumbers{
 				SerialNumbers: [][]byte{[]byte("key13"), []byte("key14")},
 			},
 		}
@@ -231,8 +232,8 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		require.Never(t, ensure4PendingCommits, 2*time.Second, 500*time.Millisecond)
 
 		phaseTwoRequests := txIDToInstruction{
-			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: PhaseTwoRequest_COMMIT,
-			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: PhaseTwoRequest_FORGET,
+			pendingcommits.TxID{BlkNum: 4, TxNum: 1}: shardsservice.PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 4, TxNum: 3}: shardsservice.PhaseTwoRequest_FORGET,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
@@ -243,16 +244,16 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		}
 		require.Eventually(t, ensure1PendingCommits, 2*time.Second, 500*time.Millisecond)
 
-		expectedPhaseOneResponses = []*PhaseOneResponse{
+		expectedPhaseOneResponses = []*shardsservice.PhaseOneResponse{
 			{
 				BlockNum: 5,
 				TxNum:    1,
-				Status:   PhaseOneResponse_CANNOT_COMMITTED,
+				Status:   shardsservice.PhaseOneResponse_CANNOT_COMMITTED,
 			},
 			{
 				BlockNum: 5,
 				TxNum:    3,
-				Status:   PhaseOneResponse_CAN_COMMIT,
+				Status:   shardsservice.PhaseOneResponse_CAN_COMMIT,
 			},
 		}
 
@@ -260,7 +261,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 		require.ElementsMatch(t, expectedPhaseOneResponses, actualPhaseOneResponses)
 
 		phaseTwoRequests = txIDToInstruction{
-			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: PhaseTwoRequest_COMMIT,
+			pendingcommits.TxID{BlkNum: 5, TxNum: 3}: shardsservice.PhaseTwoRequest_COMMIT,
 		}
 		s.shard.executePhaseTwo(phaseTwoRequests)
 
@@ -269,7 +270,7 @@ func TestExecutePhaseOneAndTwoWithSingleShard(t *testing.T) {
 }
 
 func checkKeysExistanceForTest(t *testing.T, keys [][]byte, s *shard) {
-	doNotExists, err := s.db.DoNotExist(keys)
+	doNotExists, err := s.database.DoNotExist(keys)
 	require.NoError(t, err)
 
 	for _, doNotExist := range doNotExists {
@@ -278,7 +279,7 @@ func checkKeysExistanceForTest(t *testing.T, keys [][]byte, s *shard) {
 }
 
 func checkKeysNonExistanceForTest(t *testing.T, keys [][]byte, s *shard) {
-	doNotExists, err := s.db.DoNotExist(keys)
+	doNotExists, err := s.database.DoNotExist(keys)
 	require.NoError(t, err)
 
 	for _, doNotExist := range doNotExists {
