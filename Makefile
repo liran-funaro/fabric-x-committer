@@ -1,4 +1,19 @@
 #########################
+# Makefile Targets Summary
+#########################
+
+# test: Builds binaries and runs both unit and integration tests
+# clean: Removes all binaries
+# protos-coordinator: Generates coordinator protobufs
+# protos-token: Generates token protobufs
+# protos-blocktx: Generates block and transaction protobufs
+# protos-wgclient: Generates wgclient protobufs
+# build: Builds all binaries
+# build-docker: Builds all binaries in a docker container
+# docker-builder-run: Executes a command from within a golang docker image.
+# docker-runner-image: Builds the scalable-committer docker image containing all binaries
+
+#########################
 # Constants
 #########################
 
