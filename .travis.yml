@@ -2,14 +2,10 @@ language: go
 go:
     - 1.20.3
 
-install:
-    - sudo snap install --edge --classic just
-
 cache:
     directories:
       - $HOME/.cache/go-build        # Cache the binaries
       - $HOME/gopath/pkg/mod         # Cache the Go modules
 
 script:
-    - just build-local
-    - scripts/run_test.sh
+    - make test

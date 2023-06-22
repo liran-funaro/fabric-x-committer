@@ -1,28 +1,5 @@
 # Prerequisites
 
-### Just
-#### Mac
-```shell
-brew install just
-```
-
-#### Ubuntu:
-```shell
-curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh &#124; bash -s -- --to /usr/local/just
-```
-
-Add the following line to `~/.profile`:
-```shell
-export PATH=$PATH:/usr/local/just
-```
-
-Test the version:
-```shell
-just —-version
-```
-
-[Further details](https://github.com/casey/just#installation)
-
 ### Golang 1.20
 #### Mac:
 ```shell
@@ -68,16 +45,30 @@ setfacl --modify user:cbdcdemo:rw /var/run/docker.sock
 
 # Quickstart
 
-Build and run local binaries
+## Build
+You can build locally or via a docker.
+
+Local build:
 ```shell
-just build-local
+make build
+```
+
+Docker build:
+```shell
+make build-docker
+```
+
+Build linux binaries for remote machines:
+```shell
+make build os=linux arch=amd64 output_dir=./bin-linux
+```
+
+# Run local binaries
+```shell
 bin/sigservice --configs config/config-sigservice.yaml
 bin/shardsservice --configs config/config-shardsservice.yaml
 bin/coordinator --configs config/config-coordinator.yaml
 bin/blockgen stream --configs config/config-blockgen.yaml
 ```
 
-Build linux binaries for remote machines
-```shell
-just build-linux
-```
+

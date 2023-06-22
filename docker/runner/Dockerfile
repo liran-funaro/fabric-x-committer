@@ -1,18 +1,14 @@
-FROM sc_builder
+FROM golang:1.20-bullseye as sc_runner
 
 ENV CONFIGS_PATH=/root/config/
 ENV BINS_PATH=/root/bin/
 ENV PUBKEY_PATH=/root/pubkey/
 
-ADD docker/runner/bin/sigservice \
-docker/runner/bin/shardsservice \
-docker/runner/bin/coordinator \
-docker/runner/bin/coordinator_setup \
-docker/runner/bin/sidecar \
-$BINS_PATH
+ADD . scalable-commiter
+RUN cd scalable-commiter && make build-local output_dir=$BINS_PATH
+RUN rm -rf scalable-commiter
 
-ADD docker/runner/run-services.sh \
-/root/
+ADD scripts/run-services.sh /root/
 
 EXPOSE 5050
 
