@@ -1,7 +1,0 @@
-orderer-listener:
-  orderer: tokentestbed10.sl.cloud9.ibm.com:7050
-  channel-id: mychannel
-  orderer-connection-profile: ./orderer-connection-profile.yaml
-  monitoring:
-    metrics:
-      endpoint: :2122                                         # Overridden by ansible

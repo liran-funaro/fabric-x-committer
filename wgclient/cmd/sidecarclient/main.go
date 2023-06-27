@@ -21,8 +21,8 @@ func main() {
 	if len(c.Profile) == 0 {
 		panic("no profile passed")
 	}
-	p := connection.ReadConnectionProfile(c.OrdererConnectionProfile)
-	creds, signer := connection.GetOrdererConnectionCreds(p)
+
+	creds, signer := connection.GetOrdererConnectionCreds(c.OrdererConnectionProfile)
 
 	committerClient := client.OpenCoordinatorAdapter(c.Committer)
 	ordererClient, err := ordererclient.NewClient(&ordererclient.ClientInitOptions{

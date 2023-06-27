@@ -1,9 +1,0 @@
-RootCAPaths:
-- /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer/eval/deployments/orderer-artifacts/fabric.mytopos/crypto/ordererOrganizations/defaultordererorg.example.com/orderers/orderingservice-machine1.defaultordererorg.example.com/tls/ca.crt
-MSPDir: /Users/lio/go/src/github.com/decentralized-trust-research/scalable-committer/eval/deployments/orderer-artifacts/fabric.mytopos/crypto/peerOrganizations/defaultpeerorg.example.com/peers/peerservice-machine1.defaultpeerorg.example.com/msp
-MSPID: DefaultPeerOrg
-BCCSP:
-  Default: SW
-  SW:
-    Security: 256
-    Hash: SHA2

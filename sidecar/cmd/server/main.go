@@ -25,8 +25,7 @@ func main() {
 	config.ParseFlags()
 
 	c := sidecar.ReadConfig()
-	p := connection.ReadConnectionProfile(c.Orderer.OrdererConnectionProfile)
-	creds, signer := connection.GetOrdererConnectionCreds(p)
+	creds, signer := connection.GetOrdererConnectionCreds(c.Orderer.OrdererConnectionProfile)
 
 	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 
