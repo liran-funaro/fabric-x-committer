@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

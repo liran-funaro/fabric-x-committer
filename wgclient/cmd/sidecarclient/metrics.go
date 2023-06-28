@@ -2,10 +2,10 @@ package main
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	"time"
 )
 

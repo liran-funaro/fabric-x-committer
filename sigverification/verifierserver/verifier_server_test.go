@@ -6,15 +6,15 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 const testTimeout = 3 * time.Second

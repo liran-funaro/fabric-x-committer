@@ -1,7 +1,7 @@
 package sigverification_test
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
 )
 
 type Output = *sigverification.Response

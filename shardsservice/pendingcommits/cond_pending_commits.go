@@ -3,7 +3,7 @@ package pendingcommits
 import (
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"go.uber.org/atomic"
 )
 

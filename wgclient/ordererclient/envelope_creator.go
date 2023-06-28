@@ -3,8 +3,8 @@ package ordererclient
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/identity"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/identity"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 type EnvelopeTxId = string

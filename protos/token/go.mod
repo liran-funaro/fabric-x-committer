@@ -1,4 +1,4 @@
-module github.ibm.com/distributed-trust-research/scalable-committer/protos/token
+module github.ibm.com/decentralized-trust-research/scalable-committer/protos/token
 
 go 1.17
 

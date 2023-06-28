@@ -9,9 +9,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 const defaultTimeout = 2 * time.Second

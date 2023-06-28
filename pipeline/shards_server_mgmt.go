@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -18,7 +18,7 @@ type dbInflightTxs struct {
 	phaseOneProcessedTxsChan chan []*phaseOneProcessedTx
 }
 
-///////////////////////////////////////  shardsServerMgr  ////////////////////////////////
+// /////////////////////////////////////  shardsServerMgr  ////////////////////////////////
 type shardsServerMgr struct {
 	shardServers    []*shardsServer
 	shardIdToServer map[int]*shardsServer
@@ -241,7 +241,7 @@ func (m *shardsServerMgr) stop() {
 	close(m.stopSignalCh)
 }
 
-///////////////////////////////////////  shardsServer  ////////////////////////////////
+// /////////////////////////////////////  shardsServer  ////////////////////////////////
 type shardsServer struct {
 	phaseOneComm *phaseOneComm
 	phaseTwoComm *phaseTwoComm
@@ -302,7 +302,7 @@ func (s *shardsServer) stop() {
 	s.phaseTwoComm.stopRequestSenderRoutine()
 }
 
-//////////////////////////////////// phaseOneComm ////////////////////////////////////
+// ////////////////////////////////// phaseOneComm ////////////////////////////////////
 type phaseOneComm struct {
 	stream              shardsservice.Shards_StartPhaseOneStreamClient
 	streamContext       context.Context
@@ -420,7 +420,7 @@ func (oc *phaseOneComm) stopResponseRecieverRoutine() {
 	oc.stopWG.Wait()
 }
 
-//////////////////////////////////// phaseTwoComm ////////////////////////////////////
+// ////////////////////////////////// phaseTwoComm ////////////////////////////////////
 type phaseTwoComm struct {
 	stream       shardsservice.Shards_StartPhaseTwoStreamClient
 	sendCh       chan *shardsservice.PhaseTwoRequestBatch

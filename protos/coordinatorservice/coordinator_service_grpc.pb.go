@@ -8,8 +8,8 @@ package coordinatorservice
 
 import (
 	context "context"
-	sigverification "github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	token "github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

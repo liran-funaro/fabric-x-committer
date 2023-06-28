@@ -1,6 +1,6 @@
 package workerpool
 
-import "github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+import "github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 
 var logger = logging.New("worker pool")
 
@@ -24,7 +24,7 @@ type WorkerPool struct {
 	inputCh     chan WorkerExecutor
 }
 
-//New creates a new WorkerPool
+// New creates a new WorkerPool
 func New(config *Config) *WorkerPool {
 	if config.Parallelism == 0 {
 		panic("parallelism must be > 0")
@@ -47,7 +47,7 @@ func (w *WorkerPool) handleChannelInput(idx int) {
 	}
 }
 
-//Run submits one function for execution in a go routine once a slot is available
+// Run submits one function for execution in a go routine once a slot is available
 func (w *WorkerPool) Run(input func()) {
 	w.inputCh <- input
 }

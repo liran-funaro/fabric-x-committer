@@ -4,8 +4,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 func MarshalTx(tx *token.Tx) []byte {

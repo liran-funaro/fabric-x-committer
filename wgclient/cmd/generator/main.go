@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/cmd/generator/command"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/cmd/generator/command"
 )
 
 // run with GOGC=20000

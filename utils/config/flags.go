@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 // ParseFlags parses the flags and adds some default flags to the main.go,

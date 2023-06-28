@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client"
 )
 
 func main() {

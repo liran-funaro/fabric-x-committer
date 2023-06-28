@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 func TestWorkerPool(t *testing.T) {

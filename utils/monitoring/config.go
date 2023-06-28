@@ -1,8 +1,8 @@
 package monitoring
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 type Config struct {

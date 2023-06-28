@@ -2,8 +2,8 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 const StatusLabel = "status"

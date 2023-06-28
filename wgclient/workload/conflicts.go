@@ -5,10 +5,10 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	sigverificationtest "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type signerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)

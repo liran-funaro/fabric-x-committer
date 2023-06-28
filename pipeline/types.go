@@ -1,6 +1,6 @@
 package pipeline
 
-import "github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+import "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 
 const defaultChannelBufferSize = 100
 

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/goleveldb"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db/goleveldb"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/pendingcommits"
 )
 
 type shardForTest struct {

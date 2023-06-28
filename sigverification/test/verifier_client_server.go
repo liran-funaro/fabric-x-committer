@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
 

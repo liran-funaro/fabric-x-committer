@@ -6,10 +6,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 )
 
 func StartGrpcServers(sigVerifiersAddresses, shardsServersAddresses []*connection.Endpoint) (s *GrpcServers, err error) {

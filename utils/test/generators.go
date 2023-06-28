@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 type PositiveIntGenerator struct {
@@ -82,10 +82,10 @@ var ConstantByteGenerator = func() S {
 	return 1
 }
 
-//FastByteArrayGenerator creates slices of S of any size.
-//For faster results, it pre-calculates a sample and when a new slice is requested,
-//it is calculated by concatenating the sample the necessary times to achieve the target size.
-//The size of the sample is a tradeoff between the randomness of the values of the generated array and the memory footprint.
+// FastByteArrayGenerator creates slices of S of any size.
+// For faster results, it pre-calculates a sample and when a new slice is requested,
+// it is calculated by concatenating the sample the necessary times to achieve the target size.
+// The size of the sample is a tradeoff between the randomness of the values of the generated array and the memory footprint.
 type FastByteArrayGenerator struct {
 	sample []S
 }

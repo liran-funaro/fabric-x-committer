@@ -5,12 +5,12 @@ import (
 	_ "net/http/pprof"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/perf/track"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/perf/track"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 func main() {

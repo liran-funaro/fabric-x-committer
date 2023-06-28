@@ -3,12 +3,12 @@ package latency
 import (
 	"context"
 	"fmt"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"

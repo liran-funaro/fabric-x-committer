@@ -3,8 +3,8 @@ package latency
 import (
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type SpanExporterType string

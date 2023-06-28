@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"

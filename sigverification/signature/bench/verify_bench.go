@@ -3,10 +3,10 @@ package main
 import (
 	"testing"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type benchmarkConfig struct {

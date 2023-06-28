@@ -3,8 +3,8 @@ package pebbledb_test
 import (
 	"testing"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/pebbledb"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db/pebbledb"
 )
 
 var opener db.DbOpener = func(path string) (db.Database, error) {

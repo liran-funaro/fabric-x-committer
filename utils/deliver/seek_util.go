@@ -8,7 +8,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/identity"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/identity"
 )
 
 const (

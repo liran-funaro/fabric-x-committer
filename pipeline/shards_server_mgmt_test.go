@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"google.golang.org/protobuf/proto"
 )
 

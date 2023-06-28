@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 var (

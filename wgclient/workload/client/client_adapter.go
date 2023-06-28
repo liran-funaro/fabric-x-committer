@@ -10,14 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 )
 
 var logger = logging.New("clientadapter")

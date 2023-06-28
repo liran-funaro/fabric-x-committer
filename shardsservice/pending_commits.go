@@ -3,9 +3,9 @@ package shardsservice
 import (
 	"sync"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 type pendingCommits struct {

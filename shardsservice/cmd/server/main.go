@@ -3,16 +3,16 @@ package main
 import (
 	"fmt"
 
-	shardsproto "github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/goleveldb"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/mockdb"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/db/pebbledb"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	shardsproto "github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db/goleveldb"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db/mockdb"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/db/pebbledb"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 

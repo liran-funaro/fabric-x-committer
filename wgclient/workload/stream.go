@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 func StartTxGenerator(profile *TransactionProfile, conflicts *ConflictProfile, bufferSize int64) (signature.PublicKey, chan *sigverification_test.TxWithStatus) {

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gocarina/gocsv"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 type BlockInfo struct {

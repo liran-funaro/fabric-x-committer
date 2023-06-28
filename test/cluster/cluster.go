@@ -13,11 +13,11 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type Cluster struct {

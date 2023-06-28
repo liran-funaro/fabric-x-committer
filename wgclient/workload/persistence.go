@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"google.golang.org/protobuf/proto"
 )
 

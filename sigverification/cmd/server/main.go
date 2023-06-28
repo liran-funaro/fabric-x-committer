@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/serverconfig"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/verifierserver"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 

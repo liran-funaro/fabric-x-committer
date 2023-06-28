@@ -7,8 +7,8 @@
 package workload
 
 import (
-	coordinatorservice "github.ibm.com/distributed-trust-research/scalable-committer/protos/coordinatorservice"
-	token "github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

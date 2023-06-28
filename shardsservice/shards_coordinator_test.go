@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"google.golang.org/grpc"
 )
 

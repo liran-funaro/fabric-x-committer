@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client"
 )
 
 var (

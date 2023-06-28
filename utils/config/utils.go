@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"os"
 	"path/filepath"
 	"regexp"

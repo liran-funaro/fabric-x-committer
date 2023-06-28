@@ -7,7 +7,7 @@
 package sigverification
 
 import (
-	token "github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

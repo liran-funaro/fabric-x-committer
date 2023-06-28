@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload";
+option go_package = "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload";
 
 package workload;
 

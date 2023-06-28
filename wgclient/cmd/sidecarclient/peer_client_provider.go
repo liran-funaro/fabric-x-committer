@@ -6,7 +6,7 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/pkg/errors"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/deliver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/deliver"
 	"google.golang.org/grpc"
 )
 

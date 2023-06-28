@@ -13,7 +13,7 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/mitchellh/colorstring"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"gopkg.in/yaml.v2"
 )
 

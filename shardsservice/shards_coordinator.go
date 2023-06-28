@@ -5,11 +5,11 @@ import (
 	"io"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/shardsservice"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/pendingcommits"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/workerpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/pendingcommits"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 	"go.opentelemetry.io/otel/attribute"
 )
 

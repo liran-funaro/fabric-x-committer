@@ -5,13 +5,13 @@ import (
 	"errors"
 	"time"
 
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/distributed-trust-research/scalable-committer/sigverification/streamhandler"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/streamhandler"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"go.opentelemetry.io/otel/attribute"
 )
 

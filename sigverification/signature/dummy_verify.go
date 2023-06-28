@@ -1,6 +1,6 @@
 package signature
 
-import "github.ibm.com/distributed-trust-research/scalable-committer/protos/token"
+import "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 
 // Dummy Factory
 

@@ -4,11 +4,11 @@ import (
 	"flag"
 	"time"
 
-	connectionUtils "github.ibm.com/distributed-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/test"
+	connectionUtils "github.ibm.com/decentralized-trust-research/scalable-committer/shardsservice/cmd/testclient/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 var clientConfig connectionUtils.ClientConfig

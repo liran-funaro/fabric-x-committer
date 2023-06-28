@@ -1,14 +1,14 @@
 package main
 
 import (
-	sigverification_test "github.ibm.com/distributed-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/distributed-trust-research/scalable-committer/utils/serialization"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/ordererclient"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload"
-	"github.ibm.com/distributed-trust-research/scalable-committer/wgclient/workload/client"
+	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/ordererclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client"
 	"google.golang.org/grpc/credentials/insecure"
 )
 

@@ -1,4 +1,4 @@
-module github.ibm.com/distributed-trust-research/scalable-committer/utils
+module github.ibm.com/decentralized-trust-research/scalable-committer/utils
 
 go 1.20
 
@@ -23,7 +23,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.ibm.com/distributed-trust-research/scalable-committer/protos/token => ../protos/token
+replace github.ibm.com/decentralized-trust-research/scalable-committer/protos/token => ../protos/token
 
 require (
 	github.com/IBM/idemix v0.0.2-0.20230403120754-d7dbe0340c4a // indirect
