@@ -3,10 +3,8 @@ package vcservice
 import (
 	"context"
 	"fmt"
-	"log"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
@@ -58,8 +56,8 @@ func TestValidate(t *testing.T) {
 	populateDataWithCleanup(
 		t,
 		env.v.databaseConnection,
-		[]uint32{1, 2},
-		map[uint32]*namespaceWrites{
+		[]namespaceID{1, 2},
+		namespaceToWrites{
 			1: {
 				keys:     []string{"key1.1", "key1.2", "key1.3", "key1.4"},
 				values:   [][]byte{[]byte("value1.1"), []byte("value1.2"), []byte("value1.3"), []byte("value1.4")},
@@ -249,11 +247,14 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// TODO: all the statement templates will be moved to a different package once we decide on the
+// 		 chaincode deployment model.
+
 var createTableStmtTmpt = `
 CREATE TABLE IF NOT EXISTS %s (
     key varchar NOT NULL PRIMARY KEY,
     value bytea NOT NULL,
-    version bytea NOT NULL
+    version bytea
 );
 `
 
@@ -288,25 +289,32 @@ $$
 LANGUAGE plpgsql;
 `
 
-var dropStmt = "DROP TABLE IF EXISTS %s"
-var dropFuncStmt = "DROP FUNCTION IF EXISTS validate_reads_%s"
+var commitFuncTmpt = `
+CREATE OR REPLACE FUNCTION commit_%s(_keys VARCHAR[], _values BYTEA[], _versions BYTEA[])
+RETURNS VOID AS $$
+BEGIN
+    INSERT INTO %s (key, value, version)
+    SELECT _key, _value, _version
+    FROM UNNEST(_keys, _values, _versions) AS t(_key, _value, _version)
+    ON CONFLICT (key) DO UPDATE
+    SET value = excluded.value, version = excluded.version;
+END;
+$$ LANGUAGE plpgsql;
+`
 
-func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []uint32, writes map[uint32]*namespaceWrites) {
+var dropTableStmtTmpt = "DROP TABLE IF EXISTS %s"
+var dropValidateFuncStmtTmpt = "DROP FUNCTION IF EXISTS validate_reads_%s"
+var dropCommitFuncStmtTmpt = "DROP FUNCTION IF EXISTS commit_%s"
+
+func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []namespaceID, writes namespaceToWrites) {
 	ctx := context.Background()
 
 	for _, nsID := range nsIDs {
-		tableName := fmt.Sprintf("ns_%d", nsID)
+		tableName := tableNameForNamespace(nsID)
 
-		_, err := conn.Exec(ctx, fmt.Sprintf(dropStmt, tableName))
-		require.NoError(t, err)
-		t.Log("Dropped table", tableName)
-
-		_, err = conn.Exec(ctx, fmt.Sprintf(dropFuncStmt, tableName))
-		require.NoError(t, err)
-		t.Log("Dropped function", tableName)
-
+		// TODO: using []string{statement1, statement2, ...}, we can avoid certain repeated code
 		createTableStmt := fmt.Sprintf(createTableStmtTmpt, tableName)
-		_, err = conn.Exec(ctx, createTableStmt)
+		_, err := conn.Exec(ctx, createTableStmt)
 		require.NoError(t, err)
 		t.Log("Created table", tableName)
 
@@ -319,11 +327,20 @@ func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []uint32, write
 		_, err = conn.Exec(ctx, validateFunc)
 		require.NoError(t, err)
 		t.Log("Created function", tableName)
+
+		commitFunc := fmt.Sprintf(commitFuncTmpt, tableName, tableName)
+		_, err = conn.Exec(ctx, commitFunc)
+		require.NoError(t, err)
+		t.Log("Created function", tableName)
 	}
 
 	for _, nsID := range nsIDs {
 		writes := writes[nsID]
-		tableName := fmt.Sprintf("ns_%d", nsID)
+		tableName := tableNameForNamespace(nsID)
+
+		// Though we can use multiple values within a single statement, for simplicity and also due to the usage
+		// within the tests, we are making multiple calls to the database. When we are storing a large amount
+		// of data, we should use multiple values within a single statement.
 		for i, key := range writes.keys {
 			_, err := conn.Exec(
 				ctx,
@@ -332,20 +349,26 @@ func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []uint32, write
 				writes.values[i],
 				writes.versions[i],
 			)
-			if err != nil {
-				log.Fatal(err)
-			}
+			require.NoError(t, err)
 		}
 	}
 
 	t.Cleanup(func() {
-		for _, nsID := range nsIDs {
-			tableName := fmt.Sprintf("ns_%d", nsID)
-			_, err := conn.Exec(ctx, fmt.Sprintf(dropStmt, tableName))
-			assert.NoError(t, err)
+		ctx := context.Background()
 
-			_, err = conn.Exec(ctx, fmt.Sprintf(dropFuncStmt, tableName))
-			assert.NoError(t, err)
+		dropStmtTmpts := []string{
+			dropTableStmtTmpt,
+			dropValidateFuncStmtTmpt,
+			dropCommitFuncStmtTmpt,
+		}
+
+		for _, nsID := range nsIDs {
+			tableName := tableNameForNamespace(nsID)
+
+			for _, dropStmtTmpt := range dropStmtTmpts {
+				_, err := conn.Exec(ctx, fmt.Sprintf(dropStmtTmpt, tableName))
+				require.NoError(t, err)
+			}
 		}
 	})
 }

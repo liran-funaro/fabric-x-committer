@@ -41,7 +41,9 @@ type preparedTransactions struct {
 }
 
 // namespaceToReads maps a namespace ID to a list of reads
-type namespaceToReads map[uint32]*reads
+type namespaceToReads map[namespaceID]*reads
+
+type namespaceID uint32
 
 // reads is a list of keys and versions
 type reads struct {
@@ -56,14 +58,23 @@ type readToTransactions map[comparableRead][]TxID
 
 // comparableRead is a read that can be used as a map key
 type comparableRead struct {
-	nsID    uint32
+	nsID    namespaceID
 	key     string
 	version string
 }
 
 type transactionToWrites map[TxID]namespaceToWrites
 
-type namespaceToWrites map[uint32]*namespaceWrites
+type namespaceToWrites map[namespaceID]*namespaceWrites
+
+func (nw namespaceToWrites) getOrCreate(nsID namespaceID) *namespaceWrites {
+	nsWrites, ok := nw[nsID]
+	if !ok {
+		nsWrites = &namespaceWrites{}
+		nw[nsID] = nsWrites
+	}
+	return nsWrites
+}
 
 type namespaceWrites struct {
 	keys     []string
@@ -71,7 +82,7 @@ type namespaceWrites struct {
 	versions [][]byte
 }
 
-func (nr namespaceToReads) getOrCreate(nsID uint32) *reads {
+func (nr namespaceToReads) getOrCreate(nsID namespaceID) *reads {
 	nsRead, ok := nr[nsID]
 	if !ok {
 		nsRead = &reads{}
@@ -80,7 +91,7 @@ func (nr namespaceToReads) getOrCreate(nsID uint32) *reads {
 	return nsRead
 }
 
-func (tw transactionToWrites) getOrCreate(id TxID, nsID uint32) *namespaceWrites {
+func (tw transactionToWrites) getOrCreate(id TxID, nsID namespaceID) *namespaceWrites {
 	nsToWrites, ok := tw[id]
 	if !ok {
 		nsToWrites = make(namespaceToWrites)
@@ -110,6 +121,12 @@ func (nw *namespaceWrites) append(key string, value, version []byte) {
 	nw.keys = append(nw.keys, key)
 	nw.values = append(nw.values, value)
 	nw.versions = append(nw.versions, version)
+}
+
+func (nw *namespaceWrites) appendMany(key []string, value, version [][]byte) {
+	nw.keys = append(nw.keys, key...)
+	nw.values = append(nw.values, value...)
+	nw.versions = append(nw.versions, version...)
 }
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs
@@ -143,15 +160,15 @@ func (p *transactionPreparer) prepare() {
 		for _, tx := range txBatch.Transactions {
 			for _, ns := range tx.Namespaces {
 				if len(ns.ReadsOnly) > 0 {
-					p.addReadsOnlyToPreparedTxs(prepTxs, tx.ID, ns.NsId, ns.ReadsOnly)
+					p.addReadsOnlyToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.ReadsOnly)
 				}
 
 				if len(ns.ReadWrites) > 0 {
-					p.addReadWritesToPreparedTxs(prepTxs, tx.ID, ns.NsId, ns.ReadWrites)
+					p.addReadWritesToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.ReadWrites)
 				}
 
 				if len(ns.BlindWrites) > 0 {
-					p.addBlindWritesToPreparedTxs(prepTxs, tx.ID, ns.NsId, ns.BlindWrites)
+					p.addBlindWritesToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.BlindWrites)
 				}
 			}
 		}
@@ -161,7 +178,7 @@ func (p *transactionPreparer) prepare() {
 }
 
 // addReadsOnlyToPreparedTxs adds reads-only to the prepared transactions
-func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID uint32, readsOnly []*types.Read) {
+func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readsOnly []*types.Read) {
 	nsReads := prepTxs.namespaceToReadEntries.getOrCreate(nsID)
 
 	for _, r := range readsOnly {
@@ -181,7 +198,7 @@ func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransac
 }
 
 // addReadWritesToPreparedTxs adds read-writes to the prepared transactions
-func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID uint32, readWrites []*types.ReadWrite) {
+func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readWrites []*types.ReadWrite) {
 	nsReads := prepTxs.namespaceToReadEntries.getOrCreate(nsID)
 	nsWrites := prepTxs.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
 
@@ -207,7 +224,7 @@ func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransa
 }
 
 // addBlindWritesToPreparedTxs adds the blind writes to the prepared transactions
-func (p *transactionPreparer) addBlindWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID uint32, blindWrites []*types.Write) {
+func (p *transactionPreparer) addBlindWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, blindWrites []*types.Write) {
 	nsWrites := prepTxs.blindWritesPerTransaction.getOrCreate(id, nsID)
 
 	for _, w := range blindWrites {

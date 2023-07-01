@@ -2,8 +2,8 @@ package vcservice
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/yugabyte/pgx/v4"
 )
@@ -106,7 +106,7 @@ func (v *transactionValidator) validate() {
 	}
 }
 
-func (v *transactionValidator) validateNamespaceReads(nsID uint32, r *reads) (*reads, error) {
+func (v *transactionValidator) validateNamespaceReads(nsID namespaceID, r *reads) (*reads, error) {
 	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
 	// the reads. This function returns the keys and versions of the mismatching reads.
 	// Note that we have a table per namespace.
@@ -114,8 +114,7 @@ func (v *transactionValidator) validateNamespaceReads(nsID uint32, r *reads) (*r
 	// to avoid parsing, planning and optimizing the query for each invoke. If we use
 	// a common function for all namespace, we need to pass the table name as a parameter
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
-	functionName := "validate_reads_ns_" + strconv.FormatUint(uint64(nsID), 10)
-	query := "SELECT * FROM " + functionName + "($1::varchar[], $2::bytea[])"
+	query := fmt.Sprintf("SELECT * FROM %s($1::varchar[], $2::bytea[])", validateFuncNameForNamespace(nsID))
 
 	mismatch, err := v.databaseConnection.Query(context.Background(), query, r.keys, r.versions)
 	if err != nil {
@@ -123,15 +122,30 @@ func (v *transactionValidator) validateNamespaceReads(nsID uint32, r *reads) (*r
 	}
 	defer mismatch.Close()
 
-	mismatchingReads := &reads{}
-	for mismatch.Next() {
-		var key string
-		var version []byte
-		if err := mismatch.Scan(&key, &version); err != nil {
-			return nil, err
-		}
-		mismatchingReads.append(key, version)
+	keys, values, err := readKeysAndVersions(mismatch)
+	if err != nil {
+		return nil, err
 	}
 
-	return mismatchingReads, mismatch.Err()
+	mismatchingReads := &reads{}
+	mismatchingReads.appendMany(keys, values)
+
+	return mismatchingReads, nil
+}
+
+func readKeysAndVersions(r pgx.Rows) ([]string, [][]byte, error) {
+	var keys []string
+	var versions [][]byte
+
+	for r.Next() {
+		var key string
+		var version []byte
+		if err := r.Scan(&key, &version); err != nil {
+			return nil, nil, err
+		}
+		keys = append(keys, key)
+		versions = append(versions, version)
+	}
+
+	return keys, versions, r.Err()
 }
