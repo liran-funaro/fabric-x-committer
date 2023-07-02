@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option go_package = "github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice";
+
+package protovcservice;
+
+import "api/protoblocktx/block_tx.proto";
+
+service ValidationAndCommitService {
+  rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream TransactionStatus) {}
+}
+
+message TransactionBatch {
+  repeated Transaction transactions = 1;
+}
+
+message Transaction {
+  string ID = 1;
+  repeated protoblocktx.TxNamespace namespaces = 2;
+}
+
+enum TransactionStatus {
+    COMMITTED = 0;
+    ABORTED_MVCC_CONFLICT = 1;
+    ABORTED_DUPLICATE_TXID = 2;
+}

@@ -308,46 +308,39 @@ var dropCommitFuncStmtTmpt = "DROP FUNCTION IF EXISTS commit_%s"
 
 func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []namespaceID, writes namespaceToWrites) {
 	ctx := context.Background()
-
 	for _, nsID := range nsIDs {
 		tableName := tableNameForNamespace(nsID)
 
-		// TODO: using []string{statement1, statement2, ...}, we can avoid certain repeated code
-		createTableStmt := fmt.Sprintf(createTableStmtTmpt, tableName)
-		_, err := conn.Exec(ctx, createTableStmt)
-		require.NoError(t, err)
-		t.Log("Created table", tableName)
+		statements := []string{
+			fmt.Sprintf(createTableStmtTmpt, tableName),
+			fmt.Sprintf(createIndexStmtTmpt, tableName, tableName),
+			fmt.Sprintf(validateFuncTmpt, tableName, tableName, tableName, tableName, tableName, tableName),
+			fmt.Sprintf(commitFuncTmpt, tableName, tableName),
+		}
 
-		createIndexStmt := fmt.Sprintf(createIndexStmtTmpt, tableName, tableName)
-		_, err = conn.Exec(ctx, createIndexStmt)
-		require.NoError(t, err)
-		t.Log("Created index", tableName)
-
-		validateFunc := fmt.Sprintf(validateFuncTmpt, tableName, tableName, tableName, tableName, tableName, tableName)
-		_, err = conn.Exec(ctx, validateFunc)
-		require.NoError(t, err)
-		t.Log("Created function", tableName)
-
-		commitFunc := fmt.Sprintf(commitFuncTmpt, tableName, tableName)
-		_, err = conn.Exec(ctx, commitFunc)
-		require.NoError(t, err)
-		t.Log("Created function", tableName)
+		for _, stmt := range statements {
+			_, err := conn.Exec(ctx, stmt)
+			require.NoError(t, err)
+		}
 	}
 
 	for _, nsID := range nsIDs {
-		writes := writes[nsID]
+		wrs, ok := writes[nsID]
+		if !ok {
+			continue
+		}
 		tableName := tableNameForNamespace(nsID)
 
 		// Though we can use multiple values within a single statement, for simplicity and also due to the usage
 		// within the tests, we are making multiple calls to the database. When we are storing a large amount
 		// of data, we should use multiple values within a single statement.
-		for i, key := range writes.keys {
+		for i, key := range wrs.keys {
 			_, err := conn.Exec(
 				ctx,
 				fmt.Sprintf("INSERT INTO %s (key, value, version) VALUES ($1, $2, $3)", tableName),
 				key,
-				writes.values[i],
-				writes.versions[i],
+				wrs.values[i],
+				wrs.versions[i],
 			)
 			require.NoError(t, err)
 		}

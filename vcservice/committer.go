@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/yugabyte/pgx/v4"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
 // transactionCommitter is responsible for committing the transactions
@@ -16,38 +17,23 @@ type transactionCommitter struct {
 	incomingValidatedTransactions <-chan *validatedTransactions
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
-	outgoingTransactionsStatus chan<- transactionCommitStatus
+	outgoingTransactionsStatus chan<- *protovcservice.TransactionStatus
 }
 
-// TODO: Move the following to a proto in subsequent PR
-type transactionCommitStatus map[TxID]ValidationCode
+// txIDsStatusNameSpace is the namespace for storing transaction IDs and status
+// This namespace would be used to detect duplicate txIDs to avoid replay attacks
+// TODO: duplicate txIDs would be handled in issue #202
+const txIDsStatusNameSpace = 512
 
-// ValidateCode is the code returned by the validator-committer service
-// to indicate the status of the transaction
-// TODO: ValidationCode needs to be moved to a proto in subsequent PR
-type ValidationCode uint8
-
-const (
-	// COMMITTED indicates that the transaction was committed
-	COMMITTED ValidationCode = iota
-	// ABORTED_MVCC_CONFLICT indicates that the transaction was aborted
-	// due to a MVCC conflict, i.e., mismatch between the read performed
-	// by the transaction and the committed state
-	ABORTED_MVCC_CONFLICT
-)
-
-const (
-	// txIDsStatusNameSpace is the namespace for storing transaction IDs and status
-	// This namespace would be used to detect duplicate txIDs to avoid replay attacks
-	// TODO: duplicate txIDs would be handled in issue #202
-	txIDsStatusNameSpace = 512
-)
+// versionZero is used to indicate that the key is not found in the database and hence,
+// the version should be set to 0 for when the key is inserted into the database
+var versionZero = versionNumber(0).bytes()
 
 // newCommitter creates a new transactionCommitter
 func newCommitter(
 	conn *pgx.Conn,
 	validatedTxs <-chan *validatedTransactions,
-	txsStatus chan<- transactionCommitStatus,
+	txsStatus chan<- *protovcservice.TransactionStatus,
 ) *transactionCommitter {
 	return &transactionCommitter{
 		databaseConnection:            conn,
@@ -79,7 +65,7 @@ func (c *transactionCommitter) commit() {
 
 func (c *transactionCommitter) prepareWritesForCommit(
 	vTx *validatedTransactions,
-) (namespaceToWrites, transactionCommitStatus, error) {
+) (namespaceToWrites, *protovcservice.TransactionStatus, error) {
 	// Step 1: group the writes by namespace so that we can commit to each table indepdenently
 	nsToBlindWrites := groupWritesByNamespace(vTx.validTxBlindWrites)
 	nsToNonBlindWrites := groupWritesByNamespace(vTx.validTxNonBlindWrites)
@@ -101,20 +87,23 @@ func (c *transactionCommitter) prepareWritesForCommit(
 	}
 
 	// Step 4: construct transaction status
-	txCommitStatus := make(transactionCommitStatus)
-	for txID := range vTx.invalidTxIndices {
-		txCommitStatus[txID] = ABORTED_MVCC_CONFLICT
+	txCommitStatus := &protovcservice.TransactionStatus{
+		Status: map[string]protovcservice.TransactionStatus_Flag{},
 	}
-	for txID := range vTx.validTxBlindWrites {
-		txCommitStatus[txID] = COMMITTED
+
+	for txID := range vTx.invalidTxIndices {
+		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT
 	}
 	for txID := range vTx.validTxNonBlindWrites {
-		txCommitStatus[txID] = COMMITTED
+		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_COMMITTED
+	}
+	for txID := range vTx.validTxBlindWrites {
+		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_COMMITTED
 	}
 
 	// Step 5: add the transaction status to the writes
 	txIDNsWrites := &namespaceWrites{}
-	for txID, status := range txCommitStatus {
+	for txID, status := range txCommitStatus.Status {
 		txIDNsWrites.keys = append(txIDNsWrites.keys, string(txID))
 		txIDNsWrites.values = append(txIDNsWrites.values, []byte{uint8(status)})
 	}
@@ -124,8 +113,6 @@ func (c *transactionCommitter) prepareWritesForCommit(
 }
 
 func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToWrites) error {
-	versionZero := versionNumber(0).bytes()
-
 	for nsID, writes := range nsToWrites {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance

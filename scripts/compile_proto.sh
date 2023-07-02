@@ -1,14 +1,19 @@
 #!/bin/bash
 
-set -euo pipefail
+set -eux -o pipefail
 
-cd protos
-mkdir -p ../pkg/types
+# Find all proto dirs to be processed
+PROTO_DIRS="$(find "$(pwd)" \
+    -path "$(pwd)/protos" -prune -o \
+    -path "$(pwd)/wgclient" -prune -o \
+    -name '*.proto' -print0 | \
+    xargs -0 -n 1 dirname | \
+    sort -u | grep -v testdata)"
 
-for protos in $(find . -name '*.proto' -exec dirname {} \; | sort -u); do
-  protoc  \
-    --proto_path . \
-    --go_out=../pkg/types \
-    --go_opt=paths=source_relative \
-    $protos/*.proto
+BASE_DIR="$(pwd)"
+
+for dir in ${PROTO_DIRS}; do
+    protoc --proto_path="$BASE_DIR" \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+        --go_out=paths=source_relative:. "$dir"/*.proto
 done

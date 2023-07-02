@@ -4,17 +4,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pkg/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
 type prepareTestEnv struct {
 	preparer    *transactionPreparer
-	txBatch     chan *TransactionBatch
+	txBatch     chan *protovcservice.TransactionBatch
 	preparedTxs chan *preparedTransactions
 }
 
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
-	txBatch := make(chan *TransactionBatch, 10)
+	txBatch := make(chan *protovcservice.TransactionBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	preparer := newPreparer(txBatch, preparedTxs)
 
@@ -39,14 +40,14 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	v0 := versionNumber(0).bytes()
 	v1 := versionNumber(1).bytes()
 
-	tx := &TransactionBatch{
-		Transactions: []*TransactionWithID{
+	tx := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
 			{
 				ID: "tx1",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key1", Version: v1},
 							{Key: "key2", Version: v1},
 							{Key: "key3", Version: nil},
@@ -54,7 +55,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					},
 					{
 						NsId: 2,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key4", Version: v0},
 							{Key: "key5", Version: nil},
 						},
@@ -63,10 +64,10 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			},
 			{
 				ID: "tx2",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key1", Version: v1},
 							{Key: "key4", Version: v1},
 							{Key: "key5", Version: nil},
@@ -74,7 +75,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					},
 					{
 						NsId: 2,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key4", Version: v1},
 							{Key: "key5", Version: v0},
 							{Key: "key6", Version: nil}},
@@ -125,30 +126,30 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	tx := &TransactionBatch{
-		Transactions: []*TransactionWithID{
+	tx := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
 			{
 				ID: "tx1",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						BlindWrites: []*types.Write{
+						BlindWrites: []*protoblocktx.Write{
 							{Key: "key1", Value: []byte("1")},
 							{Key: "key2", Value: []byte("1")},
 							{Key: "key3", Value: nil}},
 					},
 					{
 						NsId:        2,
-						BlindWrites: []*types.Write{{Key: "key1", Value: []byte("5")}},
+						BlindWrites: []*protoblocktx.Write{{Key: "key1", Value: []byte("5")}},
 					},
 				},
 			},
 			{
 				ID: "tx2",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						BlindWrites: []*types.Write{
+						BlindWrites: []*protoblocktx.Write{
 							{Key: "key4", Value: []byte("1")},
 							{Key: "key5", Value: nil},
 						},
@@ -203,14 +204,14 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	v1 := versionNumber(1).bytes()
 	v2 := versionNumber(2).bytes()
 
-	tx := &TransactionBatch{
-		Transactions: []*TransactionWithID{
+	tx := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
 			{
 				ID: "tx1",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key1", Version: v1, Value: []byte("v1")},
 							{Key: "key2", Version: v1, Value: []byte("v2")},
 							{Key: "key3", Version: nil, Value: []byte("v3")},
@@ -218,7 +219,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					},
 					{
 						NsId: 2,
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key4", Version: v0, Value: []byte("v4")},
 							{Key: "key5", Version: nil, Value: []byte("v5")},
 						},
@@ -227,17 +228,17 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 			{
 				ID: "tx2",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key4", Version: v1, Value: []byte("v4")},
 							{Key: "key5", Version: nil, Value: []byte("v5")},
 						},
 					},
 					{
 						NsId: 2,
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key6", Version: nil, Value: []byte("v6")},
 						},
 					},
@@ -318,33 +319,33 @@ func TestPrepareTx(t *testing.T) {
 	v9 := versionNumber(9).bytes()
 	v10 := versionNumber(10).bytes()
 
-	tx := &TransactionBatch{
-		Transactions: []*TransactionWithID{
+	tx := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
 			{
 				ID: "tx1",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key1", Version: v1},
 							{Key: "key2", Version: v2},
 						},
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key3", Version: v3, Value: []byte("v3")},
 						},
-						BlindWrites: []*types.Write{
+						BlindWrites: []*protoblocktx.Write{
 							{Key: "key4", Value: []byte("v4")},
 						},
 					},
 					{
 						NsId: 2,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key5", Version: nil},
 						},
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key6", Version: nil, Value: []byte("v6")},
 						},
-						BlindWrites: []*types.Write{
+						BlindWrites: []*protoblocktx.Write{
 							{Key: "key7", Value: []byte("v7")},
 						},
 					},
@@ -352,16 +353,16 @@ func TestPrepareTx(t *testing.T) {
 			},
 			{
 				ID: "tx2",
-				Namespaces: []*types.TxNamespace{
+				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
-						ReadsOnly: []*types.Read{
+						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key8", Version: v8},
 						},
-						ReadWrites: []*types.ReadWrite{
+						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: "key9", Version: v9, Value: []byte("v9")},
 						},
-						BlindWrites: []*types.Write{
+						BlindWrites: []*protoblocktx.Write{
 							{Key: "key10", Value: []byte("v10")},
 						},
 					},

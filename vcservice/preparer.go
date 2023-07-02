@@ -2,33 +2,18 @@ package vcservice
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pkg/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
 // transactionPreparer prepares transaction batches for validation and commit.
 type transactionPreparer struct {
 	// incomingTransactionBatch is an input to the preparer
-	incomingTransactionBatch <-chan *TransactionBatch
+	incomingTransactionBatch <-chan *protovcservice.TransactionBatch
 	// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 	outgoingPreparedTransactions chan<- *preparedTransactions
 }
 
-// TransactionBatch is a batch of transactions
-// TODO: this will be moved to proto as it will be sent by the coordinator
-type TransactionBatch struct {
-	// we assume no duplicate transaction IDs within a batch
-	Transactions []*TransactionWithID
-}
-
-// TransactionWithID is a transaction with an ID
-// TODO: this will be moved to proto as it will be sent by the coordinator
-type TransactionWithID struct {
-	ID         TxID
-	Namespaces []*types.TxNamespace
-}
-
-// TxID is a transaction ID
-// TODO: this will be moved to proto as it will be sent by the coordinator
 type TxID string
 
 // preparedTransactions is a list of transactions that are prepared for validation and commit
@@ -130,7 +115,7 @@ func (nw *namespaceWrites) appendMany(key []string, value, version [][]byte) {
 }
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs
-func newPreparer(txBatch <-chan *TransactionBatch, preparedTxs chan<- *preparedTransactions) *transactionPreparer {
+func newPreparer(txBatch <-chan *protovcservice.TransactionBatch, preparedTxs chan<- *preparedTransactions) *transactionPreparer {
 	return &transactionPreparer{
 		incomingTransactionBatch:     txBatch,
 		outgoingPreparedTransactions: preparedTxs,
@@ -160,15 +145,15 @@ func (p *transactionPreparer) prepare() {
 		for _, tx := range txBatch.Transactions {
 			for _, ns := range tx.Namespaces {
 				if len(ns.ReadsOnly) > 0 {
-					p.addReadsOnlyToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.ReadsOnly)
+					p.addReadsOnlyToPreparedTxs(prepTxs, TxID(tx.ID), namespaceID(ns.NsId), ns.ReadsOnly)
 				}
 
 				if len(ns.ReadWrites) > 0 {
-					p.addReadWritesToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.ReadWrites)
+					p.addReadWritesToPreparedTxs(prepTxs, TxID(tx.ID), namespaceID(ns.NsId), ns.ReadWrites)
 				}
 
 				if len(ns.BlindWrites) > 0 {
-					p.addBlindWritesToPreparedTxs(prepTxs, tx.ID, namespaceID(ns.NsId), ns.BlindWrites)
+					p.addBlindWritesToPreparedTxs(prepTxs, TxID(tx.ID), namespaceID(ns.NsId), ns.BlindWrites)
 				}
 			}
 		}
@@ -178,7 +163,7 @@ func (p *transactionPreparer) prepare() {
 }
 
 // addReadsOnlyToPreparedTxs adds reads-only to the prepared transactions
-func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readsOnly []*types.Read) {
+func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readsOnly []*protoblocktx.Read) {
 	nsReads := prepTxs.namespaceToReadEntries.getOrCreate(nsID)
 
 	for _, r := range readsOnly {
@@ -198,7 +183,7 @@ func (p *transactionPreparer) addReadsOnlyToPreparedTxs(prepTxs *preparedTransac
 }
 
 // addReadWritesToPreparedTxs adds read-writes to the prepared transactions
-func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readWrites []*types.ReadWrite) {
+func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, readWrites []*protoblocktx.ReadWrite) {
 	nsReads := prepTxs.namespaceToReadEntries.getOrCreate(nsID)
 	nsWrites := prepTxs.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
 
@@ -224,7 +209,7 @@ func (p *transactionPreparer) addReadWritesToPreparedTxs(prepTxs *preparedTransa
 }
 
 // addBlindWritesToPreparedTxs adds the blind writes to the prepared transactions
-func (p *transactionPreparer) addBlindWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, blindWrites []*types.Write) {
+func (p *transactionPreparer) addBlindWritesToPreparedTxs(prepTxs *preparedTransactions, id TxID, nsID namespaceID, blindWrites []*protoblocktx.Write) {
 	nsWrites := prepTxs.blindWritesPerTransaction.getOrCreate(id, nsID)
 
 	for _, w := range blindWrites {
