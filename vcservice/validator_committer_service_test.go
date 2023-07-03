@@ -29,24 +29,31 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	port, err := strconv.Atoi(dbConnSettings.Port)
 	require.NoError(t, err)
 
-	dbConfig := &DBConfig{
-		Host:     dbConnSettings.Host,
-		Port:     port,
-		User:     dbConnSettings.User,
-		Password: dbConnSettings.Password,
-	}
-
-	limits := &Limits{
-		MaxWorkersForPreparer:  2,
-		MaxWorkersForValidator: 2,
-		MaxWorkersForCommitter: 2,
+	config := &ValidatorCommitterServiceConfig{
+		Server: &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		},
+		Database: &DatabaseConfig{
+			Host:     dbConnSettings.Host,
+			Port:     port,
+			Username: dbConnSettings.User,
+			Password: dbConnSettings.Password,
+		},
+		ResourceLimits: &ResourceLimitsConfig{
+			MaxWorkersForPreparer:  2,
+			MaxWorkersForValidator: 2,
+			MaxWorkersForCommitter: 2,
+		},
 	}
 
 	sConfig := connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
 
-	vcs := NewValidatorCommitterService(limits, dbConfig)
+	vcs := NewValidatorCommitterService(config)
 
 	var grpcSrv *grpc.Server
 

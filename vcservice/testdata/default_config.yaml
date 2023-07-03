@@ -1,0 +1,11 @@
+validator-committer-service:
+  # Configuration for the server
+  server:
+    # The server's endpoint configuration
+    endpoint:
+      host: "localhost" # The host of the server
+      port: 6001
+    # Credentials for the server
+    creds:
+      cert-path: # Path to the server certificate
+      key-path: # Path to the server key

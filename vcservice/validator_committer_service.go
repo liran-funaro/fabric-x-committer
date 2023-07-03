@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
 
@@ -40,31 +39,19 @@ type Limits struct {
 	MaxWorkersForCommitter int
 }
 
-// DBConfig is the struct that contains the configuration of the database.
-type DBConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-}
-
-// DataSourceName returns the data source name of the database.
-func (d *DBConfig) DataSourceName() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable", d.Host, d.Port, d.User, d.Password)
-}
-
 // NewValidatorCommitterService creates a new ValidatorCommitterService.
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(limits *Limits, dbConfig *DBConfig) *ValidatorCommitterService {
-	txBatch := make(chan *protovcservice.TransactionBatch, limits.MaxWorkersForPreparer)
-	preparedTxs := make(chan *preparedTransactions, limits.MaxWorkersForValidator)
-	validatedTxs := make(chan *validatedTransactions, limits.MaxWorkersForCommitter)
-	txsStatus := make(chan *protovcservice.TransactionStatus, limits.MaxWorkersForCommitter)
+func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *ValidatorCommitterService {
+	l := config.ResourceLimits
+	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer)
+	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator)
+	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter)
+	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter)
 
 	logger.Info("Connecting to the database")
-	conn, err := pgx.Connect(context.Background(), dbConfig.DataSourceName())
+	conn, err := pgx.Connect(context.Background(), config.Database.DataSourceName())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -80,14 +67,14 @@ func NewValidatorCommitterService(limits *Limits, dbConfig *DBConfig) *Validator
 		databaseConnection: conn,
 	}
 
-	logger.Infof("Starting %d workers for the transaction preparer", limits.MaxWorkersForPreparer)
-	vc.preparer.start(limits.MaxWorkersForPreparer)
+	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
+	vc.preparer.start(l.MaxWorkersForPreparer)
 
-	logger.Infof("Starting %d workers for the transaction validator", limits.MaxWorkersForValidator)
-	vc.validator.start(limits.MaxWorkersForValidator)
+	logger.Infof("Starting %d workers for the transaction validator", l.MaxWorkersForValidator)
+	vc.validator.start(l.MaxWorkersForValidator)
 
-	logger.Infof("Starting %d workers for the transaction committer", limits.MaxWorkersForCommitter)
-	vc.committer.start(limits.MaxWorkersForCommitter)
+	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
+	vc.committer.start(l.MaxWorkersForCommitter)
 
 	return vc
 }
