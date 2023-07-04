@@ -165,21 +165,21 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 		blindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key1", "key2", "key3"},
-					values:  [][]byte{[]byte("1"), []byte("1"), nil},
-					version: [][]byte{nil, nil, nil},
+					keys:     []string{"key1", "key2", "key3"},
+					values:   [][]byte{[]byte("1"), []byte("1"), nil},
+					versions: [][]byte{nil, nil, nil},
 				},
 				2: &namespaceWrites{
-					keys:    []string{"key1"},
-					values:  [][]byte{[]byte("5")},
-					version: [][]byte{nil},
+					keys:     []string{"key1"},
+					values:   [][]byte{[]byte("5")},
+					versions: [][]byte{nil},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key4", "key5"},
-					values:  [][]byte{[]byte("1"), nil},
-					version: [][]byte{nil, nil},
+					keys:     []string{"key4", "key5"},
+					values:   [][]byte{[]byte("1"), nil},
+					versions: [][]byte{nil, nil},
 				},
 			},
 		},
@@ -269,26 +269,26 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key1", "key2", "key3"},
-					values:  [][]byte{[]byte("v1"), []byte("v2"), []byte("v3")},
-					version: [][]byte{v2, v2, v0},
+					keys:     []string{"key1", "key2", "key3"},
+					values:   [][]byte{[]byte("v1"), []byte("v2"), []byte("v3")},
+					versions: [][]byte{v2, v2, v0},
 				},
 				2: &namespaceWrites{
-					keys:    []string{"key4", "key5"},
-					values:  [][]byte{[]byte("v4"), []byte("v5")},
-					version: [][]byte{v1, v0},
+					keys:     []string{"key4", "key5"},
+					values:   [][]byte{[]byte("v4"), []byte("v5")},
+					versions: [][]byte{v1, v0},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key4", "key5"},
-					values:  [][]byte{[]byte("v4"), []byte("v5")},
-					version: [][]byte{v2, v0},
+					keys:     []string{"key4", "key5"},
+					values:   [][]byte{[]byte("v4"), []byte("v5")},
+					versions: [][]byte{v2, v0},
 				},
 				2: &namespaceWrites{
-					keys:    []string{"key6"},
-					values:  [][]byte{[]byte("v6")},
-					version: [][]byte{v0},
+					keys:     []string{"key6"},
+					values:   [][]byte{[]byte("v6")},
+					versions: [][]byte{v0},
 				},
 			},
 		},
@@ -393,42 +393,42 @@ func TestPrepareTx(t *testing.T) {
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key3"},
-					values:  [][]byte{[]byte("v3")},
-					version: [][]byte{v4},
+					keys:     []string{"key3"},
+					values:   [][]byte{[]byte("v3")},
+					versions: [][]byte{v4},
 				},
 				2: &namespaceWrites{
-					keys:    []string{"key6"},
-					values:  [][]byte{[]byte("v6")},
-					version: [][]byte{v0},
+					keys:     []string{"key6"},
+					values:   [][]byte{[]byte("v6")},
+					versions: [][]byte{v0},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key9"},
-					values:  [][]byte{[]byte("v9")},
-					version: [][]byte{v10},
+					keys:     []string{"key9"},
+					values:   [][]byte{[]byte("v9")},
+					versions: [][]byte{v10},
 				},
 			},
 		},
 		blindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key4"},
-					values:  [][]byte{[]byte("v4")},
-					version: [][]byte{nil},
+					keys:     []string{"key4"},
+					values:   [][]byte{[]byte("v4")},
+					versions: [][]byte{nil},
 				},
 				2: &namespaceWrites{
-					keys:    []string{"key7"},
-					values:  [][]byte{[]byte("v7")},
-					version: [][]byte{nil},
+					keys:     []string{"key7"},
+					values:   [][]byte{[]byte("v7")},
+					versions: [][]byte{nil},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:    []string{"key10"},
-					values:  [][]byte{[]byte("v10")},
-					version: [][]byte{nil},
+					keys:     []string{"key10"},
+					values:   [][]byte{[]byte("v10")},
+					versions: [][]byte{nil},
 				},
 			},
 		},
