@@ -16,40 +16,74 @@ import (
 // # Helpers
 // ##########################################
 
+// findContainerUnderTest returns a container object if the container-under-test name was found.
+func findContainerUnderTest(t *testing.T, y *YugabyteDB) *docker.APIContainers {
+	allContainers, err := y.Client.ListContainers(docker.ListContainersOptions{All: true})
+	require.NoError(t, err)
+	for _, c := range allContainers {
+		for _, n := range c.Names {
+			if n == y.Name {
+				return &c
+			}
+		}
+	}
+
+	return nil
+}
+
 // cleanup makes sure the test ended gracefully and all containers have stopped and removed
 func cleanup(t *testing.T, y *YugabyteDB) {
 	exitErr := y.Stop()
 	t.Logf("Exit error: %s", exitErr)
 
-	// It takes some time to remove the container after it stopped
-	time.Sleep(time.Second)
-
 	// Verify that any yugabyte container with the chosen name is stopped and removed
-	allContainers, err := y.Client.ListContainers(docker.ListContainersOptions{All: true})
-	require.NoError(t, err)
-	for _, c := range allContainers {
-		for _, n := range c.Names {
-			if !assert.NotEqual(t, n, y.Name, "container was not removed: %+v", c) {
-				_ = y.Client.StopContainer(c.ID, 0)
-				break
-			}
+	isRemoved := assert.Eventually(t, func() bool {
+		return findContainerUnderTest(t, y) == nil
+	}, time.Minute, time.Second)
+
+	// Force removal in case of problems
+	if !isRemoved {
+		if c := findContainerUnderTest(t, y); c != nil {
+			t.Logf("forcing container termination: %+v", c)
+			_ = y.Client.StopContainer(c.ID, 0)
 		}
 	}
 }
 
+// requireStop waits for yugabyte to terminate and verify the exit error
+func requireDoneCause(t *testing.T, y *YugabyteDB, expectedCause error) {
+	cause := <-y.Wait()
+	require.Error(t, cause, "cause: %s", cause)
+	require.Equal(t, expectedCause, cause)
+}
+
+// requireDoneCauseContains waits for yugabyte to terminate and verify the exit error
+func requireDoneCauseContains(t *testing.T, y *YugabyteDB, expectedCauseMessage string) {
+	cause := <-y.Wait()
+	require.Error(t, cause, "cause: %s", cause)
+	require.Contains(t, cause.Error(), expectedCauseMessage)
+}
+
 // requireStop stops yugabyte and verify the exit error
 func requireStop(t *testing.T, y *YugabyteDB, expectedCause error) {
-	cause := y.Stop()
-	require.Error(t, cause, "cause: %s", cause)
-	require.Equal(t, cause, expectedCause)
+	_ = y.Stop()
+	requireDoneCause(t, y, expectedCause)
 }
 
 // waitForContainer wait for the container to run
 func waitForContainer(t *testing.T, y *YugabyteDB) {
-	for running, err := y.IsContainerRunning(); !running || err != nil; running, err = y.IsContainerRunning() {
+	require.Eventually(t, func() bool {
+		running, err := y.IsContainerRunning()
 		require.NoError(t, err)
-		time.Sleep(50 * time.Millisecond)
-	}
+		return running
+	}, time.Minute, 100*time.Millisecond, "container didn't start")
+}
+
+// waitForConnectionTest wait for the runner to start testing the different connection settings
+func waitForConnectionTest(t *testing.T, y *YugabyteDB) {
+	require.Eventually(t, func() bool {
+		return y.containerConnectionTestInitiatedFlag
+	}, time.Minute, 100*time.Millisecond, "container connection test didn't start")
 }
 
 // prepareYugaTestEnv creates YugabyteDB instance and adds cleanup hookups
@@ -134,8 +168,8 @@ func Test_CancelBeforeStart(t *testing.T) {
 	err := y.Start()
 	require.Error(t, err, "err: %s", err)
 
-	require.Equal(t, err, context.Canceled)
-	requireStop(t, y, context.Canceled)
+	require.Equal(t, context.Canceled, err)
+	requireDoneCause(t, y, context.Canceled)
 }
 
 func Test_CancelAfterStart(t *testing.T) {
@@ -144,7 +178,7 @@ func Test_CancelAfterStart(t *testing.T) {
 	y.StartBackground()
 	cancel()
 
-	requireStop(t, y, context.Canceled)
+	requireDoneCause(t, y, context.Canceled)
 }
 
 func Test_CancelAfterContainerStart(t *testing.T) {
@@ -154,18 +188,17 @@ func Test_CancelAfterContainerStart(t *testing.T) {
 	waitForContainer(t, y)
 	cancel()
 
-	requireStop(t, y, context.Canceled)
+	requireDoneCause(t, y, context.Canceled)
 }
 
 func Test_CancelAfterTestingConnections(t *testing.T) {
 	t.Parallel()
 	y, cancel := prepareYugaTestEnvWithCancel(t, context.Background())
 	y.StartBackground()
-	waitForContainer(t, y)
-	time.Sleep(2 * time.Second)
+	waitForConnectionTest(t, y)
 	cancel()
 
-	requireStop(t, y, context.Canceled)
+	requireDoneCause(t, y, context.Canceled)
 }
 
 func Test_StopAfterStart(t *testing.T) {
@@ -191,10 +224,40 @@ func Test_StopAfterTestingConnections(t *testing.T) {
 	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
 
 	y.StartBackground()
-	waitForContainer(t, y)
-	time.Sleep(2 * time.Second)
+	waitForConnectionTest(t, y)
 
 	requireStop(t, y, Stopped)
+}
+
+func Test_InterruptAfterStart(t *testing.T) {
+	t.Parallel()
+	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y.StartBackground()
+	y.Signal(os.Interrupt)
+
+	requireDoneCauseContains(t, y, "interrupt")
+}
+
+func Test_InterruptAfterContainerStart(t *testing.T) {
+	t.Parallel()
+	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+
+	y.StartBackground()
+	waitForContainer(t, y)
+	y.Signal(os.Interrupt)
+
+	requireDoneCauseContains(t, y, "interrupt")
+}
+
+func Test_InterruptAfterTestingConnections(t *testing.T) {
+	t.Parallel()
+	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+
+	y.StartBackground()
+	waitForConnectionTest(t, y)
+	y.Signal(os.Interrupt)
+
+	requireDoneCauseContains(t, y, "interrupt")
 }
 
 func Test_CrashContainer(t *testing.T) {
@@ -204,7 +267,15 @@ func Test_CrashContainer(t *testing.T) {
 	waitForContainer(t, y)
 	y.stopContainer()
 
-	err := y.Stop()
-	require.Error(t, err, "cause: %s", err)
-	require.Contains(t, err.Error(), "process exited")
+	requireDoneCauseContains(t, y, "process exited")
+}
+
+func Test_CrashContainerAfterTestingConnections(t *testing.T) {
+	t.Parallel()
+	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y.StartBackground()
+	waitForConnectionTest(t, y)
+	y.stopContainer()
+
+	requireDoneCauseContains(t, y, "process exited")
 }

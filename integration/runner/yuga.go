@@ -108,12 +108,25 @@ type YugabyteDB struct {
 	OutputStream  io.Writer
 	Logf          func(format string, args ...any)
 
-	ctx           context.Context
+	// processCtx and processCancel add cancellation option to the user provided Context.
+	// We use this context in Run() to make sure we immediately quit any blocking operation upon:
+	//   * The user provided Context has been cancelled
+	//   * A signal
+	//   * Container termination
+	//   * User manual Stop()
+	//
+	// Note that in any way, we don't/cannot cancel the user provided context.
+	processCtx    context.Context
 	processCancel context.CancelCauseFunc
-	creator       string
-	process       ifrit.Process
-	containerID   string
-	connSettings  *YugaConnectionSettings
+
+	creator      string
+	process      ifrit.Process
+	containerID  string
+	connSettings *YugaConnectionSettings
+
+	// containerConnectionTestInitiatedFlag is used for testing.
+	// It identifies that we are in the process of trying the optional connection settings.
+	containerConnectionTestInitiatedFlag bool
 }
 
 func (y *YugabyteDB) logF(format string, a ...any) {
@@ -132,8 +145,8 @@ func (y *YugabyteDB) InitDefaults() {
 		y.Context = context.Background()
 	}
 
-	if y.ctx == nil {
-		y.ctx, y.processCancel = context.WithCancelCause(y.Context)
+	if y.processCtx == nil || y.processCancel == nil {
+		y.processCtx, y.processCancel = context.WithCancelCause(y.Context)
 	}
 
 	if y.Image == "" {
@@ -161,43 +174,43 @@ func (y *YugabyteDB) InitDefaults() {
 // Stopped is the error returned by Wait() or Stop() when the process is stopped via Stop().
 var Stopped = errors.New("process stopped by user")
 
-// sigChanWaitContext returns a context that is canceled when a signal is given.
-func (y *YugabyteDB) sigChanWaitContext(sigCh <-chan os.Signal) context.Context {
-	ctx, cancel := context.WithCancelCause(y.ctx)
-	go func() {
-		select {
-		case sig := <-sigCh:
-			cancel(errors.Errorf("interrupted with signal: %s", sig.String()))
+// sigWaitContext cancels the context upon received signal.
+func (y *YugabyteDB) sigWaitContext(sigCh <-chan os.Signal) {
+	select {
+	case <-y.processCtx.Done():
+		// Stop waiting if context is cancelled
+	case sig := <-sigCh:
+		if sig != nil {
+			y.processCancel(errors.Errorf("interrupted with signal: %s", sig.String()))
 		}
-	}()
-	return ctx
+	}
 }
 
-func (y *YugabyteDB) errorOrCancelled(err error) error {
-	if err == context.Canceled {
-		<-y.ctx.Done()
-		return context.Cause(y.ctx)
+// errorOrWrap Wraps an error, or returns a new error if no error is provided.
+func errorOrWrap(err error, format string, a ...any) error {
+	if err == nil {
+		return errors.Errorf(format, a...)
 	}
-	return err
+	return errors.Wrapf(err, format, a...)
 }
 
-// cleanContext makes sure the internal context of the processes is cancelled and cleared, so it won't be reused.
-func (y *YugabyteDB) cleanContext() {
-	if y.processCancel != nil {
-		y.processCancel(nil)
-	}
-
-	y.ctx = nil
-	y.processCancel = nil
+// containerWaitContext cancels the context upon container termination.
+func (y *YugabyteDB) containerWaitContext() {
+	exitCode, err := y.Client.WaitContainerWithContext(y.containerID, y.processCtx)
+	y.processCancel(errorOrWrap(err, "process exited with code %d", exitCode))
 }
 
 // Run runs a YugabyteDB container. It implements the ifrit.Runner interface.
 func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
-	// We call InitDefaults() here in addition to StartBackground(). In case the user invokes the runner directly.
+	// We call InitDefaults() here in addition to StartBackground(), in case the user invokes the runner directly.
 	y.InitDefaults()
-	defer y.cleanContext()
 
-	y.ctx = y.sigChanWaitContext(sigCh)
+	// Ensure cleanup upon exit
+	defer y.processCancel(nil)
+	defer y.stopContainer()
+
+	// Cancels the context upon signal
+	go y.sigWaitContext(sigCh)
 
 	if y.Client == nil {
 		client, err := docker.NewClientFromEnv()
@@ -207,20 +220,34 @@ func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
 		y.Client = client
 	}
 
+	err := y.runInternal()
+	if err == nil {
+		// Indicate readiness
+		close(ready)
+	} else if err != context.Canceled {
+		return err
+	}
+
+	<-y.processCtx.Done()
+	return context.Cause(y.processCtx)
+}
+
+// runInternal runs a YugabyteDB container. It assumes the context and the client are initiated.
+func (y *YugabyteDB) runInternal() error {
 	// Pull the image if not exist
 	err := y.Client.PullImage(docker.PullImageOptions{
-		Context:      y.ctx,
+		Context:      y.processCtx,
 		Repository:   y.Image,
 		OutputStream: y.OutputStream,
 	}, docker.AuthConfiguration{})
 	if err != nil {
-		return y.errorOrCancelled(err)
+		return err
 	}
 
 	// Create the container instance
 	container, err := y.Client.CreateContainer(
 		docker.CreateContainerOptions{
-			Context: y.ctx,
+			Context: y.processCtx,
 			Name:    y.Name,
 			Config: &docker.Config{
 				Image: y.Image,
@@ -243,16 +270,16 @@ func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
 		},
 	)
 	if err != nil {
-		return y.errorOrCancelled(err)
+		return err
 	}
 	y.containerID = container.ID
-	defer y.stopContainer()
 
 	// Starts the container
-	if err = y.Client.StartContainerWithContext(y.containerID, nil, y.ctx); err != nil {
-		return y.errorOrCancelled(err)
+	if err = y.Client.StartContainerWithContext(y.containerID, nil, y.processCtx); err != nil {
+		return err
 	}
-	y.ctx = y.waitContainerContext()
+	// Cancels the context upon container termination
+	go y.containerWaitContext()
 
 	// Stream logs to stdout/stderr if available
 	go y.streamLogs()
@@ -260,7 +287,7 @@ func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
 	// Fetch connection settings
 	container, err = y.inspectContainer()
 	if err != nil {
-		return y.errorOrCancelled(err)
+		return err
 	}
 	cPort := container.NetworkSettings.Ports[y.ContainerPort][0]
 
@@ -270,18 +297,17 @@ func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
 		NewYugaConnectionSettings(container.NetworkSettings.IPAddress, y.ContainerPort.Port()),
 	})
 	if err != nil {
-		return y.errorOrCancelled(err)
+		return err
 	}
 
-	// Indicate readiness
-	close(ready)
-
-	<-y.ctx.Done()
-	return context.Cause(y.ctx)
+	return nil
 }
 
 // stopContainer attempt to stop the container, logging errors.
 func (y *YugabyteDB) stopContainer() {
+	if y.containerID == "" || y.Client == nil {
+		return
+	}
 	// We don't use context here because we want to be able to stop the container even when the context is cancelled
 	if err := y.Client.StopContainer(y.containerID, 0); err != nil {
 		y.logF("Failed stopping container: %s", err)
@@ -289,21 +315,26 @@ func (y *YugabyteDB) stopContainer() {
 }
 
 func (y *YugabyteDB) inspectContainer() (*docker.Container, error) {
+	if y.containerID == "" || y.Client == nil {
+		return nil, nil
+	}
 	return y.Client.InspectContainerWithOptions(docker.InspectContainerOptions{
-		Context: y.ctx,
+		Context: y.processCtx,
 		ID:      y.containerID,
 	})
 }
 
 // waitUntilReady waits for a successful interaction with the database.
 func (y *YugabyteDB) waitUntilReady(connOptions []*YugaConnectionSettings) (*YugaConnectionSettings, error) {
-	ctx, cancel := context.WithTimeout(y.ctx, y.StartTimeout)
+	ctx, cancel := context.WithTimeout(y.processCtx, y.StartTimeout)
 	defer cancel()
 
 	reachableConn := make(chan *YugaConnectionSettings)
 	for _, conn := range connOptions {
 		go y.readyChan(ctx, conn, reachableConn)
 	}
+
+	y.containerConnectionTestInitiatedFlag = true
 
 	select {
 	case settings := <-reachableConn:
@@ -356,27 +387,6 @@ func (y *YugabyteDB) isEndpointReady(ctx context.Context, connSettings *YugaConn
 	return true
 }
 
-// errorOrWrap Wraps an error, or returns a new error if no error is provided.
-func errorOrWrap(err error, format string, a ...any) error {
-	if err == nil {
-		return errors.Errorf(format, a...)
-	}
-	return errors.Wrapf(err, format, a...)
-}
-
-// waitContainerContext returns a context that is canceled when the container is done.
-func (y *YugabyteDB) waitContainerContext() context.Context {
-	ctx, cancel := context.WithCancelCause(y.ctx)
-	go func() {
-		exitCode, err := y.Client.WaitContainer(y.containerID)
-		if exitCode != 0 {
-			err = errorOrWrap(err, "'yugabytedb' process exited with code %d", exitCode)
-		}
-		cancel(err)
-	}()
-	return ctx
-}
-
 // streamLogs streams the container output to the requested stream.
 func (y *YugabyteDB) streamLogs() {
 	if y.ErrorStream == nil && y.OutputStream == nil {
@@ -384,7 +394,7 @@ func (y *YugabyteDB) streamLogs() {
 	}
 
 	logOptions := docker.LogsOptions{
-		Context:      y.ctx,
+		Context:      y.processCtx,
 		Container:    y.containerID,
 		Follow:       true,
 		ErrorStream:  y.ErrorStream,
@@ -467,12 +477,14 @@ func (y *YugabyteDB) Stop() error {
 	if y.process == nil {
 		return nil
 	}
-	// First, cancel the context with explicit Stopped cause
 	if y.processCancel != nil {
+		// If possible, cancel the context with explicit Stopped cause
 		y.processCancel(Stopped)
+	} else {
+		// Otherwise, signal the process to stop
+		y.Signal(os.Interrupt)
 	}
-	// Then, signal the process to stop
-	y.Signal(os.Interrupt)
+
 	return <-y.Wait()
 }
 

@@ -10,5 +10,9 @@ cache:
       - $HOME/.cache/go-build        # Cache the binaries
       - $HOME/gopath/pkg/mod         # Cache the Go modules
 
+# We pull the docker image before the tests to avoid timeouts in the test due to slow download time
+before_install:
+  - docker pull yugabytedb/yugabyte:2.19.0.0-b190
+
 script:
     - make test
