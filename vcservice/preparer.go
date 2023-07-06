@@ -101,6 +101,11 @@ func (r *reads) append(key string, version []byte) {
 	r.versions = append(r.versions, version)
 }
 
+func (r *reads) appendMany(keys []string, versions [][]byte) {
+	r.keys = append(r.keys, keys...)
+	r.versions = append(r.versions, versions...)
+}
+
 func (nw *namespaceWrites) append(key string, value, version []byte) {
 	nw.keys = append(nw.keys, key)
 	nw.values = append(nw.values, value)
