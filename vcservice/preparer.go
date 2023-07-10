@@ -1,9 +1,9 @@
 package vcservice
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // transactionPreparer prepares transaction batches for validation and commit.
@@ -220,10 +220,10 @@ func (p *transactionPreparer) addBlindWritesToPreparedTxs(prepTxs *preparedTrans
 type versionNumber uint64
 
 func versionNumberFromBytes(version []byte) versionNumber {
-	v, _ := proto.DecodeVarint(version)
+	v, _ := protowire.ConsumeVarint(version)
 	return versionNumber(v)
 }
 
 func (v versionNumber) bytes() []byte {
-	return proto.EncodeVarint(uint64(v))
+	return protowire.AppendVarint(nil, uint64(v))
 }
