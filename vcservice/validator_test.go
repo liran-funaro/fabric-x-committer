@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -373,9 +372,5 @@ func closeDBConnection(t *testing.T, conn *pgx.Conn) {
 }
 
 func stopDB(t *testing.T, db *runner.YugabyteDB) {
-	if err := db.Stop(); err != nil {
-		if !errors.Is(err, runner.Stopped) {
-			t.Logf("Failed to stop YugabyteDB: %v", err)
-		}
-	}
+	assert.NoError(t, db.Stop())
 }
