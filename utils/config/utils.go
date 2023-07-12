@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 
 	"gopkg.in/yaml.v3"
 )

@@ -12,7 +12,10 @@ cache:
 
 # We pull the docker image before the tests to avoid timeouts in the test due to slow download time
 before_install:
+  - go install golang.org/x/tools/cmd/goimports@latest
   - docker pull yugabytedb/yugabyte:2.19.0.0-b190
 
 script:
-    - make test
+  - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+  - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+  - make test

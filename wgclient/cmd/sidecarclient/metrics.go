@@ -1,12 +1,13 @@
 package main
 
 import (
+	"time"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
-	"time"
 )
 
 type metricTracker struct {

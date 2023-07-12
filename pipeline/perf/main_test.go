@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"testing"
 	"time"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"

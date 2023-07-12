@@ -3,8 +3,9 @@ package latency
 import (
 	"context"
 	"fmt"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"time"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"

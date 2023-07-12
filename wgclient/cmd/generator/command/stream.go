@@ -2,9 +2,10 @@ package command
 
 import (
 	"fmt"
+	"os"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
-	"os"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"

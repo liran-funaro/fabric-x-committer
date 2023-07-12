@@ -52,6 +52,12 @@ endif
 test: build
 	go test -v ./...
 
+test-cover: build
+	go test -v -coverprofile=coverage.profile ./...
+
+cover-report: test-cover
+	go tool cover -html=coverage.profile
+
 clean:
 	@rm -rf $(output_dir)
 

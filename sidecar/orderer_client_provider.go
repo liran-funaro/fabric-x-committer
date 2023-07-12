@@ -2,6 +2,7 @@ package sidecar
 
 import (
 	"context"
+
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/pkg/errors"

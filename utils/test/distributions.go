@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
-	"github.com/pkg/errors"
 	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type Percentage = float64
