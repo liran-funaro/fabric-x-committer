@@ -66,7 +66,7 @@ func requireDoneCauseContains(t *testing.T, y *YugabyteDB, expectedCauseMessage 
 
 // requireStop stops yugabyte and verify the exit error
 func requireStop(t *testing.T, y *YugabyteDB, expectedCause error) {
-	_ = y.Stop()
+	assert.NoError(t, y.Stop())
 	requireDoneCause(t, y, expectedCause)
 }
 

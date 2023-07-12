@@ -472,7 +472,8 @@ func (y *YugabyteDB) Signal(sig os.Signal) {
 	y.process.Signal(sig)
 }
 
-// Stop the runner process and wait for completion, returning the exit error.
+// Stop the runner process and wait for completion, returning nil if successful.
+// If it was already terminated for another reason, the termination cause will be returned.
 func (y *YugabyteDB) Stop() error {
 	if y.process == nil {
 		return nil
@@ -485,7 +486,10 @@ func (y *YugabyteDB) Stop() error {
 		y.Signal(os.Interrupt)
 	}
 
-	return <-y.Wait()
+	if exitCause := <-y.Wait(); exitCause != Stopped {
+		return exitCause
+	}
+	return nil
 }
 
 // IsContainerRunning tests if the container is running
