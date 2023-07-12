@@ -18,7 +18,7 @@ type committerTestEnv struct {
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
-	db := runner.YugabyteDB{}
+	db := &runner.YugabyteDB{}
 	require.NoError(t, db.Start())
 
 	validatedTxs := make(chan *validatedTransactions, 10)
@@ -33,8 +33,8 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	t.Cleanup(func() {
 		close(validatedTxs)
 		close(txStatus)
-		_ = db.Stop()
-		_ = conn.Close(context.Background())
+		closeDBConnection(t, conn)
+		stopDB(t, db)
 	})
 
 	return &committerTestEnv{

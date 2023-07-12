@@ -177,4 +177,9 @@ func (vc *ValidatorCommitterService) close() {
 
 	logger.Info("Stopping the transaction status sender")
 	close(vc.txsStatusChan)
+
+	logger.Info("Closing the database connection")
+	if err := vc.databaseConnection.Close(context.Background()); err != nil {
+		logger.Errorf("Failed to close the connection to database: %v", err)
+	}
 }

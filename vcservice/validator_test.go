@@ -2,9 +2,11 @@ package vcservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
@@ -17,7 +19,7 @@ type validatorTestEnv struct {
 }
 
 func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
-	db := runner.YugabyteDB{}
+	db := &runner.YugabyteDB{}
 	require.NoError(t, db.Start())
 
 	preparedTxs := make(chan *preparedTransactions, 10)
@@ -32,8 +34,8 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	t.Cleanup(func() {
 		close(preparedTxs)
 		close(validatedTxs)
-		_ = db.Stop()
-		_ = conn.Close(context.Background())
+		closeDBConnection(t, conn)
+		stopDB(t, db)
 	})
 
 	return &validatorTestEnv{
@@ -364,4 +366,16 @@ func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []namespaceID, 
 			}
 		}
 	})
+}
+
+func closeDBConnection(t *testing.T, conn *pgx.Conn) {
+	assert.NoError(t, conn.Close(context.Background()))
+}
+
+func stopDB(t *testing.T, db *runner.YugabyteDB) {
+	if err := db.Stop(); err != nil {
+		if !errors.Is(err, runner.Stopped) {
+			t.Logf("Failed to stop YugabyteDB: %v", err)
+		}
+	}
 }

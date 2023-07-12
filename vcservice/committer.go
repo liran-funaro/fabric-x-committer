@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/yugabyte/pgx/v4"
@@ -162,8 +163,13 @@ func (c *transactionCommitter) commitWrites(nsToWrites namespaceToWrites) error 
 		return err
 	}
 
-	// This will be executed if an error occurs or if tx.Commit() is not reached
-	defer tx.Rollback(context.Background())
+	// This will be executed if an error occurs. If transaction is committed, this will be a no-op
+	defer func() {
+		err = tx.Rollback(context.Background())
+		if !errors.Is(err, pgx.ErrTxClosed) {
+			logger.Warn("error rolling-back transaction: ", err)
+		}
+	}()
 
 	for nsID, writes := range nsToWrites {
 		query := fmt.Sprintf("SELECT %s($1::varchar[], $2::bytea[], $3::bytea[])", commitFuncNameForNamespace(nsID))

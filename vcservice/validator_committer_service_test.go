@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -21,7 +22,7 @@ type validatorAndCommitterServiceTestEnv struct {
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
-	db := runner.YugabyteDB{}
+	db := &runner.YugabyteDB{}
 	require.NoError(t, db.Start())
 
 	dbConnSettings := db.ConnectionSettings()
@@ -67,10 +68,11 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_ = clientConn.Close()
+		assert.NoError(t, clientConn.Close())
+
 		grpcSrv.Stop()
-		_ = db.Stop()
 		vcs.close()
+		stopDB(t, db)
 	})
 
 	return &validatorAndCommitterServiceTestEnv{
@@ -108,7 +110,9 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 	vcStream, err := client.StartValidateAndCommitStream(context.Background())
 	require.NoError(t, err)
-	defer vcStream.CloseSend()
+	t.Cleanup(func() {
+		require.NoError(t, vcStream.CloseSend())
+	})
 
 	require.NoError(t, vcStream.Send(txBatch))
 	txStatus, err := vcStream.Recv()
