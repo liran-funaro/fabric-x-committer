@@ -292,13 +292,15 @@ func (y *YugabyteDB) runInternal() error {
 	if err != nil {
 		return err
 	}
-	cPort := container.NetworkSettings.Ports[y.ContainerPort][0]
+	connOptions := []*YugaConnectionSettings{
+		NewYugaConnectionSettings(container.NetworkSettings.IPAddress, y.ContainerPort.Port()),
+	}
+	for _, p := range container.NetworkSettings.Ports[y.ContainerPort] {
+		connOptions = append(connOptions, NewYugaConnectionSettings(p.HostIP, p.HostPort))
+	}
 
 	// Wait for a successful interaction with the database
-	y.connSettings, err = y.waitUntilReady([]*YugaConnectionSettings{
-		NewYugaConnectionSettings(cPort.HostIP, cPort.HostPort),
-		NewYugaConnectionSettings(container.NetworkSettings.IPAddress, y.ContainerPort.Port()),
-	})
+	y.connSettings, err = y.waitUntilReady(connOptions)
 	if err != nil {
 		return err
 	}
