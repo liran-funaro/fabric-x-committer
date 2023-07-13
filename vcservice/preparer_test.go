@@ -78,7 +78,8 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						ReadsOnly: []*protoblocktx.Read{
 							{Key: "key4", Version: v1},
 							{Key: "key5", Version: v0},
-							{Key: "key6", Version: nil}},
+							{Key: "key6", Version: nil},
+						},
 					},
 				},
 			},
@@ -136,7 +137,8 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 						BlindWrites: []*protoblocktx.Write{
 							{Key: "key1", Value: []byte("1")},
 							{Key: "key2", Value: []byte("1")},
-							{Key: "key3", Value: nil}},
+							{Key: "key3", Value: nil},
+						},
 					},
 					{
 						NsId:        2,
@@ -251,7 +253,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 		namespaceToReadEntries: namespaceToReads{
 			1: &reads{
 				keys:     []string{"key1", "key2", "key3", "key4", "key5"},
-				versions: [][]byte{v1, v1, nil, v1, nil}},
+				versions: [][]byte{v1, v1, nil, v1, nil},
+			},
 			2: &reads{
 				keys:     []string{"key4", "key5", "key6"},
 				versions: [][]byte{v0, nil, nil},
