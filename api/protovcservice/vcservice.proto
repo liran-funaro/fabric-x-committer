@@ -19,8 +19,12 @@ message Transaction {
   repeated protoblocktx.TxNamespace namespaces = 2;
 }
 
-enum TransactionStatus {
-    COMMITTED = 0;
-    ABORTED_MVCC_CONFLICT = 1;
-    ABORTED_DUPLICATE_TXID = 2;
+message TransactionStatus {
+    enum Flag {
+        COMMITTED = 0;
+        ABORTED_MVCC_CONFLICT = 1;
+        ABORTED_DUPLICATE_TXID = 2;
+    }
+
+    map<string, Flag> status = 1;
 }

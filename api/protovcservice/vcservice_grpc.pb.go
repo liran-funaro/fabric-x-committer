@@ -23,7 +23,6 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
-	StartCommitInvalidTransactionIDsStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamClient, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -65,43 +64,11 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*
 	return m, nil
 }
 
-func (c *validationAndCommitServiceClient) StartCommitInvalidTransactionIDsStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ValidationAndCommitService_ServiceDesc.Streams[1], "/protovcservice.ValidationAndCommitService/StartCommitInvalidTransactionIDsStream", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &validationAndCommitServiceStartCommitInvalidTransactionIDsStreamClient{stream}
-	return x, nil
-}
-
-type ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamClient interface {
-	Send(*InvalidTransactionIDs) error
-	Recv() (*TransactionStatus, error)
-	grpc.ClientStream
-}
-
-type validationAndCommitServiceStartCommitInvalidTransactionIDsStreamClient struct {
-	grpc.ClientStream
-}
-
-func (x *validationAndCommitServiceStartCommitInvalidTransactionIDsStreamClient) Send(m *InvalidTransactionIDs) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *validationAndCommitServiceStartCommitInvalidTransactionIDsStreamClient) Recv() (*TransactionStatus, error) {
-	m := new(TransactionStatus)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // ValidationAndCommitServiceServer is the server API for ValidationAndCommitService service.
 // All implementations must embed UnimplementedValidationAndCommitServiceServer
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
-	StartCommitInvalidTransactionIDsStream(ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamServer) error
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -111,9 +78,6 @@ type UnimplementedValidationAndCommitServiceServer struct {
 
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
-}
-func (UnimplementedValidationAndCommitServiceServer) StartCommitInvalidTransactionIDsStream(ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamServer) error {
-	return status.Errorf(codes.Unimplemented, "method StartCommitInvalidTransactionIDsStream not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
 }
@@ -155,32 +119,6 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*
 	return m, nil
 }
 
-func _ValidationAndCommitService_StartCommitInvalidTransactionIDsStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ValidationAndCommitServiceServer).StartCommitInvalidTransactionIDsStream(&validationAndCommitServiceStartCommitInvalidTransactionIDsStreamServer{stream})
-}
-
-type ValidationAndCommitService_StartCommitInvalidTransactionIDsStreamServer interface {
-	Send(*TransactionStatus) error
-	Recv() (*InvalidTransactionIDs, error)
-	grpc.ServerStream
-}
-
-type validationAndCommitServiceStartCommitInvalidTransactionIDsStreamServer struct {
-	grpc.ServerStream
-}
-
-func (x *validationAndCommitServiceStartCommitInvalidTransactionIDsStreamServer) Send(m *TransactionStatus) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *validationAndCommitServiceStartCommitInvalidTransactionIDsStreamServer) Recv() (*InvalidTransactionIDs, error) {
-	m := new(InvalidTransactionIDs)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // ValidationAndCommitService_ServiceDesc is the grpc.ServiceDesc for ValidationAndCommitService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -192,12 +130,6 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StartValidateAndCommitStream",
 			Handler:       _ValidationAndCommitService_StartValidateAndCommitStream_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-		{
-			StreamName:    "StartCommitInvalidTransactionIDsStream",
-			Handler:       _ValidationAndCommitService_StartCommitInvalidTransactionIDsStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
