@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func findContainerUnderTest(t *testing.T, y *YugabyteDB) *docker.APIContainers {
 	return nil
 }
 
-// cleanup makes sure the test ended gracefully and all containers have stopped and removed
+// cleanup makes sure the test ended gracefully and all containers have stopped and removed.
 func cleanup(t *testing.T, y *YugabyteDB) {
 	exitErr := y.Stop()
 	t.Logf("Exit error: %s", exitErr)
@@ -50,27 +51,27 @@ func cleanup(t *testing.T, y *YugabyteDB) {
 	}
 }
 
-// requireStop waits for yugabyte to terminate and verify the exit error
+// requireStop waits for yugabyte to terminate and verify the exit error.
 func requireDoneCause(t *testing.T, y *YugabyteDB, expectedCause error) {
 	cause := <-y.Wait()
 	require.Error(t, cause, "cause: %s", cause)
 	require.Equal(t, expectedCause, cause)
 }
 
-// requireDoneCauseContains waits for yugabyte to terminate and verify the exit error
+// requireDoneCauseContains waits for yugabyte to terminate and verify the exit error.
 func requireDoneCauseContains(t *testing.T, y *YugabyteDB, expectedCauseMessage string) {
 	cause := <-y.Wait()
 	require.Error(t, cause, "cause: %s", cause)
 	require.Contains(t, cause.Error(), expectedCauseMessage)
 }
 
-// requireStop stops yugabyte and verify the exit error
+// requireStop stops yugabyte and verify the exit error.
 func requireStop(t *testing.T, y *YugabyteDB, expectedCause error) {
 	assert.NoError(t, y.Stop())
 	requireDoneCause(t, y, expectedCause)
 }
 
-// waitForContainer wait for the container to run
+// waitForContainer wait for the container to run.
 func waitForContainer(t *testing.T, y *YugabyteDB) {
 	require.Eventually(t, func() bool {
 		running, err := y.IsContainerRunning()
@@ -79,15 +80,16 @@ func waitForContainer(t *testing.T, y *YugabyteDB) {
 	}, time.Minute, 100*time.Millisecond, "container didn't start")
 }
 
-// waitForConnectionTest wait for the runner to start testing the different connection settings
+// waitForConnectionTest wait for the runner to start testing the different connection settings.
 func waitForConnectionTest(t *testing.T, y *YugabyteDB) {
 	require.Eventually(t, func() bool {
 		return y.containerConnectionTestInitiatedFlag
 	}, time.Minute, 100*time.Millisecond, "container connection test didn't start")
 }
 
-// prepareYugaTestEnv creates YugabyteDB instance and adds cleanup hookups
-func prepareYugaTestEnv(t *testing.T, ctx context.Context) *YugabyteDB {
+// prepareYugaTestEnv creates YugabyteDB instance and adds cleanup hookups.
+func prepareYugaTestEnv(ctx context.Context, t *testing.T, timeout time.Duration) (*YugabyteDB, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	y := &YugabyteDB{
 		Context:      ctx,
 		OutputStream: os.Stdout,
@@ -95,29 +97,16 @@ func prepareYugaTestEnv(t *testing.T, ctx context.Context) *YugabyteDB {
 		Logf:         t.Logf,
 	}
 	t.Cleanup(func() { cleanup(t, y) })
+	t.Cleanup(cancel)
 
 	// Make sure we stop the container in case the test was killed
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-c
 		cleanup(t, y)
 	}()
-	return y
-}
-
-// prepareYugaTestEnvWithTimeout is equivalent to prepareYugaTestEnv, but adds timeout to the test to avoid hangups
-func prepareYugaTestEnvWithTimeout(t *testing.T, ctx context.Context, timeout time.Duration) *YugabyteDB {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	t.Cleanup(cancel)
-	return prepareYugaTestEnv(t, ctx)
-}
-
-// prepareYugaTestEnvWithCancel is equivalent to prepareYugaTestEnv, but adds a cancellation option
-func prepareYugaTestEnvWithCancel(t *testing.T, ctx context.Context) (*YugabyteDB, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	return prepareYugaTestEnv(t, ctx), cancel
+	return y, cancel
 }
 
 // ##########################################
@@ -126,7 +115,7 @@ func prepareYugaTestEnvWithCancel(t *testing.T, ctx context.Context) (*YugabyteD
 
 func Test_StartAndQuery(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, 5*time.Minute)
 	require.NoError(t, y.Start())
 
 	conn, err := y.ConnectionSettings().Open()
@@ -146,12 +135,12 @@ func Test_StartAndQuery(t *testing.T) {
 	}
 	t.Logf("tables: %s", allTables)
 
-	requireStop(t, y, Stopped)
+	requireStop(t, y, ErrStopped)
 }
 
 func Test_InitTimeout(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 
 	y.StartTimeout = time.Second
 	err := y.Start()
@@ -162,7 +151,7 @@ func Test_InitTimeout(t *testing.T) {
 
 func Test_CancelBeforeStart(t *testing.T) {
 	t.Parallel()
-	y, cancel := prepareYugaTestEnvWithCancel(t, context.Background())
+	y, cancel := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	cancel()
 
 	err := y.Start()
@@ -174,7 +163,7 @@ func Test_CancelBeforeStart(t *testing.T) {
 
 func Test_CancelAfterStart(t *testing.T) {
 	t.Parallel()
-	y, cancel := prepareYugaTestEnvWithCancel(t, context.Background())
+	y, cancel := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	cancel()
 
@@ -183,7 +172,7 @@ func Test_CancelAfterStart(t *testing.T) {
 
 func Test_CancelAfterContainerStart(t *testing.T) {
 	t.Parallel()
-	y, cancel := prepareYugaTestEnvWithCancel(t, context.Background())
+	y, cancel := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	waitForContainer(t, y)
 	cancel()
@@ -193,7 +182,7 @@ func Test_CancelAfterContainerStart(t *testing.T) {
 
 func Test_CancelAfterTestingConnections(t *testing.T) {
 	t.Parallel()
-	y, cancel := prepareYugaTestEnvWithCancel(t, context.Background())
+	y, cancel := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	waitForConnectionTest(t, y)
 	cancel()
@@ -203,35 +192,35 @@ func Test_CancelAfterTestingConnections(t *testing.T) {
 
 func Test_StopAfterStart(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 
-	requireStop(t, y, Stopped)
+	requireStop(t, y, ErrStopped)
 }
 
 func Test_StopAfterContainerStart(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 
 	y.StartBackground()
 	waitForContainer(t, y)
 
-	requireStop(t, y, Stopped)
+	requireStop(t, y, ErrStopped)
 }
 
 func Test_StopAfterTestingConnections(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 
 	y.StartBackground()
 	waitForConnectionTest(t, y)
 
-	requireStop(t, y, Stopped)
+	requireStop(t, y, ErrStopped)
 }
 
 func Test_InterruptAfterStart(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	y.Signal(os.Interrupt)
 
@@ -240,7 +229,7 @@ func Test_InterruptAfterStart(t *testing.T) {
 
 func Test_InterruptAfterContainerStart(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, 5*time.Minute)
 
 	y.StartBackground()
 	waitForContainer(t, y)
@@ -251,7 +240,7 @@ func Test_InterruptAfterContainerStart(t *testing.T) {
 
 func Test_InterruptAfterTestingConnections(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 
 	y.StartBackground()
 	waitForConnectionTest(t, y)
@@ -262,7 +251,7 @@ func Test_InterruptAfterTestingConnections(t *testing.T) {
 
 func Test_CrashContainer(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	waitForContainer(t, y)
 	y.stopContainer()
@@ -272,7 +261,7 @@ func Test_CrashContainer(t *testing.T) {
 
 func Test_CrashContainerAfterTestingConnections(t *testing.T) {
 	t.Parallel()
-	y := prepareYugaTestEnvWithTimeout(t, context.Background(), 5*time.Minute)
+	y, _ := prepareYugaTestEnv(context.Background(), t, time.Minute)
 	y.StartBackground()
 	waitForConnectionTest(t, y)
 	y.stopContainer()

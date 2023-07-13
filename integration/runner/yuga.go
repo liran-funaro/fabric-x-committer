@@ -1,17 +1,16 @@
 package runner
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
-
-	"context"
-	"io"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
@@ -21,7 +20,7 @@ import (
 )
 
 const (
-	// DefaultImage TODO: update to LTS/STS (v2.20) once the docker is released
+	// DefaultImage TODO: update to LTS/STS (v2.20) once the docker is released.
 	DefaultImage               = "yugabytedb/yugabyte:2.19.0.0-b190"
 	DefaultUsername            = "yugabyte"
 	DefaultPassword            = "yugabyte"
@@ -31,29 +30,34 @@ const (
 	DefaultHostIP              = "127.0.0.1"
 	DefaultStartTimeout        = time.Minute
 	DefaultContainerNamePrefix = "yugabyte-"
+
+	// fixedYugabytedURL Travis CI VM have an old kernel without the path `/sys/kernel/mm/transparent_hugepage/enabled`.
+	// This crashes the Yugabyte initiation script in the current docker version.
+	// The latest yugabyted script overcome this issue, but it is not released as a docker yet.
+	fixedYugabytedURL = "https://raw.githubusercontent.com/yugabyte/yugabyte-db/961042a/bin/yugabyted"
 )
 
-// yugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
-var yugabyteCMD = []string{
-	"bin/yugabyted", "start",
-	"--callhome", "false",
-	"--fault_tolerance", "none",
-	"--background", "false",
-	"--insecure",
-}
+var (
+	// yugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
+	yugabyteCMD = []string{
+		"bin/yugabyted", "start",
+		"--callhome", "false",
+		"--fault_tolerance", "none",
+		"--background", "false",
+		"--insecure",
+	}
 
-// fixedYugabytedURL Travis CI VM have an old kernel without the path `/sys/kernel/mm/transparent_hugepage/enabled`.
-// This crashes the Yugabyte initiation script in the current docker version.
-// The latest yugabyted script overcome this issue, but it is not released as a docker yet.
-const fixedYugabytedURL = "https://raw.githubusercontent.com/yugabyte/yugabyte-db/961042a/bin/yugabyted"
+	// workaroundYugabyteCMD Downloads the fixed scripts before running it.
+	workaroundYugabyteCMD = []string{
+		"sh", "-c",
+		fmt.Sprintf("curl -s '%s' > bin/yugabyted; %s", fixedYugabytedURL, strings.Join(yugabyteCMD, " ")),
+	}
 
-// workaroundYugabyteCMD Downloads the fixed scripts before running it.
-var workaroundYugabyteCMD = []string{
-	"sh", "-c",
-	fmt.Sprintf("curl -s '%s' > bin/yugabyted; %s", fixedYugabytedURL, strings.Join(yugabyteCMD, " ")),
-}
+	// ErrStopped is the error returned by Wait() or Stop() when the process is stopped via Stop().
+	ErrStopped = errors.New("process stopped by user")
+)
 
-// YugaConnectionSettings stores information for connecting to a YugabyteDB instance
+// YugaConnectionSettings stores information for connecting to a YugabyteDB instance.
 type YugaConnectionSettings struct {
 	Host              string
 	Port              string
@@ -64,7 +68,7 @@ type YugaConnectionSettings struct {
 }
 
 // DataSourceName returns the dataSourceName to be used by the database/sql package.
-// Usage: sql.Open("postgres", y.DataSourceName())
+// Usage: sql.Open("postgres", y.DataSourceName()).
 func (y *YugaConnectionSettings) DataSourceName() string {
 	return fmt.Sprintf("user=%s password=%s sslmode=%s host=%s port=%s connect_timeout=%.0f",
 		y.User, y.Password, y.SSLMode, y.Host, y.Port, y.ConnectionTimeout.Seconds())
@@ -82,7 +86,7 @@ func (y *YugaConnectionSettings) Open() (*sql.DB, error) {
 
 // NewYugaConnectionSettings returns a connection parameters with the specified host:port, and the default values
 // for the other parameters.
-func NewYugaConnectionSettings(host string, port string) *YugaConnectionSettings {
+func NewYugaConnectionSettings(host, port string) *YugaConnectionSettings {
 	return &YugaConnectionSettings{
 		Host:              host,
 		Port:              port,
@@ -130,11 +134,12 @@ type YugabyteDB struct {
 }
 
 func (y *YugabyteDB) logF(format string, a ...any) {
-	if y.Logf != nil {
+	switch {
+	case y.Logf != nil:
 		y.Logf(format, a...)
-	} else if y.ErrorStream != nil {
+	case y.ErrorStream != nil:
 		_, _ = fmt.Fprintf(y.ErrorStream, format+"\n", a...)
-	} else if y.OutputStream != nil {
+	case y.OutputStream != nil:
 		_, _ = fmt.Fprintf(y.OutputStream, format+"\n", a...)
 	}
 }
@@ -170,9 +175,6 @@ func (y *YugabyteDB) InitDefaults() {
 		y.StartTimeout = DefaultStartTimeout
 	}
 }
-
-// Stopped is the error returned by Wait() or Stop() when the process is stopped via Stop().
-var Stopped = errors.New("process stopped by user")
 
 // sigWaitContext cancels the context upon received signal.
 func (y *YugabyteDB) sigWaitContext(sigCh <-chan os.Signal) {
@@ -221,10 +223,11 @@ func (y *YugabyteDB) Run(sigCh <-chan os.Signal, ready chan<- struct{}) error {
 	}
 
 	err := y.runInternal()
-	if err == nil {
+	switch {
+	case err == nil:
 		// Indicate readiness
 		close(ready)
-	} else if err != context.Canceled {
+	case !errors.Is(err, context.Canceled):
 		return err
 	}
 
@@ -341,7 +344,7 @@ func (y *YugabyteDB) waitUntilReady(connOptions []*YugaConnectionSettings) (*Yug
 		return settings, nil
 	case <-ctx.Done():
 		err := ctx.Err()
-		if err == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.Wrapf(err, "database in container '%s' is not ready", y.containerID)
 		}
 		return nil, err
@@ -479,20 +482,20 @@ func (y *YugabyteDB) Stop() error {
 		return nil
 	}
 	if y.processCancel != nil {
-		// If possible, cancel the context with explicit Stopped cause
-		y.processCancel(Stopped)
+		// If possible, cancel the context with explicit ErrStopped cause
+		y.processCancel(ErrStopped)
 	} else {
 		// Otherwise, signal the process to stop
 		y.Signal(os.Interrupt)
 	}
 
-	if exitCause := <-y.Wait(); exitCause != Stopped {
+	if exitCause := <-y.Wait(); !errors.Is(exitCause, ErrStopped) {
 		return exitCause
 	}
 	return nil
 }
 
-// IsContainerRunning tests if the container is running
+// IsContainerRunning tests if the container is running.
 func (y *YugabyteDB) IsContainerRunning() (bool, error) {
 	if y.containerID == "" {
 		return false, nil
