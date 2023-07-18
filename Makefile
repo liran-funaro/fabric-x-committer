@@ -83,7 +83,7 @@ protos-token:
 		./token/token.proto
 
 protos-blocktx:
-	sh ./scripts/compile_proto.sh
+	@./scripts/compile_proto.sh
 
 protos-wgclient:
 	protoc \
