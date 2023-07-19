@@ -33,7 +33,7 @@ func main() {
 		OrdererEndpoints:   c.Orderers,
 		OrdererCredentials: creds,
 
-		DeliverEndpoint:       c.Sidecar,
+		DeliverEndpoint:       &c.Sidecar,
 		DeliverCredentials:    insecure.NewCredentials(),
 		DeliverSigner:         nil,
 		DeliverClientProvider: &PeerDeliverClientProvider{},

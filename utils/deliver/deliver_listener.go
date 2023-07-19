@@ -44,6 +44,14 @@ type ConnectionOpts struct {
 	StartBlock     int64
 }
 
+type noopListener struct{}
+
+func (l *noopListener) RunDeliverOutputListener(func(*common.Block)) error {
+	return nil
+}
+
+var NoopListener = &noopListener{}
+
 func NewListener(opts *ConnectionOpts) (*listener, error) {
 	conn, err := connection.Connect(connection.NewDialConfigWithCreds(opts.Endpoint, opts.Credentials))
 	if err != nil {

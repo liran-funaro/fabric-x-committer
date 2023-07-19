@@ -29,7 +29,7 @@ type OrdererSubmitter interface {
 
 type ClientInitOptions struct {
 	DeliverClientProvider deliver.ClientProvider
-	DeliverEndpoint       connection.Endpoint
+	DeliverEndpoint       *connection.Endpoint
 	DeliverCredentials    credentials.TransportCredentials
 	DeliverSigner         msp.SigningIdentity
 	StartBlock            int64
@@ -60,7 +60,7 @@ type Client struct {
 func NewClient(opts *ClientInitOptions) (*Client, error) {
 	logger.Infof("Connecting client to:\n"+
 		"\tDelivery service: %v\n"+
-		"\tOrderers: %v (channel: %s)\n", &opts.DeliverEndpoint, opts.OrdererEndpoints, opts.ChannelID)
+		"\tOrderers: %v (channel: %s)\n", opts.DeliverEndpoint, opts.OrdererEndpoints, opts.ChannelID)
 
 	if opts.OrdererType == utils.Bft && !areEndpointsUnique(opts.OrdererEndpoints) {
 		return nil, errors.New("bft only supports one connection per orderer")
@@ -68,15 +68,22 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 
 	rateLimiter := limiter.New(&opts.RemoteControllerListener)
 
-	listener, err := deliver.NewListener(&deliver.ConnectionOpts{
-		ClientProvider: opts.DeliverClientProvider,
-		Credentials:    opts.DeliverCredentials,
-		Signer:         opts.DeliverSigner,
-		ChannelID:      opts.ChannelID,
-		Endpoint:       opts.DeliverEndpoint,
-		Reconnect:      -1,
-		StartBlock:     opts.StartBlock,
-	})
+	var listener sidecar.DeliverListener
+	var err error
+	if opts.DeliverEndpoint != nil {
+		listener, err = deliver.NewListener(&deliver.ConnectionOpts{
+			ClientProvider: opts.DeliverClientProvider,
+			Credentials:    opts.DeliverCredentials,
+			Signer:         opts.DeliverSigner,
+			ChannelID:      opts.ChannelID,
+			Endpoint:       *opts.DeliverEndpoint,
+			Reconnect:      -1,
+			StartBlock:     opts.StartBlock,
+		})
+	} else {
+		listener = deliver.NoopListener
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +121,11 @@ func areEndpointsUnique(endpoints []*connection.Endpoint) bool {
 }
 
 func (c *Client) Start(messages <-chan []byte, onSend func(EnvelopeTxId), onReceive func(*common.Block)) {
-	go c.send(messages, onSend)
+	go func() {
+		utils.Must(c.listener.RunDeliverOutputListener(onReceive))
+	}()
 
-	utils.Must(c.listener.RunDeliverOutputListener(onReceive))
+	c.send(messages, onSend)
 }
 
 func (c *Client) send(messages <-chan []byte, onRequestSend func(EnvelopeTxId)) {
