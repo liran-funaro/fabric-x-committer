@@ -12,6 +12,7 @@
 # build-docker: Builds all binaries in a docker container
 # docker-builder-run: Executes a command from within a golang docker image.
 # docker-runner-image: Builds the scalable-committer docker image containing all binaries
+# lint: Runs golangci-lint
 
 #########################
 # Constants
@@ -105,7 +106,7 @@ $(cache_dir) $(mod_cache_dir):
 	# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
-build: $(output_dir)
+build: lint $(output_dir)
 	$(env) go build -buildvcs=false -o "$(output_dir)/blockgen" ./wgclient/cmd/generator
 	$(env) go build -buildvcs=false -o "$(output_dir)/mockcoordinator" ./wgclient/cmd/mockcoordinator
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator" ./coordinatorservice/cmd/server
@@ -136,3 +137,10 @@ docker-builder-run: $(cache_dir) $(mod_cache_dir)
 # Simple containerized SC
 docker-runner-image:
 	docker build -f $(sc_runner_dir)/Dockerfile -t sc_runner .
+
+
+.PHONY: lint
+lint:
+	@echo "Running Go Linters..."
+	golangci-lint run --color=always --sort-results --new-from-rev=main --timeout=2m
+	@echo "Linting Complete. Parsing Errors..."

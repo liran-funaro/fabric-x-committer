@@ -1,0 +1,138 @@
+linters:
+  enable:
+    - decorder
+    - dupl
+    - errname
+    - errorlint
+    - errcheck
+    - execinquery
+    - forcetypeassert
+    - ginkgolinter
+    - goconst
+    - gocritic
+    - godot
+    - gosimple
+    - gofumpt
+    - gosec
+    - govet
+    - goimports
+    - ireturn
+    - ineffassign
+    - lll
+    - misspell
+    - nilerr
+    - prealloc
+    - promlinter
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+    - gocognit
+
+linters-settings:
+  decorder:
+    # Required order of `type`, `const`, `var` and `func` declarations inside a file.
+    # Default: types before constants before variables before functions.
+    dec-order:
+      - const
+      - var
+      - func
+    # If true, order of declarations is not checked at all.
+    # Default: true (disabled)
+    disable-dec-order-check: false
+    # If true, `init` func can be anywhere in file (does not have to be declared before all other functions).
+    # Default: true (disabled)
+    disable-init-func-first-check: false
+    # If true, multiple global `type`, `const` and `var` declarations are allowed.
+    # Default: true (disabled)
+    disable-dec-num-check: false
+  errcheck:
+    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+    # Such cases aren't reported by default.
+    # Default: false
+    check-type-assertions: true
+  errorlint:
+    # Check whether fmt.Errorf uses the %w verb for formatting errors.
+    # See the https://github.com/polyfloyd/go-errorlint for caveats.
+    # Default: true
+    errorf: true
+    # Check for plain type assertions and type switches.
+    # Default: true
+    asserts: false
+    # Check for plain error comparisons.
+    # Default: true
+    comparison: true
+  govet:
+    # Report about shadowed variables.
+    # Default: false
+    check-shadowing: true
+    # Enable all analyzers.
+    # Default: false
+    enable-all: true
+    disable:
+      - fieldalignment
+  lll:
+    # Max line length, lines longer will be reported.
+    # '\t' is counted as 1 character by default, and can be changed with the tab-width option.
+    # Default: 120.
+    line-length: 120
+  gofumpt:
+    # Choose whether to use the extra rules.
+    # Default: false
+    extra-rules: true
+  gosec:
+    # To specify a set of rules to explicitly exclude.
+    # Available rules: https://github.com/securego/gosec#available-rules
+    excludes:
+      - G204
+  gocognit:
+    # Minimal code complexity to report.
+    # Default: 30 (but we recommend 10-20)
+    min-complexity: 15
+  revive:
+    ignore-generated-header: true
+    enable-all-rules: true
+    rules:
+      - name: argument-limit
+        arguments: [4]
+      - name: line-length-limit
+        arguments: [120]
+      - name: file-header
+        disabled: true
+      - name: max-public-structs
+        disabled: true
+      - name: banned-characters
+        disabled: true
+      - name: cognitive-complexity
+        disabled: true
+      - name: cyclomatic
+        disabled: true
+      - name: function-length
+        disabled: true
+      - name: function-result-limit
+        arguments: [3]
+      - name: add-constant
+        disabled: true
+    
+
+run:
+  # Which dirs to skip: issues from them won't be reported.
+  # Can use regexp here: `generated.*`, regexp is applied on full path,
+  # including the path prefix if one is set.
+  # Default value is empty list,
+  # but default dirs are skipped independently of this option's value (see skip-dirs-use-default).
+  # "/" will be replaced by current OS file path separator to properly work on Windows.
+  skip-dirs:
+    - shardsservice # this folder will be removed once we integrate coordinatorservice with vcservice
+    - wgclient # may not be a priority
+    - sidecar # may not be a priority
+    - sigverification # may not be a priority
+    - pipeline # this folder will be removed once we have a new implementation of coordinator service
+  # Enables skipping of directories:
+  # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
+  # Default: true
+  skip-dirs-use-default: false
