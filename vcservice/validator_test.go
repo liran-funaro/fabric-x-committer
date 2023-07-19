@@ -1,46 +1,35 @@
 package vcservice
 
 import (
-	"context"
-	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v4"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
 type validatorTestEnv struct {
 	v            *transactionValidator
 	preparedTxs  chan *preparedTransactions
 	validatedTxs chan *validatedTransactions
+	dbEnv        *databaseTestEnv
 }
 
 func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
-	db := &runner.YugabyteDB{}
-	require.NoError(t, db.Start())
-
 	preparedTxs := make(chan *preparedTransactions, 10)
 	validatedTxs := make(chan *validatedTransactions, 10)
 
-	psqlInfo := db.ConnectionSettings().DataSourceName()
-	conn, err := pgx.Connect(context.Background(), psqlInfo)
-	require.NoError(t, err)
-
-	v := newValidator(conn, preparedTxs, validatedTxs)
+	dbEnv := newDatabaseTestEnv(t)
+	v := newValidator(dbEnv.db, preparedTxs, validatedTxs)
 
 	t.Cleanup(func() {
 		close(preparedTxs)
 		close(validatedTxs)
-		closeDBConnection(t, conn)
-		stopDB(t, db)
 	})
 
 	return &validatorTestEnv{
 		v:            v,
 		preparedTxs:  preparedTxs,
 		validatedTxs: validatedTxs,
+		dbEnv:        dbEnv,
 	}
 }
 
@@ -54,9 +43,8 @@ func TestValidate(t *testing.T) {
 	v1 := versionNumber(1).bytes()
 	v2 := versionNumber(2).bytes()
 
-	populateDataWithCleanup(
+	env.dbEnv.populateDataWithCleanup(
 		t,
-		env.v.databaseConnection,
 		[]namespaceID{1, 2},
 		namespaceToWrites{
 			1: {
@@ -246,131 +234,4 @@ func TestValidate(t *testing.T) {
 			require.Equal(t, tt.expectedValidatedTx.invalidTxIndices, validatedTxs.invalidTxIndices)
 		})
 	}
-}
-
-// TODO: all the statement templates will be moved to a different package once we decide on the
-// 		 chaincode deployment model.
-
-var createTableStmtTmpt = `
-CREATE TABLE IF NOT EXISTS %s (
-    key varchar NOT NULL PRIMARY KEY,
-    value bytea NOT NULL,
-    version bytea
-);
-`
-
-var createIndexStmtTmpt = `
-CREATE INDEX idx_%s ON %s(version);
-`
-
-var validateFuncTmpt = `
-CREATE OR REPLACE FUNCTION validate_reads_%s(keys VARCHAR[], versions BYTEA[])
-RETURNS TABLE (key_mismatched VARCHAR, version_mismatched BYTEA) AS
-$$
-BEGIN
-    RETURN QUERY
-    SELECT
-        reads.keys AS key_mismatched,
-        reads.versions AS version_mismatched
-    FROM
-        unnest(keys, versions) WITH ORDINALITY AS reads(keys, versions, ord_keys)
-    LEFT JOIN
-        %s ON reads.keys = %s.key
-    WHERE
-        /* if the key does not exist in the committed state but read version is not null, we found a mismatch */
-        (%s.key IS NULL AND reads.versions IS NOT NULL)
-        OR
-        /* if the key exists in the committed state but read version is null, we found a mismatch */
-        (reads.versions IS NULL AND %s.key is NOT NULL)
-        OR
-        /* if the committed version of a key is different from the read version, we found a mismatch */
-        reads.versions <> %s.version;
-END;
-$$
-LANGUAGE plpgsql;
-`
-
-var commitFuncTmpt = `
-CREATE OR REPLACE FUNCTION commit_%s(_keys VARCHAR[], _values BYTEA[], _versions BYTEA[])
-RETURNS VOID AS $$
-BEGIN
-    INSERT INTO %s (key, value, version)
-    SELECT _key, _value, _version
-    FROM UNNEST(_keys, _values, _versions) AS t(_key, _value, _version)
-    ON CONFLICT (key) DO UPDATE
-    SET value = excluded.value, version = excluded.version;
-END;
-$$ LANGUAGE plpgsql;
-`
-
-var dropTableStmtTmpt = "DROP TABLE IF EXISTS %s"
-var dropValidateFuncStmtTmpt = "DROP FUNCTION IF EXISTS validate_reads_%s"
-var dropCommitFuncStmtTmpt = "DROP FUNCTION IF EXISTS commit_%s"
-
-func populateDataWithCleanup(t *testing.T, conn *pgx.Conn, nsIDs []namespaceID, writes namespaceToWrites) {
-	ctx := context.Background()
-	for _, nsID := range nsIDs {
-		tableName := tableNameForNamespace(nsID)
-
-		statements := []string{
-			fmt.Sprintf(createTableStmtTmpt, tableName),
-			fmt.Sprintf(createIndexStmtTmpt, tableName, tableName),
-			fmt.Sprintf(validateFuncTmpt, tableName, tableName, tableName, tableName, tableName, tableName),
-			fmt.Sprintf(commitFuncTmpt, tableName, tableName),
-		}
-
-		for _, stmt := range statements {
-			_, err := conn.Exec(ctx, stmt)
-			require.NoError(t, err)
-		}
-	}
-
-	for _, nsID := range nsIDs {
-		wrs, ok := writes[nsID]
-		if !ok {
-			continue
-		}
-		tableName := tableNameForNamespace(nsID)
-
-		// Though we can use multiple values within a single statement, for simplicity and also due to the usage
-		// within the tests, we are making multiple calls to the database. When we are storing a large amount
-		// of data, we should use multiple values within a single statement.
-		for i, key := range wrs.keys {
-			_, err := conn.Exec(
-				ctx,
-				fmt.Sprintf("INSERT INTO %s (key, value, version) VALUES ($1, $2, $3)", tableName),
-				key,
-				wrs.values[i],
-				wrs.versions[i],
-			)
-			require.NoError(t, err)
-		}
-	}
-
-	t.Cleanup(func() {
-		ctx := context.Background()
-
-		dropStmtTmpts := []string{
-			dropTableStmtTmpt,
-			dropValidateFuncStmtTmpt,
-			dropCommitFuncStmtTmpt,
-		}
-
-		for _, nsID := range nsIDs {
-			tableName := tableNameForNamespace(nsID)
-
-			for _, dropStmtTmpt := range dropStmtTmpts {
-				_, err := conn.Exec(ctx, fmt.Sprintf(dropStmtTmpt, tableName))
-				require.NoError(t, err)
-			}
-		}
-	})
-}
-
-func closeDBConnection(t *testing.T, conn *pgx.Conn) {
-	assert.NoError(t, conn.Close(context.Background()))
-}
-
-func stopDB(t *testing.T, db *runner.YugabyteDB) {
-	assert.NoError(t, db.Stop())
 }

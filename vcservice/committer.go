@@ -1,18 +1,13 @@
 package vcservice
 
 import (
-	"context"
-	"errors"
-	"fmt"
-
-	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
 // transactionCommitter is responsible for committing the transactions
 type transactionCommitter struct {
-	// databaseConnection is the connection to the database
-	databaseConnection *pgx.Conn
+	// db is a handler for the state database holding all the committed states
+	db *database
 	// incomingValidatedTransactions is the channel from which the committer receives the validated transactions
 	// from the validator
 	incomingValidatedTransactions <-chan *validatedTransactions
@@ -32,12 +27,12 @@ var versionZero = versionNumber(0).bytes()
 
 // newCommitter creates a new transactionCommitter
 func newCommitter(
-	conn *pgx.Conn,
+	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *protovcservice.TransactionStatus,
 ) *transactionCommitter {
 	return &transactionCommitter{
-		databaseConnection:            conn,
+		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
 		outgoingTransactionsStatus:    txsStatus,
 	}
@@ -56,7 +51,7 @@ func (c *transactionCommitter) commit() {
 			panic(err)
 		}
 
-		if err := c.commitWrites(nsToWrites); err != nil {
+		if err := c.db.commit(nsToWrites); err != nil {
 			panic(err)
 		}
 
@@ -117,31 +112,18 @@ func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToW
 	for nsID, writes := range nsToWrites {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance
-		tableName := tableNameForNamespace(nsID)
 
-		// Step 1: for blind writes in each namespace, query the key and version from the database
-		query := fmt.Sprintf("SELECT key, version FROM %s WHERE key = ANY($1)", tableName)
-		keysVers, err := c.databaseConnection.Query(context.Background(), query, writes.keys)
+		// Step 1: get the committed version for each key in the writes.
+		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(nsID, writes.keys)
 		if err != nil {
 			return err
-		}
-		defer keysVers.Close()
-
-		keys, versions, err := readKeysAndVersions(keysVers)
-		if err != nil {
-			return err
-		}
-
-		foundKeys := make(map[string][]byte)
-		for i, key := range keys {
-			foundKeys[key] = versions[i]
 		}
 
 		// Step 2: if the key is found in the database, use the committed version + 1 as the new version
-		//         otherwise, use version 0
+		//         otherwise, use version 0.
 		for i, key := range writes.keys {
-			ver, ok := foundKeys[key]
-			if !ok {
+			ver, notPresent := versionOfPresentKeys[key]
+			if !notPresent {
 				writes.versions[i] = versionZero
 				continue
 			}
@@ -149,39 +131,6 @@ func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToW
 			nextVer := versionNumberFromBytes(ver) + 1
 			writes.versions[i] = nextVer.bytes()
 		}
-	}
-
-	return nil
-}
-
-func (c *transactionCommitter) commitWrites(nsToWrites namespaceToWrites) error {
-	// we want to commit all the writes to all namespaces or none at all
-	// so we use a database transaction. Otherwise, the failure and recovery
-	// logic will be very complicated
-	tx, err := c.databaseConnection.Begin(context.Background())
-	if err != nil {
-		return err
-	}
-
-	// This will be executed if an error occurs. If transaction is committed, this will be a no-op
-	defer func() {
-		err = tx.Rollback(context.Background())
-		if !errors.Is(err, pgx.ErrTxClosed) {
-			logger.Warn("error rolling-back transaction: ", err)
-		}
-	}()
-
-	for nsID, writes := range nsToWrites {
-		query := fmt.Sprintf("SELECT %s($1::varchar[], $2::bytea[], $3::bytea[])", commitFuncNameForNamespace(nsID))
-
-		_, err := c.databaseConnection.Exec(context.Background(), query, writes.keys, writes.values, writes.versions)
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := tx.Commit(context.Background()); err != nil {
-		return err
 	}
 
 	return nil
@@ -198,16 +147,4 @@ func groupWritesByNamespace(txWrites transactionToWrites) namespaceToWrites {
 	}
 
 	return nsToWrites
-}
-
-func tableNameForNamespace(nsID namespaceID) string {
-	return fmt.Sprintf("ns_%d", nsID)
-}
-
-func validateFuncNameForNamespace(nsID namespaceID) string {
-	return fmt.Sprintf("validate_reads_ns_%d", nsID)
-}
-
-func commitFuncNameForNamespace(nsID namespaceID) string {
-	return fmt.Sprintf("commit_ns_%d", nsID)
 }

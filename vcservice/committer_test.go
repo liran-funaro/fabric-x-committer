@@ -1,46 +1,36 @@
 package vcservice
 
 import (
-	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
 type committerTestEnv struct {
 	c            *transactionCommitter
 	validatedTxs chan *validatedTransactions
 	txStatus     chan *protovcservice.TransactionStatus
+	dbEnv        *databaseTestEnv
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
-	db := &runner.YugabyteDB{}
-	require.NoError(t, db.Start())
-
 	validatedTxs := make(chan *validatedTransactions, 10)
 	txStatus := make(chan *protovcservice.TransactionStatus, 10)
 
-	psqlInfo := db.ConnectionSettings().DataSourceName()
-	conn, err := pgx.Connect(context.Background(), psqlInfo)
-	require.NoError(t, err)
-
-	c := newCommitter(conn, validatedTxs, txStatus)
+	dbEnv := newDatabaseTestEnv(t)
+	c := newCommitter(dbEnv.db, validatedTxs, txStatus)
 
 	t.Cleanup(func() {
 		close(validatedTxs)
 		close(txStatus)
-		closeDBConnection(t, conn)
-		stopDB(t, db)
 	})
 
 	return &committerTestEnv{
 		c:            c,
 		validatedTxs: validatedTxs,
 		txStatus:     txStatus,
+		dbEnv:        dbEnv,
 	}
 }
 
@@ -57,9 +47,8 @@ func TestCommit(t *testing.T) {
 	committed := []byte{uint8(protovcservice.TransactionStatus_COMMITTED)}
 	aborted := []byte{uint8(protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT)}
 
-	populateDataWithCleanup(
+	env.dbEnv.populateDataWithCleanup(
 		t,
-		env.c.databaseConnection,
 		[]namespaceID{1, 2, txIDsStatusNameSpace},
 		namespaceToWrites{
 			1: {
@@ -278,38 +267,8 @@ func TestCommit(t *testing.T) {
 			txStatus := <-env.txStatus
 			require.Equal(t, tt.expectedTxStatuses, txStatus)
 			for nsID, expectedRows := range tt.expectedNsRows {
-				env.rowExists(t, nsID, *expectedRows)
+				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}
 		})
-	}
-}
-
-func (c *committerTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRows namespaceWrites) {
-	query := fmt.Sprintf("SELECT key, value, version FROM %s WHERE key = ANY($1)", tableNameForNamespace(nsID))
-
-	kvPairs, err := c.c.databaseConnection.Query(context.Background(), query, expectedRows.keys)
-	require.NoError(t, err)
-	defer kvPairs.Close()
-
-	type valver struct {
-		value   []byte
-		version []byte
-	}
-
-	actualRows := map[string]*valver{}
-
-	for kvPairs.Next() {
-		var key string
-		vv := &valver{}
-
-		require.NoError(t, kvPairs.Scan(&key, &vv.value, &vv.version))
-		actualRows[key] = vv
-	}
-
-	require.NoError(t, kvPairs.Err())
-	require.Equal(t, len(expectedRows.keys), len(actualRows))
-	for i, key := range expectedRows.keys {
-		require.Equal(t, expectedRows.values[i], actualRows[key].value)
-		require.Equal(t, expectedRows.versions[i], actualRows[key].version)
 	}
 }

@@ -1,16 +1,13 @@
 package vcservice
 
 import (
-	"context"
-	"fmt"
 	"log"
-
-	"github.com/yugabyte/pgx/v4"
 )
 
 // transactionValidator validates the reads of transactions against the committed states
 type transactionValidator struct {
-	databaseConnection *pgx.Conn
+	// db is the state database holding all the committed states.
+	db *database
 	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions
 	incomingPreparedTransactions <-chan *preparedTransactions
 	// outgoingValidatedTransactions is the channel to which the validator sends validated transactions so that
@@ -27,12 +24,12 @@ type validatedTransactions struct {
 
 // NewValidator creates a new validator
 func newValidator(
-	conn *pgx.Conn,
+	db *database,
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
 ) *transactionValidator {
 	return &transactionValidator{
-		databaseConnection:            conn,
+		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
 		outgoingValidatedTransactions: validatedTxs,
 	}
@@ -57,7 +54,7 @@ func (v *transactionValidator) validate() {
 		//       goroutines to acquire the CPU. Based on performance evaluation, we can decide
 		//       to run per namespace validation in parallel.
 		for nsID, r := range prepTx.namespaceToReadEntries {
-			mismatch, err := v.validateNamespaceReads(nsID, r)
+			mismatch, err := v.db.validateNamespaceReads(nsID, r)
 			if err != nil {
 				// TODO: we should not panic here. We should handle the error and recover accordingly
 				log.Panic(err)
@@ -104,48 +101,4 @@ func (v *transactionValidator) validate() {
 			invalidTxIndices:      invalidTxID,
 		}
 	}
-}
-
-func (v *transactionValidator) validateNamespaceReads(nsID namespaceID, r *reads) (*reads, error) {
-	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
-	// the reads. This function returns the keys and versions of the mismatching reads.
-	// Note that we have a table per namespace.
-	// We have a validate function per namespace so that we can use the static SQL
-	// to avoid parsing, planning and optimizing the query for each invoke. If we use
-	// a common function for all namespace, we need to pass the table name as a parameter
-	// which makes the query dynamic and hence we lose the benefits of static SQL.
-	query := fmt.Sprintf("SELECT * FROM %s($1::varchar[], $2::bytea[])", validateFuncNameForNamespace(nsID))
-
-	mismatch, err := v.databaseConnection.Query(context.Background(), query, r.keys, r.versions)
-	if err != nil {
-		return nil, err
-	}
-	defer mismatch.Close()
-
-	keys, values, err := readKeysAndVersions(mismatch)
-	if err != nil {
-		return nil, err
-	}
-
-	mismatchingReads := &reads{}
-	mismatchingReads.appendMany(keys, values)
-
-	return mismatchingReads, nil
-}
-
-func readKeysAndVersions(r pgx.Rows) ([]string, [][]byte, error) {
-	var keys []string
-	var versions [][]byte
-
-	for r.Next() {
-		var key string
-		var version []byte
-		if err := r.Scan(&key, &version); err != nil {
-			return nil, nil, err
-		}
-		keys = append(keys, key)
-		versions = append(versions, version)
-	}
-
-	return keys, versions, r.Err()
 }

@@ -22,14 +22,14 @@ var logger = logging.New("validator and committer service")
 // ValidatorCommitterService is a gRPC service that implements the ValidationAndCommitService interface.
 type ValidatorCommitterService struct {
 	protovcservice.UnimplementedValidationAndCommitServiceServer
-	preparer           *transactionPreparer
-	validator          *transactionValidator
-	committer          *transactionCommitter
-	txBatchChan        chan *protovcservice.TransactionBatch
-	preparedTxsChan    chan *preparedTransactions
-	validatedTxsChan   chan *validatedTransactions
-	txsStatusChan      chan *protovcservice.TransactionStatus
-	databaseConnection *pgx.Conn
+	preparer         *transactionPreparer
+	validator        *transactionValidator
+	committer        *transactionCommitter
+	txBatchChan      chan *protovcservice.TransactionBatch
+	preparedTxsChan  chan *preparedTransactions
+	validatedTxsChan chan *validatedTransactions
+	txsStatusChan    chan *protovcservice.TransactionStatus
+	db               *database
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -50,21 +50,25 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *Vali
 	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter)
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter)
 
+	// TODO: we should use connection pool instead of non-thread safe conn. Fix #241.
+	// 		 Connection pool management will be passed to the database struct.
 	logger.Info("Connecting to the database")
 	conn, err := pgx.Connect(context.Background(), config.Database.DataSourceName())
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	db := newDatabase(conn)
+
 	vc := &ValidatorCommitterService{
-		preparer:           newPreparer(txBatch, preparedTxs),
-		validator:          newValidator(conn, preparedTxs, validatedTxs),
-		committer:          newCommitter(conn, validatedTxs, txsStatus),
-		txBatchChan:        txBatch,
-		preparedTxsChan:    preparedTxs,
-		validatedTxsChan:   validatedTxs,
-		txsStatusChan:      txsStatus,
-		databaseConnection: conn,
+		preparer:         newPreparer(txBatch, preparedTxs),
+		validator:        newValidator(db, preparedTxs, validatedTxs),
+		committer:        newCommitter(db, validatedTxs, txsStatus),
+		txBatchChan:      txBatch,
+		preparedTxsChan:  preparedTxs,
+		validatedTxsChan: validatedTxs,
+		txsStatusChan:    txsStatus,
+		db:               db,
 	}
 
 	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
@@ -165,8 +169,10 @@ func (vc *ValidatorCommitterService) close() {
 	logger.Info("Stopping the transaction status sender")
 	close(vc.txsStatusChan)
 
+	// TODO: once we use connection pool, this will be moved to
+	//       database struct and will be called from there. Fix #214.
 	logger.Info("Closing the database connection")
-	if err := vc.databaseConnection.Close(context.Background()); err != nil {
+	if err := vc.db.conn.Close(context.Background()); err != nil {
 		logger.Errorf("Failed to close the connection to database: %v", err)
 	}
 }

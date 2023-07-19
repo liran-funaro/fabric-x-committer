@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
@@ -19,13 +18,13 @@ type validatorAndCommitterServiceTestEnv struct {
 	vcs        *ValidatorCommitterService
 	grpcServer *grpc.Server
 	clientConn *grpc.ClientConn
+	dbEnv      *databaseTestEnv
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
-	db := &runner.YugabyteDB{}
-	require.NoError(t, db.Start())
+	dbEnv := newDatabaseTestEnv(t)
 
-	dbConnSettings := db.ConnectionSettings()
+	dbConnSettings := dbEnv.dbRunner.ConnectionSettings()
 	port, err := strconv.Atoi(dbConnSettings.Port)
 	require.NoError(t, err)
 
@@ -76,23 +75,22 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())
-
 		grpcSrv.Stop()
 		vcs.close()
-		stopDB(t, db)
 	})
 
 	return &validatorAndCommitterServiceTestEnv{
 		vcs:        vcs,
 		grpcServer: grpcSrv,
 		clientConn: clientConn,
+		dbEnv:      dbEnv,
 	}
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {
 	env := newValidatorAndCommitServiceTestEnv(t)
 
-	populateDataWithCleanup(t, env.vcs.databaseConnection, []namespaceID{1, txIDsStatusNameSpace}, namespaceToWrites{})
+	env.dbEnv.populateDataWithCleanup(t, []namespaceID{1, txIDsStatusNameSpace}, namespaceToWrites{})
 
 	client := protovcservice.NewValidationAndCommitServiceClient(env.clientConn)
 
@@ -132,4 +130,14 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	}
 
 	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+
+	env.dbEnv.rowExists(
+		t,
+		txIDsStatusNameSpace,
+		namespaceWrites{
+			keys:     []string{"tx1"},
+			values:   [][]byte{{byte(protovcservice.TransactionStatus_COMMITTED)}},
+			versions: [][]byte{nil},
+		},
+	)
 }
