@@ -62,11 +62,7 @@ func (c *envelopeCreator) payloadHeader() (*common.Header, EnvelopeTxId) {
 		channelHeader.TlsCertHash = c.tlsCertHash
 	}
 
-	if !c.signed {
-		return protoutil.MakePayloadHeader(channelHeader, &common.SignatureHeader{}), EnvelopeTxId(channelHeader.TxId)
-	}
-
-	return protoutil.MakePayloadHeader(channelHeader, signatureHeader), EnvelopeTxId(channelHeader.TxId)
+	return protoutil.MakePayloadHeader(channelHeader, signatureHeader), channelHeader.TxId
 }
 
 type noOpSigner struct{}
