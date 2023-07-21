@@ -22,6 +22,7 @@ type Config struct {
 	OrdererType              utils.ConsensusType                 `mapstructure:"orderer-type"`
 	OrdererConnectionProfile connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
 	RemoteControllerListener connection.Endpoint                 `mapstructure:"remote-controller-listener"`
+	InitialRateLimit         int                                 `mapstructure:"initial-rate-limit"`
 }
 
 func ReadConfig() Config {

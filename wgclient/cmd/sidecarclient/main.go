@@ -45,6 +45,7 @@ func main() {
 		StartBlock:           0,
 
 		RemoteControllerListener: c.RemoteControllerListener,
+		InitialRateLimit:         c.InitialRateLimit,
 	})
 	utils.Must(err)
 

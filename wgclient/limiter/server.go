@@ -12,6 +12,11 @@ import (
 
 var logger = logging.New("ratelimiter")
 
+type LimiterSetter interface {
+	ratelimit.Limiter
+	Set(int)
+}
+
 type limiterHolder struct {
 	limiter ratelimit.Limiter
 }
@@ -19,8 +24,18 @@ type limiterHolder struct {
 func (h *limiterHolder) Take() time.Time {
 	return h.limiter.Take()
 }
+func (h *limiterHolder) Set(limit int) {
+	if limit < 1 {
+		logger.Infof("Setting to unlimited (value passed: %d).", limit)
+		h.limiter = ratelimit.NewUnlimited()
+	} else {
+		logger.Infof("Setting limit to %d TPS.", limit)
+		// create our new limiter
+		h.limiter = ratelimit.New(limit)
+	}
+}
 
-func New(controllerEndpoint *connection.Endpoint) ratelimit.Limiter {
+func New(controllerEndpoint *connection.Endpoint) LimiterSetter {
 	var rl limiterHolder
 	// we start by default with unlimited rate
 	rl.limiter = ratelimit.NewUnlimited()
@@ -45,15 +60,7 @@ func New(controllerEndpoint *connection.Endpoint) ratelimit.Limiter {
 			logger.Errorf("error deserializing request: %v", err)
 		}
 
-		if limit.Limit < 1 {
-			logger.Infof("Setting to unlimited (value passed: %d).", limit.Limit)
-			rl.limiter = ratelimit.NewUnlimited()
-			return
-		}
-
-		logger.Infof("Setting limit to %d TPS.", limit.Limit)
-		// create our new limiter
-		rl.limiter = ratelimit.New(limit.Limit)
+		rl.Set(limit.Limit)
 
 		c.IndentedJSON(http.StatusOK, limit)
 	})

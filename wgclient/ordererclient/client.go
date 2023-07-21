@@ -42,6 +42,7 @@ type ClientInitOptions struct {
 	Parallelism              int
 	InputChannelCapacity     int
 	RemoteControllerListener connection.Endpoint
+	InitialRateLimit         int
 
 	ChannelID string
 }
@@ -67,6 +68,9 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	}
 
 	rateLimiter := limiter.New(&opts.RemoteControllerListener)
+	if opts.InitialRateLimit > 0 {
+		rateLimiter.Set(opts.InitialRateLimit)
+	}
 
 	var listener sidecar.DeliverListener
 	var err error
