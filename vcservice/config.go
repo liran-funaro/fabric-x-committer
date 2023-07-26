@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var defaultLocalConfigFile = "config.yaml"
@@ -16,6 +17,7 @@ type ValidatorCommitterServiceConfig struct {
 	Server         *connection.ServerConfig `mapstructure:"server"`
 	Database       *DatabaseConfig          `mapstructure:"database"`
 	ResourceLimits *ResourceLimitsConfig    `mapstructure:"resource-limits"`
+	Monitoring     *monitoring.Config       `mapstructure:"monitoring"`
 }
 
 // DatabaseConfig is the configuration for the database.
@@ -84,4 +86,8 @@ func setDefaults() {
 	viper.SetDefault(prefix+"max-workers-for-preparer", 10)
 	viper.SetDefault(prefix+"max-workers-for-validator", 10)
 	viper.SetDefault(prefix+"max-workers-for-committer", 10)
+
+	// defaults for monitoring.config
+	prefix = "validator-committer-service.monitoring."
+	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
 }

@@ -6,11 +6,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -45,6 +49,14 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 			MaxWorkersForPreparer:  2,
 			MaxWorkersForValidator: 2,
 			MaxWorkersForCommitter: 2,
+		},
+		Monitoring: &monitoring.Config{
+			Metrics: &metrics.Config{
+				Endpoint: &connection.Endpoint{
+					Host: "localhost",
+					Port: 0,
+				},
+			},
 		},
 	}
 
@@ -119,6 +131,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.NoError(t, vcStream.CloseSend())
 	})
 
+	require.Zero(t, getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
+
 	require.NoError(t, vcStream.Send(txBatch))
 	txStatus, err := vcStream.Recv()
 	require.NoError(t, err)
@@ -129,6 +143,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		},
 	}
 
+	require.Equal(t, 1.0, getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
 	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 	env.dbEnv.rowExists(
@@ -140,4 +155,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			versions: [][]byte{nil},
 		},
 	)
+}
+
+func getMetricsValue(t *testing.T, m prometheus.Metric) float64 {
+	gm := promgo.Metric{}
+	require.NoError(t, m.Write(&gm))
+	return gm.Counter.GetValue()
 }

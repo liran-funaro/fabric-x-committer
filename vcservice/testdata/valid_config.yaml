@@ -35,3 +35,6 @@ validator-committer-service:
     max-workers-for-preparer: 2              # Maximum number of workers for the preparer
     max-workers-for-validator: 2             # Maximum number of workers for the validator
     max-workers-for-committer: 2             # Maximum number of workers for the committer
+  monitoring:
+    metrics:
+      endpoint: :2111

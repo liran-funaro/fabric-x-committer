@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 func TestConfig(t *testing.T) {
@@ -53,6 +55,14 @@ func TestConfig(t *testing.T) {
 					MaxWorkersForValidator: 2,
 					MaxWorkersForCommitter: 2,
 				},
+				Monitoring: &monitoring.Config{
+					Metrics: &metrics.Config{
+						Endpoint: &connection.Endpoint{
+							Host: "",
+							Port: 2111,
+						},
+					},
+				},
 			},
 			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",
 		},
@@ -92,6 +102,14 @@ func TestConfig(t *testing.T) {
 					MaxWorkersForValidator: 10,
 					MaxWorkersForCommitter: 10,
 				},
+				Monitoring: &monitoring.Config{
+					Metrics: &metrics.Config{
+						Endpoint: &connection.Endpoint{
+							Host: "localhost",
+							Port: 6002,
+						},
+					},
+				},
 			},
 			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",
 		},
@@ -130,6 +148,14 @@ func TestConfig(t *testing.T) {
 					MaxWorkersForPreparer:  10,
 					MaxWorkersForValidator: 10,
 					MaxWorkersForCommitter: 10,
+				},
+				Monitoring: &monitoring.Config{
+					Metrics: &metrics.Config{
+						Endpoint: &connection.Endpoint{
+							Host: "localhost",
+							Port: 6002,
+						},
+					},
 				},
 			},
 			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",

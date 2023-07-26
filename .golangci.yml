@@ -100,7 +100,17 @@ linters-settings:
         arguments: [3]
       - name: add-constant
         disabled: true
-    
+  ireturn:
+    # By default, it allows using errors, empty interfaces, anonymous interfaces,
+    # and interfaces provided by the standard library.
+    allow:
+      - error
+      - empty
+      - anon
+      - stdlib
+      - github.com/prometheus/client_golang/prometheus.Counter
+      - github.com/prometheus/client_golang/prometheus.Gauge
+      - github.com/prometheus/client_golang/prometheus.Histogram
 
 run:
   # Which dirs to skip: issues from them won't be reported.

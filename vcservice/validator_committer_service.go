@@ -7,6 +7,7 @@ import (
 
 	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -30,6 +31,7 @@ type ValidatorCommitterService struct {
 	validatedTxsChan chan *validatedTransactions
 	txsStatusChan    chan *protovcservice.TransactionStatus
 	db               *database
+	metrics          *perfMetrics
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -59,6 +61,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *Vali
 	}
 
 	db := newDatabase(conn)
+	metricsProvider := prometheusmetrics.NewProvider(config.Monitoring.Metrics)
 
 	vc := &ValidatorCommitterService{
 		preparer:         newPreparer(txBatch, preparedTxs),
@@ -69,6 +72,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *Vali
 		validatedTxsChan: validatedTxs,
 		txsStatusChan:    txsStatus,
 		db:               db,
+		metrics:          newVCServiceMetrics(metricsProvider),
 	}
 
 	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
@@ -127,6 +131,7 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 			return err
 		}
 
+		vc.metrics.transactionReceivedTotal.Add(float64(len(txBatch.Transactions)))
 		vc.txBatchChan <- txBatch
 	}
 }
