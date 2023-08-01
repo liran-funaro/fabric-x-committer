@@ -3,11 +3,11 @@ package vcservice
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
@@ -92,17 +92,28 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 	dbRunner := &runner.YugabyteDB{}
 	require.NoError(t, dbRunner.Start())
 
-	psqlInfo := dbRunner.ConnectionSettings().DataSourceName()
-	conn, err := pgx.Connect(context.Background(), psqlInfo)
+	cs := dbRunner.ConnectionSettings()
+	port, err := strconv.Atoi(cs.Port)
+	require.NoError(t, err)
+
+	config := &DatabaseConfig{
+		Host:           cs.Host,
+		Port:           port,
+		Username:       cs.User,
+		Password:       cs.Password,
+		MaxConnections: 20,
+		MinConnections: 10,
+	}
+	db, err := newDatabase(config)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		assert.NoError(t, conn.Close(context.Background()))
+		db.close()
 		assert.NoError(t, dbRunner.Stop())
 	})
 
 	return &databaseTestEnv{
-		db:       newDatabase(conn),
+		db:       db,
 		dbRunner: dbRunner,
 	}
 }
@@ -222,7 +233,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 	for _, test := range tests {
 		tt := test
 		t.Run(tt.name, func(t *testing.T) {
-			// TODO: fix issue #241 to enable parallel text
+			t.Parallel()
 
 			mismatchingReads, err := env.db.validateNamespaceReads(tt.nsID, tt.r)
 			require.NoError(t, err)
@@ -271,7 +282,7 @@ func (env *databaseTestEnv) populateDataWithCleanup(t *testing.T, nsIDs []namesp
 		}
 
 		for _, stmt := range statements {
-			_, err := env.db.conn.Exec(ctx, stmt)
+			_, err := env.db.pool.Exec(ctx, stmt)
 			require.NoError(t, err)
 		}
 	}
@@ -290,7 +301,7 @@ func (env *databaseTestEnv) populateDataWithCleanup(t *testing.T, nsIDs []namesp
 			tableName := tableNameForNamespace(nsID)
 
 			for _, dropStmtTmpt := range dropStmtTmpts {
-				_, err := env.db.conn.Exec(ctx, fmt.Sprintf(dropStmtTmpt, tableName))
+				_, err := env.db.pool.Exec(ctx, fmt.Sprintf(dropStmtTmpt, tableName))
 				require.NoError(t, err)
 			}
 		}
@@ -300,7 +311,7 @@ func (env *databaseTestEnv) populateDataWithCleanup(t *testing.T, nsIDs []namesp
 func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRows namespaceWrites) {
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, tableNameForNamespace(nsID))
 
-	kvPairs, err := env.db.conn.Query(context.Background(), query, expectedRows.keys)
+	kvPairs, err := env.db.pool.Query(context.Background(), query, expectedRows.keys)
 	require.NoError(t, err)
 	defer kvPairs.Close()
 

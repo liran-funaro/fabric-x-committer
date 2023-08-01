@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/yugabyte/pgx/v4"
+	"github.com/yugabyte/pgx/v4/pgxpool"
 )
 
 const (
@@ -23,8 +24,7 @@ const (
 type (
 	// database handles the database operations.
 	database struct {
-		// TODO: conn is not thread safe. We need to use a connection pool. Fix #241.
-		conn *pgx.Conn
+		pool *pgxpool.Pool
 	}
 
 	// keyToVersion is a map from key to version.
@@ -32,10 +32,23 @@ type (
 )
 
 // newDatabase creates a new database.
-func newDatabase(conn *pgx.Conn) *database {
-	return &database{
-		conn: conn,
+func newDatabase(config *DatabaseConfig) (*database, error) {
+	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
+	if err != nil {
+		return nil, err
 	}
+
+	poolConfig.MaxConns = config.MaxConnections
+	poolConfig.MinConns = config.MinConnections
+
+	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &database{
+		pool: pool,
+	}, nil
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
@@ -49,7 +62,7 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
 	query := fmt.Sprintf(validateReadsSQLTemplate, nsID)
 
-	mismatch, err := db.conn.Query(context.Background(), query, r.keys, r.versions)
+	mismatch, err := db.pool.Query(context.Background(), query, r.keys, r.versions)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +82,7 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
 func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys []string) (keyToVersion, error) {
 	query := fmt.Sprintf(queryVersionsSQLTemplate, tableNameForNamespace(nsID))
-	keysVers, err := db.conn.Query(context.Background(), query, queryKeys)
+	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +108,7 @@ func (db *database) commit(nsToWrites namespaceToWrites) error {
 	// logic will be very complicated.
 
 	ctx := context.Background()
-	tx, err := db.conn.Begin(ctx)
+	tx, err := db.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -118,6 +131,10 @@ func (db *database) commit(nsToWrites namespaceToWrites) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (db *database) close() {
+	db.pool.Close()
 }
 
 // readKeysAndVersions reads the keys and versions from the given rows.

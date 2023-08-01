@@ -40,10 +40,12 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 			},
 		},
 		Database: &DatabaseConfig{
-			Host:     dbConnSettings.Host,
-			Port:     port,
-			Username: dbConnSettings.User,
-			Password: dbConnSettings.Password,
+			Host:           dbConnSettings.Host,
+			Port:           port,
+			Username:       dbConnSettings.User,
+			Password:       dbConnSettings.Password,
+			MaxConnections: 20,
+			MinConnections: 10,
 		},
 		ResourceLimits: &ResourceLimitsConfig{
 			MaxWorkersForPreparer:  2,
@@ -64,7 +66,8 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
 
-	vcs := NewValidatorCommitterService(config)
+	vcs, err := NewValidatorCommitterService(config)
+	require.NoError(t, err)
 
 	var grpcSrv *grpc.Server
 

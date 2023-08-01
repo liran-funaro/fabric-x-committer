@@ -21,20 +21,22 @@ validator-committer-service:
       # Enforcement policy for keep-alive feature
       enforcement-policy:
         min-time: "5s"                         # Minimum time a client should wait between pings
-        permit-without-stream: true             # Whether the server allows pings even when there are no active streams
+        permit-without-stream: true            # Whether the server allows pings even when there are no active streams
   # Configuration for the database
   database:
-    host: "localhost"                     # The host of the database
-    port: 5433                            # The port of the database
-    username: "yugabyte"                  # The username for the database
+    host: "localhost"                          # The host of the database
+    port: 5433                                 # The port of the database
+    username: "yugabyte"                       # The username for the database
     # TODO: pass password via environment variable
-    password: "yugabyte"                  # The password for the database
-    database: "yugabyte"                  # The database name
+    password: "yugabyte"                       # The password for the database
+    database: "yugabyte"                       # The database name
+    max-connections: 10                        # The maximum size of the connection pool
+    min-connections: 5                         # The minimum size of the connection pool.
   # Resource limit configurations
   resource-limits:
-    max-workers-for-preparer: 2              # Maximum number of workers for the preparer
-    max-workers-for-validator: 2             # Maximum number of workers for the validator
-    max-workers-for-committer: 2             # Maximum number of workers for the committer
+    max-workers-for-preparer: 2                # Maximum number of workers for the preparer
+    max-workers-for-validator: 2               # Maximum number of workers for the validator
+    max-workers-for-committer: 2               # Maximum number of workers for the committer
   monitoring:
     metrics:
       endpoint: :2111

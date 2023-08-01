@@ -1,11 +1,8 @@
 package vcservice
 
 import (
-	"context"
 	"io"
-	"log"
 
-	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -45,22 +42,18 @@ type Limits struct {
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *ValidatorCommitterService {
+func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*ValidatorCommitterService, error) {
 	l := config.ResourceLimits
 	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator)
 	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter)
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter)
 
-	// TODO: we should use connection pool instead of non-thread safe conn. Fix #241.
-	// 		 Connection pool management will be passed to the database struct.
-	logger.Info("Connecting to the database")
-	conn, err := pgx.Connect(context.Background(), config.Database.DataSourceName())
+	db, err := newDatabase(config.Database)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	db := newDatabase(conn)
 	metricsProvider := prometheusmetrics.NewProvider(config.Monitoring.Metrics)
 
 	vc := &ValidatorCommitterService{
@@ -84,7 +77,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) *Vali
 	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
 	vc.committer.start(l.MaxWorkersForCommitter)
 
-	return vc
+	return vc, nil
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
@@ -174,10 +167,6 @@ func (vc *ValidatorCommitterService) close() {
 	logger.Info("Stopping the transaction status sender")
 	close(vc.txsStatusChan)
 
-	// TODO: once we use connection pool, this will be moved to
-	//       database struct and will be called from there. Fix #214.
 	logger.Info("Closing the database connection")
-	if err := vc.db.conn.Close(context.Background()); err != nil {
-		logger.Errorf("Failed to close the connection to database: %v", err)
-	}
+	vc.db.close()
 }
