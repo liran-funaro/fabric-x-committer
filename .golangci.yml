@@ -129,3 +129,22 @@ run:
   # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
   # Default: true
   skip-dirs-use-default: false
+
+issues:
+  # The list of ids of default excludes to include or disable.
+  # https://golangci-lint.run/usage/false-positives/#default-exclusions
+  # Default: []
+  include:
+    - EXC0001
+    - EXC0002
+    - EXC0003
+    - EXC0004
+    - EXC0005
+    - EXC0006
+    - EXC0007
+    - EXC0009
+    - EXC0010
+    - EXC0011
+    - EXC0012
+    - EXC0013
+    - EXC0014
