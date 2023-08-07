@@ -28,13 +28,13 @@ message TxNamespace {
 
 // Represents a read operation.
 message Read {
-    string key = 1; // The key being read.
+    bytes key = 1; // The key being read.
     bytes version = 2; // The version of the key being read.
 }
 
 // Represents a read-write operation.
 message ReadWrite {
-    string key = 1; // The key involved in the read-write operation.
+    bytes key = 1; // The key involved in the read-write operation.
     // If the key is empty, the key would be constructed using the txID
     // and the index of the read-write operation.
     bytes version = 2; // The version of the key being read and written.
@@ -43,7 +43,7 @@ message ReadWrite {
 
 // Represents a write operation.
 message Write {
-    string key = 1; // The key being written.
+    bytes key = 1; // The key being written.
     // If the key is empty, the key would be constructed using the txID
     // and the index of the read-write operation.
     bytes value = 2; // The value associated with the key being written.

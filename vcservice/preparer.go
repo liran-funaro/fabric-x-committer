@@ -33,7 +33,7 @@ type (
 
 	// reads is a list of keys and versions
 	reads struct {
-		keys     []string
+		keys     [][]byte
 		versions [][]byte
 	}
 
@@ -54,7 +54,7 @@ type (
 	namespaceToWrites map[namespaceID]*namespaceWrites
 
 	namespaceWrites struct {
-		keys     []string
+		keys     [][]byte
 		values   [][]byte
 		versions [][]byte
 	}
@@ -121,7 +121,7 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 		// If the read is already present in the list, we can skip adding it.
 		cr := comparableRead{
 			nsID:    nsID,
-			key:     r.Key,
+			key:     string(r.Key),
 			version: string(r.Version),
 		}
 		v, present := p.readToTransactionIndices[cr]
@@ -148,7 +148,7 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 		// chosen for the validation and commit.
 		cr := comparableRead{
 			nsID:    nsID,
-			key:     rw.Key,
+			key:     string(rw.Key),
 			version: string(rw.Version),
 		}
 		p.readToTransactionIndices[cr] = append(p.readToTransactionIndices[cr], id)
@@ -220,23 +220,23 @@ func (tw transactionToWrites) getOrCreate(id TxID, nsID namespaceID) *namespaceW
 	return nsWrites
 }
 
-func (r *reads) append(key string, version []byte) {
+func (r *reads) append(key, version []byte) {
 	r.keys = append(r.keys, key)
 	r.versions = append(r.versions, version)
 }
 
-func (r *reads) appendMany(keys []string, versions [][]byte) {
+func (r *reads) appendMany(keys, versions [][]byte) {
 	r.keys = append(r.keys, keys...)
 	r.versions = append(r.versions, versions...)
 }
 
-func (nw *namespaceWrites) append(key string, value, version []byte) {
+func (nw *namespaceWrites) append(key, value, version []byte) {
 	nw.keys = append(nw.keys, key)
 	nw.values = append(nw.values, value)
 	nw.versions = append(nw.versions, version)
 }
 
-func (nw *namespaceWrites) appendMany(key []string, value, version [][]byte) {
+func (nw *namespaceWrites) appendMany(key, value, version [][]byte) {
 	nw.keys = append(nw.keys, key...)
 	nw.values = append(nw.values, value...)
 	nw.versions = append(nw.versions, version...)

@@ -118,7 +118,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						NsId: 1,
 						BlindWrites: []*protoblocktx.Write{
 							{
-								Key:   "key1",
+								Key:   []byte("key1"),
 								Value: []byte("value1"),
 							},
 						},
@@ -153,7 +153,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		t,
 		txIDsStatusNameSpace,
 		namespaceWrites{
-			keys:     []string{"tx1"},
+			keys:     [][]byte{[]byte("tx1")},
 			values:   [][]byte{{byte(protovcservice.TransactionStatus_COMMITTED)}},
 			versions: [][]byte{nil},
 		},

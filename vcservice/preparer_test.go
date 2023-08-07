@@ -40,6 +40,13 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	v0 := versionNumber(0).bytes()
 	v1 := versionNumber(1).bytes()
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+	k6 := []byte("key6")
+
 	tx := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
 			{
@@ -48,16 +55,16 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					{
 						NsId: 1,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key1", Version: v1},
-							{Key: "key2", Version: v1},
-							{Key: "key3", Version: nil},
+							{Key: k1, Version: v1},
+							{Key: k2, Version: v1},
+							{Key: k3, Version: nil},
 						},
 					},
 					{
 						NsId: 2,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key4", Version: v0},
-							{Key: "key5", Version: nil},
+							{Key: k4, Version: v0},
+							{Key: k5, Version: nil},
 						},
 					},
 				},
@@ -68,17 +75,17 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					{
 						NsId: 1,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key1", Version: v1},
-							{Key: "key4", Version: v1},
-							{Key: "key5", Version: nil},
+							{Key: k1, Version: v1},
+							{Key: k4, Version: v1},
+							{Key: k5, Version: nil},
 						},
 					},
 					{
 						NsId: 2,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key4", Version: v1},
-							{Key: "key5", Version: v0},
-							{Key: "key6", Version: nil},
+							{Key: k4, Version: v1},
+							{Key: k5, Version: v0},
+							{Key: k6, Version: nil},
 						},
 					},
 				},
@@ -89,25 +96,25 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	expectedPreparedTxs := &preparedTransactions{
 		namespaceToReadEntries: namespaceToReads{
 			1: &reads{
-				keys:     []string{"key1", "key2", "key3", "key4", "key5"},
+				keys:     [][]byte{k1, k2, k3, k4, k5},
 				versions: [][]byte{v1, v1, nil, v1, nil},
 			},
 			2: &reads{
-				keys:     []string{"key4", "key5", "key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k4, k5, k6},
 				versions: [][]byte{v0, nil, v1, v0, nil},
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, "key1", string(v1)}: []TxID{"tx1", "tx2"},
-			comparableRead{1, "key2", string(v1)}: []TxID{"tx1"},
-			comparableRead{1, "key3", ""}:         []TxID{"tx1"},
-			comparableRead{1, "key4", string(v1)}: []TxID{"tx2"},
-			comparableRead{1, "key5", ""}:         []TxID{"tx2"},
-			comparableRead{2, "key4", string(v0)}: []TxID{"tx1"},
-			comparableRead{2, "key5", ""}:         []TxID{"tx1"},
-			comparableRead{2, "key4", string(v1)}: []TxID{"tx2"},
-			comparableRead{2, "key5", string(v0)}: []TxID{"tx2"},
-			comparableRead{2, "key6", ""}:         []TxID{"tx2"},
+			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1", "tx2"},
+			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
+			comparableRead{2, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{2, string(k5), string(v0)}: []TxID{"tx2"},
+			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{},
 		blindWritesPerTransaction:    transactionToWrites{},
@@ -127,6 +134,12 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+
 	tx := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
 			{
@@ -135,14 +148,17 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 					{
 						NsId: 1,
 						BlindWrites: []*protoblocktx.Write{
-							{Key: "key1", Value: []byte("1")},
-							{Key: "key2", Value: []byte("1")},
-							{Key: "key3", Value: nil},
+							{Key: k1, Value: []byte("1")},
+							{Key: k2, Value: []byte("1")},
+							{Key: k3, Value: nil},
 						},
 					},
 					{
-						NsId:        2,
-						BlindWrites: []*protoblocktx.Write{{Key: "key1", Value: []byte("5")}},
+						NsId: 2,
+						BlindWrites: []*protoblocktx.Write{{
+							Key:   k1,
+							Value: []byte("5"),
+						}},
 					},
 				},
 			},
@@ -152,8 +168,8 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 					{
 						NsId: 1,
 						BlindWrites: []*protoblocktx.Write{
-							{Key: "key4", Value: []byte("1")},
-							{Key: "key5", Value: nil},
+							{Key: k4, Value: []byte("1")},
+							{Key: k5, Value: nil},
 						},
 					},
 				},
@@ -168,19 +184,19 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 		blindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key1", "key2", "key3"},
+					keys:     [][]byte{k1, k2, k3},
 					values:   [][]byte{[]byte("1"), []byte("1"), nil},
 					versions: [][]byte{nil, nil, nil},
 				},
 				2: &namespaceWrites{
-					keys:     []string{"key1"},
+					keys:     [][]byte{k1},
 					values:   [][]byte{[]byte("5")},
 					versions: [][]byte{nil},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key4", "key5"},
+					keys:     [][]byte{k4, k5},
 					values:   [][]byte{[]byte("1"), nil},
 					versions: [][]byte{nil, nil},
 				},
@@ -206,6 +222,13 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	v1 := versionNumber(1).bytes()
 	v2 := versionNumber(2).bytes()
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+	k6 := []byte("key6")
+
 	tx := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
 			{
@@ -214,16 +237,16 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					{
 						NsId: 1,
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key1", Version: v1, Value: []byte("v1")},
-							{Key: "key2", Version: v1, Value: []byte("v2")},
-							{Key: "key3", Version: nil, Value: []byte("v3")},
+							{Key: k1, Version: v1, Value: []byte("v1")},
+							{Key: k2, Version: v1, Value: []byte("v2")},
+							{Key: k3, Version: nil, Value: []byte("v3")},
 						},
 					},
 					{
 						NsId: 2,
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key4", Version: v0, Value: []byte("v4")},
-							{Key: "key5", Version: nil, Value: []byte("v5")},
+							{Key: k4, Version: v0, Value: []byte("v4")},
+							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
 					},
 				},
@@ -234,14 +257,14 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					{
 						NsId: 1,
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key4", Version: v1, Value: []byte("v4")},
-							{Key: "key5", Version: nil, Value: []byte("v5")},
+							{Key: k4, Version: v1, Value: []byte("v4")},
+							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
 					},
 					{
 						NsId: 2,
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key6", Version: nil, Value: []byte("v6")},
+							{Key: k6, Version: nil, Value: []byte("v6")},
 						},
 					},
 				},
@@ -252,45 +275,45 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	expectedPreparedTxs := &preparedTransactions{
 		namespaceToReadEntries: namespaceToReads{
 			1: &reads{
-				keys:     []string{"key1", "key2", "key3", "key4", "key5"},
+				keys:     [][]byte{k1, k2, k3, k4, k5},
 				versions: [][]byte{v1, v1, nil, v1, nil},
 			},
 			2: &reads{
-				keys:     []string{"key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k6},
 				versions: [][]byte{v0, nil, nil},
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, "key1", string(v1)}: []TxID{"tx1"},
-			comparableRead{1, "key2", string(v1)}: []TxID{"tx1"},
-			comparableRead{1, "key3", ""}:         []TxID{"tx1"},
-			comparableRead{1, "key4", string(v1)}: []TxID{"tx2"},
-			comparableRead{1, "key5", ""}:         []TxID{"tx2"},
-			comparableRead{2, "key4", string(v0)}: []TxID{"tx1"},
-			comparableRead{2, "key5", ""}:         []TxID{"tx1"},
-			comparableRead{2, "key6", ""}:         []TxID{"tx2"},
+			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
+			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key1", "key2", "key3"},
+					keys:     [][]byte{k1, k2, k3},
 					values:   [][]byte{[]byte("v1"), []byte("v2"), []byte("v3")},
 					versions: [][]byte{v2, v2, v0},
 				},
 				2: &namespaceWrites{
-					keys:     []string{"key4", "key5"},
+					keys:     [][]byte{k4, k5},
 					values:   [][]byte{[]byte("v4"), []byte("v5")},
 					versions: [][]byte{v1, v0},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key4", "key5"},
+					keys:     [][]byte{k4, k5},
 					values:   [][]byte{[]byte("v4"), []byte("v5")},
 					versions: [][]byte{v2, v0},
 				},
 				2: &namespaceWrites{
-					keys:     []string{"key6"},
+					keys:     [][]byte{k6},
 					values:   [][]byte{[]byte("v6")},
 					versions: [][]byte{v0},
 				},
@@ -322,6 +345,17 @@ func TestPrepareTx(t *testing.T) {
 	v9 := versionNumber(9).bytes()
 	v10 := versionNumber(10).bytes()
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+	k6 := []byte("key6")
+	k7 := []byte("key7")
+	k8 := []byte("key8")
+	k9 := []byte("key9")
+	k10 := []byte("key10")
+
 	tx := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
 			{
@@ -330,26 +364,26 @@ func TestPrepareTx(t *testing.T) {
 					{
 						NsId: 1,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key1", Version: v1},
-							{Key: "key2", Version: v2},
+							{Key: k1, Version: v1},
+							{Key: k2, Version: v2},
 						},
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key3", Version: v3, Value: []byte("v3")},
+							{Key: k3, Version: v3, Value: []byte("v3")},
 						},
 						BlindWrites: []*protoblocktx.Write{
-							{Key: "key4", Value: []byte("v4")},
+							{Key: k4, Value: []byte("v4")},
 						},
 					},
 					{
 						NsId: 2,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key5", Version: nil},
+							{Key: k5, Version: nil},
 						},
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key6", Version: nil, Value: []byte("v6")},
+							{Key: k6, Version: nil, Value: []byte("v6")},
 						},
 						BlindWrites: []*protoblocktx.Write{
-							{Key: "key7", Value: []byte("v7")},
+							{Key: k7, Value: []byte("v7")},
 						},
 					},
 				},
@@ -360,13 +394,13 @@ func TestPrepareTx(t *testing.T) {
 					{
 						NsId: 1,
 						ReadsOnly: []*protoblocktx.Read{
-							{Key: "key8", Version: v8},
+							{Key: k8, Version: v8},
 						},
 						ReadWrites: []*protoblocktx.ReadWrite{
-							{Key: "key9", Version: v9, Value: []byte("v9")},
+							{Key: k9, Version: v9, Value: []byte("v9")},
 						},
 						BlindWrites: []*protoblocktx.Write{
-							{Key: "key10", Value: []byte("v10")},
+							{Key: k10, Value: []byte("v10")},
 						},
 					},
 				},
@@ -377,39 +411,39 @@ func TestPrepareTx(t *testing.T) {
 	expectedPreparedTxs := &preparedTransactions{
 		namespaceToReadEntries: namespaceToReads{
 			1: &reads{
-				keys:     []string{"key1", "key2", "key3", "key8", "key9"},
+				keys:     [][]byte{k1, k2, k3, k8, k9},
 				versions: [][]byte{v1, v2, v3, v8, v9},
 			},
 			2: &reads{
-				keys:     []string{"key5", "key6"},
+				keys:     [][]byte{k5, k6},
 				versions: [][]byte{nil, nil},
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, "key1", string(v1)}: []TxID{"tx1"},
-			comparableRead{1, "key2", string(v2)}: []TxID{"tx1"},
-			comparableRead{1, "key3", string(v3)}: []TxID{"tx1"},
-			comparableRead{1, "key8", string(v8)}: []TxID{"tx2"},
-			comparableRead{1, "key9", string(v9)}: []TxID{"tx2"},
-			comparableRead{2, "key5", ""}:         []TxID{"tx1"},
-			comparableRead{2, "key6", ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k2), string(v2)}: []TxID{"tx1"},
+			comparableRead{1, string(k3), string(v3)}: []TxID{"tx1"},
+			comparableRead{1, string(k8), string(v8)}: []TxID{"tx2"},
+			comparableRead{1, string(k9), string(v9)}: []TxID{"tx2"},
+			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
+			comparableRead{2, string(k6), ""}:         []TxID{"tx1"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key3"},
+					keys:     [][]byte{k3},
 					values:   [][]byte{[]byte("v3")},
 					versions: [][]byte{v4},
 				},
 				2: &namespaceWrites{
-					keys:     []string{"key6"},
+					keys:     [][]byte{k6},
 					values:   [][]byte{[]byte("v6")},
 					versions: [][]byte{v0},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key9"},
+					keys:     [][]byte{k9},
 					values:   [][]byte{[]byte("v9")},
 					versions: [][]byte{v10},
 				},
@@ -418,19 +452,19 @@ func TestPrepareTx(t *testing.T) {
 		blindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key4"},
+					keys:     [][]byte{k4},
 					values:   [][]byte{[]byte("v4")},
 					versions: [][]byte{nil},
 				},
 				2: &namespaceWrites{
-					keys:     []string{"key7"},
+					keys:     [][]byte{k7},
 					values:   [][]byte{[]byte("v7")},
 					versions: [][]byte{nil},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     []string{"key10"},
+					keys:     [][]byte{k10},
 					values:   [][]byte{[]byte("v10")},
 					versions: [][]byte{nil},
 				},

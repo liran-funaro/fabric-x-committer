@@ -17,7 +17,7 @@ import (
 const (
 	createTableStmtTmpt = `
 		CREATE TABLE IF NOT EXISTS %s (
-			key varchar NOT NULL PRIMARY KEY,
+			key bytea NOT NULL PRIMARY KEY,
 			value bytea NOT NULL,
 			version bytea
 		);
@@ -28,8 +28,8 @@ const (
 	`
 
 	validateFuncTmpt = `
-		CREATE OR REPLACE FUNCTION validate_reads_%s(keys VARCHAR[], versions BYTEA[])
-		RETURNS TABLE (key_mismatched VARCHAR, version_mismatched BYTEA) AS
+		CREATE OR REPLACE FUNCTION validate_reads_%s(keys BYTEA[], versions BYTEA[])
+		RETURNS TABLE (key_mismatched BYTEA, version_mismatched BYTEA) AS
 		$$
 		BEGIN
 			RETURN QUERY
@@ -56,7 +56,7 @@ const (
 	`
 
 	commitFuncTmpt = `
-		CREATE OR REPLACE FUNCTION commit_%s(_keys VARCHAR[], _values BYTEA[], _versions BYTEA[])
+		CREATE OR REPLACE FUNCTION commit_%s(_keys BYTEA[], _values BYTEA[], _versions BYTEA[])
 		RETURNS VOID AS $$
 		BEGIN
 			INSERT INTO %s (key, value, version)
@@ -121,17 +121,27 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 func TestValidateNamespaceReads(t *testing.T) {
 	env := newDatabaseTestEnv(t)
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+	k6 := []byte("key6")
+	k7 := []byte("key7")
+	k8 := []byte("key8")
+	k9 := []byte("key9")
+
 	env.populateDataWithCleanup(
 		t,
 		[]namespaceID{ns1, ns2},
 		namespaceToWrites{
 			ns1: {
-				keys:     []string{"key1", "key2", "key3"},
+				keys:     [][]byte{k1, k2, k3},
 				values:   [][]byte{[]byte("value1"), []byte("value2"), []byte("value3")},
 				versions: [][]byte{v0, v0, v0},
 			},
 			ns2: {
-				keys:     []string{"key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k6},
 				values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
 				versions: [][]byte{v1, v1, v1},
 			},
@@ -154,7 +164,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of only non-existing keys and all matching versions",
 			nsID: ns1,
 			r: &reads{
-				keys:     []string{"key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k6},
 				versions: [][]byte{nil, nil, nil},
 			},
 			expectedMismatchedReads: &reads{},
@@ -163,11 +173,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of only non-existing keys and some mismatching versions",
 			nsID: ns2,
 			r: &reads{
-				keys:     []string{"key7", "key8", "key9"},
+				keys:     [][]byte{k7, k8, k9},
 				versions: [][]byte{nil, v0, nil},
 			},
 			expectedMismatchedReads: &reads{
-				keys:     []string{"key8"},
+				keys:     [][]byte{k8},
 				versions: [][]byte{v0},
 			},
 		},
@@ -175,11 +185,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of only non-existing keys and all mismatching versions",
 			nsID: ns2,
 			r: &reads{
-				keys:     []string{"key7", "key8", "key9"},
+				keys:     [][]byte{k7, k8, k9},
 				versions: [][]byte{v1, v0, v1},
 			},
 			expectedMismatchedReads: &reads{
-				keys:     []string{"key7", "key8", "key9"},
+				keys:     [][]byte{k7, k8, k9},
 				versions: [][]byte{v1, v0, v1},
 			},
 		},
@@ -187,7 +197,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of existing keys and all matching versions",
 			nsID: ns1,
 			r: &reads{
-				keys:     []string{"key1", "key2", "key3"},
+				keys:     [][]byte{k1, k2, k3},
 				versions: [][]byte{v0, v0, v0},
 			},
 			expectedMismatchedReads: &reads{},
@@ -196,11 +206,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of existing keys and some mismatching versions",
 			nsID: ns1,
 			r: &reads{
-				keys:     []string{"key1", "key2", "key3"},
+				keys:     [][]byte{k1, k2, k3},
 				versions: [][]byte{v1, v0, v1},
 			},
 			expectedMismatchedReads: &reads{
-				keys:     []string{"key1", "key3"},
+				keys:     [][]byte{k1, k3},
 				versions: [][]byte{v1, v1},
 			},
 		},
@@ -208,11 +218,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of existing keys and all mismatching versions",
 			nsID: ns2,
 			r: &reads{
-				keys:     []string{"key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k6},
 				versions: [][]byte{v0, v0, v0},
 			},
 			expectedMismatchedReads: &reads{
-				keys:     []string{"key4", "key5", "key6"},
+				keys:     [][]byte{k4, k5, k6},
 				versions: [][]byte{v0, v0, v0},
 			},
 		},
@@ -220,11 +230,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			name: "reads of existing and non-existing keys and some mismatching versions",
 			nsID: ns2,
 			r: &reads{
-				keys:     []string{"key4", "key5", "key6", "key7", "key8", "key9"},
+				keys:     [][]byte{k4, k5, k6, k7, k8, k9},
 				versions: [][]byte{v1, v0, v1, nil, v0, nil},
 			},
 			expectedMismatchedReads: &reads{
-				keys:     []string{"key5", "key8"},
+				keys:     [][]byte{k5, k8},
 				versions: [][]byte{v0, v0},
 			},
 		},
@@ -251,14 +261,21 @@ func TestDBCommit(t *testing.T) {
 		namespaceToWrites{},
 	)
 
+	k1 := []byte("key1")
+	k2 := []byte("key2")
+	k3 := []byte("key3")
+	k4 := []byte("key4")
+	k5 := []byte("key5")
+	k6 := []byte("key6")
+
 	nsToWrites := namespaceToWrites{
 		ns1: {
-			keys:     []string{"key1", "key2", "key3"},
+			keys:     [][]byte{k1, k2, k3},
 			values:   [][]byte{[]byte("value1"), []byte("value2"), []byte("value3")},
 			versions: [][]byte{v0, v0, v0},
 		},
 		ns2: {
-			keys:     []string{"key4", "key5", "key6"},
+			keys:     [][]byte{k4, k5, k6},
 			values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
 			versions: [][]byte{v1, v1, v1},
 		},
@@ -323,17 +340,17 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRo
 	actualRows := map[string]*valueVersion{}
 
 	for kvPairs.Next() {
-		var key string
+		var key []byte
 		vv := &valueVersion{}
 
 		require.NoError(t, kvPairs.Scan(&key, &vv.value, &vv.version))
-		actualRows[key] = vv
+		actualRows[string(key)] = vv
 	}
 
 	require.NoError(t, kvPairs.Err())
 	require.Equal(t, len(expectedRows.keys), len(actualRows))
 	for i, key := range expectedRows.keys {
-		require.Equal(t, expectedRows.values[i], actualRows[key].value)
-		require.Equal(t, expectedRows.versions[i], actualRows[key].version)
+		require.Equal(t, expectedRows.values[i], actualRows[string(key)].value)
+		require.Equal(t, expectedRows.versions[i], actualRows[string(key)].version)
 	}
 }

@@ -43,17 +43,29 @@ func TestValidate(t *testing.T) {
 	v1 := versionNumber(1).bytes()
 	v2 := versionNumber(2).bytes()
 
+	k1_1 := []byte("key1.1")
+	k1_2 := []byte("key1.2")
+	k1_3 := []byte("key1.3")
+	k1_4 := []byte("key1.4")
+	k1_5 := []byte("key1.5")
+	k1_6 := []byte("key1.6")
+	k2_1 := []byte("key2.1")
+	k2_2 := []byte("key2.2")
+	k2_3 := []byte("key2.3")
+	k2_4 := []byte("key2.4")
+	k2_5 := []byte("key2.5")
+
 	env.dbEnv.populateDataWithCleanup(
 		t,
 		[]namespaceID{1, 2},
 		namespaceToWrites{
 			1: {
-				keys:     []string{"key1.1", "key1.2", "key1.3", "key1.4"},
+				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
 				values:   [][]byte{[]byte("value1.1"), []byte("value1.2"), []byte("value1.3"), []byte("value1.4")},
 				versions: [][]byte{v1, v1, v2, v2},
 			},
 			2: {
-				keys:     []string{"key2.1", "key2.2", "key2.3", "key2.4"},
+				keys:     [][]byte{k2_1, k2_2, k2_3, k2_4},
 				values:   [][]byte{[]byte("value2.1"), []byte("value2.2"), []byte("value2.3"), []byte("value2.4")},
 				versions: [][]byte{v0, v0, v1, v1},
 			},
@@ -62,33 +74,33 @@ func TestValidate(t *testing.T) {
 
 	tx1NonBlindWrites := namespaceToWrites{
 		1: {
-			keys:     []string{"key1.1"},
+			keys:     [][]byte{k1_1},
 			values:   [][]byte{[]byte("value1.1.1")},
 			versions: [][]byte{v2},
 		},
 		2: {
-			keys:     []string{"key2.1"},
+			keys:     [][]byte{k2_1},
 			values:   [][]byte{[]byte("value1.1.1")},
 			versions: [][]byte{v2},
 		},
 	}
 	tx2NonBlindWrites := namespaceToWrites{
 		1: {
-			keys:     []string{"key1.5"},
+			keys:     [][]byte{k1_5},
 			values:   [][]byte{[]byte("value1.5.1")},
 			versions: [][]byte{v0},
 		},
 	}
 	tx3NonBlindWrites := namespaceToWrites{
 		2: {
-			keys:     []string{"key2.2"},
+			keys:     [][]byte{k2_2},
 			values:   [][]byte{[]byte("value2.2.1")},
 			versions: [][]byte{v2},
 		},
 	}
 	tx3BlindWrites := namespaceToWrites{
 		1: {
-			keys:     []string{"key1.6"},
+			keys:     [][]byte{k1_6},
 			values:   [][]byte{[]byte("value1.6")},
 			versions: [][]byte{nil},
 		},
@@ -105,21 +117,21 @@ func TestValidate(t *testing.T) {
 			preparedTx: &preparedTransactions{
 				namespaceToReadEntries: namespaceToReads{
 					1: &reads{
-						keys:     []string{"key1.1", "key1.2", "key1.5"},
+						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
 					},
 					2: &reads{
-						keys:     []string{"key2.1", "key2.2", "key2.5"},
+						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{v0, v0, nil},
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, "key1.1", string(v1)}: []TxID{"tx1"},
-					comparableRead{1, "key1.2", string(v1)}: []TxID{"tx1"},
-					comparableRead{1, "key1.5", ""}:         []TxID{"tx2"},
-					comparableRead{2, "key2.1", string(v0)}: []TxID{"tx1"},
-					comparableRead{2, "key2.2", string(v0)}: []TxID{"tx3"},
-					comparableRead{2, "key2.5", ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v1)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_2), string(v1)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_5), ""}:         []TxID{"tx2"},
+					comparableRead{2, string(k2_1), string(v0)}: []TxID{"tx1"},
+					comparableRead{2, string(k2_2), string(v0)}: []TxID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -147,21 +159,21 @@ func TestValidate(t *testing.T) {
 			preparedTx: &preparedTransactions{
 				namespaceToReadEntries: namespaceToReads{
 					1: &reads{
-						keys:     []string{"key1.1", "key1.2", "key1.5"},
+						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v0, v0, v1},
 					},
 					2: &reads{
-						keys:     []string{"key2.1", "key2.2", "key2.5"},
+						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{nil, nil, nil},
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, "key1.1", string(v0)}: []TxID{"tx1"},
-					comparableRead{1, "key1.2", string(v0)}: []TxID{"tx1"},
-					comparableRead{1, "key1.5", string(v1)}: []TxID{"tx2"},
-					comparableRead{2, "key2.1", ""}:         []TxID{"tx1"},
-					comparableRead{2, "key2.2", ""}:         []TxID{"tx3"},
-					comparableRead{2, "key2.5", ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v0)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_2), string(v0)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_5), string(v1)}: []TxID{"tx2"},
+					comparableRead{2, string(k2_1), ""}:         []TxID{"tx1"},
+					comparableRead{2, string(k2_2), ""}:         []TxID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -187,21 +199,21 @@ func TestValidate(t *testing.T) {
 			preparedTx: &preparedTransactions{
 				namespaceToReadEntries: namespaceToReads{
 					1: &reads{
-						keys:     []string{"key1.1", "key1.2", "key1.5"},
+						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
 					},
 					2: &reads{
-						keys:     []string{"key2.1", "key2.2", "key2.5"},
+						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{nil, nil, nil},
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, "key1.1", string(v1)}: []TxID{"tx1"},
-					comparableRead{1, "key1.2", string(v1)}: []TxID{"tx1"},
-					comparableRead{1, "key1.5", ""}:         []TxID{"tx2"},
-					comparableRead{2, "key2.1", ""}:         []TxID{"tx1"},
-					comparableRead{2, "key2.2", ""}:         []TxID{"tx3"},
-					comparableRead{2, "key2.5", ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v1)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_2), string(v1)}: []TxID{"tx1"},
+					comparableRead{1, string(k1_5), ""}:         []TxID{"tx2"},
+					comparableRead{2, string(k2_1), ""}:         []TxID{"tx1"},
+					comparableRead{2, string(k2_2), ""}:         []TxID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,

@@ -14,11 +14,11 @@ const (
 	tableNameTemplate = "ns_%d"
 
 	// validateReadsSQLTemplate is the template for validating reads on each namespace.
-	validateReadsSQLTemplate = "SELECT * FROM validate_reads_ns_%d($1::varchar[], $2::bytea[])"
+	validateReadsSQLTemplate = "SELECT * FROM validate_reads_ns_%d($1::bytea[], $2::bytea[])"
 	// queryVersionsSQLTemplate is the template for the querying versions for given keys on each namespace.
 	queryVersionsSQLTemplate = "SELECT key, version FROM %s WHERE key = ANY($1)"
 	// commitWritesSQLTemplate is the template for the committing writes on each namespace.
-	commitWritesSQLTemplate = "SELECT commit_ns_%d($1::varchar[], $2::bytea[], $3::bytea[])"
+	commitWritesSQLTemplate = "SELECT commit_ns_%d($1::bytea[], $2::bytea[], $3::bytea[])"
 )
 
 type (
@@ -80,7 +80,7 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys []string) (keyToVersion, error) {
+func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys [][]byte) (keyToVersion, error) {
 	query := fmt.Sprintf(queryVersionsSQLTemplate, tableNameForNamespace(nsID))
 	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
 	if err != nil {
@@ -95,7 +95,7 @@ func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys []string)
 
 	kToV := make(keyToVersion)
 	for i, key := range foundKeys {
-		kToV[key] = foundVersions[i]
+		kToV[string(key)] = foundVersions[i]
 	}
 
 	return kToV, nil
@@ -138,13 +138,11 @@ func (db *database) close() {
 }
 
 // readKeysAndVersions reads the keys and versions from the given rows.
-func readKeysAndVersions(r pgx.Rows) ([]string, [][]byte, error) {
-	var keys []string
-	var versions [][]byte
+func readKeysAndVersions(r pgx.Rows) ([][]byte, [][]byte, error) {
+	var keys, versions [][]byte
 
 	for r.Next() {
-		var key string
-		var version []byte
+		var key, version []byte
 		if err := r.Scan(&key, &version); err != nil {
 			return nil, nil, err
 		}

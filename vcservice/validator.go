@@ -101,7 +101,7 @@ func constructValidatedTransactions(
 		for index, key := range mismatchingReads.keys {
 			r := comparableRead{
 				nsID:    nsID,
-				key:     key,
+				key:     string(key),
 				version: string(mismatchingReads.versions[index]),
 			}
 

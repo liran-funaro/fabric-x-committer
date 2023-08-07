@@ -100,7 +100,7 @@ func (c *transactionCommitter) prepareWritesForCommit(
 	// Step 5: add the transaction status to the writes
 	txIDNsWrites := &namespaceWrites{}
 	for txID, status := range txCommitStatus.Status {
-		txIDNsWrites.keys = append(txIDNsWrites.keys, string(txID))
+		txIDNsWrites.keys = append(txIDNsWrites.keys, []byte(txID))
 		txIDNsWrites.values = append(txIDNsWrites.values, []byte{uint8(status)})
 	}
 	mergedWrites[txIDsStatusNameSpace] = txIDNsWrites
@@ -122,7 +122,7 @@ func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToW
 		// Step 2: if the key is found in the database, use the committed version + 1 as the new version
 		//         otherwise, use version 0.
 		for i, key := range writes.keys {
-			ver, notPresent := versionOfPresentKeys[key]
+			ver, notPresent := versionOfPresentKeys[string(key)]
 			if !notPresent {
 				writes.versions[i] = versionZero
 				continue
