@@ -6,6 +6,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 type Config struct {
@@ -21,8 +22,7 @@ type Config struct {
 	SignedEnvelopes          bool                                `mapstructure:"signed-envelopes"`
 	OrdererType              utils.ConsensusType                 `mapstructure:"orderer-type"`
 	OrdererConnectionProfile connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
-	RemoteControllerListener connection.Endpoint                 `mapstructure:"remote-controller-listener"`
-	InitialRateLimit         int                                 `mapstructure:"initial-rate-limit"`
+	RemoteControllerListener *limiter.Config                     `mapstructure:"remote-controller-listener"`
 }
 
 func ReadConfig() Config {

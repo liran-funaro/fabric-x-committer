@@ -26,7 +26,7 @@ func main() {
 	utils.Must(err)
 
 	fmt.Println("Successfully retrieved public key from path.")
-	cl := client.OpenCoordinatorAdapter(coordinatorEndpoint)
+	cl := client.OpenCoordinatorAdapter(coordinatorEndpoint, nil)
 	fmt.Println("Successfully connected to coordinator.")
 	utils.Must(cl.SetVerificationKey(pubBytes))
 	fmt.Println("Successfully set public key to coordinator.")

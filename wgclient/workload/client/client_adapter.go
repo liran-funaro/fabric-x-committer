@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 )
 
@@ -28,9 +29,10 @@ type CoordinatorAdapter struct {
 	ctx              context.Context
 	ctxCancel        context.CancelFunc
 	receivedStatuses uint64
+	rateLimiter      limiter.LimiterSetter
 }
 
-func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
+func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *limiter.Config) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
 	logger.Infof("Connect to coordinator on %v.\n", &endpoint)
@@ -41,9 +43,10 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint) *CoordinatorAdapter {
 	client := coordinatorservice.NewCoordinatorClient(conn)
 
 	return &CoordinatorAdapter{
-		client:    client,
-		ctx:       ctx,
-		ctxCancel: streamCancel,
+		client:      client,
+		ctx:         ctx,
+		rateLimiter: limiter.New(rateLimiterConfig),
+		ctxCancel:   streamCancel,
 	}
 }
 
@@ -133,6 +136,7 @@ func (c *CoordinatorAdapter) send(ctx context.Context, stream coordinatorservice
 		case <-ctx.Done():
 			return
 		case b, more := <-bQueue:
+			c.rateLimiter.Take()
 			if !more {
 				// no more blocks to send
 				return

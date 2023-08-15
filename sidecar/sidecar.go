@@ -95,7 +95,7 @@ func New(orderer *OrdererClientConfig, committer *CommitterClientConfig, creds c
 
 	return &Sidecar{
 		ordererListener:      ordererListener,
-		committerAdapter:     client.OpenCoordinatorAdapter(committer.Endpoint),
+		committerAdapter:     client.OpenCoordinatorAdapter(committer.Endpoint, nil),
 		orderedBlocks:        make(chan *workload.BlockWithExpectedResult, committer.OutputChannelCapacity),
 		postCommitAggregator: NewTxStatusAggregator(uint64(startBlock)),
 		metrics:              metrics,

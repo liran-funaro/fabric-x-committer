@@ -24,7 +24,7 @@ func main() {
 
 	creds, signer := connection.GetOrdererConnectionCreds(c.OrdererConnectionProfile)
 
-	committerClient := client.OpenCoordinatorAdapter(c.Committer)
+	committerClient := client.OpenCoordinatorAdapter(c.Committer, nil)
 	ordererClient, err := ordererclient.NewClient(&ordererclient.ClientInitOptions{
 
 		SignedEnvelopes: c.SignedEnvelopes,
@@ -45,7 +45,6 @@ func main() {
 		StartBlock:           0,
 
 		RemoteControllerListener: c.RemoteControllerListener,
-		InitialRateLimit:         c.InitialRateLimit,
 	})
 	utils.Must(err)
 

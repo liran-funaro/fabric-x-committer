@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	_ "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client/codec"
 	"google.golang.org/protobuf/proto"
@@ -50,7 +51,7 @@ func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 		eventStore.Close()
 	}()
 
-	PumpToCoordinator(serializedKey, bQueue, eventQueue, pp, endpoint)
+	PumpToCoordinator(serializedKey, bQueue, eventQueue, pp, endpoint, nil)
 	wg.Wait()
 	<-time.After(workload.ScrapingInterval)
 }
@@ -71,7 +72,7 @@ func GenerateAndPump(config workload.BlockgenStreamConfig) {
 		}
 	}()
 
-	PumpToCoordinator(publicKey, bQueue, eventQueue, pp, config.Endpoint.Address())
+	PumpToCoordinator(publicKey, bQueue, eventQueue, pp, config.Endpoint.Address(), config.RemoteControllerListener)
 }
 
 func Validate(path string) {
@@ -79,8 +80,8 @@ func Validate(path string) {
 	workload.Validate(path)
 }
 
-func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string) {
-	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint))
+func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string, rateLimiterConfig *limiter.Config) {
+	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), rateLimiterConfig)
 
 	utils.Must(cl.SetVerificationKey(serializedKey))
 

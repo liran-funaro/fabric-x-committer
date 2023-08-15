@@ -12,6 +12,11 @@ import (
 
 var logger = logging.New("ratelimiter")
 
+type Config struct {
+	Endpoint     connection.Endpoint `mapstructure:"endpoint"`
+	InitialLimit int                 `mapstructure:"initial-limit"`
+}
+
 type LimiterSetter interface {
 	ratelimit.Limiter
 	Set(int)
@@ -35,17 +40,15 @@ func (h *limiterHolder) Set(limit int) {
 	}
 }
 
-func New(controllerEndpoint *connection.Endpoint) LimiterSetter {
+func New(c *Config) LimiterSetter {
 	var rl limiterHolder
-	// we start by default with unlimited rate
-	rl.limiter = ratelimit.NewUnlimited()
-
-	if controllerEndpoint == nil || controllerEndpoint.Empty() {
+	if c == nil || c.Endpoint.Empty() {
 		return &rl
 	}
+	rl.Set(c.InitialLimit)
 
 	// start remote-limiter controller
-	logger.Infof("Start remote controller listener on %s\n", controllerEndpoint.Address())
+	logger.Infof("Start remote controller listener on %s\n", c.Endpoint.Address())
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	router.POST("/setLimits", func(c *gin.Context) {
@@ -64,7 +67,7 @@ func New(controllerEndpoint *connection.Endpoint) LimiterSetter {
 
 		c.IndentedJSON(http.StatusOK, limit)
 	})
-	go router.Run(controllerEndpoint.Address())
+	go router.Run(c.Endpoint.Address())
 
 	return &rl
 }

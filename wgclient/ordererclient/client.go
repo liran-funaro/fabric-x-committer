@@ -41,8 +41,7 @@ type ClientInitOptions struct {
 	SignedEnvelopes          bool
 	Parallelism              int
 	InputChannelCapacity     int
-	RemoteControllerListener connection.Endpoint
-	InitialRateLimit         int
+	RemoteControllerListener *limiter.Config
 
 	ChannelID string
 }
@@ -67,10 +66,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 		return nil, errors.New("bft only supports one connection per orderer")
 	}
 
-	rateLimiter := limiter.New(&opts.RemoteControllerListener)
-	if opts.InitialRateLimit > 0 {
-		rateLimiter.Set(opts.InitialRateLimit)
-	}
+	rateLimiter := limiter.New(opts.RemoteControllerListener)
 
 	var listener sidecar.DeliverListener
 	var err error
