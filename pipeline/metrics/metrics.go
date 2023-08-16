@@ -37,6 +37,7 @@ type Metrics struct {
 	ShardMgrInputChLength               *metrics.ChannelBufferGauge
 	ShardMgrOutputChLength              *metrics.ChannelBufferGauge
 	SigVerifierMgrInputChLength         *metrics.ChannelBufferGauge
+	SigVerifierMgrSendChLength          *metrics.ChannelBufferGauge
 	SigVerifierMgrValidOutputChLength   *metrics.ChannelBufferGauge
 	SigVerifierMgrInvalidOutputChLength *metrics.ChannelBufferGauge
 }
@@ -123,6 +124,10 @@ func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics
 			SubComponent: "sig_mgr",
 			Channel:      "input",
 		}),
+		SigVerifierMgrSendChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
+			SubComponent: "sig_mgr",
+			Channel:      "send",
+		}),
 		SigVerifierMgrValidOutputChLength: metrics.NewChannelBufferGauge(metrics.BufferGaugeOpts{
 			SubComponent: "sig_mgr",
 			Channel:      "valid_output",
@@ -160,6 +165,7 @@ func (m *Metrics) AllMetrics() []prometheus.Collector {
 		m.ShardMgrInputChLength,
 		m.ShardMgrOutputChLength,
 		m.SigVerifierMgrInputChLength,
+		m.SigVerifierMgrSendChLength,
 		m.SigVerifierMgrValidOutputChLength,
 		m.SigVerifierMgrInvalidOutputChLength,
 	}

@@ -49,6 +49,7 @@ func newSigVerificationMgr(c *SigVerifierMgrConfig, metrics *metrics.Metrics) (*
 	}
 	if metrics.Enabled {
 		metrics.SigVerifierMgrInputChLength.SetCapacity(defaultChannelBufferSize)
+		metrics.SigVerifierMgrSendChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.SigVerifierMgrValidOutputChLength.SetCapacity(defaultChannelBufferSize)
 		metrics.SigVerifierMgrInvalidOutputChLength.SetCapacity(defaultChannelBufferSize)
 	}
@@ -82,6 +83,7 @@ func (m *sigVerifierMgr) startBlockReceiverRoutine(v *sigVerifier) {
 				if m.metrics.Enabled {
 					m.metrics.SigVerifierMgrInTxs.Add(len(b.Txs))
 					m.metrics.SigVerifierMgrInputChLength.Set(len(m.inputChan))
+					m.metrics.SigVerifierMgrSendChLength.Set(len(v.sendCh))
 				}
 			}
 		}
@@ -223,6 +225,7 @@ func (v *sigVerifier) startRequestSenderRoutine() {
 				if v.metrics.Enabled {
 					for _, req := range reqs {
 						txSeqNum := token.TxSeqNum{req.BlockNum, req.TxNum}
+						v.metrics.SigVerifierMgrSendChLength.Set(len(v.sendCh))
 						v.metrics.RequestTracer.AddEventAt(txSeqNum, "Sending request to sigverifier", before)
 						v.metrics.RequestTracer.AddEvent(txSeqNum, "Sent request to sigverifier")
 					}
