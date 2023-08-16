@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/briandowns/spinner v1.23.0
 	github.com/cockroachdb/pebble v0.0.0-20221122204154-936e011bb911
+	github.com/consensys/gnark-crypto v0.9.1
 	github.com/fsouza/go-dockerclient v1.9.7
 	github.com/gin-gonic/gin v1.4.0
 	github.com/gocarina/gocsv v0.0.0-20220927221512-ad3251f9fa25
@@ -24,12 +25,12 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.4
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
 	github.com/tedsuo/ifrit v0.0.0-20230330192023-5cba443a66c4
 	github.com/yugabyte/pgx/v4 v4.14.7
-	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token v0.0.0-00010101000000-000000000000
-	github.ibm.com/decentralized-trust-research/scalable-committer/utils v0.0.0-00010101000000-000000000000
+	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token v0.0.0-20230816145809-db87808f9e04
+	github.ibm.com/decentralized-trust-research/scalable-committer/utils v0.0.0-20230816145809-db87808f9e04
 	go.opentelemetry.io/otel v1.11.2
 	go.uber.org/atomic v1.9.0
 	go.uber.org/ratelimit v0.2.0
@@ -59,7 +60,6 @@ require (
 	github.com/cockroachdb/redact v1.0.8 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
-	github.com/consensys/gnark-crypto v0.9.1 // indirect
 	github.com/containerd/containerd v1.6.18 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/docker v24.0.2+incompatible // indirect
@@ -126,7 +126,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.11.2 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	go.uber.org/zap v1.23.0 // indirect
+	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20200513190911-00229845015e // indirect
 	golang.org/x/mod v0.9.0 // indirect

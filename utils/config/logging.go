@@ -19,3 +19,12 @@ func initializeLoggerViaConfig() error {
 
 	return nil
 }
+
+func initializeLoggerForLevel(level logging.Level) {
+	logging.SetupWithConfig(&logging.Config{
+		Enabled:     true,
+		Level:       level,
+		Caller:      true,
+		Development: true,
+	})
+}

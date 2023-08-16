@@ -49,6 +49,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})
+	logger.Infof("Verifier server created with scheme: %s", verificationScheme)
 	return s
 }
 

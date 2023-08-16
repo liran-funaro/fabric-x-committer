@@ -20,13 +20,17 @@ var log = logging.New("verifier")
 type Scheme = string
 
 const (
-	NoScheme Scheme = ""
+	NoScheme Scheme = "NONE"
 	Ecdsa           = "ECDSA"
+	Bls             = "BLS"
+	Eddsa           = "EDDSA"
 )
 
 var schemeMap = map[string]Scheme{
 	"ECDSA": Ecdsa,
 	"NONE":  NoScheme,
+	"BLS":   Bls,
+	"EDDSA": Eddsa,
 }
 
 func SchemeVar(p *Scheme, name string, defaultValue Scheme, usage string) {
@@ -52,6 +56,8 @@ type TxVerifier interface {
 var verifierFactories = map[Scheme]VerifierFactory{
 	Ecdsa:    &EcdsaVerifierFactory{},
 	NoScheme: &dummyVerifierFactory{},
+	Bls:      &BLSVerifierFactory{},
+	Eddsa:    &EDDSAVerifierFactory{},
 }
 
 // NewTxVerifier creates a new TX verifier according to the implementation scheme

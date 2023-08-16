@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/pkg/errors"
+	"os"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	config2 "github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -26,7 +28,7 @@ var clientConfig ClientConfig
 
 func main() {
 	var endpoints []*connection.Endpoint
-	connection.EndpointVars(&endpoints, "servers", []*connection.Endpoint{{Host: "localhost", Port: config2.DefaultGRPCPortSigVerifier}}, "Server host to connect to")
+	connection.EndpointVars(&endpoints, "servers", []*connection.Endpoint{{Host: "localhost", Port: config.DefaultGRPCPortSigVerifier}}, "Server host to connect to")
 	test.DistributionVar(&clientConfig.Input.InputDelay, "input-delay", test.ClientInputDelay, "Interval between two batches are sent")
 
 	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
@@ -39,8 +41,9 @@ func main() {
 
 	verificationKeyPath := flag.String("verification-verificationKey", "./key.pub", "Path to the verification verificationKey")
 	signingKeyPath := flag.String("signing-verificationKey", "./key.priv", "Path to the signing verificationKey")
+	removeOldKeys := flag.Bool("remove-old-keys", true, "Remove old keys and force generation of new keys")
 
-	config2.ParseFlags()
+	config.ParseFlagsWithoutConfig()
 
 	clientConfig.Connections = make([]*connection.DialConfig, len(endpoints))
 	for i, endpoint := range endpoints {
@@ -53,6 +56,12 @@ func main() {
 			SigningKey:      *signingKeyPath,
 			VerificationKey: *verificationKeyPath,
 		},
+	}
+	if *removeOldKeys {
+		logger.Infoln("Removing old keys if exist.")
+		os.RemoveAll(*signingKeyPath)
+		os.RemoveAll(*verificationKeyPath)
+		logger.Infoln("Old keys removed.")
 	}
 	signingKey, verificationKey, err := sigverification_test.ReadOrGenerateKeys(signatureProfile)
 	if err != nil {
@@ -104,18 +113,23 @@ func maybe(_ interface{}, err error) {
 }
 
 func startStream(conn *connection.DialConfig, verificationKey signature.PublicKey) (sigverification.Verifier_StartStreamClient, error) {
-	clientConnection, _ := connection.Connect(conn)
-	client := sigverification.NewVerifierClient(clientConnection)
-
-	_, err := client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
+	clientConnection, err := connection.Connect(conn)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed connecting to server")
+	}
+	logger.Infof("Connected to server %s", conn.Address())
+	client := sigverification.NewVerifierClient(clientConnection)
+	logger.Infoln("Created verifier client")
+
+	_, err = client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed setting verification key")
 	}
 	logger.Infoln("Set verification verificationKey")
 
 	stream, err := client.StartStream(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed starting stream")
 	}
 	logger.Infof("Started stream to %s", conn.Address())
 	return stream, nil

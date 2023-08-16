@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -25,6 +26,12 @@ func ParseFlags() {
 	if err := configUpdated(); err != nil {
 		panic(err)
 	}
+}
+
+func ParseFlagsWithoutConfig() {
+	loggingLevel := String("log", logging.Info, "Logging level")
+	flag.Parse()
+	initializeLoggerForLevel(*loggingLevel)
 }
 
 func ServerConfig(component string) {

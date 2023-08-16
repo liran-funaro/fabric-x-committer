@@ -31,6 +31,8 @@ type TxSigner interface {
 var cryptoFactories = map[signature.Scheme]SignerFactory{
 	signature.Ecdsa:    &ecdsaSignerFactory{},
 	signature.NoScheme: &dummySignerFactory{},
+	signature.Bls:      &blsSignerFactory{},
+	signature.Eddsa:    &eddsaSignerFactory{},
 }
 
 func GetSignatureFactory(scheme signature.Scheme) SignerFactory {
@@ -101,6 +103,7 @@ func (s *dummyTxSigner) SignTx([]token.SerialNumber, []token.TxOutput) (signatur
 }
 
 func ReadOrGenerateKeys(profile signature.Profile) (PrivateKey, signature.PublicKey, error) {
+	logger.Infof("Read or generate keys for scheme %s", profile.Scheme)
 	// Read keys
 	if profile.KeyPath != nil && utils.FileExists(profile.KeyPath.VerificationKey) && utils.FileExists(profile.KeyPath.SigningKey) {
 		logger.Infof("Verification/signing keys found in files %s/%s. Importing...", profile.KeyPath.VerificationKey, profile.KeyPath.SigningKey)

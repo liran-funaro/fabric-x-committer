@@ -3,6 +3,7 @@ package signature_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
@@ -15,44 +16,60 @@ type benchmarkConfig struct {
 	VerificationScheme   signature.Scheme
 }
 
-var baseConfig = benchmarkConfig{
-	Name: "basic",
-	InputGeneratorParams: &inputGeneratorParams{
-		SomeTxInputGeneratorParams: &sigverification_test.SomeTxInputGeneratorParams{
-			TxSize:           sigverification_test.SerialNumberCountDistribution,
-			SerialNumberSize: sigverification_test.SerialNumberSize,
-		},
-		ValidSigRatio: sigverification_test.SignatureValidRatio,
+var baseInputGeneratorParams = &inputGeneratorParams{
+	SomeTxInputGeneratorParams: &sigverification_test.SomeTxInputGeneratorParams{
+		TxSize:           sigverification_test.SerialNumberCountDistribution,
+		SerialNumberSize: sigverification_test.SerialNumberSize,
 	},
-	VerificationScheme: sigverification_test.VerificationScheme,
+	ValidSigRatio: sigverification_test.SignatureValidRatio,
 }
 
+var ecdsaConfig = benchmarkConfig{
+	Name:                 "ecdsa",
+	InputGeneratorParams: baseInputGeneratorParams,
+	VerificationScheme:   signature.Ecdsa,
+}
+
+var blsConfig = benchmarkConfig{
+	Name:                 "bls",
+	InputGeneratorParams: baseInputGeneratorParams,
+	VerificationScheme:   signature.Bls,
+}
+
+var eddsaConfig = benchmarkConfig{
+	Name:                 "eddsa",
+	InputGeneratorParams: baseInputGeneratorParams,
+	VerificationScheme:   signature.Eddsa,
+}
+
+// go test -benchmem -bench Bench -run=^$ -cpu=1
 func BenchmarkTxVerifier(b *testing.B) {
-	config := baseConfig
-	//for _, ratio := range []test.Percentage{0.5, test.Always} {
-	//	config.InputGeneratorParams.ValidSigRatio = ratio
-	b.Run(config.Name, func(b *testing.B) {
-		g := NewInputGenerator(config.InputGeneratorParams)
-		factory := sigverification_test.GetSignatureFactory(config.VerificationScheme)
-		privateKey, publicKey := factory.NewKeys()
-		txSigner, _ := factory.NewSigner(privateKey)
-		txVerifier, _ := factory.NewVerifier(publicKey)
+	configs := []benchmarkConfig{ecdsaConfig, eddsaConfig, blsConfig}
+	for _, config := range configs {
+		b.Run(config.Name, func(b *testing.B) {
+			g := NewInputGenerator(config.InputGeneratorParams)
+			factory := sigverification_test.GetSignatureFactory(config.VerificationScheme)
+			privateKey, publicKey := factory.NewKeys()
+			txSigner, err := factory.NewSigner(privateKey)
+			assert.NoError(b, err)
+			txVerifier, err := factory.NewVerifier(publicKey)
+			assert.NoError(b, err)
 
-		b.ResetTimer()
+			b.ResetTimer()
 
-		for n := 0; n < b.N; n++ {
-			b.StopTimer()
-			tx := &token.Tx{SerialNumbers: g.NextTxInput()}
-			isValid := g.NextValid()
-			if isValid {
-				tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers, tx.Outputs)
+			for n := 0; n < b.N; n++ {
+				b.StopTimer()
+				tx := &token.Tx{SerialNumbers: g.NextTxInput()}
+				isValid := g.NextValid()
+				if isValid {
+					tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers, tx.Outputs)
+				}
+				b.StartTimer()
+
+				txVerifier.VerifyTx(tx)
 			}
-			b.StartTimer()
-
-			txVerifier.VerifyTx(tx)
-		}
-	})
-	//}
+		})
+	}
 }
 
 // Input generator
