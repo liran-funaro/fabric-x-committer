@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	signature2 "github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 )
@@ -32,7 +33,7 @@ func main() {
 	test.DistributionVar(&clientConfig.Input.InputDelay, "input-delay", test.ClientInputDelay, "Interval between two batches are sent")
 
 	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
-	signature.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", sigverification_test.VerificationScheme, "Verification scheme")
+	signature2.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", sigverification_test.VerificationScheme, "Verification scheme")
 	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", sigverification_test.SignatureValidRatio, "Percentage of transactions that should be valid (values from 0 to 1)")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberCount, "sn-count", sigverification_test.SerialNumberCountDistribution, "How many serial numbers are in each TX")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", sigverification_test.SerialNumberSize, "How many bytes each serial number contains")

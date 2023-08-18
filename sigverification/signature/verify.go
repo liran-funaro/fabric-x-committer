@@ -3,46 +3,28 @@ package signature
 import (
 	"crypto/sha256"
 	"encoding/asn1"
-	"flag"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
-type Message = []byte
-type Signature = []byte
-type PublicKey = []byte
+type Message = signature.Message
+type Signature = signature.Signature
+type PublicKey = signature.PublicKey
 
 var log = logging.New("verifier")
 
-type Scheme = string
+type Scheme = signature.Scheme
 
 const (
-	NoScheme Scheme = "NONE"
-	Ecdsa           = "ECDSA"
-	Bls             = "BLS"
-	Eddsa           = "EDDSA"
+	NoScheme Scheme = signature.NoScheme
+	Ecdsa           = signature.Ecdsa
+	Bls             = signature.Bls
+	Eddsa           = signature.Eddsa
 )
-
-var schemeMap = map[string]Scheme{
-	"ECDSA": Ecdsa,
-	"NONE":  NoScheme,
-	"BLS":   Bls,
-	"EDDSA": Eddsa,
-}
-
-func SchemeVar(p *Scheme, name string, defaultValue Scheme, usage string) {
-	*p = defaultValue
-	flag.Func(name, usage, func(input string) error {
-		if scheme, ok := schemeMap[strings.ToUpper(input)]; ok {
-			*p = scheme
-			return nil
-		}
-		return errors.New("scheme not found")
-	})
-}
 
 type VerifierFactory interface {
 	NewVerifier(key PublicKey) (TxVerifier, error)
@@ -58,6 +40,13 @@ var verifierFactories = map[Scheme]VerifierFactory{
 	NoScheme: &dummyVerifierFactory{},
 	Bls:      &BLSVerifierFactory{},
 	Eddsa:    &EDDSAVerifierFactory{},
+}
+
+func GetVerifierFactory(scheme signature.Scheme) (VerifierFactory, error) {
+	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
+		return factory, nil
+	}
+	return nil, errors.New("scheme not supported for verifier")
 }
 
 // NewTxVerifier creates a new TX verifier according to the implementation scheme
