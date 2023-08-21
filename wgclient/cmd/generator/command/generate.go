@@ -10,6 +10,8 @@ var (
 	outputPath         string
 	prometheusEndpoint string
 	latencyEndpoint    string
+	invalidSigs        float64
+	doubleSpends       float64
 	genCmd             = &cobra.Command{
 		Use:   "generate",
 		Short: "A generator for benchmark workloads",

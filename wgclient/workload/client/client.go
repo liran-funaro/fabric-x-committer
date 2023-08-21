@@ -56,9 +56,7 @@ func LoadAndPump(path, endpoint, prometheusEndpoint, latencyEndpoint string) {
 	<-time.After(workload.ScrapingInterval)
 }
 
-func GenerateAndPump(config workload.BlockgenStreamConfig) {
-	pp := workload.LoadProfileFromYaml(config.Generator.Profile)
-
+func GenerateAndPump(config workload.BlockgenStreamConfig, pp *workload.Profile) {
 	tracker := newMetricTracker(config.Monitoring)
 	// generate blocks and push them into channel
 	publicKey, bQueue := workload.StartBlockGenerator(pp)
