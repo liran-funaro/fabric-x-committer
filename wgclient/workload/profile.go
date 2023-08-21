@@ -50,8 +50,9 @@ type ConflictProfile struct {
 	Statistical *StatisticalConflicts
 }
 type StatisticalConflicts struct {
-	InvalidSignatures test.Percentage
-	DoubleSpends      test.Percentage //TODO: AF Fix
+	InvalidSignatures   test.Percentage
+	DoubleSpends        test.Percentage //TODO: AF Fix
+	DoubleSpendPoolSize int
 }
 
 func LoadProfileFromYaml(yamlPath string) *Profile {

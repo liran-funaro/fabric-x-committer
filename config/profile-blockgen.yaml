@@ -5,6 +5,7 @@ conflicts:
   statistical:
     doublespends: 0.0
     invalidsignatures: 0.0
+    doublespendpoolsize: 1000
 description: some text
 name: profile1
 transaction:

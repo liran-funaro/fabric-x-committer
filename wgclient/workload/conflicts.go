@@ -1,6 +1,7 @@
 package workload
 
 import (
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -13,33 +14,43 @@ import (
 
 type signerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)
 
+const defaultDoubleSpendPoolSize = 1000
+
 type statisticalConflictHandler struct {
 	delegate                  sigverificationtest.TxGenerator
 	invalidSignatureGenerator *test.BooleanGenerator
 	doubleSpendGenerator      *test.BooleanGenerator
-	doubleSpendTx             token.Tx
+	doubleSpendTxs            []*token.Tx
 	signFnc                   signerFunc
 }
 
 func newStatisticalConflicts(txGenerator sigverificationtest.TxGenerator, profile *StatisticalConflicts, signerFunc signerFunc) sigverificationtest.TxGenerator {
-	doubleSpendTx := txGenerator.Next().Tx
+	poolSize := profile.DoubleSpendPoolSize
+	if poolSize <= 0 {
+		poolSize = defaultDoubleSpendPoolSize
+	}
+	doubleSpendTx := make([]*token.Tx, poolSize)
+	for i := 0; i < poolSize; i++ {
+		doubleSpendTx[i] = txGenerator.Next().Tx
+	}
 	return &statisticalConflictHandler{
 		delegate:                  txGenerator,
 		invalidSignatureGenerator: test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.InvalidSignatures, 100),
 		doubleSpendGenerator:      test.NewBooleanGenerator(test.PercentageUniformDistribution, profile.DoubleSpends, 101),
 		signFnc:                   signerFunc,
-		doubleSpendTx:             *doubleSpendTx,
+		doubleSpendTxs:            doubleSpendTx,
 	}
 }
 
 func (h *statisticalConflictHandler) Next() *sigverificationtest.TxWithStatus {
 	if h.doubleSpendGenerator.Next() {
+		tx := h.doubleSpendTxs[rand.Intn(len(h.doubleSpendTxs))]
 		// Copy SNs and signatures (we avoid to calculate the signature again, because it slows down the generator significantly)
 		return &sigverificationtest.TxWithStatus{
 			Tx: &token.Tx{
-				SerialNumbers: h.doubleSpendTx.SerialNumbers,
-				Outputs:       h.doubleSpendTx.Outputs,
-				Signature:     h.doubleSpendTx.Signature,
+				SerialNumbers: tx.SerialNumbers,
+				Outputs:       tx.Outputs,
+				Signature:     tx.Signature,
 			},
 			Status: coordinatorservice.Status_DOUBLE_SPEND,
 		}
