@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
+	"go.uber.org/ratelimit"
 )
 
 var logger = logging.New("clientadapter")
@@ -29,7 +30,7 @@ type CoordinatorAdapter struct {
 	ctx              context.Context
 	ctxCancel        context.CancelFunc
 	receivedStatuses uint64
-	rateLimiter      limiter.LimiterSetter
+	rateLimiter      ratelimit.Limiter
 }
 
 func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *limiter.Config) *CoordinatorAdapter {

@@ -17,11 +17,6 @@ type Config struct {
 	InitialLimit int                 `mapstructure:"initial-limit"`
 }
 
-type LimiterSetter interface {
-	ratelimit.Limiter
-	Set(int)
-}
-
 type limiterHolder struct {
 	limiter ratelimit.Limiter
 }
@@ -29,23 +24,23 @@ type limiterHolder struct {
 func (h *limiterHolder) Take() time.Time {
 	return h.limiter.Take()
 }
-func (h *limiterHolder) Set(limit int) {
+
+func getLimiter(limit int) ratelimit.Limiter {
 	if limit < 1 {
 		logger.Infof("Setting to unlimited (value passed: %d).", limit)
-		h.limiter = ratelimit.NewUnlimited()
+		return ratelimit.NewUnlimited()
 	} else {
 		logger.Infof("Setting limit to %d TPS.", limit)
 		// create our new limiter
-		h.limiter = ratelimit.New(limit)
+		return ratelimit.New(limit)
 	}
 }
 
-func New(c *Config) LimiterSetter {
-	var rl limiterHolder
+func New(c *Config) ratelimit.Limiter {
 	if c == nil || c.Endpoint.Empty() {
-		return &rl
+		return ratelimit.NewUnlimited()
 	}
-	rl.Set(c.InitialLimit)
+	rl := limiterHolder{limiter: getLimiter(c.InitialLimit)}
 
 	// start remote-limiter controller
 	logger.Infof("Start remote controller listener on %s\n", c.Endpoint.Address())
@@ -54,18 +49,18 @@ func New(c *Config) LimiterSetter {
 	router.POST("/setLimits", func(c *gin.Context) {
 		logger.Infof("Received limit request.")
 
-		type Limiter struct {
+		type LimitRequest struct {
 			Limit int `json:"limit"`
 		}
 
-		var limit Limiter
-		if err := c.BindJSON(&limit); err != nil {
+		var request LimitRequest
+		if err := c.BindJSON(&request); err != nil {
 			logger.Errorf("error deserializing request: %v", err)
 		}
 
-		rl.Set(limit.Limit)
+		rl.limiter = getLimiter(request.Limit)
 
-		c.IndentedJSON(http.StatusOK, limit)
+		c.IndentedJSON(http.StatusOK, request)
 	})
 	go router.Run(c.Endpoint.Address())
 
