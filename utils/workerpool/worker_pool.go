@@ -40,8 +40,7 @@ func New(config *Config) *WorkerPool {
 }
 
 func (w *WorkerPool) handleChannelInput(idx int) {
-	for {
-		input := <-w.inputCh
+	for input := range w.inputCh {
 		logger.Debugf("Received request %v in go routine %d. Sending for execution.", input, idx)
 		input()
 	}
@@ -50,4 +49,8 @@ func (w *WorkerPool) handleChannelInput(idx int) {
 // Run submits one function for execution in a go routine once a slot is available
 func (w *WorkerPool) Run(input func()) {
 	w.inputCh <- input
+}
+
+func (w *WorkerPool) Close() {
+	close(w.inputCh)
 }
