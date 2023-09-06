@@ -209,7 +209,9 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 
 	// set verification key
 	err := env.signVerifierManager.setVerificationKey(
-		&protosigverifierservice.Key{SerializedBytes: []byte("dummy")},
+		&protosigverifierservice.Key{
+			SerializedBytes: []byte("dummy"),
+		},
 	)
 	require.NoError(t, err)
 

@@ -78,12 +78,12 @@ func TestTransactionNode(t *testing.T) {
 }
 
 func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
-	txWithTxID := createTxWithTxID(t, readOnly, readWrite, blindWrite)
-	txNode := newTransactionNode(txWithTxID)
+	tx := createTxForTest(t, readOnly, readWrite, blindWrite)
+	txNode := newTransactionNode(tx)
 
 	var expectedReads []string  // nolint:prealloc
 	var expectedWrites []string // nolint:prealloc
-	nsID := txWithTxID.tx.Namespaces[0].NsId
+	nsID := tx.Namespaces[0].NsId
 
 	for _, k := range readOnly {
 		expectedReads = append(expectedReads, constructCompositeKey(nsID, k))
@@ -101,7 +101,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 
 	checkNewTxNode(
 		t,
-		txWithTxID,
+		tx,
 		&readWriteKeys{
 			expectedReads,
 			expectedWrites,
@@ -112,7 +112,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	return txNode
 }
 
-func createTxWithTxID(_ *testing.T, readOnly, readWrite, blindWrite [][]byte) *transactionWithTxID {
+func createTxForTest(_ *testing.T, readOnly, readWrite, blindWrite [][]byte) *protoblocktx.Tx {
 	nsID := uint32(1)
 
 	reads := make([]*protoblocktx.Read, len(readOnly))
@@ -130,7 +130,8 @@ func createTxWithTxID(_ *testing.T, readOnly, readWrite, blindWrite [][]byte) *t
 		blindWrites[i] = &protoblocktx.Write{Key: k}
 	}
 
-	tx := &protoblocktx.Tx{
+	return &protoblocktx.Tx{
+		Id: uuid.New().String(),
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:        nsID,
@@ -140,21 +141,16 @@ func createTxWithTxID(_ *testing.T, readOnly, readWrite, blindWrite [][]byte) *t
 			},
 		},
 	}
-
-	return &transactionWithTxID{
-		txID: uuid.New().String(),
-		tx:   tx,
-	}
 }
 
 func checkNewTxNode(
 	t *testing.T,
-	txWithID *transactionWithTxID,
+	tx *protoblocktx.Tx,
 	readsWrites *readWriteKeys,
 	txNode *TransactionNode,
 ) {
-	require.Equal(t, txWithID.txID, txNode.Tx.ID)
-	require.Equal(t, txWithID.tx.Namespaces, txNode.Tx.Namespaces)
+	require.Equal(t, tx.Id, txNode.Tx.ID)
+	require.Equal(t, tx.Namespaces, txNode.Tx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
 	require.ElementsMatch(t, readsWrites.reads, txNode.rwKeys.reads)
 	require.ElementsMatch(t, readsWrites.writes, txNode.rwKeys.writes)

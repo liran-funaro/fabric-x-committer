@@ -13,8 +13,9 @@ message Block {
 
 // Represents a transaction in the blockchain.
 message Tx {
-    repeated TxNamespace namespaces = 1; // Namespaces associated with the transaction.
-    bytes signature = 2; // The signature on the namespaces.
+    string id = 1; // The transaction ID.
+    repeated TxNamespace namespaces = 2; // Namespaces associated with the transaction.
+    bytes signature = 3; // The signature on the namespaces.
 }
 
 // Represents a namespace within a transaction.
