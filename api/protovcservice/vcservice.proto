@@ -20,11 +20,5 @@ message Transaction {
 }
 
 message TransactionStatus {
-    enum Flag {
-        COMMITTED = 0;
-        ABORTED_MVCC_CONFLICT = 1;
-        ABORTED_DUPLICATE_TXID = 2;
-    }
-
-    map<string, Flag> status = 1;
+    map<string, protoblocktx.Status> status = 1;
 }

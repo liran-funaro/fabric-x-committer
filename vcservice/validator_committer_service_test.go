@@ -141,8 +141,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedTxStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protovcservice.TransactionStatus_Flag{
-			"tx1": protovcservice.TransactionStatus_COMMITTED,
+		Status: map[string]protoblocktx.Status{
+			"tx1": protoblocktx.Status_COMMITTED,
 		},
 	}
 
@@ -154,7 +154,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txIDsStatusNameSpace,
 		namespaceWrites{
 			keys:     [][]byte{[]byte("tx1")},
-			values:   [][]byte{{byte(protovcservice.TransactionStatus_COMMITTED)}},
+			values:   [][]byte{{byte(protoblocktx.Status_COMMITTED)}},
 			versions: [][]byte{nil},
 		},
 	)

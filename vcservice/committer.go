@@ -1,6 +1,7 @@
 package vcservice
 
 import (
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
@@ -84,17 +85,17 @@ func (c *transactionCommitter) prepareWritesForCommit(
 
 	// Step 4: construct transaction status
 	txCommitStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protovcservice.TransactionStatus_Flag{},
+		Status: map[string]protoblocktx.Status{},
 	}
 
 	for txID := range vTx.invalidTxIndices {
-		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT
+		txCommitStatus.Status[string(txID)] = protoblocktx.Status_ABORTED_MVCC_CONFLICT
 	}
 	for txID := range vTx.validTxNonBlindWrites {
-		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_COMMITTED
+		txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
 	}
 	for txID := range vTx.validTxBlindWrites {
-		txCommitStatus.Status[string(txID)] = protovcservice.TransactionStatus_COMMITTED
+		txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
 	}
 
 	// Step 5: add the transaction status to the writes

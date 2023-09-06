@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
@@ -55,8 +56,8 @@ func TestCommit(t *testing.T) {
 	k2_5 := []byte("key2.5")
 	k2_6 := []byte("key2.6")
 
-	committed := []byte{uint8(protovcservice.TransactionStatus_COMMITTED)}
-	aborted := []byte{uint8(protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT)}
+	committed := []byte{uint8(protoblocktx.Status_COMMITTED)}
+	aborted := []byte{uint8(protoblocktx.Status_ABORTED_MVCC_CONFLICT)}
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
@@ -108,9 +109,7 @@ func TestCommit(t *testing.T) {
 				invalidTxIndices:   map[TxID]bool{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protovcservice.TransactionStatus_Flag{
-					"tx3": protovcservice.TransactionStatus_COMMITTED,
-				},
+				Status: map[string]protoblocktx.Status{"tx3": protoblocktx.Status_COMMITTED},
 			},
 			expectedNsRows: namespaceToWrites{
 				1: {
@@ -151,8 +150,8 @@ func TestCommit(t *testing.T) {
 				invalidTxIndices: map[TxID]bool{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protovcservice.TransactionStatus_Flag{
-					"tx4": protovcservice.TransactionStatus_COMMITTED,
+				Status: map[string]protoblocktx.Status{
+					"tx4": protoblocktx.Status_COMMITTED,
 				},
 			},
 			expectedNsRows: namespaceToWrites{
@@ -215,14 +214,14 @@ func TestCommit(t *testing.T) {
 				},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protovcservice.TransactionStatus_Flag{
-					"tx5":  protovcservice.TransactionStatus_COMMITTED,
-					"tx6":  protovcservice.TransactionStatus_COMMITTED,
-					"tx7":  protovcservice.TransactionStatus_COMMITTED,
-					"tx8":  protovcservice.TransactionStatus_COMMITTED,
-					"tx9":  protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
-					"tx10": protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
-					"tx11": protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
+				Status: map[string]protoblocktx.Status{
+					"tx5":  protoblocktx.Status_COMMITTED,
+					"tx6":  protoblocktx.Status_COMMITTED,
+					"tx7":  protoblocktx.Status_COMMITTED,
+					"tx8":  protoblocktx.Status_COMMITTED,
+					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 			expectedNsRows: namespaceToWrites{
@@ -263,10 +262,10 @@ func TestCommit(t *testing.T) {
 				},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protovcservice.TransactionStatus_Flag{
-					"tx12": protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
-					"tx13": protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
-					"tx14": protovcservice.TransactionStatus_ABORTED_MVCC_CONFLICT,
+				Status: map[string]protoblocktx.Status{
+					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 			expectedNsRows: namespaceToWrites{

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
@@ -145,7 +146,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 				txsStatus2 *protovcservice.TransactionStatus,
 			) *protovcservice.TransactionStatus {
 				txsStatus := &protovcservice.TransactionStatus{
-					Status: make(map[string]protovcservice.TransactionStatus_Flag),
+					Status: make(map[string]protoblocktx.Status),
 				}
 				for id, status := range txsStatus1.Status {
 					txsStatus.Status[id] = status
@@ -178,7 +179,7 @@ func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int) (
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
 	expectedTxsStatus := &protovcservice.TransactionStatus{
-		Status: make(map[string]protovcservice.TransactionStatus_Flag),
+		Status: make(map[string]protoblocktx.Status),
 	}
 
 	for i := 0; i < numTxs; i++ {
@@ -188,7 +189,7 @@ func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int) (
 				ID: id,
 			},
 		}
-		expectedTxsStatus.Status[id] = protovcservice.TransactionStatus_COMMITTED
+		expectedTxsStatus.Status[id] = protoblocktx.Status_COMMITTED
 	}
 
 	return txsNode, expectedTxsStatus

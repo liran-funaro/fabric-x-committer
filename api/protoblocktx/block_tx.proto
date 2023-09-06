@@ -48,3 +48,11 @@ message Write {
     // and the index of the read-write operation.
     bytes value = 2; // The value associated with the key being written.
 }
+
+enum Status {
+    COMMITTED = 0;
+    ABORTED_MVCC_CONFLICT = 1;
+    ABORTED_DUPLICATE_TXID = 2;
+    ABORTED_SIGNATURE_INVALID = 3;
+}
+

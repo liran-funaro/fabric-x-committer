@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync/atomic"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
@@ -70,11 +71,11 @@ func (vc *MockVcService) sendTransactionStatus(
 ) error {
 	for txBatch := range vc.txBatchChan {
 		txsStatus := &protovcservice.TransactionStatus{
-			Status: make(map[string]protovcservice.TransactionStatus_Flag),
+			Status: make(map[string]protoblocktx.Status),
 		}
 
 		for _, tx := range txBatch.Transactions {
-			txsStatus.Status[tx.ID] = protovcservice.TransactionStatus_COMMITTED
+			txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
 		}
 
 		err := stream.Send(txsStatus)
