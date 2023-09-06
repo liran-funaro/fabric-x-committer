@@ -73,11 +73,11 @@ func TestTransactionNode(t *testing.T) {
 	)
 
 	freedTxs := tx1Node.freeDependents()
-	require.Equal(t, []*transactionNode{tx2Node}, freedTxs)
+	require.Equal(t, []*TransactionNode{tx2Node}, freedTxs)
 	require.Len(t, tx2Node.dependsOnTxs, 0)
 }
 
-func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *transactionNode {
+func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
 	txWithTxID := createTxWithTxID(t, readOnly, readWrite, blindWrite)
 	txNode := newTransactionNode(txWithTxID)
 
@@ -151,10 +151,10 @@ func checkNewTxNode(
 	t *testing.T,
 	txWithID *transactionWithTxID,
 	readsWrites *readWriteKeys,
-	txNode *transactionNode,
+	txNode *TransactionNode,
 ) {
-	require.Equal(t, txWithID.txID, txNode.txID)
-	require.Equal(t, txWithID.tx, txNode.tx)
+	require.Equal(t, txWithID.txID, txNode.Tx.ID)
+	require.Equal(t, txWithID.tx.Namespaces, txNode.Tx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
 	require.ElementsMatch(t, readsWrites.reads, txNode.rwKeys.reads)
 	require.ElementsMatch(t, readsWrites.writes, txNode.rwKeys.writes)
@@ -167,7 +167,7 @@ func checkDependentTxs(t *testing.T, expectedTransactionList transactionSet, dep
 
 	actualTransactionList := make(transactionSet)
 	dependentTxs.Range(func(k, _ any) bool {
-		txNode, _ := k.(*transactionNode)
+		txNode, _ := k.(*TransactionNode)
 		actualTransactionList[txNode] = nil
 		return true
 	})

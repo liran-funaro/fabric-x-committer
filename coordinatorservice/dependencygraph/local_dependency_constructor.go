@@ -40,7 +40,7 @@ type (
 	}
 
 	transactionNodeBatch struct {
-		txsNode          []*transactionNode
+		txsNode          []*TransactionNode
 		localDepDetector *dependencyDetector
 	}
 )
@@ -68,7 +68,7 @@ func (p *localDependencyConstructor) construct() {
 		logger.Debugf("Constructing dependencies for txs with id %d", txs.id)
 
 		depDetector := newDependencyDetector()
-		txsNode := make([]*transactionNode, len(txs.txsWithTxID))
+		txsNode := make([]*TransactionNode, len(txs.txsWithTxID))
 
 		for i, tx := range txs.txsWithTxID {
 			// NOTE: we can parallelize newTransactionNode(), and

@@ -16,12 +16,12 @@ type (
 
 		// outgoingDepFreeTransactionsNode is the output of the globalDependencyManager.
 		// These transactions are ready to be validated as they are dependency free.
-		outgoingDepFreeTransactionsNode chan<- []*transactionNode
+		outgoingDepFreeTransactionsNode chan<- []*TransactionNode
 
 		// validatedTransactionsNode is the second input to the dependencyManagement.
 		// These transactions are removed from the dependency graph as they are
 		// validated and either committed or aborted.
-		validatedTransactionsNode <-chan []*transactionNode
+		validatedTransactionsNode <-chan []*TransactionNode
 
 		// TODO: add a text figure explaining how the input and output channels
 		//       are being used.
@@ -51,7 +51,7 @@ type (
 	}
 
 	dependencyFreedTransactions struct {
-		txsNode  []*transactionNode
+		txsNode  []*TransactionNode
 		mu       sync.Mutex
 		nonEmpty *atomic.Bool
 		cond     *sync.Cond
@@ -64,8 +64,8 @@ type (
 
 	globalDepConfig struct {
 		incomingTxsNode        <-chan *transactionNodeBatch
-		outgoingDepFreeTxsNode chan<- []*transactionNode
-		validatedTxsNode       <-chan []*transactionNode
+		outgoingDepFreeTxsNode chan<- []*TransactionNode
+		validatedTxsNode       <-chan []*TransactionNode
 		workerPoolConfig       *workerpool.Config
 		waitingTxsLimit        int
 	}
@@ -83,7 +83,7 @@ func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
 		workerPool:                      workerpool.New(c.workerPoolConfig),
 		mu:                              sync.Mutex{},
 		freedTransactionsSet: &dependencyFreedTransactions{
-			txsNode:  []*transactionNode{},
+			txsNode:  []*TransactionNode{},
 			mu:       sync.Mutex{},
 			nonEmpty: &atomic.Bool{},
 			cond:     sync.NewCond(&sync.Mutex{}),
@@ -140,7 +140,7 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 
 		// Step 3: Find all the transactions that are dependency free and send
 		// 	       them to the outgoingDepFreeTransactionsNode.
-		depFreeTxs := make([]*transactionNode, 0, len(txsNode))
+		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
 		findFreeTxsAndSend := func() {
 			for _, txNode := range txsNode {
 				if txNode.isDependencyFree() {
@@ -169,7 +169,7 @@ func (dm *globalDependencyManager) processValidatedTransactions() {
 	for txsNode := range dm.validatedTransactionsNode {
 		dm.waitingTxsSlots.release(uint32(len(txsNode)))
 
-		var fullyFreedDependents []*transactionNode
+		var fullyFreedDependents []*TransactionNode
 
 		dm.mu.Lock()
 		// Step 1: Remove the validated transactions from the dependency graph.
@@ -199,7 +199,7 @@ func (dm *globalDependencyManager) outputFreedExistingTransactions() {
 	}
 }
 
-func (f *dependencyFreedTransactions) add(txsNode []*transactionNode) {
+func (f *dependencyFreedTransactions) add(txsNode []*TransactionNode) {
 	f.mu.Lock()
 	f.txsNode = append(
 		f.txsNode,
@@ -211,7 +211,7 @@ func (f *dependencyFreedTransactions) add(txsNode []*transactionNode) {
 	f.cond.Signal()
 }
 
-func (f *dependencyFreedTransactions) waitAndRemove() []*transactionNode {
+func (f *dependencyFreedTransactions) waitAndRemove() []*TransactionNode {
 	f.cond.L.Lock()
 	for !f.nonEmpty.CompareAndSwap(true, false) {
 		f.cond.Wait()

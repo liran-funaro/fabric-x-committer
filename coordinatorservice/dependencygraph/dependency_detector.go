@@ -28,7 +28,7 @@ func newDependencyDetector() *dependencyDetector {
 // This method can be called from multiple goroutines concurrently provided that addWaitingTx(), removeWaitingTx(),
 // and mergeWaitingTx() are not called concurrently with this method. We can use a read-write lock but
 // we are avoiding it for performance reasons and leave the synchronization to the caller.
-func (d *dependencyDetector) getDependenciesOf(txNode *transactionNode) transactionSet /* dependsOn */ {
+func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transactionSet /* dependsOn */ {
 	dependsOnTxs := make(transactionSet)
 
 	for _, rk := range txNode.rwKeys.reads {
@@ -50,7 +50,7 @@ func (d *dependencyDetector) getDependenciesOf(txNode *transactionNode) transact
 // addWaitingTx adds the given transaction's reads and writes to the dependency detector
 // so that getDependenciesOf() can consider them when calculating dependencies.
 // This method is not thread-safe.
-func (d *dependencyDetector) addWaitingTx(txNode *transactionNode) {
+func (d *dependencyDetector) addWaitingTx(txNode *TransactionNode) {
 	d.readKeyToWaitingTxs.add(txNode.rwKeys.reads, txNode)
 	d.writeKeyToWaitingTxs.add(txNode.rwKeys.writes, txNode)
 }
@@ -67,12 +67,12 @@ func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
 // so that getDependenciesOf() does not consider them when calculating dependencies.
 // This method is not thread-safe.
-func (d *dependencyDetector) removeWaitingTx(txNode *transactionNode) {
+func (d *dependencyDetector) removeWaitingTx(txNode *TransactionNode) {
 	d.readKeyToWaitingTxs.remove(txNode.rwKeys.reads, txNode)
 	d.writeKeyToWaitingTxs.remove(txNode.rwKeys.writes, txNode)
 }
 
-func (keyToTx keyToTransactions) add(keys []string, tx *transactionNode) {
+func (keyToTx keyToTransactions) add(keys []string, tx *TransactionNode) {
 	for _, key := range keys {
 		tList, ok := keyToTx[key]
 		if !ok {
@@ -84,7 +84,7 @@ func (keyToTx keyToTransactions) add(keys []string, tx *transactionNode) {
 	}
 }
 
-func (keyToTx keyToTransactions) remove(keys []string, tx *transactionNode) {
+func (keyToTx keyToTransactions) remove(keys []string, tx *TransactionNode) {
 	for _, k := range keys {
 		delete(keyToTx[k], tx)
 		if len(keyToTx[k]) == 0 {

@@ -14,8 +14,8 @@ func TestDependencyGraph(t *testing.T) {
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs)
 	ldc.start(2)
 
-	globalDepOutgoingTxs := make(chan []*transactionNode, 10)
-	validatedTxs := make(chan []*transactionNode, 10)
+	globalDepOutgoingTxs := make(chan []*TransactionNode, 10)
+	validatedTxs := make(chan []*TransactionNode, 10)
 	workerConfig := &workerpool.Config{
 		Parallelism:     10,
 		ChannelCapacity: 20,
@@ -63,41 +63,41 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs := <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT1 := depFreeTxs[0]
-	require.Equal(t, t1.txID, actualT1.txID)
+	require.Equal(t, t1.txID, actualT1.Tx.ID)
 
 	// t1 has 3 dependent transactions, t2, t3, and t4
 	require.Eventually(t, func() bool {
 		return getLengthOfDependentTx(t, actualT1.dependentTxs) == 3
 	}, 2*time.Second, 200*time.Millisecond)
 
-	validatedTxs <- []*transactionNode{actualT1}
+	validatedTxs <- []*TransactionNode{actualT1}
 
 	// after t1 is validated, t2 is dependency free
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT2 := depFreeTxs[0]
-	require.Equal(t, t2.txID, actualT2.txID)
+	require.Equal(t, t2.txID, actualT2.Tx.ID)
 
 	// t2 has 2 dependent transactions, t3 and t4
 	require.Equal(t, 2, getLengthOfDependentTx(t, actualT2.dependentTxs))
 
-	validatedTxs <- []*transactionNode{actualT2}
+	validatedTxs <- []*TransactionNode{actualT2}
 
 	// after t2 is validated, both t3 and t4 are dependency free
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 2)
-	var actualT3, actualT4 *transactionNode
-	if t3.txID == depFreeTxs[0].txID {
+	var actualT3, actualT4 *TransactionNode
+	if t3.txID == depFreeTxs[0].Tx.ID {
 		actualT3 = depFreeTxs[0]
 		actualT4 = depFreeTxs[1]
 	} else {
 		actualT3 = depFreeTxs[1]
 		actualT4 = depFreeTxs[0]
 	}
-	require.Equal(t, t3.txID, actualT3.txID)
-	require.Equal(t, t4.txID, actualT4.txID)
+	require.Equal(t, t3.txID, actualT3.Tx.ID)
+	require.Equal(t, t4.txID, actualT4.Tx.ID)
 
-	validatedTxs <- []*transactionNode{actualT3, actualT4}
+	validatedTxs <- []*TransactionNode{actualT3, actualT4}
 
 	// after validating all txs, the dependency detector should be empty
 	ensureEmptyDetector(t, dm.dependencyDetector)

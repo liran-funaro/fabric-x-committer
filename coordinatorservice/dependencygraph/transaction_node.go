@@ -5,12 +5,13 @@ import (
 	"sync"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
 
 type (
-	transactionNode struct {
-		txID string
-		tx   *protoblocktx.Tx
+	// TransactionNode is a node in the dependency graph.
+	TransactionNode struct {
+		Tx *protovcservice.Transaction
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
 		// in dependsOnTxs set are validated.
@@ -44,7 +45,7 @@ type (
 
 	// transactionSet is a map with keys as transactionNode. This is used to
 	// facilitate efficient lookup of transactions.
-	transactionSet map[*transactionNode]any
+	transactionSet map[*TransactionNode]any
 
 	// readWriteKeys holds the read and write keys of a transaction.
 	readWriteKeys struct {
@@ -53,10 +54,12 @@ type (
 	}
 )
 
-func newTransactionNode(txWithID *transactionWithTxID) *transactionNode {
-	return &transactionNode{
-		txID:         txWithID.txID,
-		tx:           txWithID.tx,
+func newTransactionNode(txWithID *transactionWithTxID) *TransactionNode {
+	return &TransactionNode{
+		Tx: &protovcservice.Transaction{
+			ID:         txWithID.txID,
+			Namespaces: txWithID.tx.Namespaces,
+		},
 		dependsOnTxs: make(transactionSet),
 		dependentTxs: newDependentTxs(),
 		rwKeys:       readAndWriteKeys(txWithID.tx.Namespaces),
@@ -77,7 +80,7 @@ func newDependentTxs() *sync.Map {
 // This method can be called concurrently on different transaction nodes.
 // Though the dependsOnTx can be common among different transactions/goroutines,
 // it is not a problem because dependentTxs is a concurrent map.
-func (n *transactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transactionSet) {
+func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transactionSet) {
 	if len(dependsOnTxs) == 0 {
 		return
 	}
@@ -100,11 +103,11 @@ func (n *transactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transa
 // This is because the concurrent execution of this method on different
 // transaction nodes can modify the same dependsOnTxs set which is not protected
 // by a lock.
-func (n *transactionNode) freeDependents() []*transactionNode /* fully freed transactions */ {
-	var freedTxs []*transactionNode
+func (n *TransactionNode) freeDependents() []*TransactionNode /* fully freed transactions */ {
+	var freedTxs []*TransactionNode
 
 	n.dependentTxs.Range(func(k, _ any) bool {
-		dependentTx, _ := k.(*transactionNode)
+		dependentTx, _ := k.(*TransactionNode)
 
 		delete(dependentTx.dependsOnTxs, n)
 
@@ -124,7 +127,7 @@ func (n *transactionNode) freeDependents() []*transactionNode /* fully freed tra
 // transaction node with addDependenciesAndUpdateDependents() and freeDependents().
 // Graph-level concurrency:
 // This method can be called concurrently on different transaction nodes.
-func (n *transactionNode) isDependencyFree() bool {
+func (n *TransactionNode) isDependencyFree() bool {
 	return len(n.dependsOnTxs) == 0
 }
 
