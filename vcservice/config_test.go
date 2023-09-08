@@ -81,8 +81,8 @@ func TestConfig(t *testing.T) {
 					KeepAlive: &connection.ServerKeepAliveConfig{
 						Params: &connection.ServerKeepAliveParamsConfig{
 							MaxConnectionIdle:     5 * time.Second,
-							MaxConnectionAge:      30 * time.Second,
-							MaxConnectionAgeGrace: 5 * time.Second,
+							MaxConnectionAge:      0,
+							MaxConnectionAgeGrace: 0,
 							Time:                  5 * time.Second,
 							Timeout:               1 * time.Second,
 						},
@@ -130,8 +130,8 @@ func TestConfig(t *testing.T) {
 					KeepAlive: &connection.ServerKeepAliveConfig{
 						Params: &connection.ServerKeepAliveParamsConfig{
 							MaxConnectionIdle:     5 * time.Second,
-							MaxConnectionAge:      30 * time.Second,
-							MaxConnectionAgeGrace: 5 * time.Second,
+							MaxConnectionAge:      0,
+							MaxConnectionAgeGrace: 0,
 							Time:                  5 * time.Second,
 							Timeout:               1 * time.Second,
 						},

@@ -65,10 +65,12 @@ func setDefaults() {
 	// default for ServerConfig.keepAlive
 	prefix = "validator-committer-service.server.keep-alive.params."
 	viper.SetDefault(prefix+"max-connection-idle", 5*time.Second)
-	viper.SetDefault(prefix+"max-connection-age", 30*time.Second)
-	viper.SetDefault(prefix+"max-connection-age-grace", 5*time.Second)
 	viper.SetDefault(prefix+"time", 5*time.Second)
 	viper.SetDefault(prefix+"timeout", 1*time.Second)
+	// We don't want to limit the connection age since it is expected to live forever
+	// TODO: remove this configuration values for the vcservice so the developer cannot set them accidentally.
+	viper.SetDefault(prefix+"max-connection-age", 0)
+	viper.SetDefault(prefix+"max-connection-age-grace", 0)
 
 	// default for ServerConfig.keepAlive.enforcementPolicy
 	prefix = "validator-committer-service.server.keep-alive.enforcement-policy."
