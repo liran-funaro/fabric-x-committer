@@ -1,6 +1,8 @@
 package vcservice
 
 import (
+	"context"
+	"errors"
 	"io"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -103,10 +105,14 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	err := <-errorChannel
 	if err != nil {
 		logger.Error(err)
-		return err
 	}
 
 	return nil
+}
+
+// isStreamEndError detects error that are caused due a closed stream.
+func isStreamEndError(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // receiveAndProcessTransactions receives transactions from the client, prepares them,
@@ -117,10 +123,10 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 	for {
 		txBatch, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			logger.Error(err)
+			if isStreamEndError(err) {
 				return nil
 			}
-			logger.Error(err)
 			return err
 		}
 
@@ -135,8 +141,15 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 ) error {
 	logger.Info("Send transaction status")
 
+	ctx := stream.Context()
+	var txStatus *protovcservice.TransactionStatus
+
 	for {
-		txStatus := <-vc.txsStatusChan
+		select {
+		case <-ctx.Done():
+			return nil
+		case txStatus = <-vc.txsStatusChan:
+		}
 
 		if txStatus == nil {
 			// txsStatusChan is closed
@@ -145,10 +158,10 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 
 		err := stream.Send(txStatus)
 		if err != nil {
-			if err == io.EOF {
+			logger.Error(err)
+			if isStreamEndError(err) {
 				return nil
 			}
-			logger.Error(err)
 			return err
 		}
 	}
