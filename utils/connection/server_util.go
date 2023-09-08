@@ -88,7 +88,7 @@ func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server
 	logger.Infof("Running server with:\n"+
 		"\tEndpoint: %s:%s\n"+
 		"\tTLS Creds: %v\n"+
-		"\tKeep Alive: %v\n", grpcProtocol, serverConfig.Endpoint.Address(), serverConfig.Creds, serverConfig.KeepAlive)
+		"\tKeep Alive: %v", grpcProtocol, serverConfig.Endpoint.Address(), serverConfig.Creds, serverConfig.KeepAlive)
 
 	listener, err := net.Listen(grpcProtocol, serverConfig.Endpoint.Address())
 	if err != nil {
@@ -98,6 +98,7 @@ func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server
 	grpcServer := grpc.NewServer(serverConfig.Opts()...)
 	register(grpcServer, listener.Addr().(*net.TCPAddr).Port)
 
+	logger.Infof("Serving...")
 	err = grpcServer.Serve(listener)
 	if err != nil {
 		log.Fatalf("failed to serve: %v", err)
