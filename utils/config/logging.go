@@ -13,6 +13,7 @@ func initializeLoggerViaConfig() error {
 		Level:       strings.ToUpper(viper.GetString("logging.level")),
 		Caller:      viper.GetBool("logging.Caller"),
 		Development: viper.GetBool("logging.Development"),
+		Output:      viper.GetString("logging.Output"),
 	}
 
 	logging.SetupWithConfig(loggerConfig)

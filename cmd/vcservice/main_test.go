@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,12 @@ import (
 )
 
 var configTemplate = `
+logging:
+  enabled: true
+  level: info
+  Caller: false
+  Development: true
+  Output: %s
 validator-committer-service:
   server:
     endpoint:
@@ -55,8 +63,9 @@ func TestVCServiceCmd(t *testing.T) {
 		require.NoError(t, dbRunner.Stop())
 	})
 
+	output := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))
 	conn := dbRunner.ConnectionSettings()
-	config := fmt.Sprintf(configTemplate, conn.Host, conn.Port, conn.User, conn.Password)
+	config := fmt.Sprintf(configTemplate, output, conn.Host, conn.Port, conn.User, conn.Password)
 	require.NoError(t, os.WriteFile(testConfigFilePath, []byte(config), 0o600))
 
 	t.Cleanup(func() {
@@ -105,7 +114,7 @@ func TestVCServiceCmd(t *testing.T) {
 		Level:       logging.Info,
 		Caller:      false,
 		Development: true,
-		Output:      "./logger-output.txt",
+		Output:      output,
 	}
 
 	for _, tc := range test {
@@ -130,13 +139,15 @@ func TestVCServiceCmd(t *testing.T) {
 			}, 4*time.Second, 100*time.Millisecond)
 
 			require.Eventually(t, func() bool {
-				logOut, errFile := os.ReadFile(c.Output)
-				require.NoError(t, errFile)
+				logOut, errFile := os.ReadFile(output)
+				if errFile != nil {
+					return false
+				}
 				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
 			}, 4*time.Second, 100*time.Millisecond)
 			require.Equal(t, tc.errStr, cmdStdErr.String())
 			require.Equal(t, tc.err, err)
-			require.NoError(t, os.Remove(c.Output))
+			require.NoError(t, os.Remove(output))
 		})
 	}
 }
