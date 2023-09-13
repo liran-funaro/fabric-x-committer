@@ -31,6 +31,7 @@ func vcserviceCmd() *cobra.Command {
 		Short: "vcservice is a validator and committer service.",
 	}
 	cmd.AddCommand(versionCmd())
+	cmd.AddCommand(initCmd())
 	cmd.AddCommand(startCmd())
 	return cmd
 }
@@ -86,5 +87,32 @@ func startCmd() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configpath", "", "set the absolute path of config directory")
+	return cmd
+}
+
+func initCmd() *cobra.Command {
+	var namespaces []int
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Init the database",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if configPath == "" {
+				return errors.New("--configpath flag must be set to the path of configuration file")
+			}
+
+			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+				return err
+			}
+			vcConfig := vcservice.ReadConfig()
+			cmd.SilenceUsage = true
+
+			cmd.Printf("Initializing database: %v\n", namespaces)
+
+			return vcservice.InitDatabase(vcConfig.Database, namespaces)
+		},
+	}
+
+	cmd.PersistentFlags().StringVar(&configPath, "configpath", "", "set the absolute path of config directory")
+	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to initialize")
 	return cmd
 }

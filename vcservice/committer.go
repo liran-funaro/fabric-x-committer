@@ -23,7 +23,7 @@ type transactionCommitter struct {
 const txIDsStatusNameSpace = 512
 
 // versionZero is used to indicate that the key is not found in the database and hence,
-// the version should be set to 0 for when the key is inserted into the database
+// the version should be set to 0 for when the key is inserted into the database.
 var versionZero = versionNumber(0).bytes()
 
 // newCommitter creates a new transactionCommitter

@@ -15,63 +15,6 @@ import (
 //	     chaincode deployment model.
 
 const (
-	createTableStmtTmpt = `
-		CREATE TABLE IF NOT EXISTS %s (
-			key bytea NOT NULL PRIMARY KEY,
-			value bytea NOT NULL,
-			version bytea
-		);
-	`
-
-	createIndexStmtTmpt = `
-		CREATE INDEX idx_%s ON %s(version);
-	`
-
-	validateFuncTmpt = `
-		CREATE OR REPLACE FUNCTION validate_reads_%s(keys BYTEA[], versions BYTEA[])
-		RETURNS TABLE (key_mismatched BYTEA, version_mismatched BYTEA) AS
-		$$
-		BEGIN
-			RETURN QUERY
-			SELECT
-				reads.keys AS key_mismatched,
-				reads.versions AS version_mismatched
-			FROM
-				unnest(keys, versions) WITH ORDINALITY AS reads(keys, versions, ord_keys)
-			LEFT JOIN
-				%s ON reads.keys = %s.key
-			WHERE
-				/* if the key does not exist in the committed state but read version is not null,
-				we found a mismatch */
-				(%s.key IS NULL AND reads.versions IS NOT NULL)
-				OR
-				/* if the key exists in the committed state but read version is null, we found a mismatch */
-				(reads.versions IS NULL AND %s.key is NOT NULL)
-				OR
-				/* if the committed version of a key is different from the read version, we found a mismatch */
-				reads.versions <> %s.version;
-		END;
-		$$
-		LANGUAGE plpgsql;
-	`
-
-	commitFuncTmpt = `
-		CREATE OR REPLACE FUNCTION commit_%s(_keys BYTEA[], _values BYTEA[], _versions BYTEA[])
-		RETURNS VOID AS $$
-		BEGIN
-			INSERT INTO %s (key, value, version)
-			SELECT _key, _value, _version
-			FROM UNNEST(_keys, _values, _versions) AS t(_key, _value, _version)
-			ON CONFLICT (key) DO UPDATE
-			SET value = excluded.value, version = excluded.version;
-		END;
-		$$ LANGUAGE plpgsql;
-	`
-
-	dropTableStmtTmpt        = "DROP TABLE IF EXISTS %s"
-	dropValidateFuncStmtTmpt = "DROP FUNCTION IF EXISTS validate_reads_%s"
-	dropCommitFuncStmtTmpt   = "DROP FUNCTION IF EXISTS commit_%s"
-
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
 
 	ns1 = namespaceID(1)

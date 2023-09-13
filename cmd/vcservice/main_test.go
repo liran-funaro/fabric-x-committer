@@ -19,23 +19,23 @@ import (
 var configTemplate = `
 logging:
   enabled: true
-  level: info
+  level: debug
   Caller: false
   Development: true
   Output: %s
 validator-committer-service:
   server:
     endpoint:
-      host: "localhost" # The host of the server
-      port: 6002        # The port of the server
+      host: "localhost"
+      port: 6002
   database:
-    host: %s                          # The host of the database
-    port: %s                                 # The port of the database
-    username: %s                       # The username for the database
-    password: %s                       # The password for the database
-    database: "yugabyte"                       # The database name
-    max-connections: 10                        # The maximum size of the connection pool
-    min-connections: 5                         # The minimum size of the connection pool.
+    host: %s
+    port: %s
+    username: %s
+    password: %s
+    database: "yugabyte"
+    max-connections: 10
+    min-connections: 5
   monitoring:
     metrics:
       endpoint: :2111
@@ -52,8 +52,6 @@ const (
 		"  vcservice version [flags]\n\n" +
 		"Flags:\n" +
 		"  -h, --help   help for version\n"
-
-	testConfigFilePath = "./test-config.yaml"
 )
 
 func TestVCServiceCmd(t *testing.T) {
@@ -63,14 +61,12 @@ func TestVCServiceCmd(t *testing.T) {
 		require.NoError(t, dbRunner.Stop())
 	})
 
-	output := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))
+	tmpDir := t.TempDir()
+	outputPath := filepath.Clean(path.Join(tmpDir, "logger-output.txt"))
+	testConfigPath := filepath.Clean(path.Join(tmpDir, "test-config.yaml"))
 	conn := dbRunner.ConnectionSettings()
-	config := fmt.Sprintf(configTemplate, output, conn.Host, conn.Port, conn.User, conn.Password)
-	require.NoError(t, os.WriteFile(testConfigFilePath, []byte(config), 0o600))
-
-	t.Cleanup(func() {
-		require.NoError(t, os.Remove(testConfigFilePath))
-	})
+	config := fmt.Sprintf(configTemplate, outputPath, conn.Host, conn.Port, conn.User, conn.Password)
+	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
 	test := []struct {
 		name            string
@@ -81,8 +77,16 @@ func TestVCServiceCmd(t *testing.T) {
 		err             error
 	}{
 		{
+			name:            "init the vcservice",
+			args:            []string{"init", "--configpath", testConfigPath, "--namespaces", "0,1"},
+			cmdStdOutput:    "Initializing database",
+			cmdLoggerOutput: "Table 'ns_512' is ready",
+			errStr:          "",
+			err:             nil,
+		},
+		{
 			name:            "start the vcservice",
-			args:            []string{"start", "--configpath", testConfigFilePath},
+			args:            []string{"start", "--configpath", testConfigPath},
 			cmdLoggerOutput: "Running server with",
 			cmdStdOutput:    "Starting vcservice",
 			errStr:          "",
@@ -111,10 +115,10 @@ func TestVCServiceCmd(t *testing.T) {
 
 	c := &logging.Config{
 		Enabled:     true,
-		Level:       logging.Info,
-		Caller:      false,
+		Level:       logging.Debug,
+		Caller:      true,
 		Development: true,
-		Output:      output,
+		Output:      outputPath,
 	}
 
 	for _, tc := range test {
@@ -139,15 +143,16 @@ func TestVCServiceCmd(t *testing.T) {
 			}, 4*time.Second, 100*time.Millisecond)
 
 			require.Eventually(t, func() bool {
-				logOut, errFile := os.ReadFile(output)
+				logOut, errFile := os.ReadFile(outputPath)
 				if errFile != nil {
 					return false
 				}
 				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
-			}, 4*time.Second, 100*time.Millisecond)
+			}, 30*time.Second, 500*time.Millisecond)
+
 			require.Equal(t, tc.errStr, cmdStdErr.String())
 			require.Equal(t, tc.err, err)
-			require.NoError(t, os.Remove(output))
+			require.NoError(t, os.Remove(outputPath))
 		})
 	}
 }
