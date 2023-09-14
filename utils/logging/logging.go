@@ -7,8 +7,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var loggerInstance Logger
-var mu sync.Mutex
+var (
+	loggerInstance Logger
+	mu             sync.Mutex
+)
 
 var logLevelMap = map[Level]zapcore.Level{
 	Debug: zap.DebugLevel,

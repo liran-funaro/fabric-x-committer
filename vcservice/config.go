@@ -29,11 +29,20 @@ type DatabaseConfig struct {
 	Database       string `mapstructure:"database"`
 	MaxConnections int32  `mapstructure:"max-connections"`
 	MinConnections int32  `mapstructure:"min-connections"`
+	LoadBalance    bool   `mapstructure:"load-balance"`
 }
 
 // DataSourceName returns the data source name of the database.
 func (d *DatabaseConfig) DataSourceName() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable", d.Host, d.Port, d.Username, d.Password)
+	ret := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		d.Username, d.Password, d.Host, d.Port, d.Database)
+
+	// The load balancing flag is only available when the server supports it (having multiple nodes).
+	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
+	if d.LoadBalance {
+		ret += "&load_balance=true"
+	}
+	return ret
 }
 
 // ResourceLimitsConfig is the configuration for the resource limits.

@@ -70,8 +70,7 @@ type YugaConnectionSettings struct {
 // DataSourceName returns the dataSourceName to be used by the database/sql package.
 // Usage: sql.Open("postgres", y.DataSourceName()).
 func (y *YugaConnectionSettings) DataSourceName() string {
-	return fmt.Sprintf("user=%s password=%s sslmode=%s host=%s port=%s connect_timeout=%.0f",
-		y.User, y.Password, y.SSLMode, y.Host, y.Port, y.ConnectionTimeout.Seconds())
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/?sslmode=disable", y.User, y.Password, y.Host, y.Port)
 }
 
 // AddressString returns the address:port as a string.

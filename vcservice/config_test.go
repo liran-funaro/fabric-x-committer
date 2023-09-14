@@ -66,10 +66,10 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			},
-			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",
+			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},
 		{
-			name:           "defualt config",
+			name:           "default config",
 			configFilePath: "testdata/default_config.yaml",
 			expectedConfig: &ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
@@ -115,7 +115,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			},
-			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",
+			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},
 		{
 			name:           "no config file",
@@ -164,7 +164,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			},
-			expectedDataSourceName: "host=localhost port=5433 user=yugabyte password=yugabyte sslmode=disable",
+			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},
 	}
 
