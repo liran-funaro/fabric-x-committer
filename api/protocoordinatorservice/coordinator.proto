@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option go_package = "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice";
+
+package protocoordinatorservice;
+
+import "api/protoblocktx/block_tx.proto";
+import "api/protosigverifierservice/verifier.proto";
+
+service Coordinator {
+    rpc SetVerificationKey(protosigverifierservice.Key) returns (Empty);
+    rpc BlockProcessing(stream protoblocktx.Block) returns (stream TxValidationStatusBatch);
+}
+
+message Empty {
+}
+
+message TxValidationStatusBatch {
+    repeated TxValidationStatus txs_validation_status = 1;
+}
+
+message TxValidationStatus {
+    string tx_id = 1;
+    protoblocktx.Status status = 2;
+}

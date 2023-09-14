@@ -43,7 +43,6 @@ type (
 		incomingTxsForValidationCommit <-chan []*dependencygraph.TransactionNode
 		outgoingValidatedTxsNode       chan<- []*dependencygraph.TransactionNode
 		outgoingTxsStatus              chan<- *protovcservice.TransactionStatus
-		internalTxsStatusBufferSize    int
 	}
 )
 
@@ -53,7 +52,7 @@ func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validator
 		incomingTxsNodeForValidationCommit:   c.incomingTxsForValidationCommit,
 		outgoingTxsNodeAfterValidationCommit: c.outgoingValidatedTxsNode,
 		outgoingTxsStatus:                    c.outgoingTxsStatus,
-		txsStatusBufferSize:                  c.internalTxsStatusBufferSize,
+		txsStatusBufferSize:                  cap(c.outgoingTxsStatus),
 	}
 }
 

@@ -15,7 +15,7 @@ type (
 	// without considering other transactions in the dependency graph.
 	localDependencyConstructor struct {
 		// incomingTransactions is an inputs to the localDependencyConstructor.
-		incomingTransactions <-chan *transactionBatch
+		incomingTransactions <-chan *TransactionBatch
 
 		// outgoingTransactionsNode is the output of the localDependencyConstructor
 		// and input to the globalDependencyManager.
@@ -29,9 +29,12 @@ type (
 		orderEnforcer   *sync.Cond
 	}
 
-	transactionBatch struct {
-		id  uint64
-		txs []*protoblocktx.Tx
+	// TransactionBatch holds a batch of transactions to be included in the
+	// dependency graph. The id field denotes the order in which the batch
+	// needs to be processed.
+	TransactionBatch struct {
+		ID  uint64
+		Txs []*protoblocktx.Tx
 	}
 
 	transactionNodeBatch struct {
@@ -41,7 +44,7 @@ type (
 )
 
 func newLocalDependencyConstructor(
-	incomingTxs <-chan *transactionBatch,
+	incomingTxs <-chan *TransactionBatch,
 	outgoingTxsNode chan<- *transactionNodeBatch,
 ) *localDependencyConstructor {
 	return &localDependencyConstructor{
@@ -60,12 +63,12 @@ func (p *localDependencyConstructor) start(numWorkers int) {
 
 func (p *localDependencyConstructor) construct() {
 	for txs := range p.incomingTransactions {
-		logger.Debugf("Constructing dependencies for txs with id %d", txs.id)
+		logger.Debugf("Constructing dependencies for txs with id %d", txs.ID)
 
 		depDetector := newDependencyDetector()
-		txsNode := make([]*TransactionNode, len(txs.txs))
+		txsNode := make([]*TransactionNode, len(txs.Txs))
 
-		for i, tx := range txs.txs {
+		for i, tx := range txs.Txs {
 			// NOTE: we can parallelize newTransactionNode(), and
 			//       addDependenciesAndUpdateDependents() across txs.
 			txNode := newTransactionNode(tx)
@@ -84,7 +87,7 @@ func (p *localDependencyConstructor) construct() {
 		}
 
 		p.sendTxsNodeToGlobalDependencyManager(
-			txs.id,
+			txs.ID,
 			&transactionNodeBatch{
 				txsNode:          txsNode,
 				localDepDetector: depDetector,

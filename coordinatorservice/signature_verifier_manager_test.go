@@ -23,37 +23,7 @@ type svMgrTestEnv struct {
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
-	sc := make([]*connection.ServerConfig, 0, numSvService)
-	for i := 0; i < numSvService; i++ {
-		sc = append(sc, &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		})
-	}
-
-	svs := make([]*sigverifiermock.MockSigVerifier, numSvService)
-	grpcSrvs := make([]*grpc.Server, numSvService)
-	for i, s := range sc {
-		svs[i] = sigverifiermock.NewMockSigVerifier()
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		config := s
-		index := i
-		go func() {
-			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcSrvs[index] = grpcServer
-				config.Endpoint.Port = actualListeningPort
-				protosigverifierservice.RegisterVerifierServer(grpcServer, svs[index])
-				wg.Done()
-			})
-		}()
-
-		wg.Wait()
-	}
+	sc, svs, grpcSrvs := startMockSVService(t, numSvService)
 
 	inputBlock := make(chan *protoblocktx.Block, 10)
 	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
@@ -65,8 +35,6 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 			incomingBlockForSignatureVerification: inputBlock,
 			outgoingBlockWithValidTxs:             outputBlockWithValidTxs,
 			outgoingBlockWithInvalidTxs:           outputBlockWithInvalidTxs,
-			responseCollectionBufferSize:          10,
-			validatedBlockBufferSize:              10,
 		},
 	)
 	errChan, err := svm.start()
@@ -107,6 +75,36 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 	}
 }
 
+func startMockSVService(
+	_ *testing.T,
+	numSvService int,
+) ([]*connection.ServerConfig, []*sigverifiermock.MockSigVerifier, []*grpc.Server) {
+	sc := constructEndpointForTestMockService(nil, numSvService)
+
+	grpcSrvs := make([]*grpc.Server, numSvService)
+	svs := make([]*sigverifiermock.MockSigVerifier, numSvService)
+	for i, s := range sc {
+		svs[i] = sigverifiermock.NewMockSigVerifier()
+
+		index := i
+		config := s
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
+				grpcSrvs[index] = grpcServer
+				config.Endpoint.Port = actualListeningPort
+				protosigverifierservice.RegisterVerifierServer(grpcServer, svs[index])
+				wg.Done()
+			})
+		}()
+		wg.Wait()
+	}
+
+	return sc, svs, grpcSrvs
+}
+
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	// MockSigVerifier marks valid and invalid flag as follows:
 	// - when the block number is even, the even numbered txs are valid and the odd numbered txs are invalid
@@ -124,15 +122,11 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	// for odd block number with 1 tx, mock sigverifier would mark the tx as invalid
 	blkNum = 1
 	numTxs = 1
-	blk, _, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
+	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
 	env.inputBlock <- blk
 
 	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
-	select {
-	case <-env.outputBlockWithValidTxs:
-		t.Fatal("should not have valid txs")
-	case <-time.After(500 * time.Millisecond):
-	}
+	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
 
 	// for even block number with 1 tx, mock sigverifier would mark the tx as valid
 	blkNum = 2

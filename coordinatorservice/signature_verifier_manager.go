@@ -23,8 +23,6 @@ type (
 		incomingBlockForSignatureVerification <-chan *protoblocktx.Block
 		outgoingBlockWithValidTxs             chan<- *protoblocktx.Block
 		outgoingBlockWithInvalidTxs           chan<- *protoblocktx.Block
-		responseCollectionBufferSize          int
-		validatedBlockBufferSize              int
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
@@ -59,8 +57,6 @@ type (
 		incomingBlockForSignatureVerification <-chan *protoblocktx.Block
 		outgoingBlockWithValidTxs             chan<- *protoblocktx.Block
 		outgoingBlockWithInvalidTxs           chan<- *protoblocktx.Block
-		responseCollectionBufferSize          int
-		validatedBlockBufferSize              int
 	}
 )
 
@@ -70,8 +66,6 @@ func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVe
 		incomingBlockForSignatureVerification: config.incomingBlockForSignatureVerification,
 		outgoingBlockWithValidTxs:             config.outgoingBlockWithValidTxs,
 		outgoingBlockWithInvalidTxs:           config.outgoingBlockWithInvalidTxs,
-		responseCollectionBufferSize:          config.responseCollectionBufferSize,
-		validatedBlockBufferSize:              config.validatedBlockBufferSize,
 	}
 }
 
@@ -99,9 +93,12 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 			resultAccumulator: &sync.Map{},
 			responseCollectionChan: make(
 				chan *protosigverifierservice.ResponseBatch,
-				svm.responseCollectionBufferSize,
+				cap(svm.incomingBlockForSignatureVerification)/len(svm.serversConfig),
 			),
-			validatedBlock: make(chan *blockWithResult, svm.validatedBlockBufferSize),
+			validatedBlock: make(
+				chan *blockWithResult,
+				(cap(svm.outgoingBlockWithValidTxs)+cap(svm.outgoingBlockWithInvalidTxs))/len(svm.serversConfig),
+			),
 		}
 		svm.signVerifier[i] = sv
 
@@ -224,6 +221,9 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 			continue
 		case len(blkWithResult.validTxIndex) == 0:
 			outgoingBlockWithInvalidTxs <- blkWithResult.block
+			outgoingBlockWithValidTxs <- &protoblocktx.Block{
+				Number: blkWithResult.block.Number,
+			}
 			continue
 		default:
 			validBlockTxs := &protoblocktx.Block{

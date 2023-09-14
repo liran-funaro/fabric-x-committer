@@ -9,12 +9,12 @@ import (
 )
 
 type localDependencyConstructorTestEnv struct {
-	inComingTxs chan *transactionBatch
+	inComingTxs chan *TransactionBatch
 	outGoingTxs chan *transactionNodeBatch
 }
 
 func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstructorTestEnv {
-	inComingTxs := make(chan *transactionBatch, 5)
+	inComingTxs := make(chan *TransactionBatch, 5)
 	outGoingTxs := make(chan *transactionNodeBatch, 5)
 	newLocalDependencyConstructor(inComingTxs, outGoingTxs).start(5)
 
@@ -37,9 +37,9 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
 	env := newLocalDependencyConstructorTestEnv(t)
 
 	t.Run("no dependencies between transactions", func(t *testing.T) {
-		noDepsTxs := &transactionBatch{
-			id: 1,
-			txs: []*protoblocktx.Tx{
+		noDepsTxs := &TransactionBatch{
+			ID: 1,
+			Txs: []*protoblocktx.Tx{
 				createTxForTest(
 					t,
 					[][]byte{keys[0], keys[1]},
@@ -79,9 +79,9 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
 	})
 
 	t.Run("linear dependency i and i+1 transaction", func(t *testing.T) {
-		noDepsTxs := &transactionBatch{
-			id: 2,
-			txs: []*protoblocktx.Tx{
+		noDepsTxs := &TransactionBatch{
+			ID: 2,
+			Txs: []*protoblocktx.Tx{
 				createTxForTest(t, [][]byte{keys[1]}, [][]byte{keys[2]}, nil),
 				createTxForTest(t, [][]byte{keys[2]}, [][]byte{keys[3]}, nil),
 				createTxForTest(t, [][]byte{keys[3]}, [][]byte{keys[4]}, nil),
@@ -125,9 +125,9 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 	keys := makeTestKeys(t, 9)
 
 	// send the transactions in reverse order
-	noDepsTxs := &transactionBatch{
-		id: 3,
-		txs: []*protoblocktx.Tx{
+	noDepsTxs := &TransactionBatch{
+		ID: 3,
+		Txs: []*protoblocktx.Tx{
 			createTxForTest(t, nil, [][]byte{keys[4]}, nil),
 			createTxForTest(t, nil, [][]byte{keys[5]}, nil),
 			createTxForTest(t, nil, [][]byte{keys[6]}, nil),
@@ -137,9 +137,9 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 	}
 	env.inComingTxs <- noDepsTxs
 
-	noDepsTxs = &transactionBatch{
-		id: 2,
-		txs: []*protoblocktx.Tx{
+	noDepsTxs = &TransactionBatch{
+		ID: 2,
+		Txs: []*protoblocktx.Tx{
 			createTxForTest(t, nil, [][]byte{keys[1]}, nil),
 			createTxForTest(t, nil, [][]byte{keys[2]}, nil),
 			createTxForTest(t, nil, [][]byte{keys[3]}, nil),
@@ -153,9 +153,9 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 	case <-time.After(1 * time.Second):
 	}
 
-	noDepsTxs = &transactionBatch{
-		id: 1,
-		txs: []*protoblocktx.Tx{
+	noDepsTxs = &TransactionBatch{
+		ID: 1,
+		Txs: []*protoblocktx.Tx{
 			createTxForTest(t, nil, [][]byte{keys[0]}, nil),
 		},
 	}

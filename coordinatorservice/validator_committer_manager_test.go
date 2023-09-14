@@ -24,37 +24,7 @@ type vcMgrTestEnv struct {
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
-	sc := make([]*connection.ServerConfig, 0, numVCService)
-	for i := 0; i < numVCService; i++ {
-		sc = append(sc, &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		})
-	}
-
-	vcs := make([]*vcservicemock.MockVcService, numVCService)
-	grpcSrvs := make([]*grpc.Server, numVCService)
-	for i, s := range sc {
-		vcs[i] = vcservicemock.NewMockVcService()
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		config := s
-		index := i
-		go func() {
-			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcSrvs[index] = grpcServer
-				config.Endpoint.Port = actualListeningPort
-				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs[index])
-				wg.Done()
-			})
-		}()
-
-		wg.Wait()
-	}
+	sc, vcs, grpcSrvs := startMockVCService(t, numVCService)
 
 	inputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
@@ -66,7 +36,6 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			internalTxsStatusBufferSize:    10,
 		},
 	)
 	errChan, err := vcm.start()
@@ -104,6 +73,51 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		outputTxsStatus:           outputTxsStatus,
 		mockVcServices:            vcs,
 	}
+}
+
+func startMockVCService(
+	_ *testing.T,
+	numVCService int,
+) ([]*connection.ServerConfig, []*vcservicemock.MockVcService, []*grpc.Server) {
+	sc := constructEndpointForTestMockService(nil, numVCService)
+
+	vcs := make([]*vcservicemock.MockVcService, numVCService)
+	grpcSrvs := make([]*grpc.Server, numVCService)
+	for i, s := range sc {
+		vcs[i] = vcservicemock.NewMockVcService()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		config := s
+		index := i
+		go func() {
+			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
+				grpcSrvs[index] = grpcServer
+				config.Endpoint.Port = actualListeningPort
+				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs[index])
+				wg.Done()
+			})
+		}()
+
+		wg.Wait()
+	}
+
+	return sc, vcs, grpcSrvs
+}
+
+func constructEndpointForTestMockService(_ *testing.T, numService int) []*connection.ServerConfig {
+	sc := make([]*connection.ServerConfig, 0, numService)
+	for i := 0; i < numService; i++ {
+		sc = append(sc, &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		})
+	}
+
+	return sc
 }
 
 func TestValidatorCommitterManager(t *testing.T) {

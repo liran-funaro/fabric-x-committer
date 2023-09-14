@@ -10,7 +10,7 @@ import (
 )
 
 func TestDependencyGraph(t *testing.T) {
-	localDepIncomingTxs := make(chan *transactionBatch, 10)
+	localDepIncomingTxs := make(chan *TransactionBatch, 10)
 	localDepOutgoingTxs := make(chan *transactionNodeBatch, 10)
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs)
 	ldc.start(2)
@@ -45,9 +45,9 @@ func TestDependencyGraph(t *testing.T) {
 	t1 := createTxForTest(t, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]})
 	t2 := createTxForTest(t, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]})
 
-	localDepIncomingTxs <- &transactionBatch{
-		id:  1,
-		txs: []*protoblocktx.Tx{t1, t2},
+	localDepIncomingTxs <- &TransactionBatch{
+		ID:  1,
+		Txs: []*protoblocktx.Tx{t1, t2},
 	}
 
 	// t3 depends on t2 and t1
@@ -55,9 +55,9 @@ func TestDependencyGraph(t *testing.T) {
 	// t4 depends on t2 and t1
 	t4 := createTxForTest(t, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]})
 
-	localDepIncomingTxs <- &transactionBatch{
-		id:  2,
-		txs: []*protoblocktx.Tx{t3, t4},
+	localDepIncomingTxs <- &TransactionBatch{
+		ID:  2,
+		Txs: []*protoblocktx.Tx{t3, t4},
 	}
 
 	// only t1 is dependency free
