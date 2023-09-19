@@ -53,10 +53,13 @@ endif
 test: build
 	go test -v ./...
 
-test-cover: build
+test-cover:
 	go test -v -coverprofile=coverage.profile ./...
 
-cover-report: test-cover
+test-cover-%:
+	go test -v -coverprofile=coverage.profile "./$*/..."
+
+cover-report:
 	go tool cover -html=coverage.profile
 
 clean:

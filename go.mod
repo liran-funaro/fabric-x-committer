@@ -34,6 +34,7 @@ require (
 	go.opentelemetry.io/otel v1.11.2
 	go.uber.org/atomic v1.9.0
 	go.uber.org/ratelimit v0.2.0
+	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	google.golang.org/grpc v1.48.0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
@@ -128,8 +129,7 @@ require (
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/exp v0.0.0-20200513190911-00229845015e // indirect
-	golang.org/x/mod v0.9.0 // indirect
+	golang.org/x/mod v0.11.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/sys v0.9.0 // indirect
 	golang.org/x/term v0.9.0 // indirect
