@@ -157,7 +157,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *prot
 			r.Requests = append(r.Requests, &protosigverifierservice.Request{
 				BlockNum: block.Number,
 				TxNum:    uint64(txNum),
-				Tx:       nil,
+				Tx:       block.Txs[txNum],
 			})
 		}
 

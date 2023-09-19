@@ -1,7 +1,6 @@
 package coordinatorservice
 
 import (
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -87,17 +86,7 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
 	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
 
-	// for odd block number with 1 tx, mock sigverifier would mark the tx as invalid
 	blkNum = 1
-	numTxs = 1
-	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
-	env.inputBlock <- blk
-
-	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
-	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
-
-	// for even block number with 1 tx, mock sigverifier would mark the tx as valid
-	blkNum = 2
 	numTxs = 1
 	blk, expectedBlkWithValTxs, _ = createBlockForTest(t, blkNum, numTxs)
 	env.inputBlock <- blk
@@ -108,6 +97,14 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 		t.Fatal("should not have invalid txs", b)
 	case <-time.After(500 * time.Millisecond):
 	}
+
+	blkNum = 2
+	numTxs = 4
+	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
+	env.inputBlock <- blk
+
+	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
+	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
 }
 
 func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
@@ -183,6 +180,25 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 	}
 }
 
+func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
+	env := newSvMgrTestEnv(t, 1)
+
+	blk := &protoblocktx.Block{
+		Number: 1,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx1",
+			},
+		},
+	}
+	env.inputBlock <- blk
+
+	require.Equal(t, &protoblocktx.Block{
+		Number: 1,
+	}, <-env.outputBlockWithValidTxs)
+	require.Equal(t, blk, <-env.outputBlockWithInvalidTxs)
+}
+
 func createBlockForTest(
 	_ *testing.T,
 	blkNum, numTxs int,
@@ -200,28 +216,19 @@ func createBlockForTest(
 	}
 
 	for i := 0; i < numTxs; i++ {
-		tx := &protoblocktx.Tx{
-			Signature: []byte(strconv.Itoa(i)),
+		tx := &protoblocktx.Tx{}
+
+		switch i % 2 {
+		case 0:
+			// even number txs are valid.
+			tx.Signature = []byte("dummy")
+			blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
+		case 1:
+			// odd number txs are invalid.
+			blockWithInvalidTxs.Txs = append(blockWithInvalidTxs.Txs, tx)
 		}
 
 		block.Txs = append(block.Txs, tx)
-
-		switch blkNum % 2 {
-		case 0:
-			// for even block numbers, even tx numbers are valid and odd tx numbers are invalid
-			if i%2 == 0 {
-				blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
-			} else {
-				blockWithInvalidTxs.Txs = append(blockWithInvalidTxs.Txs, tx)
-			}
-		case 1:
-			// for odd block numbers, even tx numbers are invalid and odd tx numbers are valid
-			if i%2 == 0 {
-				blockWithInvalidTxs.Txs = append(blockWithInvalidTxs.Txs, tx)
-			} else {
-				blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
-			}
-		}
 	}
 
 	return block, blockWithValidTxs, blockWithInvalidTxs

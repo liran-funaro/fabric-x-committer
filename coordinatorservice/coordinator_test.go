@@ -127,7 +127,12 @@ func TestCoordinatorService(t *testing.T) {
 	t.Run("valid tx", func(t *testing.T) {
 		err := env.csStream.Send(&protoblocktx.Block{
 			Number: 0,
-			Txs:    []*protoblocktx.Tx{{Id: "tx1"}},
+			Txs: []*protoblocktx.Tx{
+				{
+					Id:        "tx1",
+					Signature: []byte("dummy"),
+				},
+			},
 		})
 		require.NoError(t, err)
 
@@ -170,7 +175,12 @@ func TestCoordinatorService(t *testing.T) {
 		for i := 4; i <= lastBlockNum; i++ {
 			err := env.csStream.Send(&protoblocktx.Block{
 				Number: uint64(i),
-				Txs:    []*protoblocktx.Tx{{Id: "tx" + strconv.Itoa(i)}},
+				Txs: []*protoblocktx.Tx{
+					{
+						Id:        "tx" + strconv.Itoa(i),
+						Signature: []byte("dummy"),
+					},
+				},
 			})
 			require.NoError(t, err)
 		}
@@ -202,7 +212,7 @@ func TestCoordinatorService(t *testing.T) {
 				numValid++
 			}
 		}
-		require.Equal(t, lastBlockNum/2, numValid)
-		require.Equal(t, lastBlockNum/2-1, numInvalid)
+		require.Equal(t, lastBlockNum-2, numValid)
+		require.Equal(t, 1, numInvalid)
 	})
 }

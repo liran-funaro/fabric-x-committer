@@ -14,8 +14,8 @@ import (
 
 // MockSigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
 // MockSigVerifier marks valid and invalid flag as follows:
-// - when the block number is even, the even numbered txs are valid and the odd numbered txs are invalid.
-// - when the block number is odd, the even numbered txs are invalid and the odd numbered txs are valid.
+// - when the tx has empty signature, it is invalid.
+// - when the tx has non-empty signature, it is valid.
 type MockSigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
 	requestBatch      chan *protosigverifierservice.RequestBatch
@@ -85,20 +85,11 @@ func (m *MockSigVerifier) sendResponseBatch(stream protosigverifierservice.Verif
 		}
 
 		for i, req := range reqBatch.Requests {
-			resp := &protosigverifierservice.Response{
+			respBatch.Responses[i] = &protosigverifierservice.Response{
 				BlockNum: req.BlockNum,
 				TxNum:    req.TxNum,
+				IsValid:  len(req.GetTx().GetSignature()) > 0,
 			}
-
-			switch req.BlockNum % 2 {
-			case 0:
-				// for even block numbers, even tx numbers are valid and odd tx numbers are invalid
-				resp.IsValid = i%2 == 0
-			case 1:
-				// for odd block numbers, even tx numbers are invalid and odd tx numbers are valid
-				resp.IsValid = i%2 == 1
-			}
-			respBatch.Responses[i] = resp
 		}
 
 		if err := stream.Send(respBatch); err != nil {
