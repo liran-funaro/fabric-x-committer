@@ -21,7 +21,7 @@ func TestConfig(t *testing.T) {
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "./testdata/valid_config.yaml",
+			configFilePath: "../config/config-vcservice.yaml",
 			expectedConfig: &ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{

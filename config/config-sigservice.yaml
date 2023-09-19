@@ -6,7 +6,7 @@ sig-verification:
     parallelism: 40
   scheme: Ecdsa
   server:
-    endpoint: :5000
+    endpoint: localhost:5000
 
   monitoring:
     metrics:

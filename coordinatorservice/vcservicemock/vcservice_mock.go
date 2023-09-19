@@ -20,8 +20,8 @@ type MockVcService struct {
 	numBatchesReceived *atomic.Uint32
 }
 
-// newMockVcService returns a new MockVcService.
-func newMockVcService() *MockVcService {
+// NewMockVcService returns a new MockVcService.
+func NewMockVcService() *MockVcService {
 	return &MockVcService{
 		txBatchChan:        make(chan *protovcservice.TransactionBatch),
 		numBatchesReceived: &atomic.Uint32{},
@@ -120,7 +120,7 @@ func StartMockVCService(
 	vcs := make([]*MockVcService, numService)
 	grpcSrvs := make([]*grpc.Server, numService)
 	for i, s := range sc {
-		vcs[i] = newMockVcService()
+		vcs[i] = NewMockVcService()
 
 		var wg sync.WaitGroup
 		wg.Add(1)

@@ -40,3 +40,7 @@ validator-committer-service:
   monitoring:
     metrics:
       endpoint: :2111
+logging:
+  development: true
+  enabled: true
+  level: INFO
