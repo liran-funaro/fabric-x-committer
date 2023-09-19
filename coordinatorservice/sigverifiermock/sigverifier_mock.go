@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 )
 
 // MockSigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -122,4 +125,42 @@ func (m *MockSigVerifier) GetVerificationKey() []byte {
 // Close closes the mock verifier.
 func (m *MockSigVerifier) Close() {
 	close(m.requestBatch)
+}
+
+// StartMockSVService starts a specified number of mock verifier service.
+func StartMockSVService(
+	numService int,
+) ([]*connection.ServerConfig, []*MockSigVerifier, []*grpc.Server) {
+	sc := make([]*connection.ServerConfig, 0, numService)
+	for i := 0; i < numService; i++ {
+		sc = append(sc, &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		})
+	}
+
+	grpcSrvs := make([]*grpc.Server, numService)
+	svs := make([]*MockSigVerifier, numService)
+	for i, s := range sc {
+		svs[i] = NewMockSigVerifier()
+
+		index := i
+		config := s
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
+				grpcSrvs[index] = grpcServer
+				config.Endpoint.Port = actualListeningPort
+				protosigverifierservice.RegisterVerifierServer(grpcServer, svs[index])
+				wg.Done()
+			})
+		}()
+		wg.Wait()
+	}
+
+	return sc, svs, grpcSrvs
 }

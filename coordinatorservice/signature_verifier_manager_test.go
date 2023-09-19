@@ -10,8 +10,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
 )
 
 type svMgrTestEnv struct {
@@ -23,7 +21,7 @@ type svMgrTestEnv struct {
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
-	sc, svs, grpcSrvs := startMockSVService(t, numSvService)
+	sc, svs, grpcSrvs := sigverifiermock.StartMockSVService(numSvService)
 
 	inputBlock := make(chan *protoblocktx.Block, 10)
 	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
@@ -73,36 +71,6 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		outputBlockWithInvalidTxs: outputBlockWithInvalidTxs,
 		mockSvService:             svs,
 	}
-}
-
-func startMockSVService(
-	_ *testing.T,
-	numSvService int,
-) ([]*connection.ServerConfig, []*sigverifiermock.MockSigVerifier, []*grpc.Server) {
-	sc := constructEndpointForTestMockService(nil, numSvService)
-
-	grpcSrvs := make([]*grpc.Server, numSvService)
-	svs := make([]*sigverifiermock.MockSigVerifier, numSvService)
-	for i, s := range sc {
-		svs[i] = sigverifiermock.NewMockSigVerifier()
-
-		index := i
-		config := s
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcSrvs[index] = grpcServer
-				config.Endpoint.Port = actualListeningPort
-				protosigverifierservice.RegisterVerifierServer(grpcServer, svs[index])
-				wg.Done()
-			})
-		}()
-		wg.Wait()
-	}
-
-	return sc, svs, grpcSrvs
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {

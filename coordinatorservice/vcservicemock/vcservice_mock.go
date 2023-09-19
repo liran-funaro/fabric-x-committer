@@ -3,10 +3,13 @@ package vcservicemock
 import (
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 )
 
 // MockVcService implements the protovcservice.ValidationAndCommitServiceServer interface.
@@ -17,8 +20,8 @@ type MockVcService struct {
 	numBatchesReceived *atomic.Uint32
 }
 
-// NewMockVcService returns a new MockVcService.
-func NewMockVcService() *MockVcService {
+// newMockVcService returns a new MockVcService.
+func newMockVcService() *MockVcService {
 	return &MockVcService{
 		txBatchChan:        make(chan *protovcservice.TransactionBatch),
 		numBatchesReceived: &atomic.Uint32{},
@@ -98,4 +101,43 @@ func (vc *MockVcService) GetNumBatchesReceived() uint32 {
 // Close closes the input channel of MockVcService.
 func (vc *MockVcService) Close() {
 	close(vc.txBatchChan)
+}
+
+// StartMockVCService starts a specified number of mock VC service.
+func StartMockVCService(
+	numService int,
+) ([]*connection.ServerConfig, []*MockVcService, []*grpc.Server) {
+	sc := make([]*connection.ServerConfig, 0, numService)
+	for i := 0; i < numService; i++ {
+		sc = append(sc, &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		})
+	}
+
+	vcs := make([]*MockVcService, numService)
+	grpcSrvs := make([]*grpc.Server, numService)
+	for i, s := range sc {
+		vcs[i] = newMockVcService()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		config := s
+		index := i
+		go func() {
+			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
+				grpcSrvs[index] = grpcServer
+				config.Endpoint.Port = actualListeningPort
+				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs[index])
+				wg.Done()
+			})
+		}()
+
+		wg.Wait()
+	}
+
+	return sc, vcs, grpcSrvs
 }

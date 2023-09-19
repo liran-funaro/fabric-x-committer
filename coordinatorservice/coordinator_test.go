@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
@@ -19,8 +21,8 @@ type coordinatorTestEnv struct {
 }
 
 func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
-	svServerConfigs, svServices, svGrpcServers := startMockSVService(t, 3)
-	vcServerConfigs, vcServices, vcGrpcServers := startMockVCService(t, 3)
+	svServerConfigs, svServices, svGrpcServers := sigverifiermock.StartMockSVService(3)
+	vcServerConfigs, vcServices, vcGrpcServers := vcservicemock.StartMockVCService(3)
 
 	c := &CoordinatorConfig{
 		SignVerifierConfig: &SignVerifierConfig{

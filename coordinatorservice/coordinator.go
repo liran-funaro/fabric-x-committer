@@ -164,17 +164,22 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 
 // Start starts each manager in the coordinator service.
 func (c *CoordinatorService) Start() (chan error, chan error, error) {
+	logger.Info("Starting signature verifier manager")
 	sigVerifierErrChan, err := c.signatureVerifierMgr.start()
 	if err != nil {
 		return nil, nil, err
 	}
 
+	logger.Info("Starting dependency graph manager")
 	c.dependencyMgr.Start()
 
+	logger.Info("Starting validator committer manager")
 	valCommitErrChan, err := c.validatorCommitterMgr.start()
 	if err != nil {
 		return nil, nil, err
 	}
+
+	logger.Info("Coordinator service started successfully")
 
 	return sigVerifierErrChan, valCommitErrChan, nil
 }
