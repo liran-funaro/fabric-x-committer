@@ -33,21 +33,21 @@ type (
 	PublicKey = []byte
 	// PrivateKey is the signature private key.
 	PrivateKey = []byte
+
+	// HashSignerVerifier supports signing and verifying a hash value.
+	HashSignerVerifier interface {
+		// Sign signs a hash.
+		Sign(hash []byte) Signature
+		// Verify returns true of the signature matches the hash.
+		Verify(sig Signature, hash []byte) bool
+	}
+
+	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
+	TxSignerVerifier struct {
+		MarshalOptions proto.MarshalOptions
+		HashSigner     HashSignerVerifier
+	}
 )
-
-// HashSignerVerifier supports signing and verifying a hash value.
-type HashSignerVerifier interface {
-	// Sign signs a hash.
-	Sign(hash []byte) Signature
-	// Verify returns true of the signature matches the hash.
-	Verify(sig Signature, hash []byte) bool
-}
-
-// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
-type TxSignerVerifier struct {
-	MarshalOptions proto.MarshalOptions
-	HashSigner     HashSignerVerifier
-}
 
 // NewTxSignerVerifier creates a new TxSignerVerifier given a workload profile.
 func NewTxSignerVerifier(profile *SignatureProfile) *TxSignerVerifier {

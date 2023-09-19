@@ -13,23 +13,46 @@ const (
 	dependencyBlindWrite = "write"
 )
 
-type signTxDecorator struct {
-	Signer               *TxSignerVerifier
-	txGenerator          Generator[*protoblocktx.Tx]
-	invalidSignGenerator Generator[bool]
-	invalidSignature     []byte
-}
+type (
+	signTxDecorator struct {
+		Signer               *TxSignerVerifier
+		txQueue              <-chan *protoblocktx.Tx
+		invalidSignGenerator Generator[bool]
+		invalidSignature     []byte
+	}
 
-// NewSignTxDecorator wraps a TX generator and signs it given the conflicts profile.
-func NewSignTxDecorator(
-	rnd *rand.Rand, txGenerator Generator[*protoblocktx.Tx], signer *TxSignerVerifier, profile *Profile,
-) Generator[*protoblocktx.Tx] {
+	dependenciesDecorator struct {
+		txQueue         <-chan *protoblocktx.Tx
+		keyGenerator    Generator[[]byte]
+		dependencies    []dependencyDesc
+		dependenciesMap map[uint64][]dependency
+		index           uint64
+	}
+
+	dependencyDesc struct {
+		bernoulliGenerator Generator[int]
+		gapGenerator       Generator[int]
+		src                string
+		dst                string
+	}
+
+	dependency struct {
+		key []byte
+		src string
+		dst string
+	}
+)
+
+// newSignTxDecorator wraps a TX generator and signs it given the conflicts profile.
+func newSignTxDecorator(
+	rnd *rand.Rand, txQueue <-chan *protoblocktx.Tx, signer *TxSignerVerifier, profile *Profile,
+) *signTxDecorator {
 	dist := NewBernoulliDistribution(profile.Conflicts.InvalidSignatures)
 	var invalidTx protoblocktx.Tx
 	signer.Sign(&invalidTx)
 	return &signTxDecorator{
 		Signer:               signer,
-		txGenerator:          txGenerator,
+		txQueue:              txQueue,
 		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
 		invalidSignature:     invalidTx.Signature,
 	}
@@ -37,7 +60,7 @@ func NewSignTxDecorator(
 
 // Next generate a new TX.
 func (g *signTxDecorator) Next() *protoblocktx.Tx {
-	tx := g.txGenerator.Next()
+	tx := <-g.txQueue
 	if g.invalidSignGenerator.Next() {
 		tx.Signature = g.invalidSignature
 	} else {
@@ -46,20 +69,12 @@ func (g *signTxDecorator) Next() *protoblocktx.Tx {
 	return tx
 }
 
-type dependenciesDecorator struct {
-	txGenerator     Generator[*protoblocktx.Tx]
-	keyGenerator    Generator[[]byte]
-	dependencies    []dependencyDesc
-	dependenciesMap map[uint64][]dependency
-	index           uint64
-}
-
-// NewTxDependenciesDecorator wraps a tx generator and adds dependencies conflicts.
-func NewTxDependenciesDecorator(
-	rnd *rand.Rand, txGenerator Generator[*protoblocktx.Tx], profile *Profile,
-) Generator[*protoblocktx.Tx] {
+// newTxDependenciesDecorator wraps a tx generator and adds dependencies conflicts.
+func newTxDependenciesDecorator(
+	rnd *rand.Rand, txQueue <-chan *protoblocktx.Tx, profile *Profile,
+) *dependenciesDecorator {
 	return &dependenciesDecorator{
-		txGenerator:  txGenerator,
+		txQueue:      txQueue,
 		keyGenerator: &ByteArrayGenerator{Size: profile.Transaction.KeySize, Rnd: rnd},
 		dependencies: Map(profile.Conflicts.Dependencies, func(
 			_ int, value DependencyDescription,
@@ -84,17 +99,34 @@ func NewTxDependenciesDecorator(
 	}
 }
 
-type dependencyDesc struct {
-	bernoulliGenerator Generator[int]
-	gapGenerator       Generator[int]
-	src                string
-	dst                string
-}
+// Next generate a new tx.
+func (g *dependenciesDecorator) Next() *protoblocktx.Tx {
+	tx := <-g.txQueue
+	depList, ok := g.dependenciesMap[g.index]
+	if ok {
+		delete(g.dependenciesMap, g.index)
+		for _, d := range depList {
+			addKey(tx, d.dst, d.key)
+		}
+	}
 
-type dependency struct {
-	key []byte
-	src string
-	dst string
+	for _, depDesc := range g.dependencies {
+		if depDesc.bernoulliGenerator.Next() != 1 {
+			continue
+		}
+
+		gap := uint64(Max(depDesc.gapGenerator.Next(), 1))
+		d := dependency{
+			key: g.keyGenerator.Next(),
+			src: depDesc.src,
+			dst: depDesc.dst,
+		}
+		addKey(tx, d.src, d.key)
+		g.dependenciesMap[g.index+gap] = append(g.dependenciesMap[g.index+gap], d)
+	}
+
+	g.index++
+	return tx
 }
 
 func addKey(tx *protoblocktx.Tx, dependencyType string, key []byte) {
@@ -109,31 +141,4 @@ func addKey(tx *protoblocktx.Tx, dependencyType string, key []byte) {
 	default:
 		panic(fmt.Sprintf("invalid dependency type: %s", dependencyType))
 	}
-}
-
-// Next generate a new tx.
-func (g *dependenciesDecorator) Next() *protoblocktx.Tx {
-	tx := g.txGenerator.Next()
-	depList, ok := g.dependenciesMap[g.index]
-	if ok {
-		delete(g.dependenciesMap, g.index)
-		for _, d := range depList {
-			addKey(tx, d.dst, d.key)
-		}
-	}
-	for _, depDesc := range g.dependencies {
-		if depDesc.bernoulliGenerator.Next() != 1 {
-			continue
-		}
-		gap := uint64(Max(depDesc.gapGenerator.Next(), 1))
-		d := dependency{
-			key: g.keyGenerator.Next(),
-			src: depDesc.src,
-			dst: depDesc.dst,
-		}
-		addKey(tx, d.src, d.key)
-		g.dependenciesMap[g.index+gap] = append(g.dependenciesMap[g.index+gap], d)
-	}
-	g.index++
-	return tx
 }

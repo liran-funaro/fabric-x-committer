@@ -47,7 +47,7 @@ func genericBlockBench(b *testing.B, workers uint32) {
 	c := StartBlockGenerator(defaultProfile(workers))
 
 	for i := 0; i < b.N; i++ {
-		blk := c.Next()
+		blk := <-c.BlockQueue
 		sum += float64(blk.Number)
 	}
 	b.StopTimer()
@@ -63,7 +63,7 @@ func genericTxBench(b *testing.B, workers uint32) {
 	c := StartTxGenerator(defaultProfile(workers))
 
 	for i := 0; i < b.N; i++ {
-		tx := c.Next()
+		tx := <-c.TxQueue
 		sum += float64(len(tx.Namespaces))
 	}
 	b.StopTimer()
@@ -160,7 +160,7 @@ func TestGenValidTx(t *testing.T) {
 			require.IsType(t, &ecdsaSignerVerifier{}, c.Signer.HashSigner)
 
 			for i := 0; i < 100; i++ {
-				requireValidTx(t, c.Next(), p, c.Signer)
+				requireValidTx(t, <-c.TxQueue, p, c.Signer)
 			}
 		})
 	}
@@ -178,7 +178,7 @@ func TestGenValidBlock(t *testing.T) {
 			require.IsType(t, &ecdsaSignerVerifier{}, c.Signer.HashSigner)
 
 			for i := 0; i < 5; i++ {
-				block := c.Next()
+				block := <-c.BlockQueue
 				for _, tx := range block.Txs {
 					requireValidTx(t, tx, p, c.Signer)
 				}
@@ -194,9 +194,9 @@ func TestGenInvalidSigTx(t *testing.T) {
 
 	c := StartTxGenerator(p)
 	require.IsType(t, &ecdsaSignerVerifier{}, c.Signer.HashSigner)
-	txs := GenerateArray[*protoblocktx.Tx](c, int(1e3))
-	valid := Map(txs, func(index int, value *protoblocktx.Tx) float64 {
-		if !c.Signer.Verify(c.Next()) {
+	txs := c.NextN(1e3)
+	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
+		if !c.Signer.Verify(<-c.TxQueue) {
 			return 1
 		}
 		return 0
@@ -237,7 +237,7 @@ func TestGenDependentTx(t *testing.T) {
 
 	c := StartTxGenerator(p)
 
-	txs := GenerateArray[*protoblocktx.Tx](c, int(1e6))
+	txs := c.NextN(1e6)
 	m := make(map[string]uint64)
 	for _, tx := range txs {
 		for _, ns := range tx.Namespaces {

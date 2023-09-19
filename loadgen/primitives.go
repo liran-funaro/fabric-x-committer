@@ -92,10 +92,3 @@ func GenerateArray[T any](g Generator[T], size int) []T {
 	}
 	return arr
 }
-
-// GeneratorWorker sends generated items to the given queue.
-func GeneratorWorker[T any](g Generator[T], queue chan<- T) {
-	for {
-		queue <- g.Next()
-	}
-}
