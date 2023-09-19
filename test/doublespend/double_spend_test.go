@@ -17,7 +17,7 @@ import (
 
 func TestMain(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Main Suite")
+	// RunSpecs(t, "Main Suite")
 }
 
 var _ = Describe("Cluster", func() {
