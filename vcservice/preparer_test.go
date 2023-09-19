@@ -228,6 +228,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	k4 := []byte("key4")
 	k5 := []byte("key5")
 	k6 := []byte("key6")
+	k7 := []byte("key7")
 
 	tx := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
@@ -265,6 +266,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						NsId: 2,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{Key: k6, Version: nil, Value: []byte("v6")},
+							{Key: k7, Version: nil, Value: nil},
 						},
 					},
 				},
@@ -275,12 +277,12 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	expectedPreparedTxs := &preparedTransactions{
 		namespaceToReadEntries: namespaceToReads{
 			1: &reads{
-				keys:     [][]byte{k1, k2, k3, k4, k5},
-				versions: [][]byte{v1, v1, nil, v1, nil},
+				keys:     [][]byte{k1, k2, k4},
+				versions: [][]byte{v1, v1, v1},
 			},
 			2: &reads{
-				keys:     [][]byte{k4, k5, k6},
-				versions: [][]byte{v0, nil, nil},
+				keys:     [][]byte{k4},
+				versions: [][]byte{v0},
 			},
 		},
 		readToTransactionIndices: readToTransactions{
@@ -292,34 +294,65 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
 			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
 			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k7), ""}:         []TxID{"tx2"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     [][]byte{k1, k2, k3},
-					values:   [][]byte{[]byte("v1"), []byte("v2"), []byte("v3")},
-					versions: [][]byte{v2, v2, v0},
+					keys:     [][]byte{k1, k2},
+					values:   [][]byte{[]byte("v1"), []byte("v2")},
+					versions: [][]byte{v2, v2},
 				},
 				2: &namespaceWrites{
-					keys:     [][]byte{k4, k5},
-					values:   [][]byte{[]byte("v4"), []byte("v5")},
-					versions: [][]byte{v1, v0},
+					keys:     [][]byte{k4},
+					values:   [][]byte{[]byte("v4")},
+					versions: [][]byte{v1},
 				},
 			},
 			"tx2": namespaceToWrites{
 				1: &namespaceWrites{
-					keys:     [][]byte{k4, k5},
-					values:   [][]byte{[]byte("v4"), []byte("v5")},
-					versions: [][]byte{v2, v0},
-				},
-				2: &namespaceWrites{
-					keys:     [][]byte{k6},
-					values:   [][]byte{[]byte("v6")},
-					versions: [][]byte{v0},
+					keys:     [][]byte{k4},
+					values:   [][]byte{[]byte("v4")},
+					versions: [][]byte{v2},
 				},
 			},
 		},
 		blindWritesPerTransaction: transactionToWrites{},
+		newWritesWithValue: transactionToWrites{
+			"tx1": namespaceToWrites{
+				1: &namespaceWrites{
+					keys:     [][]byte{k3},
+					values:   [][]byte{[]byte("v3")},
+					versions: [][]byte{nil},
+				},
+				2: &namespaceWrites{
+					keys:     [][]byte{k5},
+					values:   [][]byte{[]byte("v5")},
+					versions: [][]byte{nil},
+				},
+			},
+			"tx2": namespaceToWrites{
+				1: &namespaceWrites{
+					keys:     [][]byte{k5},
+					values:   [][]byte{[]byte("v5")},
+					versions: [][]byte{nil},
+				},
+				2: &namespaceWrites{
+					keys:     [][]byte{k6},
+					values:   [][]byte{[]byte("v6")},
+					versions: [][]byte{nil},
+				},
+			},
+		},
+		newWritesWithoutValue: transactionToWrites{
+			"tx2": namespaceToWrites{
+				2: &namespaceWrites{
+					keys:     [][]byte{k7},
+					values:   [][]byte{nil},
+					versions: [][]byte{nil},
+				},
+			},
+		},
 	}
 
 	env.txBatch <- tx
@@ -328,6 +361,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
 	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
 	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
+	require.Equal(t, expectedPreparedTxs.newWritesWithValue, preparedTxs.newWritesWithValue)
+	require.Equal(t, expectedPreparedTxs.newWritesWithoutValue, preparedTxs.newWritesWithoutValue)
 }
 
 func TestPrepareTx(t *testing.T) {
@@ -336,7 +371,6 @@ func TestPrepareTx(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v0 := versionNumber(0).bytes()
 	v1 := versionNumber(1).bytes()
 	v2 := versionNumber(2).bytes()
 	v3 := versionNumber(3).bytes()
@@ -415,8 +449,8 @@ func TestPrepareTx(t *testing.T) {
 				versions: [][]byte{v1, v2, v3, v8, v9},
 			},
 			2: &reads{
-				keys:     [][]byte{k5, k6},
-				versions: [][]byte{nil, nil},
+				keys:     [][]byte{k5},
+				versions: [][]byte{nil},
 			},
 		},
 		readToTransactionIndices: readToTransactions{
@@ -434,11 +468,6 @@ func TestPrepareTx(t *testing.T) {
 					keys:     [][]byte{k3},
 					values:   [][]byte{[]byte("v3")},
 					versions: [][]byte{v4},
-				},
-				2: &namespaceWrites{
-					keys:     [][]byte{k6},
-					values:   [][]byte{[]byte("v6")},
-					versions: [][]byte{v0},
 				},
 			},
 			"tx2": namespaceToWrites{
@@ -470,6 +499,16 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
+		newWritesWithValue: transactionToWrites{
+			"tx1": namespaceToWrites{
+				2: &namespaceWrites{
+					keys:     [][]byte{k6},
+					values:   [][]byte{[]byte("v6")},
+					versions: [][]byte{nil},
+				},
+			},
+		},
+		newWritesWithoutValue: transactionToWrites{},
 	}
 
 	env.txBatch <- tx
@@ -478,4 +517,6 @@ func TestPrepareTx(t *testing.T) {
 	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
 	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
 	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
+	require.Equal(t, expectedPreparedTxs.newWritesWithValue, preparedTxs.newWritesWithValue)
+	require.Equal(t, expectedPreparedTxs.newWritesWithoutValue, preparedTxs.newWritesWithoutValue)
 }

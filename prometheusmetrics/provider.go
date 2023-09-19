@@ -9,33 +9,34 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("prometheus provider")
 
 // Provider is a prometheus metrics provider.
 type Provider struct {
 	registry *prometheus.Registry
 	server   *http.Server
 	url      string
-	config   *metrics.Config
 }
 
 // NewProvider creates a new prometheus metrics provider.
-func NewProvider(c *metrics.Config) *Provider {
+func NewProvider() *Provider {
 	return &Provider{
 		registry: prometheus.NewRegistry(),
 		server: &http.Server{
 			ReadTimeout: 30 * time.Second,
 		},
-		url:    "",
-		config: c,
+		url: "",
 	}
 }
 
 // StartPrometheusServer starts a prometheus server in a separate goroutine
 // and returns an error channel that will receive an error if the server
 // stops unexpectedly.
-func (p *Provider) StartPrometheusServer() <-chan error {
+func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
 	mux := http.NewServeMux()
 	mux.Handle(
 		"/metrics",
@@ -49,7 +50,7 @@ func (p *Provider) StartPrometheusServer() <-chan error {
 	p.server.Handler = mux
 
 	errorChan := make(chan error)
-	l, err := net.Listen("tcp", p.config.Endpoint.Address())
+	l, err := net.Listen("tcp", e.Address())
 	if err != nil {
 		errorChan <- fmt.Errorf("failed to start prometheus server: %w", err)
 	}
@@ -57,6 +58,7 @@ func (p *Provider) StartPrometheusServer() <-chan error {
 	p.url = fmt.Sprintf("http://%s/metrics", l.Addr().String())
 
 	go func() {
+		logger.Infof("Prometheus client serving on URL: %s", p.url)
 		err = p.server.Serve(l)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
 			errorChan <- nil

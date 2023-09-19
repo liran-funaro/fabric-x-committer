@@ -19,18 +19,17 @@ type metricsProviderTestEnv struct {
 }
 
 func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
-	p := NewProvider(
-		&metrics.Config{
-			Endpoint: &connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
+	c := &metrics.Config{
+		Endpoint: &connection.Endpoint{
+			Host: "localhost",
+			Port: 0,
 		},
-	)
+	}
+	p := NewProvider()
 	client := &http.Client{}
 
 	go func() {
-		require.NoError(t, <-p.StartPrometheusServer())
+		require.NoError(t, <-p.StartPrometheusServer(c.Endpoint))
 	}()
 
 	require.Eventually(t, func() bool {

@@ -24,6 +24,8 @@ type (
 		readToTransactionIndices     readToTransactions
 		nonBlindWritesPerTransaction transactionToWrites
 		blindWritesPerTransaction    transactionToWrites
+		newWritesWithValue           transactionToWrites
+		newWritesWithoutValue        transactionToWrites
 	}
 
 	// namespaceToReads maps a namespace ID to a list of reads
@@ -91,6 +93,8 @@ func (p *transactionPreparer) prepare() {
 			readToTransactionIndices:     make(readToTransactions),
 			nonBlindWritesPerTransaction: make(transactionToWrites),
 			blindWritesPerTransaction:    make(transactionToWrites),
+			newWritesWithValue:           make(transactionToWrites),
+			newWritesWithoutValue:        make(transactionToWrites),
 		}
 
 		for _, tx := range txBatch.Transactions {
@@ -101,6 +105,13 @@ func (p *transactionPreparer) prepare() {
 				prepTxs.addReadWrites(txID, nsOperations)
 				prepTxs.addBlindWrites(txID, nsOperations)
 			}
+		}
+
+		for _, lst := range []transactionToWrites{
+			prepTxs.nonBlindWritesPerTransaction, prepTxs.blindWritesPerTransaction,
+			prepTxs.newWritesWithValue, prepTxs.newWritesWithoutValue,
+		} {
+			lst.clearEmpty()
 		}
 
 		p.outgoingPreparedTransactions <- prepTxs
@@ -141,6 +152,8 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 	nsID := namespaceID(ns.NsId)
 	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
 	nsWrites := p.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
+	newWithValWrites := p.newWritesWithValue.getOrCreate(id, nsID)
+	newWithoutValWrites := p.newWritesWithoutValue.getOrCreate(id, nsID)
 
 	for _, rw := range ns.ReadWrites {
 		// In read-writes, duplicates are not possible between transactions. This is because
@@ -152,14 +165,19 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 			version: string(rw.Version),
 		}
 		p.readToTransactionIndices[cr] = append(p.readToTransactionIndices[cr], id)
-		nsReads.append(rw.Key, rw.Version)
 
-		// A "write" should increase the version by one, or use zero version if it is the fist write.
-		var ver versionNumber
 		if rw.Version != nil {
-			ver = versionNumberFromBytes(rw.Version) + 1
+			nsReads.append(rw.Key, rw.Version)
+			ver := versionNumberFromBytes(rw.Version) + 1
+			nsWrites.append(rw.Key, rw.Value, ver.bytes())
+			continue
 		}
-		nsWrites.append(rw.Key, rw.Value, ver.bytes())
+
+		if rw.Value == nil {
+			newWithoutValWrites.append(rw.Key, nil, nil)
+		} else {
+			newWithValWrites.append(rw.Key, rw.Value, nil)
+		}
 	}
 }
 
@@ -184,6 +202,20 @@ func versionNumberFromBytes(version []byte) versionNumber {
 
 func (v versionNumber) bytes() []byte {
 	return protowire.AppendVarint(nil, uint64(v))
+}
+
+func (nw namespaceToWrites) empty() bool {
+	if nw == nil {
+		return true
+	}
+
+	for _, writes := range nw {
+		if !writes.empty() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (nw namespaceToWrites) getOrCreate(nsID namespaceID) *namespaceWrites {
@@ -220,6 +252,31 @@ func (tw transactionToWrites) getOrCreate(id TxID, nsID namespaceID) *namespaceW
 	return nsWrites
 }
 
+func (tw transactionToWrites) clearEmpty() {
+	var emptyIDs []TxID
+	for id, ntw := range tw {
+		if ntw.empty() {
+			emptyIDs = append(emptyIDs, id)
+			continue
+		}
+
+		var emptyNsID []namespaceID
+		for nsID, nw := range ntw {
+			if nw.empty() {
+				emptyNsID = append(emptyNsID, nsID)
+			}
+		}
+
+		for _, nsID := range emptyNsID {
+			delete(ntw, nsID)
+		}
+	}
+
+	for _, id := range emptyIDs {
+		delete(tw, id)
+	}
+}
+
 func (r *reads) append(key, version []byte) {
 	r.keys = append(r.keys, key)
 	r.versions = append(r.versions, version)
@@ -240,4 +297,40 @@ func (nw *namespaceWrites) appendMany(key, value, version [][]byte) {
 	nw.keys = append(nw.keys, key...)
 	nw.values = append(nw.values, value...)
 	nw.versions = append(nw.versions, version...)
+}
+
+func (nw *namespaceWrites) empty() bool {
+	return nw == nil || len(nw.keys) == 0
+}
+
+func (r *reads) empty() bool {
+	return r == nil || len(r.keys) == 0
+}
+
+func (nr namespaceToReads) empty() bool {
+	if nr == nil {
+		return true
+	}
+
+	for _, r := range nr {
+		if !r.empty() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (nr namespaceToReads) merge(other namespaceToReads) namespaceToReads {
+	if nr.empty() {
+		return other
+	} else if other.empty() {
+		return nr
+	}
+
+	for nsID, v := range other {
+		nr.getOrCreate(nsID).appendMany(v.keys, v.versions)
+	}
+
+	return nr
 }

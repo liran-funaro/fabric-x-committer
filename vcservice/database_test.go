@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
@@ -16,6 +18,7 @@ import (
 
 const (
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
+	queryTxStatusSQLTemplate    = "SELECT tx_id, status FROM tx_status WHERE tx_id = ANY($1)"
 
 	ns1 = namespaceID(1)
 	ns2 = namespaceID(2)
@@ -47,7 +50,7 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 		MaxConnections: 20,
 		MinConnections: 10,
 	}
-	db, err := newDatabase(config)
+	db, err := newDatabase(config, nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -76,7 +79,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 	env.populateDataWithCleanup(
 		t,
-		[]namespaceID{ns1, ns2},
+		[]int{int(ns1), int(ns2)},
 		namespaceToWrites{
 			ns1: {
 				keys:     [][]byte{k1, k2, k3},
@@ -89,6 +92,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 				versions: [][]byte{v1, v1, v1},
 			},
 		},
+		nil,
 	)
 
 	tests := []struct {
@@ -200,8 +204,9 @@ func TestDBCommit(t *testing.T) {
 
 	dbEnv.populateDataWithCleanup(
 		t,
-		[]namespaceID{ns1, ns2},
-		namespaceToWrites{},
+		[]int{int(ns1), int(ns2)},
+		nil,
+		nil,
 	)
 
 	k1 := []byte("key1")
@@ -224,47 +229,22 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, dbEnv.db.commit(nsToWrites))
+	_, _, err := dbEnv.db.commit(&commitInfo{updateWrites: nsToWrites})
+	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
 }
 
-func (env *databaseTestEnv) populateDataWithCleanup(t *testing.T, nsIDs []namespaceID, writes namespaceToWrites) {
-	ctx := context.Background()
-	for _, nsID := range nsIDs {
-		tableName := tableNameForNamespace(nsID)
+func (env *databaseTestEnv) populateDataWithCleanup(
+	t *testing.T, nsIDs []int, writes namespaceToWrites, batchStatus *protovcservice.TransactionStatus,
+) {
+	require.NoError(t, initDatabaseTables(env.db, nsIDs))
 
-		statements := []string{
-			fmt.Sprintf(createTableStmtTmpt, tableName),
-			fmt.Sprintf(createIndexStmtTmpt, tableName, tableName),
-			fmt.Sprintf(validateFuncTmpt, tableName, tableName, tableName, tableName, tableName, tableName),
-			fmt.Sprintf(commitFuncTmpt, tableName, tableName),
-		}
-
-		for _, stmt := range statements {
-			_, err := env.db.pool.Exec(ctx, stmt)
-			require.NoError(t, err)
-		}
-	}
-
-	require.NoError(t, env.db.commit(writes))
+	_, _, err := env.db.commit(&commitInfo{updateWrites: writes, batchStatus: batchStatus})
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		dropStmtTmpts := []string{
-			dropTableStmtTmpt,
-			dropValidateFuncStmtTmpt,
-			dropCommitFuncStmtTmpt,
-		}
-
-		ctx := context.Background()
-		for _, nsID := range nsIDs {
-			tableName := tableNameForNamespace(nsID)
-
-			for _, dropStmtTmpt := range dropStmtTmpts {
-				_, err := env.db.pool.Exec(ctx, fmt.Sprintf(dropStmtTmpt, tableName))
-				require.NoError(t, err)
-			}
-		}
+		require.NoError(t, clearDatabaseTables(env.db, nsIDs))
 	})
 }
 
@@ -295,5 +275,30 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRo
 	for i, key := range expectedRows.keys {
 		require.Equal(t, expectedRows.values[i], actualRows[string(key)].value)
 		require.Equal(t, expectedRows.versions[i], actualRows[string(key)].version)
+	}
+}
+
+func (env *databaseTestEnv) statusExists(t *testing.T, expected map[string]protoblocktx.Status) {
+	expectedIds := make([][]byte, 0, len(expected))
+	for id := range expected {
+		expectedIds = append(expectedIds, []byte(id))
+	}
+	kvPairs, err := env.db.pool.Query(context.Background(), queryTxStatusSQLTemplate, expectedIds)
+	require.NoError(t, err)
+	defer kvPairs.Close()
+
+	actualRows := map[string]int{}
+
+	for kvPairs.Next() {
+		var key []byte
+		var status int
+		require.NoError(t, kvPairs.Scan(&key, &status))
+		actualRows[string(key)] = status
+	}
+
+	require.NoError(t, kvPairs.Err())
+	require.Equal(t, len(expectedIds), len(actualRows))
+	for key, status := range expected {
+		require.Equal(t, int(status), actualRows[key])
 	}
 }

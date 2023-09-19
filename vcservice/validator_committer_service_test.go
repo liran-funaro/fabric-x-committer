@@ -54,6 +54,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		},
 		Monitoring: &monitoring.Config{
 			Metrics: &metrics.Config{
+				Enable: true,
 				Endpoint: &connection.Endpoint{
 					Host: "localhost",
 					Port: 0,
@@ -105,21 +106,99 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 func TestValidatorAndCommitterService(t *testing.T) {
 	env := newValidatorAndCommitServiceTestEnv(t)
 
-	env.dbEnv.populateDataWithCleanup(t, []namespaceID{1, txIDsStatusNameSpace}, namespaceToWrites{})
+	env.dbEnv.populateDataWithCleanup(t, []int{1}, namespaceToWrites{
+		1: &namespaceWrites{
+			keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
+			values:   [][]byte{[]byte("value"), []byte("value")},
+			versions: [][]byte{v0},
+		},
+	}, nil)
 
 	client := protovcservice.NewValidationAndCommitServiceClient(env.clientConn)
 
 	txBatch := &protovcservice.TransactionBatch{
 		Transactions: []*protovcservice.Transaction{
+			// The following 3 TXs test the blind write path, merging to the update path
 			{
-				ID: "tx1",
+				ID: "Blind write without value",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
 						BlindWrites: []*protoblocktx.Write{
 							{
-								Key:   []byte("key1"),
-								Value: []byte("value1"),
+								Key: []byte("blind write without value"),
+							},
+						},
+					},
+				},
+			},
+			{
+				ID: "Blind write with value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key:   []byte("Blind write with value"),
+								Value: []byte("value2"),
+							},
+						},
+					},
+				},
+			},
+			{
+				ID: "Blind write update existing key",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key:   []byte("Existing key update"),
+								Value: []byte("new-value"),
+							},
+						},
+					},
+				},
+			},
+			// The following 2 TXs test the new key path
+			{
+				ID: "New key with value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   []byte("New key with value"),
+								Value: []byte("value3"),
+							},
+						},
+					},
+				},
+			},
+			{
+				ID: "New key no value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("New key no value"),
+							},
+						},
+					},
+				},
+			},
+			// The following TX tests the update path
+			{
+				ID: "Existing key",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:     []byte("Existing key"),
+								Value:   []byte("new-value"),
+								Version: v0,
 							},
 						},
 					},
@@ -141,23 +220,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedTxStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protoblocktx.Status{
-			"tx1": protoblocktx.Status_COMMITTED,
-		},
+		Status: map[string]protoblocktx.Status{},
+	}
+	for _, tx := range txBatch.Transactions {
+		expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
 	}
 
-	require.Equal(t, 1.0, getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
+	require.Equal(t, float64(len(txBatch.Transactions)), getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
 	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
-	env.dbEnv.rowExists(
-		t,
-		txIDsStatusNameSpace,
-		namespaceWrites{
-			keys:     [][]byte{[]byte("tx1")},
-			values:   [][]byte{{byte(protoblocktx.Status_COMMITTED)}},
-			versions: [][]byte{nil},
-		},
-	)
+	env.dbEnv.statusExists(t, expectedTxStatus.Status)
 }
 
 func getMetricsValue(t *testing.T, m prometheus.Metric) float64 {

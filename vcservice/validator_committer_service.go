@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -31,6 +31,7 @@ type ValidatorCommitterService struct {
 	txsStatusChan    chan *protovcservice.TransactionStatus
 	db               *database
 	metrics          *perfMetrics
+	promErrChan      <-chan error
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -46,28 +47,35 @@ type Limits struct {
 // It also creates the database connection.
 func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*ValidatorCommitterService, error) {
 	l := config.ResourceLimits
-	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer)
-	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator)
-	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter)
-	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter)
 
-	db, err := newDatabase(config.Database)
+	// TODO: make queueMultiplier configurable
+	queueMultiplier := 10
+	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
+	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
+
+	metrics := newVCServiceMetrics(config.Monitoring.Metrics.Enable)
+	db, err := newDatabase(config.Database, metrics)
 	if err != nil {
 		return nil, err
 	}
 
-	metricsProvider := prometheusmetrics.NewProvider(config.Monitoring.Metrics)
-
 	vc := &ValidatorCommitterService{
 		preparer:         newPreparer(txBatch, preparedTxs),
-		validator:        newValidator(db, preparedTxs, validatedTxs),
-		committer:        newCommitter(db, validatedTxs, txsStatus),
+		validator:        newValidator(db, preparedTxs, validatedTxs, metrics),
+		committer:        newCommitter(db, validatedTxs, txsStatus, metrics),
 		txBatchChan:      txBatch,
 		preparedTxsChan:  preparedTxs,
 		validatedTxsChan: validatedTxs,
 		txsStatusChan:    txsStatus,
 		db:               db,
-		metrics:          newVCServiceMetrics(metricsProvider),
+		metrics:          metrics,
+	}
+
+	if metrics.enabled {
+		vc.promErrChan = metrics.provider.StartPrometheusServer(config.Monitoring.Metrics.Endpoint)
+		go vc.monitorQueues()
 	}
 
 	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
@@ -80,6 +88,25 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 	vc.committer.start(l.MaxWorkersForCommitter)
 
 	return vc, nil
+}
+
+func (vc *ValidatorCommitterService) monitorQueues() {
+	// TODO: make sampling time configurable
+	ticker := time.NewTicker(250 * time.Millisecond)
+	for {
+		select {
+		case <-ticker.C:
+		case err := <-vc.promErrChan:
+			// Once the prometheus server is stopped, we no longer need to monitor the queues.
+			ticker.Stop()
+			logger.Errorf("Prometheus ended with error: %s", err)
+			return
+		}
+		vc.metrics.queue("tx-batch", len(vc.txBatchChan))
+		vc.metrics.queue("tx-prepared", len(vc.preparedTxsChan))
+		vc.metrics.queue("tx-validated", len(vc.validatedTxsChan))
+		vc.metrics.queue("tx-status", len(vc.txsStatusChan))
+	}
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
@@ -130,7 +157,7 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 			return err
 		}
 
-		vc.metrics.transactionReceivedTotal.Add(float64(len(txBatch.Transactions)))
+		vc.metrics.grpcReceive(len(txBatch.Transactions))
 		vc.txBatchChan <- txBatch
 	}
 }
@@ -168,6 +195,13 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 }
 
 func (vc *ValidatorCommitterService) close() {
+	if vc.metrics.enabled {
+		err := vc.metrics.provider.StopServer()
+		if err != nil {
+			logger.Errorf("Failed stopping prometheus server: %s", err)
+		}
+	}
+
 	logger.Info("Stopping the transaction preparer workers")
 	close(vc.txBatchChan)
 

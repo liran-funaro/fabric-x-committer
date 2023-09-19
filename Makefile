@@ -109,7 +109,8 @@ $(cache_dir) $(mod_cache_dir):
 	# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
-build: lint $(output_dir)
+build: $(output_dir)
+	$(env) go build -buildvcs=false -o "$(output_dir)/vcservice" ./cmd/vcservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/blockgen" ./wgclient/cmd/generator
 	$(env) go build -buildvcs=false -o "$(output_dir)/mockcoordinator" ./wgclient/cmd/mockcoordinator
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator" ./coordinatorservice/cmd/server

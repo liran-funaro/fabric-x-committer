@@ -105,4 +105,5 @@ func setDefaults() {
 	// defaults for monitoring.config
 	prefix = "validator-committer-service.monitoring."
 	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
+	viper.SetDefault(prefix+"metrics.enabled", true)
 }

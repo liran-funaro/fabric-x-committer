@@ -20,25 +20,26 @@ var configTemplate = `
 logging:
   enabled: true
   level: debug
-  Caller: false
+  Caller: true
   Development: true
   Output: %s
 validator-committer-service:
   server:
     endpoint:
-      host: "localhost"
+      host: localhost
       port: 6002
   database:
     host: %s
     port: %s
     username: %s
     password: %s
-    database: "yugabyte"
+    database: yugabyte
     max-connections: 10
-    min-connections: 5
+    min-connections: 1
+    load-balance: false
   monitoring:
     metrics:
-      endpoint: :2111
+      endpoint: localhost:2111
 `
 
 const (
@@ -80,14 +81,14 @@ func TestVCServiceCmd(t *testing.T) {
 			name:            "init the vcservice",
 			args:            []string{"init", "--configpath", testConfigPath, "--namespaces", "0,1"},
 			cmdStdOutput:    "Initializing database",
-			cmdLoggerOutput: "Table 'ns_512' is ready",
+			cmdLoggerOutput: "Table 'ns_1' is ready",
 			errStr:          "",
 			err:             nil,
 		},
 		{
 			name:            "start the vcservice",
 			args:            []string{"start", "--configpath", testConfigPath},
-			cmdLoggerOutput: "Running server with",
+			cmdLoggerOutput: "Running server",
 			cmdStdOutput:    "Starting vcservice",
 			errStr:          "",
 			err:             nil,

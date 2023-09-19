@@ -1,6 +1,8 @@
 package vcservice
 
 import (
+	"fmt"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 )
@@ -15,12 +17,9 @@ type transactionCommitter struct {
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
 	outgoingTransactionsStatus chan<- *protovcservice.TransactionStatus
-}
 
-// txIDsStatusNameSpace is the namespace for storing transaction IDs and status
-// This namespace would be used to detect duplicate txIDs to avoid replay attacks
-// TODO: duplicate txIDs would be handled in issue #202
-const txIDsStatusNameSpace = 512
+	metrics *perfMetrics
+}
 
 // versionZero is used to indicate that the key is not found in the database and hence,
 // the version should be set to 0 for when the key is inserted into the database.
@@ -31,11 +30,16 @@ func newCommitter(
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *protovcservice.TransactionStatus,
+	metrics *perfMetrics,
 ) *transactionCommitter {
+	if metrics == nil {
+		metrics = newVCServiceMetrics(false)
+	}
 	return &transactionCommitter{
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
 		outgoingTransactionsStatus:    txsStatus,
+		metrics:                       metrics,
 	}
 }
 
@@ -47,29 +51,59 @@ func (c *transactionCommitter) start(numWorkers int) {
 
 func (c *transactionCommitter) commit() {
 	for vTx := range c.incomingValidatedTransactions {
-		nsToWrites, txsStatus, err := c.prepareWritesForCommit(vTx)
+		txsStatus, err := c.commitTransactions(vTx)
 		if err != nil {
+			// TODO: handle error gracefully
 			panic(err)
 		}
-
-		if err := c.db.commit(nsToWrites); err != nil {
-			panic(err)
-		}
-
 		c.outgoingTransactionsStatus <- txsStatus
 	}
 }
 
-func (c *transactionCommitter) prepareWritesForCommit(
+func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
-) (namespaceToWrites, *protovcservice.TransactionStatus, error) {
-	// Step 1: group the writes by namespace so that we can commit to each table indepdenently
+) (*protovcservice.TransactionStatus, error) {
+	for {
+		info := &commitInfo{
+			batchStatus:         prepareStatusForCommit(vTx),
+			newWithoutValWrites: groupWritesByNamespace(vTx.newWritesWithoutVal),
+			newWithValWrites:    groupWritesByNamespace(vTx.newWritesWithVal),
+		}
+		updateWrites, err := c.mergeWritesForCommit(vTx)
+		if err != nil {
+			return nil, err
+		}
+		info.updateWrites = updateWrites
+
+		t := c.metrics.newLatencyTimer("db.commit")
+		mismatch, duplicated, err := c.db.commit(info)
+		t.observe()
+		if err != nil {
+			return nil, err
+		}
+
+		if mismatch.empty() && len(duplicated) == 0 {
+			return info.batchStatus, nil
+		}
+
+		if err := vTx.updateMismatch(mismatch); err != nil {
+			return nil, err
+		}
+		vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+	}
+}
+
+func (c *transactionCommitter) mergeWritesForCommit(vTx *validatedTransactions) (namespaceToWrites, error) {
+	// Step 1: group the writes by namespace so that we can commit to each table independently
 	nsToBlindWrites := groupWritesByNamespace(vTx.validTxBlindWrites)
 	nsToNonBlindWrites := groupWritesByNamespace(vTx.validTxNonBlindWrites)
 
 	// Step 2: fill the version for the blind writes
-	if err := c.fillVersionForBlindWrites(nsToBlindWrites); err != nil {
-		return nil, nil, err
+	t := c.metrics.newLatencyTimer("db.fillVersionForBlindWrites")
+	err := c.fillVersionForBlindWrites(nsToBlindWrites)
+	t.observe()
+	if err != nil {
+		return nil, err
 	}
 
 	// Step 3: merge blind and non-blind writes
@@ -83,30 +117,27 @@ func (c *transactionCommitter) prepareWritesForCommit(
 		nsWrites.appendMany(writes.keys, writes.values, writes.versions)
 	}
 
-	// Step 4: construct transaction status
+	return mergedWrites, nil
+}
+
+// prepareStatusForCommit construct transaction status.
+func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.TransactionStatus {
 	txCommitStatus := &protovcservice.TransactionStatus{
 		Status: map[string]protoblocktx.Status{},
 	}
 
-	for txID := range vTx.invalidTxIndices {
-		txCommitStatus.Status[string(txID)] = protoblocktx.Status_ABORTED_MVCC_CONFLICT
+	for txID, status := range vTx.invalidTxIndices {
+		txCommitStatus.Status[string(txID)] = status
 	}
-	for txID := range vTx.validTxNonBlindWrites {
-		txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
-	}
-	for txID := range vTx.validTxBlindWrites {
-		txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
+	for _, lst := range []transactionToWrites{
+		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWritesWithoutVal, vTx.newWritesWithVal,
+	} {
+		for txID := range lst {
+			txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
+		}
 	}
 
-	// Step 5: add the transaction status to the writes
-	txIDNsWrites := &namespaceWrites{}
-	for txID, status := range txCommitStatus.Status {
-		txIDNsWrites.keys = append(txIDNsWrites.keys, []byte(txID))
-		txIDNsWrites.values = append(txIDNsWrites.values, []byte{uint8(status)})
-	}
-	mergedWrites[txIDsStatusNameSpace] = txIDNsWrites
-
-	return mergedWrites, txCommitStatus, nil
+	return txCommitStatus
 }
 
 func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToWrites) error {
@@ -115,7 +146,9 @@ func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToW
 		// 		 from doing so till we evaluate the performance
 
 		// Step 1: get the committed version for each key in the writes.
+		t := c.metrics.newLatencyTimer(fmt.Sprintf("db.queryVersionsIfPresent.%d", nsID))
 		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(nsID, writes.keys)
+		t.observe()
 		if err != nil {
 			return err
 		}
@@ -142,6 +175,9 @@ func groupWritesByNamespace(txWrites transactionToWrites) namespaceToWrites {
 
 	for _, nsWrites := range txWrites {
 		for ns, writes := range nsWrites {
+			if writes.empty() {
+				continue
+			}
 			nsWrites := nsToWrites.getOrCreate(ns)
 			nsWrites.appendMany(writes.keys, writes.values, writes.versions)
 		}

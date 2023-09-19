@@ -20,7 +20,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	txStatus := make(chan *protovcservice.TransactionStatus, 10)
 
 	dbEnv := newDatabaseTestEnv(t)
-	c := newCommitter(dbEnv.db, validatedTxs, txStatus)
+	c := newCommitter(dbEnv.db, validatedTxs, txStatus, nil)
 
 	t.Cleanup(func() {
 		close(validatedTxs)
@@ -56,12 +56,9 @@ func TestCommit(t *testing.T) {
 	k2_5 := []byte("key2.5")
 	k2_6 := []byte("key2.6")
 
-	committed := []byte{uint8(protoblocktx.Status_COMMITTED)}
-	aborted := []byte{uint8(protoblocktx.Status_ABORTED_MVCC_CONFLICT)}
-
 	env.dbEnv.populateDataWithCleanup(
 		t,
-		[]namespaceID{1, 2, txIDsStatusNameSpace},
+		[]int{1, 2},
 		namespaceToWrites{
 			1: {
 				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
@@ -73,10 +70,11 @@ func TestCommit(t *testing.T) {
 				values:   [][]byte{[]byte("value2.1"), []byte("value2.2"), []byte("value2.3"), []byte("value2.4")},
 				versions: [][]byte{v0, v0, v1, v1},
 			},
-			txIDsStatusNameSpace: {
-				keys:     [][]byte{[]byte("tx1"), []byte("tx2")},
-				values:   [][]byte{committed, committed},
-				versions: [][]byte{nil, nil},
+		},
+		&protovcservice.TransactionStatus{
+			Status: map[string]protoblocktx.Status{
+				"tx1": protoblocktx.Status_COMMITTED,
+				"tx2": protoblocktx.Status_COMMITTED,
 			},
 		},
 	)
@@ -106,7 +104,7 @@ func TestCommit(t *testing.T) {
 					},
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxIndices:   map[TxID]bool{},
+				invalidTxIndices:   map[TxID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
 				Status: map[string]protoblocktx.Status{"tx3": protoblocktx.Status_COMMITTED},
@@ -121,11 +119,6 @@ func TestCommit(t *testing.T) {
 					keys:     [][]byte{k2_1, k2_2},
 					values:   [][]byte{[]byte("value2.1.1"), []byte("value2.2.1")},
 					versions: [][]byte{v1, v1},
-				},
-				txIDsStatusNameSpace: {
-					keys:     [][]byte{[]byte("tx3")},
-					values:   [][]byte{committed},
-					versions: [][]byte{nil},
 				},
 			},
 		},
@@ -147,7 +140,7 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
-				invalidTxIndices: map[TxID]bool{},
+				invalidTxIndices: map[TxID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
 				Status: map[string]protoblocktx.Status{
@@ -164,11 +157,6 @@ func TestCommit(t *testing.T) {
 					keys:     [][]byte{k2_1, k2_2},
 					values:   [][]byte{[]byte("value1.1.2"), []byte("value2.2.2")},
 					versions: [][]byte{v2, v2},
-				},
-				txIDsStatusNameSpace: {
-					keys:     [][]byte{[]byte("tx4")},
-					values:   [][]byte{committed},
-					versions: [][]byte{nil},
 				},
 			},
 		},
@@ -207,10 +195,10 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
-				invalidTxIndices: map[TxID]bool{
-					"tx9":  true,
-					"tx10": true,
-					"tx11": true,
+				invalidTxIndices: map[TxID]protoblocktx.Status{
+					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
@@ -240,14 +228,6 @@ func TestCommit(t *testing.T) {
 					},
 					versions: [][]byte{v3, v3, v2, v2, v0, v0},
 				},
-				txIDsStatusNameSpace: {
-					keys: [][]byte{
-						[]byte("tx5"), []byte("tx6"), []byte("tx7"), []byte("tx8"),
-						[]byte("tx9"), []byte("tx10"), []byte("tx11"),
-					},
-					values:   [][]byte{committed, committed, committed, committed, aborted, aborted, aborted},
-					versions: [][]byte{nil, nil, nil, nil, nil, nil, nil},
-				},
 			},
 		},
 		{
@@ -255,10 +235,10 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxIndices: map[TxID]bool{
-					"tx12": true,
-					"tx13": true,
-					"tx14": true,
+				invalidTxIndices: map[TxID]protoblocktx.Status{
+					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
@@ -268,13 +248,7 @@ func TestCommit(t *testing.T) {
 					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
-			expectedNsRows: namespaceToWrites{
-				txIDsStatusNameSpace: {
-					keys:     [][]byte{[]byte("tx12"), []byte("tx13"), []byte("tx14")},
-					values:   [][]byte{aborted, aborted, aborted},
-					versions: [][]byte{nil, nil, nil},
-				},
-			},
+			expectedNsRows: namespaceToWrites{},
 		},
 	}
 
@@ -286,6 +260,7 @@ func TestCommit(t *testing.T) {
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}
+			env.dbEnv.statusExists(t, tt.expectedTxStatuses.Status)
 		})
 	}
 }

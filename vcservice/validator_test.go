@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 type validatorTestEnv struct {
@@ -18,7 +19,7 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
 
 	dbEnv := newDatabaseTestEnv(t)
-	v := newValidator(dbEnv.db, preparedTxs, validatedTxs)
+	v := newValidator(dbEnv.db, preparedTxs, validatedTxs, nil)
 
 	t.Cleanup(func() {
 		close(preparedTxs)
@@ -57,7 +58,7 @@ func TestValidate(t *testing.T) {
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
-		[]namespaceID{1, 2},
+		[]int{1, 2},
 		namespaceToWrites{
 			1: {
 				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
@@ -70,6 +71,7 @@ func TestValidate(t *testing.T) {
 				versions: [][]byte{v0, v0, v1, v1},
 			},
 		},
+		nil,
 	)
 
 	tx1NonBlindWrites := namespaceToWrites{
@@ -151,7 +153,7 @@ func TestValidate(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIndices: map[TxID]bool{},
+				invalidTxIndices: map[TxID]protoblocktx.Status{},
 			},
 		},
 		{
@@ -187,10 +189,10 @@ func TestValidate(t *testing.T) {
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxIndices: map[TxID]bool{
-					"tx1": true,
-					"tx2": true,
-					"tx3": true,
+				invalidTxIndices: map[TxID]protoblocktx.Status{
+					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 		},
@@ -229,9 +231,9 @@ func TestValidate(t *testing.T) {
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxIndices: map[TxID]bool{
-					"tx1": true,
-					"tx3": true,
+				invalidTxIndices: map[TxID]protoblocktx.Status{
+					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
 		},

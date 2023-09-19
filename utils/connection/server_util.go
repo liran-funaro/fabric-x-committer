@@ -85,10 +85,7 @@ func (c *ServerCredsConfig) serverOption() grpc.ServerOption {
 }
 
 func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
-	logger.Infof("Running server with:\n"+
-		"\tEndpoint: %s:%s\n"+
-		"\tTLS Creds: %v\n"+
-		"\tKeep Alive: %v", grpcProtocol, serverConfig.Endpoint.Address(), serverConfig.Creds, serverConfig.KeepAlive)
+	logger.Infof("Running server at: %s://%s", grpcProtocol, serverConfig.Endpoint.Address())
 
 	listener, err := net.Listen(grpcProtocol, serverConfig.Endpoint.Address())
 	if err != nil {

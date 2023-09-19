@@ -13,6 +13,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-protos-go v0.3.0
+	github.com/jackc/pgtype v1.10.0
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213
 	github.com/lib/pq v1.10.9
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -83,7 +84,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.2.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
-	github.com/jackc/pgtype v1.10.0 // indirect
 	github.com/jackc/puddle v1.2.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kilic/bls12-381 v0.1.0 // indirect
