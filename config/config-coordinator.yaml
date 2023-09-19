@@ -1,36 +1,32 @@
-coordinator:
+coordinator-service:
   server:
-    endpoint: :5002
-  limits:
-    dependency-graph-update-timeout: 1ms
-    invalid-sig-batch-cutoff-size: 1000
-    max-dependency-graph-size: 1000000
-    shard-request-cut-timeout: 1ms
-  shards-servers:
-    delete-existing-shards: true
-    prefix-size-for-shard-calculation: 2
-    servers:
-    - endpoint: localhost:5001
-      num-shards: 1
-  sig-verifiers:
-    endpoints:
-    - localhost:5000
-
+    endpoint:
+      host: "localhost"
+      port: 3001
+  sign-verifier:
+    server:
+      - # server 1 configuration
+        endpoint:
+          host: "localhost" # The host of the server
+          port: 4001        # The port of the server
+      - # server 2 configuration
+        endpoint:
+          host: "localhost" # The host of the server
+          port: 4002        # The port of the server
+  validator-committer:
+    server:
+      - # server 1 configuration
+        endpoint:
+          host: "localhost" # The host of the server
+          port: 5001        # The port of the server
+      - # server 2 configuration
+        endpoint:
+          host: "localhost" # The host of the server
+          port: 5002        # The port of the server
+  dependency-graph:
+    num-of-local-dep-constructors: 20
+    waiting-txs-limit: 10000
+    num-of-workers-for-global-dep-manager: 20
   monitoring:
-    metrics:
-      endpoint: :2112
-    latency:
-      span-exporter: jaeger
-      sampler:
-        type: blocktx
-        ratio: 10
-        sample-size: 100
-        sample-period: 100000
-      endpoint: localhost:14268
-      max-latency: 5s
-      bucket-count: 1000
-
-logging:
-  development: true
-  enabled: true
-  level: INFO
+    # Add monitoring configuration here if applicable
+  per-channel-buffer-size-per-goroutine: 300

@@ -1,0 +1,42 @@
+validator-committer-service:
+  # Configuration for the server
+  server:
+    # The server's endpoint configuration
+    endpoint:
+      host: "localhost" # The host of the server
+      port: 6002        # The port of the server
+    # Credentials for the server
+    creds:
+      cert-path: # Path to the server certificate
+      key-path: # Path to the server key
+    # Server keep-alive configurations
+    keep-alive:
+      # Parameters for keep-alive feature
+      params:
+        max-connection-idle: "5s"              # Maximum idle duration for a connection
+        max-connection-age: "10s"              # Maximum age for a connection
+        max-connection-age-grace: "2s"         # Grace period after a connection reaches its max age
+        time: "5s"                             # Time duration for checks
+        timeout: "1s"                          # Timeout duration for checks
+      # Enforcement policy for keep-alive feature
+      enforcement-policy:
+        min-time: "5s"                         # Minimum time a client should wait between pings
+        permit-without-stream: true            # Whether the server allows pings even when there are no active streams
+  # Configuration for the database
+  database:
+    host: "localhost"                          # The host of the database
+    port: 5433                                 # The port of the database
+    username: "yugabyte"                       # The username for the database
+    # TODO: pass password via environment variable
+    password: "yugabyte"                       # The password for the database
+    database: "yugabyte"                       # The database name
+    max-connections: 10                        # The maximum size of the connection pool
+    min-connections: 5                         # The minimum size of the connection pool.
+  # Resource limit configurations
+  resource-limits:
+    max-workers-for-preparer: 2                # Maximum number of workers for the preparer
+    max-workers-for-validator: 2               # Maximum number of workers for the validator
+    max-workers-for-committer: 2               # Maximum number of workers for the committer
+  monitoring:
+    metrics:
+      endpoint: :2111
