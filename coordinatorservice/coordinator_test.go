@@ -10,7 +10,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 	"google.golang.org/grpc"
 )
 
@@ -23,22 +22,19 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 	svServerConfigs, svServices, svGrpcServers := startMockSVService(t, 3)
 	vcServerConfigs, vcServices, vcGrpcServers := startMockVCService(t, 3)
 
-	c := &Config{
+	c := &CoordinatorConfig{
 		SignVerifierConfig: &SignVerifierConfig{
 			ServerConfig: svServerConfigs,
 		},
 		DependencyGraphConfig: &DependencyGraphConfig{
-			NumOfLocalDepConstructors: 3,
-			WaitingTxsLimit:           2000,
-			WorkerPoolConfigForGlobalDepManager: &workerpool.Config{
-				Parallelism:     3,
-				ChannelCapacity: 3,
-			},
+			NumOfLocalDepConstructors:       3,
+			WaitingTxsLimit:                 2000,
+			NumOfWorkersForGlobalDepManager: 3,
 		},
 		ValidatorCommitterConfig: &ValidatorCommitterConfig{
 			ServerConfig: vcServerConfigs,
 		},
-		PerChannelBufferSizePerGoroutine: 2000,
+		ChannelBufferSizePerGoroutine: 2000,
 	}
 
 	cs := NewCoordinatorService(c)

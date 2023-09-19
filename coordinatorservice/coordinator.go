@@ -12,7 +12,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
@@ -28,7 +27,7 @@ type (
 		dependencyMgr                    *dependencygraph.Manager
 		validatorCommitterMgr            *validatorCommitterManager
 		queues                           *channels
-		config                           *Config
+		config                           *CoordinatorConfig
 		stopSendingBlockToSigVerifierMgr *atomic.Bool
 		orderEnforcer                    *sync.Cond
 	}
@@ -73,37 +72,10 @@ type (
 		// receiver: coordinator receives transaction status from this channel and forward them to sidecar.
 		txsStatus chan *protovcservice.TransactionStatus
 	}
-
-	// Config is the configuration for coordinator service. It contains configurations for all managers.
-	Config struct {
-		SignVerifierConfig               *SignVerifierConfig
-		DependencyGraphConfig            *DependencyGraphConfig
-		ValidatorCommitterConfig         *ValidatorCommitterConfig
-		PerChannelBufferSizePerGoroutine int
-	}
-
-	// SignVerifierConfig is the configuration for signature verifier manager. It contains server endpoint for each
-	// signature verifier server.
-	SignVerifierConfig struct {
-		ServerConfig []*connection.ServerConfig
-	}
-
-	// DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.
-	DependencyGraphConfig struct {
-		NumOfLocalDepConstructors           int
-		WaitingTxsLimit                     int
-		WorkerPoolConfigForGlobalDepManager *workerpool.Config
-	}
-
-	// ValidatorCommitterConfig is the configuration for validator committer manager. It contains server endpoint for
-	// each validator committer server.
-	ValidatorCommitterConfig struct {
-		ServerConfig []*connection.ServerConfig
-	}
 )
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(c *Config) *CoordinatorService {
+func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	// We need to calculate the buffer size for each channel based on the number of goroutines accessing the channel
 	// in each manager. For sign verifier manager and validator committer manager, we have a goroutine per server to
 	// read from and write to the channel. Hence, we define a buffer size for each manager by multiplying the number
@@ -111,9 +83,9 @@ func NewCoordinatorService(c *Config) *CoordinatorService {
 	// local dependency constructors. Hence, we define a buffer size for dependency graph manager by multiplying the
 	// number of local dependency constructors with the buffer size per goroutine. We follow this approach to avoid
 	// giving too many configurations to the user as it would add complexity to the user experience.
-	bufSzPerChanForSignVerifierMgr := c.PerChannelBufferSizePerGoroutine * len(c.SignVerifierConfig.ServerConfig)
-	bufSzPerChanForValCommitMgr := c.PerChannelBufferSizePerGoroutine * len(c.ValidatorCommitterConfig.ServerConfig)
-	bufSzPerChanForLocalDepMgr := c.PerChannelBufferSizePerGoroutine * c.DependencyGraphConfig.NumOfLocalDepConstructors
+	bufSzPerChanForSignVerifierMgr := c.ChannelBufferSizePerGoroutine * len(c.SignVerifierConfig.ServerConfig)
+	bufSzPerChanForValCommitMgr := c.ChannelBufferSizePerGoroutine * len(c.ValidatorCommitterConfig.ServerConfig)
+	bufSzPerChanForLocalDepMgr := c.ChannelBufferSizePerGoroutine * c.DependencyGraphConfig.NumOfLocalDepConstructors
 
 	queues := &channels{
 		blockForSignatureVerification: make(
@@ -157,12 +129,15 @@ func NewCoordinatorService(c *Config) *CoordinatorService {
 
 	depMgr := dependencygraph.NewManager(
 		&dependencygraph.Config{
-			IncomingTxs:                         queues.txsBatchForDependencyGraph,
-			OutgoingDepFreeTxsNode:              queues.dependencyFreeTxsNode,
-			IncomingValidatedTxsNode:            queues.validatedTxsNode,
-			NumOfLocalDepConstructors:           c.DependencyGraphConfig.NumOfLocalDepConstructors,
-			WorkerPoolConfigForGlobalDepManager: c.DependencyGraphConfig.WorkerPoolConfigForGlobalDepManager,
-			WaitingTxsLimit:                     c.DependencyGraphConfig.WaitingTxsLimit,
+			IncomingTxs:               queues.txsBatchForDependencyGraph,
+			OutgoingDepFreeTxsNode:    queues.dependencyFreeTxsNode,
+			IncomingValidatedTxsNode:  queues.validatedTxsNode,
+			NumOfLocalDepConstructors: c.DependencyGraphConfig.NumOfLocalDepConstructors,
+			WorkerPoolConfigForGlobalDepManager: &workerpool.Config{
+				Parallelism:     c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager,
+				ChannelCapacity: c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager * 2,
+			},
+			WaitingTxsLimit: c.DependencyGraphConfig.WaitingTxsLimit,
 		},
 	)
 
