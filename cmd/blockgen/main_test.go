@@ -108,7 +108,7 @@ func TestBlockGen(t *testing.T) {
 	}()
 	wg.Wait()
 
-	cmd := blockgenForCoordinatorCmd()
+	cmd := blockgenCmd()
 	cmdStdOut := new(bytes.Buffer)
 	cmd.SetOut(cmdStdOut)
 	cmd.SetArgs([]string{"start", "--configs", blockgenConfg})
@@ -119,7 +119,7 @@ func TestBlockGen(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		out := cmdStdOut.String()
-		return strings.Contains(out, "blockgenforcoordinator started") &&
+		return strings.Contains(out, "blockgen started") &&
 			strings.Contains(out, "Sending block to the coordinator service") &&
 			strings.Contains(out, "Received status from the coordinator service")
 	}, 4*time.Second, 100*time.Millisecond)

@@ -21,7 +21,7 @@ type CoordinatorServiceEndpoint struct {
 }
 
 func main() {
-	cmd := blockgenForCoordinatorCmd()
+	cmd := blockgenCmd()
 
 	// On failure, Cobra prints the usage message and error string, so we only
 	// need to exit with a non-0 status
@@ -30,10 +30,10 @@ func main() {
 	}
 }
 
-func blockgenForCoordinatorCmd() *cobra.Command {
+func blockgenCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "blockgenforcoordinator",
-		Short: "blockgenforcoordinator is a block generator for coordinator service.",
+		Use:   "blockgen",
+		Short: "blockgen is a block generator for coordinator service.",
 	}
 	cmd.AddCommand(versionCmd())
 	cmd.AddCommand(startCmd())
@@ -43,14 +43,14 @@ func blockgenForCoordinatorCmd() *cobra.Command {
 func versionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
-		Short: "Print the version of the blockgenforcoordinator.",
+		Short: "Print the version of the blockgen.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return fmt.Errorf("trailing arguments detected")
 			}
 
 			cmd.SilenceUsage = true
-			cmd.Println("blockgenforcoordinator 0.2")
+			cmd.Println("blockgen 0.2")
 
 			return nil
 		},
@@ -62,7 +62,7 @@ func versionCmd() *cobra.Command {
 func startCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a blockgenforcoordinator",
+		Short: "Starts a blockgen",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if configPath == "" {
 				return errors.New("--configs flag must be set to the path of configuration file")
@@ -101,7 +101,7 @@ func startCmd() *cobra.Command {
 				errChan <- receiveStatusFromCoordinatorService(cmd, csStream)
 			}()
 
-			cmd.Println("blockgenforcoordinator started")
+			cmd.Println("blockgen started")
 
 			return <-errChan
 		},
