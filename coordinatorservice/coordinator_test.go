@@ -5,13 +5,20 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -37,10 +44,44 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 			ServerConfig: vcServerConfigs,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
+		Monitoring: &monitoring.Config{
+			Metrics: &metrics.Config{
+				Enable: true,
+				Endpoint: &connection.Endpoint{
+					Host: "localhost",
+					Port: 0,
+				},
+			},
+		},
 	}
 
 	cs := NewCoordinatorService(c)
 
+	t.Cleanup(func() {
+		for _, mockSV := range svServices {
+			mockSV.Close()
+		}
+
+		for _, mockVC := range vcServices {
+			mockVC.Close()
+		}
+
+		for _, s := range svGrpcServers {
+			s.Stop()
+		}
+
+		for _, s := range vcGrpcServers {
+			s.Stop()
+		}
+	})
+
+	return &coordinatorTestEnv{
+		coordinator: cs,
+	}
+}
+
+func (e *coordinatorTestEnv) start(t *testing.T) {
+	cs := e.coordinator
 	signErrChan, valErrChan, err := cs.Start()
 	require.NoError(t, err)
 
@@ -87,6 +128,8 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 	csStream, err := client.BlockProcessing(context.Background())
 	require.NoError(t, err)
 
+	e.csStream = csStream
+
 	t.Cleanup(func() {
 		require.NoError(t, conn.Close())
 
@@ -94,35 +137,17 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 
 		require.NoError(t, csStream.CloseSend())
 
-		for _, mockSV := range svServices {
-			mockSV.Close()
-		}
 		wgSignErrChan.Wait()
 
-		for _, mockVC := range vcServices {
-			mockVC.Close()
-		}
 		wgValErrChan.Wait()
-
-		for _, s := range svGrpcServers {
-			s.Stop()
-		}
-
-		for _, s := range vcGrpcServers {
-			s.Stop()
-		}
 
 		grpcSrv.Stop()
 	})
-
-	return &coordinatorTestEnv{
-		coordinator: cs,
-		csStream:    csStream,
-	}
 }
 
 func TestCoordinatorService(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
+	env.start(t)
 
 	t.Run("valid tx", func(t *testing.T) {
 		err := env.csStream.Send(&protoblocktx.Block{
@@ -135,6 +160,9 @@ func TestCoordinatorService(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			return getMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 1
+		}, 1*time.Second, 100*time.Millisecond)
 
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
@@ -147,6 +175,7 @@ func TestCoordinatorService(t *testing.T) {
 			},
 		}
 		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+		require.Equal(t, float64(1), getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal))
 	})
 
 	t.Run("invalid signature", func(t *testing.T) {
@@ -155,6 +184,9 @@ func TestCoordinatorService(t *testing.T) {
 			Txs:    []*protoblocktx.Tx{{Id: "tx2"}},
 		})
 		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			return getMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 2
+		}, 1*time.Second, 100*time.Millisecond)
 
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
@@ -167,6 +199,7 @@ func TestCoordinatorService(t *testing.T) {
 			},
 		}
 		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+		require.Equal(t, float64(1), getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal))
 	})
 
 	t.Run("out of order block", func(t *testing.T) {
@@ -214,5 +247,76 @@ func TestCoordinatorService(t *testing.T) {
 		}
 		require.Equal(t, lastBlockNum-2, numValid)
 		require.Equal(t, 1, numInvalid)
+
+		require.Equal(
+			t,
+			float64(lastBlockNum-1), // block 4 to block 600 + old 2 blocks
+			getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+		)
+		require.Equal(
+			t,
+			float64(2),
+			getMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
+		)
 	})
+}
+
+func TestQueueSize(t *testing.T) { // nolint:gocognit
+	env := newCoordinatorTestEnv(t)
+	env.coordinator.promErrChan = make(chan error)
+	go env.coordinator.monitorQueues()
+
+	q := env.coordinator.queues
+	m := env.coordinator.metrics
+	q.blockForSignatureVerification <- &protoblocktx.Block{}
+	q.blockWithValidSignTxs <- &protoblocktx.Block{}
+	q.blockWithInvalidSignTxs <- &protoblocktx.Block{}
+	q.txsBatchForDependencyGraph <- &dependencygraph.TransactionBatch{}
+	q.dependencyFreeTxsNode <- []*dependencygraph.TransactionNode{}
+	q.validatedTxsNode <- []*dependencygraph.TransactionNode{}
+	q.txsStatus <- &protovcservice.TransactionStatus{}
+
+	require.Eventually(t, func() bool {
+		return getMetricValue(t, m.sigverifierInputBlockQueueSize) == 1 &&
+			getMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 1 &&
+			getMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 1 &&
+			getMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 1 &&
+			getMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 1 &&
+			getMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
+			getMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
+	}, 3*time.Second, 500*time.Millisecond)
+
+	<-q.blockForSignatureVerification
+	<-q.blockWithValidSignTxs
+	<-q.blockWithInvalidSignTxs
+	<-q.txsBatchForDependencyGraph
+	<-q.dependencyFreeTxsNode
+	<-q.validatedTxsNode
+	<-q.txsStatus
+
+	require.Eventually(t, func() bool {
+		return getMetricValue(t, m.sigverifierInputBlockQueueSize) == 0 &&
+			getMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 0 &&
+			getMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 0 &&
+			getMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 0 &&
+			getMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 0 &&
+			getMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
+			getMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
+	}, 3*time.Second, 500*time.Millisecond)
+}
+
+func getMetricValue(t *testing.T, m prometheus.Metric) float64 {
+	gm := promgo.Metric{}
+	require.NoError(t, m.Write(&gm))
+
+	switch m.(type) {
+	case prometheus.Gauge:
+		return gm.Gauge.GetValue()
+	case prometheus.Counter:
+		return gm.Counter.GetValue()
+	default:
+		require.Fail(t, "metric is not counter or gauge")
+	}
+
+	return 0
 }

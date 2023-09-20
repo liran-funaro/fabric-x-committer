@@ -30,3 +30,18 @@ coordinator-service:
   monitoring:
     # Add monitoring configuration here if applicable
   per-channel-buffer-size-per-goroutine: 300
+
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: :2110
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: localhost:14268
+      max-latency: 5s
+      bucket-count: 1000

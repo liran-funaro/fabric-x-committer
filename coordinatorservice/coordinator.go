@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -30,6 +31,8 @@ type (
 		config                           *CoordinatorConfig
 		stopSendingBlockToSigVerifierMgr *atomic.Bool
 		orderEnforcer                    *sync.Cond
+		metrics                          *perfMetrics
+		promErrChan                      <-chan error
 	}
 
 	channels struct {
@@ -150,6 +153,12 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		},
 	)
 
+	metrics := newCoordinatorServiceMetrics(c.Monitoring.Metrics.Enable)
+	var promErrChan <-chan error
+	if metrics.enabled {
+		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
+	}
+
 	return &CoordinatorService{
 		UnimplementedCoordinatorServer:   protocoordinatorservice.UnimplementedCoordinatorServer{},
 		signatureVerifierMgr:             svMgr,
@@ -159,11 +168,15 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		config:                           c,
 		stopSendingBlockToSigVerifierMgr: &atomic.Bool{},
 		orderEnforcer:                    sync.NewCond(&sync.Mutex{}),
+		metrics:                          metrics,
+		promErrChan:                      promErrChan,
 	}
 }
 
 // Start starts each manager in the coordinator service.
 func (c *CoordinatorService) Start() (chan error, chan error, error) {
+	go c.monitorQueues()
+
 	logger.Info("Starting signature verifier manager")
 	sigVerifierErrChan, err := c.signatureVerifierMgr.start()
 	if err != nil {
@@ -244,6 +257,8 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 			return err
 		}
 
+		c.metrics.transactionReceived(len(block.Txs))
+
 		c.orderEnforcer.L.Lock()
 		for c.stopSendingBlockToSigVerifierMgr.Load() {
 			logger.Warn("Stop sending block to signature verifier manager due to out of order blocks")
@@ -320,17 +335,35 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 	for txStatus := range c.queues.txsStatus {
 		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(txStatus.Status))
 		i := 0
+		committed := 0
+		mvccConflict := 0
+		duplicate := 0
+
 		for id, status := range txStatus.Status {
 			valStatus[i] = &protocoordinatorservice.TxValidationStatus{
 				TxId:   id,
 				Status: status,
 			}
 			i++
+
+			switch status {
+			case protoblocktx.Status_COMMITTED:
+				committed++
+			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+				mvccConflict++
+			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+				duplicate++
+			}
 		}
 
 		if err := sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
+
+		m := c.metrics
+		m.transactionStatusSent(m.transactionCommittedStatusSentTotal, committed)
+		m.transactionStatusSent(m.transactionMVCCConflictStatusSentTotal, mvccConflict)
+		m.transactionStatusSent(m.transactionDuplicateTxStatusSentTotal, duplicate)
 	}
 
 	return nil
@@ -351,6 +384,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 		if err := sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
+		c.metrics.transactionStatusSent(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blk.Txs))
 	}
 
 	return nil
@@ -375,6 +409,31 @@ func sendTxsStatus(
 	return nil
 }
 
+func (c *CoordinatorService) monitorQueues() {
+	// TODO: make sampling time configurable
+	ticker := time.NewTicker(500 * time.Millisecond)
+	for {
+		select {
+		case <-ticker.C:
+		case err := <-c.promErrChan:
+			// Once the prometheus server is stopped, we no longer need to monitor the queues.
+			ticker.Stop()
+			logger.Errorf("Prometheus ended with error: %s", err)
+			return
+		}
+
+		m := c.metrics
+		q := c.queues
+		m.setQueueSize(m.sigverifierInputBlockQueueSize, len(q.blockForSignatureVerification))
+		m.setQueueSize(m.sigverifierOutputValidBlockQueueSize, len(q.blockWithValidSignTxs))
+		m.setQueueSize(m.sigverifierOutputInvalidBlockQueueSize, len(q.blockWithInvalidSignTxs))
+		m.setQueueSize(m.dependencyGraphInputTxBatchQueueSize, len(q.txsBatchForDependencyGraph))
+		m.setQueueSize(m.vcserviceInputTxBatchQueueSize, len(q.dependencyFreeTxsNode))
+		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.validatedTxsNode))
+		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.txsStatus))
+	}
+}
+
 // Close closes each manager in the coordinator service and all channels.
 func (c *CoordinatorService) Close() error {
 	if err := c.signatureVerifierMgr.close(); err != nil {
@@ -395,5 +454,5 @@ func (c *CoordinatorService) Close() error {
 	close(c.queues.validatedTxsNode)
 	close(c.queues.txsStatus)
 
-	return nil
+	return c.metrics.provider.StopServer()
 }

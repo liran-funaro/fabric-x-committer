@@ -45,8 +45,11 @@ coordinator-service:
     num-of-local-dep-constructors: 20
     waiting-txs-limit: 10000
     num-of-workers-for-global-dep-manager: 20
-  monitoring:
   per-channel-buffer-size-per-goroutine: 300
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: :2110
 `
 
 const (
