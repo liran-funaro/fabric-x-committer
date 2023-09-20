@@ -64,7 +64,7 @@ const (
 	testConfigFilePath = "./test-config.yaml"
 )
 
-func TestVCServiceCmd(t *testing.T) {
+func TestCoordinatorServiceCmd(t *testing.T) {
 	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
 	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
 

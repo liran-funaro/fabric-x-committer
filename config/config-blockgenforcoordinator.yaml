@@ -1,0 +1,26 @@
+name: cbdc-tx
+description: read write with nil value and nil version
+
+block:
+  size: 500
+  buffer-size: 1000
+
+transaction:
+  key-size: 32
+  read-write-count:
+    type: constant
+    value: 2
+  buffer-size: 500
+  signature:
+    scheme: ECDSA
+
+conflicts:
+  invalid-signatures:
+    # probability: 0
+
+tx-gen-workers: 5
+tx-sign-workers: 3
+tx-dependencies-workers: 2
+
+coordinator-service:
+  endpoint: "localhost:3001"
