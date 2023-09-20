@@ -53,8 +53,8 @@ const (
 	expectedStartUsage = "Usage:\n" +
 		"  coordinatorservice start [flags]\n\n" +
 		"Flags:\n" +
-		"      --configpath string   set the absolute path of config directory\n" +
-		"  -h, --help                help for start\n\n"
+		"      --configs string   set the absolute path of config directory\n" +
+		"  -h, --help             help for start\n\n"
 
 	expectedVersionUsage = "Usage:\n" +
 		"  coordinatorservice version [flags]\n\n" +
@@ -104,18 +104,18 @@ func TestVCServiceCmd(t *testing.T) {
 	}{
 		{
 			name:            "start the coordinatorservice",
-			args:            []string{"start", "--configpath", testConfigFilePath},
+			args:            []string{"start", "--configs", testConfigFilePath},
 			cmdLoggerOutput: "Coordinator service started successfully",
 			cmdStdOutput:    "Starting coordinatorservice",
 			errStr:          "",
 			err:             nil,
 		},
 		{
-			name:         "trailing args",
+			name:         "trailing args for start",
 			args:         []string{"start", "arg1", "arg2"},
 			cmdStdOutput: expectedStartUsage,
-			errStr:       "Error: --configpath flag must be set to the path of configuration file\n",
-			err:          errors.New("--configpath flag must be set to the path of configuration file"),
+			errStr:       "Error: --configs flag must be set to the path of configuration file\n",
+			err:          errors.New("--configs flag must be set to the path of configuration file"),
 		},
 		{
 			name:         "print version",
@@ -123,7 +123,7 @@ func TestVCServiceCmd(t *testing.T) {
 			cmdStdOutput: "coordinatorservice 0.2\n",
 		},
 		{
-			name:         "trailing args",
+			name:         "trailing args for version",
 			args:         []string{"version", "arg1", "arg2"},
 			cmdStdOutput: expectedVersionUsage + "\n",
 			errStr:       "Error: trailing arguments detected\n",

@@ -61,7 +61,7 @@ func startCmd() *cobra.Command {
 		Short: "Starts a vcservice",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if configPath == "" {
-				return errors.New("--configpath flag must be set to the path of configuration file")
+				return errors.New("--configs flag must be set to the path of configuration file")
 			}
 
 			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
@@ -86,7 +86,7 @@ func startCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&configPath, "configpath", "", "set the absolute path of config directory")
+	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	return cmd
 }
 
@@ -97,7 +97,7 @@ func initCmd() *cobra.Command {
 		Short: "Init the database",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if configPath == "" {
-				return errors.New("--configpath flag must be set to the path of configuration file")
+				return errors.New("--configs flag must be set to the path of configuration file")
 			}
 
 			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
@@ -112,7 +112,7 @@ func initCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&configPath, "configpath", "", "set the absolute path of config directory")
+	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to initialize")
 	return cmd
 }

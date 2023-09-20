@@ -46,8 +46,8 @@ const (
 	expectedStartUsage = "Usage:\n" +
 		"  vcservice start [flags]\n\n" +
 		"Flags:\n" +
-		"      --configpath string   set the absolute path of config directory\n" +
-		"  -h, --help                help for start\n\n"
+		"      --configs string   set the absolute path of config directory\n" +
+		"  -h, --help             help for start\n\n"
 
 	expectedVersionUsage = "Usage:\n" +
 		"  vcservice version [flags]\n\n" +
@@ -79,7 +79,7 @@ func TestVCServiceCmd(t *testing.T) {
 	}{
 		{
 			name:            "init the vcservice",
-			args:            []string{"init", "--configpath", testConfigPath, "--namespaces", "0,1"},
+			args:            []string{"init", "--configs", testConfigPath, "--namespaces", "0,1"},
 			cmdStdOutput:    "Initializing database",
 			cmdLoggerOutput: "Table 'ns_1' is ready",
 			errStr:          "",
@@ -87,18 +87,18 @@ func TestVCServiceCmd(t *testing.T) {
 		},
 		{
 			name:            "start the vcservice",
-			args:            []string{"start", "--configpath", testConfigPath},
+			args:            []string{"start", "--configs", testConfigPath},
 			cmdLoggerOutput: "Running server",
 			cmdStdOutput:    "Starting vcservice",
 			errStr:          "",
 			err:             nil,
 		},
 		{
-			name:         "trailing args",
+			name:         "trailing args for start",
 			args:         []string{"start", "arg1", "arg2"},
 			cmdStdOutput: expectedStartUsage,
-			errStr:       "Error: --configpath flag must be set to the path of configuration file\n",
-			err:          errors.New("--configpath flag must be set to the path of configuration file"),
+			errStr:       "Error: --configs flag must be set to the path of configuration file\n",
+			err:          errors.New("--configs flag must be set to the path of configuration file"),
 		},
 		{
 			name:         "print version",
@@ -106,7 +106,7 @@ func TestVCServiceCmd(t *testing.T) {
 			cmdStdOutput: "vcservice 0.2\n",
 		},
 		{
-			name:         "trailing args",
+			name:         "trailing args for version",
 			args:         []string{"version", "arg1", "arg2"},
 			cmdStdOutput: expectedVersionUsage + "\n",
 			errStr:       "Error: trailing arguments detected\n",

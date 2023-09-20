@@ -49,7 +49,7 @@ func TestMockVCServiceCmd(t *testing.T) {
 	cmdStdErr := new(bytes.Buffer)
 	cmd.SetOut(cmdStdOut)
 	cmd.SetErr(cmdStdErr)
-	cmd.SetArgs([]string{"start", "--configpath", testConfigPath})
+	cmd.SetArgs([]string{"start", "--configs", testConfigPath})
 
 	go func() {
 		_ = cmd.Execute()

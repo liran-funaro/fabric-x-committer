@@ -40,7 +40,7 @@ func startCmd() *cobra.Command {
 		Short: "Starts a mocksigverifierservice",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if configPath == "" {
-				return errors.New("--configpath must be set")
+				return errors.New("--configs must be set")
 			}
 
 			cmd.SilenceUsage = true
@@ -57,6 +57,6 @@ func startCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&configPath, "configpath", "", "set the absolute path to the config file")
+	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
 	return cmd
 }
