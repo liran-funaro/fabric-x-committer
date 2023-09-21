@@ -33,7 +33,7 @@ coordinator-service:
   server:
     endpoint:
       host: "localhost"
-      port: 3001
+      port: 9001
   sign-verifier:
     server:
       - # server 1 configuration

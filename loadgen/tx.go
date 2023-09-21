@@ -3,6 +3,7 @@ package loadgen
 import (
 	"math/rand"
 
+	"github.com/google/uuid"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
@@ -29,6 +30,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	blindWrite := g.BlindWriteKeyGenerator.Next()
 
 	tx := &protoblocktx.Tx{
+		Id: uuid.New().String(),
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:        0,
