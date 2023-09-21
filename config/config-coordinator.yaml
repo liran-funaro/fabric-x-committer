@@ -2,7 +2,7 @@ coordinator-service:
   server:
     endpoint:
       host: "localhost"
-      port: 3001
+      port: 9001
   sign-verifier:
     server:
       - # server 1 configuration
@@ -27,7 +27,6 @@ coordinator-service:
     num-of-local-dep-constructors: 20
     waiting-txs-limit: 10000
     num-of-workers-for-global-dep-manager: 20
-  monitoring:
     # Add monitoring configuration here if applicable
   per-channel-buffer-size-per-goroutine: 300
 
@@ -35,13 +34,8 @@ coordinator-service:
     metrics:
       enable: true
       endpoint: :2110
-    latency:
-      span-exporter: jaeger
-      sampler:
-        type: blocktx
-        ratio: 10
-        sample-size: 100
-        sample-period: 100000
-      endpoint: localhost:14268
-      max-latency: 5s
-      bucket-count: 1000
+
+logging:
+  development: true
+  enabled: true
+  level: INFO

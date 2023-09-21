@@ -6,23 +6,6 @@ validator-committer-service:
       host: "localhost" # The host of the server
       port: 6002        # The port of the server
     # Credentials for the server
-    creds:
-      cert-path: # Path to the server certificate
-      key-path: # Path to the server key
-    # Server keep-alive configurations
-    keep-alive:
-      # Parameters for keep-alive feature
-      params:
-        max-connection-idle: "5s"              # Maximum idle duration for a connection
-        max-connection-age: "10s"              # Maximum age for a connection
-        max-connection-age-grace: "2s"         # Grace period after a connection reaches its max age
-        time: "5s"                             # Time duration for checks
-        timeout: "1s"                          # Timeout duration for checks
-      # Enforcement policy for keep-alive feature
-      enforcement-policy:
-        min-time: "5s"                         # Minimum time a client should wait between pings
-        permit-without-stream: true            # Whether the server allows pings even when there are no active streams
-  # Configuration for the database
   database:
     host: "localhost"                          # The host of the database
     port: 5433                                 # The port of the database
@@ -39,6 +22,7 @@ validator-committer-service:
     max-workers-for-committer: 2               # Maximum number of workers for the committer
   monitoring:
     metrics:
+      enable: true
       endpoint: :2111
 logging:
   development: true

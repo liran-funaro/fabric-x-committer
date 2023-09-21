@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"testing"
-	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -28,20 +27,6 @@ func TestConfig(t *testing.T) {
 						Host: "localhost",
 						Port: 6002,
 					},
-					Creds: nil,
-					KeepAlive: &connection.ServerKeepAliveConfig{
-						Params: &connection.ServerKeepAliveParamsConfig{
-							MaxConnectionIdle:     5 * time.Second,
-							MaxConnectionAge:      10 * time.Second,
-							MaxConnectionAgeGrace: 2 * time.Second,
-							Time:                  5 * time.Second,
-							Timeout:               1 * time.Second,
-						},
-						EnforcementPolicy: &connection.ServerKeepAliveEnforcementPolicyConfig{
-							MinTime:             5 * time.Second,
-							PermitWithoutStream: true,
-						},
-					},
 				},
 				Database: &DatabaseConfig{
 					Host:           "localhost",
@@ -59,6 +44,7 @@ func TestConfig(t *testing.T) {
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
+						Enable: true,
 						Endpoint: &connection.Endpoint{
 							Host: "",
 							Port: 2111,
@@ -78,19 +64,6 @@ func TestConfig(t *testing.T) {
 						Port: 6001,
 					},
 					Creds: nil,
-					KeepAlive: &connection.ServerKeepAliveConfig{
-						Params: &connection.ServerKeepAliveParamsConfig{
-							MaxConnectionIdle:     5 * time.Second,
-							MaxConnectionAge:      0,
-							MaxConnectionAgeGrace: 0,
-							Time:                  5 * time.Second,
-							Timeout:               1 * time.Second,
-						},
-						EnforcementPolicy: &connection.ServerKeepAliveEnforcementPolicyConfig{
-							MinTime:             1 * time.Second,
-							PermitWithoutStream: true,
-						},
-					},
 				},
 				Database: &DatabaseConfig{
 					Host:           "localhost",
@@ -108,6 +81,7 @@ func TestConfig(t *testing.T) {
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
+						Enable: true,
 						Endpoint: &connection.Endpoint{
 							Host: "localhost",
 							Port: 6002,
@@ -126,20 +100,6 @@ func TestConfig(t *testing.T) {
 						Host: "localhost",
 						Port: 6001,
 					},
-					Creds: nil,
-					KeepAlive: &connection.ServerKeepAliveConfig{
-						Params: &connection.ServerKeepAliveParamsConfig{
-							MaxConnectionIdle:     5 * time.Second,
-							MaxConnectionAge:      0,
-							MaxConnectionAgeGrace: 0,
-							Time:                  5 * time.Second,
-							Timeout:               1 * time.Second,
-						},
-						EnforcementPolicy: &connection.ServerKeepAliveEnforcementPolicyConfig{
-							MinTime:             1 * time.Second,
-							PermitWithoutStream: true,
-						},
-					},
 				},
 				Database: &DatabaseConfig{
 					Host:           "localhost",
@@ -157,6 +117,7 @@ func TestConfig(t *testing.T) {
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
+						Enable: true,
 						Endpoint: &connection.Endpoint{
 							Host: "localhost",
 							Port: 6002,

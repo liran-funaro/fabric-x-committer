@@ -9,7 +9,7 @@ transaction:
   key-size: 32
   read-write-count:
     type: constant
-    value: 2
+    const: 2
   buffer-size: 500
   signature:
     scheme: ECDSA
@@ -23,4 +23,4 @@ tx-sign-workers: 3
 tx-dependencies-workers: 2
 
 coordinator-service:
-  endpoint: "localhost:3001"
+  endpoint: "localhost:9001"

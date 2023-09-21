@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 func TestReadConfig(t *testing.T) {
@@ -17,12 +19,12 @@ func TestReadConfig(t *testing.T) {
 	}{
 		{
 			name:           "config",
-			configFilePath: "./testdata/config.yaml",
+			configFilePath: "../config/config-coordinator.yaml",
 			expectedConfig: &CoordinatorConfig{
 				ServerConfig: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
-						Port: 3001,
+						Port: 9001,
 					},
 				},
 				SignVerifierConfig: &SignVerifierConfig{
@@ -63,6 +65,15 @@ func TestReadConfig(t *testing.T) {
 					NumOfWorkersForGlobalDepManager: 20,
 				},
 				ChannelBufferSizePerGoroutine: 300,
+				Monitoring: &monitoring.Config{
+					Metrics: &metrics.Config{
+						Enable: true,
+						Endpoint: &connection.Endpoint{
+							Host: "",
+							Port: 2110,
+						},
+					},
+				},
 			},
 		},
 		{

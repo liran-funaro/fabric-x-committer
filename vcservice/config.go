@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
@@ -71,21 +70,6 @@ func setDefaults() {
 	viper.SetDefault(prefix+"host", "localhost")
 	viper.SetDefault(prefix+"port", 6001)
 
-	// default for ServerConfig.keepAlive
-	prefix = "validator-committer-service.server.keep-alive.params."
-	viper.SetDefault(prefix+"max-connection-idle", 5*time.Second)
-	viper.SetDefault(prefix+"time", 5*time.Second)
-	viper.SetDefault(prefix+"timeout", 1*time.Second)
-	// We don't want to limit the connection age since it is expected to live forever
-	// TODO: remove this configuration values for the vcservice so the developer cannot set them accidentally.
-	viper.SetDefault(prefix+"max-connection-age", 0)
-	viper.SetDefault(prefix+"max-connection-age-grace", 0)
-
-	// default for ServerConfig.keepAlive.enforcementPolicy
-	prefix = "validator-committer-service.server.keep-alive.enforcement-policy."
-	viper.SetDefault(prefix+"min-time", 1*time.Second)
-	viper.SetDefault(prefix+"permit-without-stream", true)
-
 	// defaults for DatabaseConfig
 	prefix = "validator-committer-service.database."
 	viper.SetDefault(prefix+"host", "localhost")
@@ -105,5 +89,5 @@ func setDefaults() {
 	// defaults for monitoring.config
 	prefix = "validator-committer-service.monitoring."
 	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
-	viper.SetDefault(prefix+"metrics.enabled", true)
+	viper.SetDefault(prefix+"metrics.enable", true)
 }
