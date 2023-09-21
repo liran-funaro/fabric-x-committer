@@ -1,7 +1,6 @@
 package prometheusmetrics
 
 import (
-	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type metricsProviderTestEnv struct {
@@ -68,7 +68,7 @@ func TestCounter(t *testing.T) {
 	c.Inc()
 	c.Inc()
 
-	env.checkMetrics(t, []string{"vcservice_committed_transaction_total 2"})
+	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_committed_transaction_total 2"})
 }
 
 func TestCounterVec(t *testing.T) {
@@ -89,7 +89,7 @@ func TestCounterVec(t *testing.T) {
 	cv.WithLabelValues("ns_2").Inc()
 	cv.WithLabelValues("ns_1").Inc()
 
-	env.checkMetrics(t, []string{
+	test.CheckMetrics(t, env.client, env.provider.url, []string{
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
 		`vcservice_preparer_transaction_total{namespace="ns_2"} 1`,
 	})
@@ -109,10 +109,10 @@ func TestNewGuage(t *testing.T) {
 	g := env.provider.NewGauge(opts)
 
 	g.Add(10)
-	env.checkMetrics(t, []string{"vcservice_preparer_transactions_queued 10"})
+	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 10"})
 
 	g.Sub(3)
-	env.checkMetrics(t, []string{"vcservice_preparer_transactions_queued 7"})
+	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 7"})
 }
 
 func TestNewGuageVec(t *testing.T) {
@@ -130,8 +130,10 @@ func TestNewGuageVec(t *testing.T) {
 
 	gv.With(prometheus.Labels{"namespace": "ns_1"}).Add(7)
 	gv.With(prometheus.Labels{"namespace": "ns_2"}).Add(2)
-	env.checkMetrics(
+	test.CheckMetrics(
 		t,
+		env.client,
+		env.provider.url,
 		[]string{
 			`vcservice_committer_transactions_queued{namespace="ns_1"} 7`,
 			`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
@@ -139,8 +141,10 @@ func TestNewGuageVec(t *testing.T) {
 	)
 
 	gv.WithLabelValues("ns_1").Sub(3)
-	env.checkMetrics(
+	test.CheckMetrics(
 		t,
+		env.client,
+		env.provider.url,
 		[]string{
 			`vcservice_committer_transactions_queued{namespace="ns_1"} 4`,
 			`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
@@ -164,8 +168,10 @@ func TestNewHistogram(t *testing.T) {
 	h.Observe(500 * time.Millisecond.Seconds())
 	h.Observe(time.Second.Seconds())
 	h.Observe(10 * time.Second.Seconds())
-	env.checkMetrics(
+	test.CheckMetrics(
 		t,
+		env.client,
+		env.provider.url,
 		[]string{
 			`vcservice_committer_transactions_duration_seconds_bucket{le="0.5"} 1`,
 			`vcservice_committer_transactions_duration_seconds_bucket{le="1"} 2`,
@@ -192,8 +198,10 @@ func TestNewHistogramVec(t *testing.T) {
 	h.With(prometheus.Labels{"namespace": "ns_2"}).Observe(time.Second.Seconds())
 	h.WithLabelValues("ns_1").Observe(10 * time.Second.Seconds())
 
-	env.checkMetrics(
+	test.CheckMetrics(
 		t,
+		env.client,
+		env.provider.url,
 		[]string{
 			`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_1",le="0.5"} 1`,
 			`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_1",le="0.6"} 1`,
@@ -205,23 +213,4 @@ func TestNewHistogramVec(t *testing.T) {
 			`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_2",le="+Inf"} 1`,
 		},
 	)
-}
-
-func (env *metricsProviderTestEnv) checkMetrics(t *testing.T, expectedMetrics []string) {
-	resp, err := env.client.Get(env.provider.url)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, resp.Body.Close())
-	}()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	bys, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	metricsOutput := string(bys)
-
-	for _, expected := range expectedMetrics {
-		require.Contains(t, metricsOutput, expected)
-	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -11,11 +12,18 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var configPath string
 
-// CoordinatorServiceEndpoint is the configuration for coordinator service endpoint.
+// BlockgenConfig is the configuration for blockgen.
+type BlockgenConfig struct {
+	CoordinatorEndpoint *CoordinatorServiceEndpoint `mapstructure:"coordinator-service"`
+	Monitoring          *monitoring.Config          `mapstructure:"monitoring"`
+}
+
+// CoordinatorServiceEndpoint holds the endpoint of coordinator service.
 type CoordinatorServiceEndpoint struct {
 	Endpoint *connection.Endpoint `mapstructure:"endpoint"`
 }
@@ -68,19 +76,24 @@ func startCmd() *cobra.Command {
 				return errors.New("--configs flag must be set to the path of configuration file")
 			}
 
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			c, err := readConfig()
+			if err != nil {
 				return err
 			}
-			wrapper := new(struct {
-				Config CoordinatorServiceEndpoint `mapstructure:"coordinator-service"`
-			})
-			config.Unmarshal(wrapper)
-			csEndpoint := wrapper.Config.Endpoint
 
-			profile := loadgen.LoadProfileFromYaml(configPath)
-			blockGen := loadgen.StartBlockGenerator(profile)
+			metrics := newBlockgenServiceMetrics(c.Monitoring.Metrics.Enable)
+			var promErrChan <-chan error
+			if metrics.enabled {
+				promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
+			}
 
-			conn, err := connection.Connect(connection.NewDialConfig(*csEndpoint))
+			go func() {
+				if errProm := <-promErrChan; errProm != nil {
+					log.Panic(err) // nolint: revive
+				}
+			}()
+
+			conn, err := connection.Connect(connection.NewDialConfig(*c.CoordinatorEndpoint.Endpoint))
 			if err != nil {
 				return err
 			}
@@ -91,14 +104,16 @@ func startCmd() *cobra.Command {
 				return err
 			}
 
+			profile := loadgen.LoadProfileFromYaml(configPath)
+			blockGen := loadgen.StartBlockGenerator(profile)
 			errChan := make(chan error)
 
 			go func() {
-				errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream)
+				errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream, metrics)
 			}()
 
 			go func() {
-				errChan <- receiveStatusFromCoordinatorService(cmd, csStream)
+				errChan <- receiveStatusFromCoordinatorService(cmd, csStream, metrics)
 			}()
 
 			cmd.Println("blockgen started")
@@ -115,24 +130,43 @@ func sendBlockToCoordinatorService(
 	cmd *cobra.Command,
 	blockGen *loadgen.BlockStreamGenerator,
 	csStream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	metrics *perfMetrics,
 ) error {
-	cmd.Println("Sending block to the coordinator service")
+	cmd.Println("Start sending blocks to coordinator service")
 	for {
 		blk := <-blockGen.BlockQueue
 		if err := csStream.Send(blk); err != nil {
 			return err
 		}
+
+		metrics.addToCounter(metrics.blockSentTotal, 1)
+		metrics.addToCounter(metrics.transactionsSentTotal, len(blk.Txs))
 	}
 }
 
 func receiveStatusFromCoordinatorService(
 	cmd *cobra.Command,
 	csStream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	metrics *perfMetrics,
 ) error {
-	cmd.Println("Received status from the coordinator service")
+	cmd.Println("Start receiving status from coordinator service")
 	for {
-		if _, err := csStream.Recv(); err != nil {
+		txStatus, err := csStream.Recv()
+		if err != nil {
 			return err
 		}
+
+		metrics.addToCounter(metrics.transactionReceivedTotal, len(txStatus.TxsValidationStatus))
 	}
+}
+
+func readConfig() (*BlockgenConfig, error) {
+	if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+		return nil, err
+	}
+	wrapper := new(struct {
+		Config BlockgenConfig `mapstructure:"blockgen"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config, nil
 }

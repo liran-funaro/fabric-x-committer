@@ -6,8 +6,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
-	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -15,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
 
@@ -213,7 +212,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.NoError(t, vcStream.CloseSend())
 	})
 
-	require.Zero(t, getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
+	require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
 
 	require.NoError(t, vcStream.Send(txBatch))
 	txStatus, err := vcStream.Recv()
@@ -226,14 +225,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
 	}
 
-	require.Equal(t, float64(len(txBatch.Transactions)), getMetricsValue(t, env.vcs.metrics.transactionReceivedTotal))
+	require.Equal(
+		t,
+		float64(len(txBatch.Transactions)),
+		test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal),
+	)
 	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 	env.dbEnv.statusExists(t, expectedTxStatus.Status)
-}
-
-func getMetricsValue(t *testing.T, m prometheus.Metric) float64 {
-	gm := promgo.Metric{}
-	require.NoError(t, m.Write(&gm))
-	return gm.Counter.GetValue()
 }

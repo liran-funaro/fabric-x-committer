@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
 
@@ -63,20 +65,12 @@ coordinator-service:
 )
 
 func TestBlockGen(t *testing.T) {
-	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
+	sigVerServerConfig, _, sigVerGrpc := sigverifiermock.StartMockSVService(1)
+	vcServerConfig, _, vcGrpc := vcservicemock.StartMockVCService(1)
 
 	t.Cleanup(func() {
-		for _, sv := range mockSigVer {
-			sv.Close()
-		}
-
 		for _, svGrpc := range sigVerGrpc {
 			svGrpc.Stop()
-		}
-
-		for _, sv := range mockVC {
-			sv.Close()
 		}
 
 		for _, svGrpc := range vcGrpc {
@@ -123,7 +117,19 @@ func TestBlockGen(t *testing.T) {
 	require.Eventually(t, func() bool {
 		out := cmdStdOut.String()
 		return strings.Contains(out, "blockgen started") &&
-			strings.Contains(out, "Sending block to the coordinator service") &&
-			strings.Contains(out, "Received status from the coordinator service")
-	}, 4*time.Second, 100*time.Millisecond)
+			strings.Contains(out, "Start sending blocks to coordinator service") &&
+			strings.Contains(out, "Start receiving status from coordinator service")
+	}, 2*time.Second, 250*time.Millisecond)
+
+	c, err := readConfig()
+	require.NoError(t, err)
+
+	client := &http.Client{}
+	url := fmt.Sprintf("http://%s/metrics", c.Monitoring.Metrics.Endpoint.String())
+	expectedMetrics := []string{
+		"blockgen_block_sent_total",
+		"blockgen_transaction_sent_total",
+		"blockgen_transaction_received_total",
+	}
+	test.CheckMetrics(t, client, url, expectedMetrics)
 }

@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -19,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
 
@@ -161,7 +160,7 @@ func TestCoordinatorService(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Eventually(t, func() bool {
-			return getMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 1
+			return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 1
 		}, 1*time.Second, 100*time.Millisecond)
 
 		txStatus, err := env.csStream.Recv()
@@ -175,7 +174,11 @@ func TestCoordinatorService(t *testing.T) {
 			},
 		}
 		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-		require.Equal(t, float64(1), getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal))
+		require.Equal(
+			t,
+			float64(1),
+			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+		)
 	})
 
 	t.Run("invalid signature", func(t *testing.T) {
@@ -185,7 +188,7 @@ func TestCoordinatorService(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Eventually(t, func() bool {
-			return getMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 2
+			return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 2
 		}, 1*time.Second, 100*time.Millisecond)
 
 		txStatus, err := env.csStream.Recv()
@@ -199,7 +202,11 @@ func TestCoordinatorService(t *testing.T) {
 			},
 		}
 		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-		require.Equal(t, float64(1), getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal))
+		require.Equal(
+			t,
+			float64(1),
+			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+		)
 	})
 
 	t.Run("out of order block", func(t *testing.T) {
@@ -251,12 +258,12 @@ func TestCoordinatorService(t *testing.T) {
 		require.Equal(
 			t,
 			float64(lastBlockNum-1), // block 4 to block 600 + old 2 blocks
-			getMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 		)
 		require.Equal(
 			t,
 			float64(2),
-			getMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
+			test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
 		)
 	})
 }
@@ -277,13 +284,13 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 	q.txsStatus <- &protovcservice.TransactionStatus{}
 
 	require.Eventually(t, func() bool {
-		return getMetricValue(t, m.sigverifierInputBlockQueueSize) == 1 &&
-			getMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 1 &&
-			getMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 1 &&
-			getMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 1 &&
-			getMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 1 &&
-			getMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
-			getMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
+		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 1 &&
+			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 1 &&
+			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 1 &&
+			test.GetMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 1 &&
+			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 1 &&
+			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
+			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
 	}, 3*time.Second, 500*time.Millisecond)
 
 	<-q.blockForSignatureVerification
@@ -295,28 +302,12 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 	<-q.txsStatus
 
 	require.Eventually(t, func() bool {
-		return getMetricValue(t, m.sigverifierInputBlockQueueSize) == 0 &&
-			getMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 0 &&
-			getMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 0 &&
-			getMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 0 &&
-			getMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 0 &&
-			getMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
-			getMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
+		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 0 &&
+			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 0 &&
+			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 0 &&
+			test.GetMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 0 &&
+			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 0 &&
+			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
+			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
 	}, 3*time.Second, 500*time.Millisecond)
-}
-
-func getMetricValue(t *testing.T, m prometheus.Metric) float64 {
-	gm := promgo.Metric{}
-	require.NoError(t, m.Write(&gm))
-
-	switch m.(type) {
-	case prometheus.Gauge:
-		return gm.Gauge.GetValue()
-	case prometheus.Counter:
-		return gm.Counter.GetValue()
-	default:
-		require.Fail(t, "metric is not counter or gauge")
-	}
-
-	return 0
 }

@@ -22,5 +22,10 @@ tx-gen-workers: 5
 tx-sign-workers: 3
 tx-dependencies-workers: 2
 
-coordinator-service:
-  endpoint: "localhost:9001"
+blockgen:
+  coordinator-service:
+    endpoint: "localhost:9001"
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: :2112
