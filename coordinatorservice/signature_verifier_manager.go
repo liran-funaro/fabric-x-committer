@@ -18,11 +18,8 @@ type (
 	// 2. Receiving the status of the transactions from the signature verifier servers.
 	// 3. Forwarding the status of the transactions to the coordinator.
 	signatureVerifierManager struct {
-		serversConfig                         []*connection.ServerConfig
-		signVerifier                          []*signatureVerifier
-		incomingBlockForSignatureVerification <-chan *protoblocktx.Block
-		outgoingBlockWithValidTxs             chan<- *protoblocktx.Block
-		outgoingBlockWithInvalidTxs           chan<- *protoblocktx.Block
+		config       *signVerifierManagerConfig
+		signVerifier []*signatureVerifier
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
@@ -43,6 +40,7 @@ type (
 		// Once all transactions in the block have been validated, the block along with the
 		// result will be placed on this channel.
 		validatedBlock chan *blockWithResult
+		metrics        *perfMetrics
 	}
 
 	blockWithResult struct {
@@ -57,25 +55,24 @@ type (
 		incomingBlockForSignatureVerification <-chan *protoblocktx.Block
 		outgoingBlockWithValidTxs             chan<- *protoblocktx.Block
 		outgoingBlockWithInvalidTxs           chan<- *protoblocktx.Block
+		metrics                               *perfMetrics
 	}
 )
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	return &signatureVerifierManager{
-		serversConfig:                         config.serversConfig,
-		incomingBlockForSignatureVerification: config.incomingBlockForSignatureVerification,
-		outgoingBlockWithValidTxs:             config.outgoingBlockWithValidTxs,
-		outgoingBlockWithInvalidTxs:           config.outgoingBlockWithInvalidTxs,
+		config: config,
 	}
 }
 
 func (svm *signatureVerifierManager) start() (chan error, error) {
-	svm.signVerifier = make([]*signatureVerifier, len(svm.serversConfig))
+	c := svm.config
+	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
 
 	numErrorableGoroutinePerServer := 2
-	errChan := make(chan error, numErrorableGoroutinePerServer*len(svm.serversConfig))
+	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
-	for i, serverConfig := range svm.serversConfig {
+	for i, serverConfig := range c.serversConfig {
 		conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
 		if err != nil {
 			return nil, err
@@ -93,17 +90,18 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 			resultAccumulator: &sync.Map{},
 			responseCollectionChan: make(
 				chan *protosigverifierservice.ResponseBatch,
-				cap(svm.incomingBlockForSignatureVerification)/len(svm.serversConfig),
+				cap(c.incomingBlockForSignatureVerification)/len(c.serversConfig),
 			),
 			validatedBlock: make(
 				chan *blockWithResult,
-				(cap(svm.outgoingBlockWithValidTxs)+cap(svm.outgoingBlockWithInvalidTxs))/len(svm.serversConfig),
+				(cap(c.outgoingBlockWithValidTxs)+cap(c.outgoingBlockWithInvalidTxs))/len(c.serversConfig),
 			),
+			metrics: c.metrics,
 		}
 		svm.signVerifier[i] = sv
 
 		go func() {
-			errChan <- sv.sendTransactionsToSVService(svm.incomingBlockForSignatureVerification)
+			errChan <- sv.sendTransactionsToSVService(c.incomingBlockForSignatureVerification)
 		}()
 		go func() {
 			errChan <- sv.receiveTransactionsStatusFromSVService()
@@ -112,7 +110,7 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 			sv.processTransactionStatus()
 		}()
 		go func() {
-			sv.forwardValidatedTransactions(svm.outgoingBlockWithValidTxs, svm.outgoingBlockWithInvalidTxs)
+			sv.forwardValidatedTransactions(c.outgoingBlockWithValidTxs, c.outgoingBlockWithInvalidTxs)
 		}()
 	}
 
@@ -215,6 +213,11 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs chan<- *protoblocktx.Block,
 ) {
 	for blkWithResult := range sv.validatedBlock {
+		sv.metrics.addToCounter(
+			sv.metrics.sigverifierTransactionProcessedTotal,
+			len(blkWithResult.block.Txs),
+		)
+
 		switch {
 		case len(blkWithResult.invalidTxIndex) == 0:
 			outgoingBlockWithValidTxs <- blkWithResult.block

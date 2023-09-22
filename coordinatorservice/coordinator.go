@@ -121,12 +121,19 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		),
 	}
 
+	metrics := newPerformanceMetrics(c.Monitoring.Metrics.Enable)
+	var promErrChan <-chan error
+	if metrics.enabled {
+		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
+	}
+
 	svMgr := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
 			serversConfig:                         c.SignVerifierConfig.ServerConfig,
 			incomingBlockForSignatureVerification: queues.blockForSignatureVerification,
 			outgoingBlockWithValidTxs:             queues.blockWithValidSignTxs,
 			outgoingBlockWithInvalidTxs:           queues.blockWithInvalidSignTxs,
+			metrics:                               metrics,
 		},
 	)
 
@@ -140,7 +147,9 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 				Parallelism:     c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager,
 				ChannelCapacity: c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager * 2,
 			},
-			WaitingTxsLimit: c.DependencyGraphConfig.WaitingTxsLimit,
+			WaitingTxsLimit:           c.DependencyGraphConfig.WaitingTxsLimit,
+			PrometheusMetricsProvider: metrics.provider,
+			MetricsEnabled:            metrics.enabled,
 		},
 	)
 
@@ -150,14 +159,9 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 			incomingTxsForValidationCommit: queues.dependencyFreeTxsNode,
 			outgoingValidatedTxsNode:       queues.validatedTxsNode,
 			outgoingTxsStatus:              queues.txsStatus,
+			metrics:                        metrics,
 		},
 	)
-
-	metrics := newCoordinatorServiceMetrics(c.Monitoring.Metrics.Enable)
-	var promErrChan <-chan error
-	if metrics.enabled {
-		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
-	}
 
 	return &CoordinatorService{
 		UnimplementedCoordinatorServer:   protocoordinatorservice.UnimplementedCoordinatorServer{},
@@ -361,9 +365,9 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 		}
 
 		m := c.metrics
-		m.transactionStatusSent(m.transactionCommittedStatusSentTotal, committed)
-		m.transactionStatusSent(m.transactionMVCCConflictStatusSentTotal, mvccConflict)
-		m.transactionStatusSent(m.transactionDuplicateTxStatusSentTotal, duplicate)
+		m.addToCounter(m.transactionCommittedStatusSentTotal, committed)
+		m.addToCounter(m.transactionMVCCConflictStatusSentTotal, mvccConflict)
+		m.addToCounter(m.transactionDuplicateTxStatusSentTotal, duplicate)
 	}
 
 	return nil
@@ -384,7 +388,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 		if err := sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
-		c.metrics.transactionStatusSent(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blk.Txs))
+		c.metrics.addToCounter(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blk.Txs))
 	}
 
 	return nil
@@ -427,7 +431,6 @@ func (c *CoordinatorService) monitorQueues() {
 		m.setQueueSize(m.sigverifierInputBlockQueueSize, len(q.blockForSignatureVerification))
 		m.setQueueSize(m.sigverifierOutputValidBlockQueueSize, len(q.blockWithValidSignTxs))
 		m.setQueueSize(m.sigverifierOutputInvalidBlockQueueSize, len(q.blockWithInvalidSignTxs))
-		m.setQueueSize(m.dependencyGraphInputTxBatchQueueSize, len(q.txsBatchForDependencyGraph))
 		m.setQueueSize(m.vcserviceInputTxBatchQueueSize, len(q.dependencyFreeTxsNode))
 		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.validatedTxsNode))
 		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.txsStatus))

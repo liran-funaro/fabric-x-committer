@@ -6,23 +6,30 @@ import (
 )
 
 type perfMetrics struct {
-	enabled                                    bool
-	provider                                   *prometheusmetrics.Provider
+	enabled  bool
+	provider *prometheusmetrics.Provider
+
+	// received and processed transactions
 	transactionReceivedTotal                   prometheus.Counter
 	transactionCommittedStatusSentTotal        prometheus.Counter
 	transactionMVCCConflictStatusSentTotal     prometheus.Counter
 	transactionInvalidSignatureStatusSentTotal prometheus.Counter
 	transactionDuplicateTxStatusSentTotal      prometheus.Counter
-	sigverifierInputBlockQueueSize             prometheus.Gauge
-	sigverifierOutputValidBlockQueueSize       prometheus.Gauge
-	sigverifierOutputInvalidBlockQueueSize     prometheus.Gauge
-	dependencyGraphInputTxBatchQueueSize       prometheus.Gauge
-	vcserviceInputTxBatchQueueSize             prometheus.Gauge
-	vcserviceOutputTxStatusBatchQueueSize      prometheus.Gauge
-	vcserviceOutputValidatedTxBatchQueueSize   prometheus.Gauge
+
+	// queue sizes
+	sigverifierInputBlockQueueSize           prometheus.Gauge
+	sigverifierOutputValidBlockQueueSize     prometheus.Gauge
+	sigverifierOutputInvalidBlockQueueSize   prometheus.Gauge
+	vcserviceInputTxBatchQueueSize           prometheus.Gauge
+	vcserviceOutputTxStatusBatchQueueSize    prometheus.Gauge
+	vcserviceOutputValidatedTxBatchQueueSize prometheus.Gauge
+
+	// processed transactions by each manager
+	sigverifierTransactionProcessedTotal prometheus.Counter
+	vcserviceTransactionProcessedTotal   prometheus.Counter
 }
 
-func newCoordinatorServiceMetrics(enabled bool) *perfMetrics {
+func newPerformanceMetrics(enabled bool) *perfMetrics {
 	p := prometheusmetrics.NewProvider()
 
 	return &perfMetrics{
@@ -76,12 +83,6 @@ func newCoordinatorServiceMetrics(enabled bool) *perfMetrics {
 			Name:      "output_invalid_block_queue_size",
 			Help:      "Size of the output invalid block queue of the signature verifier manager",
 		}),
-		dependencyGraphInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "dependencygraph",
-			Name:      "input_tx_batch_queue_size",
-			Help:      "Size of the input transaction batch queue of the dependency graph manager",
-		}),
 		vcserviceInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "vcservice",
@@ -102,6 +103,18 @@ func newCoordinatorServiceMetrics(enabled bool) *perfMetrics {
 			Help: "Size of the output validated transaction batch queue " +
 				"of the validation and consensus service manager",
 		}),
+		sigverifierTransactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "coordinator",
+			Subsystem: "sigverifier",
+			Name:      "transaction_processed_total",
+			Help:      "Number of transactions processed by the signature verifier manager",
+		}),
+		vcserviceTransactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "coordinator",
+			Subsystem: "vcservice",
+			Name:      "transaction_processed_total",
+			Help:      "Number of transactions processed by the validation and consensus service manager",
+		}),
 	}
 }
 
@@ -111,7 +124,7 @@ func (s *perfMetrics) transactionReceived(n int) {
 	}
 }
 
-func (s *perfMetrics) transactionStatusSent(c prometheus.Counter, n int) {
+func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
 	if s.enabled {
 		c.Add(float64(n))
 	}

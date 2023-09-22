@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type svMgrTestEnv struct {
@@ -32,6 +33,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 			incomingBlockForSignatureVerification: inputBlock,
 			outgoingBlockWithValidTxs:             outputBlockWithValidTxs,
 			outgoingBlockWithInvalidTxs:           outputBlockWithInvalidTxs,
+			metrics:                               newPerformanceMetrics(true),
 		},
 	)
 	errChan, err := svm.start()
@@ -105,6 +107,13 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 
 	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
 	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
+
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(
+			t,
+			env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		) == 15
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {

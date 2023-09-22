@@ -48,6 +48,9 @@ type (
 		// localDependencyConstructor, but rather by the input provided to it. Typically, the
 		// maximum allowed number of slots would be considerably larger than the batch size.
 		waitingTxsSlots *waitingTransactionsSlots
+		waitingTxsLimit int
+
+		metrics *perfMetrics
 	}
 
 	dependencyFreedTransactions struct {
@@ -68,6 +71,7 @@ type (
 		validatedTxsNode       <-chan []*TransactionNode
 		workerPoolConfig       *workerpool.Config
 		waitingTxsLimit        int
+		metrics                *perfMetrics
 	}
 )
 
@@ -92,6 +96,8 @@ func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
 			availableSlots: slotsForWaitingTxs,
 			slotsCond:      sync.NewCond(&sync.Mutex{}),
 		},
+		waitingTxsLimit: c.waitingTxsLimit,
+		metrics:         c.metrics,
 	}
 }
 
@@ -107,6 +113,10 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 		txsNode := txsNodeBatch.txsNode
 
 		dm.waitingTxsSlots.acquire(uint32(len(txsNode)))
+		dm.metrics.setQueueSize(
+			dm.metrics.globalDependencyGraphWaitingTxQueueSize,
+			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
+		)
 
 		wg.Add(len(txsNode))
 		dm.mu.Lock()
@@ -160,6 +170,8 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 		if len(depFreeTxs) > 0 {
 			dm.outgoingDepFreeTransactionsNode <- depFreeTxs
 		}
+
+		dm.metrics.addToCounter(dm.metrics.globalDependencyGraphTransactionProcessedTotal, len(txsNode))
 	}
 
 	dm.workerPool.Close()
@@ -168,6 +180,10 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 func (dm *globalDependencyManager) processValidatedTransactions() {
 	for txsNode := range dm.validatedTransactionsNode {
 		dm.waitingTxsSlots.release(uint32(len(txsNode)))
+		dm.metrics.setQueueSize(
+			dm.metrics.globalDependencyGraphWaitingTxQueueSize,
+			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
+		)
 
 		var fullyFreedDependents []*TransactionNode
 
@@ -186,6 +202,8 @@ func (dm *globalDependencyManager) processValidatedTransactions() {
 		if len(fullyFreedDependents) > 0 {
 			dm.freedTransactionsSet.add(fullyFreedDependents)
 		}
+
+		dm.metrics.addToCounter(dm.metrics.globalDependencyGraphValidatedTransactionProcessedTotal, len(txsNode))
 	}
 }
 

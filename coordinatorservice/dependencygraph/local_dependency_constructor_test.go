@@ -6,17 +6,22 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type localDependencyConstructorTestEnv struct {
 	inComingTxs chan *TransactionBatch
 	outGoingTxs chan *transactionNodeBatch
+	metrics     *perfMetrics
 }
 
 func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstructorTestEnv {
 	inComingTxs := make(chan *TransactionBatch, 5)
 	outGoingTxs := make(chan *transactionNodeBatch, 5)
-	newLocalDependencyConstructor(inComingTxs, outGoingTxs).start(5)
+
+	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
+	newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics).start(5)
 
 	t.Cleanup(func() {
 		close(inComingTxs)
@@ -26,6 +31,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 	return &localDependencyConstructorTestEnv{
 		inComingTxs: inComingTxs,
 		outGoingTxs: outGoingTxs,
+		metrics:     metrics,
 	}
 }
 
@@ -76,6 +82,10 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
 			require.Len(t, txNode.dependsOnTxs, 0)
 			require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 		}
+
+		require.Eventually(t, func() bool {
+			return test.GetMetricValue(t, env.metrics.localDependencyGraphTransactionProcessedTotal) == 4
+		}, 2*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("linear dependency i and i+1 transaction", func(t *testing.T) {

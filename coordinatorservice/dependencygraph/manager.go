@@ -1,6 +1,11 @@
 package dependencygraph
 
-import "github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+import (
+	"time"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+)
 
 type (
 	// Manager is the main component of the dependency graph module.
@@ -11,6 +16,7 @@ type (
 		globalDepManager            *globalDependencyManager
 		config                      *Config
 		outgoingTxsNodeWithLocalDep chan *transactionNodeBatch
+		metrics                     *perfMetrics
 	}
 
 	// Config holds the configuration for the dependency graph manager.
@@ -33,13 +39,19 @@ type (
 		// WaitingTxsLimit defines the maximum number of transactions
 		// that can be waiting at the dependency manager.
 		WaitingTxsLimit int
+		// PrometheusMetricsProvider is the provider for Prometheus metrics.
+		PrometheusMetricsProvider *prometheusmetrics.Provider
+		// MetricsEnabled defines whether metrics are enabled.
+		MetricsEnabled bool
 	}
 )
 
 // NewManager creates a new dependency graph manager.
 func NewManager(c *Config) *Manager {
+	metrics := newPerformanceMetrics(c.MetricsEnabled, c.PrometheusMetricsProvider)
+
 	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, len(c.IncomingTxs))
-	ldp := newLocalDependencyConstructor(c.IncomingTxs, outgoingTxsNodeWithLocalDep)
+	ldp := newLocalDependencyConstructor(c.IncomingTxs, outgoingTxsNodeWithLocalDep, metrics)
 
 	gdConf := &globalDepConfig{
 		incomingTxsNode:        outgoingTxsNodeWithLocalDep,
@@ -47,6 +59,7 @@ func NewManager(c *Config) *Manager {
 		validatedTxsNode:       c.IncomingValidatedTxsNode,
 		workerPoolConfig:       c.WorkerPoolConfigForGlobalDepManager,
 		waitingTxsLimit:        c.WaitingTxsLimit,
+		metrics:                metrics,
 	}
 
 	gdp := newGlobalDependencyManager(gdConf)
@@ -56,14 +69,33 @@ func NewManager(c *Config) *Manager {
 		globalDepManager:            gdp,
 		config:                      c,
 		outgoingTxsNodeWithLocalDep: outgoingTxsNodeWithLocalDep,
+		metrics:                     metrics,
 	}
 }
 
 // Start starts the dependency graph manager by starting the
 // local dependency constructors and global dependency graph manager.
 func (m *Manager) Start() {
+	go m.monitorQueues()
 	m.localDepConstructor.start(m.config.NumOfLocalDepConstructors)
 	m.globalDepManager.start()
+}
+
+func (m *Manager) monitorQueues() {
+	// TODO: make sampling time configurable
+	ticker := time.NewTicker(500 * time.Millisecond)
+	for {
+		<-ticker.C
+
+		m.metrics.setQueueSize(
+			m.metrics.localDependencyGraphInputTxBatchQueueSize,
+			len(m.localDepConstructor.incomingTransactions),
+		)
+		m.metrics.setQueueSize(
+			m.metrics.globalDependencyGraphInputTxBatchQueueSize,
+			len(m.globalDepManager.incomingTransactionsNode),
+		)
+	}
 }
 
 // Close closes internal channels.

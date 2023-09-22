@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type vcMgrTestEnv struct {
@@ -34,6 +35,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
+			metrics:                        newPerformanceMetrics(true),
 		},
 	)
 	errChan, err := vcm.start()
@@ -86,6 +88,13 @@ func TestValidatorCommitterManager(t *testing.T) {
 		outTxsStatus := <-env.outputTxsStatus
 
 		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+
+		require.Eventually(t, func() bool {
+			return test.GetMetricValue(
+				t,
+				env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			) == 5
+		}, 2*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("send batches to ensure all vcservices are used", func(t *testing.T) {

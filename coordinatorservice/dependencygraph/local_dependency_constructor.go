@@ -27,6 +27,7 @@ type (
 		// committer. The id field in the transactionBatch denotes the order.
 		lastOutputtedID *atomic.Uint64
 		orderEnforcer   *sync.Cond
+		metrics         *perfMetrics
 	}
 
 	// TransactionBatch holds a batch of transactions to be included in the
@@ -46,12 +47,14 @@ type (
 func newLocalDependencyConstructor(
 	incomingTxs <-chan *TransactionBatch,
 	outgoingTxsNode chan<- *transactionNodeBatch,
+	metrics *perfMetrics,
 ) *localDependencyConstructor {
 	return &localDependencyConstructor{
 		incomingTransactions:     incomingTxs,
 		outgoingTransactionsNode: outgoingTxsNode,
 		lastOutputtedID:          &atomic.Uint64{},
 		orderEnforcer:            sync.NewCond(&sync.Mutex{}),
+		metrics:                  metrics,
 	}
 }
 
@@ -114,6 +117,7 @@ func (p *localDependencyConstructor) sendTxsNodeToGlobalDependencyManager(id uin
 		p.orderEnforcer.Wait()
 	}
 
+	p.metrics.addToCounter(p.metrics.localDependencyGraphTransactionProcessedTotal, len(txsNode.txsNode))
 	p.outgoingTransactionsNode <- txsNode
 
 	logger.Debugf("Constructed dependencies for txs with id %d", id)

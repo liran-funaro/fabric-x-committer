@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
@@ -18,6 +20,7 @@ func TestGlobalDependencyManager(t *testing.T) {
 		Parallelism:     10,
 		ChannelCapacity: 20,
 	}
+	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
 	dm := newGlobalDependencyManager(
 		&globalDepConfig{
 			incomingTxsNode:        incomingTxs,
@@ -25,6 +28,7 @@ func TestGlobalDependencyManager(t *testing.T) {
 			validatedTxsNode:       validatedTxs,
 			workerPoolConfig:       workerConfig,
 			waitingTxsLimit:        10,
+			metrics:                metrics,
 		},
 	)
 	dm.start()
@@ -47,6 +51,10 @@ func TestGlobalDependencyManager(t *testing.T) {
 		// the reads and writes performed by these transactions from the dependency detector
 		// so that the new transaction won't get a wrong dependency.
 		ensureEmptyDetector(t, dm.dependencyDetector)
+		require.Eventually(t, func() bool {
+			return test.GetMetricValue(t, metrics.globalDependencyGraphTransactionProcessedTotal) == 3 &&
+				test.GetMetricValue(t, metrics.globalDependencyGraphValidatedTransactionProcessedTotal) == 3
+		}, 2*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("local dependency but no global dependency", func(t *testing.T) {
@@ -66,7 +74,14 @@ func TestGlobalDependencyManager(t *testing.T) {
 		// only dependency free tx is t1
 		require.Equal(t, []*TransactionNode{t1}, depFreeTxs)
 
+		require.Equal(t, float64(3), test.GetMetricValue(t, metrics.globalDependencyGraphWaitingTxQueueSize))
+
 		validatedTxs <- []*TransactionNode{t1}
+
+		require.Eventually(t, func() bool {
+			return test.GetMetricValue(t, metrics.globalDependencyGraphWaitingTxQueueSize) == 2
+		}, 2*time.Second, 200*time.Millisecond)
+
 		depFreeTxs = <-outgoingTxs
 		// after validating t1, t2 becomes dependency free
 		require.Equal(t, []*TransactionNode{t2}, depFreeTxs)

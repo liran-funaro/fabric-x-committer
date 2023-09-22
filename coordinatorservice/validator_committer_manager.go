@@ -19,12 +19,9 @@ type (
 	// 3. Forwarding the validated transactions node to the dependency graph manager.
 	// 4. Forwarding the status of the transactions to the coordinator.
 	validatorCommitterManager struct {
-		serversConfig                        []*connection.ServerConfig
-		validatorCommitter                   []*validatorCommitter
-		incomingTxsNodeForValidationCommit   <-chan []*dependencygraph.TransactionNode
-		outgoingTxsNodeAfterValidationCommit chan<- []*dependencygraph.TransactionNode
-		outgoingTxsStatus                    chan<- *protovcservice.TransactionStatus
-		txsStatusBufferSize                  int
+		config              *validatorCommitterManagerConfig
+		validatorCommitter  []*validatorCommitter
+		txsStatusBufferSize int
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -32,6 +29,7 @@ type (
 	validatorCommitter struct {
 		stream           protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
 		statusCollection chan *protovcservice.TransactionStatus
+		metrics          *perfMetrics
 
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
@@ -43,34 +41,33 @@ type (
 		incomingTxsForValidationCommit <-chan []*dependencygraph.TransactionNode
 		outgoingValidatedTxsNode       chan<- []*dependencygraph.TransactionNode
 		outgoingTxsStatus              chan<- *protovcservice.TransactionStatus
+		metrics                        *perfMetrics
 	}
 )
 
 func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validatorCommitterManager {
 	return &validatorCommitterManager{
-		serversConfig:                        c.serversConfig,
-		incomingTxsNodeForValidationCommit:   c.incomingTxsForValidationCommit,
-		outgoingTxsNodeAfterValidationCommit: c.outgoingValidatedTxsNode,
-		outgoingTxsStatus:                    c.outgoingTxsStatus,
-		txsStatusBufferSize:                  cap(c.outgoingTxsStatus),
+		config:              c,
+		txsStatusBufferSize: cap(c.outgoingTxsStatus),
 	}
 }
 
 func (vcm *validatorCommitterManager) start() (chan error, error) {
-	vcm.validatorCommitter = make([]*validatorCommitter, len(vcm.serversConfig))
+	c := vcm.config
+	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
 
 	numErrorableGoroutinePerServer := 3
-	errChan := make(chan error, numErrorableGoroutinePerServer*len(vcm.serversConfig))
+	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
-	for i, serverConfig := range vcm.serversConfig {
-		vc, err := newValidatorCommitter(serverConfig, vcm.txsStatusBufferSize)
+	for i, serverConfig := range c.serversConfig {
+		vc, err := newValidatorCommitter(serverConfig, vcm.txsStatusBufferSize, c.metrics)
 		if err != nil {
 			return nil, err
 		}
 		vcm.validatorCommitter[i] = vc
 
 		go func() {
-			errChan <- vc.sendTransactionsToVCService(vcm.incomingTxsNodeForValidationCommit)
+			errChan <- vc.sendTransactionsToVCService(c.incomingTxsForValidationCommit)
 		}()
 
 		go func() {
@@ -79,8 +76,8 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 
 		go func() {
 			errChan <- vc.forwardTransactionsStatusAndTxsNode(
-				vcm.outgoingTxsNodeAfterValidationCommit,
-				vcm.outgoingTxsStatus,
+				c.outgoingValidatedTxsNode,
+				c.outgoingTxsStatus,
 			)
 		}()
 	}
@@ -98,7 +95,11 @@ func (vcm *validatorCommitterManager) close() error {
 	return nil
 }
 
-func newValidatorCommitter(serverConfig *connection.ServerConfig, receivedTxsStatusBufferSize int) (
+func newValidatorCommitter(
+	serverConfig *connection.ServerConfig,
+	receivedTxsStatusBufferSize int,
+	metrics *perfMetrics,
+) (
 	*validatorCommitter, error,
 ) {
 	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
@@ -116,6 +117,7 @@ func newValidatorCommitter(serverConfig *connection.ServerConfig, receivedTxsSta
 		stream:           vcStream,
 		statusCollection: make(chan *protovcservice.TransactionStatus, receivedTxsStatusBufferSize),
 		txBeingValidated: &sync.Map{},
+		metrics:          metrics,
 	}, nil
 }
 
@@ -173,6 +175,8 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		//       and cannot receive the statuses quickly, the gRPC flow control will activate and
 		//       slow down the whole system, allowing the sidecar to catch up.
 		outputTxsStatus <- txsStatus
+
+		vc.metrics.addToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
 		for txID := range txsStatus.Status {

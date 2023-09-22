@@ -287,7 +287,6 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 1 &&
 			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 1 &&
 			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 1 &&
-			test.GetMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 1 &&
 			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 1 &&
 			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
 			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
@@ -305,7 +304,6 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 0 &&
 			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 0 &&
 			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 0 &&
-			test.GetMetricValue(t, m.dependencyGraphInputTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
