@@ -9,7 +9,7 @@ type perfMetrics struct {
 	enabled                  bool
 	provider                 *prometheusmetrics.Provider
 	blockSentTotal           prometheus.Counter
-	transactionsSentTotal    prometheus.Counter
+	transactionSentTotal     prometheus.Counter
 	transactionReceivedTotal prometheus.Counter
 }
 
@@ -24,7 +24,7 @@ func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
 			Name:      "block_sent_total",
 			Help:      "Total number of blocks sent by the block generator",
 		}),
-		transactionsSentTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionSentTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "blockgen",
 			Name:      "transaction_sent_total",
 			Help:      "Total number of transactions sent by the block generator",

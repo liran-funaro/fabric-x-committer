@@ -132,4 +132,10 @@ func TestBlockGen(t *testing.T) {
 		"blockgen_transaction_received_total",
 	}
 	test.CheckMetrics(t, client, url, expectedMetrics)
+
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, metrics.blockSentTotal) > 100 &&
+			test.GetMetricValue(t, metrics.transactionSentTotal) > 100 &&
+			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 100
+	}, 10*time.Second, 500*time.Millisecond)
 }
