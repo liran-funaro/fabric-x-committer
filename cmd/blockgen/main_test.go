@@ -148,7 +148,7 @@ func TestBlockGen(t *testing.T) {
 			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 1
 	}, 2*time.Second, 100*time.Millisecond)
 
-	stopSender <- nil
+	close(stopSender)
 
 	require.Eventually(t, func() bool {
 		out := cmdStdOut.String()
@@ -170,8 +170,6 @@ func TestBlockGen(t *testing.T) {
 	test.CheckMetrics(t, client, url, expectedMetrics)
 
 	require.Eventually(t, func() bool {
-		fmt.Println("transactionSentTotal", test.GetMetricValue(t, metrics.transactionSentTotal))
-		fmt.Println("transactionReceivedTotal", test.GetMetricValue(t, metrics.transactionReceivedTotal))
 		return test.GetMetricValue(t, metrics.transactionSentTotal) ==
 			test.GetMetricValue(t, metrics.transactionReceivedTotal)
 	}, 20*time.Second, 500*time.Millisecond)
