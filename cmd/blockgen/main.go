@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -24,7 +23,6 @@ var (
 // BlockgenConfig is the configuration for blockgen.
 type BlockgenConfig struct {
 	CoordinatorEndpoint *connection.Endpoint `mapstructure:"coordinator-endpoint"`
-	TxRatePerSecond     int                  `mapstructure:"tx-rate-per-second"`
 	Monitoring          *monitoring.Config   `mapstructure:"monitoring"`
 }
 
@@ -108,17 +106,8 @@ func startCmd() *cobra.Command {
 			blockGen := loadgen.StartBlockGenerator(profile)
 			errChan := make(chan error)
 
-			if profile.Block.Size > int64(c.TxRatePerSecond) {
-				return fmt.Errorf(
-					"block size (%d) cannot be larger than tx rate per second (%d)",
-					profile.Block.Size,
-					c.TxRatePerSecond,
-				)
-			}
-
 			go func() {
-				blockRate := c.TxRatePerSecond / int(profile.Block.Size)
-				errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream, blockRate)
+				errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream)
 			}()
 
 			go func() {
@@ -139,10 +128,8 @@ func sendBlockToCoordinatorService(
 	cmd *cobra.Command,
 	blockGen *loadgen.BlockStreamGenerator,
 	csStream protocoordinatorservice.Coordinator_BlockProcessingClient,
-	blockRate int,
 ) error {
 	cmd.Println("Start sending blocks to coordinator service")
-	sleepTime := time.Duration(1000/blockRate)*time.Millisecond - 1
 	for {
 		blk := <-blockGen.BlockQueue
 		if err := csStream.Send(blk); err != nil {
@@ -151,7 +138,6 @@ func sendBlockToCoordinatorService(
 
 		metrics.addToCounter(metrics.blockSentTotal, 1)
 		metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
-		time.Sleep(sleepTime)
 	}
 }
 

@@ -24,7 +24,6 @@ tx-dependencies-workers: 2
 
 blockgen:
   coordinator-endpoint: "localhost:9001"
-  tx-rate-per-second: 150000
   monitoring:
     metrics:
       enable: true
