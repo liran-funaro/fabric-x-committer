@@ -50,7 +50,7 @@ type (
 func NewManager(c *Config) *Manager {
 	metrics := newPerformanceMetrics(c.MetricsEnabled, c.PrometheusMetricsProvider)
 
-	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, len(c.IncomingTxs))
+	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, cap(c.IncomingTxs))
 	ldp := newLocalDependencyConstructor(c.IncomingTxs, outgoingTxsNodeWithLocalDep, metrics)
 
 	gdConf := &globalDepConfig{
