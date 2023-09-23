@@ -422,7 +422,11 @@ func (c *CoordinatorService) monitorQueues() {
 		case err := <-c.promErrChan:
 			// Once the prometheus server is stopped, we no longer need to monitor the queues.
 			ticker.Stop()
-			logger.Errorf("Prometheus ended with error: %s", err)
+			if err != nil {
+				logger.Errorf("Prometheus ended with error: %v", err)
+			} else {
+				logger.Info("Prometheus server has been stopped")
+			}
 			return
 		}
 

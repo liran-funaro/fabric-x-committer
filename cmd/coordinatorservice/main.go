@@ -14,7 +14,11 @@ import (
 	"google.golang.org/grpc"
 )
 
-var configPath string
+var (
+	configPath   string
+	grpcServer   *grpc.Server
+	coordService *coordinatorservice.CoordinatorService
+)
 
 func main() {
 	cmd := coordinatorserviceCmd()
@@ -71,7 +75,7 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			cmd.Println("Starting coordinatorservice")
-			coordService := coordinatorservice.NewCoordinatorService(coordConfig)
+			coordService = coordinatorservice.NewCoordinatorService(coordConfig)
 
 			sigVerErr, vcErr, err := coordService.Start()
 			if err != nil {
@@ -89,6 +93,7 @@ func startCmd() *cobra.Command {
 						coordConfig.ServerConfig.Endpoint.Port = port
 					}
 					protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
+					grpcServer = server
 					wg.Done()
 				})
 			}()

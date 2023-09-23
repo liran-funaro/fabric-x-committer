@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -49,10 +50,10 @@ coordinator-service:
           host: "localhost" # The host of the server
           port: %d        # The port of the server
   dependency-graph:
-    num-of-local-dep-constructors: 20
+    num-of-local-dep-constructors: 1
     waiting-txs-limit: 10000
-    num-of-workers-for-global-dep-manager: 20
-  per-channel-buffer-size-per-goroutine: 300
+    num-of-workers-for-global-dep-manager: 1
+  per-channel-buffer-size-per-goroutine: 10
   monitoring:
     metrics:
       enable: true
@@ -65,10 +66,22 @@ coordinator-service:
 )
 
 func TestBlockGen(t *testing.T) {
-	sigVerServerConfig, _, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-	vcServerConfig, _, vcGrpc := vcservicemock.StartMockVCService(1)
+	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
+	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
+	var coordService *coordinatorservice.CoordinatorService
+	var coordGrpcServer *grpc.Server
 
 	t.Cleanup(func() {
+		require.NoError(t, coordService.Close())
+
+		for _, sv := range mockSigVer {
+			sv.Close()
+		}
+
+		for _, vc := range mockVC {
+			vc.Close()
+		}
+
 		for _, svGrpc := range sigVerGrpc {
 			svGrpc.Stop()
 		}
@@ -77,18 +90,32 @@ func TestBlockGen(t *testing.T) {
 			svGrpc.Stop()
 		}
 
-		require.NoError(t, os.Remove(testConfigFilePath))
+		coordGrpcServer.Stop()
+
+		require.NoError(t, metrics.provider.StopServer())
 	})
 
 	output := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))
 	conf := fmt.Sprintf(configTemplate, output, sigVerServerConfig[0].Endpoint.Port, vcServerConfig[0].Endpoint.Port)
 	require.NoError(t, os.WriteFile(testConfigFilePath, []byte(conf), 0o600))
 
+	logCnf := &logging.Config{
+		Enabled:     true,
+		Level:       logging.Info,
+		Caller:      false,
+		Development: true,
+		Output:      output,
+	}
+	logging.SetupWithConfig(logCnf)
+
+	t.Cleanup(func() {
+		require.NoError(t, os.Remove(output))
+		require.NoError(t, os.Remove(testConfigFilePath))
+	})
+
 	require.NoError(t, config.ReadYamlConfigs([]string{testConfigFilePath}))
 	coordConfig := coordinatorservice.ReadConfig()
-
-	coordService := coordinatorservice.NewCoordinatorService(coordConfig)
-
+	coordService = coordinatorservice.NewCoordinatorService(coordConfig)
 	_, _, err := coordService.Start()
 	require.NoError(t, err)
 
@@ -100,6 +127,7 @@ func TestBlockGen(t *testing.T) {
 				coordConfig.ServerConfig.Endpoint.Port = port
 			}
 			protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
+			coordGrpcServer = server
 			wg.Done()
 		})
 	}()
@@ -113,6 +141,14 @@ func TestBlockGen(t *testing.T) {
 	go func() {
 		err = cmd.Execute()
 	}()
+
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, metrics.blockSentTotal) > 1 &&
+			test.GetMetricValue(t, metrics.transactionSentTotal) > 1 &&
+			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 1
+	}, 2*time.Second, 100*time.Millisecond)
+
+	stopSender <- nil
 
 	require.Eventually(t, func() bool {
 		out := cmdStdOut.String()
@@ -134,8 +170,9 @@ func TestBlockGen(t *testing.T) {
 	test.CheckMetrics(t, client, url, expectedMetrics)
 
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, metrics.blockSentTotal) > 100 &&
-			test.GetMetricValue(t, metrics.transactionSentTotal) > 100 &&
-			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 100
-	}, 10*time.Second, 500*time.Millisecond)
+		fmt.Println("transactionSentTotal", test.GetMetricValue(t, metrics.transactionSentTotal))
+		fmt.Println("transactionReceivedTotal", test.GetMetricValue(t, metrics.transactionReceivedTotal))
+		return test.GetMetricValue(t, metrics.transactionSentTotal) ==
+			test.GetMetricValue(t, metrics.transactionReceivedTotal)
+	}, 20*time.Second, 500*time.Millisecond)
 }

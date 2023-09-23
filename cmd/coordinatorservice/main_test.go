@@ -72,7 +72,13 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
 
 	t.Cleanup(func() {
+		require.NoError(t, coordService.Close())
+
 		for _, sv := range mockSigVer {
+			sv.Close()
+		}
+
+		for _, sv := range mockVC {
 			sv.Close()
 		}
 
@@ -80,13 +86,11 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 			svGrpc.Stop()
 		}
 
-		for _, sv := range mockVC {
-			sv.Close()
-		}
-
 		for _, svGrpc := range vcGrpc {
 			svGrpc.Stop()
 		}
+
+		grpcServer.Stop()
 	})
 
 	output := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))

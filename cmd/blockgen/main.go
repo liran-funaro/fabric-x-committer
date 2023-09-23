@@ -18,6 +18,7 @@ import (
 var (
 	configPath string
 	metrics    *perfMetrics
+	stopSender chan any
 )
 
 // BlockgenConfig is the configuration for blockgen.
@@ -130,14 +131,20 @@ func sendBlockToCoordinatorService(
 	csStream protocoordinatorservice.Coordinator_BlockProcessingClient,
 ) error {
 	cmd.Println("Start sending blocks to coordinator service")
+	stopSender = make(chan any)
 	for {
-		blk := <-blockGen.BlockQueue
-		if err := csStream.Send(blk); err != nil {
-			return err
-		}
+		select {
+		case <-stopSender:
+			return nil
+		default:
+			blk := <-blockGen.BlockQueue
+			if err := csStream.Send(blk); err != nil {
+				return err
+			}
 
-		metrics.addToCounter(metrics.blockSentTotal, 1)
-		metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
+			metrics.addToCounter(metrics.blockSentTotal, 1)
+			metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
+		}
 	}
 }
 
