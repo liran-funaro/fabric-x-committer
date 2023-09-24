@@ -3,6 +3,7 @@ package dependencygraph
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
@@ -108,112 +109,115 @@ func (dm *globalDependencyManager) start() {
 }
 
 func (dm *globalDependencyManager) constructDependencyGraph() {
-	var wg sync.WaitGroup
-	for txsNodeBatch := range dm.incomingTransactionsNode {
-		txsNode := txsNodeBatch.txsNode
+	m := dm.metrics
+	var txsNode []*TransactionNode
 
+	for txsNodeBatch := range dm.incomingTransactionsNode {
+		constructionStart := time.Now()
+
+		txsNode = txsNodeBatch.txsNode
 		dm.waitingTxsSlots.acquire(uint32(len(txsNode)))
-		dm.metrics.setQueueSize(
-			dm.metrics.globalDependencyGraphWaitingTxQueueSize,
+
+		m.setQueueSize(
+			m.gdgWaitingTxQueueSize,
 			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
 		)
 
-		wg.Add(len(txsNode))
+		start := time.Now()
 		dm.mu.Lock()
+		m.observe(m.gdgConstructorWaitForLockSeconds, time.Since(start))
+
+		// Step 1: Detect dependencies of each transaction with the transactions
+		//         that are already in the dependency graph. After detection,
+		//         the dependencies are added to the transactionNode. If the
+		//         transaction has no dependencies, it is added to the depFreeTxs
+		//         slice.
+		start = time.Now()
+		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
 		for _, txNode := range txsNode {
-			// Step 1: Detect dependencies of each transaction with the transactions
-			//         that are already in the dependency graph. This is done in
-			// 	       parallel as we have already detected dependencies between
-			//         transactions present in the input batch. After detection,
-			//         the dependencies are added to the transactionNode.
-			tNode := txNode
-			findAndUpdateDep := func() {
-				dependsOnTx := dm.dependencyDetector.getDependenciesOf(tNode)
-				tNode.addDependenciesAndUpdateDependents(dependsOnTx)
-				wg.Done()
+			dependsOnTx := dm.dependencyDetector.getDependenciesOf(txNode)
+			if len(dependsOnTx) > 0 {
+				txNode.addDependenciesAndUpdateDependents(dependsOnTx)
+			} else if len(txNode.dependsOnTxs) == 0 {
+				depFreeTxs = append(depFreeTxs, txNode)
 			}
-			dm.workerPool.Run(findAndUpdateDep)
 		}
-		wg.Wait()
+		m.observe(m.gdgAddTxToGraphSeconds, time.Since(start))
 
 		// Step 2: Add reads and writes of each input transaction to the global dependency
 		// 	       detector so that they can be used to detect correct dependencies
 		// 		   for future input transactions. As the local dependency detector
 		//         already has the reads and writes in required format, we are just
 		// 	       merging it with the global dependency detector.
-		mergeLocalAndGlobalDetector := func() {
-			dm.dependencyDetector.mergeWaitingTx(txsNodeBatch.localDepDetector)
-			wg.Done()
-		}
-		wg.Add(1)
-		dm.workerPool.Run(mergeLocalAndGlobalDetector)
-
-		// Step 3: Find all the transactions that are dependency free and send
-		// 	       them to the outgoingDepFreeTransactionsNode.
-		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
-		findFreeTxsAndSend := func() {
-			for _, txNode := range txsNode {
-				if txNode.isDependencyFree() {
-					depFreeTxs = append(depFreeTxs, txNode)
-				}
-			}
-
-			wg.Done()
-		}
-		wg.Add(1)
-		dm.workerPool.Run(findFreeTxsAndSend)
-
-		wg.Wait()
+		start = time.Now()
+		dm.dependencyDetector.mergeWaitingTx(txsNodeBatch.localDepDetector)
+		m.observe(m.gdgUpdateDependencyDetectorSeconds, time.Since(start))
 
 		dm.mu.Unlock()
 
+		// Step 3: Send the transactions that are free of dependencies to the
+		// 	       output channel.
 		if len(depFreeTxs) > 0 {
 			dm.outgoingDepFreeTransactionsNode <- depFreeTxs
 		}
-
-		dm.metrics.addToCounter(dm.metrics.globalDependencyGraphTransactionProcessedTotal, len(txsNode))
+		m.addToCounter(m.gdgTxProcessedTotal, len(txsNode))
+		m.observe(m.gdgConstructionSeconds, time.Since(constructionStart))
 	}
 
 	dm.workerPool.Close()
 }
 
 func (dm *globalDependencyManager) processValidatedTransactions() {
-	for txsNode := range dm.validatedTransactionsNode {
+	m := dm.metrics
+	var txsNode []*TransactionNode
+	var fullyFreedDependents []*TransactionNode
+
+	for txsNode = range dm.validatedTransactionsNode {
+		processValidatedStart := time.Now()
 		dm.waitingTxsSlots.release(uint32(len(txsNode)))
-		dm.metrics.setQueueSize(
-			dm.metrics.globalDependencyGraphWaitingTxQueueSize,
+		m.setQueueSize(
+			m.gdgWaitingTxQueueSize,
 			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
 		)
 
-		var fullyFreedDependents []*TransactionNode
-
+		start := time.Now()
 		dm.mu.Lock()
+		m.observe(m.gdgValidatedTxProcessorWaitForLockSeconds, time.Since(start))
+
 		// Step 1: Remove the validated transactions from the dependency graph.
 		//         When a transaction becomes free of dependencies, it is added
 		// 	       to the fullyFreedDependents list so that it can be sent to
 		//         the outgoingDepFreeTransactionsNode.
+		start = time.Now()
 		for _, txNode := range txsNode {
 			fullyFreedDependents = append(fullyFreedDependents, txNode.freeDependents()...)
 			dm.dependencyDetector.removeWaitingTx(txNode)
 		}
+		m.observe(m.gdgRemoveDependentsOfValidatedTxSeconds, time.Since(start))
 		dm.mu.Unlock()
 
 		// Step 2: Send the fullyFreedDependents to the outgoingDepFreeTransactionsNode.
+		start = time.Now()
 		if len(fullyFreedDependents) > 0 {
 			dm.freedTransactionsSet.add(fullyFreedDependents)
+			fullyFreedDependents = nil
 		}
+		m.observe(m.gdgAddFreedTxSeconds, time.Since(start))
 
-		dm.metrics.addToCounter(dm.metrics.globalDependencyGraphValidatedTransactionProcessedTotal, len(txsNode))
+		dm.metrics.addToCounter(dm.metrics.gdgValidatedTxProcessedTotal, len(txsNode))
+		m.observe(m.gdgValidatedTxProcessingSeconds, time.Since(processValidatedStart))
 	}
 }
 
 func (dm *globalDependencyManager) outputFreedExistingTransactions() {
 	for {
+		start := time.Now()
 		txsNode := dm.freedTransactionsSet.waitAndRemove()
 
 		if len(txsNode) > 0 {
 			dm.outgoingDepFreeTransactionsNode <- txsNode
 		}
+		dm.metrics.observe(dm.metrics.gdgOutputFreedTxSeconds, time.Since(start))
 	}
 }
 

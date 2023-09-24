@@ -52,8 +52,8 @@ func TestGlobalDependencyManager(t *testing.T) {
 		// so that the new transaction won't get a wrong dependency.
 		ensureEmptyDetector(t, dm.dependencyDetector)
 		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, metrics.globalDependencyGraphTransactionProcessedTotal) == 3 &&
-				test.GetMetricValue(t, metrics.globalDependencyGraphValidatedTransactionProcessedTotal) == 3
+			return test.GetMetricValue(t, metrics.gdgTxProcessedTotal) == 3 &&
+				test.GetMetricValue(t, metrics.gdgValidatedTxProcessedTotal) == 3
 		}, 2*time.Second, 200*time.Millisecond)
 	})
 
@@ -74,12 +74,12 @@ func TestGlobalDependencyManager(t *testing.T) {
 		// only dependency free tx is t1
 		require.Equal(t, []*TransactionNode{t1}, depFreeTxs)
 
-		require.Equal(t, float64(3), test.GetMetricValue(t, metrics.globalDependencyGraphWaitingTxQueueSize))
+		require.Equal(t, float64(3), test.GetMetricValue(t, metrics.gdgWaitingTxQueueSize))
 
 		validatedTxs <- []*TransactionNode{t1}
 
 		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, metrics.globalDependencyGraphWaitingTxQueueSize) == 2
+			return test.GetMetricValue(t, metrics.gdgWaitingTxQueueSize) == 2
 		}, 2*time.Second, 200*time.Millisecond)
 
 		depFreeTxs = <-outgoingTxs

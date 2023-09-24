@@ -83,16 +83,16 @@ func (m *Manager) Start() {
 
 func (m *Manager) monitorQueues() {
 	// TODO: make sampling time configurable
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	for {
 		<-ticker.C
 
 		m.metrics.setQueueSize(
-			m.metrics.localDependencyGraphInputTxBatchQueueSize,
+			m.metrics.ldgInputTxBatchQueueSize,
 			len(m.localDepConstructor.incomingTransactions),
 		)
 		m.metrics.setQueueSize(
-			m.metrics.globalDependencyGraphInputTxBatchQueueSize,
+			m.metrics.gdgInputTxBatchQueueSize,
 			len(m.globalDepManager.incomingTransactionsNode),
 		)
 	}

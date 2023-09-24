@@ -117,7 +117,7 @@ func (p *localDependencyConstructor) sendTxsNodeToGlobalDependencyManager(id uin
 		p.orderEnforcer.Wait()
 	}
 
-	p.metrics.addToCounter(p.metrics.localDependencyGraphTransactionProcessedTotal, len(txsNode.txsNode))
+	p.metrics.addToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode.txsNode))
 	p.outgoingTransactionsNode <- txsNode
 
 	logger.Debugf("Constructed dependencies for txs with id %d", id)

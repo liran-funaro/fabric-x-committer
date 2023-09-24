@@ -415,7 +415,7 @@ func sendTxsStatus(
 
 func (c *CoordinatorService) monitorQueues() {
 	// TODO: make sampling time configurable
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:

@@ -84,7 +84,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
 		}
 
 		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, env.metrics.localDependencyGraphTransactionProcessedTotal) == 4
+			return test.GetMetricValue(t, env.metrics.ldgTxProcessedTotal) == 4
 		}, 2*time.Second, 200*time.Millisecond)
 	})
 
