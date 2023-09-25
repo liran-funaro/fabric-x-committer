@@ -67,9 +67,11 @@ func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
 // so that getDependenciesOf() does not consider them when calculating dependencies.
 // This method is not thread-safe.
-func (d *dependencyDetector) removeWaitingTx(txNode *TransactionNode) {
-	d.readKeyToWaitingTxs.remove(txNode.rwKeys.reads, txNode)
-	d.writeKeyToWaitingTxs.remove(txNode.rwKeys.writes, txNode)
+func (d *dependencyDetector) removeWaitingTx(txsNode []*TransactionNode) {
+	for _, txNode := range txsNode {
+		d.readKeyToWaitingTxs.remove(txNode.rwKeys.reads, txNode)
+		d.writeKeyToWaitingTxs.remove(txNode.rwKeys.writes, txNode)
+	}
 }
 
 func (keyToTx keyToTransactions) add(keys []string, tx *TransactionNode) {
@@ -80,15 +82,16 @@ func (keyToTx keyToTransactions) add(keys []string, tx *TransactionNode) {
 			keyToTx[key] = tList
 		}
 
-		tList[tx] = struct{}{}
+		tList[tx] = nil
 	}
 }
 
 func (keyToTx keyToTransactions) remove(keys []string, tx *TransactionNode) {
 	for _, k := range keys {
-		delete(keyToTx[k], tx)
-		if len(keyToTx[k]) == 0 {
+		if len(keyToTx[k]) == 1 {
 			delete(keyToTx, k)
+		} else {
+			delete(keyToTx[k], tx)
 		}
 	}
 }

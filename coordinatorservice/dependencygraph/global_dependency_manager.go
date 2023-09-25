@@ -123,6 +123,8 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
 		)
 
+		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
+
 		start := time.Now()
 		dm.mu.Lock()
 		m.observe(m.gdgConstructorWaitForLockSeconds, time.Since(start))
@@ -133,7 +135,6 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 		//         transaction has no dependencies, it is added to the depFreeTxs
 		//         slice.
 		start = time.Now()
-		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
 		for _, txNode := range txsNode {
 			dependsOnTx := dm.dependencyDetector.getDependenciesOf(txNode)
 			if len(dependsOnTx) > 0 {
@@ -191,8 +192,8 @@ func (dm *globalDependencyManager) processValidatedTransactions() {
 		start = time.Now()
 		for _, txNode := range txsNode {
 			fullyFreedDependents = append(fullyFreedDependents, txNode.freeDependents()...)
-			dm.dependencyDetector.removeWaitingTx(txNode)
 		}
+		dm.dependencyDetector.removeWaitingTx(txsNode)
 		m.observe(m.gdgRemoveDependentsOfValidatedTxSeconds, time.Since(start))
 		dm.mu.Unlock()
 

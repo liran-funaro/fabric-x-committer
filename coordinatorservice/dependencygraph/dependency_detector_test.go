@@ -90,10 +90,10 @@ func TestDependencyDetector(t *testing.T) {
 	dd.addWaitingTx(tx8Node)
 
 	// remove 4 transactions from the dependency detector.
-	dd.removeWaitingTx(tx1Node)
-	dd.removeWaitingTx(tx2Node)
-	dd.removeWaitingTx(tx3Node)
-	dd.removeWaitingTx(tx4Node)
+	dd.removeWaitingTx([]*TransactionNode{tx1Node})
+	dd.removeWaitingTx([]*TransactionNode{tx2Node})
+	dd.removeWaitingTx([]*TransactionNode{tx3Node})
+	dd.removeWaitingTx([]*TransactionNode{tx4Node})
 
 	// tx9Node would have been dependent on all previous transactions if they were not removed.
 	// As we have removed tx1 to tx4, tx9Node should only be dependent on tx5, tx6, tx7, and tx8.
@@ -108,11 +108,11 @@ func TestDependencyDetector(t *testing.T) {
 	require.Equal(t, expectedDependsOnTx, dependsOnTx)
 
 	// remove all remaining transactions from the dependency detector.
-	dd.removeWaitingTx(tx5Node)
-	dd.removeWaitingTx(tx6Node)
-	dd.removeWaitingTx(tx7Node)
-	dd.removeWaitingTx(tx8Node)
-	dd.removeWaitingTx(tx9Node)
+	dd.removeWaitingTx([]*TransactionNode{tx5Node})
+	dd.removeWaitingTx([]*TransactionNode{tx6Node})
+	dd.removeWaitingTx([]*TransactionNode{tx7Node})
+	dd.removeWaitingTx([]*TransactionNode{tx8Node})
+	dd.removeWaitingTx([]*TransactionNode{tx9Node})
 
 	// tx10Node would have been dependent on all previous transactions if they were not removed.
 	// As we have removed tx1 to tx9, tx9Node should not be dependent on any transaction.
