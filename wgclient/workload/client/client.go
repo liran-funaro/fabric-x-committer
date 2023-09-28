@@ -179,7 +179,7 @@ func (t *metricTracker) RegisterEvent(e *workload.Event) {
 		}
 	case workload.EventReceived:
 		for _, status := range e.StatusBatch.TxsValidationStatus {
-			t.TxReceivedAt(token.TxSeqNum{status.BlockNum, status.TxNum}, status.Status, e.Timestamp)
+			t.TxReceivedAt(token.TxSeqNum{status.BlockNum, status.TxNum}, status.Status.String(), e.Timestamp)
 		}
 	}
 }

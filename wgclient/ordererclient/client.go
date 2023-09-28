@@ -7,7 +7,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/deliver"
@@ -25,6 +24,10 @@ type OrdererSubmitter interface {
 
 	//CloseStreamsAndWait waits for all acks to be received and closes all streams
 	CloseStreamsAndWait() error
+}
+
+type OrdererListener interface {
+	RunDeliverOutputListener(onReceive func(*common.Block)) error
 }
 
 type ClientInitOptions struct {
@@ -50,7 +53,7 @@ type ClientInitOptions struct {
 // 1. the orderer where it sends transactions to be ordered, and
 // 2. the delivery service where it listens for committed blocks
 type Client struct {
-	listener        sidecar.DeliverListener
+	listener        OrdererListener
 	submitter       OrdererSubmitter
 	rateLimiter     ratelimit.Limiter
 	envelopeCreator EnvelopeCreator
@@ -68,7 +71,7 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 
 	rateLimiter := limiter.New(opts.RemoteControllerListener)
 
-	var listener sidecar.DeliverListener
+	var listener OrdererListener
 	var err error
 	if opts.DeliverEndpoint != nil {
 		listener, err = deliver.NewListener(&deliver.ConnectionOpts{

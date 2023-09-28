@@ -1,4 +1,4 @@
-package sidecar
+package config
 
 import (
 	"time"
@@ -6,14 +6,15 @@ import (
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 type SidecarConfig struct {
-	Monitoring monitoring.Config        `mapstructure:"monitoring"`
-	Server     *connection.ServerConfig `mapstructure:"server"`
-	Orderer    *OrdererClientConfig     `mapstructure:"orderer"`
-	Committer  *CommitterClientConfig   `mapstructure:"committer"`
+	Metrics   *metrics.Config          `mapstructure:"metrics"`
+	Server    *connection.ServerConfig `mapstructure:"server"`
+	Orderer   *OrdererClientConfig     `mapstructure:"orderer"`
+	Committer *CommitterClientConfig   `mapstructure:"committer"`
+	Ledger    *LedgerConfig            `mapstructure:"ledger"`
 }
 
 type OrdererClientConfig struct {
@@ -23,9 +24,11 @@ type OrdererClientConfig struct {
 	Reconnect                time.Duration                       `mapstructure:"reconnect"`
 }
 type CommitterClientConfig struct {
-	Endpoint              connection.Endpoint `mapstructure:"endpoint"`
-	OutputChannelCapacity int                 `mapstructure:"output-channel-capacity"`
-	LedgerPath            string              `mapstructure:"ledger-path"`
+	Endpoint connection.Endpoint `mapstructure:"endpoint"`
+}
+
+type LedgerConfig struct {
+	Path string `mapstructure:"path"`
 }
 
 func ReadConfig() SidecarConfig {
@@ -37,8 +40,8 @@ func ReadConfig() SidecarConfig {
 }
 
 func init() {
-	viper.SetDefault("sidecar.server.endpoint", ":1234")
-	viper.SetDefault("sidecar.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("sidecar.server.endpoint", ":8832")
+	viper.SetDefault("sidecar.metrics.endpoint", ":2112")
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
 	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
@@ -46,5 +49,6 @@ func init() {
 
 	viper.SetDefault("sidecar.committer.endpoint", ":5002")
 	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
-	viper.SetDefault("sidecar.committer.ledger-path", "./ledger/")
+
+	viper.SetDefault("sidecar.ledger.path", "./ledger/")
 }

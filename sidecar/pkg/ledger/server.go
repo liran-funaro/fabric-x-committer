@@ -1,4 +1,4 @@
-package main
+package ledger
 
 import (
 	"io"
@@ -14,25 +14,26 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
-type ledgerDeliverServer struct {
+var logger = logging.New("ledger")
+
+type LedgerDeliverServer struct {
 	ab.UnimplementedAtomicBroadcastServer
-	streams   []ab.AtomicBroadcast_DeliverServer
 	mu        *sync.RWMutex
 	input     chan *common.Block
 	ledger    blockledger.ReadWriter
 	channelId string
 }
 
-func newLedgerDeliverServer(channelId, ledgerDir string) deliverServer {
+func NewLedgerDeliverServer(channelId, ledgerDir string) *LedgerDeliverServer {
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	utils.Must(err)
 	ledger, err := factory.GetOrCreate(channelId)
 	utils.Must(err)
-	i := &ledgerDeliverServer{
-		streams:   make([]ab.AtomicBroadcast_DeliverServer, 0),
+	srv := &LedgerDeliverServer{
 		mu:        &sync.RWMutex{},
 		input:     make(chan *common.Block, 100),
 		ledger:    ledger,
@@ -40,21 +41,20 @@ func newLedgerDeliverServer(channelId, ledgerDir string) deliverServer {
 	}
 
 	go func() {
-		for {
-			commonBlock := <-i.input
+		for commonBlock := range srv.input {
 			logger.Debugf("Appending block %d to ledger.\n", commonBlock.Header.Number)
-			utils.Must(i.ledger.Append(commonBlock))
+			utils.Must(srv.ledger.Append(commonBlock))
 			logger.Debugf("Appended block %d to ledger.\n", commonBlock.Header.Number)
 		}
 	}()
-	return i
+	return srv
 }
 
-func (i *ledgerDeliverServer) Input() chan<- *common.Block {
+func (i *LedgerDeliverServer) Input() chan<- *common.Block {
 	return i.input
 }
 
-func (i *ledgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
+func (i *LedgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
 	logger.Infof("Starting new deliver loop for %s", addr)
 	for {
@@ -89,7 +89,17 @@ func (i *ledgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	}
 }
 
-func (i *ledgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
+func (i *LedgerDeliverServer) DeliverFiltered(server peer.Deliver_DeliverFilteredServer) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (i *LedgerDeliverServer) DeliverWithPrivateData(server peer.Deliver_DeliverWithPrivateDataServer) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (i *LedgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
 
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
@@ -127,7 +137,7 @@ func (i *ledgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, enve
 	return common.Status_SUCCESS, nil
 }
 
-func (i *ledgerDeliverServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
+func (i *LedgerDeliverServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
 	seekInfo := &ab.SeekInfo{}
 	if err := proto.Unmarshal(payload, seekInfo); err != nil {
 		return nil, 0, errors.New("malformed seekInfo payload")

@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
@@ -26,7 +26,7 @@ func (t *metricTracker) BlockReceived(block *common.Block) {
 	statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
 	for i, data := range block.Data.Data {
 		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {
-			t.TxReceivedAt(txId(channelHeader.TxId), sidecar.StatusInverseMap[statusCodes[i]], blockReceivedAt)
+			t.TxReceivedAt(txId(channelHeader.TxId), aggregator.StatusInverseMap[statusCodes[i]].String(), blockReceivedAt)
 		}
 	}
 }

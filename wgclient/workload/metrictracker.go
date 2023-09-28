@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -63,7 +62,7 @@ func (t *MetricTracker) TxSentAt(txId latency.TxTracingId, timestamp time.Time) 
 	t.metrics.generatorRequests.Add(1)
 	t.metrics.requestTracer.StartAt(txId, timestamp)
 }
-func (t *MetricTracker) TxReceivedAt(txId latency.TxTracingId, status coordinatorservice.Status, timestamp time.Time) {
-	t.metrics.requestTracer.EndAt(txId, timestamp, attribute.String(StatusLabel, status.String()))
-	t.metrics.generatorResponses.WithLabelValues(status.String()).Add(1)
+func (t *MetricTracker) TxReceivedAt(txId latency.TxTracingId, status string, timestamp time.Time) {
+	t.metrics.requestTracer.EndAt(txId, timestamp, attribute.String(StatusLabel, status))
+	t.metrics.generatorResponses.WithLabelValues(status).Add(1)
 }

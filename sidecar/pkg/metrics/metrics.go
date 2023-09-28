@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
@@ -11,8 +10,6 @@ const TxIdLabel = "txid"
 
 type Metrics struct {
 	Enabled bool
-
-	RequestTracer latency.AppTracer
 
 	TxStatusAggregatorSize prometheus.Gauge
 
@@ -33,14 +30,12 @@ func (p *Provider) ComponentName() string {
 func (p *Provider) LatencyLabels() []string {
 	return []string{}
 }
-func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics.AppMetrics {
+func (p *Provider) NewMonitoring(enabled bool) metrics.AppMetrics {
 	if !enabled {
 		return &Metrics{Enabled: false}
 	}
 	return &Metrics{
 		Enabled: true,
-
-		RequestTracer: tracer,
 
 		TxStatusAggregatorSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "tx_status_aggregator",
