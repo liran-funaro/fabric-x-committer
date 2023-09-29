@@ -210,7 +210,7 @@ func TestCoordinatorService(t *testing.T) {
 	})
 
 	t.Run("out of order block", func(t *testing.T) {
-		// next expected block is 2, but sending 4 to 510
+		// next expected block is 2, but sending 4 to 600
 		lastBlockNum := 600
 		for i := 4; i <= lastBlockNum; i++ {
 			err := env.csStream.Send(&protoblocktx.Block{
@@ -225,11 +225,16 @@ func TestCoordinatorService(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// send block 2 which is the next expected block
-		env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
-			Number: 2,
-			Txs:    []*protoblocktx.Tx{{Id: "tx2"}},
-		}
+		require.Never(t, func() bool {
+			return test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal) > 10
+		}, 5*time.Second, 100*time.Millisecond)
+
+		// send block 2 which is the next expected block but an empty block
+		err := env.csStream.Send(&protoblocktx.Block{
+			Number: uint64(2),
+			Txs:    []*protoblocktx.Tx{},
+		})
+		require.NoError(t, err)
 
 		// send block 3 which is the next expected block
 		env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
@@ -243,7 +248,7 @@ func TestCoordinatorService(t *testing.T) {
 
 		numValid := 0
 		numInvalid := 0
-		for i := 2; i <= lastBlockNum; i++ {
+		for i := 3; i <= lastBlockNum; i++ {
 			txStatus, err := env.csStream.Recv()
 			require.NoError(t, err)
 			if txStatus.TxsValidationStatus[0].Status != protoblocktx.Status_COMMITTED {
@@ -252,12 +257,12 @@ func TestCoordinatorService(t *testing.T) {
 				numValid++
 			}
 		}
-		require.Equal(t, lastBlockNum-2, numValid)
+		require.Equal(t, lastBlockNum-3, numValid)
 		require.Equal(t, 1, numInvalid)
 
 		require.Equal(
 			t,
-			float64(lastBlockNum-1), // block 4 to block 600 + old 2 blocks
+			float64(lastBlockNum-2), // block 4 to block 600 + old 1 blocks as block 2 is empty
 			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 		)
 		require.Equal(

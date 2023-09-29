@@ -261,6 +261,11 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 			return err
 		}
 
+		if len(block.Txs) == 0 {
+			c.queues.blockWithValidSignTxs <- block
+			continue
+		}
+
 		c.metrics.transactionReceived(len(block.Txs))
 
 		c.orderEnforcer.L.Lock()
