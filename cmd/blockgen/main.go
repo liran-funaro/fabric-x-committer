@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -17,14 +18,16 @@ import (
 
 var (
 	configPath string
+	component  string
 	metrics    *perfMetrics
 	stopSender chan any
 )
 
 // BlockgenConfig is the configuration for blockgen.
 type BlockgenConfig struct {
-	CoordinatorEndpoint *connection.Endpoint `mapstructure:"coordinator-endpoint"`
-	Monitoring          *monitoring.Config   `mapstructure:"monitoring"`
+	CoordinatorEndpoint *connection.Endpoint   `mapstructure:"coordinator-endpoint"`
+	VCServiceEndpoints  []*connection.Endpoint `mapstructure:"vcservice-endpoints"`
+	Monitoring          *monitoring.Config     `mapstructure:"monitoring"`
 }
 
 func main() {
@@ -75,6 +78,10 @@ func startCmd() *cobra.Command {
 				return errors.New("--configs flag must be set to the path of configuration file")
 			}
 
+			if component == "" {
+				return errors.New("--component flag must be set to the component name for which load is generated")
+			}
+
 			c, err := readConfig()
 			if err != nil {
 				return err
@@ -92,37 +99,87 @@ func startCmd() *cobra.Command {
 				}
 			}()
 
-			conn, err := connection.Connect(connection.NewDialConfig(*c.CoordinatorEndpoint))
-			if err != nil {
-				return err
-			}
-
-			client := protocoordinatorservice.NewCoordinatorClient(conn)
-			csStream, err := client.BlockProcessing(context.Background())
-			if err != nil {
-				return err
-			}
-
 			profile := loadgen.LoadProfileFromYaml(configPath)
 			blockGen := loadgen.StartBlockGenerator(profile)
-			errChan := make(chan error)
 
-			go func() {
-				errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream)
-			}()
+			switch component {
+			case "coordinator":
+				err = generateLoadForCoordinatorService(cmd, c, blockGen)
+			case "vcservice":
+				err = generateLoadForVCService(cmd, c, blockGen)
+			default:
+				err = fmt.Errorf("invalid component name: %s", component)
+			}
 
-			go func() {
-				errChan <- receiveStatusFromCoordinatorService(cmd, csStream)
-			}()
-
-			cmd.Println("blockgen started")
-
-			return <-errChan
+			return err
 		},
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cmd.PersistentFlags().StringVar(&component, "component", "", "set the component name for which load is generated")
 	return cmd
+}
+
+func generateLoadForCoordinatorService(
+	cmd *cobra.Command,
+	c *BlockgenConfig,
+	blockGen *loadgen.BlockStreamGenerator,
+) error {
+	conn, err := connection.Connect(connection.NewDialConfig(*c.CoordinatorEndpoint))
+	if err != nil {
+		return err
+	}
+
+	client := protocoordinatorservice.NewCoordinatorClient(conn)
+	csStream, err := client.BlockProcessing(context.Background())
+	if err != nil {
+		return err
+	}
+
+	errChan := make(chan error)
+
+	go func() {
+		errChan <- sendBlockToCoordinatorService(cmd, blockGen, csStream)
+	}()
+
+	go func() {
+		errChan <- receiveStatusFromCoordinatorService(cmd, csStream)
+	}()
+
+	cmd.Println("blockgen started")
+
+	return <-errChan
+}
+
+func generateLoadForVCService(
+	cmd *cobra.Command,
+	c *BlockgenConfig,
+	blockGen *loadgen.BlockStreamGenerator,
+) error {
+	conn, err := connection.Connect(connection.NewDialConfig(*c.VCServiceEndpoints[0]))
+	if err != nil {
+		return err
+	}
+
+	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+	csStream, err := client.StartValidateAndCommitStream(context.Background())
+	if err != nil {
+		return err
+	}
+
+	errChan := make(chan error)
+
+	go func() {
+		errChan <- sendTransactionsToVCService(cmd, blockGen, csStream)
+	}()
+
+	go func() {
+		errChan <- receiveStatusFromVCService(cmd, csStream)
+	}()
+
+	cmd.Println("blockgen started")
+
+	return <-errChan
 }
 
 func sendBlockToCoordinatorService(
@@ -160,6 +217,54 @@ func receiveStatusFromCoordinatorService(
 		}
 
 		metrics.addToCounter(metrics.transactionReceivedTotal, len(txStatus.TxsValidationStatus))
+	}
+}
+
+func sendTransactionsToVCService(
+	cmd *cobra.Command,
+	blockGen *loadgen.BlockStreamGenerator,
+	csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+) error {
+	cmd.Println("Start sending transactions to vc service")
+	stopSender = make(chan any)
+	for {
+		select {
+		case <-stopSender:
+			return nil
+		default:
+			blk := <-blockGen.BlockQueue
+
+			txBatch := &protovcservice.TransactionBatch{}
+			for _, tx := range blk.Txs {
+				txBatch.Transactions = append(
+					txBatch.Transactions,
+					&protovcservice.Transaction{
+						ID:         tx.Id,
+						Namespaces: tx.Namespaces,
+					},
+				)
+			}
+			if err := csStream.Send(txBatch); err != nil {
+				return err
+			}
+
+			metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
+		}
+	}
+}
+
+func receiveStatusFromVCService(
+	cmd *cobra.Command,
+	csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+) error {
+	cmd.Println("Start receiving status from vc service")
+	for {
+		txStatus, err := csStream.Recv()
+		if err != nil {
+			return err
+		}
+
+		metrics.addToCounter(metrics.transactionReceivedTotal, len(txStatus.Status))
 	}
 }
 

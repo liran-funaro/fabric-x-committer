@@ -23,7 +23,15 @@ tx-sign-workers: 3
 tx-dependencies-workers: 2
 
 blockgen:
+  # when testing coordinator performance, set only the coordinator endpoint.
+  # vcservice-endpoints are not needed while testing the coordinator endpoint.
+  # The block will be submitted directly to the coordinator which will distribute
+  # to vcserice.
   coordinator-endpoint: "localhost:9001"
+  # when testing vcservice performance as a standalone component, set only vcservice-endpoints.
+  # No need to set coordinator-endpoint while testing the performance of vcservice alone.
+  vcservice-endpoints:
+    - "localhost:9002"
   monitoring:
     metrics:
       enable: true
