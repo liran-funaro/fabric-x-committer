@@ -259,3 +259,16 @@ func TestGenDependentTx(t *testing.T) {
 	}
 	require.InDelta(t, 0.4, float64(sum)/float64(len(txs)), 1e-3)
 }
+
+func TestBlindWriteWithValue(t *testing.T) {
+	p := defaultProfile(1)
+	p.Transaction.BlindWriteValueSize = 32
+	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
+
+	c := StartTxGenerator(p)
+	tx := <-c.TxQueue
+	require.Len(t, tx.Namespaces[0].BlindWrites, 2)
+	for _, v := range tx.Namespaces[0].BlindWrites {
+		require.Len(t, v.Value, 32)
+	}
+}

@@ -9,17 +9,19 @@ import (
 
 // IndependentTxGenerator generates a new valid TX given key generators.
 type IndependentTxGenerator struct {
-	ReadOnlyKeyGenerator   Generator[[][]byte]
-	ReadWriteKeyGenerator  Generator[[][]byte]
-	BlindWriteKeyGenerator Generator[[][]byte]
+	ReadOnlyKeyGenerator     Generator[[][]byte]
+	ReadWriteKeyGenerator    Generator[[][]byte]
+	BlindWriteKeyGenerator   Generator[[][]byte]
+	BlindWriteValueGenerator Generator[[][]byte]
 }
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(rnd *rand.Rand, profile *TransactionProfile) *IndependentTxGenerator {
 	return &IndependentTxGenerator{
-		ReadOnlyKeyGenerator:   keyGenerator(rnd, profile.KeySize, profile.ReadOnlyCount),
-		ReadWriteKeyGenerator:  keyGenerator(rnd, profile.KeySize, profile.ReadWriteCount),
-		BlindWriteKeyGenerator: keyGenerator(rnd, profile.KeySize, profile.BlindWriteCount),
+		ReadOnlyKeyGenerator:     keyGenerator(rnd, profile.KeySize, profile.ReadOnlyCount),
+		ReadWriteKeyGenerator:    keyGenerator(rnd, profile.KeySize, profile.ReadWriteCount),
+		BlindWriteKeyGenerator:   keyGenerator(rnd, profile.KeySize, profile.BlindWriteCount),
+		BlindWriteValueGenerator: keyGenerator(rnd, profile.BlindWriteValueSize, profile.BlindWriteCount),
 	}
 }
 
@@ -27,7 +29,8 @@ func newIndependentTxGenerator(rnd *rand.Rand, profile *TransactionProfile) *Ind
 func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
-	blindWrite := g.BlindWriteKeyGenerator.Next()
+	blindWriteKey := g.BlindWriteKeyGenerator.Next()
+	blindWriteValue := g.BlindWriteKeyGenerator.Next()
 
 	tx := &protoblocktx.Tx{
 		Id: uuid.New().String(),
@@ -36,7 +39,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 				NsId:        0,
 				ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
 				ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),
-				BlindWrites: make([]*protoblocktx.Write, len(blindWrite)),
+				BlindWrites: make([]*protoblocktx.Write, len(blindWriteKey)),
 			},
 		},
 	}
@@ -49,8 +52,11 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 		tx.Namespaces[0].ReadWrites[i] = &protoblocktx.ReadWrite{Key: key}
 	}
 
-	for i, key := range blindWrite {
-		tx.Namespaces[0].BlindWrites[i] = &protoblocktx.Write{Key: key}
+	for i, key := range blindWriteKey {
+		tx.Namespaces[0].BlindWrites[i] = &protoblocktx.Write{
+			Key:   key,
+			Value: blindWriteValue[i],
+		}
 	}
 
 	return tx
