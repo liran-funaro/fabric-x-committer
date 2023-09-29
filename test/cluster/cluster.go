@@ -17,8 +17,14 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	signer_v1 "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test/v1"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
+
+type txSigner interface {
+	SignTx([]token.SerialNumber, []token.TxOutput) (signature.Signature, error)
+}
 
 type Cluster struct {
 	CoordinatorProcess   *CoordinatorProcess
@@ -28,7 +34,7 @@ type Cluster struct {
 	PubKey               []byte
 	PvtKey               []byte
 	CoordinatorClient    coordinatorservice.CoordinatorClient
-	TxSigner             sigverification_test.TxSigner
+	TxSigner             txSigner
 
 	ClusterConfig *ClusterConfig
 }
@@ -74,9 +80,10 @@ func NewCluster(clusterConfig *ClusterConfig) *Cluster {
 
 	c.ClusterConfig = clusterConfig
 
-	txSigner, err := sigverification_test.GetSignatureFactory(c.ClusterConfig.SigProfile.Scheme).NewSigner(c.PvtKey)
+	signerFact, err := signer_v1.GetSignerFactory(c.ClusterConfig.SigProfile.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	c.TxSigner = txSigner
+	c.TxSigner, err = signerFact.NewSigner(c.PvtKey)
+	Expect(err).NotTo(HaveOccurred())
 
 	return c
 }

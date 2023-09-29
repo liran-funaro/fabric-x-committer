@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/gocarina/gocsv"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
@@ -34,13 +35,13 @@ type Result struct {
 	TxId           string // blockId-TxId
 	SubmitTime     time.Time
 	RecvTime       time.Time
-	ExpectedStatus coordinatorservice.Status
-	ActualStatus   coordinatorservice.Status
+	ExpectedStatus token.Status
+	ActualStatus   token.Status
 	Latency        time.Duration
 }
 
 type ExpectedResult struct {
-	Reason coordinatorservice.Status
+	Reason token.Status
 }
 
 type EventStore struct {
@@ -83,14 +84,13 @@ func Validate(path string) {
 	cnt := 0
 	for b := range blockQueue {
 		for _, r := range b.ExpectedResults {
-			txid := fmt.Sprintf("%d-%d", r.BlockNum, r.TxNum)
 			res := &Result{
-				TxId:           txid,
+				TxId:           r.TxId,
 				ExpectedStatus: r.Status,
 			}
 
 			results = append(results, res)
-			lookup[txid] = cnt
+			lookup[r.TxId] = cnt
 			cnt++
 		}
 	}
@@ -105,6 +105,7 @@ func Validate(path string) {
 			// let's walk through all tx in a block submitted event
 			for i := 0; i < event.SubmittedBlock.Size; i++ {
 				txid := fmt.Sprintf("%d-%d", event.SubmittedBlock.Id, i)
+
 				idx, ok := lookup[txid]
 				if !ok {
 					panic("ahhh")
@@ -121,7 +122,7 @@ func Validate(path string) {
 		} else if event.Msg == EventReceived {
 
 			for _, s := range event.StatusBatch.GetTxsValidationStatus() {
-				txid := fmt.Sprintf("%d-%d", s.BlockNum, s.TxNum)
+				txid := s.TxId
 				idx, ok := lookup[txid]
 				if !ok {
 					panic("ahhh received not found " + txid)

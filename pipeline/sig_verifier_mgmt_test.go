@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	workload "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/v1"
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
@@ -40,7 +41,7 @@ func TestSigVerifiersMgr(t *testing.T) {
 	assert.NoError(t, err)
 	defer mgr.stop()
 
-	bg := testutil.NewBlockGenerator(2, 1, false)
+	bg := workload.NewBlockGenerator(2, 1, false)
 	defer bg.Stop()
 
 	wg := sync.WaitGroup{}

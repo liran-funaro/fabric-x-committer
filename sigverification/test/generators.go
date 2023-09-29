@@ -6,21 +6,21 @@ import (
 	"encoding/binary"
 	"sync/atomic"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
 
 // Tx
 
 type TxWithStatus struct {
-	Tx     *token.Tx
-	Status coordinatorservice.Status
+	Tx     *protoblocktx.Tx
+	Status protoblocktx.Status
 }
 type TxGenerator interface {
 	Next() *TxWithStatus
@@ -33,7 +33,7 @@ type ValidTxGenerator struct {
 }
 
 type TxInputGenerator interface {
-	Next() []token.SerialNumber
+	Next() []tokenutil.SerialNumber
 }
 
 type TxGeneratorParams struct {
@@ -56,13 +56,27 @@ func NewValidTxGenerator(params *TxGeneratorParams) *ValidTxGenerator {
 }
 
 func (g *ValidTxGenerator) Next() *TxWithStatus {
-	tx := &token.Tx{
-		SerialNumbers: g.TxSerialNumberGenerator.Next(),
-		Outputs:       g.TxOutputGenerator.Next(),
+
+	tx := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{NsId: 1}},
 	}
 
-	tx.Signature, _ = g.TxSigner.SignTx(tx.SerialNumbers, tx.Outputs)
-	return &TxWithStatus{tx, coordinatorservice.Status_VALID}
+	// attach all serial numbers as readWrites
+	for _, sn := range g.TxSerialNumberGenerator.Next() {
+		tx.Namespaces[0].ReadWrites = append(tx.Namespaces[0].ReadWrites, &protoblocktx.ReadWrite{
+			Key: sn,
+		})
+	}
+
+	// attach all outputs as blind writes
+	for _, out := range g.TxOutputGenerator.Next() {
+		tx.Namespaces[0].BlindWrites = append(tx.Namespaces[0].BlindWrites, &protoblocktx.Write{
+			Key: out,
+		})
+	}
+
+	tx.Signature, _ = g.TxSigner.SignTx(tx)
+	return &TxWithStatus{tx, protoblocktx.Status_COMMITTED}
 }
 
 func Reverse(s []byte) {
@@ -85,7 +99,7 @@ func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGen
 
 	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
 	serialNumberGenerator := test.NewFastByteArrayGenerator(60)
-	txInputValueGenerator := func() token.SerialNumber {
+	txInputValueGenerator := func() tokenutil.SerialNumber {
 		return serialNumberGenerator.NextWithSize(serialNumberSizeGenerator.Next())
 	}
 
@@ -95,7 +109,7 @@ func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGen
 	}
 }
 
-func (g *SomeTxInputGenerator) Next() []token.SerialNumber {
+func (g *SomeTxInputGenerator) Next() []tokenutil.SerialNumber {
 	return g.serialNumberGenerator.NextWithSize(g.txSizeGenerator.Next())
 }
 
@@ -108,9 +122,9 @@ func NewLinearTxInputGenerator(sizes []test.DiscreteValue) *LinearTxInputGenerat
 	return &LinearTxInputGenerator{sizeGenerator: test.NewPositiveIntGenerator(test.Discrete(sizes), 100)}
 }
 
-func (g *LinearTxInputGenerator) Next() []token.SerialNumber {
+func (g *LinearTxInputGenerator) Next() []tokenutil.SerialNumber {
 	count := g.sizeGenerator.Next()
-	serialNumbers := make([]token.SerialNumber, count)
+	serialNumbers := make([]tokenutil.SerialNumber, count)
 
 	h := sha256.New()
 	b := make([]byte, 8)
@@ -227,7 +241,7 @@ func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 	return batch
 }
 
-type R = token.SerialNumber
+type R = tokenutil.SerialNumber
 
 // Code identical to test.FastByteArrayGenerator
 type FastTxInputSliceGenerator struct {

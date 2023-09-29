@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
@@ -74,13 +74,10 @@ func createBlock(blockNo, numTx uint64, txQueue chan *sigverification_test.TxWit
 	for i := uint64(0); i < numTx; i++ {
 		tx := <-txQueue
 
-		txSeqNum := token.TxSeqNum{BlkNum: blockNo, TxNum: i}
-
 		b.Block.Txs[i] = tx.Tx
 		b.ExpectedResults[i] = &coordinatorservice.TxValidationStatus{
-			BlockNum: txSeqNum.BlkNum,
-			TxNum:    txSeqNum.TxNum,
-			Status:   tx.Status,
+			TxId:   tx.Tx.Id,
+			Status: tx.Status,
 		}
 	}
 

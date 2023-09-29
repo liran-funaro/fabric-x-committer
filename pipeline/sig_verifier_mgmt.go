@@ -224,10 +224,10 @@ func (v *sigVerifier) startRequestSenderRoutine() {
 				err := v.stream.Send(&sigverification.RequestBatch{Requests: reqs})
 				if v.metrics.Enabled {
 					for _, req := range reqs {
-						txSeqNum := token.TxSeqNum{req.BlockNum, req.TxNum}
+						txSeqNum := token.TxSeqNum{BlkNum: req.BlockNum, TxNum: req.TxNum}
 						v.metrics.SigVerifierMgrSendChLength.Set(len(v.sendCh))
-						v.metrics.RequestTracer.AddEventAt(txSeqNum, "Sending request to sigverifier", before)
-						v.metrics.RequestTracer.AddEvent(txSeqNum, "Sent request to sigverifier")
+						v.metrics.RequestTracer.AddEventAt(txSeqNum.String(), "Sending request to sigverifier", before)
+						v.metrics.RequestTracer.AddEvent(txSeqNum.String(), "Sent request to sigverifier")
 					}
 				}
 				if err != nil {

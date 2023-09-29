@@ -1,6 +1,8 @@
 package serverconfig
 
 import (
+	"fmt"
+
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -25,7 +27,7 @@ func ReadConfig() SigVerificationConfig {
 }
 
 func init() {
-	viper.SetDefault("sig-verification.server.endpoint", ":5000")
+	viper.SetDefault("sig-verification.server.endpoint", fmt.Sprintf(":%d", config.DefaultGRPCPortSigVerifier))
 	viper.SetDefault("sig-verification.monitoring.metrics.endpoint", ":2112")
 	viper.SetDefault("sig-verification.monitoring.latency.endpoint", ":14268")
 	viper.SetDefault("sig-verification.monitoring.latency.span-exporter", "console")
@@ -37,4 +39,8 @@ func init() {
 	viper.SetDefault("sig-verification.parallel-executor.batch-time-cutoff", "500ms")
 	viper.SetDefault("sig-verification.parallel-executor.batch-size-cutoff", 50)
 	viper.SetDefault("sig-verification.parallel-executor.channel-buffer-size", 50)
+
+	viper.SetDefault("logging.development", "false")
+	viper.SetDefault("logging.enabled", "true")
+	viper.SetDefault("logging.level", "Info")
 }

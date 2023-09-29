@@ -115,9 +115,9 @@ func (m *dependencyMgr) updateGraphWithNewBlock(b *token.Block) {
 			}
 		}
 		if m.metrics.Enabled {
-			m.metrics.RequestTracer.AddEventAt(blkNumTxNum, "Waiting to add TX to graph (lock)", beforeLock)
-			m.metrics.RequestTracer.AddEventAt(blkNumTxNum, "Adding TX to graph", unlocked)
-			m.metrics.RequestTracer.AddEvent(blkNumTxNum, "Added TX to graph")
+			m.metrics.RequestTracer.AddEventAt(blkNumTxNum.String(), "Waiting to add TX to graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(blkNumTxNum.String(), "Adding TX to graph", unlocked)
+			m.metrics.RequestTracer.AddEvent(blkNumTxNum.String(), "Added TX to graph")
 		}
 	}
 
@@ -172,9 +172,9 @@ func (m *dependencyMgr) fetchDependencyFreeTxsThatIntersect(enquirySet []TxSeqNu
 		}
 
 		if ok && m.metrics.Enabled {
-			m.metrics.RequestTracer.AddEventAt(e, "Waiting to query graph (lock)", beforeLock)
-			m.metrics.RequestTracer.AddEventAt(e, "Querying graph", unlocked)
-			m.metrics.RequestTracer.AddEvent(e, "Finished querying graph")
+			m.metrics.RequestTracer.AddEventAt(e.String(), "Waiting to query graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(e.String(), "Querying graph", unlocked)
+			m.metrics.RequestTracer.AddEvent(e.String(), "Finished querying graph")
 		}
 	}
 	return dependencyFreeTxs, dependentOrNotYetSeenTxs
@@ -210,10 +210,10 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 		before := time.Now()
 		m.removeNodeUnderAcquiredLock(node, u.Status == VALID, cascadeInvalidatedTxs)
 		if ok && m.metrics.Enabled {
-			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Waiting to remove TX from graph (lock)", beforeLock)
-			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Removing TX from graph", unlocked)
-			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum, "Starting removal of TX from dependency graph", before)
-			m.metrics.RequestTracer.AddEvent(u.TxSeqNum, "Removed TX from dependency graph")
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum.String(), "Waiting to remove TX from graph (lock)", beforeLock)
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum.String(), "Removing TX from graph", unlocked)
+			m.metrics.RequestTracer.AddEventAt(u.TxSeqNum.String(), "Starting removal of TX from dependency graph", before)
+			m.metrics.RequestTracer.AddEvent(u.TxSeqNum.String(), "Removed TX from dependency graph")
 		}
 	}
 
@@ -233,7 +233,7 @@ func (m *dependencyMgr) updateGraphWithValidatedTxs(toUpdate []*TxStatus) []*TxS
 	if m.metrics.Enabled {
 		sent := time.Now()
 		for _, status := range processedTxs {
-			m.metrics.RequestTracer.EndAt(status.TxSeqNum, sent, attribute.String(metrics.StatusLabel, status.Status.String()))
+			m.metrics.RequestTracer.EndAt(status.TxSeqNum.String(), sent, attribute.String(metrics.StatusLabel, status.Status.String()))
 		}
 		m.metrics.DependencyGraphPendingSNs.Set(float64(len(m.snToNodes)))
 		m.metrics.DependencyGraphPendingTXs.Set(float64(len(m.nodes)))

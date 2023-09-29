@@ -1,18 +1,19 @@
 package workload
 
 import (
+	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
 	"sync/atomic"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
 
-type signerFunc func([]token.SerialNumber, []token.TxOutput) ([]byte, error)
+type signerFunc func(tx *protoblocktx.Tx) ([]byte, error)
 
 const defaultDoubleSpendPoolSize = 1000
 
@@ -20,7 +21,7 @@ type statisticalConflictHandler struct {
 	delegate                  sigverificationtest.TxGenerator
 	invalidSignatureGenerator *test.BooleanGenerator
 	doubleSpendGenerator      *test.BooleanGenerator
-	doubleSpendTxs            []*token.Tx
+	doubleSpendTxs            []*protoblocktx.Tx
 	signFnc                   signerFunc
 }
 
@@ -29,7 +30,7 @@ func newStatisticalConflicts(txGenerator sigverificationtest.TxGenerator, profil
 	if poolSize <= 0 {
 		poolSize = defaultDoubleSpendPoolSize
 	}
-	doubleSpendTx := make([]*token.Tx, poolSize)
+	doubleSpendTx := make([]*protoblocktx.Tx, poolSize)
 	for i := 0; i < poolSize; i++ {
 		doubleSpendTx[i] = txGenerator.Next().Tx
 	}
@@ -47,19 +48,15 @@ func (h *statisticalConflictHandler) Next() *sigverificationtest.TxWithStatus {
 		tx := h.doubleSpendTxs[rand.Intn(len(h.doubleSpendTxs))]
 		// Copy SNs and signatures (we avoid to calculate the signature again, because it slows down the generator significantly)
 		return &sigverificationtest.TxWithStatus{
-			Tx: &token.Tx{
-				SerialNumbers: tx.SerialNumbers,
-				Outputs:       tx.Outputs,
-				Signature:     tx.Signature,
-			},
-			Status: coordinatorservice.Status_DOUBLE_SPEND,
+			Tx:     tx,
+			Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
 		}
 	}
 
 	if h.invalidSignatureGenerator.Next() {
 		tx := h.delegate.Next().Tx
 		sigverificationtest.Reverse(tx.Signature)
-		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_INVALID_SIGNATURE}
+		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID}
 	}
 
 	return h.delegate.Next()
@@ -67,6 +64,7 @@ func (h *statisticalConflictHandler) Next() *sigverificationtest.TxWithStatus {
 
 func NewConflictDecorator(txGenerator sigverificationtest.TxGenerator, conflicts *ConflictProfile, signerFunc signerFunc) sigverificationtest.TxGenerator {
 	if conflicts == nil || conflicts.Scenario == nil && conflicts.Statistical == nil {
+		fmt.Printf("pass through\n")
 		return txGenerator
 	}
 	if conflicts.Scenario != nil && conflicts.Statistical != nil {
@@ -82,7 +80,7 @@ type scenarioHandler struct {
 	counter       TxAbsoluteOrder
 	delegate      sigverificationtest.TxGenerator
 	isSigConflict map[TxAbsoluteOrder]bool
-	doubles       map[TxAbsoluteOrder]map[SNRelativeOrder]*token.SerialNumber
+	doubles       map[TxAbsoluteOrder]map[SNRelativeOrder]*tokenutil.SerialNumber
 	signFnc       signerFunc
 }
 
@@ -91,8 +89,8 @@ const separator = "-"
 func newScenarioConflicts(txGenerator sigverificationtest.TxGenerator, pp *ScenarioConflicts, signerFnc signerFunc) sigverificationtest.TxGenerator {
 	c := &scenarioHandler{
 		delegate:      txGenerator,
-		isSigConflict: make(map[TxAbsoluteOrder]bool),                                    // txid to invalid sig
-		doubles:       make(map[TxAbsoluteOrder]map[SNRelativeOrder]*token.SerialNumber), // snid to bytes
+		isSigConflict: make(map[TxAbsoluteOrder]bool),                                        // txid to invalid sig
+		doubles:       make(map[TxAbsoluteOrder]map[SNRelativeOrder]*tokenutil.SerialNumber), // snid to bytes
 		signFnc:       signerFnc,
 	}
 
@@ -100,7 +98,7 @@ func newScenarioConflicts(txGenerator sigverificationtest.TxGenerator, pp *Scena
 		c.isSigConflict[txOrder] = true
 	}
 	for _, doubleSpendGroup := range pp.DoubleSpends {
-		sn := &txGenerator.Next().Tx.SerialNumbers[0]
+		sn := &txGenerator.Next().Tx.Namespaces[0].BlindWrites[0].Key
 		for _, txSnOrder := range doubleSpendGroup {
 			parts := strings.Split(txSnOrder, separator)
 			if len(parts) != 2 {
@@ -110,7 +108,7 @@ func newScenarioConflicts(txGenerator sigverificationtest.TxGenerator, pp *Scena
 			snOrder, _ := strconv.Atoi(parts[1])
 			txDoubles, ok := c.doubles[uint64(txOrder)]
 			if !ok {
-				txDoubles = make(map[SNRelativeOrder]*token.SerialNumber)
+				txDoubles = make(map[SNRelativeOrder]*tokenutil.SerialNumber)
 				c.doubles[uint64(txOrder)] = txDoubles
 			}
 			txDoubles[uint32(snOrder)] = sn
@@ -126,17 +124,17 @@ func (h *scenarioHandler) Next() *sigverificationtest.TxWithStatus {
 	tx := h.delegate.Next().Tx
 	if h.isSigConflict[order] {
 		sigverificationtest.Reverse(tx.Signature)
-		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_INVALID_SIGNATURE}
+		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID}
 	}
 	if txDoubles, ok := h.doubles[order]; ok {
 		for snOrder, sn := range txDoubles {
-			if snOrder < uint32(len(tx.SerialNumbers)) {
-				tx.SerialNumbers[snOrder] = *sn
+			if snOrder < uint32(len(tx.Namespaces[0].BlindWrites)) {
+				tx.Namespaces[0].BlindWrites[snOrder].Key = *sn
 			}
 		}
-		tx.Signature, _ = h.signFnc(tx.SerialNumbers, tx.Outputs)
-		return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_DOUBLE_SPEND}
+		tx.Signature, _ = h.signFnc(tx)
+		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT}
 	}
 
-	return &sigverificationtest.TxWithStatus{tx, coordinatorservice.Status_VALID}
+	return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_COMMITTED}
 }

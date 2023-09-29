@@ -29,7 +29,7 @@ var _ = Describe("Cluster", func() {
 			NumShardServers:   4,
 			NumShardPerServer: 1,
 			SigProfile: signature.Profile{
-				Scheme: signature.Ecdsa,
+				Scheme: signature.NoScheme,
 			},
 		}
 

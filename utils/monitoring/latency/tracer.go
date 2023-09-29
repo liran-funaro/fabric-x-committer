@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 	"go.opentelemetry.io/otel/attribute"
@@ -98,8 +97,8 @@ func (h *latencyTracer) StartAt(key TxTracingId, timestamp time.Time) {
 
 	h.worker.Run(func(key TxTracingId, timestamp time.Time) func() {
 		return func() {
-			ctx := context.WithValue(context.Background(), "id", key.String())
-			_, span := h.tracer.Start(ctx, "TxRequest", trace.WithTimestamp(timestamp), trace.WithAttributes(attribute.String("id", key.String())))
+			ctx := context.WithValue(context.Background(), "id", key)
+			_, span := h.tracer.Start(ctx, "TxRequest", trace.WithTimestamp(timestamp), trace.WithAttributes(attribute.String("id", key)))
 			h.traces[key] = &traceData{timestamp, span}
 		}
 	}(key, timestamp))
@@ -144,7 +143,7 @@ func (h *latencyTracer) EndAt(key TxTracingId, timestamp time.Time, attributes .
 		return func() {
 			t, ok := h.traces[key]
 			if !ok {
-				h.errorHandler(fmt.Sprintf("error with tracer: %s: %s at end", h.name, key.String()))
+				h.errorHandler(fmt.Sprintf("error with tracer: %s: %s at end", h.name, key))
 			} else {
 				t.span.SetAttributes(attributes...)
 				t.span.End(trace.WithTimestamp(timestamp))

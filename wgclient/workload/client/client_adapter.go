@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"

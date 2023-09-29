@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	_ "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client/codec"
@@ -138,7 +139,8 @@ func ReadAndForget(path string) {
 
 		// check if we have duplicates
 		for i, tx := range block.Txs {
-			for j, sn := range tx.SerialNumbers {
+			for j, bw := range tx.Namespaces[0].BlindWrites {
+				sn := bw.Key
 				if len(sn) != 32 {
 					panic("len wrong")
 				}
@@ -175,11 +177,11 @@ func (t *metricTracker) RegisterEvent(e *workload.Event) {
 	switch e.Msg {
 	case workload.EventSubmitted:
 		for i := uint64(0); i < uint64(e.SubmittedBlock.Size); i++ {
-			t.TxSentAt(token.TxSeqNum{e.SubmittedBlock.Id, i}, e.Timestamp)
+			t.TxSentAt(tokenutil.TxSeqNum{BlkNum: e.SubmittedBlock.Id, TxNum: i}.String(), e.Timestamp)
 		}
 	case workload.EventReceived:
 		for _, status := range e.StatusBatch.TxsValidationStatus {
-			t.TxReceivedAt(token.TxSeqNum{status.BlockNum, status.TxNum}, status.Status.String(), e.Timestamp)
+			t.TxReceivedAt(status.TxId, status.Status, e.Timestamp)
 		}
 	}
 }

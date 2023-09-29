@@ -12,7 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
+	workload "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/v1"
 )
 
 func main() {

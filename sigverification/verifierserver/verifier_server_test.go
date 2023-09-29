@@ -6,8 +6,8 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -78,12 +78,41 @@ func TestMinimalInput(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	stream, _ := c.Client.StartStream(context.Background())
-	var emptyData [][]byte
-	emptyDataSig, _ := txSigner.SignTx(emptyData, emptyData)
+
+	tx1 := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId: 1,
+			BlindWrites: []*protoblocktx.Write{{
+				Key: []byte("0001"),
+			}},
+		}},
+	}
+	tx1.Signature, _ = txSigner.SignTx(tx1)
+
+	tx2 := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId: 1,
+			BlindWrites: []*protoblocktx.Write{{
+				Key: []byte("0010"),
+			}},
+		}},
+	}
+	tx2.Signature, _ = txSigner.SignTx(tx2)
+
+	tx3 := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId: 1,
+			BlindWrites: []*protoblocktx.Write{{
+				Key: []byte("0011"),
+			}},
+		}},
+	}
+	tx3.Signature, _ = txSigner.SignTx(tx3)
+
 	err = stream.Send(&sigverification.RequestBatch{Requests: []*sigverification.Request{
-		{BlockNum: 1, TxNum: 1, Tx: &token.Tx{Signature: emptyDataSig, SerialNumbers: emptyData, Outputs: emptyData}},
-		{BlockNum: 1, TxNum: 2, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}, Outputs: [][]byte{}}},
-		{BlockNum: 1, TxNum: 3, Tx: &token.Tx{Signature: []byte{}, SerialNumbers: [][]byte{}, Outputs: [][]byte{}}},
+		{BlockNum: 1, TxNum: 1, Tx: tx1},
+		{BlockNum: 1, TxNum: 2, Tx: tx2},
+		{BlockNum: 1, TxNum: 3, Tx: tx3},
 	}})
 	Expect(err).To(BeNil())
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	signature2 "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
@@ -20,7 +20,7 @@ type SignerFactory interface {
 
 type TxSigner interface {
 	//SignTx signs a message and returns the signature
-	SignTx([]token.SerialNumber, []token.TxOutput) (signature.Signature, error)
+	SignTx(*protoblocktx.Tx) (signature.Signature, error)
 }
 
 var signerFactories = map[signature.Scheme]SignerFactory{
@@ -45,7 +45,7 @@ func (f *dummySignerFactory) NewSigner(signature.PrivateKey) (TxSigner, error) {
 
 type dummyTxSigner struct{}
 
-func (s *dummyTxSigner) SignTx([]token.SerialNumber, []token.TxOutput) (signature.Signature, error) {
+func (s *dummyTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
 	return []byte{}, nil
 }
 
@@ -53,8 +53,8 @@ type eddsaTxSigner struct {
 	sk ed25519.PrivateKey
 }
 
-func (b *eddsaTxSigner) SignTx(serialNumbers []token.SerialNumber, txOutputs []token.TxOutput) (signature.Signature, error) {
-	h := signature2.SignatureData(serialNumbers, txOutputs)
+func (b *eddsaTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
+	h := signature2.HashTx(tx)
 	return b.sk.Sign(nil, h, &ed25519.Options{
 		Context: "Example_ed25519ctx",
 	})
@@ -70,8 +70,8 @@ type blsTxSigner struct {
 	sk *big.Int
 }
 
-func (b *blsTxSigner) SignTx(serialNumbers []token.SerialNumber, txOutputs []token.TxOutput) (signature.Signature, error) {
-	h := signature2.SignatureData(serialNumbers, txOutputs)
+func (b *blsTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
+	h := signature2.HashTx(tx)
 
 	g1h, err := bn254.HashToG1(h, []byte(signature2.BLS_HASH_PREFIX))
 	if err != nil {
@@ -105,6 +105,6 @@ type ecdsaTxSigner struct {
 	signingKey *ecdsa.PrivateKey
 }
 
-func (s *ecdsaTxSigner) SignTx(inputs []token.SerialNumber, outputs []token.TxOutput) (signature.Signature, error) {
-	return crypto.SignMessage(s.signingKey, signature2.SignatureData(inputs, outputs))
+func (s *ecdsaTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
+	return crypto.SignMessage(s.signingKey, signature2.HashTx(tx))
 }

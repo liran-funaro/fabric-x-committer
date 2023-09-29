@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"

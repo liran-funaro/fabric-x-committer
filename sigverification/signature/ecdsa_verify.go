@@ -3,7 +3,7 @@ package signature
 import (
 	"crypto/ecdsa"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"
 )
 
@@ -30,6 +30,6 @@ func (v *ecdsaTxVerifier) publicKey() []byte {
 	return key
 }
 
-func (v *ecdsaTxVerifier) VerifyTx(tx *token.Tx) error {
-	return crypto.VerifyMessage(v.verificationKey, SignatureData(tx.GetSerialNumbers(), tx.GetOutputs()), tx.GetSignature())
+func (v *ecdsaTxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
+	return crypto.VerifyMessage(v.verificationKey, HashTx(tx), tx.GetSignature())
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 var q []bn254.G2Affine
@@ -36,8 +36,8 @@ type blsTxVerifier struct {
 	pk bn254.G2Affine
 }
 
-func (v *blsTxVerifier) VerifyTx(tx *token.Tx) error {
-	digest := SignatureData(tx.GetSerialNumbers(), tx.GetOutputs())
+func (v *blsTxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
+	digest := HashTx(tx)
 
 	var sig bn254.G1Affine
 	_, err := sig.SetBytes(tx.GetSignature())

@@ -21,5 +21,14 @@ protos:
     --go_out=. --go_opt=paths=source_relative \
     --go-grpc_out=. --go-grpc_opt=paths=source_relative \
     --proto_path=. \
-    --proto_path=../protos \
+    --proto_path=.. \
     ./workload/expected_results.proto
+
+protos-v1:
+    protoc \
+    --go_out=. --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    --proto_path=. \
+    --proto_path=.. \
+    --proto_path=../protos \
+    ./workload/v1/expected_results.proto

@@ -3,8 +3,8 @@ package latency
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
 
 type SpanExporterType string
@@ -53,12 +53,12 @@ func (c *TraceIdSamplerConfig) Sampler() func(TxTracingId) bool {
 	case Prefixed:
 		prefixLength := len(c.Prefix)
 		return func(id TxTracingId) bool {
-			str := id.String()
+			str := id
 			return len(str) >= prefixLength && str[:prefixLength] == c.Prefix
 		}
 	case BlockTx:
 		return func(key TxTracingId) bool {
-			hash := key.(token.TxSeqNum).BlkNum % c.SamplePeriod
+			hash := token.TxSeqNumFromString(key).BlkNum % c.SamplePeriod
 			return hash < c.SampleSize && hash%c.Ratio == 0
 		}
 	default:

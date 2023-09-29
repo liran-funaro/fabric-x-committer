@@ -3,14 +3,13 @@ package workload
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 var result *BlockWithExpectedResult
-var resultBlock *token.Block
+var resultBlock *protoblocktx.Block
 
 // go test -bench . -benchmem -memprofile -blockprofile -cpuprofile profile.out
 // go tool pprof profile.out
@@ -27,9 +26,9 @@ func BenchmarkAAA(b *testing.B) {
 }
 
 func BenchmarkBBB(b *testing.B) {
-	var r *token.Block
+	var r *protoblocktx.Block
 	for n := 0; n < b.N; n++ {
-		bg := testutil.NewBlockGenerator(100, 1, true)
+		bg := NewBlockGenerator(100, 1, true)
 		for i := 0; i < 100000; i++ {
 			r = <-bg.OutputChan()
 		}
@@ -37,7 +36,7 @@ func BenchmarkBBB(b *testing.B) {
 	resultBlock = r
 }
 
-var r *token.Tx
+var r *protoblocktx.Tx
 
 func BenchmarkGenSingle(b *testing.B) {
 
@@ -53,7 +52,7 @@ func BenchmarkGenSingle(b *testing.B) {
 		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
 	}, &ConflictProfile{Statistical: &StatisticalConflicts{InvalidSignatures: vr}}, signer.SignTx)
 
-	var tx *token.Tx
+	var tx *protoblocktx.Tx
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		tx = g.Next().Tx

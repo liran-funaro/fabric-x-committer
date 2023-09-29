@@ -1,6 +1,8 @@
 package signature
 
-import "github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+import (
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+)
 
 // Dummy Factory
 
@@ -14,10 +16,10 @@ func (f *dummyVerifierFactory) NewVerifier(key []byte) (TxVerifier, error) {
 
 type dummyVerifier struct{}
 
-func (v *dummyVerifier) SignTx([]token.SerialNumber, []token.TxOutput) (Signature, error) {
+func (v *dummyVerifier) SignTx(*protoblocktx.Tx) (Signature, error) {
 	return []byte{}, nil
 }
 
-func (v *dummyVerifier) VerifyTx(*token.Tx) error {
+func (v *dummyVerifier) VerifyTx(*protoblocktx.Tx) error {
 	return nil
 }

@@ -1,12 +1,10 @@
 package signature
 
 import (
-	"crypto/sha256"
-	"encoding/asn1"
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
@@ -32,7 +30,7 @@ type VerifierFactory interface {
 
 type TxVerifier interface {
 	//VerifyTx verifies a signature of a transaction as signed by SignTx
-	VerifyTx(*token.Tx) error
+	VerifyTx(*protoblocktx.Tx) error
 }
 
 var verifierFactories = map[Scheme]VerifierFactory{
@@ -56,25 +54,4 @@ func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
 	} else {
 		return nil, errors.New("scheme not supported")
 	}
-}
-
-func SignatureData(inputs []token.SerialNumber, outputs []token.TxOutput) Message {
-	marshaledInputs, err := asn1.Marshal(inputs)
-	if err != nil {
-		log.Error("failed to serialize the inputs")
-		return []byte{}
-	}
-	marshaledOutputs, err := asn1.Marshal(outputs)
-	if err != nil {
-		log.Error("failed to serialize the outputs")
-		return []byte{}
-	}
-	h := sha256.New()
-	h.Reset()
-	h.Write(marshaledInputs)
-	hashedInputs := h.Sum(nil)
-	h.Reset()
-	h.Write(marshaledOutputs)
-	hashedOutputs := h.Sum(nil)
-	return append(hashedInputs, hashedOutputs...)
 }

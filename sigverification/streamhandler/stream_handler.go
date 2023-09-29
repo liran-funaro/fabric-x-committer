@@ -1,7 +1,7 @@
 package streamhandler
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -42,7 +42,7 @@ func (s *StreamHandler) handleInputs(stream Stream) {
 			logger.Infof("failed to serve request: %v", err)
 			return
 		}
-		logger.Debugf("Received input from client: %v", input)
+		logger.Debugf("Received input from client with %v requests", len(input.Requests))
 
 		s.InputSubscriber(input)
 	}

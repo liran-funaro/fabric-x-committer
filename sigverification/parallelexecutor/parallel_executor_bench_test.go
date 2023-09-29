@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"

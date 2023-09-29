@@ -3,10 +3,11 @@ package main
 import (
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
 
 type benchmarkConfig struct {
@@ -42,10 +43,20 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 		for n := 0; n < b.N; n++ {
 			b.StopTimer()
-			tx := &token.Tx{SerialNumbers: g.NextTxInput()}
+
+			tx := &protoblocktx.Tx{
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:       0,
+					ReadWrites: []*protoblocktx.ReadWrite{},
+				}},
+			}
+			for _, sn := range g.NextTxInput() {
+				tx.Namespaces[0].ReadWrites = append(tx.Namespaces[0].ReadWrites, &protoblocktx.ReadWrite{Key: sn})
+			}
+
 			isValid := g.NextValid()
 			if isValid {
-				tx.Signature, _ = txSigner.SignTx(tx.SerialNumbers, tx.Outputs)
+				tx.Signature, _ = txSigner.SignTx(tx)
 			}
 			b.StartTimer()
 
@@ -73,7 +84,7 @@ func NewInputGenerator(params *inputGeneratorParams) *inputGenerator {
 	}
 }
 
-func (g *inputGenerator) NextTxInput() []token.SerialNumber {
+func (g *inputGenerator) NextTxInput() []tokenutil.SerialNumber {
 	return g.txInputGenerator.Next()
 }
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"

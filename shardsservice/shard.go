@@ -64,7 +64,7 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 
 	for tID, serialNumbers := range requests {
 		if s.metrics.Enabled {
-			s.metrics.RequestTracer.AddEvent(tID, fmt.Sprintf("Started phase one on shard %d", s.id))
+			s.metrics.RequestTracer.AddEvent(tID.String(), fmt.Sprintf("Started phase one on shard %d", s.id))
 		}
 		s.wg.Add(1)
 		s.phaseOnePool.Run(func(tID pendingcommits.TxID, serialNumbers *shardsservice.SerialNumbers) func() {
@@ -83,8 +83,8 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				startRead := time.Now()
 				doNoExist, _ := s.database.DoNotExist(serialNumbers.GetSerialNumbers())
 				if s.metrics.Enabled {
-					s.metrics.RequestTracer.AddEventAt(tID, fmt.Sprintf("Start wait on shard %d", s.id), startWait)
-					s.metrics.RequestTracer.AddEventAt(tID, fmt.Sprintf("Start read on shard %d", s.id), startRead)
+					s.metrics.RequestTracer.AddEventAt(tID.String(), fmt.Sprintf("Start wait on shard %d", s.id), startWait)
+					s.metrics.RequestTracer.AddEventAt(tID.String(), fmt.Sprintf("Start read on shard %d", s.id), startRead)
 					s.metrics.SNReadDuration.With(metrics.ShardId(s.id)).Observe(float64(time.Now().Sub(startRead)))
 					s.metrics.SNReadSize.With(metrics.ShardId(s.id)).Observe(float64(len(serialNumbers.GetSerialNumbers())))
 				}
@@ -101,7 +101,7 @@ func (s *shard) executePhaseOne(requests txIDToSerialNumbers) {
 				s.pendingCommits.Add(tID, serialNumbers.SerialNumbers)
 				s.phaseOneResponses.add(resp)
 				if s.metrics.Enabled {
-					s.metrics.RequestTracer.AddEvent(tID, fmt.Sprintf("Finished read on shard %d", s.id))
+					s.metrics.RequestTracer.AddEvent(tID.String(), fmt.Sprintf("Finished read on shard %d", s.id))
 					s.metrics.PendingCommitsSNs.Set(s.pendingCommits.CountSNs())
 					s.metrics.PendingCommitsTxIds.Set(s.pendingCommits.CountTxs())
 				}

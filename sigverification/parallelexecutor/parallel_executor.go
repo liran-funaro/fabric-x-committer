@@ -3,8 +3,7 @@ package parallelexecutor
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -83,7 +82,7 @@ func New(executor ExecutorFunc, config *Config, metrics *metrics.Metrics) Parall
 func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 	for {
 		input := <-channel
-		logger.Debugf("Received request %v with %d inputs and %d outputs in go routine %d. Sending for execution.", input, len(input.Tx.SerialNumbers), len(input.Tx.Outputs), idx)
+		logger.Debugf("Received request %v with in go routine %d. Sending for execution.", input.GetTx().GetId(), idx)
 		output, err := e.executor(input)
 		if err != nil {
 			logger.Debugf("Received error from executor %d.", idx)
@@ -120,7 +119,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	if len(buffer) < minBatchSize {
 		if e.metrics.Enabled {
 			for _, tx := range buffer {
-				e.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Too small batch. Postponing batch cut.")
+				e.metrics.RequestTracer.AddEvent(tx.TxId, "Too small batch. Postponing batch cut.")
 			}
 		}
 		return buffer
@@ -130,7 +129,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 	if e.metrics.Enabled {
 		e.metrics.ParallelExecutorOutTxs.Add(batchSize)
 		for _, tx := range buffer {
-			e.metrics.RequestTracer.AddEvent(token.TxSeqNum{tx.BlockNum, tx.TxNum}, "Cutting batch. Will send TX to output.")
+			e.metrics.RequestTracer.AddEvent(tx.TxId, "Cutting batch. Will send TX to output.")
 		}
 	}
 	e.outputCh <- buffer[:batchSize]

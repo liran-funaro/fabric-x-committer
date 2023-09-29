@@ -1,27 +1,27 @@
-package testutil
+package workload
 
 import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 type BlockGenerator struct {
-	outputChan     chan *token.Block
+	outputChan     chan *protoblocktx.Block
 	stopSignalChan chan struct{}
 }
 
 func NewBlockGenerator(numTxPerBlock, serialNumPerTx int, addSignatureBytes bool) *BlockGenerator {
 	g := &BlockGenerator{
-		outputChan:     make(chan *token.Block, 100),
+		outputChan:     make(chan *protoblocktx.Block, 100),
 		stopSignalChan: make(chan struct{}),
 	}
 	g.startBlockGenRoutine(numTxPerBlock, serialNumPerTx, addSignatureBytes)
 	return g
 }
 
-func (g *BlockGenerator) OutputChan() <-chan *token.Block {
+func (g *BlockGenerator) OutputChan() <-chan *protoblocktx.Block {
 	return g.outputChan
 }
 
@@ -52,7 +52,7 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock, serialNumPerTx int,
 				close(g.outputChan)
 				return
 			default:
-				b := &token.Block{
+				b := &protoblocktx.Block{
 					Number: blockNum,
 				}
 				for i := 0; i < numTxPerBlock; i++ {
@@ -62,12 +62,19 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock, serialNumPerTx int,
 						uniqueSerialNum++
 						serialNums[j] = sn[:]
 					}
-					b.Txs = append(b.Txs,
-						&token.Tx{
-							SerialNumbers: serialNums,
-							Signature:     randomBytesForSignature,
-						},
-					)
+					tx := &protoblocktx.Tx{
+						Namespaces: []*protoblocktx.TxNamespace{{
+							NsId:        1,
+							BlindWrites: []*protoblocktx.Write{},
+						}},
+						Signature: randomBytesForSignature,
+					}
+
+					for _, sn := range serialNums {
+						tx.Namespaces[0].BlindWrites = append(tx.Namespaces[0].BlindWrites, &protoblocktx.Write{Key: sn})
+					}
+
+					b.Txs = append(b.Txs, tx)
 				}
 				g.outputChan <- b
 				blockNum++

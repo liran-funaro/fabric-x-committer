@@ -155,7 +155,7 @@ func (i *shardInstances) executePhaseOne(requests *shardsservice.PhaseOneRequest
 			if i.metrics.Enabled {
 				i.metrics.ShardInstanceTxShard.Set(len(i.txIDToShardID.txToShardID))
 				i.metrics.ShardInstanceTxResponse.Set(len(i.txIDToPendingResponse.tIDToPendingShardIDResp))
-				i.metrics.RequestTracer.StartAt(tID, started)
+				i.metrics.RequestTracer.StartAt(tID.String(), started)
 			}
 		}
 	}

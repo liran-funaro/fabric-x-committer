@@ -5,8 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -34,7 +33,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			if s.metrics.Enabled {
 				m.VerifierServerInTxs.Add(len(batch.Requests))
 				for _, request := range batch.Requests {
-					s.metrics.RequestTracer.Start(token.TxSeqNum{BlkNum: request.BlockNum, TxNum: request.TxNum})
+					s.metrics.RequestTracer.Start(request.GetTx().GetId())
 				}
 			}
 			executor.Submit(batch.Requests)
@@ -44,7 +43,8 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			if s.metrics.Enabled {
 				m.VerifierServerOutTxs.Add(len(outputs))
 				for _, output := range outputs {
-					s.metrics.RequestTracer.End(token.TxSeqNum{BlkNum: output.BlockNum, TxNum: output.TxNum}, attribute.String(metrics.ValidLabel, metrics.ValidStatusMap[output.IsValid]))
+
+					s.metrics.RequestTracer.End(output.GetTxId(), attribute.String(metrics.ValidLabel, metrics.ValidStatusMap[output.IsValid]))
 				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
@@ -82,22 +82,27 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 	response := &sigverification.Response{
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
+		IsValid:  false,
 	}
-	txSeqNum := token.TxSeqNum{request.BlockNum, request.TxNum}
+
 	start := time.Now()
 
 	if s.verifier == nil {
 		logger.Warnf("No verifier set! Returning invalid status.")
 		response.ErrorMessage = "no verifier set"
-	} else if err := s.verifier.VerifyTx(request.Tx); err != nil {
-		logger.Debugf("Invalid signature found: %v", txSeqNum)
+		return response, nil
+	}
+
+	if err := s.verifier.VerifyTx(request.Tx); err != nil {
+		logger.Debugf("Invalid signature found: %v", request.GetTx().GetId())
 		response.ErrorMessage = err.Error()
 	} else {
 		response.IsValid = true
 	}
+
 	if s.metrics.Enabled {
-		s.metrics.RequestTracer.AddEventAt(txSeqNum, "Start verification", start)
-		s.metrics.RequestTracer.AddEvent(txSeqNum, "End verification")
+		s.metrics.RequestTracer.AddEventAt(request.GetTx().GetId(), "Start verification", start)
+		s.metrics.RequestTracer.AddEvent(request.GetTx().GetId(), "End verification")
 	}
 	return response, nil
 }

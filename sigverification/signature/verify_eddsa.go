@@ -3,7 +3,7 @@ package signature
 import (
 	"crypto/ed25519"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 // edDSA
@@ -20,8 +20,8 @@ type edDSATxVerifier struct {
 	pk ed25519.PublicKey
 }
 
-func (v *edDSATxVerifier) VerifyTx(tx *token.Tx) error {
-	digest := SignatureData(tx.GetSerialNumbers(), tx.GetOutputs())
+func (v *edDSATxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
+	digest := HashTx(tx)
 	return ed25519.VerifyWithOptions(v.pk, digest, tx.GetSignature(), &ed25519.Options{
 		Context: "Example_ed25519ctx",
 	})

@@ -1,7 +1,7 @@
 package workload
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"google.golang.org/protobuf/proto"
 )

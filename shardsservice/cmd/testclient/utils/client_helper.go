@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/shardsservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	workload "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/v1"
 )
 
 var logger = logging.New("shardsservice-client")
@@ -33,7 +33,7 @@ type ClientConfig struct {
 }
 
 type ShardClient struct {
-	blockGenerator  *testutil.BlockGenerator
+	blockGenerator  *workload.BlockGenerator
 	delayGenerator  *test.DelayGenerator
 	tracker         *connection.RequestTracker
 	phaseOneStreams []shardsservice.Shards_StartPhaseOneStreamClient
@@ -52,7 +52,7 @@ func NewClient(clientConfig ClientConfig) (*ShardClient, error) {
 		}
 	}
 	return &ShardClient{
-		blockGenerator:  testutil.NewBlockGenerator(clientConfig.Input.BlockSize, clientConfig.Input.TxSize, clientConfig.Input.SignatureBytes),
+		blockGenerator:  workload.NewBlockGenerator(clientConfig.Input.BlockSize, clientConfig.Input.TxSize, clientConfig.Input.SignatureBytes),
 		delayGenerator:  test.NewDelayGenerator(clientConfig.Input.InputDelay, 10),
 		tracker:         connection.NewRequestTracker(),
 		phaseOneStreams: phaseOneStreams,

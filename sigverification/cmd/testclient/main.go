@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/pkg/errors"
 	"os"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
+	"github.com/pkg/errors"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -34,7 +34,7 @@ func main() {
 
 	test.DistributionVar(&clientConfig.Input.RequestBatch.BatchSize, "request-batch-size", sigverification_test.BatchSizeDistribution, "Request batch size")
 	signature2.SchemeVar(&clientConfig.Input.RequestBatch.Tx.Scheme, "scheme", sigverification_test.VerificationScheme, "Verification scheme")
-	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", sigverification_test.SignatureValidRatio, "Percentage of transactions that should be valid (values from 0 to 1)")
+	flag.Float64Var(&clientConfig.Input.RequestBatch.Tx.ValidSigRatio, "valid-sig-ratio", 0.074, "Percentage of transactions that should be valid (values from 0 to 1)")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberCount, "sn-count", sigverification_test.SerialNumberCountDistribution, "How many serial numbers are in each TX")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.SerialNumberSize, "sn-size", sigverification_test.SerialNumberSize, "How many bytes each serial number contains")
 	test.DistributionVar(&clientConfig.Input.RequestBatch.Tx.OutputCount, "output-count", sigverification_test.OutputCountDistribution, "How many are in each TX")
@@ -79,7 +79,10 @@ func main() {
 		}
 		go func() {
 			for {
-				maybe(stream.Recv())
+				resp, err := stream.Recv()
+				utils.Must(err)
+
+				logger.Infof("got %d responses", len(resp.GetResponses()))
 			}
 		}()
 		go func() {
@@ -90,8 +93,11 @@ func main() {
 	}
 
 	_, blocks := workload.StartBlockGenerator(&workload.Profile{
-		Block:       workload.BlockProfile{-1, 100},
-		Transaction: workload.TransactionProfile{workload.Always(2), workload.Always(1), signatureProfile},
+		Block:       workload.BlockProfile{Count: -1, Size: 100},
+		Transaction: workload.TransactionProfile{SerialNumberSize: workload.Always(2), OutputSize: workload.Always(1), Signature: signatureProfile},
+		Conflicts: &workload.ConflictProfile{
+			Statistical: &workload.StatisticalConflicts{InvalidSignatures: clientConfig.Input.RequestBatch.Tx.ValidSigRatio},
+		},
 	})
 	for {
 		b := <-blocks

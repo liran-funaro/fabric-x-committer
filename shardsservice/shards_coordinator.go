@@ -114,8 +114,8 @@ func (s *shardsCoordinator) retrievePhaseOneResponse(stream shardsservice.Shards
 			s.metrics.ShardsPhaseOneResponseChLength.Set(len(s.phaseOneResponses))
 			for _, response := range responses {
 				txID := pendingcommits.TxID{TxNum: response.TxNum, BlkNum: response.BlockNum}
-				s.metrics.RequestTracer.AddEventAt(txID, "Finished calculation on all shards.", end)
-				s.metrics.RequestTracer.End(txID, attribute.String(metrics.StatusLabel, response.Status.String()))
+				s.metrics.RequestTracer.AddEventAt(txID.String(), "Finished calculation on all shards.", end)
+				s.metrics.RequestTracer.End(txID.String(), attribute.String(metrics.StatusLabel, response.Status.String()))
 			}
 		}
 	}

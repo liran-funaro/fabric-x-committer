@@ -6,10 +6,10 @@ import (
 	"io"
 	"sync"
 
+	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/sigverification"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/protos/token"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -38,18 +38,17 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 				TxsValidationStatus: make([]*coordinatorservice.TxValidationStatus, len(block.Txs)),
 			}
 
-			for i, _ := range block.Txs {
+			for i, tx := range block.Txs {
 				status := &coordinatorservice.TxValidationStatus{
-					BlockNum: block.Number,
-					TxNum:    uint64(i),
-					Status:   coordinatorservice.Status_VALID,
+					TxId:   tx.GetId(),
+					Status: token.Status_COMMITTED,
 				}
 
 				// make the mock response a bit more interesting ....
 				if i%3 == 0 {
-					status.Status = coordinatorservice.Status_DOUBLE_SPEND
+					status.Status = token.Status_ABORTED_MVCC_CONFLICT
 				} else if i%7 == 0 {
-					status.Status = coordinatorservice.Status_INVALID_SIGNATURE
+					status.Status = token.Status_ABORTED_SIGNATURE_INVALID
 				}
 
 				resp.TxsValidationStatus[i] = status

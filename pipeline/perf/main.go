@@ -8,9 +8,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/perf/track"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline/testutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	workload "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/v1"
 )
 
 func main() {
@@ -38,7 +38,7 @@ func main() {
 		},
 	}
 
-	bg := testutil.NewBlockGenerator(numTxPerBlock, serialNumPerTx, true)
+	bg := workload.NewBlockGenerator(numTxPerBlock, serialNumPerTx, true)
 	defer bg.Stop()
 
 	track.StartProfiling()

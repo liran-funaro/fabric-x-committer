@@ -19,6 +19,4 @@ type AppTracer interface {
 
 type TxTracingSampler = func(key TxTracingId) bool
 
-type TxTracingId = interface {
-	String() string
-}
+type TxTracingId = string

@@ -4,10 +4,10 @@ option go_package = "github.ibm.com/decentralized-trust-research/scalable-commit
 
 package workload;
 
-import "token/token.proto";
-import "coordinatorservice/coordinator_service.proto";
+import "api/protoblocktx/block_tx.proto";
+import "api/protocoordinatorservice/coordinator.proto";
 
 message BlockWithExpectedResult {
-  token.Block block = 1;
-  repeated coordinatorservice.TxValidationStatus expectedResults = 2;
+  protoblocktx.Block block = 1;
+  repeated protocoordinatorservice.TxValidationStatus expectedResults = 2;
 }
