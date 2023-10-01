@@ -17,7 +17,8 @@ type prepareTestEnv struct {
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	txBatch := make(chan *protovcservice.TransactionBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
-	preparer := newPreparer(txBatch, preparedTxs)
+	metrics := newVCServiceMetrics()
+	preparer := newPreparer(txBatch, preparedTxs, metrics)
 
 	t.Cleanup(func() {
 		close(txBatch)
@@ -105,16 +106,16 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1", "tx2"},
-			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
-			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
-			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
-			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
-			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
-			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
-			comparableRead{2, string(k4), string(v1)}: []TxID{"tx2"},
-			comparableRead{2, string(k5), string(v0)}: []TxID{"tx2"},
-			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
+			comparableRead{1, string(k1), string(v1)}: []txID{"tx1", "tx2"},
+			comparableRead{1, string(k2), string(v1)}: []txID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []txID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []txID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []txID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []txID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []txID{"tx1"},
+			comparableRead{2, string(k4), string(v1)}: []txID{"tx2"},
+			comparableRead{2, string(k5), string(v0)}: []txID{"tx2"},
+			comparableRead{2, string(k6), ""}:         []txID{"tx2"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{},
 		blindWritesPerTransaction:    transactionToWrites{},
@@ -286,15 +287,15 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1"},
-			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
-			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
-			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
-			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
-			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
-			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
-			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
-			comparableRead{2, string(k7), ""}:         []TxID{"tx2"},
+			comparableRead{1, string(k1), string(v1)}: []txID{"tx1"},
+			comparableRead{1, string(k2), string(v1)}: []txID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []txID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []txID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []txID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []txID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []txID{"tx1"},
+			comparableRead{2, string(k6), ""}:         []txID{"tx2"},
+			comparableRead{2, string(k7), ""}:         []txID{"tx2"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -454,13 +455,13 @@ func TestPrepareTx(t *testing.T) {
 			},
 		},
 		readToTransactionIndices: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1"},
-			comparableRead{1, string(k2), string(v2)}: []TxID{"tx1"},
-			comparableRead{1, string(k3), string(v3)}: []TxID{"tx1"},
-			comparableRead{1, string(k8), string(v8)}: []TxID{"tx2"},
-			comparableRead{1, string(k9), string(v9)}: []TxID{"tx2"},
-			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
-			comparableRead{2, string(k6), ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k1), string(v1)}: []txID{"tx1"},
+			comparableRead{1, string(k2), string(v2)}: []txID{"tx1"},
+			comparableRead{1, string(k3), string(v3)}: []txID{"tx1"},
+			comparableRead{1, string(k8), string(v8)}: []txID{"tx2"},
+			comparableRead{1, string(k9), string(v9)}: []txID{"tx2"},
+			comparableRead{2, string(k5), ""}:         []txID{"tx1"},
+			comparableRead{2, string(k6), ""}:         []txID{"tx1"},
 		},
 		nonBlindWritesPerTransaction: transactionToWrites{
 			"tx1": namespaceToWrites{

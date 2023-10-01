@@ -1,13 +1,14 @@
 package vcservice
 
 import (
-	"fmt"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 )
 
-// transactionCommitter is responsible for committing the transactions
+// transactionCommitter is responsible for committing the transactions.
 type transactionCommitter struct {
 	// db is a handler for the state database holding all the committed states
 	db *database
@@ -25,16 +26,13 @@ type transactionCommitter struct {
 // the version should be set to 0 for when the key is inserted into the database.
 var versionZero = versionNumber(0).bytes()
 
-// newCommitter creates a new transactionCommitter
+// newCommitter creates a new transactionCommitter.
 func newCommitter(
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *protovcservice.TransactionStatus,
 	metrics *perfMetrics,
 ) *transactionCommitter {
-	if metrics == nil {
-		metrics = newVCServiceMetrics(false)
-	}
 	return &transactionCommitter{
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
@@ -51,11 +49,13 @@ func (c *transactionCommitter) start(numWorkers int) {
 
 func (c *transactionCommitter) commit() {
 	for vTx := range c.incomingValidatedTransactions {
+		start := time.Now()
 		txsStatus, err := c.commitTransactions(vTx)
 		if err != nil {
 			// TODO: handle error gracefully
 			panic(err)
 		}
+		prometheusmetrics.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
 		c.outgoingTransactionsStatus <- txsStatus
 	}
 }
@@ -64,7 +64,7 @@ func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
 ) (*protovcservice.TransactionStatus, error) {
 	for {
-		info := &commitInfo{
+		info := &statesToBeCommitted{
 			batchStatus:         prepareStatusForCommit(vTx),
 			newWithoutValWrites: groupWritesByNamespace(vTx.newWritesWithoutVal),
 			newWithValWrites:    groupWritesByNamespace(vTx.newWritesWithVal),
@@ -75,9 +75,7 @@ func (c *transactionCommitter) commitTransactions(
 		}
 		info.updateWrites = updateWrites
 
-		t := c.metrics.newLatencyTimer("db.commit")
 		mismatch, duplicated, err := c.db.commit(info)
-		t.observe()
 		if err != nil {
 			return nil, err
 		}
@@ -99,9 +97,7 @@ func (c *transactionCommitter) mergeWritesForCommit(vTx *validatedTransactions) 
 	nsToNonBlindWrites := groupWritesByNamespace(vTx.validTxNonBlindWrites)
 
 	// Step 2: fill the version for the blind writes
-	t := c.metrics.newLatencyTimer("db.fillVersionForBlindWrites")
 	err := c.fillVersionForBlindWrites(nsToBlindWrites)
-	t.observe()
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +142,7 @@ func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToW
 		// 		 from doing so till we evaluate the performance
 
 		// Step 1: get the committed version for each key in the writes.
-		t := c.metrics.newLatencyTimer(fmt.Sprintf("db.queryVersionsIfPresent.%d", nsID))
 		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(nsID, writes.keys)
-		t.observe()
 		if err != nil {
 			return err
 		}

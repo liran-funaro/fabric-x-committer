@@ -50,7 +50,9 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 		MaxConnections: 20,
 		MinConnections: 10,
 	}
-	db, err := newDatabase(config, nil)
+
+	metrics := newVCServiceMetrics()
+	db, err := newDatabase(config, metrics)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -229,7 +231,7 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	_, _, err := dbEnv.db.commit(&commitInfo{updateWrites: nsToWrites})
+	_, _, err := dbEnv.db.commit(&statesToBeCommitted{updateWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
@@ -240,7 +242,7 @@ func (env *databaseTestEnv) populateDataWithCleanup(
 ) {
 	require.NoError(t, initDatabaseTables(env.db, nsIDs))
 
-	_, _, err := env.db.commit(&commitInfo{updateWrites: writes, batchStatus: batchStatus})
+	_, _, err := env.db.commit(&statesToBeCommitted{updateWrites: writes, batchStatus: batchStatus})
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

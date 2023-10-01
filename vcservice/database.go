@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 )
 
 const (
@@ -35,6 +37,13 @@ type (
 
 	// keyToVersion is a map from key to version.
 	keyToVersion map[string][]byte
+
+	statesToBeCommitted struct {
+		updateWrites        namespaceToWrites
+		newWithoutValWrites namespaceToWrites
+		newWithValWrites    namespaceToWrites
+		batchStatus         *protovcservice.TransactionStatus
+	}
 )
 
 // newDatabase creates a new database.
@@ -54,10 +63,6 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 		return nil, err
 	}
 
-	if metrics == nil {
-		metrics = newVCServiceMetrics(false)
-	}
-
 	return &database{
 		pool:    pool,
 		metrics: metrics,
@@ -73,6 +78,7 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 	// to avoid parsing, planning and optimizing the query for each invoke. If we use
 	// a common function for all namespace, we need to pass the table name as a parameter
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
+	start := time.Now()
 	query := fmt.Sprintf(validateReadsSQLTemplate, nsID)
 
 	mismatch, err := db.pool.Query(context.Background(), query, r.keys, r.versions)
@@ -88,12 +94,14 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 
 	mismatchingReads := &reads{}
 	mismatchingReads.appendMany(keys, values)
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
 
 	return mismatchingReads, nil
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
 func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys [][]byte) (keyToVersion, error) {
+	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTemplate, tableNameForNamespace(nsID))
 	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
 	if err != nil {
@@ -110,42 +118,158 @@ func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys [][]byte)
 	for i, key := range foundKeys {
 		kToV[string(key)] = foundVersions[i]
 	}
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
 
 	return kToV, nil
 }
 
-func (db *database) execCommitUpdate(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+// commit commits the writes to the database.
+func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []txID, error) {
+	start := time.Now()
+	if states.empty() {
+		return nil, nil, nil
+	}
+
+	// We want to commit all the writes to all namespaces or none at all,
+	// so we use a database transaction. Otherwise, the failure and recovery
+	// logic will be very complicated.
+	ctx := context.Background()
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx begin: %w", err)
+	}
+
+	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
+	defer func() {
+		rollbackErr := tx.Rollback(ctx)
+		if !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			logger.Warn("failed rolling-back transaction: ", rollbackErr)
+		}
+	}()
+
+	mismatched, duplicated, err := db.commitStatesByGroup(ctx, tx, states)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx commitInner: %w", err)
+	}
+	if !mismatched.empty() || len(duplicated) > 0 {
+		// rollback
+		return mismatched, duplicated, nil
+	}
+
+	err = tx.Commit(ctx)
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx commit: %w", err)
+	}
+
+	return nil, nil, nil
+}
+
+func (db *database) commitStatesByGroup(
+	ctx context.Context,
+	tx pgx.Tx,
+	states *statesToBeCommitted,
+) (namespaceToReads, []txID, error) {
+	duplicated, err := db.commitTxStatus(ctx, tx, states.batchStatus)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err)
+	}
+
+	if err = db.commitUpdates(ctx, tx, states.updateWrites); err != nil {
+		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
+	}
+
+	mismatched, err := db.commitNewKeysWithoutValues(tx, states.newWithoutValWrites)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx execCommitNewWithoutVal: %w", err)
+	}
+
+	mismatchedWithVal, err := db.commitNewKeysWithValues(tx, states.newWithValWrites)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx execCommitNewWithVal: %w", err)
+	}
+	mismatched = mismatched.merge(mismatchedWithVal)
+
+	return mismatched, duplicated, nil
+}
+
+func (db *database) commitTxStatus(
+	ctx context.Context, tx pgx.Tx, batchStatus *protovcservice.TransactionStatus,
+) ([]txID /* duplicated */, error) {
+	start := time.Now()
+	if batchStatus == nil || len(batchStatus.Status) == 0 {
+		return nil, nil
+	}
+
+	ids := make([][]byte, 0, len(batchStatus.Status))
+	statues := make([]int, 0, len(batchStatus.Status))
+	for txID, status := range batchStatus.Status {
+		ids = append(ids, []byte(txID))
+		statues = append(statues, int(status))
+	}
+
+	ret := tx.QueryRow(ctx, commitTxStatusSQLTemplate, ids, statues)
+	duplicated, err := readInsertResult(ret, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed fetching results from query: %w", err)
+	}
+	if len(duplicated) == 0 {
+		prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+		return nil, nil
+	}
+
+	duplicatedTx := make([]txID, len(duplicated))
+	for i, v := range duplicated {
+		duplicatedTx[i] = txID(v)
+	}
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+	return duplicatedTx, nil
+}
+
+func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+	start := time.Now()
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
 		}
 
 		query := fmt.Sprintf(commitWritesSQLTemplate, nsID)
-		t := db.metrics.newLatencyTimer(fmt.Sprintf("db.execCommitUpdate.tx.exec.%d", nsID))
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
-		t.observe()
 		if err != nil {
 			return fmt.Errorf("failed tx exec: %w", err)
 		}
 	}
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
 
 	return nil
 }
 
-func (db *database) execCommitNew( // nolint:revive
-	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites, withVal bool,
+func (db *database) commitNewKeysWithoutValues(
+	tx pgx.Tx,
+	nsToWrites namespaceToWrites,
+) (namespaceToReads /* mismatched */, error) {
+	start := time.Now()
+	mismatch, err := commitNewKeys(tx, commitNewWithoutValWritesSQLTemplate, nsToWrites, false)
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitInsertNewKeyWithoutValueLatencySeconds, time.Since(start))
+	return mismatch, err
+}
+
+func (db *database) commitNewKeysWithValues(
+	tx pgx.Tx, nsToWrites namespaceToWrites,
+) (namespaceToReads /* mismatched */, error) {
+	start := time.Now()
+	mismatch, err := commitNewKeys(tx, commitNewWithValWritesSQLTemplate, nsToWrites, true)
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds, time.Since(start))
+	return mismatch, err
+}
+
+func commitNewKeys( // nolint:revive
+	tx pgx.Tx,
+	query string,
+	nsToWrites namespaceToWrites,
+	withVal bool,
 ) (namespaceToReads /* mismatched */, error) {
 	mismatch := make(namespaceToReads)
-	var queryTemplate string
-	var metricTemplate string
-	if withVal {
-		queryTemplate = commitNewWithValWritesSQLTemplate
-		metricTemplate = "db.tx.execCommitNew_WithVal.query.%d"
-	} else {
-		queryTemplate = commitNewWithoutValWritesSQLTemplate
-		metricTemplate = "db.tx.execCommitNew_WithoutVal.query.%d"
-	}
-
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
@@ -155,10 +279,8 @@ func (db *database) execCommitNew( // nolint:revive
 		if withVal {
 			args = append(args, writes.values)
 		}
-		t := db.metrics.newLatencyTimer(fmt.Sprintf(metricTemplate, nsID))
-		ret := tx.QueryRow(ctx, fmt.Sprintf(queryTemplate, nsID), args...)
+		ret := tx.QueryRow(context.Background(), fmt.Sprintf(query, nsID), args...)
 		violating, err := readInsertResult(ret, writes.keys)
-		t.observe()
 		if err != nil {
 			return nil, fmt.Errorf("failed fetching results from query: %w", err)
 		}
@@ -172,120 +294,9 @@ func (db *database) execCommitNew( // nolint:revive
 	return mismatch, nil
 }
 
-func (db *database) execCommitTxStatus(
-	ctx context.Context, tx pgx.Tx, batchStatus *protovcservice.TransactionStatus,
-) ([]TxID /* duplicated */, error) {
-	if batchStatus == nil || len(batchStatus.Status) == 0 {
-		return nil, nil
-	}
-
-	ids := make([][]byte, 0, len(batchStatus.Status))
-	statues := make([]int, 0, len(batchStatus.Status))
-	for txID, status := range batchStatus.Status {
-		ids = append(ids, []byte(txID))
-		statues = append(statues, int(status))
-	}
-
-	t := db.metrics.newLatencyTimer("db.execCommitTxStatus.tx.query")
-	ret := tx.QueryRow(ctx, commitTxStatusSQLTemplate, ids, statues)
-	duplicated, err := readInsertResult(ret, ids)
-	t.observe()
-	if err != nil {
-		return nil, fmt.Errorf("failed fetching results from query: %w", err)
-	}
-	if len(duplicated) == 0 {
-		return nil, nil
-	}
-
-	duplicatedTx := make([]TxID, len(duplicated))
-	for i, v := range duplicated {
-		duplicatedTx[i] = TxID(v)
-	}
-	return duplicatedTx, nil
-}
-
-type commitInfo struct {
-	updateWrites        namespaceToWrites
-	newWithoutValWrites namespaceToWrites
-	newWithValWrites    namespaceToWrites
-	batchStatus         *protovcservice.TransactionStatus
-}
-
-func (i *commitInfo) empty() bool {
+func (i *statesToBeCommitted) empty() bool {
 	return i.updateWrites.empty() && i.newWithoutValWrites.empty() && i.newWithValWrites.empty() &&
 		(i.batchStatus == nil || len(i.batchStatus.Status) == 0)
-}
-
-func (db *database) commitInner(
-	ctx context.Context,
-	tx pgx.Tx,
-	info *commitInfo,
-) (namespaceToReads, []TxID, error) {
-	duplicated, err := db.execCommitTxStatus(ctx, tx, info.batchStatus)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err)
-	}
-
-	if err = db.execCommitUpdate(ctx, tx, info.updateWrites); err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
-	}
-
-	mismatched, err := db.execCommitNew(ctx, tx, info.newWithoutValWrites, false)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitNewWithoutVal: %w", err)
-	}
-
-	mismatchedWithVal, err := db.execCommitNew(ctx, tx, info.newWithValWrites, true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitNewWithVal: %w", err)
-	}
-	mismatched = mismatched.merge(mismatchedWithVal)
-
-	return mismatched, duplicated, nil
-}
-
-// commit commits the writes to the database.
-func (db *database) commit(info *commitInfo) (namespaceToReads, []TxID, error) {
-	if info.empty() {
-		return nil, nil, nil
-	}
-
-	// We want to commit all the writes to all namespaces or none at all,
-	// so we use a database transaction. Otherwise, the failure and recovery
-	// logic will be very complicated.
-	ctx := context.Background()
-	t := db.metrics.newLatencyTimer("db.tx.begin")
-	tx, err := db.pool.Begin(ctx)
-	t.observe()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx begin: %w", err)
-	}
-
-	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
-	defer func() {
-		rollbackErr := tx.Rollback(ctx)
-		if !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			logger.Warn("failed rolling-back transaction: ", rollbackErr)
-		}
-	}()
-
-	mismatched, duplicated, err := db.commitInner(ctx, tx, info)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx commitInner: %w", err)
-	}
-	if !mismatched.empty() || len(duplicated) > 0 {
-		// rollback
-		return mismatched, duplicated, nil
-	}
-
-	t = db.metrics.newLatencyTimer("db.tx.commit")
-	err = tx.Commit(ctx)
-	t.observe()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx commit: %w", err)
-	}
-
-	return nil, nil, nil
 }
 
 func (db *database) close() {

@@ -127,3 +127,18 @@ func (p *Provider) NewHistogramVec(opts prometheus.HistogramOpts, labels []strin
 func (p *Provider) Registry() *prometheus.Registry {
 	return p.registry
 }
+
+// AddToCounter adds a value to a prometheus counter.
+func AddToCounter(c prometheus.Counter, n int) {
+	c.Add(float64(n))
+}
+
+// SetQueueSize sets a prometheus gauge to a value.
+func SetQueueSize(queue prometheus.Gauge, size int) {
+	queue.Set(float64(size))
+}
+
+// Observe observes a prometheus histogram.
+func Observe(h prometheus.Histogram, d time.Duration) {
+	h.Observe(d.Seconds())
+}

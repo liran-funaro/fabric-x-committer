@@ -19,7 +19,8 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
 
 	dbEnv := newDatabaseTestEnv(t)
-	v := newValidator(dbEnv.db, preparedTxs, validatedTxs, nil)
+	metrics := newVCServiceMetrics()
+	v := newValidator(dbEnv.db, preparedTxs, validatedTxs, metrics)
 
 	t.Cleanup(func() {
 		close(preparedTxs)
@@ -128,12 +129,12 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_2), string(v1)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_5), ""}:         []TxID{"tx2"},
-					comparableRead{2, string(k2_1), string(v0)}: []TxID{"tx1"},
-					comparableRead{2, string(k2_2), string(v0)}: []TxID{"tx3"},
-					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v1)}: []txID{"tx1"},
+					comparableRead{1, string(k1_2), string(v1)}: []txID{"tx1"},
+					comparableRead{1, string(k1_5), ""}:         []txID{"tx2"},
+					comparableRead{2, string(k2_1), string(v0)}: []txID{"tx1"},
+					comparableRead{2, string(k2_2), string(v0)}: []txID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []txID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -153,7 +154,7 @@ func TestValidate(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIndices: map[TxID]protoblocktx.Status{},
+				invalidTxIndices: map[txID]protoblocktx.Status{},
 			},
 		},
 		{
@@ -170,12 +171,12 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, string(k1_1), string(v0)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_2), string(v0)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_5), string(v1)}: []TxID{"tx2"},
-					comparableRead{2, string(k2_1), ""}:         []TxID{"tx1"},
-					comparableRead{2, string(k2_2), ""}:         []TxID{"tx3"},
-					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v0)}: []txID{"tx1"},
+					comparableRead{1, string(k1_2), string(v0)}: []txID{"tx1"},
+					comparableRead{1, string(k1_5), string(v1)}: []txID{"tx2"},
+					comparableRead{2, string(k2_1), ""}:         []txID{"tx1"},
+					comparableRead{2, string(k2_2), ""}:         []txID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []txID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -189,7 +190,7 @@ func TestValidate(t *testing.T) {
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxIndices: map[TxID]protoblocktx.Status{
+				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -210,12 +211,12 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTransactionIndices: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_2), string(v1)}: []TxID{"tx1"},
-					comparableRead{1, string(k1_5), ""}:         []TxID{"tx2"},
-					comparableRead{2, string(k2_1), ""}:         []TxID{"tx1"},
-					comparableRead{2, string(k2_2), ""}:         []TxID{"tx3"},
-					comparableRead{2, string(k2_5), ""}:         []TxID{"tx3"},
+					comparableRead{1, string(k1_1), string(v1)}: []txID{"tx1"},
+					comparableRead{1, string(k1_2), string(v1)}: []txID{"tx1"},
+					comparableRead{1, string(k1_5), ""}:         []txID{"tx2"},
+					comparableRead{2, string(k2_1), ""}:         []txID{"tx1"},
+					comparableRead{2, string(k2_2), ""}:         []txID{"tx3"},
+					comparableRead{2, string(k2_5), ""}:         []txID{"tx3"},
 				},
 				nonBlindWritesPerTransaction: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -231,7 +232,7 @@ func TestValidate(t *testing.T) {
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxIndices: map[TxID]protoblocktx.Status{
+				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},

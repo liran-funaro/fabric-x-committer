@@ -6,7 +6,9 @@ import (
 	"io"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -55,14 +57,14 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter*queueMultiplier)
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
-	metrics := newVCServiceMetrics(config.Monitoring.Metrics.Enable)
+	metrics := newVCServiceMetrics()
 	db, err := newDatabase(config.Database, metrics)
 	if err != nil {
 		return nil, err
 	}
 
 	vc := &ValidatorCommitterService{
-		preparer:         newPreparer(txBatch, preparedTxs),
+		preparer:         newPreparer(txBatch, preparedTxs, metrics),
 		validator:        newValidator(db, preparedTxs, validatedTxs, metrics),
 		committer:        newCommitter(db, validatedTxs, txsStatus, metrics),
 		txBatchChan:      txBatch,
@@ -73,10 +75,8 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 		metrics:          metrics,
 	}
 
-	if metrics.enabled {
-		vc.promErrChan = metrics.provider.StartPrometheusServer(config.Monitoring.Metrics.Endpoint)
-		go vc.monitorQueues()
-	}
+	vc.promErrChan = metrics.provider.StartPrometheusServer(config.Monitoring.Metrics.Endpoint)
+	go vc.monitorQueues()
 
 	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
 	vc.preparer.start(l.MaxWorkersForPreparer)
@@ -102,10 +102,10 @@ func (vc *ValidatorCommitterService) monitorQueues() {
 			logger.Errorf("Prometheus ended with error: %s", err)
 			return
 		}
-		vc.metrics.queue("tx-batch", len(vc.txBatchChan))
-		vc.metrics.queue("tx-prepared", len(vc.preparedTxsChan))
-		vc.metrics.queue("tx-validated", len(vc.validatedTxsChan))
-		vc.metrics.queue("tx-status", len(vc.txsStatusChan))
+		prometheusmetrics.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.txBatchChan))
+		prometheusmetrics.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxsChan))
+		prometheusmetrics.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxsChan))
+		prometheusmetrics.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatusChan))
 	}
 }
 
@@ -157,7 +157,7 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 			return err
 		}
 
-		vc.metrics.grpcReceive(len(txBatch.Transactions))
+		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(txBatch.Transactions))
 		vc.txBatchChan <- txBatch
 	}
 }
@@ -191,15 +191,32 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 			}
 			return err
 		}
+
+		committed := 0
+		mvcc := 0
+		dup := 0
+		for _, status := range txStatus.Status {
+			switch status {
+			case protoblocktx.Status_COMMITTED:
+				committed++
+			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+				mvcc++
+			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+				dup++
+			}
+		}
+
+		prometheusmetrics.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
+		prometheusmetrics.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
+		prometheusmetrics.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
+		prometheusmetrics.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
 }
 
 func (vc *ValidatorCommitterService) close() {
-	if vc.metrics.enabled {
-		err := vc.metrics.provider.StopServer()
-		if err != nil {
-			logger.Errorf("Failed stopping prometheus server: %s", err)
-		}
+	err := vc.metrics.provider.StopServer()
+	if err != nil {
+		logger.Errorf("Failed stopping prometheus server: %s", err)
 	}
 
 	logger.Info("Stopping the transaction preparer workers")

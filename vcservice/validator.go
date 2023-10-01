@@ -3,8 +3,10 @@ package vcservice
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 )
 
 // transactionValidator validates the reads of transactions against the committed states
@@ -27,7 +29,7 @@ type validatedTransactions struct {
 	newWritesWithVal         transactionToWrites
 	newWritesWithoutVal      transactionToWrites
 	readToTransactionIndices readToTransactions
-	invalidTxIndices         map[TxID]protoblocktx.Status
+	invalidTxIndices         map[txID]protoblocktx.Status
 }
 
 // NewValidator creates a new validator
@@ -37,9 +39,6 @@ func newValidator(
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
 ) *transactionValidator {
-	if metrics == nil {
-		metrics = newVCServiceMetrics(false)
-	}
 	return &transactionValidator{
 		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
@@ -57,14 +56,13 @@ func (v *transactionValidator) start(numWorkers int) {
 
 func (v *transactionValidator) validate() {
 	for prepTx := range v.incomingPreparedTransactions {
+		start := time.Now()
 		// Step 1: we validate reads and collect mismatching reads per namespace.
 		// TODO: We can run per namespace validation in parallel. However, we should not
 		// 		 over parallelize and make contention among preparer, validator, and committer
 		//       goroutines to acquire the CPU. Based on performance evaluation, we can decide
 		//       to run per namespace validation in parallel.
-		t := v.metrics.newLatencyTimer("validator.validateReads")
 		nsToMismatchingReads, valErr := v.validateReads(prepTx.namespaceToReadEntries)
-		t.observe()
 		if valErr != nil {
 			// TODO: we should not panic here. We should handle the error and recover accordingly.
 			log.Panic(valErr) // nolint:revive
@@ -78,6 +76,7 @@ func (v *transactionValidator) validate() {
 			log.Panic(matchErr) // nolint:revive
 		}
 
+		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
 		v.outgoingValidatedTransactions <- validatedTxs
 	}
 }
@@ -88,9 +87,7 @@ func (v *transactionValidator) validateReads(nsToReads namespaceToReads) (namesp
 	nsToMismatchingReads := make(namespaceToReads)
 
 	for nsID, r := range nsToReads {
-		t := v.metrics.newLatencyTimer(fmt.Sprintf("db.validateNamespaceReads.%d", nsID))
 		mismatch, err := v.db.validateNamespaceReads(nsID, r)
-		t.observe()
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +106,7 @@ func (p *preparedTransactions) makeValidated() *validatedTransactions {
 		newWritesWithVal:         p.newWritesWithValue,
 		newWritesWithoutVal:      p.newWritesWithoutValue,
 		readToTransactionIndices: p.readToTransactionIndices,
-		invalidTxIndices:         make(map[TxID]protoblocktx.Status),
+		invalidTxIndices:         make(map[txID]protoblocktx.Status),
 	}
 }
 
@@ -137,7 +134,7 @@ func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToR
 	return nil
 }
 
-func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status protoblocktx.Status) {
+func (v *validatedTransactions) updateInvalidTxs(txIDs []txID, status protoblocktx.Status) {
 	for _, tID := range txIDs {
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)

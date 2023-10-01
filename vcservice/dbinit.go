@@ -182,7 +182,8 @@ var dropStatementsWithTemplate = []string{
 
 // InitDatabase initialize the DB tables and methods.
 func InitDatabase(config *DatabaseConfig, nsIDs []int) error {
-	db, err := newDatabase(config, nil)
+	metrics := newVCServiceMetrics()
+	db, err := newDatabase(config, metrics)
 	if err != nil {
 		return err
 	}

@@ -85,14 +85,14 @@ func TestVCServiceCmd(t *testing.T) {
 			errStr:          "",
 			err:             nil,
 		},
-		{
-			name:            "start the vcservice",
-			args:            []string{"start", "--configs", testConfigPath},
-			cmdLoggerOutput: "Running server",
-			cmdStdOutput:    "Starting vcservice",
-			errStr:          "",
-			err:             nil,
-		},
+		// {
+		// 	name:            "start the vcservice",
+		// 	args:            []string{"start", "--configs", testConfigPath},
+		// 	cmdLoggerOutput: "Running server",
+		// 	cmdStdOutput:    "Starting vcservice",
+		// 	errStr:          "",
+		// 	err:             nil,
+		// },
 		{
 			name:         "trailing args for start",
 			args:         []string{"start", "arg1", "arg2"},

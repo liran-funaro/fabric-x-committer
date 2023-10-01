@@ -69,6 +69,9 @@ func TestCounter(t *testing.T) {
 	c.Inc()
 
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_committed_transaction_total 2"})
+
+	AddToCounter(c, 10)
+	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_committed_transaction_total 12"})
 }
 
 func TestCounterVec(t *testing.T) {
@@ -113,6 +116,9 @@ func TestNewGuage(t *testing.T) {
 
 	g.Sub(3)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 7"})
+
+	SetQueueSize(g, 5)
+	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 5"})
 }
 
 func TestNewGuageVec(t *testing.T) {
@@ -167,7 +173,7 @@ func TestNewHistogram(t *testing.T) {
 
 	h.Observe(500 * time.Millisecond.Seconds())
 	h.Observe(time.Second.Seconds())
-	h.Observe(10 * time.Second.Seconds())
+	Observe(h, 10*time.Second)
 	test.CheckMetrics(
 		t,
 		env.client,

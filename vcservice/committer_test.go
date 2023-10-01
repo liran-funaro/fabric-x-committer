@@ -20,7 +20,8 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	txStatus := make(chan *protovcservice.TransactionStatus, 10)
 
 	dbEnv := newDatabaseTestEnv(t)
-	c := newCommitter(dbEnv.db, validatedTxs, txStatus, nil)
+	metrics := newVCServiceMetrics()
+	c := newCommitter(dbEnv.db, validatedTxs, txStatus, metrics)
 
 	t.Cleanup(func() {
 		close(validatedTxs)
@@ -104,7 +105,7 @@ func TestCommit(t *testing.T) {
 					},
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxIndices:   map[TxID]protoblocktx.Status{},
+				invalidTxIndices:   map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
 				Status: map[string]protoblocktx.Status{"tx3": protoblocktx.Status_COMMITTED},
@@ -140,7 +141,7 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
-				invalidTxIndices: map[TxID]protoblocktx.Status{},
+				invalidTxIndices: map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
 				Status: map[string]protoblocktx.Status{
@@ -195,7 +196,7 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
-				invalidTxIndices: map[TxID]protoblocktx.Status{
+				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -235,7 +236,7 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxIndices: map[TxID]protoblocktx.Status{
+				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,

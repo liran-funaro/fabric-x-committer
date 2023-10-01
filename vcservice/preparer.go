@@ -1,8 +1,11 @@
 package vcservice
 
 import (
+	"time"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -13,9 +16,11 @@ type (
 		incomingTransactionBatch <-chan *protovcservice.TransactionBatch
 		// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 		outgoingPreparedTransactions chan<- *preparedTransactions
+		// metrics is the metrics collector
+		metrics *perfMetrics
 	}
 
-	TxID string
+	txID string
 
 	// preparedTransactions is a list of transactions that are prepared for validation and commit
 	// preparedTransactions is NOT thread safe.
@@ -28,12 +33,12 @@ type (
 		newWritesWithoutValue        transactionToWrites
 	}
 
-	// namespaceToReads maps a namespace ID to a list of reads
+	// namespaceToReads maps a namespace ID to a list of reads.
 	namespaceToReads map[namespaceID]*reads
 
 	namespaceID uint32
 
-	// reads is a list of keys and versions
+	// reads is a list of keys and versions.
 	reads struct {
 		keys     [][]byte
 		versions [][]byte
@@ -41,8 +46,8 @@ type (
 
 	// readToTransactions maps a read to the index of the transaction that contains it
 	// used to find the index of invalid transactions when a read is invalid
-	// i.e., the read version is not matching the committed version
-	readToTransactions map[comparableRead][]TxID
+	// i.e., the read version is not matching the committed version.
+	readToTransactions map[comparableRead][]txID
 
 	// comparableRead is a read that can be used as a map key
 	comparableRead struct {
@@ -51,7 +56,7 @@ type (
 		version string
 	}
 
-	transactionToWrites map[TxID]namespaceToWrites
+	transactionToWrites map[txID]namespaceToWrites
 
 	namespaceToWrites map[namespaceID]*namespaceWrites
 
@@ -68,10 +73,12 @@ type (
 func newPreparer(
 	txBatch <-chan *protovcservice.TransactionBatch,
 	preparedTxs chan<- *preparedTransactions,
+	metrics *perfMetrics,
 ) *transactionPreparer {
 	return &transactionPreparer{
 		incomingTransactionBatch:     txBatch,
 		outgoingPreparedTransactions: preparedTxs,
+		metrics:                      metrics,
 	}
 }
 
@@ -88,6 +95,7 @@ func (p *transactionPreparer) start(numWorkers int) {
 // to the validator.
 func (p *transactionPreparer) prepare() {
 	for txBatch := range p.incomingTransactionBatch {
+		start := time.Now()
 		prepTxs := &preparedTransactions{
 			namespaceToReadEntries:       make(namespaceToReads),
 			readToTransactionIndices:     make(readToTransactions),
@@ -99,11 +107,11 @@ func (p *transactionPreparer) prepare() {
 
 		for _, tx := range txBatch.Transactions {
 			for _, nsOperations := range tx.Namespaces {
-				txID := TxID(tx.ID)
+				tID := txID(tx.ID)
 
-				prepTxs.addReadsOnly(txID, nsOperations)
-				prepTxs.addReadWrites(txID, nsOperations)
-				prepTxs.addBlindWrites(txID, nsOperations)
+				prepTxs.addReadsOnly(tID, nsOperations)
+				prepTxs.addReadWrites(tID, nsOperations)
+				prepTxs.addBlindWrites(tID, nsOperations)
 			}
 		}
 
@@ -114,12 +122,13 @@ func (p *transactionPreparer) prepare() {
 			lst.clearEmpty()
 		}
 
+		prometheusmetrics.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
 		p.outgoingPreparedTransactions <- prepTxs
 	}
 }
 
 // addReadsOnly adds reads-only to the prepared transactions
-func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadsOnly) == 0 {
 		return
 	}
@@ -144,7 +153,7 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 }
 
 // addReadWrites adds read-writes to the prepared transactions
-func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadWrites) == 0 {
 		return
 	}
@@ -182,7 +191,7 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 }
 
 // addBlindWrites adds the blind writes to the prepared transactions
-func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addBlindWrites(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.BlindWrites) == 0 {
 		return
 	}
@@ -236,7 +245,7 @@ func (nr namespaceToReads) getOrCreate(nsID namespaceID) *reads {
 	return nsRead
 }
 
-func (tw transactionToWrites) getOrCreate(id TxID, nsID namespaceID) *namespaceWrites {
+func (tw transactionToWrites) getOrCreate(id txID, nsID namespaceID) *namespaceWrites {
 	nsToWrites, ok := tw[id]
 	if !ok {
 		nsToWrites = make(namespaceToWrites)
@@ -253,7 +262,7 @@ func (tw transactionToWrites) getOrCreate(id TxID, nsID namespaceID) *namespaceW
 }
 
 func (tw transactionToWrites) clearEmpty() {
-	var emptyIDs []TxID
+	var emptyIDs []txID
 	for id, ntw := range tw {
 		if ntw.empty() {
 			emptyIDs = append(emptyIDs, id)
