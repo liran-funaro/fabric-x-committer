@@ -21,9 +21,9 @@ AS $$
 begin
 	result = 'success';
     violating = NULL;
-    INSERT INTO tx_status (tx_id, status)
-		SELECT _id, _status
-		FROM UNNEST(_tx_ids, _statues) AS t(_id, _status);
+	INSERT INTO tx_status (tx_id, status)
+	VALUES
+		(unnest(_tx_ids), unnest(_statues));
 exception
 when unique_violation then
     violating = (
