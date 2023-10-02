@@ -32,6 +32,7 @@ blockgen:
   # No need to set coordinator-endpoint while testing the performance of vcservice alone.
   vcservice-endpoints:
     - "localhost:9002"
+    - "localhost:9003"
   monitoring:
     metrics:
       enable: true
