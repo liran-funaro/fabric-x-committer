@@ -38,9 +38,10 @@ func TestConfig(t *testing.T) {
 					MinConnections: 5,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:  2,
-					MaxWorkersForValidator: 2,
-					MaxWorkersForCommitter: 2,
+					MaxWorkersForPreparer:   2,
+					MaxWorkersForValidator:  2,
+					MaxWorkersForCommitter:  2,
+					MinTransactionBatchSize: 2,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
@@ -75,9 +76,10 @@ func TestConfig(t *testing.T) {
 					MinConnections: 10,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:  10,
-					MaxWorkersForValidator: 10,
-					MaxWorkersForCommitter: 10,
+					MaxWorkersForPreparer:   10,
+					MaxWorkersForValidator:  10,
+					MaxWorkersForCommitter:  10,
+					MinTransactionBatchSize: 100,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
@@ -111,9 +113,10 @@ func TestConfig(t *testing.T) {
 					MinConnections: 10,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:  10,
-					MaxWorkersForValidator: 10,
-					MaxWorkersForCommitter: 10,
+					MaxWorkersForPreparer:   10,
+					MaxWorkersForValidator:  10,
+					MaxWorkersForCommitter:  10,
+					MinTransactionBatchSize: 100,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{

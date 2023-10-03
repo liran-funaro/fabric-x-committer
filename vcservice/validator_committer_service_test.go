@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,9 +48,10 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 			MinConnections: 10,
 		},
 		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:  2,
-			MaxWorkersForValidator: 2,
-			MaxWorkersForCommitter: 2,
+			MaxWorkersForPreparer:   2,
+			MaxWorkersForValidator:  2,
+			MaxWorkersForCommitter:  2,
+			MinTransactionBatchSize: 10,
 		},
 		Monitoring: &monitoring.Config{
 			Metrics: &metrics.Config{
@@ -233,4 +235,32 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 	env.dbEnv.statusExists(t, expectedTxStatus.Status)
+
+	txBatch = &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
+			{
+				ID: "New key 2 no value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("New key 2 no value"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	env.vcs.minTxBatchSize = 1
+	require.NoError(t, vcStream.Send(txBatch))
+
+	require.Eventually(t, func() bool {
+		txStatus, err = vcStream.Recv()
+		require.NoError(t, err)
+		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key no value"])
+		return true
+	}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
 }

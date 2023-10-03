@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -24,16 +25,18 @@ var logger = logging.New("validator and committer service")
 // ValidatorCommitterService is a gRPC service that implements the ValidationAndCommitService interface.
 type ValidatorCommitterService struct {
 	protovcservice.UnimplementedValidationAndCommitServiceServer
-	preparer         *transactionPreparer
-	validator        *transactionValidator
-	committer        *transactionCommitter
-	txBatchChan      chan *protovcservice.TransactionBatch
-	preparedTxsChan  chan *preparedTransactions
-	validatedTxsChan chan *validatedTransactions
-	txsStatusChan    chan *protovcservice.TransactionStatus
-	db               *database
-	metrics          *perfMetrics
-	promErrChan      <-chan error
+	preparer                 *transactionPreparer
+	validator                *transactionValidator
+	committer                *transactionCommitter
+	txBatchChan              chan *protovcservice.TransactionBatch
+	preparedTxsChan          chan *preparedTransactions
+	validatedTxsChan         chan *validatedTransactions
+	txsStatusChan            chan *protovcservice.TransactionStatus
+	db                       *database
+	metrics                  *perfMetrics
+	promErrChan              <-chan error
+	minTxBatchSize           int
+	timeoutForMinTxBatchSize time.Duration
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -64,15 +67,17 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 	}
 
 	vc := &ValidatorCommitterService{
-		preparer:         newPreparer(txBatch, preparedTxs, metrics),
-		validator:        newValidator(db, preparedTxs, validatedTxs, metrics),
-		committer:        newCommitter(db, validatedTxs, txsStatus, metrics),
-		txBatchChan:      txBatch,
-		preparedTxsChan:  preparedTxs,
-		validatedTxsChan: validatedTxs,
-		txsStatusChan:    txsStatus,
-		db:               db,
-		metrics:          metrics,
+		preparer:                 newPreparer(txBatch, preparedTxs, metrics),
+		validator:                newValidator(db, preparedTxs, validatedTxs, metrics),
+		committer:                newCommitter(db, validatedTxs, txsStatus, metrics),
+		txBatchChan:              txBatch,
+		preparedTxsChan:          preparedTxs,
+		validatedTxsChan:         validatedTxs,
+		txsStatusChan:            txsStatus,
+		db:                       db,
+		metrics:                  metrics,
+		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
+		timeoutForMinTxBatchSize: 5 * time.Second,
 	}
 
 	vc.promErrChan = metrics.provider.StartPrometheusServer(config.Monitoring.Metrics.Endpoint)
@@ -147,6 +152,30 @@ func isStreamEndError(err error) bool {
 func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
+	largerBatch := &protovcservice.TransactionBatch{}
+	var mu sync.Mutex
+
+	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
+
+	sendLargeBatch := func() {
+		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
+		txs := largerBatch
+		vc.txBatchChan <- txs
+		largerBatch = &protovcservice.TransactionBatch{}
+		timer.Reset(vc.timeoutForMinTxBatchSize)
+	}
+
+	go func() {
+		for {
+			<-timer.C
+			mu.Lock()
+			if len(largerBatch.GetTransactions()) > 0 {
+				sendLargeBatch()
+			}
+			mu.Unlock()
+		}
+	}()
+
 	for {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -157,8 +186,15 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 			return err
 		}
 
-		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(txBatch.Transactions))
-		vc.txBatchChan <- txBatch
+		mu.Lock()
+		largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)
+		if len(largerBatch.GetTransactions()) < vc.minTxBatchSize {
+			mu.Unlock()
+			continue
+		}
+
+		sendLargeBatch()
+		mu.Unlock()
 	}
 }
 

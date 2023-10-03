@@ -46,9 +46,10 @@ func (d *DatabaseConfig) DataSourceName() string {
 
 // ResourceLimitsConfig is the configuration for the resource limits.
 type ResourceLimitsConfig struct {
-	MaxWorkersForPreparer  int `mapstructure:"max-workers-for-preparer"`
-	MaxWorkersForValidator int `mapstructure:"max-workers-for-validator"`
-	MaxWorkersForCommitter int `mapstructure:"max-workers-for-committer"`
+	MaxWorkersForPreparer   int `mapstructure:"max-workers-for-preparer"`
+	MaxWorkersForValidator  int `mapstructure:"max-workers-for-validator"`
+	MaxWorkersForCommitter  int `mapstructure:"max-workers-for-committer"`
+	MinTransactionBatchSize int `mapstructure:"min-transaction-batch-size"`
 }
 
 // ReadConfig reads the configuration from the viper instance.
@@ -85,6 +86,7 @@ func setDefaults() {
 	viper.SetDefault(prefix+"max-workers-for-preparer", 10)
 	viper.SetDefault(prefix+"max-workers-for-validator", 10)
 	viper.SetDefault(prefix+"max-workers-for-committer", 10)
+	viper.SetDefault(prefix+"min-transaction-batch-size", 100)
 
 	// defaults for monitoring.config
 	prefix = "validator-committer-service.monitoring."
