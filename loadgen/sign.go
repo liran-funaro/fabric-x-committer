@@ -3,12 +3,12 @@ package loadgen
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 
@@ -40,6 +40,8 @@ type (
 		Sign(hash []byte) Signature
 		// Verify returns true of the signature matches the hash.
 		Verify(sig Signature, hash []byte) bool
+		// GetVerificationKey returns the verification key.
+		GetVerificationKey() ([]byte, error)
 	}
 
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
@@ -60,25 +62,19 @@ func NewTxSignerVerifier(profile *SignatureProfile) *TxSignerVerifier {
 	}
 }
 
-func (e *TxSignerVerifier) txHash(tx *protoblocktx.Tx) []byte {
-	d := sha256.New()
-	for _, m := range tx.Namespaces {
-		data, err := e.MarshalOptions.Marshal(m)
-		Must(err)
-		_, err = d.Write(data)
-		Must(err)
-	}
-	return d.Sum(nil)
-}
-
 // Verify verifies a TX signature.
 func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
-	return e.HashSigner.Verify(tx.Signature, e.txHash(tx))
+	return e.HashSigner.Verify(tx.Signature, signature.HashTx(tx))
 }
 
 // Sign signs a TX.
 func (e *TxSignerVerifier) Sign(tx *protoblocktx.Tx) {
-	tx.Signature = e.HashSigner.Sign(e.txHash(tx))
+	tx.Signature = e.HashSigner.Sign(signature.HashTx(tx))
+}
+
+// GetVerificationKey returns the verification key.
+func (e *TxSignerVerifier) GetVerificationKey() ([]byte, error) {
+	return e.HashSigner.GetVerificationKey()
 }
 
 // NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile.
@@ -107,6 +103,10 @@ func (*dummySignerVerifier) Sign([]byte) Signature {
 	return nil
 }
 
+func (*dummySignerVerifier) GetVerificationKey() ([]byte, error) {
+	return nil, nil
+}
+
 // ECDSA
 
 type ecdsaSignerVerifier struct {
@@ -122,6 +122,10 @@ func (e *ecdsaSignerVerifier) Sign(hash []byte) Signature {
 	sig, err := ecdsa.SignASN1(rand.Reader, e.signingKey, hash)
 	Must(err)
 	return sig
+}
+
+func (e *ecdsaSignerVerifier) GetVerificationKey() ([]byte, error) {
+	return crypto.SerializeVerificationKey(e.verificationKey)
 }
 
 func (e *ecdsaSignerVerifier) ecdsaNewKeys() {

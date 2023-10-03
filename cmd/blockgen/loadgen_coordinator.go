@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -20,6 +21,19 @@ func generateLoadForCoordinatorService(
 	}
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
+
+	pubKey, err := blockGen.Signer.GetVerificationKey()
+	if err != nil {
+		return err
+	}
+	_, err = client.SetVerificationKey(
+		context.Background(),
+		&protosigverifierservice.Key{SerializedBytes: pubKey},
+	)
+	if err != nil {
+		return err
+	}
+
 	csStream, err := client.BlockProcessing(context.Background())
 	if err != nil {
 		return err

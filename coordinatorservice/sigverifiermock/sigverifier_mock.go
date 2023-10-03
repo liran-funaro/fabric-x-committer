@@ -9,8 +9,11 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"google.golang.org/grpc"
 )
+
+var logger = logging.New("sigverifier_mock")
 
 // MockSigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
 // MockSigVerifier marks valid and invalid flag as follows:
@@ -37,6 +40,7 @@ func (m *MockSigVerifier) SetVerificationKey(
 	_ context.Context,
 	k *protosigverifierservice.Key,
 ) (*protosigverifierservice.Empty, error) {
+	logger.Info("Verification key has been set")
 	m.verificationKey = k.SerializedBytes
 	return &protosigverifierservice.Empty{}, nil
 }
