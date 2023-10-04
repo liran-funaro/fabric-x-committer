@@ -63,10 +63,10 @@ func TestGlobalDependencyManager(t *testing.T) {
 		t2 := createTxNode(t, [][]byte{keys[1]}, [][]byte{keys[2]}, nil)
 		t3 := createTxNode(t, [][]byte{keys[2]}, [][]byte{keys[3]}, nil)
 
-		t2.dependsOnTxs.update(transactionSet{t1: struct{}{}})
+		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
 		t1.dependentTxs.Store(t2, struct{}{})
 
-		t3.dependsOnTxs.update(transactionSet{t2: struct{}{}})
+		t3.dependsOnTxs = append(t3.dependsOnTxs, t2)
 		t2.dependentTxs.Store(t3, struct{}{})
 
 		incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t1, t2, t3})
@@ -107,7 +107,7 @@ func TestGlobalDependencyManager(t *testing.T) {
 		t1 := createTxNode(t, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]})
 		t2 := createTxNode(t, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]})
 
-		t2.dependsOnTxs.update(transactionSet{t1: struct{}{}})
+		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
 		t1.dependentTxs.Store(t2, struct{}{})
 
 		incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t1, t2})
@@ -164,7 +164,7 @@ func TestGlobalDependencyManager(t *testing.T) {
 		t1 := createTxNode(t, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]})
 		t2 := createTxNode(t, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]})
 
-		t2.dependsOnTxs.update(transactionSet{t1: struct{}{}})
+		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
 		t1.dependentTxs.Store(t2, struct{}{})
 
 		incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t1, t2})

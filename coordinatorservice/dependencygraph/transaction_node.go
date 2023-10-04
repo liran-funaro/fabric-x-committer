@@ -35,7 +35,7 @@ type (
 		// Note that a transaction T2 can depend on another transaction T1 only if T1
 		// has arrived before T2 or T1 precedes T2 in transaction order in the block.
 		// Hence, we will not have cyclic dependencies.
-		dependsOnTxs transactionSet
+		dependsOnTxs transactionList
 		// dependentTxs is a set of transactions that depend on this transaction.
 		// After validating this transaction, dependentTxs is used to remove dependencies
 		// from each dependent transaction.
@@ -43,9 +43,7 @@ type (
 		rwKeys       *readWriteKeys
 	}
 
-	// transactionSet is a map with keys as transactionNode. This is used to
-	// facilitate efficient lookup of transactions.
-	transactionSet map[*TransactionNode]any
+	transactionList []*TransactionNode
 
 	// readWriteKeys holds the read and write keys of a transaction.
 	readWriteKeys struct {
@@ -64,7 +62,6 @@ func newTransactionNode(tx *protoblocktx.Tx) *TransactionNode {
 			ID:         tx.Id,
 			Namespaces: tx.Namespaces,
 		},
-		dependsOnTxs: make(transactionSet),
 		dependentTxs: newDependentTxs(),
 		rwKeys:       readAndWriteKeys(tx.Namespaces),
 	}
@@ -84,14 +81,14 @@ func newDependentTxs() *sync.Map {
 // This method can be called concurrently on different transaction nodes.
 // Though the dependsOnTx can be common among different transactions/goroutines,
 // it is not a problem because dependentTxs is a concurrent map.
-func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transactionSet) {
+func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transactionList) {
 	if len(dependsOnTxs) == 0 {
 		return
 	}
 
-	n.dependsOnTxs.update(dependsOnTxs)
+	n.dependsOnTxs = append(n.dependsOnTxs, dependsOnTxs...)
 
-	for depOnTx := range dependsOnTxs {
+	for _, depOnTx := range dependsOnTxs {
 		depOnTx.dependentTxs.Store(n, nil)
 	}
 }
@@ -113,7 +110,12 @@ func (n *TransactionNode) freeDependents() []*TransactionNode /* fully freed tra
 	n.dependentTxs.Range(func(k, _ any) bool {
 		dependentTx, _ := k.(*TransactionNode)
 
-		delete(dependentTx.dependsOnTxs, n)
+		for i, tx := range dependentTx.dependsOnTxs {
+			if tx == n {
+				dependentTx.dependsOnTxs = append(dependentTx.dependsOnTxs[:i], dependentTx.dependsOnTxs[i+1:]...)
+				break
+			}
+		}
 
 		if dependentTx.isDependencyFree() {
 			freedTxs = append(freedTxs, dependentTx)
@@ -133,12 +135,6 @@ func (n *TransactionNode) freeDependents() []*TransactionNode /* fully freed tra
 // This method can be called concurrently on different transaction nodes.
 func (n *TransactionNode) isDependencyFree() bool {
 	return len(n.dependsOnTxs) == 0
-}
-
-func (l transactionSet) update(tl transactionSet) {
-	for t := range tl {
-		l[t] = nil
-	}
 }
 
 func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {

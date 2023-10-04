@@ -111,7 +111,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
 			default:
 				// other transactions should be dependent on the previous transaction
 				require.Len(t, txNode.dependsOnTxs, 1)
-				require.Equal(t, transactionSet{txsNode[i-1]: nil}, txNode.dependsOnTxs)
+				require.Equal(t, transactionList{txsNode[i-1]}, txNode.dependsOnTxs)
 			}
 
 			if i == len(txsNode)-1 {

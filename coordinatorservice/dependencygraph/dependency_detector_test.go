@@ -24,15 +24,15 @@ func TestDependencyDetector(t *testing.T) {
 	// tx2Node depends on tx1Node as tx2 writes k1 while tx1 reads k1 -- rw dependency.
 	tx2Node := createTxNode(t, nil, [][]byte{keys[0]}, nil)
 	dependsOnTx = dd.getDependenciesOf(tx2Node)
-	expectedDependsOnTx := transactionSet{tx1Node: nil}
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	expectedDependsOnTx := transactionList{tx1Node}
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx2Node)
 
 	// tx3Node depends on tx1Node as tx3 reads k3 while tx1 read-writes k3 -- wr & ww dependency.
 	tx3Node := createTxNode(t, [][]byte{keys[2]}, nil, nil)
 	dependsOnTx = dd.getDependenciesOf(tx3Node)
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	depDetect = newDependencyDetector()
 	depDetect.addWaitingTx(tx3Node)
@@ -41,7 +41,7 @@ func TestDependencyDetector(t *testing.T) {
 	// tx4Node depends on tx1Node as tx4 writes k5 and k6 while tx1 writes k5 and k6 -- ww dependency.
 	tx4Node := createTxNode(t, nil, nil, [][]byte{keys[4], keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx4Node)
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx4Node)
 
@@ -49,7 +49,7 @@ func TestDependencyDetector(t *testing.T) {
 	// Further, it has wr and ww dependency on tx1 due to k4.
 	tx5Node := createTxNode(t, [][]byte{keys[2]}, [][]byte{keys[3]}, nil)
 	dependsOnTx = dd.getDependenciesOf(tx5Node)
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx5Node)
 
@@ -57,8 +57,8 @@ func TestDependencyDetector(t *testing.T) {
 	// Further, it has a rw dependency on tx2 due to k1 and a rw dependency on tx5 due to k4.
 	tx6Node := createTxNode(t, [][]byte{keys[0], keys[3]}, nil, nil)
 	dependsOnTx = dd.getDependenciesOf(tx6Node)
-	expectedDependsOnTx = transactionSet{tx5Node: nil, tx2Node: nil, tx1Node: nil}
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	expectedDependsOnTx = transactionList{tx5Node, tx2Node, tx1Node}
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx6Node)
 
@@ -66,8 +66,8 @@ func TestDependencyDetector(t *testing.T) {
 	// Further, it has a wr dependency on tx6 due to k4 and a rw dependency on tx5 due to k4.
 	tx7Node := createTxNode(t, nil, [][]byte{keys[3]}, nil)
 	dependsOnTx = dd.getDependenciesOf(tx7Node)
-	expectedDependsOnTx = transactionSet{tx6Node: nil, tx5Node: nil, tx1Node: nil}
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	expectedDependsOnTx = transactionList{tx6Node, tx5Node, tx1Node}
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	depDetect = newDependencyDetector()
 	depDetect.addWaitingTx(tx7Node)
@@ -76,16 +76,17 @@ func TestDependencyDetector(t *testing.T) {
 	// tx8Node depends on all previous transactions.
 	tx8Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx8Node)
-	expectedDependsOnTx = transactionSet{
-		tx7Node: nil,
-		tx6Node: nil,
-		tx5Node: nil,
-		tx4Node: nil,
-		tx3Node: nil,
-		tx2Node: nil,
-		tx1Node: nil,
+
+	expectedDependsOnTx = transactionList{
+		tx7Node,
+		tx6Node,
+		tx5Node,
+		tx4Node,
+		tx3Node,
+		tx2Node,
+		tx1Node,
 	}
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx8Node)
 
@@ -99,13 +100,8 @@ func TestDependencyDetector(t *testing.T) {
 	// As we have removed tx1 to tx4, tx9Node should only be dependent on tx5, tx6, tx7, and tx8.
 	tx9Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx9Node)
-	expectedDependsOnTx = transactionSet{
-		tx8Node: nil,
-		tx7Node: nil,
-		tx6Node: nil,
-		tx5Node: nil,
-	}
-	require.Equal(t, expectedDependsOnTx, dependsOnTx)
+	expectedDependsOnTx = transactionList{tx8Node, tx7Node, tx6Node, tx5Node}
+	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	// remove all remaining transactions from the dependency detector.
 	dd.removeWaitingTx([]*TransactionNode{tx5Node})
@@ -118,5 +114,5 @@ func TestDependencyDetector(t *testing.T) {
 	// As we have removed tx1 to tx9, tx9Node should not be dependent on any transaction.
 	tx10Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx10Node)
-	require.Equal(t, make(transactionSet), dependsOnTx)
+	require.Len(t, dependsOnTx, 0)
 }

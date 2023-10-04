@@ -28,16 +28,16 @@ func TestTransactionNode(t *testing.T) {
 		[][]byte{keys[4], keys[6]}, // blindWrites
 	)
 
-	tx2DependsOnTx := transactionSet{
-		tx1Node: nil,
+	tx2DependsOnTx := transactionList{
+		tx1Node,
 	}
 	tx2Node.addDependenciesAndUpdateDependents(tx2DependsOnTx)
 	require.False(t, tx2Node.isDependencyFree())
 	require.Equal(t, tx2DependsOnTx, tx2Node.dependsOnTxs)
 	checkDependentTxs(
 		t,
-		transactionSet{ // expectedDependentTxs
-			tx2Node: nil,
+		transactionList{ // expectedDependentTxs
+			tx2Node,
 		},
 		tx1Node.dependentTxs, // actualDependentTxs
 	)
@@ -49,25 +49,25 @@ func TestTransactionNode(t *testing.T) {
 		[][]byte{keys[6]}, // blindWrites
 	)
 
-	tx3DependsOnTx := transactionSet{
-		tx1Node: nil,
-		tx2Node: nil,
+	tx3DependsOnTx := transactionList{
+		tx1Node,
+		tx2Node,
 	}
 	tx3Node.addDependenciesAndUpdateDependents(tx3DependsOnTx)
 	require.False(t, tx2Node.isDependencyFree())
 	require.Equal(t, tx3DependsOnTx, tx3Node.dependsOnTxs)
 	checkDependentTxs(
 		t,
-		transactionSet{ // expectedDependentTxs
-			tx2Node: nil,
-			tx3Node: nil,
+		transactionList{ // expectedDependentTxs
+			tx2Node,
+			tx3Node,
 		},
 		tx1Node.dependentTxs, // actualDependentTxs
 	)
 	checkDependentTxs(
 		t,
-		transactionSet{ // expectedDependentTxs
-			tx3Node: nil,
+		transactionList{ // expectedDependentTxs
+			tx3Node,
 		},
 		tx2Node.dependentTxs, // actualDependentTxs
 	)
@@ -157,17 +157,17 @@ func checkNewTxNode(
 	require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 }
 
-func checkDependentTxs(t *testing.T, expectedTransactionList transactionSet, dependentTxs *sync.Map) {
+func checkDependentTxs(t *testing.T, expectedTransactionList transactionList, dependentTxs *sync.Map) {
 	actualLen := getLengthOfDependentTx(t, dependentTxs)
 	require.Len(t, expectedTransactionList, actualLen)
 
-	actualTransactionList := make(transactionSet)
+	actualTransactionList := make(transactionList, 0, actualLen)
 	dependentTxs.Range(func(k, _ any) bool {
 		txNode, _ := k.(*TransactionNode)
-		actualTransactionList[txNode] = nil
+		actualTransactionList = append(actualTransactionList, txNode)
 		return true
 	})
-	require.Equal(t, expectedTransactionList, actualTransactionList)
+	require.ElementsMatch(t, expectedTransactionList, actualTransactionList)
 }
 
 func getLengthOfDependentTx(_ *testing.T, dependentTxs *sync.Map) int {
