@@ -22,10 +22,7 @@ func generateLoadForCoordinatorService(
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	pubKey, err := blockGen.Signer.GetVerificationKey()
-	if err != nil {
-		return err
-	}
+	pubKey := blockGen.Signer.GetVerificationKey()
 	_, err = client.SetVerificationKey(
 		context.Background(),
 		&protosigverifierservice.Key{SerializedBytes: pubKey},

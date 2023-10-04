@@ -73,7 +73,9 @@ type DependencyDescription struct {
 
 // SignatureProfile describes how to sign/verify a TX.
 type SignatureProfile struct {
-	Scheme  Scheme   `yaml:"scheme"`
+	Scheme Scheme `yaml:"scheme"`
+	// KeyPath describes how to find/generate the signature keys.
+	// KeyPath is still not supported.
 	KeyPath *KeyPath `yaml:"key-path"`
 }
 
