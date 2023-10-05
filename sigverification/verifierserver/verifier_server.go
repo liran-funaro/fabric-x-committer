@@ -33,7 +33,9 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			if s.metrics.Enabled {
 				m.VerifierServerInTxs.Add(len(batch.Requests))
 				for _, request := range batch.Requests {
-					s.metrics.RequestTracer.Start(request.GetTx().GetId())
+					if s.metrics.Enabled {
+						s.metrics.RequestTracer.Start(request.GetTx().GetId())
+					}
 				}
 			}
 			executor.Submit(batch.Requests)
@@ -43,8 +45,9 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			if s.metrics.Enabled {
 				m.VerifierServerOutTxs.Add(len(outputs))
 				for _, output := range outputs {
-
-					s.metrics.RequestTracer.End(output.GetTxId(), attribute.String(metrics.ValidLabel, metrics.ValidStatusMap[output.IsValid]))
+					if s.metrics.Enabled {
+						s.metrics.RequestTracer.End(output.GetTxId(), attribute.String(metrics.ValidLabel, metrics.ValidStatusMap[output.IsValid]))
+					}
 				}
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}

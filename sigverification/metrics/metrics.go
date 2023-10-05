@@ -15,7 +15,7 @@ var ValidStatusMap = map[bool]string{
 
 type Metrics struct {
 	Enabled                        bool
-	RequestTracer                  latency.AppTracer
+	RequestTracer                  latency.NoOpTracer
 	VerifierServerInTxs            *metrics.ThroughputCounter
 	VerifierServerOutTxs           *metrics.ThroughputCounter
 	ParallelExecutorInTxs          *metrics.ThroughputCounter
@@ -43,7 +43,7 @@ func (p *Provider) NewMonitoring(enabled bool, tracer latency.AppTracer) metrics
 	}
 	return &Metrics{
 		Enabled:                true,
-		RequestTracer:          tracer,
+		RequestTracer:          latency.NoOpTracer{},
 		VerifierServerInTxs:    metrics.NewThroughputCounter("verifier_server", metrics.In),
 		VerifierServerOutTxs:   metrics.NewThroughputCounter("verifier_server", metrics.Out),
 		ParallelExecutorInTxs:  metrics.NewThroughputCounter("parallel_executor", metrics.In),
