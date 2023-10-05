@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
@@ -14,10 +15,11 @@ import (
 )
 
 var (
-	configPath string
-	component  string
-	metrics    *perfMetrics
-	stopSender chan any
+	configPath     string
+	component      string
+	metrics        *perfMetrics
+	stopSender     chan any
+	latencyTracker *sync.Map
 )
 
 // BlockgenConfig is the configuration for blockgen.
@@ -98,6 +100,7 @@ func startCmd() *cobra.Command {
 
 			profile := loadgen.LoadProfileFromYaml(configPath)
 			blockGen := loadgen.StartBlockGenerator(profile)
+			latencyTracker = &sync.Map{}
 
 			switch component {
 			case "coordinator":

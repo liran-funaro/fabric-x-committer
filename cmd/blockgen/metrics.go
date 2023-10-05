@@ -5,12 +5,15 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 )
 
+var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
+
 type perfMetrics struct {
 	enabled                  bool
 	provider                 *prometheusmetrics.Provider
 	blockSentTotal           prometheus.Counter
 	transactionSentTotal     prometheus.Counter
 	transactionReceivedTotal prometheus.Counter
+	transactionLatencySecond prometheus.Histogram
 }
 
 func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
@@ -33,6 +36,14 @@ func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
 			Namespace: "blockgen",
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
+		}),
+		transactionLatencySecond: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace:   "blockgen",
+			Subsystem:   "",
+			Name:        "transaction_latency_seconds",
+			Help:        "Latency of transactions in seconds",
+			ConstLabels: map[string]string{},
+			Buckets:     buckets,
 		}),
 	}
 }

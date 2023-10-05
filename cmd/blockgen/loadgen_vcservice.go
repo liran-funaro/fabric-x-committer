@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -50,6 +52,7 @@ func sendTransactionsToVCService(
 ) error {
 	cmd.Println("Start sending transactions to vc service")
 	stopSender = make(chan any)
+	samplingTicker := time.NewTicker(10 * time.Second)
 	for {
 		select {
 		case <-stopSender:
@@ -72,6 +75,14 @@ func sendTransactionsToVCService(
 			}
 
 			metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
+			select {
+			case <-samplingTicker.C:
+				t := time.Now()
+				for _, tx := range blk.Txs {
+					latencyTracker.Store(tx.Id, t)
+				}
+			default:
+			}
 		}
 	}
 }
@@ -88,5 +99,12 @@ func receiveStatusFromVCService(
 		}
 
 		metrics.addToCounter(metrics.transactionReceivedTotal, len(txStatus.Status))
+
+		for id := range txStatus.Status {
+			if t, ok := latencyTracker.LoadAndDelete(id); ok {
+				start, _ := t.(time.Time)
+				prometheusmetrics.Observe(metrics.transactionLatencySecond, time.Since(start))
+			}
+		}
 	}
 }

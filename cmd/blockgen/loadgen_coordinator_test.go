@@ -166,6 +166,7 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 		"blockgen_block_sent_total",
 		"blockgen_transaction_sent_total",
 		"blockgen_transaction_received_total",
+		"blockgen_transaction_latency_seconds",
 	}
 	test.CheckMetrics(t, client, url, expectedMetrics)
 

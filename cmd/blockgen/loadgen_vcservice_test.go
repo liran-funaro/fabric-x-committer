@@ -164,6 +164,7 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	expectedMetrics := []string{
 		"blockgen_transaction_sent_total",
 		"blockgen_transaction_received_total",
+		"blockgen_transaction_latency_seconds",
 	}
 	test.CheckMetrics(t, client, url, expectedMetrics)
 
