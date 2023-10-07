@@ -115,6 +115,12 @@ func (p *transactionPreparer) prepare() {
 			}
 		}
 
+		for ns, read := range prepTxs.namespaceToReadEntries {
+			if len(read.keys) == 0 {
+				delete(prepTxs.namespaceToReadEntries, ns)
+			}
+		}
+
 		for _, lst := range []transactionToWrites{
 			prepTxs.nonBlindWritesPerTransaction, prepTxs.blindWritesPerTransaction,
 			prepTxs.newWritesWithValue, prepTxs.newWritesWithoutValue,
