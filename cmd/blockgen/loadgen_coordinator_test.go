@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -134,8 +132,6 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	wg.Wait()
 
 	cmd := blockgenCmd()
-	cmdStdOut := new(bytes.Buffer)
-	cmd.SetOut(cmdStdOut)
 	cmd.SetArgs([]string{"start", "--configs", blockgenConfgFilePath, "--component", "coordinator"})
 
 	go func() {
@@ -143,19 +139,12 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	}()
 
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, metrics.blockSentTotal) > 1 &&
-			test.GetMetricValue(t, metrics.transactionSentTotal) > 1 &&
+		return test.GetMetricValue(t, metrics.blockSentTotal) > 10 &&
+			test.GetMetricValue(t, metrics.transactionSentTotal) > 10 &&
 			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 1
-	}, 2*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	close(stopSender)
-
-	require.Eventually(t, func() bool {
-		out := cmdStdOut.String()
-		return strings.Contains(out, "blockgen started") &&
-			strings.Contains(out, "Start sending blocks to coordinator service") &&
-			strings.Contains(out, "Start receiving status from coordinator service")
-	}, 2*time.Second, 250*time.Millisecond)
 
 	c, err := readConfig()
 	require.NoError(t, err)
@@ -166,7 +155,8 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 		"blockgen_block_sent_total",
 		"blockgen_transaction_sent_total",
 		"blockgen_transaction_received_total",
-		"blockgen_transaction_latency_seconds",
+		"blockgen_valid_transaction_latency_seconds",
+		"blockgen_invalid_transaction_latency_seconds",
 	}
 	test.CheckMetrics(t, client, url, expectedMetrics)
 

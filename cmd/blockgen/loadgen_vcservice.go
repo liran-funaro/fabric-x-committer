@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
@@ -32,7 +34,12 @@ func generateLoadForVCService(
 		}
 
 		go func() {
-			errChan <- sendTransactionsToVCService(cmd, blockGen, csStream)
+			errChan <- sendTransactions(
+				blockGen,
+				csStream,
+				c.RateLimit/len(c.VCServiceEndpoints),
+				c.LatencySamplingInterval,
+			)
 		}()
 
 		go func() {
@@ -45,48 +52,6 @@ func generateLoadForVCService(
 	return <-errChan
 }
 
-func sendTransactionsToVCService(
-	cmd *cobra.Command,
-	blockGen *loadgen.BlockStreamGenerator,
-	csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-) error {
-	cmd.Println("Start sending transactions to vc service")
-	stopSender = make(chan any)
-	samplingTicker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case <-stopSender:
-			return nil
-		default:
-			blk := <-blockGen.BlockQueue
-
-			txBatch := &protovcservice.TransactionBatch{}
-			for _, tx := range blk.Txs {
-				txBatch.Transactions = append(
-					txBatch.Transactions,
-					&protovcservice.Transaction{
-						ID:         tx.Id,
-						Namespaces: tx.Namespaces,
-					},
-				)
-			}
-			if err := csStream.Send(txBatch); err != nil {
-				return err
-			}
-
-			metrics.addToCounter(metrics.transactionSentTotal, len(blk.Txs))
-			select {
-			case <-samplingTicker.C:
-				t := time.Now()
-				for _, tx := range blk.Txs {
-					latencyTracker.Store(tx.Id, t)
-				}
-			default:
-			}
-		}
-	}
-}
-
 func receiveStatusFromVCService(
 	cmd *cobra.Command,
 	csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
@@ -95,16 +60,27 @@ func receiveStatusFromVCService(
 	for {
 		txStatus, err := csStream.Recv()
 		if err != nil {
+			fmt.Println("receive tx:", err)
 			return err
 		}
 
 		metrics.addToCounter(metrics.transactionReceivedTotal, len(txStatus.Status))
 
-		for id := range txStatus.Status {
-			if t, ok := latencyTracker.LoadAndDelete(id); ok {
-				start, _ := t.(time.Time)
-				prometheusmetrics.Observe(metrics.transactionLatencySecond, time.Since(start))
-			}
+		for id, status := range txStatus.Status {
+			recordLatency(id, status)
+		}
+	}
+}
+
+func recordLatency(txID string, status protoblocktx.Status) {
+	if t, ok := latencyTracker.LoadAndDelete(txID); ok {
+		start, _ := t.(time.Time)
+		elapsed := time.Since(start)
+
+		if status == protoblocktx.Status_COMMITTED {
+			prometheusmetrics.Observe(metrics.validTransactionLatencySecond, elapsed)
+		} else {
+			prometheusmetrics.Observe(metrics.invalidTransactionLatencySecond, elapsed)
 		}
 	}
 }

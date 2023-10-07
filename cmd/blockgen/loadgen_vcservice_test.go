@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +39,7 @@ validator-committer-service:
     username: %s
     password: %s
     database: yugabyte
-    max-connections: 1000
+    max-connections: 10
     min-connections: 5
     load-balance: false
   resource-limits:
@@ -131,30 +129,20 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	}
 
 	cmd := blockgenCmd()
-	cmdStdOut := new(bytes.Buffer)
-	cmd.SetOut(cmdStdOut)
 	cmd.SetArgs([]string{"start", "--configs", blockgenConfgFilePath, "--component", "vcservice"})
 
 	go func() {
-		err := cmd.Execute()
-		if err != nil {
-			panic(err)
-		}
+		_ = cmd.Execute()
 	}()
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) > 10 &&
 			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 10
-	}, 2*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
-	close(stopSender)
-
-	require.Eventually(t, func() bool {
-		out := cmdStdOut.String()
-		return strings.Contains(out, "blockgen started") &&
-			strings.Contains(out, "Start sending transactions to vc service") &&
-			strings.Contains(out, "Start receiving status from vc service")
-	}, 2*time.Second, 250*time.Millisecond)
+	for i := 0; i < cap(stopSender); i++ {
+		stopSender <- struct{}{}
+	}
 
 	c, err := readConfig()
 	require.NoError(t, err)
@@ -164,7 +152,8 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	expectedMetrics := []string{
 		"blockgen_transaction_sent_total",
 		"blockgen_transaction_received_total",
-		"blockgen_transaction_latency_seconds",
+		"blockgen_valid_transaction_latency_seconds",
+		"blockgen_invalid_transaction_latency_seconds",
 	}
 	test.CheckMetrics(t, client, url, expectedMetrics)
 

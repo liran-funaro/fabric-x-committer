@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
@@ -20,13 +21,16 @@ var (
 	metrics        *perfMetrics
 	stopSender     chan any
 	latencyTracker *sync.Map
+	blockSize      int
 )
 
 // BlockgenConfig is the configuration for blockgen.
 type BlockgenConfig struct {
-	CoordinatorEndpoint *connection.Endpoint   `mapstructure:"coordinator-endpoint"`
-	VCServiceEndpoints  []*connection.Endpoint `mapstructure:"vcservice-endpoints"`
-	Monitoring          *monitoring.Config     `mapstructure:"monitoring"`
+	CoordinatorEndpoint     *connection.Endpoint   `mapstructure:"coordinator-endpoint"`
+	VCServiceEndpoints      []*connection.Endpoint `mapstructure:"vcservice-endpoints"`
+	Monitoring              *monitoring.Config     `mapstructure:"monitoring"`
+	RateLimit               int                    `mapstructure:"rate-limit"`
+	LatencySamplingInterval time.Duration          `mapstructure:"latency-sampling-interval"`
 }
 
 func main() {
@@ -99,13 +103,16 @@ func startCmd() *cobra.Command {
 			}()
 
 			profile := loadgen.LoadProfileFromYaml(configPath)
+			blockSize = int(profile.Block.Size)
 			blockGen := loadgen.StartBlockGenerator(profile)
 			latencyTracker = &sync.Map{}
 
 			switch component {
 			case "coordinator":
+				stopSender = make(chan any)
 				err = generateLoadForCoordinatorService(cmd, c, blockGen)
 			case "vcservice":
+				stopSender = make(chan any, len(c.VCServiceEndpoints))
 				err = generateLoadForVCService(cmd, c, blockGen)
 			default:
 				err = fmt.Errorf("invalid component name: %s", component)
@@ -128,5 +135,14 @@ func readConfig() (*BlockgenConfig, error) {
 		Config BlockgenConfig `mapstructure:"blockgen"`
 	})
 	config.Unmarshal(wrapper)
+
+	if wrapper.Config.RateLimit == 0 {
+		return nil, errors.New("rate-limit must be set")
+	}
+
+	if wrapper.Config.LatencySamplingInterval == 0 {
+		return nil, errors.New("latency-sampling-interval must be set")
+	}
+
 	return &wrapper.Config, nil
 }

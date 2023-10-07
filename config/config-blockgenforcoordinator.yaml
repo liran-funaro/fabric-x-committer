@@ -37,3 +37,5 @@ blockgen:
     metrics:
       enable: true
       endpoint: :2112
+  rate-limit: 1000
+  latency-sampling-interval: 10s
