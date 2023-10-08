@@ -15,12 +15,13 @@ transaction:
     scheme: ECDSA
 
 conflicts:
-  invalid-signatures:
-    # probability: 0
+  invalid-signatures: 0.1
 
 tx-gen-workers: 5
 tx-sign-workers: 3
 tx-dependencies-workers: 2
+
+seed: 12345
 
 blockgen:
   # when testing coordinator performance, set only the coordinator endpoint.
