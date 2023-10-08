@@ -54,10 +54,10 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 	l := config.ResourceLimits
 
 	// TODO: make queueMultiplier configurable
-	queueMultiplier := 10
+	queueMultiplier := 1
 	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
-	validatedTxs := make(chan *validatedTransactions, l.MaxWorkersForCommitter*queueMultiplier)
+	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()

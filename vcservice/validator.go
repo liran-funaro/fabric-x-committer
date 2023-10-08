@@ -140,6 +140,8 @@ func (v *validatedTransactions) updateInvalidTxs(txIDs []txID, status protoblock
 		delete(v.validTxBlindWrites, tID)
 		delete(v.newWritesWithVal, tID)
 		delete(v.newWritesWithoutVal, tID)
-		v.invalidTxIndices[tID] = status
+		if status != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			v.invalidTxIndices[tID] = status
+		}
 	}
 }
