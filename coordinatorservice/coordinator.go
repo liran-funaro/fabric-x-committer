@@ -33,6 +33,11 @@ type (
 		orderEnforcer                    *sync.Cond
 		metrics                          *perfMetrics
 		promErrChan                      <-chan error
+
+		// sendStreamMu is used to synchronize sending transaction status over grpc stream
+		// to the client between the goroutine that process status from sigverifier and the goroutine
+		// that process status from validator.
+		sendTxStreamMu sync.Mutex
 	}
 
 	channels struct {
@@ -365,7 +370,7 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 			}
 		}
 
-		if err := sendTxsStatus(stream, valStatus); err != nil {
+		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
 
@@ -390,7 +395,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 			}
 		}
 
-		if err := sendTxsStatus(stream, valStatus); err != nil {
+		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
 		c.metrics.addToCounter(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blk.Txs))
@@ -399,10 +404,12 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 	return nil
 }
 
-func sendTxsStatus(
+func (c *CoordinatorService) sendTxsStatus(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 	txsStatus []*protocoordinatorservice.TxValidationStatus,
 ) error {
+	c.sendTxStreamMu.Lock()
+	defer c.sendTxStreamMu.Unlock()
 	err := stream.Send(
 		&protocoordinatorservice.TxValidationStatusBatch{
 			TxsValidationStatus: txsStatus,
