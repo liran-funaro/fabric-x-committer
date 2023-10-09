@@ -1,0 +1,28 @@
+sig-verification:
+  parallel-executor:
+    batch-size-cutoff: 50
+    batch-time-cutoff: 10ms
+    channel-buffer-size: 50
+    parallelism: 40
+  scheme: Ecdsa
+  server:
+    endpoint: :4001
+
+  monitoring:
+    metrics:
+      endpoint: :2112
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: localhost:14268
+      max-latency: 5s
+      bucket-count: 1000
+
+logging:
+  development: true
+  enabled: true
+  level: DEBUG
