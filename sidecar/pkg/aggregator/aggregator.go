@@ -125,9 +125,10 @@ func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 
 	a.enqueuedBlocks += 1
 
-	// in the case that we got a config block, we don't need to send the bock to the coordinator
+	// in the case that we got a config block, we will not get any TX status back from the coordinator, so we register it here as completed.
+	// We also send it to the coordinator, so that it keeps track of which blocks have already passed (to avoid delivering out of order blocks)
 	if len(scBlock.GetTxs()) == 0 && newBlock.remaining == 0 {
-		return nil
+		a.tryComplete()
 	}
 
 	// submit block to coordinator

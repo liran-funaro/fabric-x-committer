@@ -30,9 +30,7 @@ func TestNewAggregator(t *testing.T) {
 	resultBlockChan := make(chan *common.Block, numOfBlocks)
 
 	var wg sync.WaitGroup
-	// note that config blocks are not sent to the coordinator,
-	// thus our sendToCoordinator function is called less than numOfBlocks
-	wg.Add(numOfBlocks - 1)
+	wg.Add(numOfBlocks)
 
 	sendToCoordinator := func(scBlock *protoblocktx.Block) {
 		go func(scBlock *protoblocktx.Block) {

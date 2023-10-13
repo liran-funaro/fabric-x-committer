@@ -6,15 +6,15 @@ import (
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type SidecarConfig struct {
-	Metrics   *metrics.Config          `mapstructure:"metrics"`
-	Server    *connection.ServerConfig `mapstructure:"server"`
-	Orderer   *OrdererClientConfig     `mapstructure:"orderer"`
-	Committer *CommitterClientConfig   `mapstructure:"committer"`
-	Ledger    *LedgerConfig            `mapstructure:"ledger"`
+	Monitoring *monitoring.Config       `mapstructure:"monitoring"`
+	Server     *connection.ServerConfig `mapstructure:"server"`
+	Orderer    *OrdererClientConfig     `mapstructure:"orderer"`
+	Committer  *CommitterClientConfig   `mapstructure:"committer"`
+	Ledger     *LedgerConfig            `mapstructure:"ledger"`
 }
 
 type OrdererClientConfig struct {

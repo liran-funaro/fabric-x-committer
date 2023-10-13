@@ -40,27 +40,32 @@ func inverseStatusMap(m map[protoblocktx.Status]validationCode) map[validationCo
 }
 
 func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
-	// A config block contains only a single transaction
-	if len(block.Data.Data) == 1 && serialization.IsConfigTx(block.Data.Data[0]) {
-		return &protoblocktx.Block{Number: block.Header.Number}, []int{0}
-	}
-
+	excluded := make([]int, 0, len(block.Data.Data))
 	txs := make([]*protoblocktx.Tx, 0, len(block.Data.Data))
-	for _, msg := range block.Data.Data {
-		data, _, err := serialization.UnwrapEnvelope(msg)
-		if err != nil {
-			panic(err)
+	for i, msg := range block.Data.Data {
+		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", block.Header.Number, i)
+		if data, channelHdr, err := serialization.UnwrapEnvelope(msg); err != nil {
+			logger.Fatalf("error unwrapping envelope: %v", err)
+		} else if channelHdr.Type != int32(common.HeaderType_MESSAGE) {
+			logger.Debugf("Ignoring TX [%s] of type %d", channelHdr.TxId, channelHdr.Type)
+			excluded = append(excluded, i)
+		} else if tx, err := UnmarshalTx(data); err != nil {
+			logger.Fatalf("error unmarshaling MESSAGE tx [%s] tx: %v", channelHdr.TxId, err)
+		} else {
+			logger.Debugf("Appended txID [%s] -> [%s]", channelHdr.TxId, tx.Id)
+			txs = append(txs, tx)
 		}
-
-		var tx protoblocktx.Tx
-		if err := proto.Unmarshal(data, &tx); err != nil {
-			panic(err)
-		}
-
-		txs = append(txs, &tx)
 	}
 	return &protoblocktx.Block{
 		Number: block.Header.Number,
 		Txs:    txs,
-	}, []int{}
+	}, excluded
+}
+
+func UnmarshalTx(data []byte) (*protoblocktx.Tx, error) {
+	var tx protoblocktx.Tx
+	if err := proto.Unmarshal(data, &tx); err != nil {
+		return nil, err
+	}
+	return &tx, nil
 }
