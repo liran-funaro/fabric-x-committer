@@ -18,7 +18,7 @@ validator-committer-service:
     max-workers-for-preparer: 2                # Maximum number of workers for the preparer
     max-workers-for-validator: 2               # Maximum number of workers for the validator
     max-workers-for-committer: 2               # Maximum number of workers for the committer
-    min-transaction-batch-size: 2
+    min-transaction-batch-size: 1
   monitoring:
     metrics:
       enable: true
