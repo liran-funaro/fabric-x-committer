@@ -63,18 +63,17 @@ func (c *transactionCommitter) commit() {
 func (c *transactionCommitter) commitTransactions( //nolint:gocognit
 	vTx *validatedTransactions,
 ) (*protovcservice.TransactionStatus, error) {
-	var dupTxIDs []txID
 	for {
-		info := &statesToBeCommitted{
-			batchStatus:         prepareStatusForCommit(vTx),
-			newWithoutValWrites: groupWritesByNamespace(vTx.newWritesWithoutVal),
-			newWithValWrites:    groupWritesByNamespace(vTx.newWritesWithVal),
-		}
 		updateWrites, err := c.mergeWritesForCommit(vTx)
 		if err != nil {
 			return nil, err
 		}
-		info.updateWrites = updateWrites
+		info := &statesToBeCommitted{
+			updateWrites:        updateWrites,
+			batchStatus:         prepareStatusForCommit(vTx),
+			newWithoutValWrites: groupWritesByNamespace(vTx.newWritesWithoutVal),
+			newWithValWrites:    groupWritesByNamespace(vTx.newWritesWithVal),
+		}
 
 		mismatch, duplicated, err := c.db.commit(info)
 		if err != nil {
@@ -82,25 +81,13 @@ func (c *transactionCommitter) commitTransactions( //nolint:gocognit
 		}
 
 		if mismatch.empty() && len(duplicated) == 0 {
-			if len(dupTxIDs) > 0 {
-				for _, txID := range dupTxIDs {
-					info.batchStatus.Status[string(txID)] = protoblocktx.Status_ABORTED_DUPLICATE_TXID
-				}
-			}
 			return info.batchStatus, nil
 		}
 
 		if err := vTx.updateMismatch(mismatch); err != nil {
 			return nil, err
 		}
-
-		if len(duplicated) > 0 {
-			dupTxIDs = append(dupTxIDs, duplicated...)
-			vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
-			for _, txID := range duplicated {
-				delete(vTx.invalidTxIndices, txID)
-			}
-		}
+		vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	}
 }
 

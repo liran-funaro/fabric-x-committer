@@ -56,6 +56,7 @@ func TestCommit(t *testing.T) {
 	k2_4 := []byte("key2.4")
 	k2_5 := []byte("key2.5")
 	k2_6 := []byte("key2.6")
+	k2_7 := []byte("key2.7")
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
@@ -234,8 +235,16 @@ func TestCommit(t *testing.T) {
 		{
 			name: "all invalid txs",
 			txs: &validatedTransactions{
-				validTxNonBlindWrites: transactionToWrites{},
-				validTxBlindWrites:    transactionToWrites{},
+				validTxNonBlindWrites: transactionToWrites{
+					"tx8": {
+						1: {
+							keys:     [][]byte{k2_7},
+							values:   [][]byte{[]byte("value2.7.1")},
+							versions: [][]byte{nil},
+						},
+					},
+				},
+				validTxBlindWrites: transactionToWrites{},
 				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -244,6 +253,7 @@ func TestCommit(t *testing.T) {
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
 				Status: map[string]protoblocktx.Status{
+					"tx8":  protoblocktx.Status_ABORTED_DUPLICATE_TXID,
 					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,

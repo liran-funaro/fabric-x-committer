@@ -301,6 +301,10 @@ func (env *databaseTestEnv) statusExists(t *testing.T, expected map[string]proto
 	require.NoError(t, kvPairs.Err())
 	require.Equal(t, len(expectedIds), len(actualRows))
 	for key, status := range expected {
+		// "duplicated TX ID" status is never committed.
+		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			continue
+		}
 		require.Equal(t, int(status), actualRows[key])
 	}
 }

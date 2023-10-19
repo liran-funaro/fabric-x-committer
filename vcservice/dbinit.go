@@ -144,13 +144,13 @@ end;$$;
 `
 
 const (
-	dropTableStmtTemplate                = "DROP TABLE IF EXISTS %[1]s"
-	dropValidateFuncStmtTemplate         = "DROP FUNCTION IF EXISTS validate_reads_%[1]s"
-	dropCommitFuncStmtTemplate           = "DROP FUNCTION IF EXISTS commit_%[1]s"
-	dropCommitWithValFuncStmtTemplate    = "DROP FUNCTION IF EXISTS commit_new_with_val_%[1]s"
-	dropCommitWithoutValFuncStmtTemplate = "DROP FUNCTION IF EXISTS commit_new_without_val_%[1]s"
-	dropTxStatusStmt                     = "DROP TABLE IF EXISTS tx_status"
-	dropCommitTxStatusStmt               = "DROP FUNCTION IF EXISTS commit_tx_status"
+	dropTableStmtTemplate                   = "DROP TABLE IF EXISTS %[1]s"
+	dropValidateFuncStmtTemplate            = "DROP FUNCTION IF EXISTS validate_reads_%[1]s"
+	dropCommitUpdateFuncStmtTemplate        = "DROP FUNCTION IF EXISTS commit_update_%[1]s"
+	dropCommitNewWithValFuncStmtTemplate    = "DROP FUNCTION IF EXISTS commit_new_with_val_%[1]s"
+	dropCommitNewWithoutValFuncStmtTemplate = "DROP FUNCTION IF EXISTS commit_new_without_val_%[1]s"
+	dropTxStatusStmt                        = "DROP TABLE IF EXISTS tx_status"
+	dropCommitTxStatusStmt                  = "DROP FUNCTION IF EXISTS commit_tx_status"
 )
 
 var initStatements = []string{
@@ -175,9 +175,9 @@ var dropStatements = []string{
 var dropStatementsWithTemplate = []string{
 	dropTableStmtTemplate,
 	dropValidateFuncStmtTemplate,
-	dropCommitFuncStmtTemplate,
-	dropCommitWithValFuncStmtTemplate,
-	dropCommitWithoutValFuncStmtTemplate,
+	dropCommitUpdateFuncStmtTemplate,
+	dropCommitNewWithValFuncStmtTemplate,
+	dropCommitNewWithoutValFuncStmtTemplate,
 }
 
 // InitDatabase initialize the DB tables and methods.

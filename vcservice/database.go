@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 )
@@ -17,14 +18,17 @@ const (
 	// tableNameTemplate is the template for the table name for each namespace.
 	tableNameTemplate = "ns_%d"
 
-	// validateReadsSQLTemplate is the template for validating reads on each namespace.
+	// validateReadsSQLTemplate template for validating reads for each namespace.
 	validateReadsSQLTemplate = "SELECT * FROM validate_reads_ns_%d($1::bytea[], $2::bytea[]);"
-	// queryVersionsSQLTemplate is the template for the querying versions for given keys on each namespace.
+	// queryVersionsSQLTemplate template for the querying versions for given keys for each namespace.
 	queryVersionsSQLTemplate = "SELECT key, version FROM %s WHERE key = ANY($1);"
-	// commitWritesSQLTemplate is the template for the committing writes on each namespace.
-	commitTxStatusSQLTemplate            = "SELECT commit_tx_status($1::bytea[], $2::integer[]);"
-	commitWritesSQLTemplate              = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
-	commitNewWithValWritesSQLTemplate    = "SELECT commit_new_with_val_ns_%d($1::bytea[], $2::bytea[]);"
+	// commitTxStatusSQLTemplate template for committing transaction's status for each TX.
+	commitTxStatusSQLTemplate = "SELECT commit_tx_status($1::bytea[], $2::integer[]);"
+	// commitUpdateWritesSQLTemplate template for the committing updates for each namespace.
+	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
+	// commitNewWithValWritesSQLTemplate template for committing new keys with value for each namespace.
+	commitNewWithValWritesSQLTemplate = "SELECT commit_new_with_val_ns_%d($1::bytea[], $2::bytea[]);"
+	// commitNewWithoutValWritesSQLTemplate template for committing new keys without value for each namespace.
 	commitNewWithoutValWritesSQLTemplate = "SELECT commit_new_without_val_ns_%d($1::bytea[]);"
 )
 
@@ -204,6 +208,10 @@ func (db *database) commitTxStatus(
 	ids := make([][]byte, 0, len(batchStatus.Status))
 	statues := make([]int, 0, len(batchStatus.Status))
 	for txID, status := range batchStatus.Status {
+		// We cannot commit a "duplicated ID" status since we already have a status entry with this ID.
+		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			continue
+		}
 		ids = append(ids, []byte(txID))
 		statues = append(statues, int(status))
 	}
@@ -233,7 +241,7 @@ func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites nam
 			continue
 		}
 
-		query := fmt.Sprintf(commitWritesSQLTemplate, nsID)
+		query := fmt.Sprintf(commitUpdateWritesSQLTemplate, nsID)
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
 		if err != nil {
 			return fmt.Errorf("failed tx exec: %w", err)
