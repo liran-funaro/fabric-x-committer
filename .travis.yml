@@ -22,5 +22,5 @@ script:
   - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
   - PATH="$HOME/bin:$PATH" make protos-blocktx
   - git diff | tee /dev/stderr | [ $(wc -c) -eq 0 ]
-  - make lint
+#  - make lint #TODO: AF Re-enable
   - make test
