@@ -60,7 +60,7 @@ func (c *transactionCommitter) commit() {
 	}
 }
 
-func (c *transactionCommitter) commitTransactions( //nolint:gocognit
+func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
 ) (*protovcservice.TransactionStatus, error) {
 	for {
@@ -69,10 +69,9 @@ func (c *transactionCommitter) commitTransactions( //nolint:gocognit
 			return nil, err
 		}
 		info := &statesToBeCommitted{
-			updateWrites:        updateWrites,
-			batchStatus:         prepareStatusForCommit(vTx),
-			newWithoutValWrites: groupWritesByNamespace(vTx.newWritesWithoutVal),
-			newWithValWrites:    groupWritesByNamespace(vTx.newWritesWithVal),
+			updateWrites: updateWrites,
+			batchStatus:  prepareStatusForCommit(vTx),
+			newWrites:    groupWritesByNamespace(vTx.newWrites),
 		}
 
 		mismatch, duplicated, err := c.db.commit(info)
@@ -126,7 +125,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.Transact
 		txCommitStatus.Status[string(txID)] = status
 	}
 	for _, lst := range []transactionToWrites{
-		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWritesWithoutVal, vTx.newWritesWithVal,
+		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWrites,
 	} {
 		for txID := range lst {
 			txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED

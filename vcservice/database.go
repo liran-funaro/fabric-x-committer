@@ -26,10 +26,8 @@ const (
 	commitTxStatusSQLTemplate = "SELECT commit_tx_status($1::bytea[], $2::integer[]);"
 	// commitUpdateWritesSQLTemplate template for the committing updates for each namespace.
 	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
-	// commitNewWithValWritesSQLTemplate template for committing new keys with value for each namespace.
-	commitNewWithValWritesSQLTemplate = "SELECT commit_new_with_val_ns_%d($1::bytea[], $2::bytea[]);"
-	// commitNewWithoutValWritesSQLTemplate template for committing new keys without value for each namespace.
-	commitNewWithoutValWritesSQLTemplate = "SELECT commit_new_without_val_ns_%d($1::bytea[]);"
+	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
+	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
 
 type (
@@ -43,10 +41,9 @@ type (
 	keyToVersion map[string][]byte
 
 	statesToBeCommitted struct {
-		updateWrites        namespaceToWrites
-		newWithoutValWrites namespaceToWrites
-		newWithValWrites    namespaceToWrites
-		batchStatus         *protovcservice.TransactionStatus
+		updateWrites namespaceToWrites
+		newWrites    namespaceToWrites
+		batchStatus  *protovcservice.TransactionStatus
 	}
 )
 
@@ -183,16 +180,10 @@ func (db *database) commitStatesByGroup(
 		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
 	}
 
-	mismatched, err := db.commitNewKeysWithoutValues(tx, states.newWithoutValWrites)
+	mismatched, err := db.commitNewKeys(tx, states.newWrites)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitNewWithoutVal: %w", err)
+		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
 	}
-
-	mismatchedWithVal, err := db.commitNewKeysWithValues(tx, states.newWithValWrites)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitNewWithVal: %w", err)
-	}
-	mismatched = mismatched.merge(mismatchedWithVal)
 
 	return mismatched, duplicated, nil
 }
@@ -252,30 +243,19 @@ func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites nam
 	return nil
 }
 
-func (db *database) commitNewKeysWithoutValues(
-	tx pgx.Tx,
-	nsToWrites namespaceToWrites,
-) (namespaceToReads /* mismatched */, error) {
-	start := time.Now()
-	mismatch, err := commitNewKeys(tx, commitNewWithoutValWritesSQLTemplate, nsToWrites, false)
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitInsertNewKeyWithoutValueLatencySeconds, time.Since(start))
-	return mismatch, err
-}
-
-func (db *database) commitNewKeysWithValues(
+func (db *database) commitNewKeys(
 	tx pgx.Tx, nsToWrites namespaceToWrites,
 ) (namespaceToReads /* mismatched */, error) {
 	start := time.Now()
-	mismatch, err := commitNewKeys(tx, commitNewWithValWritesSQLTemplate, nsToWrites, true)
+	mismatch, err := commitNewKeys(tx, commitNewWritesSQLTemplate, nsToWrites)
 	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds, time.Since(start))
 	return mismatch, err
 }
 
-func commitNewKeys( // nolint:revive
+func commitNewKeys(
 	tx pgx.Tx,
 	query string,
 	nsToWrites namespaceToWrites,
-	withVal bool,
 ) (namespaceToReads /* mismatched */, error) {
 	mismatch := make(namespaceToReads)
 	for nsID, writes := range nsToWrites {
@@ -283,11 +263,7 @@ func commitNewKeys( // nolint:revive
 			continue
 		}
 
-		args := []any{writes.keys}
-		if withVal {
-			args = append(args, writes.values)
-		}
-		ret := tx.QueryRow(context.Background(), fmt.Sprintf(query, nsID), args...)
+		ret := tx.QueryRow(context.Background(), fmt.Sprintf(query, nsID), writes.keys, writes.values)
 		violating, err := readInsertResult(ret, writes.keys)
 		if err != nil {
 			return nil, fmt.Errorf("failed fetching results from query: %w", err)
@@ -303,8 +279,7 @@ func commitNewKeys( // nolint:revive
 }
 
 func (i *statesToBeCommitted) empty() bool {
-	return i.updateWrites.empty() && i.newWithoutValWrites.empty() && i.newWithValWrites.empty() &&
-		(i.batchStatus == nil || len(i.batchStatus.Status) == 0)
+	return i.updateWrites.empty() && i.newWrites.empty() && (i.batchStatus == nil || len(i.batchStatus.Status) == 0)
 }
 
 func (db *database) close() {

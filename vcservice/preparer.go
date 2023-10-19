@@ -29,8 +29,7 @@ type (
 		readToTransactionIndices     readToTransactions
 		nonBlindWritesPerTransaction transactionToWrites
 		blindWritesPerTransaction    transactionToWrites
-		newWritesWithValue           transactionToWrites
-		newWritesWithoutValue        transactionToWrites
+		newWrites                    transactionToWrites
 	}
 
 	// namespaceToReads maps a namespace ID to a list of reads.
@@ -101,8 +100,7 @@ func (p *transactionPreparer) prepare() {
 			readToTransactionIndices:     make(readToTransactions),
 			nonBlindWritesPerTransaction: make(transactionToWrites),
 			blindWritesPerTransaction:    make(transactionToWrites),
-			newWritesWithValue:           make(transactionToWrites),
-			newWritesWithoutValue:        make(transactionToWrites),
+			newWrites:                    make(transactionToWrites),
 		}
 
 		for _, tx := range txBatch.Transactions {
@@ -122,8 +120,7 @@ func (p *transactionPreparer) prepare() {
 		}
 
 		for _, lst := range []transactionToWrites{
-			prepTxs.nonBlindWritesPerTransaction, prepTxs.blindWritesPerTransaction,
-			prepTxs.newWritesWithValue, prepTxs.newWritesWithoutValue,
+			prepTxs.nonBlindWritesPerTransaction, prepTxs.blindWritesPerTransaction, prepTxs.newWrites,
 		} {
 			lst.clearEmpty()
 		}
@@ -167,8 +164,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 	nsID := namespaceID(ns.NsId)
 	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
 	nsWrites := p.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
-	newWithValWrites := p.newWritesWithValue.getOrCreate(id, nsID)
-	newWithoutValWrites := p.newWritesWithoutValue.getOrCreate(id, nsID)
+	newWrites := p.newWrites.getOrCreate(id, nsID)
 
 	for _, rw := range ns.ReadWrites {
 		// In read-writes, duplicates are not possible between transactions. This is because
@@ -185,13 +181,8 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 			nsReads.append(rw.Key, rw.Version)
 			ver := versionNumberFromBytes(rw.Version) + 1
 			nsWrites.append(rw.Key, rw.Value, ver.bytes())
-			continue
-		}
-
-		if rw.Value == nil {
-			newWithoutValWrites.append(rw.Key, nil, nil)
 		} else {
-			newWithValWrites.append(rw.Key, rw.Value, nil)
+			newWrites.append(rw.Key, rw.Value, nil)
 		}
 	}
 }
@@ -334,18 +325,4 @@ func (nr namespaceToReads) empty() bool {
 	}
 
 	return true
-}
-
-func (nr namespaceToReads) merge(other namespaceToReads) namespaceToReads {
-	if nr.empty() {
-		return other
-	} else if other.empty() {
-		return nr
-	}
-
-	for nsID, v := range other {
-		nr.getOrCreate(nsID).appendMany(v.keys, v.versions)
-	}
-
-	return nr
 }

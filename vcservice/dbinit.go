@@ -91,8 +91,8 @@ END;
 $$ LANGUAGE plpgsql;
 `
 
-const commitNewWithValFuncTemplate = `
-CREATE OR REPLACE FUNCTION commit_new_with_val_%[1]s(
+const commitNewFuncTemplate = `
+CREATE OR REPLACE FUNCTION commit_new_%[1]s(
 	IN _keys bytea[], IN _values bytea[], OUT result text, OUT violating bytea[]
 )
     LANGUAGE plpgsql
@@ -118,39 +118,13 @@ when unique_violation then
 end;$$;
 `
 
-const commitNewFuncWithoutValueTemplate = `
-CREATE OR REPLACE FUNCTION commit_new_without_val_%[1]s(
-	IN _keys bytea[], OUT result text, OUT violating bytea[]
-)
-    LANGUAGE plpgsql
-AS $$
-begin
-    result = 'success';
-    violating = NULL;
-    insert into %[1]s values (UNNEST(_keys));
-exception
-when unique_violation then
-    violating = (
-        SELECT array_agg(key) FROM %[1]s
-        WHERE key = ANY(_keys)
-    );
-    if cardinality(violating) < cardinality(_keys) then
-        result = cardinality(violating) || '-unique-violation';
-    else
-        violating = NULL;
-        result = 'all-unique-violation';
-    end if;
-end;$$;
-`
-
 const (
-	dropTableStmtTemplate                   = "DROP TABLE IF EXISTS %[1]s"
-	dropValidateFuncStmtTemplate            = "DROP FUNCTION IF EXISTS validate_reads_%[1]s"
-	dropCommitUpdateFuncStmtTemplate        = "DROP FUNCTION IF EXISTS commit_update_%[1]s"
-	dropCommitNewWithValFuncStmtTemplate    = "DROP FUNCTION IF EXISTS commit_new_with_val_%[1]s"
-	dropCommitNewWithoutValFuncStmtTemplate = "DROP FUNCTION IF EXISTS commit_new_without_val_%[1]s"
-	dropTxStatusStmt                        = "DROP TABLE IF EXISTS tx_status"
-	dropCommitTxStatusStmt                  = "DROP FUNCTION IF EXISTS commit_tx_status"
+	dropTableStmtTemplate            = "DROP TABLE IF EXISTS %[1]s"
+	dropValidateFuncStmtTemplate     = "DROP FUNCTION IF EXISTS validate_reads_%[1]s"
+	dropCommitUpdateFuncStmtTemplate = "DROP FUNCTION IF EXISTS commit_update_%[1]s"
+	dropCommitNewFuncStmtTemplate    = "DROP FUNCTION IF EXISTS commit_new_%[1]s"
+	dropTxStatusStmt                 = "DROP TABLE IF EXISTS tx_status"
+	dropCommitTxStatusStmt           = "DROP FUNCTION IF EXISTS commit_tx_status"
 )
 
 var initStatements = []string{
@@ -163,8 +137,7 @@ var initStatementsWithTemplate = []string{
 	// createIndexStmtTemplate,
 	validateFuncTemplate,
 	commitUpdateFuncTemplate,
-	commitNewWithValFuncTemplate,
-	commitNewFuncWithoutValueTemplate,
+	commitNewFuncTemplate,
 }
 
 var dropStatements = []string{
@@ -176,8 +149,7 @@ var dropStatementsWithTemplate = []string{
 	dropTableStmtTemplate,
 	dropValidateFuncStmtTemplate,
 	dropCommitUpdateFuncStmtTemplate,
-	dropCommitNewWithValFuncStmtTemplate,
-	dropCommitNewWithoutValFuncStmtTemplate,
+	dropCommitNewFuncStmtTemplate,
 }
 
 // InitDatabase initialize the DB tables and methods.

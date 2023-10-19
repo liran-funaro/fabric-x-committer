@@ -319,7 +319,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 		},
 		blindWritesPerTransaction: transactionToWrites{},
-		newWritesWithValue: transactionToWrites{
+		newWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k3},
@@ -339,18 +339,9 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					versions: [][]byte{nil},
 				},
 				2: &namespaceWrites{
-					keys:     [][]byte{k6},
-					values:   [][]byte{[]byte("v6")},
-					versions: [][]byte{nil},
-				},
-			},
-		},
-		newWritesWithoutValue: transactionToWrites{
-			"tx2": namespaceToWrites{
-				2: &namespaceWrites{
-					keys:     [][]byte{k7},
-					values:   [][]byte{nil},
-					versions: [][]byte{nil},
+					keys:     [][]byte{k6, k7},
+					values:   [][]byte{[]byte("v6"), nil},
+					versions: [][]byte{nil, nil},
 				},
 			},
 		},
@@ -362,8 +353,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
 	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
 	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.newWritesWithValue, preparedTxs.newWritesWithValue)
-	require.Equal(t, expectedPreparedTxs.newWritesWithoutValue, preparedTxs.newWritesWithoutValue)
+	require.Equal(t, expectedPreparedTxs.newWrites, preparedTxs.newWrites)
 }
 
 func TestPrepareTx(t *testing.T) {
@@ -500,7 +490,7 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
-		newWritesWithValue: transactionToWrites{
+		newWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				2: &namespaceWrites{
 					keys:     [][]byte{k6},
@@ -509,7 +499,6 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
-		newWritesWithoutValue: transactionToWrites{},
 	}
 
 	env.txBatch <- tx
@@ -518,6 +507,5 @@ func TestPrepareTx(t *testing.T) {
 	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
 	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
 	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.newWritesWithValue, preparedTxs.newWritesWithValue)
-	require.Equal(t, expectedPreparedTxs.newWritesWithoutValue, preparedTxs.newWritesWithoutValue)
+	require.Equal(t, expectedPreparedTxs.newWrites, preparedTxs.newWrites)
 }
