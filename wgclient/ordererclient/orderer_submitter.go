@@ -16,12 +16,11 @@ import (
 )
 
 type FabricOrdererBroadcasterOpts struct {
-	Endpoints            []*connection.Endpoint
-	Credentials          credentials.TransportCredentials
-	Parallelism          int
-	InputChannelCapacity int
-	OrdererType          utils.ConsensusType
-	OnAck                func(error)
+	Endpoints   []*connection.Endpoint
+	Credentials credentials.TransportCredentials
+	Parallelism int
+	OrdererType utils.ConsensusType
+	OnAck       func(error)
 }
 
 type fabricOrdererBroadcaster struct {
@@ -48,7 +47,7 @@ func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrd
 		return nil, err
 	}
 
-	streamsByOrderer := openStreamsByOrderer(connections, opts.Parallelism, opts.InputChannelCapacity, opts.OnAck)
+	streamsByOrderer := openStreamsByOrderer(connections, opts.Parallelism, opts.OnAck)
 
 	return &fabricOrdererBroadcaster{
 		closeStreamsAndWait: connectionCloser(streamsByOrderer, connections),
@@ -133,7 +132,7 @@ func closeConnections(connections []*grpc.ClientConn) error {
 	return nil
 }
 
-func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism, capacity int, onAck func(error)) ordererStreams {
+func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism int, onAck func(error)) ordererStreams {
 	logger.Infof("Opening %d streams using the %d connections to the orderers.\n", parallelism, len(connections))
 
 	var submitters [][]*fabricOrdererStream
@@ -142,7 +141,7 @@ func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism, capacity 
 		var submittersForOrderer []*fabricOrdererStream
 
 		for j := 0; j < parallelism/len(connections); j++ {
-			submittersForOrderer = append(submittersForOrderer, newFabricOrdererStream(connections[i], capacity, onAck))
+			submittersForOrderer = append(submittersForOrderer, newFabricOrdererStream(connections[i], onAck))
 		}
 
 		submitters = append(submitters, submittersForOrderer)
@@ -163,12 +162,14 @@ type fabricOrdererStream struct {
 	txCnt   uint64
 }
 
-func newFabricOrdererStream(conn *grpc.ClientConn, capacity int, onAck func(error)) *fabricOrdererStream {
+const inputChannelCapacity = 200
+
+func newFabricOrdererStream(conn *grpc.ClientConn, onAck func(error)) *fabricOrdererStream {
 	client, err := ab.NewAtomicBroadcastClient(conn).Broadcast(context.TODO())
 	utils.Must(err)
 	s := &fabricOrdererStream{
 		client:        client,
-		input:         make(chan *common.Envelope, capacity),
+		input:         make(chan *common.Envelope, inputChannelCapacity),
 		allAcked:      make(chan struct{}),
 		channelClosed: make(chan struct{}),
 	}

@@ -7,6 +7,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/orderer"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/ordererclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client"
@@ -37,15 +38,12 @@ func main() {
 		DeliverEndpoint:       &c.Sidecar,
 		DeliverCredentials:    insecure.NewCredentials(),
 		DeliverSigner:         nil,
-		DeliverClientProvider: &PeerDeliverClientProvider{},
+		DeliverClientProvider: &orderer.PeerDeliverClientProvider{},
 
-		ChannelID:            c.ChannelID,
-		Parallelism:          c.Parallelism,
-		InputChannelCapacity: c.InputChannelCapacity,
-		OrdererType:          c.OrdererType,
-		StartBlock:           0,
-
-		RemoteControllerListener: c.RemoteControllerListener,
+		ChannelID:   c.ChannelID,
+		Parallelism: c.Parallelism,
+		OrdererType: c.OrdererType,
+		StartBlock:  0,
 	})
 	utils.Must(err)
 

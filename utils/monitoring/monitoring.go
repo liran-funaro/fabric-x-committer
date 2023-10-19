@@ -76,7 +76,7 @@ func startLatencyExporter(l *latency.Config, componentName string, labels []stri
 		Count:          l.BucketCount,
 		From:           0,
 		To:             l.MaxLatency,
-		Sampler:        l.Sampler.Sampler(),
+		Sampler:        l.Sampler.TxSampler(),
 		IgnoreNotFound: true,
 		Labels:         labels,
 	}, traceProvider(componentName, spanExporter(l.SpanExporter, l.Endpoint)))

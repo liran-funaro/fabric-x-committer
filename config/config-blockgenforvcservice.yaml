@@ -23,8 +23,10 @@ tx-dependencies-workers: 2
 
 seed: 12345
 
-coordinator-client:
-  endpoint: localhost:9001
+vc-client:
+  endpoints:
+    - localhost:9002
+    - localhost:9003
 monitoring:
   metrics:
     enable: true

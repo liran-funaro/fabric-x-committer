@@ -1,8 +1,18 @@
 package main
 
 import (
+	"sync"
+	"time"
+
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 var buckets = []float64{
@@ -62,5 +72,107 @@ func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
 func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
 	if s.enabled {
 		c.Add(float64(n))
+	}
+}
+
+type ClientTracker struct {
+	*senderTracker
+	*receiverTracker
+}
+
+func NewClientTracker(logger CmdLogger, metrics *perfMetrics, samplerConfig latency.SamplerConfig) *ClientTracker {
+	latencyTracker := &sync.Map{}
+	return &ClientTracker{
+		senderTracker: &senderTracker{
+			logger:         logger,
+			metrics:        metrics,
+			latencyTracker: latencyTracker,
+			blockSampler:   samplerConfig.BlockSampler(),
+			txSampler:      samplerConfig.TxSampler(),
+		},
+		receiverTracker: &receiverTracker{
+			logger:         logger,
+			metrics:        metrics,
+			latencyTracker: latencyTracker,
+		},
+	}
+}
+
+type ReceiverTracker interface {
+	OnReceiveTransaction(txID string, status protoblocktx.Status)
+	OnReceiveBlock(block *common.Block)
+	OnReceiveVCBatch(batch *protovcservice.TransactionStatus)
+	OnReceiveCoordinatorBatch(batch *protocoordinatorservice.TxValidationStatusBatch)
+}
+
+type receiverTracker struct {
+	logger         CmdLogger
+	metrics        *perfMetrics
+	latencyTracker *sync.Map
+}
+
+func (c *receiverTracker) OnReceiveCoordinatorBatch(batch *protocoordinatorservice.TxValidationStatusBatch) {
+	for _, tx := range batch.TxsValidationStatus {
+		c.OnReceiveTransaction(tx.TxId, tx.Status)
+	}
+}
+
+func (c *receiverTracker) OnReceiveVCBatch(batch *protovcservice.TransactionStatus) {
+	for id, status := range batch.Status {
+		c.OnReceiveTransaction(id, status)
+	}
+}
+
+func (c *receiverTracker) OnReceiveTransaction(txID string, status protoblocktx.Status) {
+	c.metrics.addToCounter(c.metrics.transactionReceivedTotal, 1)
+	if t, ok := c.latencyTracker.LoadAndDelete(txID); ok {
+		start, _ := t.(time.Time)
+		elapsed := time.Since(start)
+
+		if status == protoblocktx.Status_COMMITTED {
+			prometheusmetrics.Observe(c.metrics.validTransactionLatencySecond, elapsed)
+		} else {
+			prometheusmetrics.Observe(c.metrics.invalidTransactionLatencySecond, elapsed)
+		}
+	}
+}
+
+func (c *receiverTracker) OnReceiveBlock(block *common.Block) {
+	statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
+	for i, data := range block.Data.Data {
+		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {
+			c.OnReceiveTransaction(channelHeader.TxId, aggregator.StatusInverseMap[statusCodes[i]])
+		}
+	}
+}
+
+type SenderTracker interface {
+	OnSendBlock(block *protoblocktx.Block)
+}
+
+type senderTracker struct {
+	logger         CmdLogger
+	metrics        *perfMetrics
+	latencyTracker *sync.Map
+	blockSampler   latency.BlockTracingSampler
+	txSampler      latency.TxTracingSampler
+}
+
+func (c *senderTracker) OnSendBlock(block *protoblocktx.Block) {
+	c.metrics.addToCounter(c.metrics.blockSentTotal, 1)
+	c.metrics.addToCounter(c.metrics.transactionSentTotal, len(block.Txs))
+	if c.blockSampler(block.Number) {
+		t := time.Now()
+		for _, tx := range block.Txs {
+			c.latencyTracker.Store(tx.Id, t)
+		}
+	}
+}
+
+func (c *senderTracker) OnSendTransaction(txId string) {
+	c.metrics.addToCounter(c.metrics.transactionSentTotal, 1)
+
+	if c.txSampler(txId) {
+		c.latencyTracker.Store(txId, time.Now())
 	}
 }

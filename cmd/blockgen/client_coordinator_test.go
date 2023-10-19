@@ -15,6 +15,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -22,7 +23,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-var (
+var coordinatorLogger = logging.New("test-logger")
+
+const (
 	configTemplate = `
 logging:
   enabled: true
@@ -58,9 +61,8 @@ coordinator-service:
       endpoint: :2110
 `
 
-	testConfigFilePath = "./test-config.yaml"
-
-	blockgenConfgFilePath = "../../config/config-blockgenforcoordinator.yaml"
+	testConfigFilePath                = "./test-config.yaml"
+	coordinatorBlockGenConfigFilePath = "../../config/config-blockgenforcoordinator.yaml"
 )
 
 func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
@@ -68,6 +70,7 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
 	var coordService *coordinatorservice.CoordinatorService
 	var coordGrpcServer *grpc.Server
+	var metrics *perfMetrics
 
 	t.Cleanup(func() {
 		require.NoError(t, coordService.Close())
@@ -131,11 +134,11 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	}()
 	wg.Wait()
 
-	cmd := blockgenCmd()
-	cmd.SetArgs([]string{"start", "--configs", blockgenConfgFilePath, "--component", "coordinator"})
-
+	m, start, _, err := BlockgenStarter(coordinatorLogger.Info, coordinatorBlockGenConfigFilePath)
+	utils.Must(err)
+	metrics = m
 	go func() {
-		err = cmd.Execute()
+		utils.Must(start())
 	}()
 
 	require.Eventually(t, func() bool {
@@ -146,7 +149,7 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 
 	close(stopSender)
 
-	c, err := readConfig()
+	c, err := readConfig(coordinatorBlockGenConfigFilePath)
 	require.NoError(t, err)
 
 	client := &http.Client{}

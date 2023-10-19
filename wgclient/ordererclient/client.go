@@ -11,8 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
-	"go.uber.org/ratelimit"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -37,14 +35,12 @@ type ClientInitOptions struct {
 	DeliverSigner         msp.SigningIdentity
 	StartBlock            int64
 
-	OrdererEndpoints         []*connection.Endpoint
-	OrdererCredentials       credentials.TransportCredentials
-	OrdererType              utils.ConsensusType
-	OrdererSigner            msp.SigningIdentity
-	SignedEnvelopes          bool
-	Parallelism              int
-	InputChannelCapacity     int
-	RemoteControllerListener *limiter.Config
+	OrdererEndpoints   []*connection.Endpoint
+	OrdererCredentials credentials.TransportCredentials
+	OrdererType        utils.ConsensusType
+	OrdererSigner      msp.SigningIdentity
+	SignedEnvelopes    bool
+	Parallelism        int
 
 	ChannelID string
 }
@@ -55,7 +51,6 @@ type ClientInitOptions struct {
 type Client struct {
 	listener        OrdererListener
 	submitter       OrdererSubmitter
-	rateLimiter     ratelimit.Limiter
 	envelopeCreator EnvelopeCreator
 	totalStreams    int
 }
@@ -68,8 +63,6 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	if opts.OrdererType == utils.Bft && !areEndpointsUnique(opts.OrdererEndpoints) {
 		return nil, errors.New("bft only supports one connection per orderer")
 	}
-
-	rateLimiter := limiter.New(opts.RemoteControllerListener)
 
 	var listener OrdererListener
 	var err error
@@ -94,11 +87,10 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 	sent := uint64(0)
 	totalStreams := len(opts.OrdererEndpoints) * opts.Parallelism
 	submitter, err := NewFabricOrdererBroadcaster(&FabricOrdererBroadcasterOpts{
-		Endpoints:            opts.OrdererEndpoints,
-		Credentials:          opts.OrdererCredentials,
-		Parallelism:          totalStreams,
-		OrdererType:          opts.OrdererType,
-		InputChannelCapacity: opts.InputChannelCapacity,
+		Endpoints:   opts.OrdererEndpoints,
+		Credentials: opts.OrdererCredentials,
+		Parallelism: totalStreams,
+		OrdererType: opts.OrdererType,
 		OnAck: func(err error) {
 			atomic.AddUint64(&sent, 1)
 			if sent%1_000_000 == 0 {
@@ -109,7 +101,12 @@ func NewClient(opts *ClientInitOptions) (*Client, error) {
 
 	envelopeCreator := NewEnvelopeCreator(opts.ChannelID, opts.OrdererSigner, opts.SignedEnvelopes)
 
-	return &Client{listener, submitter, rateLimiter, envelopeCreator, totalStreams}, nil
+	return &Client{
+		listener:        listener,
+		submitter:       submitter,
+		envelopeCreator: envelopeCreator,
+		totalStreams:    totalStreams,
+	}, nil
 }
 
 func areEndpointsUnique(endpoints []*connection.Endpoint) bool {
@@ -144,7 +141,6 @@ func (c *Client) send(messages <-chan []byte, onRequestSend func(EnvelopeTxId)) 
 				select {
 				case message := <-messages:
 					env, txId, _ := c.envelopeCreator.CreateEnvelope(message)
-					_ = c.rateLimiter.Take()
 					send(env)
 					onRequestSend(txId)
 				}

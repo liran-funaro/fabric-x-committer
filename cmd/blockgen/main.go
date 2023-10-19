@@ -1,37 +1,19 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
-	"sync"
-	"time"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var (
-	configPath     string
-	component      string
-	metrics        *perfMetrics
-	stopSender     chan any
-	latencyTracker *sync.Map
-	blockSize      int
+	configPath string
+	stopSender chan any
 )
-
-// BlockgenConfig is the configuration for blockgen.
-type BlockgenConfig struct {
-	CoordinatorEndpoint     *connection.Endpoint   `mapstructure:"coordinator-endpoint"`
-	VCServiceEndpoints      []*connection.Endpoint `mapstructure:"vcservice-endpoints"`
-	Monitoring              *monitoring.Config     `mapstructure:"monitoring"`
-	RateLimit               int                    `mapstructure:"rate-limit"`
-	LatencySamplingInterval time.Duration          `mapstructure:"latency-sampling-interval"`
-}
 
 func main() {
 	cmd := blockgenCmd()
@@ -77,72 +59,49 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Starts a blockgen",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if component == "" {
-				return errors.New("--component flag must be set to the component name for which load is generated")
-			}
-
-			c, err := readConfig()
-			if err != nil {
+			if _, start, _, err := BlockgenStarter(cmd.Println, configPath); err != nil {
 				return err
+			} else {
+				return start()
 			}
-
-			metrics = newBlockgenServiceMetrics(c.Monitoring.Metrics.Enable)
-			var promErrChan <-chan error
-			if metrics.enabled {
-				promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
-			}
-
-			go func() {
-				if errProm := <-promErrChan; errProm != nil {
-					log.Panic(err) // nolint: revive
-				}
-			}()
-
-			profile := loadgen.LoadProfileFromYaml(configPath)
-			blockSize = int(profile.Block.Size)
-			blockGen := loadgen.StartBlockGenerator(profile)
-			latencyTracker = &sync.Map{}
-
-			switch component {
-			case "coordinator":
-				stopSender = make(chan any)
-				err = generateLoadForCoordinatorService(cmd, c, blockGen)
-			case "vcservice":
-				stopSender = make(chan any, len(c.VCServiceEndpoints))
-				err = generateLoadForVCService(cmd, c, blockGen)
-			default:
-				err = fmt.Errorf("invalid component name: %s", component)
-			}
-
-			return err
 		},
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.PersistentFlags().StringVar(&component, "component", "", "set the component name for which load is generated")
 	return cmd
 }
 
-func readConfig() (*BlockgenConfig, error) {
-	if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
-		return nil, err
-	}
-	wrapper := new(struct {
-		Config BlockgenConfig `mapstructure:"blockgen"`
-	})
-	config.Unmarshal(wrapper)
-
-	if wrapper.Config.RateLimit == 0 {
-		return nil, errors.New("rate-limit must be set")
+func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, func() error, func(), error) {
+	if configPath == "" {
+		return nil, nil, nil, errors.New("--configs flag must be set to the path of configuration file")
 	}
 
-	if wrapper.Config.LatencySamplingInterval == 0 {
-		return nil, errors.New("latency-sampling-interval must be set")
+	c, err := readConfig(configPath)
+
+	if err != nil {
+		return nil, nil, nil, errors.Wrap(err, "failed to read config")
 	}
 
-	return &wrapper.Config, nil
+	client, metrics, err := createClient(c, logger)
+	if err != nil {
+		return nil, nil, nil, errors.Wrap(err, "failed creating client")
+	}
+
+	var promErrChan <-chan error
+	if metrics.enabled {
+		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
+	}
+
+	go func() {
+		if errProm := <-promErrChan; errProm != nil {
+			log.Panic(err) // nolint: revive
+		}
+	}()
+
+	profile := loadgen.LoadProfileFromYaml(configPath)
+	blockGen := loadgen.StartBlockGenerator(profile)
+
+	return metrics, func() error {
+		return client.Start(blockGen)
+	}, client.Stop, nil
 }
