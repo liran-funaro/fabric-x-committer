@@ -2,13 +2,17 @@ package dependencygraph
 
 type (
 	dependencyDetector struct {
-		// readKeyToWaitingTxs holds a map of key to transaction that have read the key.
-		// readKeyToWaitingTxs is used to establish write-read dependency.
-		readKeyToWaitingTxs keyToTransactions
+		// readOnlyKeyToWaitingTxs holds a map of key to transaction that have only read the key.
+		// readOnlyKeyToWaitingTxs is used to establish write-read dependency.
+		readOnlyKeyToWaitingTxs keyToTransactions
 
-		// writeKeyToWaitingTxs holds a map of key to transaction that have written the key.
-		// writeKeyToWaitingTxs is used to establish write-write and read-write dependencies.
-		writeKeyToWaitingTxs keyToTransactions
+		// writeOnlyKeyToWaitingTxs holds a map of key to transaction that have only written the key.
+		// writeOnlyKeyToWaitingTxs is used to establish write-write and read-write dependencies.
+		writeOnlyKeyToWaitingTxs keyToTransactions
+
+		// readWriteKeyToWaitingTxs holds a map of key to transaction that have read and written the key.
+		// readWriteKeyToWaitingTxs is used to establish write-read, write-write and read-write dependencies.
+		readWriteKeyToWaitingTxs keyToTransactions
 	}
 
 	// keyToTransactions holds a map of key to transactions that have read or written the key.
@@ -17,8 +21,9 @@ type (
 
 func newDependencyDetector() *dependencyDetector {
 	return &dependencyDetector{
-		readKeyToWaitingTxs:  make(keyToTransactions),
-		writeKeyToWaitingTxs: make(keyToTransactions),
+		readOnlyKeyToWaitingTxs:  make(keyToTransactions),
+		writeOnlyKeyToWaitingTxs: make(keyToTransactions),
+		readWriteKeyToWaitingTxs: make(keyToTransactions),
 	}
 }
 
@@ -38,17 +43,27 @@ func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transact
 		}
 	}
 
-	for _, rk := range txNode.rwKeys.reads {
+	for _, rk := range txNode.rwKeys.readsOnly {
 		// read-write dependency
-		copyTxs(dependsOnTxs, d.writeKeyToWaitingTxs[rk])
+		copyTxs(dependsOnTxs, d.writeOnlyKeyToWaitingTxs[rk])
+
+		// read-write dependency
+		copyTxs(dependsOnTxs, d.readWriteKeyToWaitingTxs[rk])
 	}
 
-	for _, wk := range txNode.rwKeys.writes {
-		// write-read dependency
-		copyTxs(dependsOnTxs, d.readKeyToWaitingTxs[wk])
+	for _, keys := range [][]string{txNode.rwKeys.writesOnly, txNode.rwKeys.readsAndWrites} {
+		for _, k := range keys {
+			// write-read dependency
+			copyTxs(dependsOnTxs, d.readOnlyKeyToWaitingTxs[k])
 
-		// write-write dependency
-		copyTxs(dependsOnTxs, d.writeKeyToWaitingTxs[wk])
+			// for writeOnly, the following detects write-write dependency
+			// for readWrite, the following detects read-write and write-write dependencies
+			copyTxs(dependsOnTxs, d.writeOnlyKeyToWaitingTxs[k])
+
+			// for writeOnly, the following detects write-read and write-write dependency
+			// for readWrite, the following detects write-read, read-write, and write-write dependencies
+			copyTxs(dependsOnTxs, d.readWriteKeyToWaitingTxs[k])
+		}
 	}
 
 	depOns := make(transactionList, 0, len(dependsOnTxs))
@@ -62,8 +77,9 @@ func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transact
 // so that getDependenciesOf() can consider them when calculating dependencies.
 // This method is not thread-safe.
 func (d *dependencyDetector) addWaitingTx(txNode *TransactionNode) {
-	d.readKeyToWaitingTxs.add(txNode.rwKeys.reads, txNode)
-	d.writeKeyToWaitingTxs.add(txNode.rwKeys.writes, txNode)
+	d.readOnlyKeyToWaitingTxs.add(txNode.rwKeys.readsOnly, txNode)
+	d.writeOnlyKeyToWaitingTxs.add(txNode.rwKeys.writesOnly, txNode)
+	d.readWriteKeyToWaitingTxs.add(txNode.rwKeys.readsAndWrites, txNode)
 }
 
 // mergeWaitingTx merges the waiting transaction's reads and writes from
@@ -71,8 +87,9 @@ func (d *dependencyDetector) addWaitingTx(txNode *TransactionNode) {
 func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 	// NOTE: The given depDetector is not modified ever after we reach here.
 	//       Hence, we don't need to copy the map and can safely assign them instead.
-	d.readKeyToWaitingTxs.merge(depDetector.readKeyToWaitingTxs)
-	d.writeKeyToWaitingTxs.merge(depDetector.writeKeyToWaitingTxs)
+	d.readOnlyKeyToWaitingTxs.merge(depDetector.readOnlyKeyToWaitingTxs)
+	d.writeOnlyKeyToWaitingTxs.merge(depDetector.writeOnlyKeyToWaitingTxs)
+	d.readWriteKeyToWaitingTxs.merge(depDetector.readWriteKeyToWaitingTxs)
 }
 
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
@@ -80,8 +97,9 @@ func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 // This method is not thread-safe.
 func (d *dependencyDetector) removeWaitingTx(txsNode []*TransactionNode) {
 	for _, txNode := range txsNode {
-		d.readKeyToWaitingTxs.remove(txNode.rwKeys.reads, txNode)
-		d.writeKeyToWaitingTxs.remove(txNode.rwKeys.writes, txNode)
+		d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode)
+		d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode)
+		d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode)
 	}
 }
 

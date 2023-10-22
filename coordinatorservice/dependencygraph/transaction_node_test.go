@@ -81,8 +81,10 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	tx := createTxForTest(t, readOnly, readWrite, blindWrite)
 	txNode := newTransactionNode(tx)
 
-	var expectedReads []string  // nolint:prealloc
-	var expectedWrites []string // nolint:prealloc
+	expectedReads := make([]string, 0, len(readOnly))
+	expectedWrites := make([]string, 0, len(blindWrite))
+	expectedReadsAndWrites := make([]string, 0, len(readWrite))
+
 	nsID := tx.Namespaces[0].NsId
 
 	for _, k := range readOnly {
@@ -90,9 +92,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	}
 
 	for _, k := range readWrite {
-		ck := constructCompositeKey(nsID, k)
-		expectedReads = append(expectedReads, ck)
-		expectedWrites = append(expectedWrites, ck)
+		expectedReadsAndWrites = append(expectedReadsAndWrites, constructCompositeKey(nsID, k))
 	}
 
 	for _, k := range blindWrite {
@@ -105,6 +105,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 		&readWriteKeys{
 			expectedReads,
 			expectedWrites,
+			expectedReadsAndWrites,
 		},
 		txNode,
 	)
@@ -152,8 +153,8 @@ func checkNewTxNode(
 	require.Equal(t, tx.Id, txNode.Tx.ID)
 	require.Equal(t, tx.Namespaces, txNode.Tx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
-	require.ElementsMatch(t, readsWrites.reads, txNode.rwKeys.reads)
-	require.ElementsMatch(t, readsWrites.writes, txNode.rwKeys.writes)
+	require.ElementsMatch(t, readsWrites.readsOnly, txNode.rwKeys.readsOnly)
+	require.ElementsMatch(t, readsWrites.writesOnly, txNode.rwKeys.writesOnly)
 	require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 }
 

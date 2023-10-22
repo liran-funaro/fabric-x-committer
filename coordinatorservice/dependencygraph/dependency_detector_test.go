@@ -103,6 +103,8 @@ func TestDependencyDetector(t *testing.T) {
 	expectedDependsOnTx = transactionList{tx8Node, tx7Node, tx6Node, tx5Node}
 	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
+	dd.addWaitingTx(tx9Node)
+
 	// remove all remaining transactions from the dependency detector.
 	dd.removeWaitingTx([]*TransactionNode{tx5Node})
 	dd.removeWaitingTx([]*TransactionNode{tx6Node})

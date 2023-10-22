@@ -228,6 +228,6 @@ func createTxsNodeBatch(_ *testing.T, txsNode []*TransactionNode) *transactionNo
 
 func ensureEmptyDetector(t *testing.T, d *dependencyDetector) {
 	require.Eventually(t, func() bool {
-		return len(d.readKeyToWaitingTxs) == 0 && len(d.writeKeyToWaitingTxs) == 0
+		return len(d.readOnlyKeyToWaitingTxs) == 0 && len(d.writeOnlyKeyToWaitingTxs) == 0
 	}, 2*time.Second, 100*time.Millisecond)
 }

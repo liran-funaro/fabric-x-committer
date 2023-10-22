@@ -47,8 +47,9 @@ type (
 
 	// readWriteKeys holds the read and write keys of a transaction.
 	readWriteKeys struct {
-		reads  []string
-		writes []string
+		readsOnly      []string
+		writesOnly     []string
+		readsAndWrites []string
 	}
 )
 
@@ -138,28 +139,26 @@ func (n *TransactionNode) isDependencyFree() bool {
 }
 
 func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
-	var readKeys []string
-	var writeKeys []string
+	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string
 
 	for _, ns := range txNamespaces {
 		for _, ro := range ns.ReadsOnly {
-			readKeys = append(readKeys, constructCompositeKey(ns.NsId, ro.Key))
-		}
-
-		for _, rw := range ns.ReadWrites {
-			k := constructCompositeKey(ns.NsId, rw.Key)
-			readKeys = append(readKeys, k)
-			writeKeys = append(writeKeys, k)
+			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(ns.NsId, ro.Key))
 		}
 
 		for _, w := range ns.BlindWrites {
-			writeKeys = append(writeKeys, constructCompositeKey(ns.NsId, w.Key))
+			writeOnlyKeys = append(writeOnlyKeys, constructCompositeKey(ns.NsId, w.Key))
+		}
+
+		for _, rw := range ns.ReadWrites {
+			readAndWriteKeys = append(readAndWriteKeys, constructCompositeKey(ns.NsId, rw.Key))
 		}
 	}
 
 	return &readWriteKeys{
-		reads:  readKeys,
-		writes: writeKeys,
+		readsOnly:      readOnlyKeys,
+		writesOnly:     writeOnlyKeys,
+		readsAndWrites: readAndWriteKeys,
 	}
 }
 
