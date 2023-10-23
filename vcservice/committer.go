@@ -48,13 +48,34 @@ func (c *transactionCommitter) start(numWorkers int) {
 }
 
 func (c *transactionCommitter) commit() {
+	// NOTE: Three retry is adequate for now. We can make it configurable in future.
+	maxRetryAttempt := 3
+	var attempts int
+	var txsStatus *protovcservice.TransactionStatus
+	var err error
+
 	for vTx := range c.incomingValidatedTransactions {
 		start := time.Now()
-		txsStatus, err := c.commitTransactions(vTx)
-		if err != nil {
-			// TODO: handle error gracefully
-			panic(err)
+		for attempts = 0; attempts < maxRetryAttempt; attempts++ {
+			txsStatus, err = c.commitTransactions(vTx)
+			if err == nil {
+				break
+			}
+
+			// There are certain errors for which we need to retry the commit operation.
+			// Refer to YugabyteDB documentation for retryable error.
+			// Rather than distinguishing retryable transaction error, we retry for all errors.
+			// This is for simplicity and we can improve it in future.
+			// TODO: Add test to ensure commit is retried.
+			logger.Errorf("error committing tx: %v", err)
+			logger.Infof("retrying to commit transactions")
 		}
+
+		if attempts == maxRetryAttempt {
+			// TODO: Handle error gracefully.
+			logger.Fatalf("failed to commit transactions: %v", err)
+		}
+
 		prometheusmetrics.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
 		c.outgoingTransactionsStatus <- txsStatus
 	}
