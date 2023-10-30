@@ -7,22 +7,26 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type vcClient struct {
 	*loadGenClient
-	config *VCClientConfig
+	config  *VCClientConfig
+	tracker *vcTracker
 }
 
-func newVCClient(config *VCClientConfig, tracker *ClientTracker, logger CmdLogger) blockGenClient {
+func newVCClient(config *VCClientConfig, metrics *perfMetrics, logger CmdLogger) blockGenClient {
+	tracker := newVCTracker(metrics)
 	return &vcClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
 			logger:     logger,
 			stopSender: make(chan any, len(config.Endpoints)),
 		},
-		config: config,
+		tracker: tracker,
+		config:  config,
 	}
 }
 
@@ -53,7 +57,7 @@ func (c *vcClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 func (c *vcClient) startSending(blockGen *loadgen.BlockStreamGenerator, csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
 	return startSendingBlocks(blockGen.BlockQueue, func(block *protoblocktx.Block) error {
 		return csStream.Send(mapBatch(block))
-	}, c.tracker.senderTracker, c.logger, c.stopSender)
+	}, c.tracker, c.logger, c.stopSender)
 }
 
 func connectToVC(endpoint *connection.Endpoint) (protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, error) {
@@ -92,4 +96,20 @@ func mapBatch(block *protoblocktx.Block) *protovcservice.TransactionBatch {
 		)
 	}
 	return txBatch
+}
+
+type vcTracker struct {
+	tracker.ReceiverSender
+}
+
+func newVCTracker(metrics *perfMetrics) *vcTracker {
+	return &vcTracker{ReceiverSender: NewClientTracker(metrics)}
+}
+
+func (t *vcTracker) OnReceiveVCBatch(batch *protovcservice.TransactionStatus) {
+	logger.Debugf("Received VC batch with %d items", len(batch.Status))
+
+	for id, status := range batch.Status {
+		t.OnReceiveTransaction(id, status == protoblocktx.Status_COMMITTED)
+	}
 }

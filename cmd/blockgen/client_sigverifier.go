@@ -4,25 +4,30 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type svClient struct {
 	*loadGenClient
-	config *SVClientConfig
+	config  *SVClientConfig
+	tracker *svTracker
 }
 
-func newSVClient(config *SVClientConfig, tracker *ClientTracker, logger CmdLogger) blockGenClient {
+func newSVClient(config *SVClientConfig, metrics *perfMetrics, logger CmdLogger) blockGenClient {
+	tracker := newSVTracker(metrics)
 	return &svClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
 			logger:     logger,
 			stopSender: make(chan any, len(config.Endpoints)),
 		},
-		config: config,
+		tracker: tracker,
+		config:  config,
 	}
 }
 
@@ -32,7 +37,7 @@ func (c *svClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 		connections[i] = connection.NewDialConfig(*endpoint)
 	}
 
-	requests := make(chan *sigverification.RequestBatch, len(c.config.Endpoints))
+	errChan := make(chan error, len(c.config.Endpoints))
 	for i, conn := range connections {
 		stream, err := c.startStream(conn, blockGen.Signer.GetVerificationKey())
 		if err != nil {
@@ -50,27 +55,28 @@ func (c *svClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 		}(i)
 		go func(i int) {
 			for {
-				batch := <-requests
-				if err := stream.Send(batch); err != nil {
-					panic(errors.Wrapf(err, "failed sending to endpoint %s", c.config.Endpoints[i].String()))
+				block := <-blockGen.BlockQueue
+				if err := stream.Send(mapSVBatch(block)); err != nil {
+					errChan <- errors.Wrapf(err, "failed sending to endpoint %s", c.config.Endpoints[i].String())
 				}
-				c.tracker.OnSendSVBatch(batch)
+				c.tracker.OnSendBlock(block)
 			}
 		}(i)
 	}
+	return <-errChan
+}
 
-	for {
-		b := <-blockGen.BlockQueue
-		reqs := make([]*sigverification.Request, len(b.Txs))
-		for i, tx := range b.Txs {
-			reqs[i] = &sigverification.Request{
-				BlockNum: b.Number,
-				TxNum:    uint64(i),
-				Tx:       tx,
-			}
+func mapSVBatch(b *protoblocktx.Block) *sigverification.RequestBatch {
+	reqs := make([]*sigverification.Request, len(b.Txs))
+	for i, tx := range b.Txs {
+		reqs[i] = &sigverification.Request{
+			BlockNum: b.Number,
+			TxNum:    uint64(i),
+			Tx:       tx,
 		}
-		requests <- &sigverification.RequestBatch{Requests: reqs}
 	}
+	batch := &sigverification.RequestBatch{Requests: reqs}
+	return batch
 }
 
 func (c *svClient) startStream(conn *connection.DialConfig, verificationKey signature.PublicKey) (sigverification.Verifier_StartStreamClient, error) {
@@ -94,4 +100,20 @@ func (c *svClient) startStream(conn *connection.DialConfig, verificationKey sign
 	}
 	c.logger("Started stream to %s", conn.Address())
 	return stream, nil
+}
+
+type svTracker struct {
+	tracker.ReceiverSender
+}
+
+func newSVTracker(metrics *perfMetrics) *svTracker {
+	return &svTracker{ReceiverSender: NewClientTracker(metrics)}
+}
+
+func (t *svTracker) OnReceiveSVBatch(batch *sigverification.ResponseBatch) {
+	logger.Debugf("Received batch with %d responses", len(batch.Responses))
+
+	for _, response := range batch.Responses {
+		t.OnReceiveTransaction(response.TxId, response.IsValid)
+	}
 }

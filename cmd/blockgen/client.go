@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
@@ -15,7 +16,7 @@ type blockGenClient interface {
 }
 
 type loadGenClient struct {
-	tracker    *ClientTracker
+	tracker    tracker.Sender
 	logger     CmdLogger
 	stopSender chan any
 }
@@ -28,19 +29,18 @@ func (c *loadGenClient) Stop() {
 
 func createClient(c *ClientConfig, logger CmdLogger) (blockGenClient, *perfMetrics, error) {
 	metrics := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
-	tracker := NewClientTracker(logger, metrics, &c.Monitoring.Metrics.Latency.SamplerConfig)
 
 	if c.CoordinatorClient != nil {
-		return newCoordinatorClient(c.CoordinatorClient, tracker, logger), metrics, nil
+		return newCoordinatorClient(c.CoordinatorClient, metrics, logger), metrics, nil
 	}
 	if c.VCClient != nil {
-		return newVCClient(c.VCClient, tracker, logger), metrics, nil
+		return newVCClient(c.VCClient, metrics, logger), metrics, nil
 	}
 	if c.SidecarClient != nil {
-		return newSidecarClient(c.SidecarClient, tracker, logger), metrics, nil
+		return newSidecarClient(c.SidecarClient, metrics, logger), metrics, nil
 	}
 	if c.SigVerifierClient != nil {
-		return newSVClient(c.SigVerifierClient, tracker, logger), metrics, nil
+		return newSVClient(c.SigVerifierClient, metrics, logger), metrics, nil
 	}
 	return nil, nil, errors.New("invalid config passed")
 }

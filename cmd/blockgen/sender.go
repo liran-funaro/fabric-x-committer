@@ -3,9 +3,10 @@ package main
 import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 )
 
-func startSendingBlocks(queue <-chan *protoblocktx.Block, send func(*protoblocktx.Block) error, c *senderTracker, logger CmdLogger, stopSenders chan any) error {
+func startSendingBlocks(queue <-chan *protoblocktx.Block, send func(*protoblocktx.Block) error, c tracker.Sender, logger CmdLogger, stopSenders chan any) error {
 	for {
 		select {
 		case <-stopSender:
