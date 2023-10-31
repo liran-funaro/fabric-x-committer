@@ -30,6 +30,7 @@ type Aggregator struct {
 	// adapter functions
 	sendToCoordinator func(scBlock *protoblocktx.Block)
 	output            func(block *common.Block)
+	stop              chan any
 }
 
 func New(sendToCoordinator func(scBlock *protoblocktx.Block), output func(block *common.Block)) *Aggregator {
@@ -39,7 +40,13 @@ func New(sendToCoordinator func(scBlock *protoblocktx.Block), output func(block 
 		inProgressTxs:         make(map[string]uint64, 100000),
 		sendToCoordinator:     sendToCoordinator,
 		output:                output,
+		stop:                  make(chan any),
 	}
+}
+
+func (a *Aggregator) Close() {
+	logger.Infof("Stop aggregator")
+	close(a.stop)
 }
 
 func (a *Aggregator) Start(ctx context.Context, blockChan <-chan *common.Block, statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch) chan error {
@@ -51,10 +58,12 @@ func (a *Aggregator) Start(ctx context.Context, blockChan <-chan *common.Block, 
 }
 
 func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch) error {
+	defer logger.Infof("Stopped running")
 	logger.Infof("Started aggregator for sidecar")
 	for {
 		select {
 		case <-ctx.Done():
+		case <-a.stop:
 			return nil
 		case s, more := <-statusChan:
 			//  1st priority: process status batches
@@ -67,6 +76,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 		default:
 			select {
 			case <-ctx.Done():
+			case <-a.stop:
 				return nil
 			case s, more := <-statusChan:
 				if err := a.processStatusBatch(s); err != nil {

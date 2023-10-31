@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 )
 
 type coordinatorClient struct {
@@ -19,12 +20,11 @@ type coordinatorClient struct {
 	tracker *coordinatorTracker
 }
 
-func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics, logger CmdLogger) blockGenClient {
+func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics) blockGenClient {
 	tracker := newCoordinatorTracker(metrics)
 	return &coordinatorClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
-			logger:     logger,
 			stopSender: make(chan any),
 		},
 		tracker: tracker,
@@ -33,43 +33,26 @@ func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics,
 }
 
 func (c *coordinatorClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
-	stopSender = make(chan any)
-	client, err := connectToCoordinator(*c.config.Endpoint, blockGen.Signer.GetVerificationKey())
+	conn, err := connection.Connect(connection.NewDialConfig(*c.config.Endpoint))
 	if err != nil {
-		return errors.Wrap(err, "connection to coordinator failed")
+		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint.String())
 	}
+	logger.Info("Connected to coordinator")
 
-	csStream, err := client.BlockProcessing(context.Background())
+	stream, err := openCoordinatorStream(conn, blockGen.Signer.GetVerificationKey())
 	if err != nil {
 		return errors.Wrap(err, "failed creating stream to coordinator")
 	}
 
 	errChan := make(chan error)
 	go func() {
-		errChan <- startSendingBlocks(blockGen.BlockQueue, csStream.Send, c.tracker, c.logger, c.stopSender)
+		errChan <- c.loadGenClient.startSending(blockGen.BlockQueue, stream, stream.Send)
 	}()
 	go func() {
-		errChan <- c.startReceiving(csStream)
+		errChan <- c.startReceiving(stream)
 	}()
+
 	return <-errChan
-}
-
-func connectToCoordinator(endpoint connection.Endpoint, publicKey signature.PublicKey) (protocoordinatorservice.CoordinatorClient, error) {
-	conn, err := connection.Connect(connection.NewDialConfig(endpoint))
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to establish connection with %s", endpoint.String())
-	}
-
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-
-	_, err = client.SetVerificationKey(
-		context.Background(),
-		&protosigverifierservice.Key{SerializedBytes: publicKey},
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed setting verification key")
-	}
-	return client, nil
 }
 
 func (c *coordinatorClient) startReceiving(stream protocoordinatorservice.Coordinator_BlockProcessingClient) error {
@@ -96,4 +79,22 @@ func (t *coordinatorTracker) OnReceiveCoordinatorBatch(batch *protocoordinatorse
 	for _, tx := range batch.TxsValidationStatus {
 		t.OnReceiveTransaction(tx.TxId, tx.Status == protoblocktx.Status_COMMITTED)
 	}
+}
+
+func openCoordinatorStream(conn *grpc.ClientConn, publicKey signature.PublicKey) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
+	client := openCoordinatorClient(conn)
+
+	_, err := client.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: publicKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed setting verification key")
+	}
+	logger.Info("Verification key set")
+
+	logger.Info("Opening stream")
+	return client.BlockProcessing(context.Background())
+}
+
+func openCoordinatorClient(conn *grpc.ClientConn) protocoordinatorservice.CoordinatorClient {
+	logger.Infof("Opening client to %s", conn.Target())
+	return protocoordinatorservice.NewCoordinatorClient(conn)
 }

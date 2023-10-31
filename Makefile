@@ -120,7 +120,6 @@ build: $(output_dir)
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator_setup" ./coordinatorservice/cmd/setup_helper
 	$(env) go build -buildvcs=false -o "$(output_dir)/shardsservice" ./shardsservice/cmd/server
 	$(env) go build -buildvcs=false -o "$(output_dir)/sidecar" ./sidecar/cmd/server
-	$(env) go build -buildvcs=false -o "$(output_dir)/sidecarclient" ./wgclient/cmd/sidecarclient
 
 build-docker: $(output_dir)
 	make docker-builder-run cmd="make build output_dir=$(output_dir)"

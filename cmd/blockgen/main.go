@@ -10,10 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 )
 
-var (
-	configPath string
-	stopSender chan any
-)
+var configPath string
 
 func main() {
 	cmd := blockgenCmd()
@@ -59,7 +56,11 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Starts a blockgen",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, blockGen, client, err := BlockgenStarter(cmd.Println, configPath); err != nil {
+			c, err := readConfig(configPath)
+			if err != nil {
+				return errors.Wrap(err, "failed to read config")
+			}
+			if _, blockGen, client, err := BlockgenStarter(c); err != nil {
 				return err
 			} else {
 				return client.Start(blockGen)
@@ -71,18 +72,8 @@ func startCmd() *cobra.Command {
 	return cmd
 }
 
-func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, *loadgen.BlockStreamGenerator, blockGenClient, error) {
-	if configPath == "" {
-		return nil, nil, nil, errors.New("--configs flag must be set to the path of configuration file")
-	}
-
-	c, err := readConfig(configPath)
-
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed to read config")
-	}
-
-	client, metrics, err := createClient(c, logger)
+func BlockgenStarter(c *ClientConfig) (*perfMetrics, *loadgen.BlockStreamGenerator, blockGenClient, error) {
+	client, metrics, err := createClient(c)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "failed creating client")
 	}

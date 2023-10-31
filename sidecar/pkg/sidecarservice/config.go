@@ -1,4 +1,4 @@
-package config
+package sidecarservice
 
 import (
 	"time"
@@ -18,10 +18,10 @@ type SidecarConfig struct {
 }
 
 type OrdererClientConfig struct {
-	ChannelID                string                              `mapstructure:"channel-id"`
-	Endpoint                 connection.Endpoint                 `mapstructure:"endpoint"`
-	OrdererConnectionProfile connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
-	Reconnect                time.Duration                       `mapstructure:"reconnect"`
+	ChannelID                string                               `mapstructure:"channel-id"`
+	Endpoint                 connection.Endpoint                  `mapstructure:"endpoint"`
+	OrdererConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
+	Reconnect                time.Duration                        `mapstructure:"reconnect"`
 }
 type CommitterClientConfig struct {
 	Endpoint connection.Endpoint `mapstructure:"endpoint"`

@@ -1,4 +1,4 @@
-package orderer
+package deliver
 
 import (
 	"context"
@@ -6,13 +6,12 @@ import (
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/deliver"
 	"google.golang.org/grpc"
 )
 
 type PeerDeliverClientProvider struct{}
 
-func (p *PeerDeliverClientProvider) DeliverClient(conn *grpc.ClientConn) (deliver.Client, error) {
+func (p *PeerDeliverClientProvider) DeliverClient(conn *grpc.ClientConn) (Client, error) {
 	client, err := peer.NewDeliverClient(conn).Deliver(context.TODO())
 	if err != nil {
 		return nil, err
@@ -26,6 +25,9 @@ type peerDeliverClient struct {
 
 func (c *peerDeliverClient) Send(envelope *cb.Envelope) error {
 	return c.delegate.Send(envelope)
+}
+func (c *peerDeliverClient) CloseSend() error {
+	return c.delegate.CloseSend()
 }
 func (c *peerDeliverClient) Recv() (*cb.Block, *cb.Status, error) {
 	msg, err := c.delegate.Recv()

@@ -7,8 +7,10 @@ import (
 
 func CreateProvider(c *Config) Provider {
 	if !c.Enable {
+		logger.Infof("NoOp metrics provider created")
 		return NewNoOpProvider()
 	}
+	logger.Infof("Default metrics provider created")
 	return &defaultProvider{
 		LatencyConfig:  &c.Latency,
 		Provider:       prometheusmetrics.NewProvider(),

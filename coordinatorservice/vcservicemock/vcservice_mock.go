@@ -3,12 +3,12 @@ package vcservicemock
 import (
 	"errors"
 	"io"
-	"sync"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
 
@@ -104,40 +104,15 @@ func (vc *MockVcService) Close() {
 }
 
 // StartMockVCService starts a specified number of mock VC service.
-func StartMockVCService(
-	numService int,
-) ([]*connection.ServerConfig, []*MockVcService, []*grpc.Server) {
-	sc := make([]*connection.ServerConfig, 0, numService)
-	for i := 0; i < numService; i++ {
-		sc = append(sc, &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		})
-	}
-
+func StartMockVCService(numService int) ([]*connection.ServerConfig, []*MockVcService, []*grpc.Server) {
 	vcs := make([]*MockVcService, numService)
-	grpcSrvs := make([]*grpc.Server, numService)
-	for i, s := range sc {
+	for i := 0; i < numService; i++ {
 		vcs[i] = NewMockVcService()
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		config := s
-		index := i
-		go func() {
-			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcSrvs[index] = grpcServer
-				config.Endpoint.Port = actualListeningPort
-				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs[index])
-				wg.Done()
-			})
-		}()
-
-		wg.Wait()
 	}
+
+	sc, grpcSrvs := test.StartMockServers(numService, func(server *grpc.Server, index int) {
+		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs[index])
+	})
 
 	return sc, vcs, grpcSrvs
 }

@@ -17,17 +17,22 @@ var logger = logging.New("coordinator")
 type CoordinatorClient struct {
 	client     protocoordinatorservice.CoordinatorClient
 	stream     protocoordinatorservice.Coordinator_BlockProcessingClient
-	inputChan  <-chan *protoblocktx.Block
+	inputChan  chan *protoblocktx.Block
 	outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch
 }
 
 func NewCoordinatorClient(conn grpc.ClientConnInterface) *CoordinatorClient {
 	return &CoordinatorClient{
-		client: protocoordinatorservice.NewCoordinatorClient(conn),
+		client:    protocoordinatorservice.NewCoordinatorClient(conn),
+		inputChan: make(chan *protoblocktx.Block, 100),
 	}
 }
 
-func (c *CoordinatorClient) Start(ctx context.Context, inputChan <-chan *protoblocktx.Block, outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch) (chan error, error) {
+func (c *CoordinatorClient) Input() chan<- *protoblocktx.Block {
+	return c.inputChan
+}
+
+func (c *CoordinatorClient) Start(ctx context.Context, outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch) (chan error, error) {
 	numErrorableGoroutinePerServer := 2
 	errChan := make(chan error, numErrorableGoroutinePerServer)
 
@@ -38,7 +43,6 @@ func (c *CoordinatorClient) Start(ctx context.Context, inputChan <-chan *protobl
 	}
 
 	c.stream = stream
-	c.inputChan = inputChan
 	c.outputChan = outputChan
 
 	logger.Infof("Starting coordinator sender and receiver")

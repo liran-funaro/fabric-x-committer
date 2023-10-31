@@ -2,237 +2,76 @@ package ordererclient
 
 import (
 	"context"
-	"fmt"
-	"sync"
-	"sync/atomic"
+	errors2 "errors"
 
-	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
-type FabricOrdererBroadcasterOpts struct {
-	Endpoints   []*connection.Endpoint
-	Credentials credentials.TransportCredentials
-	Parallelism int
-	OrdererType utils.ConsensusType
-	OnAck       func(error)
-}
+var logger = logging.New("ordererclient")
 
-type fabricOrdererBroadcaster struct {
-	sendEnvelope        func(*common.Envelope)
-	closeStreamsAndWait func() error
-	ordererType         utils.ConsensusType
-	streamsByOrderer    ordererStreams
-}
-
-type ordererStreams [][]*fabricOrdererStream
-
-func (os ordererStreams) Flatten() []*fabricOrdererStream {
-	var res []*fabricOrdererStream
-
-	for _, streams := range os {
-		res = append(res, streams...)
+func OpenBroadcastStreams(connections []*grpc.ClientConn, ordererType utils.ConsensusType, parallelism int) ([]ab.AtomicBroadcast_BroadcastClient, error) {
+	if ordererType == utils.Bft && !areEndpointsUnique(connections) {
+		return nil, errors.New("bft only supports one connection per orderer")
 	}
-	return res
-}
-
-func NewFabricOrdererBroadcaster(opts *FabricOrdererBroadcasterOpts) (*fabricOrdererBroadcaster, error) {
-	connections, err := openConnections(opts.Endpoints, opts.Credentials)
+	streams, err := openStreams(connections, parallelism, ordererType)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to open streams")
 	}
-
-	streamsByOrderer := openStreamsByOrderer(connections, opts.Parallelism, opts.OnAck)
-
-	return &fabricOrdererBroadcaster{
-		closeStreamsAndWait: connectionCloser(streamsByOrderer, connections),
-		ordererType:         opts.OrdererType,
-		streamsByOrderer:    streamsByOrderer,
-	}, nil
+	return streams, nil
 }
 
-func connectionCloser(streamsByOrderer ordererStreams, connections []*grpc.ClientConn) func() error {
-	return func() error {
-		for _, s := range streamsByOrderer.Flatten() {
-			close(s.input)
-			<-s.channelClosed
+func areEndpointsUnique(connections []*grpc.ClientConn) bool {
+	uniqueEndpoints := make(map[string]bool, len(connections))
+	for _, conn := range connections {
+		target := conn.Target()
+		if uniqueEndpoints[target] {
+			return false
 		}
-		return closeConnections(connections)
+		uniqueEndpoints[target] = true
 	}
+	return true
 }
 
-func (b *fabricOrdererBroadcaster) EnvelopeSender() func(*common.Envelope) {
-	var sendCounter uint64
-
-	switch b.ordererType {
+func openStreams(connections []*grpc.ClientConn, parallelism int, ordererType utils.ConsensusType) ([]ab.AtomicBroadcast_BroadcastClient, error) {
+	var streams []ab.AtomicBroadcast_BroadcastClient
+	var errs []error
+	switch ordererType {
 	case utils.Raft:
-		// Pick some orderer to send the envelope to
-		streams := b.streamsByOrderer.Flatten()
-		streamLength := uint64(len(streams))
-		return func(envelope *common.Envelope) {
-			streams[sendCounter%streamLength].input <- envelope
-			sendCounter++
-		}
+		streams, errs = openSingleStreams(parallelism, connections)
 	case utils.Bft:
-		// Enqueue envelope into some stream for each orderer
-		return func(envelope *common.Envelope) {
-			for _, streamsForOrderer := range b.streamsByOrderer {
-				streamsForOrderer[sendCounter%uint64(len(streamsForOrderer))].input <- envelope
-				sendCounter++
-			}
-		}
+		streams, errs = openBroadcastStreams(parallelism, connections)
 	default:
-		panic("Orderer type " + b.ordererType + " not defined")
+		panic("undefined orderer type: " + ordererType)
 	}
-}
-func (b *fabricOrdererBroadcaster) SendEnvelope(envelope *common.Envelope) {
-	b.sendEnvelope(envelope)
-}
 
-func (b *fabricOrdererBroadcaster) CloseStreamsAndWait() error {
-	return b.closeStreamsAndWait()
-}
-
-func openConnections(endpoints []*connection.Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
-	logger.Infof("Opening connections to %d orderers: %v.\n", len(endpoints), endpoints)
-	connections := make([]*grpc.ClientConn, len(endpoints))
-	for i, endpoint := range endpoints {
-		conn, err := connection.Connect(connection.NewDialConfigWithCreds(*endpoint, transportCredentials))
-
-		if err != nil {
-			logger.Errorf("Error connecting: %v", err)
-			closeErrs := closeConnections(connections[:i])
-			if closeErrs != nil {
-				logger.Error(closeErrs)
-			}
-			return nil, err
-		}
-
-		connections[i] = conn
+	if err := errors2.Join(errs...); err != nil {
+		return nil, errors.Wrap(err, "failed to open streams")
 	}
-	return connections, nil
+
+	return streams, nil
 }
 
-func closeConnections(connections []*grpc.ClientConn) error {
-	logger.Infof("Closing %d connections.\n", len(connections))
-	errs := make([]error, 0, len(connections))
-	for _, closer := range connections {
-		if err := closer.Close(); err != nil {
-			errs = append(errs, err)
+func openSingleStreams(parallelism int, connections []*grpc.ClientConn) ([]ab.AtomicBroadcast_BroadcastClient, []error) {
+	streams := make([]ab.AtomicBroadcast_BroadcastClient, parallelism*len(connections))
+	errs := make([]error, parallelism)
+	for i := 0; i < parallelism; i++ {
+		for j, conn := range connections {
+			idx := i*len(connections) + j
+			streams[idx], errs[idx] = ab.NewAtomicBroadcastClient(conn).Broadcast(context.Background())
 		}
 	}
-	if len(errs) > 0 {
-		return errors.Errorf("errors while closing: %v", errs)
+	return streams, errs
+}
+
+func openBroadcastStreams(parallelism int, connections []*grpc.ClientConn) ([]ab.AtomicBroadcast_BroadcastClient, []error) {
+	streams := make([]ab.AtomicBroadcast_BroadcastClient, parallelism)
+	errs := make([]error, parallelism)
+	for i := 0; i < parallelism; i++ {
+		streams[i], errs[i] = NewBroadcastStream(connections)
 	}
-	return nil
-}
-
-func openStreamsByOrderer(connections []*grpc.ClientConn, parallelism int, onAck func(error)) ordererStreams {
-	logger.Infof("Opening %d streams using the %d connections to the orderers.\n", parallelism, len(connections))
-
-	var submitters [][]*fabricOrdererStream
-
-	for i := 0; i < len(connections); i++ {
-		var submittersForOrderer []*fabricOrdererStream
-
-		for j := 0; j < parallelism/len(connections); j++ {
-			submittersForOrderer = append(submittersForOrderer, newFabricOrdererStream(connections[i], onAck))
-		}
-
-		submitters = append(submitters, submittersForOrderer)
-	}
-	return submitters
-}
-
-type fabricOrdererStream struct {
-	client        ab.AtomicBroadcast_BroadcastClient
-	input         chan *common.Envelope
-	allAcked      chan struct{}
-	channelClosed chan struct{}
-
-	stopped bool
-	sent    uint64
-	acked   uint64
-	once    sync.Once
-	txCnt   uint64
-}
-
-const inputChannelCapacity = 200
-
-func newFabricOrdererStream(conn *grpc.ClientConn, onAck func(error)) *fabricOrdererStream {
-	client, err := ab.NewAtomicBroadcastClient(conn).Broadcast(context.TODO())
-	utils.Must(err)
-	s := &fabricOrdererStream{
-		client:        client,
-		input:         make(chan *common.Envelope, inputChannelCapacity),
-		allAcked:      make(chan struct{}),
-		channelClosed: make(chan struct{}),
-	}
-	s.startAckListener(onAck)
-	s.startEnvelopeSender()
-	return s
-}
-
-func (s *fabricOrdererStream) startAckListener(onAck func(error)) {
-	go func() {
-		var err error
-
-		for !s.stopped || atomic.LoadUint64(&s.sent) > s.acked {
-			err = s.getAck()
-			onAck(err)
-			s.acked++
-		}
-		if err != nil {
-			logger.Errorf("\nError: %v\n", err)
-		}
-		s.once.Do(func() {
-			close(s.allAcked)
-		})
-	}()
-}
-
-func (s *fabricOrdererStream) getAck() error {
-	msg, err := s.client.Recv()
-	if err != nil {
-		return err
-	}
-	if msg.Status != common.Status_SUCCESS {
-		return fmt.Errorf("got unexpected status: %v - %s", msg.Status, msg.Info)
-	}
-	return nil
-}
-func (s *fabricOrdererStream) startEnvelopeSender() {
-	go func() {
-		for envelope := range s.input {
-			err := s.client.Send(envelope)
-			utils.Must(err)
-			atomic.AddUint64(&s.sent, 1)
-		}
-
-		s.waitAcksAndCloseStream()
-
-	}()
-}
-
-func (s *fabricOrdererStream) waitAcksAndCloseStream() {
-	s.stopSending()
-	<-s.allAcked
-	if err := s.client.CloseSend(); err != nil {
-		logger.Infof("Error occurred while closing the channel: %v", err)
-	}
-	close(s.channelClosed)
-}
-
-func (s *fabricOrdererStream) stopSending() {
-	s.stopped = true
-	if atomic.LoadUint64(&s.sent) == atomic.LoadUint64(&s.acked) {
-		s.once.Do(func() {
-			close(s.allAcked)
-		})
-	}
+	return streams, errs
 }

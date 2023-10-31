@@ -3,12 +3,15 @@ package test
 import (
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 )
 
 func FailHandler(t *testing.T) {
@@ -57,4 +60,34 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 	}
 
 	return 0
+}
+
+func StartMockServers(numService int, register func(*grpc.Server, int)) ([]*connection.ServerConfig, []*grpc.Server) {
+	sc := make([]*connection.ServerConfig, 0, numService)
+	for i := 0; i < numService; i++ {
+		sc = append(sc, &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		})
+	}
+	grpcSrvs := make([]*grpc.Server, numService)
+	for i, s := range sc {
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		config := s
+		index := i
+		go func() {
+			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
+				grpcSrvs[index] = grpcServer
+				config.Endpoint.Port = actualListeningPort
+				register(grpcServer, index)
+				wg.Done()
+			})
+		}()
+		wg.Wait()
+	}
+	return sc, grpcSrvs
 }

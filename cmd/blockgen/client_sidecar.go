@@ -1,84 +1,130 @@
 package main
 
 import (
+	"context"
+
 	"github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/orderer"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/deliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/ordererclient"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type sidecarClient struct {
 	*loadGenClient
-	config  *SidecarClientConfig
-	tracker *sidecarTracker
+	coordinatorClient protocoordinatorservice.CoordinatorClient
+	envelopeCreator   ordererclient.EnvelopeCreator
+	deliverListener   deliver.OrdererListener
+	broadcastClients  []ab.AtomicBroadcast_BroadcastClient
+	tracker           *sidecarTracker
 }
 
-func newSidecarClient(config *SidecarClientConfig, metrics *perfMetrics, logger CmdLogger) blockGenClient {
+func newSidecarClient(config *SidecarClientConfig, metrics *perfMetrics) blockGenClient {
+	creds, signer := connection.GetOrdererConnectionCreds(config.Orderer.ConnectionProfile)
+
+	conn, err := connection.Connect(connection.NewDialConfig(*config.Coordinator.Endpoint))
+	if err != nil {
+		panic(errors.Wrapf(err, "failed to connect to coordinator on %s", config.Coordinator.Endpoint.String()))
+	}
+	coordinatorClient := openCoordinatorClient(conn)
+
+	listener, err := deliver.NewDefaultListener(config.Endpoint, config.Orderer.ChannelID)
+	if err != nil {
+		panic(errors.Wrap(err, "failed to create listener"))
+	}
+	logger.Info("Listener created")
+
+	connections, err := connection.OpenConnections(config.Orderer.Endpoints, creds)
+	if err != nil {
+		panic(errors.Wrap(err, "failed to open connections to orderers"))
+	}
+	logger.Infof("Opened %d connections to %d orderers", len(connections), len(config.Orderer.Endpoints))
+	streams, err := ordererclient.OpenBroadcastStreams(connections, config.Orderer.Type, config.Orderer.Parallelism)
+	if err != nil {
+		panic(errors.Wrap(err, "failed to open orderer streams"))
+	}
+	logger.Infof("Created %d streams for %d %s orderers (parallelism: %d)", len(streams), len(connections), config.Orderer.Type, config.Orderer.Parallelism)
+
+	envelopeCreator := ordererclient.NewEnvelopeCreator(config.Orderer.ChannelID, signer, config.Orderer.SignedEnvelopes)
+	logger.Info("Envelope creator created")
+
 	tracker := newSidecarTracker(metrics)
 	return &sidecarClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
-			logger:     logger,
 			stopSender: make(chan any),
 		},
-		tracker: tracker,
-		config:  config,
+		tracker:           tracker,
+		coordinatorClient: coordinatorClient,
+		deliverListener:   listener,
+		broadcastClients:  streams,
+		envelopeCreator:   envelopeCreator,
 	}
+}
+
+func (c *sidecarClient) Stop() {
+	logger.Infof("Stopping sidecar client")
+	c.deliverListener.Stop()
+	c.loadGenClient.Stop()
 }
 
 func (c *sidecarClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
-	creds, signer := connection.GetOrdererConnectionCreds(c.config.Orderer.ConnectionProfile)
 
-	if _, err := connectToCoordinator(*c.config.Coordinator.Endpoint, blockGen.Signer.GetVerificationKey()); err != nil {
+	if _, err := c.coordinatorClient.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()}); err != nil {
 		return errors.Wrap(err, "failed connecting to coordinator")
 	}
+	logger.Infof("Set verification key")
 
-	ordererClient, err := ordererclient.NewClient(&ordererclient.ClientInitOptions{
-		SignedEnvelopes: c.config.Orderer.SignedEnvelopes,
-		OrdererSigner:   signer,
+	errChan := make(chan error, len(c.broadcastClients))
 
-		OrdererEndpoints:   c.config.Orderer.Endpoints,
-		OrdererCredentials: creds,
+	go func() {
+		errChan <- c.deliverListener.RunDeliverOutputListener(c.tracker.OnReceiveSidecarBlock)
+	}()
 
-		DeliverEndpoint:       c.config.Endpoint,
-		DeliverCredentials:    insecure.NewCredentials(),
-		DeliverSigner:         nil,
-		DeliverClientProvider: &orderer.PeerDeliverClientProvider{},
-
-		ChannelID:   c.config.Orderer.ChannelID,
-		Parallelism: c.config.Orderer.Parallelism,
-		OrdererType: c.config.Orderer.Type,
-		StartBlock:  0,
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to create orderer client")
+	for _, stream := range c.broadcastClients {
+		go func(stream ab.AtomicBroadcast_BroadcastClient) {
+			errChan <- c.startSending(blockGen, stream)
+		}(stream)
+		go func(stream ab.AtomicBroadcast_BroadcastClient) {
+			errChan <- c.startReceiving(stream)
+		}(stream)
 	}
 
-	ordererClient.Start(messageGenerator(blockGen.BlockQueue), c.tracker.OnSendTransaction, c.tracker.OnReceiveSidecarBlock)
-
-	return nil
+	return <-errChan
 }
 
-func messageGenerator(blocks <-chan *protoblocktx.Block) <-chan []byte {
-	messages := make(chan []byte, 100)
-	for workerID := 0; workerID < 10; workerID++ {
-		go func() {
-			for block := range blocks {
-				for _, tx := range block.Txs {
-					messages <- protoutil.MarshalOrPanic(tx)
-				}
-			}
-		}()
+func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) error {
+	for {
+		if response, err := stream.Recv(); err != nil {
+			return errors.Wrapf(err, "failed receiving")
+		} else if response.Status != common.Status_SUCCESS {
+			return errors.Errorf("unexpected status: %v - %s", response.Status, response.Info)
+		} else {
+			logger.Debugf("Received ack for TX")
+		}
 	}
-	return messages
+}
+
+func (c *sidecarClient) startSending(blockGen *loadgen.BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient) error {
+	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
+		for _, tx := range block.Txs {
+			env, _, _ := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+			if err := stream.Send(env); err != nil {
+				return errors.Wrapf(err, "failed sending block %d", block.Number)
+			}
+		}
+		return nil
+	})
 }
 
 type sidecarTracker struct {

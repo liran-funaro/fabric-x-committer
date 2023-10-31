@@ -28,12 +28,12 @@ type SidecarClientConfig struct {
 }
 
 type OrdererClientConfig struct {
-	Endpoints         []*connection.Endpoint              `mapstructure:"endpoints"`
-	ConnectionProfile connection.OrdererConnectionProfile `mapstructure:"connection-profile"`
-	SignedEnvelopes   bool                                `mapstructure:"signed-envelopes"`
-	Type              utils.ConsensusType                 `mapstructure:"type"`
-	ChannelID         string                              `mapstructure:"channel-id"`
-	Parallelism       int                                 `mapstructure:"parallelism"`
+	Endpoints         []*connection.Endpoint               `mapstructure:"endpoints"`
+	ConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"connection-profile"`
+	SignedEnvelopes   bool                                 `mapstructure:"signed-envelopes"`
+	Type              utils.ConsensusType                  `mapstructure:"type"`
+	ChannelID         string                               `mapstructure:"channel-id"`
+	Parallelism       int                                  `mapstructure:"parallelism"`
 }
 
 type CoordinatorClientConfig struct {
@@ -52,10 +52,11 @@ func readConfig(path string) (*ClientConfig, error) {
 	if err := config.ReadYamlConfigs([]string{path}); err != nil {
 		return nil, err
 	}
-	wrapper := new(ClientConfig)
-	config.Unmarshal(wrapper)
-
-	return wrapper, nil
+	return ReadConfig(), nil
 }
 
-type CmdLogger = func(...interface{})
+func ReadConfig() *ClientConfig {
+	wrapper := new(ClientConfig)
+	config.Unmarshal(wrapper)
+	return wrapper
+}

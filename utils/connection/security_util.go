@@ -10,9 +10,14 @@ import (
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/tls"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-func GetOrdererConnectionCreds(config OrdererConnectionProfile) (credentials.TransportCredentials, msp.SigningIdentity) {
+func GetOrdererConnectionCreds(config *OrdererConnectionProfile) (credentials.TransportCredentials, msp.SigningIdentity) {
+	if config == nil {
+		logger.Infof("Returning empty creds")
+		return insecure.NewCredentials(), nil
+	}
 	logger.Infof("Initialize creds:\n"+
 		"\tMSP Dir: %s\n"+
 		"\tMSP ID: %s\n"+

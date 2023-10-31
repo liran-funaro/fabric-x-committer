@@ -24,11 +24,12 @@ type envelopeCreator struct {
 	signed      bool
 }
 
-func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, signed bool) *envelopeCreator {
-	if !signed {
+func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, signedEnvelopes bool) *envelopeCreator {
+	if !signedEnvelopes {
 		logger.Infof("No-op signer chosen.\n")
 		signer = &noOpSigner{}
 	}
+	logger.Infof("Creating envelope creator for channel %s", channelID)
 	return &envelopeCreator{
 		txType:      common.HeaderType_MESSAGE, //TODO: If we set it to ENDORSER_MESSAGE, the FSC nodes crash when they try to read the TXs
 		channelID:   channelID,
@@ -36,7 +37,7 @@ func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 		msgVersion:  0,
 		epoch:       0,
 		tlsCertHash: nil,
-		signed:      signed,
+		signed:      signedEnvelopes,
 	}
 }
 

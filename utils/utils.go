@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -8,7 +10,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("utils-logging")
 
 func Every(interval time.Duration, runnable func()) {
 	go func() {
@@ -56,6 +61,23 @@ func OverwriteFile(path string) (*os.File, error) {
 		return nil, errors.Wrapf(err, "unable to open %s", path)
 	}
 	return file, nil
+}
+
+// LazyJson will lazily marshal a struct for logging purposes
+func LazyJson(v any) *lazyJson {
+	return &lazyJson{v: v}
+}
+
+type lazyJson struct {
+	v any
+}
+
+func (d *lazyJson) String() string {
+	if p, err := json.Marshal(d.v); err != nil {
+		return fmt.Sprintf("cannot marshal object: %v", err)
+	} else {
+		return string(p)
+	}
 }
 
 func WriteFile(path string, data []byte) error {

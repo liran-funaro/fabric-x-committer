@@ -13,7 +13,7 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	config2 "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/config"
+	config2 "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/sidecarservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
