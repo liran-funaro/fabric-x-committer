@@ -83,6 +83,7 @@ func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStream
 
 func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigverification.Response, error) {
 	response := &sigverification.Response{
+		TxId:     request.Tx.GetId(),
 		BlockNum: request.GetBlockNum(),
 		TxNum:    request.GetTxNum(),
 		IsValid:  false,
