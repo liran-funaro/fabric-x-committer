@@ -11,13 +11,13 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
-type CoordinatorClient struct {
+type coordinatorClient struct {
 	*loadGenClient
 	config *CoordinatorClientConfig
 }
 
-func NewCoordinatorClient(config *CoordinatorClientConfig, tracker *ClientTracker, logger CmdLogger) LoadGenClient {
-	return &CoordinatorClient{
+func newCoordinatorClient(config *CoordinatorClientConfig, tracker *ClientTracker, logger CmdLogger) blockGenClient {
+	return &coordinatorClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
 			logger:     logger,
@@ -27,7 +27,7 @@ func NewCoordinatorClient(config *CoordinatorClientConfig, tracker *ClientTracke
 	}
 }
 
-func (c *CoordinatorClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *coordinatorClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 	stopSender = make(chan any)
 	client, err := connectToCoordinator(*c.config.Endpoint, blockGen.Signer.GetVerificationKey())
 	if err != nil {
@@ -41,10 +41,10 @@ func (c *CoordinatorClient) Start(blockGen *loadgen.BlockStreamGenerator) error 
 
 	errChan := make(chan error)
 	go func() {
-		errChan <- StartSending(blockGen.BlockQueue, csStream.Send, c.tracker.senderTracker, c.logger, c.stopSender)
+		errChan <- startSendingBlocks(blockGen.BlockQueue, csStream.Send, c.tracker.senderTracker, c.logger, c.stopSender)
 	}()
 	go func() {
-		errChan <- StartReceiving(csStream, c.tracker)
+		errChan <- startReceiving(csStream, c.tracker)
 	}()
 	return <-errChan
 }
@@ -67,7 +67,7 @@ func connectToCoordinator(endpoint connection.Endpoint, publicKey signature.Publ
 	return client, nil
 }
 
-func StartReceiving(stream protocoordinatorservice.Coordinator_BlockProcessingClient, c *ClientTracker) error {
+func startReceiving(stream protocoordinatorservice.Coordinator_BlockProcessingClient, c *ClientTracker) error {
 	for {
 		if txStatus, err := stream.Recv(); err != nil {
 			return errors.Wrap(err, "failed receiving tx")

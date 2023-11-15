@@ -134,11 +134,11 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	}()
 	wg.Wait()
 
-	m, start, _, err := BlockgenStarter(coordinatorLogger.Info, coordinatorBlockGenConfigFilePath)
+	m, blockGen, loadClient, err := BlockgenStarter(coordinatorLogger.Info, coordinatorBlockGenConfigFilePath)
 	utils.Must(err)
 	metrics = m
 	go func() {
-		utils.Must(start())
+		utils.Must(loadClient.Start(blockGen))
 	}()
 
 	require.Eventually(t, func() bool {

@@ -98,13 +98,6 @@ func NewClientTracker(logger CmdLogger, metrics *perfMetrics, samplerConfig late
 	}
 }
 
-type ReceiverTracker interface {
-	OnReceiveTransaction(txID string, status protoblocktx.Status)
-	OnReceiveBlock(block *common.Block)
-	OnReceiveVCBatch(batch *protovcservice.TransactionStatus)
-	OnReceiveCoordinatorBatch(batch *protocoordinatorservice.TxValidationStatusBatch)
-}
-
 type receiverTracker struct {
 	logger         CmdLogger
 	metrics        *perfMetrics
@@ -144,10 +137,6 @@ func (c *receiverTracker) OnReceiveBlock(block *common.Block) {
 			c.OnReceiveTransaction(channelHeader.TxId, aggregator.StatusInverseMap[statusCodes[i]])
 		}
 	}
-}
-
-type SenderTracker interface {
-	OnSendBlock(block *protoblocktx.Block)
 }
 
 type senderTracker struct {

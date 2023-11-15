@@ -5,7 +5,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 )
 
-type LoadGenClient interface {
+type blockGenClient interface {
 	Start(*loadgen.BlockStreamGenerator) error
 	Stop()
 }
@@ -22,18 +22,18 @@ func (c *loadGenClient) Stop() {
 	}
 }
 
-func createClient(c *ClientConfig, logger CmdLogger) (LoadGenClient, *perfMetrics, error) {
+func createClient(c *ClientConfig, logger CmdLogger) (blockGenClient, *perfMetrics, error) {
 	metrics := newBlockgenServiceMetrics(c.Monitoring.Metrics.Enable)
 	tracker := NewClientTracker(logger, metrics, c.Monitoring.Latency.Sampler)
 
 	if c.CoordinatorClient != nil {
-		return NewCoordinatorClient(c.CoordinatorClient, tracker, logger), metrics, nil
+		return newCoordinatorClient(c.CoordinatorClient, tracker, logger), metrics, nil
 	}
 	if c.VCClient != nil {
-		return NewVCClient(c.VCClient, tracker, logger), metrics, nil
+		return newVCClient(c.VCClient, tracker, logger), metrics, nil
 	}
 	if c.SidecarClient != nil {
-		return NewSidecarClient(c.SidecarClient, tracker, logger), metrics, nil
+		return newSidecarClient(c.SidecarClient, tracker, logger), metrics, nil
 	}
 	return nil, nil, errors.New("invalid config passed")
 }

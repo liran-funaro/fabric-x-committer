@@ -59,10 +59,10 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Starts a blockgen",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, start, _, err := BlockgenStarter(cmd.Println, configPath); err != nil {
+			if _, blockGen, client, err := BlockgenStarter(cmd.Println, configPath); err != nil {
 				return err
 			} else {
-				return start()
+				return client.Start(blockGen)
 			}
 		},
 	}
@@ -71,7 +71,7 @@ func startCmd() *cobra.Command {
 	return cmd
 }
 
-func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, func() error, func(), error) {
+func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, *loadgen.BlockStreamGenerator, blockGenClient, error) {
 	if configPath == "" {
 		return nil, nil, nil, errors.New("--configs flag must be set to the path of configuration file")
 	}
@@ -101,7 +101,5 @@ func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, func() 
 	profile := loadgen.LoadProfileFromYaml(configPath)
 	blockGen := loadgen.StartBlockGenerator(profile)
 
-	return metrics, func() error {
-		return client.Start(blockGen)
-	}, client.Stop, nil
+	return metrics, blockGen, client, nil
 }

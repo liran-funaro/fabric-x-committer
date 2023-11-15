@@ -11,13 +11,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type SidecarClient struct {
+type sidecarClient struct {
 	*loadGenClient
 	config *SidecarClientConfig
 }
 
-func NewSidecarClient(config *SidecarClientConfig, tracker *ClientTracker, logger CmdLogger) LoadGenClient {
-	return &SidecarClient{
+func newSidecarClient(config *SidecarClientConfig, tracker *ClientTracker, logger CmdLogger) blockGenClient {
+	return &sidecarClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
 			logger:     logger,
@@ -27,7 +27,7 @@ func NewSidecarClient(config *SidecarClientConfig, tracker *ClientTracker, logge
 	}
 }
 
-func (c *SidecarClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *sidecarClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 	creds, signer := connection.GetOrdererConnectionCreds(c.config.Orderer.Profile)
 
 	if _, err := connectToCoordinator(*c.config.Coordinator.Endpoint, blockGen.Signer.GetVerificationKey()); err != nil {

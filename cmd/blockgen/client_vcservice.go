@@ -10,13 +10,13 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
-type VCClient struct {
+type vcClient struct {
 	*loadGenClient
 	config *VCClientConfig
 }
 
-func NewVCClient(config *VCClientConfig, tracker *ClientTracker, logger CmdLogger) LoadGenClient {
-	return &VCClient{
+func newVCClient(config *VCClientConfig, tracker *ClientTracker, logger CmdLogger) blockGenClient {
+	return &vcClient{
 		loadGenClient: &loadGenClient{
 			tracker:    tracker,
 			logger:     logger,
@@ -26,7 +26,7 @@ func NewVCClient(config *VCClientConfig, tracker *ClientTracker, logger CmdLogge
 	}
 }
 
-func (c *VCClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *vcClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 	stopSender = make(chan any, len(c.config.Endpoints))
 	errChan := make(chan error, len(c.config.Endpoints))
 	for _, endpoint := range c.config.Endpoints {
@@ -37,11 +37,11 @@ func (c *VCClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 		}
 
 		go func() {
-			errChan <- c.StartSending(blockGen, csStream)
+			errChan <- c.startSending(blockGen, csStream)
 		}()
 
 		go func() {
-			errChan <- c.StartReceiving(csStream)
+			errChan <- c.startReceiving(csStream)
 		}()
 	}
 
@@ -50,10 +50,10 @@ func (c *VCClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
 	return <-errChan
 }
 
-func (c *VCClient) StartSending(blockGen *loadgen.BlockStreamGenerator, csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
-	return StartSending(blockGen.BlockQueue, func(block *protoblocktx.Block) error {
+func (c *vcClient) startSending(blockGen *loadgen.BlockStreamGenerator, csStream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
+	return startSendingBlocks(blockGen.BlockQueue, func(block *protoblocktx.Block) error {
 		return csStream.Send(mapBatch(block))
-	}, c.tracker, c.logger, c.stopSender)
+	}, c.tracker.senderTracker, c.logger, c.stopSender)
 }
 
 func connectToVC(endpoint *connection.Endpoint) (protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, error) {
@@ -70,7 +70,7 @@ func connectToVC(endpoint *connection.Endpoint) (protovcservice.ValidationAndCom
 	return csStream, nil
 }
 
-func (c *VCClient) StartReceiving(stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
+func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
 	for {
 		if txStatus, err := stream.Recv(); err != nil {
 			return err

@@ -5,7 +5,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
-func StartSending(queue <-chan *protoblocktx.Block, send func(*protoblocktx.Block) error, c SenderTracker, logger CmdLogger, stopSenders chan any) error {
+func startSendingBlocks(queue <-chan *protoblocktx.Block, send func(*protoblocktx.Block) error, c *senderTracker, logger CmdLogger, stopSenders chan any) error {
 	for {
 		select {
 		case <-stopSender:

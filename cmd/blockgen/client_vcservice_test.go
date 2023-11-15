@@ -136,11 +136,11 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 		wg.Wait()
 	}
 
-	m, start, _, err := BlockgenStarter(vcLogger.Info, vcServiceBlockGenConfigFilePath)
+	m, blockGen, loadClient, err := BlockgenStarter(vcLogger.Info, vcServiceBlockGenConfigFilePath)
 	utils.Must(err)
 	metrics = m
 	go func() {
-		utils.Must(start())
+		utils.Must(loadClient.Start(blockGen))
 	}()
 
 	require.Eventually(t, func() bool {
