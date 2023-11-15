@@ -22,3 +22,5 @@ type TxTracingSampler = func(key TxTracingId) bool
 type TxTracingId = string
 
 type BlockTracingSampler = func(blockNumber uint64) bool
+
+type BatchTracingSampler = func() bool

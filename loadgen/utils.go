@@ -1,13 +1,9 @@
 package loadgen
 
 import (
-	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 
 	"golang.org/x/exp/constraints"
-	"gopkg.in/yaml.v3"
 )
 
 // Max returns the maximal value of a given list of items.
@@ -68,59 +64,6 @@ func Must(err error) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-// Mustf panics in case of an error for the given message format.
-func Mustf(err error, format string, a ...any) {
-	if err != nil {
-		s := fmt.Sprintf(format, a...)
-		panic(fmt.Errorf("%v: %w", s, err))
-	}
-}
-
-// GetType is a convenient way to reparse a value to the required type.
-// This solves the issue with unpredicted value types when unmarshalling a map.
-func GetType[T any](m map[string]any, key string, defaultValue T) T {
-	value, ok := m[key]
-	if !ok {
-		return defaultValue
-	}
-
-	typeVal, ok := value.(T)
-	if ok {
-		return typeVal
-	}
-
-	out, err := yaml.Marshal(value)
-	if err != nil {
-		panic(fmt.Errorf("%s cannot be interpreted as %T: %w", key, typeVal, err))
-	}
-
-	if err = yaml.Unmarshal(out, &typeVal); err != nil {
-		panic(fmt.Errorf("%s cannot be interpreted as %T: %w", key, typeVal, err))
-	}
-
-	return typeVal
-}
-
-// ReadFileIfExists returns the file's data in the given path.
-// If the file does not exist, it returns nil.
-func ReadFileIfExists(path string) []byte {
-	if path == "" {
-		return nil
-	}
-	data, err := os.ReadFile(filepath.Clean(path))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	Mustf(err, "failed reading file: %s", path)
-	return data
-}
-
-// WriteFile writes the data to a file.
-func WriteFile(path string, data []byte) {
-	err := os.WriteFile(path, data, 0o644)
-	Mustf(err, "failed writing file '%s'", path)
 }
 
 // Map maps an array to a new array of the same size using a transformation function.

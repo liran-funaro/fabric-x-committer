@@ -28,7 +28,7 @@ func newSidecarClient(config *SidecarClientConfig, tracker *ClientTracker, logge
 }
 
 func (c *sidecarClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
-	creds, signer := connection.GetOrdererConnectionCreds(c.config.Orderer.Profile)
+	creds, signer := connection.GetOrdererConnectionCreds(c.config.Orderer.ConnectionProfile)
 
 	if _, err := connectToCoordinator(*c.config.Coordinator.Endpoint, blockGen.Signer.GetVerificationKey()); err != nil {
 		return errors.Wrap(err, "failed connecting to coordinator")

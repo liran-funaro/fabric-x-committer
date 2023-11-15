@@ -1,22 +1,17 @@
 package loadgen
 
 import (
-	"fmt"
+	"os"
 
+	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 var logger = logging.New("load-gen-sign")
-
-const (
-	// NoScheme does not sign message.
-	NoScheme Scheme = ""
-	// Ecdsa sign messages using ECDSA.
-	Ecdsa Scheme = "ECDSA"
-)
 
 type (
 	// Scheme is the name of the signature scheme.
@@ -28,19 +23,9 @@ type (
 	// PrivateKey is the signature private key.
 	PrivateKey = []byte
 
-	// HashSignerVerifier supports signing and verifying a hash value.
-	HashSignerVerifier interface {
-		// Sign signs a hash.
-		Sign(*protoblocktx.Tx) signature.Signature
-		// Verify verifies a Signature.
-		Verify(*protoblocktx.Tx) bool
-		// GetVerificationKey returns the verification key.
-		GetVerificationKey() []byte
-	}
-
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
 	TxSignerVerifier struct {
-		HashSigner HashSignerVerifier
+		HashSigner *HashSignerVerifier
 	}
 )
 
@@ -67,64 +52,86 @@ func (e *TxSignerVerifier) GetVerificationKey() []byte {
 }
 
 // NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile.
-func NewHashSignerVerifier(profile *SignatureProfile) HashSignerVerifier {
-	switch profile.Scheme {
-	case Ecdsa:
-		factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
-		pvtKey, pubKey := factory.NewKeys()
-		txSigner, _ := factory.NewSigner(pvtKey)
+func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
+	logger.Infof("sig profile: %v", profile)
+	factory := sigverification_test.GetSignatureFactory(profile.Scheme)
 
-		verifier, err := signature.NewTxVerifier(signature.Ecdsa, pubKey)
-		Must(err)
-		return &ecdsaSignerVerifier{
-			txSigner: txSigner,
-			pubKey:   pubKey,
-			verifier: verifier,
-		}
-	case NoScheme:
-		return &dummySignerVerifier{}
-	default:
-		panic(fmt.Sprintf("scheme '%s' not supported", profile.Scheme))
+	var signingKey PrivateKey
+	var verificationKey PublicKey
+	if profile.KeyPath != nil {
+		logger.Infof("Attempting to load keys")
+		var err error
+		signingKey, verificationKey, err = loadKeys(*profile.KeyPath)
+		utils.Must(err)
+	} else {
+		logger.Infof("Generating new keys")
+		signingKey, verificationKey = factory.NewKeys()
+	}
+	verifier, err := factory.NewVerifier(verificationKey)
+	utils.Must(err)
+	signer, err := factory.NewSigner(signingKey)
+	utils.Must(err)
+
+	return &HashSignerVerifier{
+		signer:   signer,
+		verifier: verifier,
+		pubKey:   verificationKey,
 	}
 }
 
-// Dummy
+func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
+	if !utils.FileExists(keyPath.SigningKey) {
+		return nil, nil, errors.Errorf("signing key file not found in %s", keyPath.SigningKey)
+	}
+	signingKey, err := os.ReadFile(keyPath.SigningKey)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "could not read private key from %s", keyPath.SigningKey)
+	}
 
-type dummySignerVerifier struct{}
+	if utils.FileExists(keyPath.VerificationKey) {
+		if verificationKey, err := os.ReadFile(keyPath.VerificationKey); err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read public key from %s", keyPath.VerificationKey)
+		} else {
+			logger.Infof("Loaded private key and verification key from files %s and %s.", keyPath.SigningKey, keyPath.VerificationKey)
+			return signingKey, verificationKey, nil
+		}
+	}
 
-func (*dummySignerVerifier) Sign(*protoblocktx.Tx) Signature {
-	return nil
+	if utils.FileExists(keyPath.SignCertificate) {
+		if verificationKey, err := signature.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
+			return nil, nil, errors.Wrapf(err, "could not read sign cert from %s", keyPath.SignCertificate)
+		} else {
+			logger.Infof("Sign cert and key found in files %s/%s. Importing...", keyPath.SignCertificate, keyPath.SigningKey)
+			return signingKey, verificationKey, nil
+		}
+	}
+
+	return nil, nil, errors.New("could not find verification key or sign certificate")
 }
 
-func (*dummySignerVerifier) Verify(*protoblocktx.Tx) bool {
-	return true
-}
-
-func (*dummySignerVerifier) GetVerificationKey() []byte {
-	return nil
-}
-
-// ECDSA
-
-type ecdsaSignerVerifier struct {
-	txSigner sigverification_test.TxSigner
-	pubKey   []byte
+// HashSignerVerifier supports signing and verifying a hash value.
+type HashSignerVerifier struct {
+	signer   sigverification_test.TxSigner
 	verifier signature.TxVerifier
+	pubKey   PublicKey
 }
 
-func (e *ecdsaSignerVerifier) Sign(tx *protoblocktx.Tx) Signature {
-	sign, err := e.txSigner.SignTx(tx)
+// Sign signs a hash.
+func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx) Signature {
+	sign, err := e.signer.SignTx(tx)
 	Must(err)
 	return sign
 }
 
-func (e *ecdsaSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
+// Verify verifies a Signature.
+func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 	if err := e.verifier.VerifyTx(tx); err != nil {
 		return false
 	}
 	return true
 }
 
-func (e *ecdsaSignerVerifier) GetVerificationKey() []byte {
+// GetVerificationKey returns the verification key.
+func (e *HashSignerVerifier) GetVerificationKey() PublicKey {
 	return e.pubKey
 }

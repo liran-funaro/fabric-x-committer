@@ -12,6 +12,11 @@ import (
 
 var logger = logging.New("ratelimiter")
 
+var NoLimit = Config{
+	Endpoint:     connection.Endpoint{},
+	InitialLimit: -1,
+}
+
 type Config struct {
 	Endpoint     connection.Endpoint `mapstructure:"endpoint"`
 	InitialLimit int                 `mapstructure:"initial-limit"`
@@ -57,6 +62,7 @@ func New(c *Config) ratelimit.Limiter {
 		if err := c.BindJSON(&request); err != nil {
 			logger.Errorf("error deserializing request: %v", err)
 		}
+		logger.Infof("Setting limit to %d", request.Limit)
 
 		rl.limiter = getLimiter(request.Limit)
 

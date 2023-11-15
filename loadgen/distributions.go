@@ -8,12 +8,14 @@ import (
 // Probability is a float in the closed interval [0,1].
 type Probability = float64
 
+type DistributionType string
+
 const (
-	constant  = "constant"
-	uniform   = "uniform"
-	normal    = "normal"
-	bernoulli = "bernoulli"
-	discrete  = "discrete"
+	constant  DistributionType = "constant"
+	uniform   DistributionType = "uniform"
+	normal    DistributionType = "normal"
+	bernoulli DistributionType = "bernoulli"
+	discrete  DistributionType = "discrete"
 )
 
 const (
@@ -25,45 +27,52 @@ const (
 
 // Distribution is a descriptor of a distribution.
 type Distribution struct {
-	Description map[string]any `yaml:",inline"`
-}
+	Type DistributionType `mapstructure:"type"`
 
-// Type returns the distribution type.
-func (d *Distribution) Type() string {
-	return GetType[string](d.Description, "type", constant)
+	Const float64 `mapstructure:"const"`
+
+	Min float64 `mapstructure:"min"`
+	Max float64 `mapstructure:"max"`
+
+	Mean float64 `mapstructure:"mean"`
+	Std  float64 `mapstructure:"std"`
+
+	Probability Probability `mapstructure:"probability"`
+
+	Values []DiscreteValue[float64] `mapstructure:"values"`
 }
 
 // MakeGenerator returns a new generator according to the distribution description.
 func (d *Distribution) MakeGenerator(rnd *rand.Rand) Generator[float64] {
-	switch d.Type() {
+	switch d.Type {
 	case constant:
 		return &ConstGenerator[float64]{
-			Const: GetType[float64](d.Description, "const", 0),
+			Const: d.Const,
 		}
 	case uniform:
 		return &UniformGenerator{
 			Rnd: rnd,
-			Min: GetType[float64](d.Description, "min", 0),
-			Max: GetType[float64](d.Description, "max", 1),
+			Min: d.Min,
+			Max: d.Max,
 		}
 	case normal:
 		return &NormalGenerator{
 			Rnd:  rnd,
-			Mean: GetType[float64](d.Description, "mean", 0),
-			Std:  GetType[float64](d.Description, "std", 1),
+			Mean: d.Mean,
+			Std:  d.Std,
 		}
 	case bernoulli:
 		return &BernoulliGenerator{
 			Rnd:         rnd,
-			Probability: GetType[float64](d.Description, "probability", 0),
+			Probability: d.Probability,
 		}
 	case discrete:
 		return &DiscreteGenerator[float64]{
 			Rnd:    rnd,
-			Values: GetType[[]DiscreteValue[float64]](d.Description, "values", nil),
+			Values: d.Values,
 		}
 	default:
-		panic(fmt.Sprintf("unsupported distribution: %s", d.Type()))
+		panic(fmt.Sprintf("unsupported distribution: %s", d.Type))
 	}
 }
 
@@ -85,52 +94,42 @@ func (d *Distribution) MakeBooleanGenerator(rnd *rand.Rand) Generator[bool] {
 // NewConstantDistribution creates a constant value distribution.
 func NewConstantDistribution(value float64) *Distribution {
 	return &Distribution{
-		Description: map[string]any{
-			"type":  constant,
-			"const": value,
-		},
+		Type:  constant,
+		Const: value,
 	}
 }
 
 // NewNormalDistribution creates a normal distribution.
 func NewNormalDistribution(mean, std float64) *Distribution {
 	return &Distribution{
-		Description: map[string]any{
-			"type": normal,
-			"mean": mean,
-			"std":  std,
-		},
+		Type: normal,
+		Mean: mean,
+		Std:  std,
 	}
 }
 
 // NewUniformDistribution creates a uniform distribution.
 func NewUniformDistribution(min, max float64) *Distribution {
 	return &Distribution{
-		Description: map[string]any{
-			"type": uniform,
-			"min":  min,
-			"max":  max,
-		},
+		Type: uniform,
+		Min:  min,
+		Max:  max,
 	}
 }
 
 // NewDiscreteDistribution creates a discrete distribution.
 func NewDiscreteDistribution(values []DiscreteValue[float64]) *Distribution {
 	return &Distribution{
-		Description: map[string]any{
-			"type":   discrete,
-			"values": values,
-		},
+		Type:   discrete,
+		Values: values,
 	}
 }
 
 // NewBernoulliDistribution creates a Bernoulli distribution.
 func NewBernoulliDistribution(probability Probability) *Distribution {
 	return &Distribution{
-		Description: map[string]any{
-			"type":        bernoulli,
-			"probability": probability,
-		},
+		Type:        bernoulli,
+		Probability: probability,
 	}
 }
 
@@ -172,8 +171,8 @@ func (d *BernoulliGenerator) Next() float64 {
 
 // DiscreteValue describe the appearance probability of a value.
 type DiscreteValue[T any] struct {
-	Value       T           `yaml:"value"`
-	Probability Probability `yaml:"probability"`
+	Value       T           `mapstructure:"value"`
+	Probability Probability `mapstructure:"probability"`
 }
 
 // DiscreteGenerator generates values with a discrete distribution.

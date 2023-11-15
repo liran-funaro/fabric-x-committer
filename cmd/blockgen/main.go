@@ -98,8 +98,7 @@ func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, *loadge
 		}
 	}()
 
-	profile := loadgen.LoadProfileFromYaml(configPath)
-	blockGen := loadgen.StartBlockGenerator(profile)
+	blockGen := loadgen.StartBlockGenerator(c.LoadProfile, c.RateLimit)
 
 	return metrics, blockGen, client, nil
 }

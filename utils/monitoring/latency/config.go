@@ -46,7 +46,7 @@ type SamplerConfig struct {
 	SamplingInterval time.Duration `mapstructure:"sampling-interval"`
 }
 
-func (c *SamplerConfig) TxSampler() func(TxTracingId) bool {
+func (c *SamplerConfig) TxSampler() TxTracingSampler {
 	switch c.Type {
 	case Always:
 		return func(id TxTracingId) bool { return true }
@@ -78,7 +78,28 @@ func (c *SamplerConfig) TxSampler() func(TxTracingId) bool {
 	}
 }
 
-func (c *SamplerConfig) BlockSampler() func(uint64) bool {
+func (c *SamplerConfig) BatchSampler() BatchTracingSampler {
+	switch c.Type {
+	case Always:
+		return func() bool { return true }
+	case Never:
+		return func() bool { return false }
+	case Timer:
+		ticker := time.NewTicker(c.SamplingInterval)
+		return func() bool {
+			select {
+			case <-ticker.C:
+				return true
+			default:
+				return false
+			}
+		}
+	default:
+		panic("type " + c.Type + " not supported")
+	}
+}
+
+func (c *SamplerConfig) BlockSampler() BlockTracingSampler {
 	switch c.Type {
 	case Always:
 		return func(uint64) bool { return true }

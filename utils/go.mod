@@ -3,15 +3,17 @@ module github.ibm.com/decentralized-trust-research/scalable-committer/utils
 go 1.20
 
 require (
+	github.com/consensys/gnark-crypto v0.9.1
 	github.com/golang/protobuf v1.5.2
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-protos-go v0.3.0
 	github.com/onsi/gomega v1.24.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
+	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token v0.0.0-20230816145809-db87808f9e04
+	github.com/stretchr/testify v1.8.1
 	go.opentelemetry.io/otel v1.11.2
 	go.opentelemetry.io/otel/exporters/jaeger v1.11.2
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.8.0
@@ -29,7 +31,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
-	github.com/consensys/gnark-crypto v0.9.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -45,7 +47,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
-	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect

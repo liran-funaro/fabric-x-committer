@@ -3,7 +3,10 @@ package main
 import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("load-generator")
 
 type blockGenClient interface {
 	Start(*loadgen.BlockStreamGenerator) error
@@ -34,6 +37,9 @@ func createClient(c *ClientConfig, logger CmdLogger) (blockGenClient, *perfMetri
 	}
 	if c.SidecarClient != nil {
 		return newSidecarClient(c.SidecarClient, tracker, logger), metrics, nil
+	}
+	if c.SigVerifierClient != nil {
+		return newSVClient(c.SigVerifierClient, tracker, logger), metrics, nil
 	}
 	return nil, nil, errors.New("invalid config passed")
 }

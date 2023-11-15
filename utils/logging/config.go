@@ -10,11 +10,11 @@ const (
 )
 
 type Config struct {
-	Enabled     bool
-	Level       Level
-	Caller      bool
-	Development bool
-	Output      string
+	Enabled     bool   `mapstructure:"enabled"`
+	Level       Level  `mapstructure:"level"`
+	Caller      bool   `mapstructure:"caller"`
+	Development bool   `mapstructure:"development"`
+	Output      string `mapstructure:"output"`
 }
 
 var defaultConfig = &Config{

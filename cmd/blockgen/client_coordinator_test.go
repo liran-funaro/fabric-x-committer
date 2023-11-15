@@ -30,9 +30,9 @@ const (
 logging:
   enabled: true
   level: debug
-  Caller: false
-  Development: true
-  Output: %s
+  caller: false
+  development: true
+  output: %s
 coordinator-service:
   server:
     endpoint:

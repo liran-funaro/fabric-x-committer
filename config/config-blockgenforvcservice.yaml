@@ -1,32 +1,30 @@
-name: cbdc-tx
-description: read write with nil value and nil version
-
-block:
-  size: 500
-  buffer-size: 1000
-
-transaction:
-  key-size: 32
-  read-write-count:
-    type: constant
-    const: 2
-  buffer-size: 500
-  signature:
-    scheme: ECDSA
-
-conflicts:
-  invalid-signatures: 0.1
-
-tx-gen-workers: 5
-tx-sign-workers: 3
-tx-dependencies-workers: 2
-
-seed: 12345
-
 vc-client:
   endpoints:
     - localhost:9002
     - localhost:9003
+
+load-profile:
+  block:
+    size: 500
+    buffer-size: 1000
+
+  transaction:
+    key-size: 32
+    read-write-count:
+      type: constant
+      const: 2
+    buffer-size: 500
+    signature:
+      scheme: ECDSA
+
+  conflicts:
+    invalid-signatures: 0.1
+
+  tx-gen-workers: 5
+  tx-sign-workers: 3
+  tx-dependencies-workers: 2
+
+  seed: 12345
 monitoring:
   metrics:
     enable: true

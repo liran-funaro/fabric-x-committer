@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/constraints"
@@ -18,12 +19,11 @@ func makeRand() *rand.Rand {
 }
 
 func requireMarshalUnmarshal(t *testing.T, expected string, in *Distribution) {
-	o, err := yaml.Marshal(in)
-	require.NoError(t, err)
-	require.Equal(t, expected, string(o))
-
+	values := make(map[string]interface{})
+	require.NoError(t, yaml.Unmarshal([]byte(expected), &values))
 	out := &Distribution{}
-	require.NoError(t, yaml.Unmarshal(o, &out))
+	require.NoError(t, mapstructure.Decode(values, out))
+	fmt.Println(out)
 
 	rnd := makeRand()
 	assert.Equal(t, in.MakeGenerator(rnd), out.MakeGenerator(rnd))

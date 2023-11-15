@@ -1,9 +1,11 @@
 package loadgen
 
 import (
+	"encoding/json"
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 type (
@@ -21,27 +23,41 @@ type (
 )
 
 // StartTxGenerator starts workers that generates TXs into a queue.
-func StartTxGenerator(profile *Profile) *TxStreamGenerator {
+func StartTxGenerator(profile *Profile, limiterConfig limiter.Config) *TxStreamGenerator {
 	seedRnd := rand.New(rand.NewSource(profile.Seed))
 	logger.Debugf("Starting %d workers to generate load", profile.TxGenWorkers)
 
 	indTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	for i := uint32(0); i < Max(profile.TxGenWorkers, 1); i++ {
 		txGen := newIndependentTxGenerator(workerRnd(seedRnd), &profile.Transaction)
-		go generateTx(txGen, indTxQueue)
+		go func() {
+			for {
+				indTxQueue <- txGen.Next()
+			}
+		}()
 	}
 
 	depTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	for i := uint32(0); i < Max(profile.TxDependenciesWorkers, 1); i++ {
 		txGen := newTxDependenciesDecorator(workerRnd(seedRnd), indTxQueue, profile)
-		go generateTx(txGen, depTxQueue)
+		go func() {
+			for {
+				depTxQueue <- txGen.Next()
+			}
+		}()
 	}
 
 	txQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	signer := NewTxSignerVerifier(&profile.Transaction.Signature)
+	rateLimiter := limiter.New(&limiterConfig)
 	for i := uint32(0); i < Max(profile.TxSignWorkers, 1); i++ {
 		txGen := newSignTxDecorator(workerRnd(seedRnd), depTxQueue, signer, profile)
-		go generateTx(txGen, txQueue)
+		go func() {
+			for {
+				txQueue <- txGen.Next()
+				rateLimiter.Take()
+			}
+		}()
 	}
 
 	return &TxStreamGenerator{
@@ -60,8 +76,10 @@ func (txGen *TxStreamGenerator) NextN(num int) []*protoblocktx.Tx {
 }
 
 // StartBlockGenerator starts workers that generates blocks into a queue.
-func StartBlockGenerator(profile *Profile) *BlockStreamGenerator {
-	txGen := StartTxGenerator(profile)
+func StartBlockGenerator(profile *Profile, limiterConfig limiter.Config) *BlockStreamGenerator {
+	p, _ := json.Marshal(profile)
+	logger.Infof("Profile passed: %s", string(p))
+	txGen := StartTxGenerator(profile, limiterConfig)
 	blockGen := &BlockGenerator{
 		TxGenerator: txGen,
 		BlockSize:   uint64(profile.Block.Size),
@@ -86,10 +104,4 @@ func workerRnd(seedRnd *rand.Rand) *rand.Rand {
 
 type gen interface {
 	Next() *protoblocktx.Tx
-}
-
-func generateTx(gen gen, txQueue chan<- *protoblocktx.Tx) {
-	for {
-		txQueue <- gen.Next()
-	}
 }

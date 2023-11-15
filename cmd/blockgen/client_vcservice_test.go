@@ -29,9 +29,9 @@ const (
 logging:
   enabled: true
   level: debug
-  Caller: true
-  Development: true
-  Output: %s
+  caller: true
+  development: true
+  output: %s
 validator-committer-service:
   server:
     endpoint:
@@ -52,6 +52,7 @@ validator-committer-service:
     max-workers-for-committer: 2
   monitoring:
     metrics:
+      enable: true
       endpoint: localhost:%d
 `
 	vcServiceBlockGenConfigFilePath = "../../config/config-blockgenforvcservice.yaml"

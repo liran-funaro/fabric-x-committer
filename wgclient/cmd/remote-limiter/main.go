@@ -20,16 +20,14 @@ import (
 var serverEndpoint = "localhost:8080"
 
 type workload struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Load        load   `yaml:"load"`
-	Endpoint    string `yaml:"endpoint"`
-	Loop        bool   `yaml:"loop"`
+	Load     load   `mapstructure:"load"`
+	Endpoint string `mapstructure:"endpoint"`
+	Loop     bool   `mapstructure:"loop"`
 }
 
 type load struct {
-	Interval  time.Duration `yaml:"interval"`
-	TargetTps []float64     `yaml:"tps"`
+	Interval  time.Duration `mapstructure:"interval"`
+	TargetTps []float64     `mapstructure:"tps"`
 }
 
 func loadWorkloadFromYaml(yamlPath string) *workload {
@@ -73,8 +71,6 @@ func main() {
 	flag.Parse()
 
 	p := loadWorkloadFromYaml(*yamlPathPtr)
-	fmt.Printf("Name: %v\n", p.Name)
-	fmt.Printf("Description: %v\n", p.Description)
 	fmt.Printf("Endpoint: %v\n", p.Endpoint)
 
 	serverEndpoint = p.Endpoint
