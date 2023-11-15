@@ -37,6 +37,7 @@ func NewProvider() *Provider {
 // and returns an error channel that will receive an error if the server
 // stops unexpectedly.
 func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
+	logger.Debugf("Creating prometheus server")
 	mux := http.NewServeMux()
 	mux.Handle(
 		"/metrics",
@@ -61,8 +62,10 @@ func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
 		logger.Infof("Prometheus client serving on URL: %s", p.url)
 		err = p.server.Serve(l)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			logger.Debugf("Prometheus server started successfully")
 			errorChan <- nil
 		} else {
+			logger.Errorf("Prometheus server started with error: %v", err)
 			errorChan <- fmt.Errorf("prometheus server stopped unexpectedly: %w", err)
 		}
 	}()

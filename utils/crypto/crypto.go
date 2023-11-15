@@ -6,10 +6,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("crypto")
 
 func NewECDSAKey() (*ecdsa.PrivateKey, error) {
 	curve := elliptic.P256()
@@ -25,6 +29,7 @@ func VerifyMessage(verificationKey *ecdsa.PublicKey, message []byte, signature [
 
 	valid := ecdsa.VerifyASN1(verificationKey, hash[:], signature)
 	if !valid {
+		logger.Debugf("Signature verification failed.\n\tMessage: [%s]\n\tSignature: [%s]\n", base64.StdEncoding.EncodeToString(message), base64.StdEncoding.EncodeToString(signature))
 		return verifyError
 	}
 	return nil

@@ -265,6 +265,7 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 			}
 			return err
 		}
+		logger.Debugf("Coordinator received block [%d] with %d TXs", block.Number, len(block.Txs))
 
 		if len(block.Txs) == 0 {
 			c.queues.blockWithValidSignTxs <- block
@@ -281,6 +282,7 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 		c.orderEnforcer.L.Unlock()
 
 		c.queues.blockForSignatureVerification <- block
+		logger.Debugf("Block [%d] was pushed to the sv manager for processing", block.Number)
 	}
 }
 
@@ -309,6 +311,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 	sendBlockFromOutOfOrderMap := func() {
 		block, ok := outOfOrderBlock[nextBlockNumber]
 		for ok {
+			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. It can now be released and deleted from the map with waiting blocks.", block.Number)
 			sendBlock(block)
 
 			if len(outOfOrderBlock) == outOfOrderBlockLimit {
@@ -323,15 +326,19 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 			nextBlockNumber++
 			block, ok = outOfOrderBlock[nextBlockNumber]
 		}
+		logger.Debugf("Block [%d] was not out of order (and hence not in the map with waiting blocks). Continuing execution...", nextBlockNumber)
 	}
 
 	for block := range c.queues.blockWithValidSignTxs {
+		logger.Debugf("Block [%d] with %d valid TXs reached the dependency graph", block.Number, len(block.Txs))
 		switch block.Number {
 		case nextBlockNumber:
+			logger.Debugf("Block [%d] is in order", block.Number)
 			sendBlock(block)
 			nextBlockNumber++
 			sendBlockFromOutOfOrderMap()
 		default:
+			logger.Debugf("Block [%d] is out of order. Will be stored in a map with waiting blocks.", block.Number)
 			outOfOrderBlock[block.Number] = block
 			if len(outOfOrderBlock) == outOfOrderBlockLimit {
 				logger.Info("Reached the limit of out of order blocks. Stopping sending blocks to signature verifier")
@@ -347,6 +354,7 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
 	for txStatus := range c.queues.txsStatus {
+		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
 		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(txStatus.Status))
 		i := 0
 		committed := 0
@@ -370,6 +378,7 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 			}
 		}
 
+		logger.Debugf("Batch contained %d valid TXs, %d version conflicts, and %d duplicates. Forwarding to output stream.", committed, mvccConflict, duplicate)
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
@@ -387,6 +396,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
 	for blk := range c.queues.blockWithInvalidSignTxs {
+		logger.Debugf("New partial block with %d TXs reached the coordinator", len(blk.Txs))
 		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(blk.Txs))
 		for i, tx := range blk.Txs {
 			valStatus[i] = &protocoordinatorservice.TxValidationStatus{
@@ -395,6 +405,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 			}
 		}
 
+		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. Forwarding to output stream.", len(valStatus))
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
@@ -415,6 +426,7 @@ func (c *CoordinatorService) sendTxsStatus(
 			TxsValidationStatus: txsStatus,
 		},
 	)
+	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus))
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
@@ -455,6 +467,7 @@ func (c *CoordinatorService) monitorQueues() {
 
 // Close closes each manager in the coordinator service and all channels.
 func (c *CoordinatorService) Close() error {
+	logger.Infof("Closing all connections to managers")
 	if err := c.signatureVerifierMgr.close(); err != nil {
 		return err
 	}

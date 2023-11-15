@@ -29,6 +29,7 @@ type LedgerDeliverServer struct {
 }
 
 func NewLedgerDeliverServer(channelId, ledgerDir string) *LedgerDeliverServer {
+	logger.Infof("Create ledger files for channel %s under %s", channelId, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	utils.Must(err)
 	ledger, err := factory.GetOrCreate(channelId)
@@ -128,7 +129,7 @@ func (i *LedgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, enve
 		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
 			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
 		}
-		logger.Infof("Successfuly sent block %d:%d to client.\n", block.Header.Number, len(block.Data.Data))
+		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
 
 		if stopNum == block.Header.Number {
 			break

@@ -39,10 +39,11 @@ func (o *OrdererClient) Start(ctx context.Context, outputChan chan<- *common.Blo
 	numErrorableGoroutinePerServer := 1
 	errChan := make(chan error, numErrorableGoroutinePerServer)
 
+	logger.Infof("Starting deliver client")
 	deliverClient, err := o.client.Deliver(ctx)
 	if err != nil {
 		// TODO implement retry if needed ...
-		return nil, err
+		return nil, errors.Wrap(err, "failed to connect to delivery service")
 	}
 
 	o.deliverClient = deliverClient
@@ -51,7 +52,7 @@ func (o *OrdererClient) Start(ctx context.Context, outputChan chan<- *common.Blo
 	logger.Debugf("Sending seek request starting from block %d", o.startBlock)
 	err = o.deliverClient.Send(deliver.SeekSince(o.startBlock, o.channelID, o.clientIdentity))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to send seek request")
 	}
 
 	logger.Infof("Starting orderer receiver ...")
@@ -69,7 +70,7 @@ func (o *OrdererClient) receiveFromOrderer(ctx context.Context) error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return err
+			return errors.Wrap(err, "failed receiving from delivery service")
 		}
 
 		switch t := response.Type.(type) {
@@ -80,6 +81,7 @@ func (o *OrdererClient) receiveFromOrderer(ctx context.Context) error {
 			case <-ctx.Done():
 				return nil
 			case o.outputChan <- t.Block:
+				logger.Debugf("Received block from orderer: %d", t.Block.Header.Number)
 			}
 		default:
 			return errors.New("received unexpected message type from ordering service")
@@ -88,6 +90,7 @@ func (o *OrdererClient) receiveFromOrderer(ctx context.Context) error {
 }
 
 func (o *OrdererClient) Close() error {
+	logger.Infof("Closing orderer client")
 	close(o.outputChan)
 	if err := o.deliverClient.CloseSend(); err != nil {
 		return err

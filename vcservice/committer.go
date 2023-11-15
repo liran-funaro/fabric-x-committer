@@ -33,6 +33,7 @@ func newCommitter(
 	txsStatus chan<- *protovcservice.TransactionStatus,
 	metrics *perfMetrics,
 ) *transactionCommitter {
+	logger.Debugf("Creating committer")
 	return &transactionCommitter{
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
@@ -55,6 +56,7 @@ func (c *transactionCommitter) commit() {
 	var err error
 
 	for vTx := range c.incomingValidatedTransactions {
+		logger.Debugf("Batch of validated TXs in the committer")
 		start := time.Now()
 		for attempts = 0; attempts < maxRetryAttempt; attempts++ {
 			txsStatus, err = c.commitTransactions(vTx)
@@ -78,6 +80,7 @@ func (c *transactionCommitter) commit() {
 
 		prometheusmetrics.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
 		c.outgoingTransactionsStatus <- txsStatus
+		logger.Debugf("Batch of TXs sent from the committer to the output")
 	}
 }
 

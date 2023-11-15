@@ -22,8 +22,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.ibm.com/decentralized-trust-research/scalable-committer/protos/token => ../protos/token
-
 require (
 	github.com/IBM/idemix v0.0.2-0.20230403120754-d7dbe0340c4a // indirect
 	github.com/IBM/mathlib v0.0.3-0.20230403084452-40ed1be38cf2 // indirect

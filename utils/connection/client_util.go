@@ -34,8 +34,9 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	conn, err := grpc.Dial(config.Endpoint.Address(), config.DialOpts...)
 
 	if err != nil {
-		logger.Infof("Error connecting to %s: %v", config.Endpoint.String(), err)
+		logger.Errorf("Error connecting to %s: %v", config.Endpoint.String(), err)
 		return nil, err
 	}
+	logger.Debugf("Successfully connected to %s", config.Endpoint.String())
 	return conn, nil
 }

@@ -30,7 +30,7 @@ func getLimiter(limit int) ratelimit.Limiter {
 		logger.Infof("Setting to unlimited (value passed: %d).", limit)
 		return ratelimit.NewUnlimited()
 	} else {
-		logger.Infof("Setting limit to %d TPS.", limit)
+		logger.Infof("Setting limit to %d blocks per second.", limit)
 		// create our new limiter
 		return ratelimit.New(limit)
 	}

@@ -54,17 +54,20 @@ func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validator
 
 func (vcm *validatorCommitterManager) start() (chan error, error) {
 	c := vcm.config
+	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
 
 	numErrorableGoroutinePerServer := 3
 	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
 	for i, serverConfig := range c.serversConfig {
+		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, serverConfig.Endpoint.String())
 		vc, err := newValidatorCommitter(serverConfig, vcm.txsStatusBufferSize, c.metrics)
 		if err != nil {
 			return nil, err
 		}
 		vcm.validatorCommitter[i] = vc
+		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 
 		go func() {
 			errChan <- vc.sendTransactionsToVCService(c.incomingTxsForValidationCommit)
@@ -86,6 +89,7 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 }
 
 func (vcm *validatorCommitterManager) close() error {
+	logger.Infof("Closing %d connections vc's", len(vcm.validatorCommitter))
 	for _, vc := range vcm.validatorCommitter {
 		if err := vc.close(); err != nil {
 			return err
@@ -125,6 +129,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 	inputTxsNode <-chan []*dependencygraph.TransactionNode,
 ) error {
 	for txsNode := range inputTxsNode {
+		logger.Debugf("New TX node came from coordinator to vc manager")
 		txBatch := make([]*protovcservice.Transaction, len(txsNode))
 		for i, txNode := range txsNode {
 			vc.txBeingValidated.Store(txNode.Tx.ID, txNode)
@@ -138,6 +143,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		); err != nil {
 			return err
 		}
+		logger.Debugf("TX node contains %d TXs, and was sent to a cv", len(txBatch))
 	}
 
 	return nil
@@ -146,6 +152,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 func (vc *validatorCommitter) receiveTransactionsStatusFromVCService() error {
 	for {
 		txsStatus, err := vc.stream.Recv()
+		logger.Debugf("New batch came from vc to vc manager")
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -162,6 +169,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 	outputTxsStatus chan<- *protovcservice.TransactionStatus,
 ) error {
 	for txsStatus := range vc.statusCollection {
+		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
 		// NOTE: The sidecar reads transactions from the ordering service stream and sends
 		//       them to the coordinator. The coordinator then forwards the transactions to the
 		//       dependency graph manager. The dependency graph manager forwards the transactions
@@ -175,6 +183,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		//       and cannot receive the statuses quickly, the gRPC flow control will activate and
 		//       slow down the whole system, allowing the sidecar to catch up.
 		outputTxsStatus <- txsStatus
+		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
 
 		vc.metrics.addToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
@@ -193,6 +202,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		}
 
 		outputTxsNode <- txsNode
+		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
 	}
 
 	return nil

@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -47,6 +48,15 @@ type (
 	}
 )
 
+func (s *statesToBeCommitted) Debug() {
+	if logger.Level() > zapcore.DebugLevel {
+		return
+	}
+	logger.Debugf("total states: %d\n\tupdate: %d\n\twrites: %d\n\tbatch status: %d",
+		len(s.updateWrites)+len(s.newWrites)+len(s.batchStatus.Status),
+		len(s.updateWrites), len(s.newWrites), len(s.batchStatus.Status))
+}
+
 // newDatabase creates a new database.
 func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
 	logger.Debugf("DB source: %s", config.DataSourceName())
@@ -63,6 +73,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 		logger.Errorf("Failed making pool: %s", err)
 		return nil, err
 	}
+	logger.Debugf("DB pool created")
 
 	return &database{
 		pool:    pool,

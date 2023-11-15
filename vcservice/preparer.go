@@ -74,6 +74,7 @@ func newPreparer(
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
+	logger.Debugf("Creating new preparer")
 	return &transactionPreparer{
 		incomingTransactionBatch:     txBatch,
 		outgoingPreparedTransactions: preparedTxs,
@@ -94,6 +95,7 @@ func (p *transactionPreparer) start(numWorkers int) {
 // to the validator.
 func (p *transactionPreparer) prepare() {
 	for txBatch := range p.incomingTransactionBatch {
+		logger.Debugf("New batch with %d in the preparer.", len(txBatch.Transactions))
 		start := time.Now()
 		prepTxs := &preparedTransactions{
 			namespaceToReadEntries:       make(namespaceToReads),
@@ -127,6 +129,7 @@ func (p *transactionPreparer) prepare() {
 
 		prometheusmetrics.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
 		p.outgoingPreparedTransactions <- prepTxs
+		logger.Debugf("Transaction preparing finished.")
 	}
 }
 

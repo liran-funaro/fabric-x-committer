@@ -2,6 +2,7 @@ package verifierserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/streamhandler"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap/zapcore"
 )
 
 var logger = logging.New("verifierserver")
@@ -95,6 +97,14 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		logger.Warnf("No verifier set! Returning invalid status.")
 		response.ErrorMessage = "no verifier set"
 		return response, nil
+	}
+
+	if logger.Level() <= zapcore.DebugLevel {
+		if data, err := json.Marshal(request.Tx); err != nil {
+			logger.Debugf("Failed to marshal TX [%d:%d]", request.BlockNum, request.TxNum)
+		} else {
+			logger.Debugf("Requesting signature on TX [%d:%d]:\n%s", request.BlockNum, request.TxNum, string(data))
+		}
 	}
 
 	if err := s.verifier.VerifyTx(request.Tx); err != nil {

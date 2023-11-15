@@ -67,12 +67,14 @@ func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVe
 
 func (svm *signatureVerifierManager) start() (chan error, error) {
 	c := svm.config
+	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.serversConfig))
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
 
 	numErrorableGoroutinePerServer := 2
 	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
 	for i, serverConfig := range c.serversConfig {
+		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, serverConfig.Endpoint.String())
 		conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
 		if err != nil {
 			return nil, err
@@ -99,6 +101,7 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 			metrics: c.metrics,
 		}
 		svm.signVerifier[i] = sv
+		logger.Debugf("Client [%d] successfully created and connected to sv", i)
 
 		go func() {
 			errChan <- sv.sendTransactionsToSVService(c.incomingBlockForSignatureVerification)
@@ -118,8 +121,10 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 }
 
 func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierservice.Key) error {
-	for _, sv := range svm.signVerifier {
+	for i, sv := range svm.signVerifier {
+		logger.Debugf("Setting verification key to sv [%d]", i)
 		_, err := sv.client.SetVerificationKey(context.Background(), key)
+		logger.Debugf("Verification key successfully set")
 		if err != nil {
 			return err
 		}
@@ -129,6 +134,7 @@ func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierser
 }
 
 func (svm *signatureVerifierManager) close() error {
+	logger.Infof("Closing %d connections to sv's", len(svm.signVerifier))
 	for _, sv := range svm.signVerifier {
 		close(sv.responseCollectionChan)
 		close(sv.validatedBlock)
@@ -142,6 +148,7 @@ func (svm *signatureVerifierManager) close() error {
 
 func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *protoblocktx.Block) error {
 	for block := range inputBlock {
+		logger.Debugf("New block came from coordinator to sv manager")
 		sv.resultAccumulator.Store(
 			block.Number,
 			&blockWithResult{
@@ -165,6 +172,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *prot
 			}
 			return err
 		}
+		logger.Debugf("Block contains %d TXs, and was stored in the accumulator and sent to a sv", len(block.Txs))
 	}
 
 	return nil
@@ -173,6 +181,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *prot
 func (sv *signatureVerifier) receiveTransactionsStatusFromSVService() error {
 	for {
 		response, err := sv.stream.Recv()
+		logger.Debugf("New batch came from sv to sv manager")
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -186,6 +195,7 @@ func (sv *signatureVerifier) receiveTransactionsStatusFromSVService() error {
 
 func (sv *signatureVerifier) processTransactionStatus() {
 	for r := range sv.responseCollectionChan {
+		logger.Debugf("Batch contains %d items in total", len(r.Responses))
 		var blkWithResult *blockWithResult
 		for _, resp := range r.Responses {
 			if blkWithResult == nil || blkWithResult.block.Number != resp.BlockNum {
@@ -202,6 +212,7 @@ func (sv *signatureVerifier) processTransactionStatus() {
 			blkWithResult.pendingResults--
 
 			if blkWithResult.pendingResults == 0 {
+				logger.Debugf("Block [%d] is now fully validated", blkWithResult.block.Number)
 				sv.resultAccumulator.Delete(blkWithResult.block.Number)
 				sv.validatedBlock <- blkWithResult
 			}
@@ -213,6 +224,7 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs chan<- *protoblocktx.Block,
 ) {
 	for blkWithResult := range sv.validatedBlock {
+		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs", blkWithResult.block.Number, len(blkWithResult.validTxIndex), len(blkWithResult.invalidTxIndex))
 		sv.metrics.addToCounter(
 			sv.metrics.sigverifierTransactionProcessedTotal,
 			len(blkWithResult.block.Txs),
@@ -244,6 +256,7 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 			}
 			outgoingBlockWithValidTxs <- validBlockTxs
 			outgoingBlockWithInvalidTxs <- invalidBlockTxs
+			logger.Debugf("Forwarded valid and invalid TXs of block [%d] back to coordinator", blkWithResult.block.Number)
 		}
 	}
 }

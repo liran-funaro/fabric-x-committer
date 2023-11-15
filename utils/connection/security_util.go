@@ -13,7 +13,7 @@ import (
 )
 
 func GetOrdererConnectionCreds(config OrdererConnectionProfile) (credentials.TransportCredentials, msp.SigningIdentity) {
-	fmt.Printf("Initialize creds:\n"+
+	logger.Infof("Initialize creds:\n"+
 		"\tMSP Dir: %s\n"+
 		"\tMSP ID: %s\n"+
 		"\tRoot CA Paths: %v\n"+
@@ -25,19 +25,19 @@ func GetOrdererConnectionCreds(config OrdererConnectionProfile) (credentials.Tra
 	}
 	err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
 	if err != nil { // Handle errors reading the config file
-		fmt.Println("Failed to initialize local MSP:", err)
+		logger.Errorf("failed to initialize local MSP: %v", err)
 		os.Exit(0)
 	}
 
 	signer, err := mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
 	if err != nil {
-		fmt.Println("Failed to load local signing identity:", err)
+		logger.Errorf("failed to load local signing identity: %v", err)
 		os.Exit(0)
 	}
 
 	tlsConfig, err := tls.LoadTLSCredentials(config.RootCAPaths)
 	if err != nil {
-		fmt.Println("cannot load TLS credentials: :", err)
+		logger.Errorf("cannot load TLS credentials: %v", err)
 		os.Exit(0)
 	}
 

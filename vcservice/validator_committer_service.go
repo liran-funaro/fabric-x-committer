@@ -161,6 +161,7 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
 		txs := largerBatch
 		vc.txBatchChan <- txs
+		logger.Debugf("Send larger batch to preparer")
 		largerBatch = &protovcservice.TransactionBatch{}
 		timer.Reset(vc.timeoutForMinTxBatchSize)
 	}
@@ -185,6 +186,7 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 			}
 			return err
 		}
+		logger.Debugf("New batch with %d TXs received in vc. Large batch contains %d TXs and the minimum batch size is %d", len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions), vc.minTxBatchSize)
 
 		mu.Lock()
 		largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)

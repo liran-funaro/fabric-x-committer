@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	errors2 "github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -33,7 +34,7 @@ func (c *CoordinatorClient) Start(ctx context.Context, inputChan <-chan *protobl
 	stream, err := c.client.BlockProcessing(ctx)
 	if err != nil {
 		// TODO implement retry if needed ...
-		return nil, err
+		return nil, errors2.Wrap(err, "failed to open stream for block processing")
 	}
 
 	c.stream = stream
@@ -58,7 +59,7 @@ func (c *CoordinatorClient) receiveFromCoordinator(ctx context.Context) error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return err
+			return errors2.Wrap(err, "failed to receive from coordinator")
 		}
 		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetTxsValidationStatus()))
 
@@ -76,7 +77,7 @@ func (c *CoordinatorClient) sendToCoordinator() error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return err
+			return errors2.Wrap(err, "failed to send to coordinator")
 		}
 		logger.Debugf("Sent scBlock %d with %d transactions to Coordinator", block.Number, len(block.Txs))
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -50,6 +51,7 @@ func (a *Aggregator) Start(ctx context.Context, blockChan <-chan *common.Block, 
 }
 
 func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch) error {
+	logger.Infof("Started aggregator for sidecar")
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,7 +59,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 		case s, more := <-statusChan:
 			//  1st priority: process status batches
 			if err := a.processStatusBatch(s); err != nil {
-				return err
+				return errors.Wrap(err, "failed to process status batch")
 			}
 			if !more {
 				return nil
@@ -68,7 +70,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 				return nil
 			case s, more := <-statusChan:
 				if err := a.processStatusBatch(s); err != nil {
-					return err
+					return errors.Wrap(err, "failed to process status batch")
 				}
 				if !more {
 					return nil
@@ -76,7 +78,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 			case b := <-blockChan:
 				// 2nd priority: enqueue new blocks
 				if err := a.enqueueNewBlock(b); err != nil {
-					return err
+					return errors.Wrap(err, "failed to enqueue new block")
 				}
 			}
 		}
@@ -85,8 +87,10 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 
 func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 	if block == nil {
+		logger.Debugf("Nil block enqueued")
 		return nil
 	}
+	logger.Debugf("Block %d arrived in the aggregator", block.Header.Number)
 
 	blockNum := block.Header.Number
 	txCount := len(block.Data.Data)
@@ -107,10 +111,12 @@ func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 		txIDs:     make(map[string]int, txCount),
 		remaining: txCount - len(filteredTxs),
 	}
+	logger.Debugf("New block [%d] has %d TX's of which %d were filtered", block.Header.Number, txCount, newBlock.remaining)
 
 	// set all filtered transaction to valid by default
 	// TODO once SC V2 can process config transaction and alike, this needs to be changed
 	for pos := range filteredTxs {
+		logger.Debugf("TX [%d:%d] is excluded: %v", blockNum, pos, excludedStatus)
 		newBlock.returned[pos] = excludedStatus
 	}
 
@@ -137,6 +143,7 @@ func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 }
 
 func (a *Aggregator) processStatusBatch(batch *protocoordinatorservice.TxValidationStatusBatch) error {
+	logger.Debugf("New status batch arrived in the aggregator")
 	for _, txStatus := range batch.GetTxsValidationStatus() {
 		blockNum, ok := a.inProgressTxs[txStatus.GetTxId()]
 		if !ok {
@@ -160,6 +167,7 @@ func (a *Aggregator) processStatusBatch(batch *protocoordinatorservice.TxValidat
 		}
 
 		block.returned[pos] = statusMap[txStatus.GetStatus()]
+		logger.Debugf("Transaction [%d:%d] [%s] now has status: %v", blockNum, pos, txStatus.TxId, txStatus.Status)
 		a.inProgressBlocks[blockNum] = block
 
 		// cleanup
@@ -178,8 +186,10 @@ func (a *Aggregator) tryComplete() {
 
 	// seems we are not complete with this one ...
 	if !exists || currentBlock.remaining > 0 {
+		logger.Debugf("Next committed block [%d] is in progress [%v] or has no remaining TXs", currentBlockNum, exists)
 		return
 	}
+	logger.Debugf("Next committed block [%d] is complete", currentBlockNum)
 
 	// cleanup
 	delete(a.inProgressBlocks, currentBlockNum)

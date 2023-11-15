@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"go.uber.org/zap/zapcore"
 )
 
 // transactionValidator validates the reads of transactions against the committed states
@@ -31,6 +32,15 @@ type validatedTransactions struct {
 	invalidTxIndices         map[txID]protoblocktx.Status
 }
 
+func (t *validatedTransactions) Debug() {
+	if logger.Level() > zapcore.DebugLevel {
+		return
+	}
+	logger.Debugf("total validated: %d\n\tvalid non-blind writes: %d\n\tvalid blind writes: %d\n\tnew writes: %d\n\treads: %d\n\tinvalid: %d\n",
+		len(t.validTxNonBlindWrites)+len(t.validTxBlindWrites)+len(t.newWrites)+len(t.readToTransactionIndices)+len(t.invalidTxIndices),
+		len(t.validTxNonBlindWrites), len(t.validTxBlindWrites), len(t.newWrites), len(t.readToTransactionIndices), len(t.invalidTxIndices))
+}
+
 // NewValidator creates a new validator
 func newValidator(
 	db *database,
@@ -38,6 +48,7 @@ func newValidator(
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
 ) *transactionValidator {
+	logger.Debugf("Creating new validator")
 	return &transactionValidator{
 		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
@@ -55,6 +66,8 @@ func (v *transactionValidator) start(numWorkers int) {
 
 func (v *transactionValidator) validate() {
 	for prepTx := range v.incomingPreparedTransactions {
+		logger.Debugf("Batch of prepared TXs in the validator.")
+		prepTx.Debug()
 		start := time.Now()
 		// Step 1: we validate reads and collect mismatching reads per namespace.
 		// TODO: We can run per namespace validation in parallel. However, we should not
@@ -77,6 +90,8 @@ func (v *transactionValidator) validate() {
 
 		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
 		v.outgoingValidatedTransactions <- validatedTxs
+		logger.Debugf("Validator sent batch of validated TXs to the committer")
+		validatedTxs.Debug()
 	}
 }
 
@@ -106,6 +121,15 @@ func (p *preparedTransactions) makeValidated() *validatedTransactions {
 		readToTransactionIndices: p.readToTransactionIndices,
 		invalidTxIndices:         make(map[txID]protoblocktx.Status),
 	}
+}
+
+func (p *preparedTransactions) Debug() {
+	if logger.Level() > zapcore.DebugLevel {
+		return
+	}
+	logger.Debugf("total prepared: %d\n\tvalid non-blind writes: %d\n\tvalid blind writes: %d\n\tnew writes: %d\n\treads: %d\n",
+		len(p.nonBlindWritesPerTransaction)+len(p.blindWritesPerTransaction)+len(p.newWrites)+len(p.readToTransactionIndices),
+		len(p.nonBlindWritesPerTransaction), len(p.blindWritesPerTransaction), len(p.newWrites), len(p.readToTransactionIndices))
 }
 
 func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToReads) error {

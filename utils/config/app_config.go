@@ -8,7 +8,10 @@ import (
 
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
+
+var logger = logging.New("config reader")
 
 var configUpdateListener []func()
 
@@ -20,6 +23,7 @@ func OnConfigUpdated(listener func()) {
 
 func Unmarshal(c interface{}, decoderFuncs ...DecoderFunc) {
 	utils.Must(viper.Unmarshal(c, decoderHook(append(decoderFuncs, durationDecoder, endpointDecoder)...)))
+	logger.Debugf("Decoded config: %v", c)
 }
 
 // configUpdated updates all listeners and pointers to configurations.
