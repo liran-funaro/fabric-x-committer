@@ -87,10 +87,7 @@ func BlockgenStarter(logger CmdLogger, configPath string) (*perfMetrics, *loadge
 		return nil, nil, nil, errors.Wrap(err, "failed creating client")
 	}
 
-	var promErrChan <-chan error
-	if metrics.enabled {
-		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
-	}
+	promErrChan := metrics.provider.StartPrometheusServer()
 
 	go func() {
 		if errProm := <-promErrChan; errProm != nil {

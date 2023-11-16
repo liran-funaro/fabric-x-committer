@@ -29,9 +29,13 @@ monitoring:
   metrics:
     enable: true
     endpoint: :2112
-  latency:
-    sampler:
-      type: timer
-      sampling-interval: 10s
+    latency:
+      sampler:
+        type: timer
+        sampling-interval: 10s
+      buckets:
+        type: uniform
+        max-latency: 5s
+        bucket-count: 1000
 rate-limit:
   initial-limit: 1000

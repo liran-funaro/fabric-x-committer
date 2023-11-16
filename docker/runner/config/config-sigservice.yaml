@@ -10,17 +10,8 @@ sig-verification:
 
   monitoring:
     metrics:
+      enable: true
       endpoint: :2112
-    latency:
-      span-exporter: jaeger
-      sampler:
-        type: blocktx
-        ratio: 10
-        sample-size: 100
-        sample-period: 100000
-      endpoint: localhost:14268
-      max-latency: 5s
-      bucket-count: 1000
 
 logging:
   development: true

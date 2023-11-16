@@ -4,6 +4,7 @@ sidecar:
   committer:
     endpoint: localhost:8812
   metrics:
+    enable: true
     endpoint: localhost:2212
   ledger:
     path: ./out/sidecar/ledger

@@ -3,6 +3,7 @@ shards-service:
     endpoint: {{.ServerEndpoint}}
   monitoring:
     metrics:
+      enable: true
       endpoint: {{.MetricsEndpoint}}
     latency:
       span-exporter: jaeger

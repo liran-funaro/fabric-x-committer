@@ -74,6 +74,12 @@ func Must(err error, msg ...string) {
 	}
 }
 
+func Require(condition bool, msg string) {
+	if !condition {
+		panic(errors.New(msg))
+	}
+}
+
 func ReadFile(filePath string) ([]byte, error) {
 	absoluteFilePath, err := filepath.Abs(filePath)
 	if err != nil {

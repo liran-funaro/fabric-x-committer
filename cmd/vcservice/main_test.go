@@ -39,6 +39,7 @@ validator-committer-service:
     load-balance: false
   monitoring:
     metrics:
+      enable: true
       endpoint: localhost:2111
 `
 

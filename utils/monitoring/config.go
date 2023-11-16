@@ -7,7 +7,7 @@ import (
 
 type Config struct {
 	Metrics *metrics.Config `mapstructure:"metrics"`
-	Latency *latency.Config `mapstructure:"latency"`
+	Latency *latency.Config `mapstructure:"latency"` //TODO: AF remove
 }
 
 func (p *Config) IsMetricsEnabled() bool {

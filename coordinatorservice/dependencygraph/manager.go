@@ -3,7 +3,7 @@ package dependencygraph
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 

@@ -10,21 +10,14 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
-var buckets = []float64{
-	.0001, .001, .002, .003, .004, .005, .01, .03, .05,
-	.1, .3, .5, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
-	2.1, 2.2, 2.3, 2.4, 2.5, 3, 4, 5,
-}
-
 type perfMetrics struct {
-	enabled                         bool
-	provider                        *prometheusmetrics.Provider
+	provider                        metrics.Provider
 	blockSentTotal                  prometheus.Counter
 	transactionSentTotal            prometheus.Counter
 	transactionReceivedTotal        prometheus.Counter
@@ -32,11 +25,9 @@ type perfMetrics struct {
 	invalidTransactionLatencySecond prometheus.Histogram
 }
 
-func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
-	p := prometheusmetrics.NewProvider()
-
+func newBlockgenServiceMetrics(p metrics.Provider) *perfMetrics {
+	buckets := p.Buckets()
 	return &perfMetrics{
-		enabled:  enabled,
 		provider: p,
 		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "blockgen",
@@ -70,18 +61,12 @@ func newBlockgenServiceMetrics(enabled bool) *perfMetrics {
 	}
 }
 
-func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
-	if s.enabled {
-		c.Add(float64(n))
-	}
-}
-
 type ClientTracker struct {
 	*senderTracker
 	*receiverTracker
 }
 
-func NewClientTracker(logger CmdLogger, metrics *perfMetrics, samplerConfig latency.SamplerConfig) *ClientTracker {
+func NewClientTracker(logger CmdLogger, metrics *perfMetrics, samplerConfig metrics.SamplerProvider) *ClientTracker {
 	latencyTracker := &sync.Map{}
 	return &ClientTracker{
 		senderTracker: &senderTracker{
@@ -128,15 +113,15 @@ func (c *receiverTracker) OnReceiveSVBatch(batch *sigverification.ResponseBatch)
 }
 
 func (c *receiverTracker) OnReceiveTransaction(txID string, success bool) {
-	c.metrics.addToCounter(c.metrics.transactionReceivedTotal, 1)
+	c.metrics.transactionReceivedTotal.Add(float64(1))
 	if t, ok := c.latencyTracker.LoadAndDelete(txID); ok {
 		start, _ := t.(time.Time)
 		elapsed := time.Since(start)
 
 		if success {
-			prometheusmetrics.Observe(c.metrics.validTransactionLatencySecond, elapsed)
+			c.metrics.validTransactionLatencySecond.Observe(elapsed.Seconds())
 		} else {
-			prometheusmetrics.Observe(c.metrics.invalidTransactionLatencySecond, elapsed)
+			c.metrics.invalidTransactionLatencySecond.Observe(elapsed.Seconds())
 		}
 	}
 }
@@ -162,8 +147,8 @@ type senderTracker struct {
 
 func (c *senderTracker) OnSendSVBatch(batch *sigverification.RequestBatch) {
 	logger.Debugf("Sent SV batch with %d items", len(batch.Requests))
-	c.metrics.addToCounter(c.metrics.blockSentTotal, 1)
-	c.metrics.addToCounter(c.metrics.transactionSentTotal, len(batch.Requests))
+	c.metrics.blockSentTotal.Add(float64(1))
+	c.metrics.transactionSentTotal.Add(float64(len(batch.Requests)))
 	if c.batchSampler() {
 		t := time.Now()
 		for _, req := range batch.Requests {
@@ -174,8 +159,8 @@ func (c *senderTracker) OnSendSVBatch(batch *sigverification.RequestBatch) {
 
 func (c *senderTracker) OnSendBlock(block *protoblocktx.Block) {
 	logger.Debugf("Sent block [%d:%d]", block.Number, len(block.Txs))
-	c.metrics.addToCounter(c.metrics.blockSentTotal, 1)
-	c.metrics.addToCounter(c.metrics.transactionSentTotal, len(block.Txs))
+	c.metrics.blockSentTotal.Add(float64(1))
+	c.metrics.transactionSentTotal.Add(float64(len(block.Txs)))
 	if c.blockSampler(block.Number) {
 		t := time.Now()
 		for _, tx := range block.Txs {
@@ -186,7 +171,7 @@ func (c *senderTracker) OnSendBlock(block *protoblocktx.Block) {
 
 func (c *senderTracker) OnSendTransaction(txId string) {
 	logger.Debugf("Sent TX [%s]", txId)
-	c.metrics.addToCounter(c.metrics.transactionSentTotal, 1)
+	c.metrics.transactionSentTotal.Add(float64(1))
 
 	if c.txSampler(txId) {
 		c.latencyTracker.Store(txId, time.Now())

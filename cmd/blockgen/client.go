@@ -4,6 +4,7 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 var logger = logging.New("load-generator")
@@ -26,8 +27,8 @@ func (c *loadGenClient) Stop() {
 }
 
 func createClient(c *ClientConfig, logger CmdLogger) (blockGenClient, *perfMetrics, error) {
-	metrics := newBlockgenServiceMetrics(c.Monitoring.Metrics.Enable)
-	tracker := NewClientTracker(logger, metrics, c.Monitoring.Latency.Sampler)
+	metrics := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
+	tracker := NewClientTracker(logger, metrics, &c.Monitoring.Metrics.Latency.SamplerConfig)
 
 	if c.CoordinatorClient != nil {
 		return newCoordinatorClient(c.CoordinatorClient, tracker, logger), metrics, nil
