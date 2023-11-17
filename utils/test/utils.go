@@ -11,6 +11,7 @@ import (
 	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -55,6 +56,10 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 		return gm.Gauge.GetValue()
 	case prometheus.Counter:
 		return gm.Counter.GetValue()
+	case *metrics.IntCounter:
+		return gm.Counter.GetValue()
+	case *metrics.IntGauge:
+		return gm.Gauge.GetValue()
 	default:
 		require.Fail(t, "metric is not counter or gauge")
 	}

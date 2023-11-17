@@ -22,11 +22,17 @@ type Provider interface {
 	// NewCounter creates a new prometheus counter.
 	NewCounter(opts prometheus.CounterOpts) prometheus.Counter
 
+	// NewIntCounter creates an int prometheus counter.
+	NewIntCounter(opts prometheus.CounterOpts) *IntCounter
+
 	// NewCounterVec creates a new prometheus counter vector.
 	NewCounterVec(opts prometheus.CounterOpts, labels []string) *prometheus.CounterVec
 
 	// NewGauge creates a new prometheus gauge.
 	NewGauge(opts prometheus.GaugeOpts) prometheus.Gauge
+
+	// NewIntGauge creates a new int prometheus gauge.
+	NewIntGauge(opts prometheus.GaugeOpts) *IntGauge
 
 	// NewGaugeVec creates a new prometheus gauge vector.
 	NewGaugeVec(opts prometheus.GaugeOpts, labels []string) *prometheus.GaugeVec

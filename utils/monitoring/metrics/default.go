@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
@@ -26,4 +27,12 @@ type defaultProvider struct {
 
 func (p *defaultProvider) StartPrometheusServer() <-chan error {
 	return p.Provider.StartPrometheusServer(p.serverEndpoint)
+}
+
+func (p *defaultProvider) NewIntCounter(opts prometheus.CounterOpts) *IntCounter {
+	return &IntCounter{Counter: p.NewCounter(opts)}
+}
+
+func (p *defaultProvider) NewIntGauge(opts prometheus.GaugeOpts) *IntGauge {
+	return &IntGauge{Gauge: p.NewGauge(opts)}
 }

@@ -23,6 +23,12 @@ func (p *noOpProvider) StopServer() error {
 }
 func (p *noOpProvider) URL() string                                          { return "" }
 func (p *noOpProvider) NewCounter(prometheus.CounterOpts) prometheus.Counter { return &noOpCounter{} }
+func (p *noOpProvider) NewIntCounter(prometheus.CounterOpts) *IntCounter {
+	return &IntCounter{Counter: &noOpCounter{}}
+}
+func (p *noOpProvider) NewIntGauge(prometheus.GaugeOpts) *IntGauge {
+	return &IntGauge{Gauge: &noOpGauge{}}
+}
 func (p *noOpProvider) NewCounterVec(prometheus.CounterOpts, []string) *prometheus.CounterVec {
 	return &prometheus.CounterVec{MetricVec: prometheus.NewMetricVec(&prometheus.Desc{}, func(...string) prometheus.Metric {
 		return &noOpMetric{}
