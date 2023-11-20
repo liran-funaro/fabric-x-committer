@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 // result is used to prevent compiler optimizations.
@@ -46,7 +45,7 @@ func genericBlockBench(b *testing.B, workers uint32) {
 	var sum float64
 
 	b.ResetTimer()
-	c := StartBlockGenerator(defaultProfile(workers), limiter.NoLimit)
+	c := StartBlockGenerator(defaultProfile(workers), NoLimit)
 
 	for i := 0; i < b.N; i++ {
 		blk := <-c.BlockQueue
@@ -62,7 +61,7 @@ func genericTxBench(b *testing.B, workers uint32) {
 	var sum float64
 
 	b.ResetTimer()
-	c := StartTxGenerator(defaultProfile(workers), limiter.NoLimit)
+	c := StartTxGenerator(defaultProfile(workers), NoLimit)
 
 	for i := 0; i < b.N; i++ {
 		tx := <-c.TxQueue
@@ -157,7 +156,7 @@ func TestGenValidTx(t *testing.T) {
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
 			t.Parallel()
-			c := StartTxGenerator(p, limiter.NoLimit)
+			c := StartTxGenerator(p, NoLimit)
 
 			for i := 0; i < 100; i++ {
 				requireValidTx(t, <-c.TxQueue, p, c.Signer)
@@ -173,7 +172,7 @@ func TestGenValidBlock(t *testing.T) {
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
 			t.Parallel()
-			c := StartBlockGenerator(p, limiter.NoLimit)
+			c := StartBlockGenerator(p, NoLimit)
 
 			for i := 0; i < 5; i++ {
 				block := <-c.BlockQueue
@@ -190,7 +189,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	p := defaultProfile(1)
 	p.Conflicts.InvalidSignatures = 0.2
 
-	c := StartTxGenerator(p, limiter.NoLimit)
+	c := StartTxGenerator(p, NoLimit)
 	txs := c.NextN(1e3)
 	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
 		if !c.Signer.Verify(<-c.TxQueue) {
@@ -232,7 +231,7 @@ func TestGenDependentTx(t *testing.T) {
 		},
 	}
 
-	c := StartTxGenerator(p, limiter.NoLimit)
+	c := StartTxGenerator(p, NoLimit)
 
 	txs := c.NextN(1e6)
 	m := make(map[string]uint64)
@@ -262,7 +261,7 @@ func TestBlindWriteWithValue(t *testing.T) {
 	p.Transaction.BlindWriteValueSize = 32
 	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
 
-	c := StartTxGenerator(p, limiter.NoLimit)
+	c := StartTxGenerator(p, NoLimit)
 	tx := <-c.TxQueue
 	require.Len(t, tx.Namespaces[0].BlindWrites, 2)
 	for _, v := range tx.Namespaces[0].BlindWrites {

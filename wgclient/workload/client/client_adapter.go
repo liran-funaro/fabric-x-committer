@@ -13,11 +13,11 @@ import (
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	"go.uber.org/ratelimit"
 )
@@ -33,7 +33,7 @@ type CoordinatorAdapter struct {
 	rateLimiter      ratelimit.Limiter
 }
 
-func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *limiter.Config) *CoordinatorAdapter {
+func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *loadgen.LimiterConfig) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
 	logger.Infof("Connect to coordinator on %v.\n", &endpoint)
@@ -46,7 +46,7 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *lim
 	return &CoordinatorAdapter{
 		client:      client,
 		ctx:         ctx,
-		rateLimiter: limiter.New(rateLimiterConfig),
+		rateLimiter: loadgen.NewLimiter(rateLimiterConfig),
 		ctxCancel:   streamCancel,
 	}
 }

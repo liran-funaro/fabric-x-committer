@@ -1,4 +1,4 @@
-package main
+package loadgen
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -32,7 +31,7 @@ func newSVClient(config *SVClientConfig, metrics *perfMetrics) blockGenClient {
 	}
 }
 
-func (c *svClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *svClient) Start(blockGen *BlockStreamGenerator) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
@@ -68,7 +67,7 @@ func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamCli
 	}
 }
 
-func (c *svClient) startSending(blockGen *loadgen.BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient) error {
+func (c *svClient) startSending(blockGen *BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d", block.Number)
 		return stream.Send(mapVSBatch(block))

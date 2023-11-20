@@ -1,4 +1,4 @@
-package main
+package loadgen
 
 import (
 	"fmt"
@@ -94,7 +94,7 @@ func tempFile(t *testing.T, filename string) string {
 
 func startLoadGenerator(t *testing.T, c *ClientConfig) *perfMetrics {
 	logger.Debugf("Starting load generator with config: %v", c)
-	metrics, blockGen, client, err := BlockgenStarter(c)
+	metrics, blockGen, client, err := Starter(c)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, metrics.provider.StopServer())

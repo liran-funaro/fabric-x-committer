@@ -1,20 +1,18 @@
-package main
+package loadgen
 
 import (
+	"log"
+
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
-var logger = logging.New("load-generator")
-
 type blockGenClient interface {
-	Start(*loadgen.BlockStreamGenerator) error
+	Start(*BlockStreamGenerator) error
 	Stop()
 }
 
@@ -64,4 +62,23 @@ func (c *loadGenClient) startSending(queue <-chan *protoblocktx.Block, stream gr
 			c.tracker.OnSendBlock(block)
 		}
 	}
+}
+
+func Starter(c *ClientConfig) (*perfMetrics, *BlockStreamGenerator, blockGenClient, error) {
+	client, metrics, err := createClient(c)
+	if err != nil {
+		return nil, nil, nil, errors.Wrap(err, "failed creating client")
+	}
+
+	promErrChan := metrics.provider.StartPrometheusServer()
+
+	go func() {
+		if errProm := <-promErrChan; errProm != nil {
+			log.Panic(err) // nolint: revive
+		}
+	}()
+
+	blockGen := StartBlockGenerator(c.LoadProfile, c.RateLimit)
+
+	return metrics, blockGen, client, nil
 }

@@ -1,12 +1,10 @@
-package main
+package loadgen
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 type ClientConfig struct {
@@ -17,8 +15,8 @@ type ClientConfig struct {
 	OrdererClient     *OrdererClientConfig     `mapstructure:"orderer-client"`
 
 	Monitoring  *monitoring.Config `mapstructure:"monitoring"`
-	RateLimit   limiter.Config     `mapstructure:"rate-limit"`
-	LoadProfile *loadgen.Profile   `mapstructure:"load-profile"`
+	RateLimit   LimiterConfig      `mapstructure:"rate-limit"`
+	LoadProfile *Profile           `mapstructure:"load-profile"`
 }
 
 type SidecarClientConfig struct {
@@ -46,13 +44,6 @@ type VCClientConfig struct {
 
 type SVClientConfig struct {
 	Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
-}
-
-func readConfig(path string) (*ClientConfig, error) {
-	if err := config.ReadYamlConfigs([]string{path}); err != nil {
-		return nil, err
-	}
-	return ReadConfig(), nil
 }
 
 func ReadConfig() *ClientConfig {

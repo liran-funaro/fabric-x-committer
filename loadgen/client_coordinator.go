@@ -1,4 +1,4 @@
-package main
+package loadgen
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -32,7 +31,7 @@ func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics)
 	}
 }
 
-func (c *coordinatorClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
 	conn, err := connection.Connect(connection.NewDialConfig(*c.config.Endpoint))
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint.String())

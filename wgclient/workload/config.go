@@ -2,10 +2,10 @@ package workload
 
 import (
 	"github.com/spf13/viper"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 //type GeneratorLimitsConfig struct {
@@ -19,10 +19,10 @@ type GeneratorConfig struct {
 }
 
 type BlockgenStreamConfig struct {
-	Monitoring               monitoring.Config   `mapstructure:"monitoring"`
-	Endpoint                 connection.Endpoint `mapstructure:"endpoint"`
-	Generator                GeneratorConfig     `mapstructure:"generator"`
-	RemoteControllerListener *limiter.Config     `mapstructure:"remote-controller-listener"`
+	Monitoring               monitoring.Config      `mapstructure:"monitoring"`
+	Endpoint                 connection.Endpoint    `mapstructure:"endpoint"`
+	Generator                GeneratorConfig        `mapstructure:"generator"`
+	RemoteControllerListener *loadgen.LimiterConfig `mapstructure:"remote-controller-listener"`
 }
 
 func ReadConfig(filepaths []string) BlockgenStreamConfig {

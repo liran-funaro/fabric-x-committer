@@ -5,7 +5,6 @@ import (
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 )
 
 type (
@@ -23,7 +22,7 @@ type (
 )
 
 // StartTxGenerator starts workers that generates TXs into a queue.
-func StartTxGenerator(profile *Profile, limiterConfig limiter.Config) *TxStreamGenerator {
+func StartTxGenerator(profile *Profile, limiterConfig LimiterConfig) *TxStreamGenerator {
 	seedRnd := rand.New(rand.NewSource(profile.Seed))
 	logger.Debugf("Starting %d workers to generate load", profile.TxGenWorkers)
 
@@ -49,7 +48,7 @@ func StartTxGenerator(profile *Profile, limiterConfig limiter.Config) *TxStreamG
 
 	txQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	signer := NewTxSignerVerifier(&profile.Transaction.Signature)
-	rateLimiter := limiter.New(&limiterConfig)
+	rateLimiter := NewLimiter(&limiterConfig)
 	for i := uint32(0); i < Max(profile.TxSignWorkers, 1); i++ {
 		txGen := newSignTxDecorator(workerRnd(seedRnd), depTxQueue, signer, profile)
 		go func() {
@@ -76,7 +75,7 @@ func (txGen *TxStreamGenerator) NextN(num int) []*protoblocktx.Tx {
 }
 
 // StartBlockGenerator starts workers that generates blocks into a queue.
-func StartBlockGenerator(profile *Profile, limiterConfig limiter.Config) *BlockStreamGenerator {
+func StartBlockGenerator(profile *Profile, limiterConfig LimiterConfig) *BlockStreamGenerator {
 	p, _ := json.Marshal(profile)
 	logger.Infof("Profile passed: %s", string(p))
 	txGen := StartTxGenerator(profile, limiterConfig)

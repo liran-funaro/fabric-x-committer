@@ -1,4 +1,4 @@
-package main
+package loadgen
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -31,7 +30,7 @@ func newVCClient(config *VCClientConfig, metrics *perfMetrics) blockGenClient {
 	}
 }
 
-func (c *vcClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *vcClient) Start(blockGen *BlockStreamGenerator) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
@@ -67,7 +66,7 @@ func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitServi
 	}
 }
 
-func (c *vcClient) startSending(blockGen *loadgen.BlockStreamGenerator, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
+func (c *vcClient) startSending(blockGen *BlockStreamGenerator, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		return stream.Send(mapVCBatch(block))

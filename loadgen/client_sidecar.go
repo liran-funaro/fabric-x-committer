@@ -1,4 +1,4 @@
-package main
+package loadgen
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -77,7 +76,7 @@ func (c *sidecarClient) Stop() {
 	c.loadGenClient.Stop()
 }
 
-func (c *sidecarClient) Start(blockGen *loadgen.BlockStreamGenerator) error {
+func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
 
 	if _, err := c.coordinatorClient.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()}); err != nil {
 		return errors.Wrap(err, "failed connecting to coordinator")
@@ -114,7 +113,7 @@ func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient
 	}
 }
 
-func (c *sidecarClient) startSending(blockGen *loadgen.BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient) error {
+func (c *sidecarClient) startSending(blockGen *BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		for _, tx := range block.Txs {

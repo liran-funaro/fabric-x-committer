@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 )
 
 var configPath string
@@ -56,11 +56,11 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Starts a blockgen",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := readConfig(configPath)
-			if err != nil {
-				return errors.Wrap(err, "failed to read config")
+			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+				return errors.Wrapf(err, "failed to read config path %s", configPath)
 			}
-			if _, blockGen, client, err := BlockgenStarter(c); err != nil {
+			clientConfig := loadgen.ReadConfig()
+			if _, blockGen, client, err := loadgen.Starter(clientConfig); err != nil {
 				return err
 			} else {
 				return client.Start(blockGen)
@@ -70,23 +70,4 @@ func startCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	return cmd
-}
-
-func BlockgenStarter(c *ClientConfig) (*perfMetrics, *loadgen.BlockStreamGenerator, blockGenClient, error) {
-	client, metrics, err := createClient(c)
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed creating client")
-	}
-
-	promErrChan := metrics.provider.StartPrometheusServer()
-
-	go func() {
-		if errProm := <-promErrChan; errProm != nil {
-			log.Panic(err) // nolint: revive
-		}
-	}()
-
-	blockGen := loadgen.StartBlockGenerator(c.LoadProfile, c.RateLimit)
-
-	return metrics, blockGen, client, nil
 }

@@ -8,13 +8,13 @@ import (
 
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/latency"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/limiter"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload"
 	_ "github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client/codec"
 	"google.golang.org/protobuf/proto"
@@ -79,7 +79,7 @@ func Validate(path string) {
 	workload.Validate(path)
 }
 
-func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string, rateLimiterConfig *limiter.Config) {
+func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string, rateLimiterConfig *loadgen.LimiterConfig) {
 	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), rateLimiterConfig)
 
 	utils.Must(cl.SetVerificationKey(serializedKey))

@@ -1,4 +1,4 @@
-package limiter
+package loadgen
 
 import (
 	"net/http"
@@ -6,18 +6,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"go.uber.org/ratelimit"
 )
 
-var logger = logging.New("ratelimiter")
-
-var NoLimit = Config{
+var NoLimit = LimiterConfig{
 	Endpoint:     connection.Endpoint{},
 	InitialLimit: -1,
 }
 
-type Config struct {
+type LimiterConfig struct {
 	Endpoint     connection.Endpoint `mapstructure:"endpoint"`
 	InitialLimit int                 `mapstructure:"initial-limit"`
 }
@@ -41,7 +38,7 @@ func getLimiter(limit int) ratelimit.Limiter {
 	}
 }
 
-func New(c *Config) ratelimit.Limiter {
+func NewLimiter(c *LimiterConfig) ratelimit.Limiter {
 	if c == nil || c.Endpoint.Empty() {
 		return ratelimit.NewUnlimited()
 	}
