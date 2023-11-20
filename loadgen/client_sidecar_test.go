@@ -69,7 +69,7 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	t.Cleanup(func() { require.NoError(t, service.Close()) })
 
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, service)
+		peer.RegisterDeliverServer(server, service.Ledger)
 	})
 	t.Cleanup(func() {
 		logger.Infof("cleaning up")

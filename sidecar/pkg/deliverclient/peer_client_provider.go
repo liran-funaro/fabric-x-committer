@@ -1,4 +1,4 @@
-package deliver
+package deliverclient
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 type PeerDeliverClientProvider struct{}
 
-func (p *PeerDeliverClientProvider) DeliverClient(conn *grpc.ClientConn) (Client, error) {
+func (p *PeerDeliverClientProvider) DeliverClient(conn *grpc.ClientConn) (deliverStream, error) {
 	client, err := peer.NewDeliverClient(conn).Deliver(context.TODO())
 	if err != nil {
 		return nil, err

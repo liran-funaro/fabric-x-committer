@@ -1,4 +1,4 @@
-package ordererclient
+package broadcastclient
 
 import (
 	"context"
@@ -7,13 +7,41 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"google.golang.org/grpc"
 )
 
-var logger = logging.New("ordererclient")
+var logger = logging.New("broadcastclient")
 
-func OpenBroadcastStreams(connections []*grpc.ClientConn, ordererType utils.ConsensusType, parallelism int) ([]ab.AtomicBroadcast_BroadcastClient, error) {
+type Config struct {
+	Endpoints         []*connection.Endpoint               `mapstructure:"endpoints"`
+	ConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"connection-profile"`
+	SignedEnvelopes   bool                                 `mapstructure:"signed-envelopes"`
+	Type              utils.ConsensusType                  `mapstructure:"type"`
+	ChannelID         string                               `mapstructure:"channel-id"`
+	Parallelism       int                                  `mapstructure:"parallelism"`
+}
+
+func New(config Config) ([]ab.AtomicBroadcast_BroadcastClient, EnvelopeCreator, error) {
+	creds, signer := connection.GetOrdererConnectionCreds(config.ConnectionProfile)
+	connections, err := connection.OpenConnections(config.Endpoints, creds)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to open connections to orderers")
+	}
+	logger.Infof("Opened %d connections to %d orderers", len(connections), len(config.Endpoints))
+	streams, err := openClientStreams(connections, config.Type, config.Parallelism)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to open orderer streams")
+	}
+	logger.Infof("Created %d streams for %d %s orderers (parallelism: %d)", len(streams), len(connections), config.Type, config.Parallelism)
+
+	envelopeCreator := newEnvelopeCreator(config.ChannelID, signer, config.SignedEnvelopes)
+	logger.Info("Envelope creator created")
+	return streams, envelopeCreator, nil
+}
+
+func openClientStreams(connections []*grpc.ClientConn, ordererType utils.ConsensusType, parallelism int) ([]ab.AtomicBroadcast_BroadcastClient, error) {
 	if ordererType == utils.Bft && !areEndpointsUnique(connections) {
 		return nil, errors.New("bft only supports one connection per orderer")
 	}
@@ -71,7 +99,7 @@ func openBroadcastStreams(parallelism int, connections []*grpc.ClientConn) ([]ab
 	streams := make([]ab.AtomicBroadcast_BroadcastClient, parallelism)
 	errs := make([]error, parallelism)
 	for i := 0; i < parallelism; i++ {
-		streams[i], errs[i] = NewBroadcastStream(connections)
+		streams[i], errs[i] = newBroadcastStream(connections)
 	}
 	return streams, errs
 }

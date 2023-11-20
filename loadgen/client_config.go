@@ -1,7 +1,7 @@
 package loadgen
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -12,7 +12,6 @@ type ClientConfig struct {
 	CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
 	SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
 	SigVerifierClient *SVClientConfig          `mapstructure:"sig-verifier-client"`
-	OrdererClient     *OrdererClientConfig     `mapstructure:"orderer-client"`
 
 	Monitoring  *monitoring.Config `mapstructure:"monitoring"`
 	RateLimit   LimiterConfig      `mapstructure:"rate-limit"`
@@ -22,16 +21,7 @@ type ClientConfig struct {
 type SidecarClientConfig struct {
 	Endpoint    *connection.Endpoint     `mapstructure:"endpoint"`
 	Coordinator *CoordinatorClientConfig `mapstructure:"coordinator"`
-	Orderer     OrdererClientConfig      `mapstructure:"orderer"`
-}
-
-type OrdererClientConfig struct {
-	Endpoints         []*connection.Endpoint               `mapstructure:"endpoints"`
-	ConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"connection-profile"`
-	SignedEnvelopes   bool                                 `mapstructure:"signed-envelopes"`
-	Type              utils.ConsensusType                  `mapstructure:"type"`
-	ChannelID         string                               `mapstructure:"channel-id"`
-	Parallelism       int                                  `mapstructure:"parallelism"`
+	Orderer     broadcastclient.Config   `mapstructure:"orderer"`
 }
 
 type CoordinatorClientConfig struct {

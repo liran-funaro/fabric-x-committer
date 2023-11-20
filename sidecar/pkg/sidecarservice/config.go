@@ -4,27 +4,19 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/coordinatorclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type SidecarConfig struct {
-	Monitoring *monitoring.Config       `mapstructure:"monitoring"`
-	Server     *connection.ServerConfig `mapstructure:"server"`
-	Orderer    *OrdererClientConfig     `mapstructure:"orderer"`
-	Committer  *CommitterClientConfig   `mapstructure:"committer"`
-	Ledger     *LedgerConfig            `mapstructure:"ledger"`
-}
-
-type OrdererClientConfig struct {
-	ChannelID                string                               `mapstructure:"channel-id"`
-	Endpoint                 connection.Endpoint                  `mapstructure:"endpoint"`
-	OrdererConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
-	Reconnect                time.Duration                        `mapstructure:"reconnect"`
-}
-type CommitterClientConfig struct {
-	Endpoint connection.Endpoint `mapstructure:"endpoint"`
+	Monitoring *monitoring.Config        `mapstructure:"monitoring"`
+	Server     *connection.ServerConfig  `mapstructure:"server"`
+	Orderer    *deliverclient.Config     `mapstructure:"orderer"`
+	Committer  *coordinatorclient.Config `mapstructure:"committer"`
+	Ledger     *LedgerConfig             `mapstructure:"ledger"`
 }
 
 type LedgerConfig struct {

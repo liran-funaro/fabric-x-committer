@@ -52,12 +52,3 @@ func RegisterInterrupt(cancel context.CancelFunc) {
 		os.Exit(1)
 	}()
 }
-
-func ErrorUnlessStopped(stop <-chan any, err error) error {
-	select {
-	case <-stop:
-		return nil
-	default:
-		return err
-	}
-}

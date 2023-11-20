@@ -33,7 +33,7 @@ func main() {
 
 	go func() {
 		connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
-			peer.RegisterDeliverServer(server, service)
+			peer.RegisterDeliverServer(server, service.Ledger)
 		})
 	}()
 

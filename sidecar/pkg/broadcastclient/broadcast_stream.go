@@ -1,4 +1,4 @@
-package ordererclient
+package broadcastclient
 
 import (
 	"context"
@@ -18,13 +18,13 @@ type broadcastResponse = struct {
 	error
 }
 
-type BroadcastStream struct {
+type broadcastStream struct {
 	streams []ab.AtomicBroadcast_BroadcastClient
 	stop    chan any
 	rcv     chan *broadcastResponse
 }
 
-func NewBroadcastStream(connections []*grpc.ClientConn) (ab.AtomicBroadcast_BroadcastClient, error) {
+func newBroadcastStream(connections []*grpc.ClientConn) (ab.AtomicBroadcast_BroadcastClient, error) {
 	streams := make([]ab.AtomicBroadcast_BroadcastClient, len(connections))
 	errs := make([]error, len(connections))
 	for i, c := range connections {
@@ -51,12 +51,12 @@ func NewBroadcastStream(connections []*grpc.ClientConn) (ab.AtomicBroadcast_Broa
 		}(stream)
 	}
 
-	return &BroadcastStream{streams: streams, stop: stop, rcv: rcv}, nil
+	return &broadcastStream{streams: streams, stop: stop, rcv: rcv}, nil
 }
-func (s *BroadcastStream) Header() (metadata.MD, error) { panic("unimplemented") }
-func (s *BroadcastStream) Trailer() metadata.MD         { panic("unimplemented") }
+func (s *broadcastStream) Header() (metadata.MD, error) { panic("unimplemented") }
+func (s *broadcastStream) Trailer() metadata.MD         { panic("unimplemented") }
 
-func (s *BroadcastStream) broadcast(fn func(client ab.AtomicBroadcast_BroadcastClient) error) error {
+func (s *broadcastStream) broadcast(fn func(client ab.AtomicBroadcast_BroadcastClient) error) error {
 	errs := make([]error, len(s.streams))
 	for _, stream := range s.streams {
 		errs = append(errs, fn(stream))
@@ -64,7 +64,7 @@ func (s *BroadcastStream) broadcast(fn func(client ab.AtomicBroadcast_BroadcastC
 	return errors2.Join(errs...)
 }
 
-func (s *BroadcastStream) CloseSend() error {
+func (s *broadcastStream) CloseSend() error {
 	defer func() {
 		s.stop <- struct{}{}
 	}()
@@ -72,19 +72,19 @@ func (s *BroadcastStream) CloseSend() error {
 		return stream.CloseSend()
 	})
 }
-func (s *BroadcastStream) Context() context.Context { panic("unimplemented") }
-func (s *BroadcastStream) SendMsg(m interface{}) error {
+func (s *broadcastStream) Context() context.Context { panic("unimplemented") }
+func (s *broadcastStream) SendMsg(m interface{}) error {
 	return s.broadcast(func(stream ab.AtomicBroadcast_BroadcastClient) error {
 		return stream.SendMsg(m)
 	})
 }
-func (s *BroadcastStream) RecvMsg(m interface{}) error { panic("unimplemented") }
-func (s *BroadcastStream) Send(m *common.Envelope) error {
+func (s *broadcastStream) RecvMsg(m interface{}) error { panic("unimplemented") }
+func (s *broadcastStream) Send(m *common.Envelope) error {
 	return s.broadcast(func(stream ab.AtomicBroadcast_BroadcastClient) error {
 		return stream.Send(m)
 	})
 }
-func (s *BroadcastStream) Recv() (*ab.BroadcastResponse, error) {
+func (s *broadcastStream) Recv() (*ab.BroadcastResponse, error) {
 	rcv := <-s.rcv
 	return rcv.BroadcastResponse, rcv.error
 }

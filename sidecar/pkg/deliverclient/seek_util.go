@@ -1,4 +1,4 @@
-package deliver
+package deliverclient
 
 import (
 	"flag"
@@ -22,7 +22,7 @@ var (
 	maxStop = &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: math.MaxUint64}}}
 )
 
-func SeekSince(startBlockNumber int64, channelID string, signer identity.SignerSerializer) *common.Envelope {
+func seekSince(startBlockNumber int64, channelID string, signer identity.SignerSerializer) *common.Envelope {
 	env, err := protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
 		Start:    seekPosition(startBlockNumber),
 		Stop:     maxStop,

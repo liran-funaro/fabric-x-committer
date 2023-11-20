@@ -1,4 +1,4 @@
-package ordererclient
+package broadcastclient
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -24,7 +24,7 @@ type envelopeCreator struct {
 	signed      bool
 }
 
-func NewEnvelopeCreator(channelID string, signer identity.SignerSerializer, signedEnvelopes bool) *envelopeCreator {
+func newEnvelopeCreator(channelID string, signer identity.SignerSerializer, signedEnvelopes bool) *envelopeCreator {
 	if !signedEnvelopes {
 		logger.Infof("No-op signer chosen.\n")
 		signer = &noOpSigner{}

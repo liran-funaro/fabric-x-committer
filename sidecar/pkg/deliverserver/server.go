@@ -1,4 +1,4 @@
-package ledger
+package deliverserver
 
 import (
 	"io"
@@ -20,7 +20,12 @@ import (
 
 var logger = logging.New("ledger")
 
-type LedgerDeliverServer struct {
+type Server interface {
+	peer.DeliverServer
+	Input() chan<- *common.Block
+}
+
+type ledgerServer struct {
 	ab.UnimplementedAtomicBroadcastServer
 	mu        *sync.RWMutex
 	input     chan *common.Block
@@ -28,13 +33,13 @@ type LedgerDeliverServer struct {
 	channelId string
 }
 
-func NewLedgerDeliverServer(channelId, ledgerDir string) *LedgerDeliverServer {
+func New(channelId, ledgerDir string) *ledgerServer {
 	logger.Infof("Create ledger files for channel %s under %s", channelId, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	utils.Must(err)
 	ledger, err := factory.GetOrCreate(channelId)
 	utils.Must(err)
-	srv := &LedgerDeliverServer{
+	srv := &ledgerServer{
 		mu:        &sync.RWMutex{},
 		input:     make(chan *common.Block, 100),
 		ledger:    ledger,
@@ -51,11 +56,11 @@ func NewLedgerDeliverServer(channelId, ledgerDir string) *LedgerDeliverServer {
 	return srv
 }
 
-func (i *LedgerDeliverServer) Input() chan<- *common.Block {
+func (i *ledgerServer) Input() chan<- *common.Block {
 	return i.input
 }
 
-func (i *LedgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
+func (i *ledgerServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
 	logger.Infof("Starting new deliver loop for %s", addr)
 	for {
@@ -90,17 +95,17 @@ func (i *LedgerDeliverServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	}
 }
 
-func (i *LedgerDeliverServer) DeliverFiltered(server peer.Deliver_DeliverFilteredServer) error {
+func (i *ledgerServer) DeliverFiltered(server peer.Deliver_DeliverFilteredServer) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (i *LedgerDeliverServer) DeliverWithPrivateData(server peer.Deliver_DeliverWithPrivateDataServer) error {
+func (i *ledgerServer) DeliverWithPrivateData(server peer.Deliver_DeliverWithPrivateDataServer) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (i *LedgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
+func (i *ledgerServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
 
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
@@ -138,7 +143,7 @@ func (i *LedgerDeliverServer) deliverBlocks(srv peer.Deliver_DeliverServer, enve
 	return common.Status_SUCCESS, nil
 }
 
-func (i *LedgerDeliverServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
+func (i *ledgerServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
 	seekInfo := &ab.SeekInfo{}
 	if err := proto.Unmarshal(payload, seekInfo); err != nil {
 		return nil, 0, errors.New("malformed seekInfo payload")
