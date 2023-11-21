@@ -18,9 +18,10 @@ before_install:
   - docker pull yugabytedb/yugabyte:2.19.3.0-b140
 
 script:
+  - git fetch origin main:main
   - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
   - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
   - PATH="$HOME/bin:$PATH" make protos-blocktx
   - git diff | tee /dev/stderr | [ $(wc -c) -eq 0 ]
-#  - make lint #TODO: AF Re-enable
+  - make lint
   - make test
