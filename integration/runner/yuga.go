@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -21,7 +20,7 @@ import (
 
 const (
 	// DefaultImage TODO: update to LTS/STS (v2.20) once the docker is released.
-	DefaultImage               = "yugabytedb/yugabyte:2.19.0.0-b190"
+	DefaultImage               = "yugabytedb/yugabyte:2.19.3.0-b140"
 	DefaultUsername            = "yugabyte"
 	DefaultPassword            = "yugabyte"
 	DefaultSSLMode             = "disable"
@@ -30,11 +29,6 @@ const (
 	DefaultHostIP              = "127.0.0.1"
 	DefaultStartTimeout        = time.Minute
 	DefaultContainerNamePrefix = "yugabyte-"
-
-	// fixedYugabytedURL Travis CI VM have an old kernel without the path `/sys/kernel/mm/transparent_hugepage/enabled`.
-	// This crashes the Yugabyte initiation script in the current docker version.
-	// The latest yugabyted script overcome this issue, but it is not released as a docker yet.
-	fixedYugabytedURL = "https://raw.githubusercontent.com/yugabyte/yugabyte-db/961042a/bin/yugabyted"
 )
 
 var (
@@ -45,12 +39,6 @@ var (
 		"--fault_tolerance", "none",
 		"--background", "false",
 		"--insecure",
-	}
-
-	// workaroundYugabyteCMD Downloads the fixed scripts before running it.
-	workaroundYugabyteCMD = []string{
-		"sh", "-c",
-		fmt.Sprintf("curl -s '%s' > bin/yugabyted; %s", fixedYugabytedURL, strings.Join(yugabyteCMD, " ")),
 	}
 
 	// ErrStopped is the error returned by Wait() or Stop() when the process is stopped via Stop().
@@ -256,8 +244,7 @@ func (y *YugabyteDB) runInternal() error {
 				Env: []string{
 					fmt.Sprintf("_creator=%s", y.creator),
 				},
-				// TODO: use yugabyteCMD when a new docker image is released
-				Cmd: workaroundYugabyteCMD,
+				Cmd: yugabyteCMD,
 			},
 			HostConfig: &docker.HostConfig{
 				AutoRemove: true,
