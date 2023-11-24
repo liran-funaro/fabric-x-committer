@@ -2,13 +2,13 @@ package config
 
 import (
 	"flag"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 // ParseFlags parses the flags and adds some default flags to the main.go,
@@ -36,7 +36,6 @@ func ParseFlagsWithoutConfig() {
 
 func ServerConfig(component string) {
 	String("server", component+".server.endpoint", "Where the server listens for incoming connections")
-	Bool("latency-endpoint", component+".monitoring.latency.endpoint", "Where jaeger listens for incoming connections")
 	String("metrics-endpoint", component+".monitoring.metrics.endpoint", "Where prometheus listens for incoming connections")
 }
 

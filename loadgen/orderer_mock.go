@@ -10,6 +10,7 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
@@ -36,6 +37,22 @@ func (o *MockOrderer) Close() {
 	close(o.stop)
 }
 
+func marshal(m proto.Message) []byte {
+	bytes, err := proto.Marshal(m)
+	utils.Must(err)
+	return bytes
+}
+
+var configTx = marshal(&common.Envelope{
+	Payload: marshal(&common.Payload{
+		Header: &common.Header{
+			ChannelHeader: marshal(&common.ChannelHeader{
+				Type: int32(common.HeaderType_CONFIG),
+			}),
+		},
+	}),
+})
+
 func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, timeout time.Duration) <-chan *common.Block {
 	logger.Debugf("Start cutting blocks")
 	outBlocks := make(chan *common.Block, capacity)
@@ -43,7 +60,7 @@ func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, timeout time.Du
 		Header: &common.BlockHeader{
 			Number: 0,
 		},
-		Data: &common.BlockData{Data: [][]byte{}},
+		Data: &common.BlockData{Data: [][]byte{configTx}},
 	}
 	outBlocks <- prevBlock
 	logger.Debugf("Cut debug block")

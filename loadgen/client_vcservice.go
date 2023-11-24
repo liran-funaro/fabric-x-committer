@@ -19,13 +19,11 @@ type vcClient struct {
 }
 
 func newVCClient(config *VCClientConfig, metrics *perfMetrics) blockGenClient {
-	tracker := newVCTracker(metrics)
 	return &vcClient{
 		loadGenClient: &loadGenClient{
-			tracker:    tracker,
 			stopSender: make(chan any, len(config.Endpoints)),
 		},
-		tracker: tracker,
+		tracker: newVCTracker(metrics),
 		config:  config,
 	}
 }
@@ -69,7 +67,9 @@ func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitServi
 func (c *vcClient) startSending(blockGen *BlockStreamGenerator, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
-		return stream.Send(mapVCBatch(block))
+		err := stream.Send(mapVCBatch(block))
+		c.tracker.OnSendBlock(block)
+		return err
 	})
 }
 

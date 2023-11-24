@@ -20,13 +20,11 @@ type coordinatorClient struct {
 }
 
 func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics) blockGenClient {
-	tracker := newCoordinatorTracker(metrics)
 	return &coordinatorClient{
 		loadGenClient: &loadGenClient{
-			tracker:    tracker,
 			stopSender: make(chan any),
 		},
-		tracker: tracker,
+		tracker: newCoordinatorTracker(metrics),
 		config:  config,
 	}
 }
@@ -45,7 +43,11 @@ func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
 
 	errChan := make(chan error)
 	go func() {
-		errChan <- c.loadGenClient.startSending(blockGen.BlockQueue, stream, stream.Send)
+		errChan <- c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+			err := stream.Send(block)
+			c.tracker.OnSendBlock(block)
+			return err
+		})
 	}()
 	go func() {
 		errChan <- c.startReceiving(stream)

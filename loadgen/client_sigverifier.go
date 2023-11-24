@@ -20,13 +20,11 @@ type svClient struct {
 }
 
 func newSVClient(config *SVClientConfig, metrics *perfMetrics) blockGenClient {
-	tracker := newSVTracker(metrics)
 	return &svClient{
 		loadGenClient: &loadGenClient{
-			tracker:    tracker,
 			stopSender: make(chan any, len(config.Endpoints)),
 		},
-		tracker: tracker,
+		tracker: newSVTracker(metrics),
 		config:  config,
 	}
 }
@@ -70,7 +68,9 @@ func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamCli
 func (c *svClient) startSending(blockGen *BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d", block.Number)
-		return stream.Send(mapVSBatch(block))
+		err := stream.Send(mapVSBatch(block))
+		c.tracker.OnSendBlock(block)
+		return err
 	})
 }
 

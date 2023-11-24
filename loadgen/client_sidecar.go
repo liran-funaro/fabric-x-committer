@@ -51,13 +51,11 @@ func newSidecarClient(config *SidecarClientConfig, metrics *perfMetrics) blockGe
 		panic(errors.Wrap(err, "failed to create orderer clients"))
 	}
 
-	tracker := newSidecarTracker(metrics)
 	return &sidecarClient{
 		loadGenClient: &loadGenClient{
-			tracker:    tracker,
 			stopSender: make(chan any),
 		},
-		tracker:         tracker,
+		tracker:         newSidecarTracker(metrics),
 		coordinator:     coordinatorClient,
 		sidecar:         listener,
 		orderers:        broadcastClients,
@@ -112,10 +110,11 @@ func (c *sidecarClient) startSending(blockGen *BlockStreamGenerator, stream ab.A
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		for _, tx := range block.Txs {
-			env, _, _ := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+			env, txID, _ := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
 			if err := stream.Send(env); err != nil {
 				return errors.Wrapf(err, "failed sending block %d", block.Number)
 			}
+			c.tracker.OnSendTransaction(txID)
 		}
 		return nil
 	})
@@ -134,10 +133,9 @@ func (t *sidecarTracker) OnReceiveSidecarBlock(block *common.Block) {
 	logger.Infof("Received block [%d:%d] with %d status codes", block.Header.Number, len(block.Data.Data), len(statusCodes))
 
 	for i, data := range block.Data.Data {
-		if payload, _, err := serialization.UnwrapEnvelope(data); err == nil {
-			if tx, err := aggregator.UnmarshalTx(payload); err == nil {
-				t.OnReceiveTransaction(tx.Id, aggregator.StatusInverseMap[statusCodes[i]] == protoblocktx.Status_COMMITTED)
-			}
+		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {
+			t.OnReceiveTransaction(
+				channelHeader.TxId, aggregator.StatusInverseMap[statusCodes[i]] == protoblocktx.Status_COMMITTED)
 		}
 	}
 }
