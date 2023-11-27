@@ -62,7 +62,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 	logger.Debugf("DB source: %s", config.DataSourceName())
 	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed parsing datasource: %w", err)
 	}
 
 	poolConfig.MaxConns = config.MaxConnections
@@ -71,7 +71,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {
 		logger.Errorf("Failed making pool: %s", err)
-		return nil, err
+		return nil, fmt.Errorf("failed making pool: %w", err)
 	}
 	logger.Debugf("DB pool created")
 

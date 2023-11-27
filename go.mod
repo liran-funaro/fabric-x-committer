@@ -28,7 +28,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
 	github.com/tedsuo/ifrit v0.0.0-20230330192023-5cba443a66c4
-	github.com/yugabyte/pgx/v4 v4.14.7
+	github.com/yugabyte/pgx/v4 v4.14.8
 	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token v0.0.0-20230816145809-db87808f9e04
 	github.ibm.com/decentralized-trust-research/scalable-committer/utils v0.0.0-20230816145809-db87808f9e04
 	go.opentelemetry.io/otel v1.11.2

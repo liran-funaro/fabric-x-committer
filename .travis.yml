@@ -15,7 +15,7 @@ before_install:
   - go install golang.org/x/tools/cmd/goimports@latest
   - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.53.3
   # We pull the docker image before the tests to avoid timeouts in the test due to slow download time
-  - docker pull yugabytedb/yugabyte:2.19.3.0-b140
+  - docker pull yugabytedb/yugabyte:2.20.0.0-b76
 
 script:
   - git fetch origin main:main

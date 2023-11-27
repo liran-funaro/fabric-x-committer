@@ -19,16 +19,15 @@ import (
 )
 
 const (
-	// DefaultImage TODO: update to LTS/STS (v2.20) once the docker is released.
-	DefaultImage               = "yugabytedb/yugabyte:2.19.3.0-b140"
-	DefaultUsername            = "yugabyte"
-	DefaultPassword            = "yugabyte"
-	DefaultSSLMode             = "disable"
-	DefaultConnectionTimeout   = time.Second
-	DefaultYugabyteDBPort      = "5433/tcp"
-	DefaultHostIP              = "127.0.0.1"
-	DefaultStartTimeout        = time.Minute
-	DefaultContainerNamePrefix = "yugabyte-"
+	defaultImage               = "yugabytedb/yugabyte:2.20.0.0-b76"
+	defaultUsername            = "yugabyte"
+	defaultPassword            = "yugabyte"
+	defaultSSLMode             = "disable"
+	defaultConnectionTimeout   = time.Second
+	defaultYugabyteDBPort      = "5433/tcp"
+	defaultHostIP              = "127.0.0.1"
+	defaultStartTimeout        = time.Minute
+	defaultContainerNamePrefix = "yugabyte-"
 )
 
 var (
@@ -77,10 +76,10 @@ func NewYugaConnectionSettings(host, port string) *YugaConnectionSettings {
 	return &YugaConnectionSettings{
 		Host:              host,
 		Port:              port,
-		User:              DefaultUsername,
-		Password:          DefaultPassword,
-		SSLMode:           DefaultSSLMode,
-		ConnectionTimeout: DefaultConnectionTimeout,
+		User:              defaultUsername,
+		Password:          defaultPassword,
+		SSLMode:           defaultSSLMode,
+		ConnectionTimeout: defaultConnectionTimeout,
 	}
 }
 
@@ -142,24 +141,24 @@ func (y *YugabyteDB) InitDefaults() {
 	}
 
 	if y.Image == "" {
-		y.Image = DefaultImage
+		y.Image = defaultImage
 	}
 
 	if y.Name == "" {
 		// The chance of a collision is low, so we can use lower cardinality for the name
-		y.Name = fmt.Sprintf("%s%s", DefaultContainerNamePrefix, uuid.NewString()[:8])
+		y.Name = fmt.Sprintf("%s%s", defaultContainerNamePrefix, uuid.NewString()[:8])
 	}
 
 	if y.HostIP == "" {
-		y.HostIP = DefaultHostIP
+		y.HostIP = defaultHostIP
 	}
 
 	if y.ContainerPort == "" {
-		y.ContainerPort = DefaultYugabyteDBPort
+		y.ContainerPort = defaultYugabyteDBPort
 	}
 
 	if y.StartTimeout == 0 {
-		y.StartTimeout = DefaultStartTimeout
+		y.StartTimeout = defaultStartTimeout
 	}
 }
 
