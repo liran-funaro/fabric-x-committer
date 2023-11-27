@@ -96,7 +96,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 }
 
 func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
-	if block == nil {
+	if block == nil || block.Data == nil || len(block.Data.Data) == 0 {
 		logger.Debugf("Nil block enqueued")
 		return nil
 	}
