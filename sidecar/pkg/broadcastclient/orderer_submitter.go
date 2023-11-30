@@ -85,7 +85,7 @@ func openStreams(connections []*grpc.ClientConn, parallelism int, ordererType ut
 
 func openSingleStreams(parallelism int, connections []*grpc.ClientConn) ([]ab.AtomicBroadcast_BroadcastClient, []error) {
 	streams := make([]ab.AtomicBroadcast_BroadcastClient, parallelism*len(connections))
-	errs := make([]error, parallelism)
+	errs := make([]error, parallelism*len(connections))
 	for i := 0; i < parallelism; i++ {
 		for j, conn := range connections {
 			idx := i*len(connections) + j
