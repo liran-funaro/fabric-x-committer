@@ -53,9 +53,6 @@ endif
 test: build
 	go test -v ./...
 
-test-container:
-	go test  -v ./... -run Test_StartAndQuery
-
 test-cover:
 	go test -v -coverprofile=coverage.profile ./...
 
@@ -67,6 +64,9 @@ cover-report:
 
 clean:
 	@rm -rf $(output_dir)
+
+kill-test-docker:
+	docker ps -aq -f name=sc_yugabyte_unit_tests | xargs docker rm -f
 
 #########################
 # Generate protos

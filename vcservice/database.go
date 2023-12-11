@@ -182,18 +182,29 @@ func (db *database) commitStatesByGroup(
 	tx pgx.Tx,
 	states *statesToBeCommitted,
 ) (namespaceToReads, []txID, error) {
+	mismatched, err := db.commitNewKeys(tx, states.newWrites)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
+	}
+
+	if !mismatched.empty() {
+		// Since a mismatch causes a rollback, we fail fast.
+		return mismatched, nil, nil
+	}
+
 	duplicated, err := db.commitTxStatus(ctx, tx, states.batchStatus)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err)
 	}
 
-	if err = db.commitUpdates(ctx, tx, states.updateWrites); err != nil {
-		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
+	if len(duplicated) > 0 {
+		// Since a duplicate ID causes a rollback, we fail fast.
+		return mismatched, duplicated, nil
 	}
 
-	mismatched, err := db.commitNewKeys(tx, states.newWrites)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
+	// Updates cannot have a mismatch because their versions are validated beforehand.
+	if err = db.commitUpdates(ctx, tx, states.updateWrites); err != nil {
+		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
 	}
 
 	return mismatched, duplicated, nil

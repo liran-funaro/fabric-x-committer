@@ -84,11 +84,13 @@ const commitUpdateFuncTemplate = `
 CREATE OR REPLACE FUNCTION commit_update_%[1]s(_keys BYTEA[], _values BYTEA[], _versions BYTEA[])
 RETURNS VOID AS $$
 BEGIN
-	INSERT INTO %[1]s (key, value, version)
-	SELECT _key, _value, _version
-	FROM UNNEST(_keys, _values, _versions) AS t(_key, _value, _version)
-		ON CONFLICT (key) DO UPDATE
-		SET value = excluded.value, version = excluded.version;
+    UPDATE %[1]s
+        SET value = t.value,
+            version = t.version
+    FROM (
+        SELECT * FROM UNNEST(_keys, _values, _versions) AS t(key, value, version)
+    ) AS t
+    WHERE %[1]s.key = t.key;
 END;
 $$ LANGUAGE plpgsql;
 `

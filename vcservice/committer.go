@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -27,10 +28,6 @@ type transactionCommitter struct {
 
 	wg sync.WaitGroup
 }
-
-// versionZero is used to indicate that the key is not found in the database and hence,
-// the version should be set to 0 for when the key is inserted into the database.
-var versionZero = versionNumber(0).bytes()
 
 // newCommitter creates a new transactionCommitter.
 func newCommitter(
@@ -60,7 +57,7 @@ func (c *transactionCommitter) commit() {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
-	// NOTE: Three retry is adequate for now. We can make it configurable in future.
+	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
 	maxRetryAttempt := 3
 	var attempts int
 	var txsStatus *protovcservice.TransactionStatus
@@ -112,15 +109,21 @@ func (c *transactionCommitter) commit() {
 func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
 ) (*protovcservice.TransactionStatus, error) {
-	for {
-		updateWrites, err := c.mergeWritesForCommit(vTx)
-		if err != nil {
-			return nil, err
-		}
+	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
+	if err := c.fillVersionForBlindWrites(vTx); err != nil {
+		return nil, err
+	}
+
+	// Theoretically, we can only retry twice. Once for attempting to insert existing keys, and once for attempting
+	// to reuse transaction IDs.
+	// However, we still limit the number of retries to some arbitrary number to avoid an endless loop due to a bug.
+	maxRetries := 1024
+	for i := 0; i < maxRetries; i++ {
+		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites: updateWrites,
-			batchStatus:  prepareStatusForCommit(vTx),
+			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
 			newWrites:    groupWritesByNamespace(vTx.newWrites),
+			batchStatus:  prepareStatusForCommit(vTx),
 		}
 
 		mismatch, duplicated, err := c.db.commit(info)
@@ -137,31 +140,9 @@ func (c *transactionCommitter) commitTransactions(
 		}
 		vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	}
-}
 
-func (c *transactionCommitter) mergeWritesForCommit(vTx *validatedTransactions) (namespaceToWrites, error) {
-	// Step 1: group the writes by namespace so that we can commit to each table independently
-	nsToBlindWrites := groupWritesByNamespace(vTx.validTxBlindWrites)
-	nsToNonBlindWrites := groupWritesByNamespace(vTx.validTxNonBlindWrites)
-
-	// Step 2: fill the version for the blind writes
-	err := c.fillVersionForBlindWrites(nsToBlindWrites)
-	if err != nil {
-		return nil, err
-	}
-
-	// Step 3: merge blind and non-blind writes
-	mergedWrites := make(namespaceToWrites)
-	for ns, writes := range nsToBlindWrites {
-		mergedWrites[ns] = writes
-	}
-
-	for ns, writes := range nsToNonBlindWrites {
-		nsWrites := mergedWrites.getOrCreate(ns)
-		nsWrites.appendMany(writes.keys, writes.values, writes.versions)
-	}
-
-	return mergedWrites, nil
+	// TODO: handle this case gracefully.
+	panic(fmt.Errorf("[BUG] commit failed after %d retries", maxRetries))
 }
 
 // prepareStatusForCommit construct transaction status.
@@ -184,30 +165,37 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.Transact
 	return txCommitStatus
 }
 
-func (c *transactionCommitter) fillVersionForBlindWrites(nsToWrites namespaceToWrites) error {
-	for nsID, writes := range nsToWrites {
+// fillVersionForBlindWrites fetches the current version of the blind-writes keys, and assigns them
+// to the appropriate category (new/update).
+func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransactions) error {
+	state := make(map[namespaceID]keyToVersion)
+	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance
-
-		// Step 1: get the committed version for each key in the writes.
 		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(nsID, writes.keys)
 		if err != nil {
 			return err
 		}
+		state[nsID] = versionOfPresentKeys
+	}
 
-		// Step 2: if the key is found in the database, use the committed version + 1 as the new version
-		//         otherwise, use version 0.
-		for i, key := range writes.keys {
-			ver, notPresent := versionOfPresentKeys[string(key)]
-			if !notPresent {
-				writes.versions[i] = versionZero
-				continue
+	// Place blind writes to the appropriate map (new/update)
+	for curTxID, txWrites := range vTx.validTxBlindWrites {
+		for ns, nsWrites := range txWrites {
+			nsState := state[ns]
+			for i, key := range nsWrites.keys {
+				if ver, present := nsState[string(key)]; present {
+					nextVer := (versionNumberFromBytes(ver) + 1).bytes()
+					vTx.validTxNonBlindWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nextVer)
+				} else {
+					vTx.newWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nil)
+				}
 			}
-
-			nextVer := versionNumberFromBytes(ver) + 1
-			writes.versions[i] = nextVer.bytes()
 		}
 	}
+
+	// Clear the blind writes map
+	vTx.validTxBlindWrites = make(transactionToWrites)
 
 	return nil
 }

@@ -110,6 +110,7 @@ func TestCommit(t *testing.T) {
 					},
 				},
 				validTxBlindWrites: transactionToWrites{},
+				newWrites:          transactionToWrites{},
 				invalidTxIndices:   map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
@@ -146,6 +147,7 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
+				newWrites:        transactionToWrites{},
 				invalidTxIndices: map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: &protovcservice.TransactionStatus{
@@ -201,6 +203,7 @@ func TestCommit(t *testing.T) {
 						},
 					},
 				},
+				newWrites: transactionToWrites{},
 				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -249,6 +252,7 @@ func TestCommit(t *testing.T) {
 					},
 				},
 				validTxBlindWrites: transactionToWrites{},
+				newWrites:          transactionToWrites{},
 				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -236,10 +237,26 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	_, _, err := dbEnv.db.commit(&statesToBeCommitted{updateWrites: nsToWrites})
+	_, _, err := dbEnv.db.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	require.NoError(t, err)
+
+	_, _, err = dbEnv.db.commit(&statesToBeCommitted{updateWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
+}
+
+func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
+	for nsID, writes := range nsToWrites {
+		_, err := env.db.pool.Exec(context.Background(), fmt.Sprintf(`
+			INSERT INTO %s (key, value, version)
+			SELECT _key, _value, _version
+			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
+			tableNameForNamespace(nsID)),
+			writes.keys, writes.values, writes.versions,
+		)
+		require.NoError(t, err)
+	}
 }
 
 func (env *databaseTestEnv) populateDataWithCleanup(
@@ -247,8 +264,9 @@ func (env *databaseTestEnv) populateDataWithCleanup(
 ) {
 	require.NoError(t, initDatabaseTables(env.db, nsIDs))
 
-	_, _, err := env.db.commit(&statesToBeCommitted{updateWrites: writes, batchStatus: batchStatus})
+	_, _, err := env.db.commit(&statesToBeCommitted{batchStatus: batchStatus})
 	require.NoError(t, err)
+	env.commitState(t, writes)
 
 	t.Cleanup(func() {
 		require.NoError(t, clearDatabaseTables(env.db, nsIDs))
@@ -278,10 +296,12 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRo
 	}
 
 	require.NoError(t, kvPairs.Err())
-	require.Equal(t, len(expectedRows.keys), len(actualRows))
+	assert.Equal(t, len(expectedRows.keys), len(actualRows))
 	for i, key := range expectedRows.keys {
-		require.Equal(t, expectedRows.values[i], actualRows[string(key)].value)
-		require.Equal(t, expectedRows.versions[i], actualRows[string(key)].version)
+		if assert.NotNil(t, actualRows[string(key)], "key: %s", string(key)) {
+			assert.Equal(t, expectedRows.values[i], actualRows[string(key)].value, "key: %s", string(key))
+			assert.Equal(t, expectedRows.versions[i], actualRows[string(key)].version, "key: %s", string(key))
+		}
 	}
 }
 
