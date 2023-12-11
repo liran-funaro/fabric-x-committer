@@ -7,13 +7,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 var configTemplate = `
@@ -33,7 +31,7 @@ validator-committer-service:
     port: %s
     username: %s
     password: %s
-    database: yugabyte
+    database: %s
     max-connections: 10
     min-connections: 1
     load-balance: false
@@ -57,17 +55,12 @@ const (
 )
 
 func TestVCServiceCmd(t *testing.T) {
-	dbRunner := &runner.YugabyteDB{}
-	require.NoError(t, dbRunner.Start())
-	t.Cleanup(func() {
-		require.NoError(t, dbRunner.Stop())
-	})
+	conn := yuga.PrepareYugaTestEnv(t)
 
 	tmpDir := t.TempDir()
 	outputPath := filepath.Clean(path.Join(tmpDir, "logger-output.txt"))
 	testConfigPath := filepath.Clean(path.Join(tmpDir, "test-config.yaml"))
-	conn := dbRunner.ConnectionSettings()
-	config := fmt.Sprintf(configTemplate, outputPath, conn.Host, conn.Port, conn.User, conn.Password)
+	config := fmt.Sprintf(configTemplate, outputPath, conn.Host, conn.Port, conn.User, conn.Password, conn.Database)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
 	test := []struct {
@@ -94,6 +87,14 @@ func TestVCServiceCmd(t *testing.T) {
 		// 	errStr:          "",
 		// 	err:             nil,
 		// },
+		{
+			name:            "clear the vcservice",
+			args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0,1"},
+			cmdStdOutput:    "Clearing database",
+			cmdLoggerOutput: "Table 'ns_1' is cleared",
+			errStr:          "",
+			err:             nil,
+		},
 		{
 			name:         "trailing args for start",
 			args:         []string{"start", "arg1", "arg2"},
@@ -135,25 +136,16 @@ func TestVCServiceCmd(t *testing.T) {
 			cmd.SetErr(cmdStdErr)
 			cmd.SetArgs(tc.args)
 
-			var err error
-			go func() {
-				err = cmd.Execute()
-			}()
-
-			require.Eventually(t, func() bool {
-				return strings.Contains(cmdStdOut.String(), tc.cmdStdOutput)
-			}, 4*time.Second, 100*time.Millisecond)
-
-			require.Eventually(t, func() bool {
-				logOut, errFile := os.ReadFile(outputPath)
-				if errFile != nil {
-					return false
-				}
-				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
-			}, 30*time.Second, 500*time.Millisecond)
-
-			require.Equal(t, tc.errStr, cmdStdErr.String())
+			err := cmd.Execute()
 			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.errStr, cmdStdErr.String())
+
+			require.Contains(t, cmdStdOut.String(), tc.cmdStdOutput)
+
+			logOut, errFile := os.ReadFile(outputPath)
+			require.NoError(t, errFile)
+			require.Contains(t, string(logOut), tc.cmdLoggerOutput)
+
 			require.NoError(t, os.Remove(outputPath))
 		})
 	}

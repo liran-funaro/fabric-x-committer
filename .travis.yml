@@ -1,9 +1,13 @@
 language: go
+arch: amd64
+virt: vm
+os: linux
+dist: focal
 go:
     - 1.20.3
 
-services:
-  - docker
+env:
+  - YUGA_INSTANCE=local
 
 cache:
     directories:
@@ -11,17 +15,21 @@ cache:
       - $HOME/gopath/pkg/mod         # Cache the Go modules
 
 before_install:
+  # Install dependencies
+  - scripts/get-and-start-yuga.sh
   - scripts/install-protobuf.sh
   - go install golang.org/x/tools/cmd/goimports@latest
   - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.53.3
-  # We pull the docker image before the tests to avoid timeouts in the test due to slow download time
-  - docker pull yugabytedb/yugabyte:2.20.0.0-b76
+  # Fetch main to only detect issues from changes to main
+  - git fetch origin main:main
+  # Apply formatting
+  - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+  - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+  - PATH="$HOME/bin:$PATH" make protos-blocktx
 
 script:
-  - git fetch origin main:main
-  - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
-  - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {}\; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
-  - PATH="$HOME/bin:$PATH" make protos-blocktx
+  # Check if original code changed due to formatting
   - git diff | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+  # Run lint and test
   - make lint
   - make test

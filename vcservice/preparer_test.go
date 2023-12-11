@@ -1,6 +1,7 @@
 package vcservice
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,10 +19,13 @@ func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	txBatch := make(chan *protovcservice.TransactionBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
-	preparer := newPreparer(txBatch, preparedTxs, metrics)
+	ctx, cancel := context.WithCancel(context.Background())
+	preparer := newPreparer(ctx, txBatch, preparedTxs, metrics)
 
 	t.Cleanup(func() {
+		cancel()
 		close(txBatch)
+		preparer.wg.Wait()
 		close(preparedTxs)
 	})
 

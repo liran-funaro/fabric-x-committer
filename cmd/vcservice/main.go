@@ -33,6 +33,7 @@ func vcserviceCmd() *cobra.Command {
 	cmd.AddCommand(versionCmd())
 	cmd.AddCommand(initCmd())
 	cmd.AddCommand(startCmd())
+	cmd.AddCommand(clearCmd())
 	return cmd
 }
 
@@ -75,6 +76,7 @@ func startCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer vc.Close()
 
 			connection.RunServerMain(vcConfig.Server, func(server *grpc.Server, port int) {
 				if vcConfig.Server.Endpoint.Port == 0 {
@@ -114,5 +116,32 @@ func initCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to initialize")
+	return cmd
+}
+
+func clearCmd() *cobra.Command {
+	var namespaces []int
+	cmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Clear the database",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if configPath == "" {
+				return errors.New("--configs flag must be set to the path of configuration file")
+			}
+
+			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+				return err
+			}
+			vcConfig := vcservice.ReadConfig()
+			cmd.SilenceUsage = true
+
+			cmd.Printf("Clearing database: %v\n", namespaces)
+
+			return vcservice.ClearDatabase(vcConfig.Database, namespaces)
+		},
+	}
+
+	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to clear")
 	return cmd
 }

@@ -2,13 +2,12 @@ package vcservice
 
 import (
 	"context"
-	"errors"
-	"io"
 	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
@@ -37,6 +36,8 @@ type ValidatorCommitterService struct {
 	promErrChan              <-chan error
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
+	ctx                      context.Context
+	ctxCancel                context.CancelFunc
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -66,10 +67,13 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	vc := &ValidatorCommitterService{
-		preparer:                 newPreparer(txBatch, preparedTxs, metrics),
-		validator:                newValidator(db, preparedTxs, validatedTxs, metrics),
-		committer:                newCommitter(db, validatedTxs, txsStatus, metrics),
+		ctx:                      ctx,
+		ctxCancel:                cancel,
+		preparer:                 newPreparer(ctx, txBatch, preparedTxs, metrics),
+		validator:                newValidator(ctx, db, preparedTxs, validatedTxs, metrics),
+		committer:                newCommitter(ctx, db, validatedTxs, txsStatus, metrics),
 		txBatchChan:              txBatch,
 		preparedTxsChan:          preparedTxs,
 		validatedTxsChan:         validatedTxs,
@@ -98,12 +102,14 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 func (vc *ValidatorCommitterService) monitorQueues() {
 	// TODO: make sampling time configurable
 	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
+		case <-vc.ctx.Done():
+			return
 		case <-ticker.C:
 		case err := <-vc.promErrChan:
 			// Once the prometheus server is stopped, we no longer need to monitor the queues.
-			ticker.Stop()
 			logger.Errorf("Prometheus ended with error: %s", err)
 			return
 		}
@@ -142,11 +148,6 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	return nil
 }
 
-// isStreamEndError detects error that are caused due a closed stream.
-func isStreamEndError(err error) bool {
-	return errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
 // receiveAndProcessTransactions receives transactions from the client, prepares them,
 // validates them and commits them to the database.
 func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
@@ -156,11 +157,23 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 	var mu sync.Mutex
 
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
+	defer timer.Stop()
 
 	sendLargeBatch := func() {
+		defer func() {
+			// If the context ended, then we don't care about the panic.
+			// Specifically, panic that resulted from a closed channel.
+			if vc.ctx.Err() != nil {
+				_ = recover()
+			}
+		}()
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
 		txs := largerBatch
-		vc.txBatchChan <- txs
+		select {
+		case <-vc.ctx.Done():
+			return
+		case vc.txBatchChan <- txs:
+		}
 		logger.Debugf("Send larger batch to preparer")
 		largerBatch = &protovcservice.TransactionBatch{}
 		timer.Reset(vc.timeoutForMinTxBatchSize)
@@ -168,7 +181,12 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 
 	go func() {
 		for {
-			<-timer.C
+			select {
+			case <-vc.ctx.Done():
+				return
+			case <-timer.C:
+			}
+
 			mu.Lock()
 			if len(largerBatch.GetTransactions()) > 0 {
 				sendLargeBatch()
@@ -177,14 +195,10 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 		}
 	}()
 
-	for {
+	for vc.ctx.Err() == nil {
 		txBatch, err := stream.Recv()
 		if err != nil {
-			logger.Error(err)
-			if isStreamEndError(err) {
-				return nil
-			}
-			return err
+			return connection.WrapStreamRpcError(err)
 		}
 		logger.Debugf("New batch with %d TXs received in vc. Large batch contains %d TXs and the minimum batch size is %d", len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions), vc.minTxBatchSize)
 
@@ -198,6 +212,8 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 		sendLargeBatch()
 		mu.Unlock()
 	}
+
+	return nil
 }
 
 // sendTransactionStatus sends the status of the transactions to the client.
@@ -223,11 +239,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 
 		err := stream.Send(txStatus)
 		if err != nil {
-			logger.Error(err)
-			if isStreamEndError(err) {
-				return nil
-			}
-			return err
+			return connection.WrapStreamRpcError(err)
 		}
 
 		committed := 0
@@ -251,22 +263,34 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 	}
 }
 
-func (vc *ValidatorCommitterService) close() {
+// Close stops the VC service and blocks until it is done.
+func (vc *ValidatorCommitterService) Close() {
+	vc.ctxCancel()
+
 	err := vc.metrics.provider.StopServer()
 	if err != nil {
 		logger.Errorf("Failed stopping prometheus server: %s", err)
 	}
 
-	logger.Info("Stopping the transaction preparer workers")
+	logger.Info("Closing VC service output channel")
 	close(vc.txBatchChan)
 
-	logger.Info("Stopping the transaction validator workers")
+	logger.Info("Waiting for preparer to finish")
+	vc.preparer.wg.Wait()
+
+	logger.Info("Closing preparer output channel")
 	close(vc.preparedTxsChan)
 
-	logger.Info("Stopping the transaction committer workers")
+	logger.Info("Waiting for validator to finish")
+	vc.validator.wg.Wait()
+
+	logger.Info("Closing validator output channel")
 	close(vc.validatedTxsChan)
 
-	logger.Info("Stopping the transaction status sender")
+	logger.Info("Waiting for committer to finish")
+	vc.committer.wg.Wait()
+
+	logger.Info("Closing committer output channel")
 	close(vc.txsStatusChan)
 
 	logger.Info("Closing the database connection")

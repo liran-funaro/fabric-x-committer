@@ -56,7 +56,7 @@ func (c *vcClient) Start(blockGen *BlockStreamGenerator) error {
 func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
 	for {
 		if response, err := stream.Recv(); err != nil {
-			return errors.Wrapf(err, "failed receiving")
+			return connection.WrapStreamRpcError(err)
 		} else {
 			logger.Debugf("Received batch with %d responses", len(response.Status))
 			c.tracker.OnReceiveVCBatch(response)

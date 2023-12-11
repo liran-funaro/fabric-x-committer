@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
@@ -55,7 +56,7 @@ func (c *loadGenClient) startSending(queue <-chan *protoblocktx.Block, stream gr
 				return nil
 			}
 			if err := send(block); err != nil {
-				return errors.Wrap(err, "failed sending")
+				return connection.WrapStreamRpcError(err)
 			}
 		}
 	}

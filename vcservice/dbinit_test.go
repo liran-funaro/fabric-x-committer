@@ -5,18 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 func Test_DbInit(t *testing.T) {
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
-
 	env := newDatabaseTestEnv(t)
 
 	ns := []int{0, 1, 2, 3}
@@ -30,6 +21,7 @@ func Test_DbInit(t *testing.T) {
 	// Validate default values
 	r, err := env.db.pool.Query(context.Background(), `select * from ns_0;`)
 	require.NoError(t, err)
+	defer r.Close()
 	for r.Next() {
 		var key, value, version []byte
 		require.NoError(t, r.Scan(&key, &value, &version))

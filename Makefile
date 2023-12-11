@@ -53,6 +53,9 @@ endif
 test: build
 	go test -v ./...
 
+test-container:
+	go test  -v ./... -run Test_StartAndQuery
+
 test-cover:
 	go test -v -coverprofile=coverage.profile ./...
 

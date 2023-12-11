@@ -29,7 +29,7 @@ logging:
 monitoring:
   metrics:
     enable: true
-    endpoint: :%d
+    endpoint: localhost:%d
     latency:
       sampler:
         type: timer
@@ -63,7 +63,7 @@ rate-limit:
   monitoring:
     metrics:
       enable: true
-      endpoint: :%d
+      endpoint: localhost:%d
       latency:
         sampler:
           type: timer
@@ -73,11 +73,11 @@ rate-limit:
           max-latency: 5s
           bucket-count: 1000
   server:
-    endpoint: :%d
+    endpoint: localhost:%d
 `
 )
 
-func loadConfig(t *testing.T, fileName string, template string, params ...interface{}) {
+func loadConfig(t *testing.T, fileName, template string, params ...any) {
 	conf := fmt.Sprintf(template, params...)
 	testConfigPath := tempFile(t, fileName)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(conf), 0o600))

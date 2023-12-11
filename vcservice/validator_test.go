@@ -1,6 +1,7 @@
 package vcservice
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,10 +21,13 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 
 	dbEnv := newDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
-	v := newValidator(dbEnv.db, preparedTxs, validatedTxs, metrics)
+	ctx, cancel := context.WithCancel(context.Background())
+	v := newValidator(ctx, dbEnv.db, preparedTxs, validatedTxs, metrics)
 
 	t.Cleanup(func() {
+		cancel()
 		close(preparedTxs)
+		v.wg.Wait()
 		close(validatedTxs)
 	})
 

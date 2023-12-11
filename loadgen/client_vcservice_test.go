@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 	"google.golang.org/grpc"
 )
 
@@ -22,9 +22,9 @@ validator-committer-service:` + serverTemplate + `
     port: %s
     username: %s
     password: %s
-    database: yugabyte
+    database: %s
     max-connections: 10
-    min-connections: 5
+    min-connections: 1
     load-balance: false
   resource-limits:
     max-workers-for-preparer: 2
@@ -41,17 +41,13 @@ vc-client:
 
 func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	// Start dependencies
-	dbRunner := &runner.YugabyteDB{}
-	require.NoError(t, dbRunner.Start())
-	conn := dbRunner.ConnectionSettings()
-	t.Cleanup(func() {
-		<-time.After(10 * time.Second)
-		require.NoError(t, dbRunner.Stop())
-	})
+	conn := yuga.PrepareYugaTestEnv(t)
 
 	for i := 0; i < 2; i++ {
 		// Start server under test
-		loadConfig(t, fmt.Sprintf("server-config-%d.yaml", i), vcServerTemplate, tempFile(t, fmt.Sprintf("server-log-%d.txt", i)), 10000+i, 9002+i, conn.Host, conn.Port, conn.User, conn.Password)
+		loadConfig(t, fmt.Sprintf("server-config-%d.yaml", i), vcServerTemplate,
+			tempFile(t, fmt.Sprintf("server-log-%d.txt", i)), 10000+i, 9002+i,
+			conn.Host, conn.Port, conn.User, conn.Password, conn.Database)
 		conf := vcservice.ReadConfig()
 
 		if i == 0 {
@@ -64,12 +60,16 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
-		t.Cleanup(func() { server.Stop() })
+		t.Cleanup(func() {
+			server.Stop()
+			service.Close()
+		})
 	}
 
 	// Start client
 	loadConfig(t, "client-config.yaml", vcClientTemplate, tempFile(t, "client-log.txt"), 2112, 9002, 9003)
 	metrics := startLoadGenerator(t, ReadConfig())
+	t.Logf("Load generator ended")
 
 	// Check results
 	test.CheckMetrics(t, &http.Client{}, metrics.provider.URL(), []string{
@@ -80,7 +80,7 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	})
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) > 0
-		//return test.GetMetricValue(t, metrics.transactionSentTotal) ==
+		// return test.GetMetricValue(t, metrics.transactionSentTotal) ==
 		//	test.GetMetricValue(t, metrics.transactionReceivedTotal)
 	}, 20*time.Second, 500*time.Millisecond)
 }

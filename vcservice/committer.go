@@ -1,6 +1,8 @@
 package vcservice
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -10,6 +12,8 @@ import (
 
 // transactionCommitter is responsible for committing the transactions.
 type transactionCommitter struct {
+	ctx context.Context
+
 	// db is a handler for the state database holding all the committed states
 	db *database
 	// incomingValidatedTransactions is the channel from which the committer receives the validated transactions
@@ -20,6 +24,8 @@ type transactionCommitter struct {
 	outgoingTransactionsStatus chan<- *protovcservice.TransactionStatus
 
 	metrics *perfMetrics
+
+	wg sync.WaitGroup
 }
 
 // versionZero is used to indicate that the key is not found in the database and hence,
@@ -28,6 +34,7 @@ var versionZero = versionNumber(0).bytes()
 
 // newCommitter creates a new transactionCommitter.
 func newCommitter(
+	ctx context.Context,
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *protovcservice.TransactionStatus,
@@ -35,6 +42,7 @@ func newCommitter(
 ) *transactionCommitter {
 	logger.Debugf("Creating committer")
 	return &transactionCommitter{
+		ctx:                           ctx,
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
 		outgoingTransactionsStatus:    txsStatus,
@@ -49,13 +57,26 @@ func (c *transactionCommitter) start(numWorkers int) {
 }
 
 func (c *transactionCommitter) commit() {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
 	// NOTE: Three retry is adequate for now. We can make it configurable in future.
 	maxRetryAttempt := 3
 	var attempts int
 	var txsStatus *protovcservice.TransactionStatus
 	var err error
 
-	for vTx := range c.incomingValidatedTransactions {
+	var vTx *validatedTransactions
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case vTx = <-c.incomingValidatedTransactions:
+			if vTx == nil {
+				return
+			}
+		}
+
 		logger.Debugf("Batch of validated TXs in the committer")
 		start := time.Now()
 		for attempts = 0; attempts < maxRetryAttempt; attempts++ {
@@ -79,7 +100,11 @@ func (c *transactionCommitter) commit() {
 		}
 
 		prometheusmetrics.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
-		c.outgoingTransactionsStatus <- txsStatus
+		select {
+		case <-c.ctx.Done():
+			return
+		case c.outgoingTransactionsStatus <- txsStatus:
+		}
 		logger.Debugf("Batch of TXs sent from the committer to the output")
 	}
 }

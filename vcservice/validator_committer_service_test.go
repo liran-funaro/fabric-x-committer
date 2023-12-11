@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -28,10 +27,6 @@ type validatorAndCommitterServiceTestEnv struct {
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
 	dbEnv := newDatabaseTestEnv(t)
 
-	dbConnSettings := dbEnv.dbRunner.ConnectionSettings()
-	port, err := strconv.Atoi(dbConnSettings.Port)
-	require.NoError(t, err)
-
 	config := &ValidatorCommitterServiceConfig{
 		Server: &connection.ServerConfig{
 			Endpoint: connection.Endpoint{
@@ -39,14 +34,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 				Port: 0,
 			},
 		},
-		Database: &DatabaseConfig{
-			Host:           dbConnSettings.Host,
-			Port:           port,
-			Username:       dbConnSettings.User,
-			Password:       dbConnSettings.Password,
-			MaxConnections: 20,
-			MinConnections: 10,
-		},
+		Database: dbEnv.dbConf,
 		ResourceLimits: &ResourceLimitsConfig{
 			MaxWorkersForPreparer:   2,
 			MaxWorkersForValidator:  2,
@@ -93,7 +81,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())
 		grpcSrv.Stop()
-		vcs.close()
+		vcs.Close()
 	})
 
 	return &validatorAndCommitterServiceTestEnv{

@@ -1,6 +1,7 @@
 package vcservice
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,10 +22,13 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 
 	dbEnv := newDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
-	c := newCommitter(dbEnv.db, validatedTxs, txStatus, metrics)
+	ctx, cancel := context.WithCancel(context.Background())
+	c := newCommitter(ctx, dbEnv.db, validatedTxs, txStatus, metrics)
 
 	t.Cleanup(func() {
+		cancel()
 		close(validatedTxs)
+		c.wg.Wait()
 		close(txStatus)
 	})
 

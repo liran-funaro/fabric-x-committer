@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 // TODO: all the statement templates will be moved to a different package once we decide on the
@@ -30,15 +30,20 @@ var (
 )
 
 type databaseTestEnv struct {
-	db       *database
-	dbRunner *runner.YugabyteDB
+	db     *database
+	dbConf *DatabaseConfig
 }
 
 func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
-	dbRunner := &runner.YugabyteDB{}
-	require.NoError(t, dbRunner.Start())
+	c := &logging.Config{
+		Enabled:     true,
+		Level:       logging.Info,
+		Caller:      true,
+		Development: true,
+	}
+	logging.SetupWithConfig(c)
 
-	cs := dbRunner.ConnectionSettings()
+	cs := yuga.PrepareYugaTestEnv(t)
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
 
@@ -47,8 +52,9 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 		Port:           port,
 		Username:       cs.User,
 		Password:       cs.Password,
-		MaxConnections: 20,
-		MinConnections: 10,
+		Database:       cs.Database,
+		MaxConnections: 10,
+		MinConnections: 1,
 	}
 
 	metrics := newVCServiceMetrics()
@@ -57,12 +63,11 @@ func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 
 	t.Cleanup(func() {
 		db.close()
-		assert.NoError(t, dbRunner.Stop())
 	})
 
 	return &databaseTestEnv{
-		db:       db,
-		dbRunner: dbRunner,
+		db:     db,
+		dbConf: config,
 	}
 }
 

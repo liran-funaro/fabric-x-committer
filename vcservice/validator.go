@@ -1,8 +1,10 @@
 package vcservice
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -12,6 +14,8 @@ import (
 
 // transactionValidator validates the reads of transactions against the committed states
 type transactionValidator struct {
+	ctx context.Context
+
 	// db is the state database holding all the committed states.
 	db *database
 	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions
@@ -21,6 +25,8 @@ type transactionValidator struct {
 	outgoingValidatedTransactions chan<- *validatedTransactions
 
 	metrics *perfMetrics
+
+	wg sync.WaitGroup
 }
 
 // validatedTransactions contains the writes of valid transactions and the txIDs of invalid transactions
@@ -32,17 +38,23 @@ type validatedTransactions struct {
 	invalidTxIndices         map[txID]protoblocktx.Status
 }
 
-func (t *validatedTransactions) Debug() {
+func (v *validatedTransactions) Debug() {
 	if logger.Level() > zapcore.DebugLevel {
 		return
 	}
-	logger.Debugf("total validated: %d\n\tvalid non-blind writes: %d\n\tvalid blind writes: %d\n\tnew writes: %d\n\treads: %d\n\tinvalid: %d\n",
-		len(t.validTxNonBlindWrites)+len(t.validTxBlindWrites)+len(t.newWrites)+len(t.readToTransactionIndices)+len(t.invalidTxIndices),
-		len(t.validTxNonBlindWrites), len(t.validTxBlindWrites), len(t.newWrites), len(t.readToTransactionIndices), len(t.invalidTxIndices))
+	logger.Debugf("total validated: %d\n\t"+
+		"valid non-blind writes: %d\n\t"+
+		"valid blind writes: %d\n\t"+
+		"new writes: %d\n\treads: %d\n\tinvalid: %d\n",
+		len(v.validTxNonBlindWrites)+len(v.validTxBlindWrites)+len(v.newWrites)+
+			len(v.readToTransactionIndices)+len(v.invalidTxIndices),
+		len(v.validTxNonBlindWrites), len(v.validTxBlindWrites), len(v.newWrites),
+		len(v.readToTransactionIndices), len(v.invalidTxIndices))
 }
 
 // NewValidator creates a new validator
 func newValidator(
+	ctx context.Context,
 	db *database,
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
@@ -50,6 +62,7 @@ func newValidator(
 ) *transactionValidator {
 	logger.Debugf("Creating new validator")
 	return &transactionValidator{
+		ctx:                           ctx,
 		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
 		outgoingValidatedTransactions: validatedTxs,
@@ -65,7 +78,19 @@ func (v *transactionValidator) start(numWorkers int) {
 }
 
 func (v *transactionValidator) validate() {
-	for prepTx := range v.incomingPreparedTransactions {
+	v.wg.Add(1)
+	v.wg.Done()
+
+	var prepTx *preparedTransactions
+	for {
+		select {
+		case <-v.ctx.Done():
+			return
+		case prepTx = <-v.incomingPreparedTransactions:
+			if prepTx == nil {
+				return
+			}
+		}
 		logger.Debugf("Batch of prepared TXs in the validator.")
 		prepTx.Debug()
 		start := time.Now()
@@ -89,7 +114,12 @@ func (v *transactionValidator) validate() {
 		}
 
 		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
-		v.outgoingValidatedTransactions <- validatedTxs
+		select {
+		case <-v.ctx.Done():
+			return
+		case v.outgoingValidatedTransactions <- validatedTxs:
+		}
+
 		logger.Debugf("Validator sent batch of validated TXs to the committer")
 		validatedTxs.Debug()
 	}

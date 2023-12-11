@@ -59,7 +59,7 @@ func (s *statesToBeCommitted) Debug() {
 
 // newDatabase creates a new database.
 func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
-	logger.Debugf("DB source: %s", config.DataSourceName())
+	logger.Infof("DB source: %s", config.DataSourceName())
 	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
 	if err != nil {
 		return nil, fmt.Errorf("failed parsing datasource: %w", err)
