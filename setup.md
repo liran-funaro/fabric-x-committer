@@ -63,6 +63,23 @@ Build linux binaries for remote machines:
 make build os=linux arch=amd64 output_dir=./bin-linux
 ```
 
+## Test
+To execute the tests, use:
+```shell
+make test
+```
+
+#### Note on YugabyteDB
+
+In some tests, YugabyteDB is required.
+The test harness will either create a YugabyteDB Docker instance or reuse an existing instance.
+Therefore, the test harness will not shut down the DB container between tests.
+Once you no longer intend to run tests, you can stop the container using `make kill-test-docker`.
+
+It is possible to use your own YugabyteDB instance by setting the following environment variable: `YUGA_INSTANCE=local`.
+This will instruct the test harness to connect to your local DB instance at port 5433, rather than creating any Docker instance.
+YugabyteDB's [quick start guide](https://docs.yugabyte.com/preview/quick-start/) offers more information on how to install and run the database locally.
+
 # Run local binaries
 ```shell
 bin/sigservice --configs config/config-sigservice.yaml
