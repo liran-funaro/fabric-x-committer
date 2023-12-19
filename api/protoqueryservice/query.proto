@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option go_package = "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice";
+
+package protoqueryservice;
+
+service QueryService {
+  rpc GetCommittments(TokenIDs) returns (Committments) {}
+}
+
+message TokenIDs {
+    repeated bytes keys = 1;
+}
+
+message Committments {
+    repeated ValueWithVersion output = 1;
+}
+
+message ValueWithVersion {
+    bytes value = 1;
+    bytes version = 2;
+}
