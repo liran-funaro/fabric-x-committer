@@ -33,7 +33,9 @@ type BlockProfile struct {
 // TransactionProfile describes generate TX characteristics.
 type TransactionProfile struct {
 	// The size of the key to generate
-	KeySize             uint32 `mapstructure:"key-size"`
+	KeySize uint32 `mapstructure:"key-size"`
+	// The sizes of the values to generate (size=0 => value=nil)
+	ReadWriteValueSize  uint32 `mapstructure:"read-write-value-size"`
 	BlindWriteValueSize uint32 `mapstructure:"blind-write-value-size"`
 	// The number of keys to generate (read ver=nil)
 	ReadOnlyCount *Distribution `mapstructure:"read-only-count"`

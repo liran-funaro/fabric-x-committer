@@ -268,3 +268,16 @@ func TestBlindWriteWithValue(t *testing.T) {
 		require.Len(t, v.Value, 32)
 	}
 }
+
+func TestReadWriteWithValue(t *testing.T) {
+	p := defaultProfile(1)
+	p.Transaction.ReadWriteValueSize = 32
+	p.Transaction.ReadWriteCount = NewConstantDistribution(2)
+
+	c := StartTxGenerator(p, NoLimit)
+	tx := <-c.TxQueue
+	require.Len(t, tx.Namespaces[0].ReadWrites, 2)
+	for _, v := range tx.Namespaces[0].ReadWrites {
+		require.Len(t, v.Value, 32)
+	}
+}

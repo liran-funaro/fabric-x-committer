@@ -28,7 +28,7 @@ func StartTxGenerator(profile *Profile, limiterConfig LimiterConfig) *TxStreamGe
 
 	indTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	for i := uint32(0); i < Max(profile.TxGenWorkers, 1); i++ {
-		txGen := newIndependentTxGenerator(workerRnd(seedRnd), &profile.Transaction)
+		txGen := newIndependentTxGenerator(NewRandFromSeedGenerator(seedRnd), &profile.Transaction)
 		go func() {
 			for {
 				indTxQueue <- txGen.Next()
@@ -38,7 +38,7 @@ func StartTxGenerator(profile *Profile, limiterConfig LimiterConfig) *TxStreamGe
 
 	depTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	for i := uint32(0); i < Max(profile.TxDependenciesWorkers, 1); i++ {
-		txGen := newTxDependenciesDecorator(workerRnd(seedRnd), indTxQueue, profile)
+		txGen := newTxDependenciesDecorator(NewRandFromSeedGenerator(seedRnd), indTxQueue, profile)
 		go func() {
 			for {
 				depTxQueue <- txGen.Next()
@@ -50,7 +50,7 @@ func StartTxGenerator(profile *Profile, limiterConfig LimiterConfig) *TxStreamGe
 	signer := NewTxSignerVerifier(&profile.Transaction.Signature)
 	rateLimiter := NewLimiter(&limiterConfig)
 	for i := uint32(0); i < Max(profile.TxSignWorkers, 1); i++ {
-		txGen := newSignTxDecorator(workerRnd(seedRnd), depTxQueue, signer, profile)
+		txGen := newSignTxDecorator(NewRandFromSeedGenerator(seedRnd), depTxQueue, signer, profile)
 		go func() {
 			for {
 				txQueue <- txGen.Next()
@@ -95,12 +95,4 @@ func StartBlockGenerator(profile *Profile, limiterConfig LimiterConfig) *BlockSt
 		BlockQueue: blockQueue,
 		Signer:     txGen.Signer,
 	}
-}
-
-func workerRnd(seedRnd *rand.Rand) *rand.Rand {
-	return rand.New(rand.NewSource(seedRnd.Int63()))
-}
-
-type gen interface {
-	Next() *protoblocktx.Tx
 }

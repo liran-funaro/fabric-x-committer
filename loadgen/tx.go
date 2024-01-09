@@ -3,25 +3,32 @@ package loadgen
 import (
 	"math/rand"
 
-	"github.com/google/uuid"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 // IndependentTxGenerator generates a new valid TX given key generators.
 type IndependentTxGenerator struct {
+	TxIDGenerator            Generator[string]
 	ReadOnlyKeyGenerator     Generator[[][]byte]
 	ReadWriteKeyGenerator    Generator[[][]byte]
 	BlindWriteKeyGenerator   Generator[[][]byte]
-	BlindWriteValueGenerator Generator[[][]byte]
+	ReadWriteValueGenerator  Generator[[]byte]
+	BlindWriteValueGenerator Generator[[]byte]
 }
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(rnd *rand.Rand, profile *TransactionProfile) *IndependentTxGenerator {
+	// We create a new random generator just for the keys to allow reproducing the generated keys without having
+	// to regenerate the entire transaction.
+	// This is useful when we want to query the DB.
+	keyRnd := NewRandFromSeedGenerator(rnd)
 	return &IndependentTxGenerator{
-		ReadOnlyKeyGenerator:     keyGenerator(rnd, profile.KeySize, profile.ReadOnlyCount),
-		ReadWriteKeyGenerator:    keyGenerator(rnd, profile.KeySize, profile.ReadWriteCount),
-		BlindWriteKeyGenerator:   keyGenerator(rnd, profile.KeySize, profile.BlindWriteCount),
-		BlindWriteValueGenerator: keyGenerator(rnd, profile.BlindWriteValueSize, profile.BlindWriteCount),
+		TxIDGenerator:            &UUIDGenerator{Rnd: rnd},
+		ReadOnlyKeyGenerator:     keyGenerator(keyRnd, profile.KeySize, profile.ReadOnlyCount),
+		ReadWriteKeyGenerator:    keyGenerator(keyRnd, profile.KeySize, profile.ReadWriteCount),
+		BlindWriteKeyGenerator:   keyGenerator(keyRnd, profile.KeySize, profile.BlindWriteCount),
+		ReadWriteValueGenerator:  valueGenerator(rnd, profile.ReadWriteValueSize),
+		BlindWriteValueGenerator: valueGenerator(rnd, profile.BlindWriteValueSize),
 	}
 }
 
@@ -30,10 +37,9 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
-	blindWriteValue := g.BlindWriteKeyGenerator.Next()
 
 	tx := &protoblocktx.Tx{
-		Id: uuid.New().String(),
+		Id: g.TxIDGenerator.Next(),
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:        0,
@@ -49,13 +55,16 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	}
 
 	for i, key := range readWrite {
-		tx.Namespaces[0].ReadWrites[i] = &protoblocktx.ReadWrite{Key: key}
+		tx.Namespaces[0].ReadWrites[i] = &protoblocktx.ReadWrite{
+			Key:   key,
+			Value: g.ReadWriteValueGenerator.Next(),
+		}
 	}
 
 	for i, key := range blindWriteKey {
 		tx.Namespaces[0].BlindWrites[i] = &protoblocktx.Write{
 			Key:   key,
-			Value: blindWriteValue[i],
+			Value: g.BlindWriteValueGenerator.Next(),
 		}
 	}
 
@@ -74,6 +83,13 @@ func keyGenerator(rnd *rand.Rand, keySize uint32, keyCount *Distribution) *Multi
 	}
 
 	return ret
+}
+
+func valueGenerator(rnd *rand.Rand, valueSize uint32) Generator[[]byte] {
+	if valueSize == 0 {
+		return &NilByteArrayGenerator{}
+	}
+	return &ByteArrayGenerator{Size: valueSize, Rnd: rnd}
 }
 
 // BlockGenerator generates new blocks given a TX generator.
