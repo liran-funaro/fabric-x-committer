@@ -80,6 +80,23 @@ It is possible to use your own YugabyteDB instance by setting the following envi
 This will instruct the test harness to connect to your local DB instance at port 5433, rather than creating any Docker instance.
 YugabyteDB's [quick start guide](https://docs.yugabyte.com/preview/quick-start/) offers more information on how to install and run the database locally.
 
+Example: Start Yugabyte via docker
+```bash
+docker run --name sc_yugabyte_unit_tests \
+  --platform linux/amd64 \
+  -p 5433:5433 \
+  -d yugabytedb/yugabyte:2.20.0.1-b1 \
+  bin/yugabyted start \
+  --background=false \
+  --advertise_address=0.0.0.0 \
+  --callhome=false \
+  --fault_tolerance=none \
+  --ui=false \
+  --tserver_flags=ysql_max_connections=5000 \
+  --insecure
+```
+
+
 # Run local binaries
 ```shell
 bin/sigservice --configs config/config-sigservice.yaml

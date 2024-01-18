@@ -6,8 +6,12 @@ dist: focal
 go:
     - 1.20.3
 
+services:
+  - docker
+
 env:
-  - YUGA_INSTANCE=local
+  - YUGA_INSTANCE=local VCSERVICE_DB=yuga
+  - YUGA_INSTANCE=local VCSERVICE_DB=postgres
 
 cache:
     directories:
@@ -16,7 +20,7 @@ cache:
 
 before_install:
   # Install dependencies
-  - scripts/get-and-start-yuga.sh
+  - scripts/get-and-start-$VCSERVICE_DB.sh
   - scripts/install-protobuf.sh
   - go install golang.org/x/tools/cmd/goimports@latest
   - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.53.3

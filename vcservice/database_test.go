@@ -1,6 +1,7 @@
 package vcservice
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -207,9 +208,77 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 			mismatchingReads, err := env.db.validateNamespaceReads(tt.nsID, tt.r)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedMismatchedReads, mismatchingReads)
+			requireReadsMatch(t, tt.expectedMismatchedReads, mismatchingReads)
 		})
 	}
+}
+
+// requireReadsMatch asserts that the specified readA is equal to specified
+// readB ignoring the order of the elements. If there are duplicate elements,
+// the number of appearances of each of them in both lists should match.
+func requireReadsMatch(t *testing.T, readA, readB *reads, msgAndArgs ...any) {
+	// the implementation is inspired the `require.ElementsMatch` function
+	// https://github.com/stretchr/testify/blob/master/require/require.go#L95
+	// https://github.com/stretchr/testify/blob/master/assert/assertions.go#L1052
+
+	// is empty?
+	if readA.empty() && readB.empty() {
+		return
+	}
+
+	// create diff
+	extraA, extraB := diffReads(readA, readB)
+	if extraA.empty() && extraB.empty() {
+		return
+	}
+
+	require.Fail(t,
+		fmt.Sprintf("reads differ: extra elements in A=%v and extra elements in B=%v", extraA, extraB),
+		msgAndArgs...)
+}
+
+// diffReads diffs two reads and returns reads that are only in A and only in B.
+// If some key/version pair is present multiple times, each instance is counted separately (e.g. if something is 2x in A
+// and 5x in B, it will be 0x in extraA and 3x in extraB). The order of items in both reads is ignored.
+func diffReads(readA, readB *reads) (extraA, extraB *reads) {
+	// the implementation is inspired on `diffLists` used in `require.ElementsMatch` function
+	// https://github.com/stretchr/testify/blob/master/assert/assertions.go#L1086
+
+	extraA = &reads{}
+	extraB = &reads{}
+
+	aLen := len(readA.keys)
+	bLen := len(readB.keys)
+
+	// Mark indexes in bValue that we already used
+	visited := make([]bool, bLen)
+	for i := 0; i < aLen; i++ {
+		key, version := readA.keys[i], readA.versions[i]
+		found := false
+		for j := 0; j < bLen; j++ {
+			if visited[j] {
+				continue
+			}
+
+			if bytes.Equal(readB.keys[j], key) && bytes.Equal(readB.versions[j], version) {
+				visited[j] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			extraA.append(key, version)
+		}
+	}
+
+	for j := 0; j < bLen; j++ {
+		if visited[j] {
+			continue
+		}
+		extraB.append(readB.keys[j], readB.versions[j])
+	}
+
+	return extraA, extraB
 }
 
 func TestDBCommit(t *testing.T) {
