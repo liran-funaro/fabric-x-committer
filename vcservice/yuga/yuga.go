@@ -34,7 +34,7 @@ func randDbName() (string, error) {
 
 // getYugaInstanceType get the desired yuga instance type from the environment variable.
 func getYugaInstanceType() string {
-	val, found := os.LookupEnv("YUGA_INSTANCE")
+	val, found := os.LookupEnv("DB_INSTANCE")
 	if found {
 		return strings.ToLower(val)
 	}
