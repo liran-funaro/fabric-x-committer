@@ -136,7 +136,10 @@ func TestConfig(t *testing.T) {
 		tt := test
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
-			require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
+			if tt.configFilePath != "" {
+				require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
+			}
+
 			c := ReadConfig()
 
 			require.Equal(t, tt.expectedConfig, c)

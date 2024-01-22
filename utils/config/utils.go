@@ -27,6 +27,9 @@ func MergeYamlConfigs(filePaths ...string) ([]byte, error) {
 
 func readYamlConfig(filePath string) (configMap, error) {
 	content, err := utils.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
 	var current configMap
 	err = yaml.Unmarshal(content, &current)
 	if err != nil {

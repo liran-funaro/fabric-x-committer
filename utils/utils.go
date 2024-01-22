@@ -3,7 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,7 +24,7 @@ func Every(interval time.Duration, runnable func()) {
 	}()
 }
 
-func Min(a int, b int) int {
+func Min(a, b int) int {
 	min, _ := sorted(a, b)
 	return min
 }
@@ -56,7 +56,7 @@ func FileExists(path string) bool {
 }
 
 func OverwriteFile(path string) (*os.File, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to open %s", path)
 	}
@@ -111,8 +111,10 @@ func ReadFile(filePath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return ioutil.ReadAll(file)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+	return io.ReadAll(file)
 }
 
 func UniformBuckets(count int, from, to float64) []float64 {
