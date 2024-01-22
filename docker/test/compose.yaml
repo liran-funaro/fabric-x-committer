@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  coordinator:
+    image: "sc_coordinator:latest"
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./config/config-coordinator.yaml:/config.yaml
+      - ./scripts/coordinator.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+    depends_on:
+      - sigservice
+      - vcservice
+
+  sigservice:
+    image: "sc_sigservice:latest"
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./config/config-sigservice.yaml:/config.yaml
+      - ./scripts/sigservice.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+
+  vcservice:
+    image: "sc_vcservice:latest"
+    ports:
+      - "6001:6001"
+    volumes:
+      - ./config/config-vcservice.yaml:/config.yaml
+      - ./scripts/vcservice.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+    depends_on:
+      - db
+
+  db:
+    image: "postgres:16.1"
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: yugabyte
+      POSTGRES_PASSWORD: yugabyte
+

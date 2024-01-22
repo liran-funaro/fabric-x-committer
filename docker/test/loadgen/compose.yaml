@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  prometheus:
+    image: "prom/prometheus:latest"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../config/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - testnet
+
+  grafana:
+    image: "grafana/grafana-oss:latest"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../config/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - testnet
+
+  blockgen:
+    image: "sc_blockgen:latest"
+    volumes:
+      - ../config/config-blockgen.yaml:/config.yaml
+      - ../scripts/blockgen.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+    ports:
+      - "6997:6997"
+    networks:
+      - testnet
+
+networks:
+  testnet:
+    name: test_default
+    external: true
+

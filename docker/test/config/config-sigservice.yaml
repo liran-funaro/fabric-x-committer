@@ -1,0 +1,18 @@
+sig-verification:
+  parallel-executor:
+    batch-size-cutoff: 50
+    batch-time-cutoff: 10ms
+    channel-buffer-size: 50
+    parallelism: 40
+  scheme: Ecdsa
+  server:
+    endpoint: :5001
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: :2110
+logging:
+  development: true
+  enabled: true
+  level: INFO
+

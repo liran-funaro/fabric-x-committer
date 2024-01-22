@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 1s
+
+scrape_configs:
+  - job_name: coordinators_service
+    static_configs:
+      - targets:
+          - coordinator:2110
+  - job_name: sigservices_service
+    static_configs:
+      - targets:
+          - sigservice:2110
+  - job_name: vcservices_service
+    static_configs:
+      - targets:
+          - vcservice:2110
+  - job_name: blockgens_service
+    static_configs:
+      - targets:
+          - blockgen:2110
+

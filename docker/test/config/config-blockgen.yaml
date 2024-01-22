@@ -1,0 +1,38 @@
+coordinator-client:
+  endpoint: coordinator:9001
+logging:
+  enabled: true
+  level: INFO
+  development: false
+load-profile:
+  block:
+    size: 500
+    buffer-size: 200
+  transaction:
+    key-size: 32
+    read-write-count:
+      type: constant
+      const: 2
+    buffer-size: 1000
+    signature:
+      scheme: ECDSA
+  tx-gen-workers: 20
+  tx-sign-workers: 40
+  tx-dependencies-workers: 5
+  seed: 12345
+monitoring:
+  metrics:
+    enable: true
+    endpoint: :2110
+    latency:
+      sampler:
+        type: timer
+        sampling-interval: 10s
+      buckets:
+        type: uniform
+        max-latency: 5s
+        bucket-count: 1000
+rate-limit:
+  endpoint: :6997
+  initial-limit: 1000
+
