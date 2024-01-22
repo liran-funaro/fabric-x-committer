@@ -53,14 +53,20 @@ endif
 test: build
 	go test -v ./...
 
+test-package-%: build
+	go test -v ./$*/...
+
 test-cover:
 	go test -v -coverprofile=coverage.profile ./...
 
 test-cover-%:
-	go test -v -coverprofile=coverage.profile "./$*/..."
+	go test -v -coverprofile=$*.coverage.profile "./$*/..."
 
 cover-report:
 	go tool cover -html=coverage.profile
+
+cover-report-%:
+	go tool cover -html=$*.coverage.profile
 
 clean:
 	@rm -rf $(output_dir)

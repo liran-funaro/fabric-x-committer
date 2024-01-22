@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,43 +41,52 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	}
 }
 
+type state struct {
+	namespace namespaceID
+	key       int
+	version   int
+}
+
+func writes(allWrites ...state) namespaceToWrites {
+	ntw := make(namespaceToWrites)
+	for _, ww := range allWrites {
+		nw := ntw.getOrCreate(ww.namespace)
+		nw.append(
+			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.key)),
+			[]byte(fmt.Sprintf("value%d.%d.%d", ww.namespace, ww.key, ww.version)),
+			versionNumber(ww.version).bytes(),
+		)
+	}
+	return ntw
+}
+
+func blindWrites(allWrites ...state) namespaceToWrites {
+	ntw := writes(allWrites...)
+	for _, nw := range ntw {
+		for i := range nw.versions {
+			nw.versions[i] = nil
+		}
+	}
+	return ntw
+}
+
 func TestCommit(t *testing.T) {
 	env := newCommitterTestEnv(t)
 	env.c.start(1)
 
-	v0 := versionNumber(0).bytes()
-	v1 := versionNumber(1).bytes()
-	v2 := versionNumber(2).bytes()
-	v3 := versionNumber(3).bytes()
-	v4 := versionNumber(4).bytes()
-
-	k1_1 := []byte("key1.1")
-	k1_2 := []byte("key1.2")
-	k1_3 := []byte("key1.3")
-	k1_4 := []byte("key1.4")
-	k2_1 := []byte("key2.1")
-	k2_2 := []byte("key2.2")
-	k2_3 := []byte("key2.3")
-	k2_4 := []byte("key2.4")
-	k2_5 := []byte("key2.5")
-	k2_6 := []byte("key2.6")
-	k2_7 := []byte("key2.7")
-
 	env.dbEnv.populateDataWithCleanup(
 		t,
 		[]int{1, 2},
-		namespaceToWrites{
-			1: {
-				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
-				values:   [][]byte{[]byte("value1.1"), []byte("value1.2"), []byte("value1.3"), []byte("value1.4")},
-				versions: [][]byte{v1, v1, v2, v2},
-			},
-			2: {
-				keys:     [][]byte{k2_1, k2_2, k2_3, k2_4},
-				values:   [][]byte{[]byte("value2.1"), []byte("value2.2"), []byte("value2.3"), []byte("value2.4")},
-				versions: [][]byte{v0, v0, v1, v1},
-			},
-		},
+		writes(
+			state{1, 1, 1},
+			state{1, 2, 1},
+			state{1, 3, 2},
+			state{1, 4, 2},
+			state{2, 1, 0},
+			state{2, 2, 0},
+			state{2, 3, 1},
+			state{2, 4, 1},
+		),
 		&protovcservice.TransactionStatus{
 			Status: map[string]protoblocktx.Status{
 				"tx1": protoblocktx.Status_COMMITTED,
@@ -85,189 +95,242 @@ func TestCommit(t *testing.T) {
 		},
 	)
 
-	// Note: the order of the sub-test is important
+	// Note: the order of the subtest is important
 	tests := []struct {
 		name               string
 		txs                *validatedTransactions
-		expectedTxStatuses *protovcservice.TransactionStatus
+		expectedTxStatuses map[string]protoblocktx.Status
 		expectedNsRows     namespaceToWrites
+		unexpectedNsRows   namespaceToWrites
 	}{
 		{
-			name: "commit_non_blid_writes",
+			name: "new writes",
+			txs: &validatedTransactions{
+				validTxNonBlindWrites: transactionToWrites{},
+				validTxBlindWrites:    transactionToWrites{},
+				newWrites: transactionToWrites{
+					"tx-new-1": blindWrites(
+						state{1, 10, 0},
+						state{1, 11, 0},
+						state{2, 10, 0},
+						state{2, 11, 0},
+					),
+					"tx-new-2": blindWrites(
+						state{1, 20, 0},
+						state{1, 21, 0},
+						state{2, 20, 0},
+						state{2, 21, 0},
+					),
+				},
+				invalidTxIndices: map[txID]protoblocktx.Status{},
+			},
+			expectedTxStatuses: map[string]protoblocktx.Status{
+				"tx-new-1": protoblocktx.Status_COMMITTED,
+				"tx-new-2": protoblocktx.Status_COMMITTED,
+			},
+			expectedNsRows: writes(
+				state{1, 10, 0},
+				state{1, 11, 0},
+				state{2, 10, 0},
+				state{2, 11, 0},
+				state{1, 20, 0},
+				state{1, 21, 0},
+				state{2, 20, 0},
+				state{2, 21, 0},
+			),
+		},
+		{
+			name: "non-blind writes",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx3": {
-						1: {
-							keys:     [][]byte{k1_1, k1_2},
-							values:   [][]byte{[]byte("value1.1.1"), []byte("value1.2.1")},
-							versions: [][]byte{v2, v2},
-						},
-						2: {
-							keys:     [][]byte{k2_1, k2_2},
-							values:   [][]byte{[]byte("value2.1.1"), []byte("value2.2.1")},
-							versions: [][]byte{v1, v1},
-						},
-					},
+					"tx-non-blind-1": writes(
+						state{1, 1, 2},
+						state{1, 2, 2},
+						state{2, 1, 1},
+						state{2, 2, 1},
+					),
 				},
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
 				invalidTxIndices:   map[txID]protoblocktx.Status{},
 			},
-			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protoblocktx.Status{"tx3": protoblocktx.Status_COMMITTED},
-			},
-			expectedNsRows: namespaceToWrites{
-				1: {
-					keys:     [][]byte{k1_1, k1_2},
-					values:   [][]byte{[]byte("value1.1.1"), []byte("value1.2.1")},
-					versions: [][]byte{v2, v2},
-				},
-				2: {
-					keys:     [][]byte{k2_1, k2_2},
-					values:   [][]byte{[]byte("value2.1.1"), []byte("value2.2.1")},
-					versions: [][]byte{v1, v1},
-				},
-			},
+			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
+			expectedNsRows: writes(
+				state{1, 1, 2},
+				state{1, 2, 2},
+				state{2, 1, 1},
+				state{2, 2, 1},
+			),
 		},
 		{
-			name: "commit_blind_writes",
+			name: "blind writes",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites: transactionToWrites{
-					"tx4": {
-						1: {
-							keys:     [][]byte{k1_1, k1_2},
-							values:   [][]byte{[]byte("value1.1.2"), []byte("value1.2.2")},
-							versions: [][]byte{nil, nil},
-						},
-						2: {
-							keys:     [][]byte{k2_1, k2_2},
-							values:   [][]byte{[]byte("value1.1.2"), []byte("value2.2.2")},
-							versions: [][]byte{nil, nil},
-						},
-					},
+					"tx-blind-1": blindWrites(
+						state{1, 1, 3},
+						state{1, 2, 3},
+						state{2, 1, 2},
+						state{2, 2, 2},
+					),
 				},
 				newWrites:        transactionToWrites{},
 				invalidTxIndices: map[txID]protoblocktx.Status{},
 			},
-			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protoblocktx.Status{
-					"tx4": protoblocktx.Status_COMMITTED,
-				},
+			expectedTxStatuses: map[string]protoblocktx.Status{
+				"tx-blind-1": protoblocktx.Status_COMMITTED,
 			},
-			expectedNsRows: namespaceToWrites{
-				1: {
-					keys:     [][]byte{k1_1, k1_2},
-					values:   [][]byte{[]byte("value1.1.2"), []byte("value1.2.2")},
-					versions: [][]byte{v3, v3},
-				},
-				2: {
-					keys:     [][]byte{k2_1, k2_2},
-					values:   [][]byte{[]byte("value1.1.2"), []byte("value2.2.2")},
-					versions: [][]byte{v2, v2},
-				},
-			},
+			expectedNsRows: writes(
+				state{1, 1, 3},
+				state{1, 2, 3},
+				state{2, 1, 2},
+				state{2, 2, 2},
+			),
 		},
 		{
-			name: "commit_blind_and_nonblind_writes",
+			name: "blind, non-blind, and new writes",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx5": {
-						1: {
-							keys:     [][]byte{k1_1, k1_2},
-							values:   [][]byte{[]byte("value1.1.3"), []byte("value1.2.3")},
-							versions: [][]byte{v4, v4},
-						},
-					},
-					"tx6": {
-						1: {
-							keys:     [][]byte{k1_3, k1_4},
-							values:   [][]byte{[]byte("value1.3.1"), []byte("value1.4.1")},
-							versions: [][]byte{v3, v3},
-						},
-					},
+					"tx-all-1": writes(
+						state{1, 1, 4},
+						state{1, 2, 4},
+					),
+					"tx-all-2": writes(
+						state{1, 3, 3},
+						state{1, 4, 3},
+					),
 				},
 				validTxBlindWrites: transactionToWrites{
-					"tx7": {
-						2: {
-							keys:     [][]byte{k2_1, k2_2, k2_5},
-							values:   [][]byte{[]byte("value2.1.3"), []byte("value2.2.3"), []byte("value2.5.1")},
-							versions: [][]byte{nil, nil, nil},
-						},
-					},
-					"tx8": {
-						2: {
-							keys:     [][]byte{k2_3, k2_4, k2_6},
-							values:   [][]byte{[]byte("value2.3.1"), []byte("value2.4.1"), []byte("value2.6.1")},
-							versions: [][]byte{nil, nil, nil},
-						},
-					},
+					"tx-all-1": blindWrites(
+						state{2, 1, 3},
+						state{2, 2, 3},
+						state{2, 5, 0},
+					),
+					"tx-all-2": blindWrites(
+						state{2, 3, 2},
+						state{2, 4, 2},
+						state{2, 6, 0},
+					),
 				},
-				newWrites: transactionToWrites{},
+				newWrites: transactionToWrites{
+					"tx-all-1": blindWrites(
+						state{2, 30, 0},
+					),
+					"tx-all-2": blindWrites(
+						state{2, 31, 0},
+					),
+				},
 				invalidTxIndices: map[txID]protoblocktx.Status{
-					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
-			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protoblocktx.Status{
-					"tx5":  protoblocktx.Status_COMMITTED,
-					"tx6":  protoblocktx.Status_COMMITTED,
-					"tx7":  protoblocktx.Status_COMMITTED,
-					"tx8":  protoblocktx.Status_COMMITTED,
-					"tx9":  protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedTxStatuses: map[string]protoblocktx.Status{
+				"tx-all-1":      protoblocktx.Status_COMMITTED,
+				"tx-all-2":      protoblocktx.Status_COMMITTED,
+				"tx-conflict-1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+			expectedNsRows: writes(
+				state{1, 1, 4},
+				state{1, 2, 4},
+				state{1, 3, 3},
+				state{1, 4, 3},
+				state{2, 1, 3},
+				state{2, 2, 3},
+				state{2, 3, 2},
+				state{2, 4, 2},
+				state{2, 5, 0},
+				state{2, 6, 0},
+				state{2, 30, 0},
+				state{2, 31, 0},
+			),
+		},
+		{
+			name: "new writes with violating",
+			txs: &validatedTransactions{
+				validTxNonBlindWrites: transactionToWrites{
+					"tx-not-violate-1": writes(
+						state{1, 1, 5},
+					),
+					"tx-violate-1": blindWrites(
+						state{1, 3, 4},
+					),
+				},
+				validTxBlindWrites: transactionToWrites{
+					"tx-not-violate-1": writes(
+						state{1, 2, 5},
+					),
+					"tx-violate-1": blindWrites(
+						state{1, 4, 4},
+					),
+				},
+				newWrites: transactionToWrites{
+					"tx-not-violate-1": blindWrites(
+						state{1, 22, 0}, // not violate
+					),
+					"tx-violate-1": blindWrites(
+						state{1, 10, 0}, // violate
+						state{1, 12, 0}, // not violate
+					),
+				},
+				invalidTxIndices: map[txID]protoblocktx.Status{
+					"tx-conflict-4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
+				readToTransactionIndices: map[comparableRead][]txID{
+					{1, "key1.10", ""}: {"tx-violate-1"},
 				},
 			},
-			expectedNsRows: namespaceToWrites{
-				1: {
-					keys: [][]byte{k1_1, k1_2, k1_3, k1_4},
-					values: [][]byte{
-						[]byte("value1.1.3"), []byte("value1.2.3"), []byte("value1.3.1"), []byte("value1.4.1"),
-					},
-					versions: [][]byte{v4, v4, v3, v3},
-				},
-				2: {
-					keys: [][]byte{k2_1, k2_2, k2_3, k2_4, k2_5, k2_6},
-					values: [][]byte{
-						[]byte("value2.1.3"), []byte("value2.2.3"), []byte("value2.3.1"),
-						[]byte("value2.4.1"), []byte("value2.5.1"), []byte("value2.6.1"),
-					},
-					versions: [][]byte{v3, v3, v2, v2, v0, v0},
-				},
+			expectedTxStatuses: map[string]protoblocktx.Status{
+				"tx-violate-1":     protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"tx-not-violate-1": protoblocktx.Status_COMMITTED,
+				"tx-conflict-4":    protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			},
+			expectedNsRows: writes(
+				state{1, 1, 5},
+				state{1, 2, 5},
+				state{1, 3, 3},
+				state{1, 4, 3},
+				state{1, 10, 0},
+				state{1, 22, 0},
+			),
+			unexpectedNsRows: writes(
+				state{1, 12, 0},
+			),
 		},
 		{
 			name: "all invalid txs",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx8": {
-						1: {
-							keys:     [][]byte{k2_7},
-							values:   [][]byte{[]byte("value2.7.1")},
-							versions: [][]byte{nil},
-						},
-					},
+					"tx1": writes(state{2, 7, 1}),
 				},
-				validTxBlindWrites: transactionToWrites{},
-				newWrites:          transactionToWrites{},
+				validTxBlindWrites: transactionToWrites{
+					"tx1": blindWrites(state{1, 1, 6}),
+				},
+				newWrites: transactionToWrites{
+					"tx1": blindWrites(state{1, 40, 0}),
+				},
 				invalidTxIndices: map[txID]protoblocktx.Status{
-					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 			},
-			expectedTxStatuses: &protovcservice.TransactionStatus{
-				Status: map[string]protoblocktx.Status{
-					"tx8":  protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-					"tx12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx13": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx14": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				},
+			expectedTxStatuses: map[string]protoblocktx.Status{
+				"tx1":            protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+				"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			},
-			expectedNsRows: namespaceToWrites{},
+			expectedNsRows: writes(
+				state{1, 1, 5},
+			),
+			unexpectedNsRows: writes(
+				state{2, 7, 0},
+				state{1, 40, 0},
+			),
 		},
 	}
 
@@ -275,11 +338,14 @@ func TestCommit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env.validatedTxs <- tt.txs
 			txStatus := <-env.txStatus
-			require.Equal(t, tt.expectedTxStatuses, txStatus)
+			require.Equal(t, &protovcservice.TransactionStatus{Status: tt.expectedTxStatuses}, txStatus)
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}
-			env.dbEnv.statusExists(t, tt.expectedTxStatuses.Status)
+			for nsID, expectedRows := range tt.unexpectedNsRows {
+				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
+			}
+			env.dbEnv.statusExists(t, tt.expectedTxStatuses)
 		})
 	}
 }

@@ -35,6 +35,11 @@ type databaseTestEnv struct {
 	dbConf *DatabaseConfig
 }
 
+type valueVersion struct {
+	value   []byte
+	version []byte
+}
+
 func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
 	c := &logging.Config{
 		Enabled:     true,
@@ -273,17 +278,12 @@ func (env *databaseTestEnv) populateDataWithCleanup(
 	})
 }
 
-func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRows namespaceWrites) {
+func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID namespaceID, keys [][]byte) map[string]*valueVersion {
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, tableNameForNamespace(nsID))
 
-	kvPairs, err := env.db.pool.Query(context.Background(), query, expectedRows.keys)
+	kvPairs, err := env.db.pool.Query(context.Background(), query, keys)
 	require.NoError(t, err)
 	defer kvPairs.Close()
-
-	type valueVersion struct {
-		value   []byte
-		version []byte
-	}
 
 	actualRows := map[string]*valueVersion{}
 
@@ -296,12 +296,29 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRo
 	}
 
 	require.NoError(t, kvPairs.Err())
-	assert.Equal(t, len(expectedRows.keys), len(actualRows))
+
+	return actualRows
+}
+
+func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRows namespaceWrites) {
+	actualRows := env.fetchKeys(t, nsID, expectedRows.keys)
+
+	assert.Len(t, actualRows, len(expectedRows.keys))
 	for i, key := range expectedRows.keys {
 		if assert.NotNil(t, actualRows[string(key)], "key: %s", string(key)) {
 			assert.Equal(t, expectedRows.values[i], actualRows[string(key)].value, "key: %s", string(key))
 			assert.Equal(t, expectedRows.versions[i], actualRows[string(key)].version, "key: %s", string(key))
 		}
+	}
+}
+
+func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID namespaceID, keys [][]byte) {
+	actualRows := env.fetchKeys(t, nsID, keys)
+
+	assert.Len(t, actualRows, 0)
+	for key, valVer := range actualRows {
+		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
+			key, string(valVer.value), versionNumberFromBytes(valVer.version))
 	}
 }
 
