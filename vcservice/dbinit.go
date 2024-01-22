@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	key bytea NOT NULL PRIMARY KEY,
 	value bytea DEFAULT NULL,
 	version bytea DEFAULT '\x00'::bytea
-);
+) SPLIT INTO 120 tablets;
 `
 
 // We avoid using index for now as it slows down inserts
