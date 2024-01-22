@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -99,7 +100,15 @@ func startCmd() *cobra.Command {
 			}()
 			wg.Wait()
 
-			if err := <-errChan; err != nil {
+			ctx := cmd.Context()
+			select {
+			case <-ctx.Done():
+				err := context.Cause(ctx)
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return nil
+				}
+				return err
+			case err := <-errChan:
 				// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
 				// coordinator service if any of them fails. In the future, we can add recovery mechanism
 				// to restart the failed service and stop the coordinator service only if all the services
@@ -107,8 +116,6 @@ func startCmd() *cobra.Command {
 				cmd.Println("stream with signature verifier or vcservice closed abrubtly")
 				return err
 			}
-
-			return nil
 		},
 	}
 

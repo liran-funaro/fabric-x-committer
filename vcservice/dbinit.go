@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -156,16 +157,35 @@ var dropStatementsWithTemplate = []string{
 	dropCommitNewFuncStmtTemplate,
 }
 
+// NewDatabasePool creates a new pool from a database config.
+func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
+	logger.Infof("DB source: %s", config.DataSourceName())
+	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing datasource: %w", err)
+	}
+
+	poolConfig.MaxConns = config.MaxConnections
+	poolConfig.MinConns = config.MinConnections
+
+	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
+	if err != nil {
+		logger.Errorf("Failed making pool: %s", err)
+		return nil, fmt.Errorf("failed making pool: %w", err)
+	}
+	logger.Debugf("DB pool created")
+	return pool, nil
+}
+
 // InitDatabase initialize the DB tables and methods.
 func InitDatabase(config *DatabaseConfig, nsIDs []int) error {
-	metrics := newVCServiceMetrics()
-	db, err := newDatabase(config, metrics)
+	pool, err := NewDatabasePool(config)
 	if err != nil {
 		return err
 	}
-	defer db.close()
+	defer pool.Close()
 
-	if err := initDatabaseTables(db, nsIDs); err != nil {
+	if err := initDatabaseTables(context.Background(), pool, nsIDs); err != nil {
 		// TODO: handle error gracefully
 		logger.Fatalf("Failed initialize database [%s] tables: %s", config.Database, err)
 	}
@@ -175,14 +195,13 @@ func InitDatabase(config *DatabaseConfig, nsIDs []int) error {
 
 // ClearDatabase clears the DB tables and methods.
 func ClearDatabase(config *DatabaseConfig, nsIDs []int) error {
-	metrics := newVCServiceMetrics()
-	db, err := newDatabase(config, metrics)
+	pool, err := NewDatabasePool(config)
 	if err != nil {
 		return err
 	}
-	defer db.close()
+	defer pool.Close()
 
-	if err := clearDatabaseTables(db, nsIDs); err != nil {
+	if err := clearDatabaseTables(context.Background(), pool, nsIDs); err != nil {
 		// TODO: handle error gracefully
 		logger.Fatalf("Failed clearing database [%s] tables: %s", config.Database, err)
 	}
@@ -190,12 +209,10 @@ func ClearDatabase(config *DatabaseConfig, nsIDs []int) error {
 	return nil
 }
 
-func initDatabaseTables(db *database, nsIDs []int) error {
-	ctx := context.Background()
-
+func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
 	logger.Info("Creating tx status table and its methods.")
 	for _, stmt := range initStatements {
-		err := yuga.ExecRetry(ctx, db.pool, stmt)
+		err := yuga.ExecRetry(ctx, pool, stmt)
 		if err != nil {
 			return err
 		}
@@ -203,11 +220,11 @@ func initDatabaseTables(db *database, nsIDs []int) error {
 	logger.Info("Tx status table is ready.")
 
 	for _, nsID := range nsIDs {
-		tableName := tableNameForNamespace(namespaceID(nsID))
+		tableName := NamespaceID(nsID).TableName()
 		logger.Infof("Creating table '%s' and its methods.", tableName)
 
 		for _, stmt := range initStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, db.pool, fmt.Sprintf(stmt, tableName))
+			err := yuga.ExecRetry(ctx, pool, fmt.Sprintf(stmt, tableName))
 			if err != nil {
 				return err
 			}
@@ -219,12 +236,10 @@ func initDatabaseTables(db *database, nsIDs []int) error {
 	return nil
 }
 
-func clearDatabaseTables(db *database, nsIDs []int) error {
-	ctx := context.Background()
-
+func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
 	logger.Info("Dropping tx status table and its methods.")
 	for _, stmt := range dropStatements {
-		err := yuga.ExecRetry(ctx, db.pool, stmt)
+		err := yuga.ExecRetry(ctx, pool, stmt)
 		if err != nil {
 			return err
 		}
@@ -232,11 +247,11 @@ func clearDatabaseTables(db *database, nsIDs []int) error {
 	logger.Info("tx status table is cleared.")
 
 	for _, nsID := range nsIDs {
-		tableName := tableNameForNamespace(namespaceID(nsID))
+		tableName := NamespaceID(nsID).TableName()
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, db.pool, fmt.Sprintf(stmt, tableName))
+			err := yuga.ExecRetry(ctx, pool, fmt.Sprintf(stmt, tableName))
 			if err != nil {
 				return err
 			}

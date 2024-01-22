@@ -45,9 +45,9 @@ func TestValidate(t *testing.T) {
 	env := newValidatorTestEnv(t)
 	env.v.start(1)
 
-	v0 := versionNumber(0).bytes()
-	v1 := versionNumber(1).bytes()
-	v2 := versionNumber(2).bytes()
+	v0 := VersionNumber(0).Bytes()
+	v1 := VersionNumber(1).Bytes()
+	v2 := VersionNumber(2).Bytes()
 
 	k1_1 := []byte("key1.1")
 	k1_2 := []byte("key1.2")

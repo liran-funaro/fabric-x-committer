@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -23,9 +24,7 @@ logging:
   Output: %s
 validator-committer-service:
   server:
-    endpoint:
-      host: localhost
-      port: 6002
+    endpoint: localhost:6002
 `
 
 func TestMockVCServiceCmd(t *testing.T) {
@@ -51,8 +50,10 @@ func TestMockVCServiceCmd(t *testing.T) {
 	cmd.SetErr(cmdStdErr)
 	cmd.SetArgs([]string{"start", "--configs", testConfigPath})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	go func() {
-		_ = cmd.Execute()
+		_, _ = cmd.ExecuteContextC(ctx)
 	}()
 
 	require.Eventually(t, func() bool {
@@ -62,6 +63,8 @@ func TestMockVCServiceCmd(t *testing.T) {
 		}
 		return strings.Contains(string(logOut), "Running server")
 	}, 2*time.Second, 500*time.Millisecond)
+
+	cancel()
 
 	require.NoError(t, os.Remove(outputPath))
 }

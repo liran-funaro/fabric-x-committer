@@ -42,9 +42,6 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v0 := versionNumber(0).bytes()
-	v1 := versionNumber(1).bytes()
-
 	k1 := []byte("key1")
 	k2 := []byte("key2")
 	k3 := []byte("key3")
@@ -223,9 +220,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v0 := versionNumber(0).bytes()
-	v1 := versionNumber(1).bytes()
-	v2 := versionNumber(2).bytes()
+	v2 := VersionNumber(2).Bytes()
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -366,13 +361,13 @@ func TestPrepareTx(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v1 := versionNumber(1).bytes()
-	v2 := versionNumber(2).bytes()
-	v3 := versionNumber(3).bytes()
-	v4 := versionNumber(4).bytes()
-	v8 := versionNumber(8).bytes()
-	v9 := versionNumber(9).bytes()
-	v10 := versionNumber(10).bytes()
+	v1 := VersionNumber(1).Bytes()
+	v2 := VersionNumber(2).Bytes()
+	v3 := VersionNumber(3).Bytes()
+	v4 := VersionNumber(4).Bytes()
+	v8 := VersionNumber(8).Bytes()
+	v9 := VersionNumber(9).Bytes()
+	v10 := VersionNumber(10).Bytes()
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")

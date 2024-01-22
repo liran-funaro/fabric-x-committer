@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -78,13 +79,20 @@ func startCmd() *cobra.Command {
 			}
 			defer vc.Close()
 
-			connection.RunServerMain(vcConfig.Server, func(server *grpc.Server, port int) {
+			go connection.RunServerMain(vcConfig.Server, func(server *grpc.Server, port int) {
 				if vcConfig.Server.Endpoint.Port == 0 {
 					vcConfig.Server.Endpoint.Port = port
 				}
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
-			return nil
+
+			ctx := cmd.Context()
+			<-ctx.Done()
+			err = context.Cause(ctx)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
+			return err
 		},
 	}
 

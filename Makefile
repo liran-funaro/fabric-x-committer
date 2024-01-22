@@ -122,6 +122,7 @@ build: $(output_dir)
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator" ./cmd/coordinatorservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/mockcoordinator" ./wgclient/cmd/mockcoordinator
 	$(env) go build -buildvcs=false -o "$(output_dir)/vcservice" ./cmd/vcservice
+	$(env) go build -buildvcs=false -o "$(output_dir)/queryservice" ./cmd/queryservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/mockvcservice" ./cmd/mockvcservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/sigservice" ./sigverification/cmd/server
 	$(env) go build -buildvcs=false -o "$(output_dir)/mocksigservice" ./cmd/mocksigservice

@@ -5,14 +5,14 @@ option go_package = "github.ibm.com/decentralized-trust-research/scalable-commit
 package protoqueryservice;
 
 service QueryService {
-  rpc GetCommittments(TokenIDs) returns (Committments) {}
+  rpc GetCommitments(TokenIDs) returns (Commitments) {}
 }
 
 message TokenIDs {
     repeated bytes keys = 1;
 }
 
-message Committments {
+message Commitments {
     repeated ValueWithVersion output = 1;
 }
 

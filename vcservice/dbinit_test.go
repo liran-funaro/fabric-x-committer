@@ -11,7 +11,7 @@ func Test_DbInit(t *testing.T) {
 	env := newDatabaseTestEnv(t)
 
 	ns := []int{0, 1, 2, 3}
-	require.NoError(t, initDatabaseTables(env.db, ns))
+	require.NoError(t, initDatabaseTables(context.Background(), env.db.pool, ns))
 
 	_, err := env.db.pool.Exec(context.Background(), `insert into ns_0 values (UNNEST($1::bytea[]));`, [][]byte{
 		[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4"),
@@ -27,8 +27,8 @@ func Test_DbInit(t *testing.T) {
 		require.NoError(t, r.Scan(&key, &value, &version))
 		t.Logf("key: %s", string(key))
 		require.Nil(t, value)
-		require.Equal(t, versionNumber(0).bytes(), version)
+		require.Equal(t, VersionNumber(0).Bytes(), version)
 	}
 
-	require.NoError(t, clearDatabaseTables(env.db, ns))
+	require.NoError(t, clearDatabaseTables(context.Background(), env.db.pool, ns))
 }

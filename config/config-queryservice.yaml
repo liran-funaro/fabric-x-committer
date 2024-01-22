@@ -1,0 +1,26 @@
+query-service:
+  # Configuration for the server
+  server:
+    # The server's endpoint configuration
+    endpoint:
+      host: localhost   # The host of the server
+      port: 7003        # The port of the server
+    # Credentials for the server
+  database:
+    host: "localhost"                          # The host of the database
+    port: 5433                                 # The port of the database
+    username: "yugabyte"                       # The username for the database
+    # TODO: pass password via environment variable
+    password: "yugabyte"                       # The password for the database
+    database: "yugabyte"                       # The database name
+    max-connections: 10                        # The maximum size of the connection pool
+    min-connections: 5                         # The minimum size of the connection pool.
+  # Resource limit configurations
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: localhost:7004
+logging:
+  development: true
+  enabled: true
+  level: INFO

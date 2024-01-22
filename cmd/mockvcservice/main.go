@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -47,13 +48,20 @@ func startCmd() *cobra.Command {
 			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
 				return err
 			}
-			config := vcservice.ReadConfig()
+			vcConfig := vcservice.ReadConfig()
 
 			vcs := vcservicemock.NewMockVcService()
-			connection.RunServerMain(config.Server, func(grpcServer *grpc.Server, _ int) {
+			go connection.RunServerMain(vcConfig.Server, func(grpcServer *grpc.Server, _ int) {
 				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
 			})
-			return nil
+
+			ctx := cmd.Context()
+			<-ctx.Done()
+			err := context.Cause(ctx)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
+			return err
 		},
 	}
 

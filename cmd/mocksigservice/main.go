@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -47,13 +48,20 @@ func startCmd() *cobra.Command {
 			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
 				return err
 			}
-			config := serverconfig.ReadConfig()
+			sigConfig := serverconfig.ReadConfig()
 
 			sv := sigverifiermock.NewMockSigVerifier()
-			connection.RunServerMain(config.Server, func(grpcServer *grpc.Server, _ int) {
+			go connection.RunServerMain(sigConfig.Server, func(grpcServer *grpc.Server, _ int) {
 				protosigverifierservice.RegisterVerifierServer(grpcServer, sv)
 			})
-			return nil
+
+			ctx := cmd.Context()
+			<-ctx.Done()
+			err := context.Cause(ctx)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
+			return err
 		},
 	}
 

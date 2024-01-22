@@ -42,7 +42,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 }
 
 type state struct {
-	namespace namespaceID
+	namespace NamespaceID
 	key       int
 	version   int
 }
@@ -54,7 +54,7 @@ func writes(allWrites ...state) namespaceToWrites {
 		nw.append(
 			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.key)),
 			[]byte(fmt.Sprintf("value%d.%d.%d", ww.namespace, ww.key, ww.version)),
-			versionNumber(ww.version).bytes(),
+			VersionNumber(ww.version).Bytes(),
 		)
 	}
 	return ntw

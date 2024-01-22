@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 const (
@@ -46,6 +47,11 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *protovcservice.TransactionStatus
 	}
+
+	// NamespaceID identities a database namespace.
+	NamespaceID uint32
+	// VersionNumber represents a row's version.
+	VersionNumber uint64
 )
 
 func (s *statesToBeCommitted) Debug() {
@@ -59,21 +65,10 @@ func (s *statesToBeCommitted) Debug() {
 
 // newDatabase creates a new database.
 func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
-	logger.Infof("DB source: %s", config.DataSourceName())
-	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
+	pool, err := NewDatabasePool(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing datasource: %w", err)
+		return nil, err
 	}
-
-	poolConfig.MaxConns = config.MaxConnections
-	poolConfig.MinConns = config.MinConnections
-
-	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
-	if err != nil {
-		logger.Errorf("Failed making pool: %s", err)
-		return nil, fmt.Errorf("failed making pool: %w", err)
-	}
-	logger.Debugf("DB pool created")
 
 	return &database{
 		pool:    pool,
@@ -82,7 +77,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
-func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /* mismatching reads */, error) {
+func (db *database) validateNamespaceReads(nsID NamespaceID, r *reads) (*reads /* mismatching reads */, error) {
 	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
 	// the reads. This function returns the keys and versions of the mismatching reads.
 	// Note that we have a table per namespace.
@@ -112,9 +107,9 @@ func (db *database) validateNamespaceReads(nsID namespaceID, r *reads) (*reads /
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(nsID namespaceID, queryKeys [][]byte) (keyToVersion, error) {
+func (db *database) queryVersionsIfPresent(nsID NamespaceID, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
-	query := fmt.Sprintf(queryVersionsSQLTemplate, tableNameForNamespace(nsID))
+	query := fmt.Sprintf(queryVersionsSQLTemplate, nsID.TableName())
 	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
 	if err != nil {
 		return nil, err
@@ -350,7 +345,18 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 	return violating, nil
 }
 
-// tableNameForNamespace returns the table name for the given namespace.
-func tableNameForNamespace(nsID namespaceID) string {
+// TableName returns the table name for the given namespace.
+func (nsID NamespaceID) TableName() string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
+}
+
+// VersionNumberFromBytes converts a version bytes representation to a number representation.
+func VersionNumberFromBytes(version []byte) VersionNumber {
+	v, _ := protowire.ConsumeVarint(version)
+	return VersionNumber(v)
+}
+
+// Bytes converts a version number representation to bytes representation.
+func (v VersionNumber) Bytes() []byte {
+	return protowire.AppendVarint(nil, uint64(v))
 }

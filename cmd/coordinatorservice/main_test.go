@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -26,21 +27,15 @@ logging:
   Output: %s
 coordinator-service:
   server:
-    endpoint:
-      host: "localhost"
-      port: 3001
+    endpoint: localhost:3001
   sign-verifier:
     server:
       - # server 1 configuration
-        endpoint:
-          host: "localhost" # The host of the server
-          port: %d        # The port of the server
+        endpoint: localhost:%d
   validator-committer:
     server:
       - # server 1 configuration
-        endpoint:
-          host: "localhost" # The host of the server
-          port: %d        # The port of the server
+        endpoint: localhost:%d
   dependency-graph:
     num-of-local-dep-constructors: 20
     waiting-txs-limit: 10000
@@ -49,7 +44,7 @@ coordinator-service:
   monitoring:
     metrics:
       enable: true
-      endpoint: :2110
+      endpoint: localhost:2110
 `
 
 const (
@@ -109,14 +104,14 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 		errStr          string
 		err             error
 	}{
-		// {
-		// 	name:            "start the coordinatorservice",
-		// 	args:            []string{"start", "--configs", testConfigFilePath},
-		// 	cmdLoggerOutput: "Coordinator service started successfully",
-		// 	cmdStdOutput:    "Starting coordinatorservice",
-		// 	errStr:          "",
-		// 	err:             nil,
-		// },
+		{
+			name:            "start the coordinatorservice",
+			args:            []string{"start", "--configs", testConfigFilePath},
+			cmdLoggerOutput: "Coordinator service started successfully",
+			cmdStdOutput:    "Starting coordinatorservice",
+			errStr:          "",
+			err:             nil,
+		},
 		{
 			name:         "trailing args for start",
 			args:         []string{"start", "arg1", "arg2"},
@@ -158,9 +153,12 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 			cmd.SetErr(cmdStdErr)
 			cmd.SetArgs(tc.args)
 
-			var err error
+			errChan := make(chan error)
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
 			go func() {
-				err = cmd.Execute()
+				_, err := cmd.ExecuteContextC(ctx)
+				errChan <- err
 			}()
 
 			require.Eventually(t, func() bool {
@@ -174,8 +172,11 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 				}
 				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
 			}, 4*time.Second, 100*time.Millisecond)
+
+			cancel()
+
+			require.Equal(t, tc.err, <-errChan)
 			require.Equal(t, tc.errStr, cmdStdErr.String())
-			require.Equal(t, tc.err, err)
 			require.NoError(t, os.Remove(output))
 		})
 	}

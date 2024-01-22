@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -60,11 +61,21 @@ func startCmd() *cobra.Command {
 				return errors.Wrapf(err, "failed to read config path %s", configPath)
 			}
 			clientConfig := loadgen.ReadConfig()
-			if _, blockGen, client, err := loadgen.Starter(clientConfig); err != nil {
+			_, blockGen, client, err := loadgen.Starter(clientConfig)
+			if err != nil {
 				return err
-			} else {
-				return client.Start(blockGen)
 			}
+
+			ctx, cancel := context.WithCancelCause(cmd.Context())
+			go func() {
+				cancel(client.Start(blockGen))
+			}()
+
+			<-ctx.Done()
+			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return nil
+			}
+			return context.Cause(ctx)
 		},
 	}
 

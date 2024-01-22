@@ -22,13 +22,13 @@ const (
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
 	queryTxStatusSQLTemplate    = "SELECT tx_id, status FROM tx_status WHERE tx_id = ANY($1)"
 
-	ns1 = namespaceID(1)
-	ns2 = namespaceID(2)
+	ns1 = NamespaceID(1)
+	ns2 = NamespaceID(2)
 )
 
 var (
-	v0 = versionNumber(0).bytes()
-	v1 = versionNumber(1).bytes()
+	v0 = VersionNumber(0).Bytes()
+	v1 = VersionNumber(1).Bytes()
 )
 
 type databaseTestEnv struct {
@@ -111,7 +111,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		nsID                    namespaceID
+		nsID                    NamespaceID
 		r                       *reads
 		expectedMismatchedReads *reads
 	}{
@@ -326,7 +326,7 @@ func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 			INSERT INTO %s (key, value, version)
 			SELECT _key, _value, _version
 			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
-			tableNameForNamespace(nsID)),
+			nsID.TableName()),
 			writes.keys, writes.values, writes.versions,
 		)
 		require.NoError(t, err)
@@ -336,19 +336,19 @@ func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 func (env *databaseTestEnv) populateDataWithCleanup(
 	t *testing.T, nsIDs []int, writes namespaceToWrites, batchStatus *protovcservice.TransactionStatus,
 ) {
-	require.NoError(t, initDatabaseTables(env.db, nsIDs))
+	require.NoError(t, initDatabaseTables(context.Background(), env.db.pool, nsIDs))
 
 	_, _, err := env.db.commit(&statesToBeCommitted{batchStatus: batchStatus})
 	require.NoError(t, err)
 	env.commitState(t, writes)
 
 	t.Cleanup(func() {
-		require.NoError(t, clearDatabaseTables(env.db, nsIDs))
+		require.NoError(t, clearDatabaseTables(context.Background(), env.db.pool, nsIDs))
 	})
 }
 
-func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID namespaceID, keys [][]byte) map[string]*valueVersion {
-	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, tableNameForNamespace(nsID))
+func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID NamespaceID, keys [][]byte) map[string]*valueVersion {
+	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, nsID.TableName())
 
 	kvPairs, err := env.db.pool.Query(context.Background(), query, keys)
 	require.NoError(t, err)
@@ -369,7 +369,7 @@ func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID namespaceID, keys [][]b
 	return actualRows
 }
 
-func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRows namespaceWrites) {
+func (env *databaseTestEnv) rowExists(t *testing.T, nsID NamespaceID, expectedRows namespaceWrites) {
 	actualRows := env.fetchKeys(t, nsID, expectedRows.keys)
 
 	assert.Len(t, actualRows, len(expectedRows.keys))
@@ -381,13 +381,13 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID namespaceID, expectedRo
 	}
 }
 
-func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID namespaceID, keys [][]byte) {
+func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID NamespaceID, keys [][]byte) {
 	actualRows := env.fetchKeys(t, nsID, keys)
 
 	assert.Len(t, actualRows, 0)
 	for key, valVer := range actualRows {
 		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
-			key, string(valVer.value), versionNumberFromBytes(valVer.version))
+			key, string(valVer.value), VersionNumberFromBytes(valVer.version))
 	}
 }
 

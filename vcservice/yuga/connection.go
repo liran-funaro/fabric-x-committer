@@ -164,12 +164,12 @@ func ExecRetry(ctx context.Context, pool *pgxpool.Pool, stmt string) error {
 	for i := 0; i < 60; i++ {
 		if i > 0 {
 			time.Sleep(time.Second)
-			logger.Debugf("   - Execution attempt %d", i+1)
 		}
 		_, err = pool.Exec(ctx, stmt)
 		if err == nil {
 			return nil
 		}
+		logger.Debugf("   > Failed exec attempt %d: %s", i+1, err)
 	}
 	return err
 }

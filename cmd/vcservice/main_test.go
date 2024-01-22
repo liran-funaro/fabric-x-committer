@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -79,14 +82,14 @@ func TestVCServiceCmd(t *testing.T) {
 			errStr:          "",
 			err:             nil,
 		},
-		// {
-		// 	name:            "start the vcservice",
-		// 	args:            []string{"start", "--configs", testConfigPath},
-		// 	cmdLoggerOutput: "Running server",
-		// 	cmdStdOutput:    "Starting vcservice",
-		// 	errStr:          "",
-		// 	err:             nil,
-		// },
+		{
+			name:            "start the vcservice",
+			args:            []string{"start", "--configs", testConfigPath},
+			cmdLoggerOutput: "Running server",
+			cmdStdOutput:    "Starting vcservice",
+			errStr:          "",
+			err:             nil,
+		},
 		{
 			name:            "clear the vcservice",
 			args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0,1"},
@@ -136,15 +139,30 @@ func TestVCServiceCmd(t *testing.T) {
 			cmd.SetErr(cmdStdErr)
 			cmd.SetArgs(tc.args)
 
-			err := cmd.Execute()
-			require.Equal(t, tc.err, err)
+			errChan := make(chan error)
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			go func() {
+				_, err := cmd.ExecuteContextC(ctx)
+				errChan <- err
+			}()
+
+			require.Eventually(t, func() bool {
+				return strings.Contains(cmdStdOut.String(), tc.cmdStdOutput)
+			}, 4*time.Second, 100*time.Millisecond)
+
+			require.Eventually(t, func() bool {
+				logOut, errFile := os.ReadFile(outputPath)
+				if errFile != nil {
+					return false
+				}
+				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
+			}, 30*time.Second, 500*time.Millisecond)
+
+			cancel()
+
+			require.Equal(t, tc.err, <-errChan)
 			require.Equal(t, tc.errStr, cmdStdErr.String())
-
-			require.Contains(t, cmdStdOut.String(), tc.cmdStdOutput)
-
-			logOut, errFile := os.ReadFile(outputPath)
-			require.NoError(t, errFile)
-			require.Contains(t, string(logOut), tc.cmdLoggerOutput)
 
 			require.NoError(t, os.Remove(outputPath))
 		})
