@@ -17,8 +17,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 )
 
-const defaultTimeout = 2 * time.Second
-const defaultTick = 1 * time.Microsecond
+const (
+	defaultTimeout = 2 * time.Second
+	defaultTick    = 1 * time.Microsecond
+)
 
 func TestNewAggregator(t *testing.T) {
 	blockSize := 100
@@ -99,7 +101,6 @@ func TestNewAggregator(t *testing.T) {
 	for i := 1; i < numOfBlocks; i++ {
 		blockChan <- createBlock(uint64(i), uint64(blockSize))
 	}
-	close(blockChan)
 
 	// consume all blocks
 	for i := 0; i < numOfBlocks; i++ {
@@ -109,12 +110,15 @@ func TestNewAggregator(t *testing.T) {
 	}
 
 	// shutdown aggregator
-	close(resultBlockChan)
-	close(statusChan)
 	stop()
 
 	// wait for our little go friends
 	wg.Wait()
+
+	// Close channels only after all writers ended.
+	close(blockChan)
+	close(resultBlockChan)
+	close(statusChan)
 
 	fmt.Printf("TPS: %.2f\n", float64(numOfBlocks*blockSize)/time.Since(start).Seconds())
 

@@ -63,6 +63,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 	for {
 		select {
 		case <-ctx.Done():
+			return nil
 		case <-a.stop:
 			return nil
 		case s, more := <-statusChan:
@@ -76,6 +77,7 @@ func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, st
 		default:
 			select {
 			case <-ctx.Done():
+				return nil
 			case <-a.stop:
 				return nil
 			case s, more := <-statusChan:
