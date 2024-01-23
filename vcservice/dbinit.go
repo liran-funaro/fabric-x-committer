@@ -3,6 +3,7 @@ package vcservice
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
@@ -12,7 +13,7 @@ const createTxTableStmt = `
 CREATE TABLE IF NOT EXISTS tx_status (
 	tx_id bytea NOT NULL PRIMARY KEY,
 	status integer
-);
+) %[2]s;
 `
 
 const commitTxStatus = `
@@ -47,8 +48,10 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	key bytea NOT NULL PRIMARY KEY,
 	value bytea DEFAULT NULL,
 	version bytea DEFAULT '\x00'::bytea
-) SPLIT INTO 120 tablets;
+) %[2]s;
 `
+
+const tableSplit = "SPLIT INTO 120 tablets"
 
 // We avoid using index for now as it slows down inserts
 // const createIndexStmtTemplate = `CREATE INDEX idx_%[1]s ON %[1]s(version);`
@@ -209,10 +212,48 @@ func ClearDatabase(config *DatabaseConfig, nsIDs []int) error {
 	return nil
 }
 
+func getDbType(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	rows, err := pool.Query(ctx, "SELECT version();")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var out string
+		err = rows.Scan(&out)
+		if err != nil {
+			return "", err
+		}
+		out = strings.ToLower(out)
+		if strings.Contains(out, "yugabyte") {
+			return "yugabyte", nil
+		} else if strings.Contains(out, "postgresql") {
+			return "postgresql", nil
+		}
+	}
+	return "", nil
+}
+
+func stmtFmt(stmtTemplate, tableName, dbType string) string {
+	splitStmt := ""
+	if dbType == "yugabyte" {
+		splitStmt = tableSplit
+	}
+	// We add a fake template at the end, so we always consume both parameters.
+	return fmt.Sprintf(stmtTemplate+"%.0[1]s%.0[2]s", tableName, splitStmt)
+}
+
 func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
 	logger.Info("Creating tx status table and its methods.")
+	dbType, err := getDbType(ctx, pool)
+	if err != nil {
+		return err
+	}
+	logger.Infof("DBType: %v", dbType)
+
 	for _, stmt := range initStatements {
-		err := yuga.ExecRetry(ctx, pool, stmt)
+		err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, "", dbType))
 		if err != nil {
 			return err
 		}
@@ -224,7 +265,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 		logger.Infof("Creating table '%s' and its methods.", tableName)
 
 		for _, stmt := range initStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, pool, fmt.Sprintf(stmt, tableName))
+			err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, tableName, dbType))
 			if err != nil {
 				return err
 			}
@@ -238,8 +279,14 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 
 func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
 	logger.Info("Dropping tx status table and its methods.")
+	dbType, err := getDbType(ctx, pool)
+	if err != nil {
+		return err
+	}
+	logger.Infof("DBType: %v", dbType)
+
 	for _, stmt := range dropStatements {
-		err := yuga.ExecRetry(ctx, pool, stmt)
+		err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, "", dbType))
 		if err != nil {
 			return err
 		}
@@ -251,7 +298,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, pool, fmt.Sprintf(stmt, tableName))
+			err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, tableName, dbType))
 			if err != nil {
 				return err
 			}
