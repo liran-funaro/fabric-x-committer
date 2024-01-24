@@ -1,7 +1,6 @@
 package serialization
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
@@ -9,7 +8,7 @@ import (
 func WrapEnvelope(data []byte, header *common.Header) []byte {
 	return protoutil.MarshalOrPanic(&common.Payload{
 		Header: header,
-		Data:   protoutil.MarshalOrPanic(&common.ConfigValue{Value: data}),
+		Data:   data,
 	})
 }
 func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
@@ -25,12 +24,7 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 
 	switch channelHdr.Type {
 	case int32(common.HeaderType_MESSAGE):
-		data := &common.ConfigValue{}
-		if err = proto.Unmarshal(payload.Data, data); err != nil {
-			return nil, nil, err
-		} else {
-			return data.Value, channelHdr, nil
-		}
+		return payload.Data, channelHdr, nil
 	default:
 		// We are not interested in the data of a config tx
 		return nil, channelHdr, nil
