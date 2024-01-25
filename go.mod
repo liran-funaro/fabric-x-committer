@@ -43,7 +43,6 @@ require (
 )
 
 replace (
-	github.com/hyperledger/fabric => github.com/yacovm/fabric v1.4.0-rc1.0.20230628194108-2c21550e8286
 	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token => ./protos/token
 	github.ibm.com/decentralized-trust-research/scalable-committer/utils => ./utils
 )
