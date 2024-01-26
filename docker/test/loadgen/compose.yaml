@@ -6,16 +6,19 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ../config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - testnet
 
   grafana:
     image: "grafana/grafana-oss:latest"
+    environment:
+      - PROM_URL=http://prometheus:9090
     ports:
       - "3000:3000"
     volumes:
-      - ../config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/grafana:/etc/grafana/provisioning/
+      - prometheus_data:/prometheus
     networks:
       - testnet
 
@@ -29,6 +32,9 @@ services:
       - "6997:6997"
     networks:
       - testnet
+
+volumes:
+  prometheus_data:
 
 networks:
   testnet:
