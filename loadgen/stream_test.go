@@ -3,6 +3,7 @@ package loadgen
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -257,6 +258,7 @@ func TestGenDependentTx(t *testing.T) {
 }
 
 func TestBlindWriteWithValue(t *testing.T) {
+	t.Parallel()
 	p := defaultProfile(1)
 	p.Transaction.BlindWriteValueSize = 32
 	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
@@ -270,6 +272,7 @@ func TestBlindWriteWithValue(t *testing.T) {
 }
 
 func TestReadWriteWithValue(t *testing.T) {
+	t.Parallel()
 	p := defaultProfile(1)
 	p.Transaction.ReadWriteValueSize = 32
 	p.Transaction.ReadWriteCount = NewConstantDistribution(2)
@@ -280,4 +283,17 @@ func TestReadWriteWithValue(t *testing.T) {
 	for _, v := range tx.Namespaces[0].ReadWrites {
 		require.Len(t, v.Value, 32)
 	}
+}
+
+func TestGenTxWithRateLimit(t *testing.T) {
+	t.Parallel()
+	p := defaultProfile(8)
+	limit := 100
+	expectedSeconds := 3
+
+	c := StartTxGenerator(p, LimiterConfig{InitialLimit: limit})
+	start := time.Now()
+	c.NextN(expectedSeconds * limit)
+	duration := time.Since(start)
+	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1)
 }

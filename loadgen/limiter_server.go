@@ -9,11 +9,10 @@ import (
 	"go.uber.org/ratelimit"
 )
 
-var NoLimit = LimiterConfig{
-	Endpoint:     connection.Endpoint{},
-	InitialLimit: -1,
-}
+// NoLimit is the default configuration that instance an unlimited limiter.
+var NoLimit = LimiterConfig{}
 
+// LimiterConfig is used to create a limiter.
 type LimiterConfig struct {
 	Endpoint     connection.Endpoint `mapstructure:"endpoint"`
 	InitialLimit int                 `mapstructure:"initial-limit"`
@@ -32,19 +31,28 @@ func getLimiter(limit int) ratelimit.Limiter {
 		logger.Infof("Setting to unlimited (value passed: %d).", limit)
 		return ratelimit.NewUnlimited()
 	} else {
-		logger.Infof("Setting limit to %d blocks per second.", limit)
+		logger.Infof("Setting limit to %d requests per second.", limit)
 		// create our new limiter
 		return ratelimit.New(limit)
 	}
 }
 
+// NewLimiter instantiate a new rate limiter with optional remote control capabilities.
 func NewLimiter(c *LimiterConfig) ratelimit.Limiter {
-	if c == nil || c.Endpoint.Empty() {
+	if c == nil {
 		return ratelimit.NewUnlimited()
 	}
-	rl := limiterHolder{limiter: getLimiter(c.InitialLimit)}
 
-	// start remote-limiter controller
+	initialLimiter := getLimiter(c.InitialLimit)
+
+	// Allow fixed limit.
+	if c.Endpoint.Empty() {
+		return initialLimiter
+	}
+
+	rl := limiterHolder{limiter: initialLimiter}
+
+	// start remote-limiter controller.
 	logger.Infof("Start remote controller listener on %s\n", c.Endpoint.Address())
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
@@ -65,7 +73,12 @@ func NewLimiter(c *LimiterConfig) ratelimit.Limiter {
 
 		c.IndentedJSON(http.StatusOK, request)
 	})
-	go router.Run(c.Endpoint.Address())
+	go func() {
+		err := router.Run(c.Endpoint.Address())
+		if err != nil {
+			logger.Errorf("Error running rate limit remote controller: %s", err)
+		}
+	}()
 
 	return &rl
 }
