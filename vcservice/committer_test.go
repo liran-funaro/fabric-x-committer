@@ -42,30 +42,24 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 }
 
 type state struct {
-	namespace NamespaceID
-	key       int
-	version   int
+	namespace      NamespaceID
+	keySuffix      int
+	updateSequence int
 }
 
-func writes(allWrites ...state) namespaceToWrites {
+func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: revive
 	ntw := make(namespaceToWrites)
 	for _, ww := range allWrites {
 		nw := ntw.getOrCreate(ww.namespace)
-		nw.append(
-			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.key)),
-			[]byte(fmt.Sprintf("value%d.%d.%d", ww.namespace, ww.key, ww.version)),
-			VersionNumber(ww.version).Bytes(),
-		)
-	}
-	return ntw
-}
-
-func blindWrites(allWrites ...state) namespaceToWrites {
-	ntw := writes(allWrites...)
-	for _, nw := range ntw {
-		for i := range nw.versions {
-			nw.versions[i] = nil
+		var ver []byte
+		if !isBlind {
+			ver = VersionNumber(ww.updateSequence).Bytes()
 		}
+		nw.append(
+			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.keySuffix)),
+			[]byte(fmt.Sprintf("value%d.%d.%d", ww.namespace, ww.keySuffix, ww.updateSequence)),
+			ver,
+		)
 	}
 	return ntw
 }
@@ -78,6 +72,7 @@ func TestCommit(t *testing.T) {
 		t,
 		[]int{1, 2},
 		writes(
+			false,
 			state{1, 1, 1},
 			state{1, 2, 1},
 			state{1, 3, 2},
@@ -109,13 +104,15 @@ func TestCommit(t *testing.T) {
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
 				newWrites: transactionToWrites{
-					"tx-new-1": blindWrites(
+					"tx-new-1": writes(
+						true,
 						state{1, 10, 0},
 						state{1, 11, 0},
 						state{2, 10, 0},
 						state{2, 11, 0},
 					),
-					"tx-new-2": blindWrites(
+					"tx-new-2": writes(
+						true,
 						state{1, 20, 0},
 						state{1, 21, 0},
 						state{2, 20, 0},
@@ -129,6 +126,7 @@ func TestCommit(t *testing.T) {
 				"tx-new-2": protoblocktx.Status_COMMITTED,
 			},
 			expectedNsRows: writes(
+				false,
 				state{1, 10, 0},
 				state{1, 11, 0},
 				state{2, 10, 0},
@@ -144,6 +142,7 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-non-blind-1": writes(
+						false,
 						state{1, 1, 2},
 						state{1, 2, 2},
 						state{2, 1, 1},
@@ -156,6 +155,7 @@ func TestCommit(t *testing.T) {
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
 			expectedNsRows: writes(
+				false,
 				state{1, 1, 2},
 				state{1, 2, 2},
 				state{2, 1, 1},
@@ -167,7 +167,8 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites: transactionToWrites{
-					"tx-blind-1": blindWrites(
+					"tx-blind-1": writes(
+						true,
 						state{1, 1, 3},
 						state{1, 2, 3},
 						state{2, 1, 2},
@@ -181,6 +182,7 @@ func TestCommit(t *testing.T) {
 				"tx-blind-1": protoblocktx.Status_COMMITTED,
 			},
 			expectedNsRows: writes(
+				false,
 				state{1, 1, 3},
 				state{1, 2, 3},
 				state{2, 1, 2},
@@ -192,31 +194,37 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-all-1": writes(
+						false,
 						state{1, 1, 4},
 						state{1, 2, 4},
 					),
 					"tx-all-2": writes(
+						false,
 						state{1, 3, 3},
 						state{1, 4, 3},
 					),
 				},
 				validTxBlindWrites: transactionToWrites{
-					"tx-all-1": blindWrites(
+					"tx-all-1": writes(
+						true,
 						state{2, 1, 3},
 						state{2, 2, 3},
 						state{2, 5, 0},
 					),
-					"tx-all-2": blindWrites(
+					"tx-all-2": writes(
+						true,
 						state{2, 3, 2},
 						state{2, 4, 2},
 						state{2, 6, 0},
 					),
 				},
 				newWrites: transactionToWrites{
-					"tx-all-1": blindWrites(
+					"tx-all-1": writes(
+						true,
 						state{2, 30, 0},
 					),
-					"tx-all-2": blindWrites(
+					"tx-all-2": writes(
+						true,
 						state{2, 31, 0},
 					),
 				},
@@ -234,6 +242,7 @@ func TestCommit(t *testing.T) {
 				"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			},
 			expectedNsRows: writes(
+				false,
 				state{1, 1, 4},
 				state{1, 2, 4},
 				state{1, 3, 3},
@@ -253,25 +262,31 @@ func TestCommit(t *testing.T) {
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-not-violate-1": writes(
+						false,
 						state{1, 1, 5},
 					),
-					"tx-violate-1": blindWrites(
+					"tx-violate-1": writes(
+						true,
 						state{1, 3, 4},
 					),
 				},
 				validTxBlindWrites: transactionToWrites{
 					"tx-not-violate-1": writes(
+						false,
 						state{1, 2, 5},
 					),
-					"tx-violate-1": blindWrites(
+					"tx-violate-1": writes(
+						true,
 						state{1, 4, 4},
 					),
 				},
 				newWrites: transactionToWrites{
-					"tx-not-violate-1": blindWrites(
+					"tx-not-violate-1": writes(
+						true,
 						state{1, 22, 0}, // not violate
 					),
-					"tx-violate-1": blindWrites(
+					"tx-violate-1": writes(
+						true,
 						state{1, 10, 0}, // violate
 						state{1, 12, 0}, // not violate
 					),
@@ -289,6 +304,7 @@ func TestCommit(t *testing.T) {
 				"tx-conflict-4":    protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			},
 			expectedNsRows: writes(
+				false,
 				state{1, 1, 5},
 				state{1, 2, 5},
 				state{1, 3, 3},
@@ -297,6 +313,7 @@ func TestCommit(t *testing.T) {
 				state{1, 22, 0},
 			),
 			unexpectedNsRows: writes(
+				false,
 				state{1, 12, 0},
 			),
 		},
@@ -304,13 +321,13 @@ func TestCommit(t *testing.T) {
 			name: "all invalid txs",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx1": writes(state{2, 7, 1}),
+					"tx1": writes(false, state{2, 7, 1}),
 				},
 				validTxBlindWrites: transactionToWrites{
-					"tx1": blindWrites(state{1, 1, 6}),
+					"tx1": writes(true, state{1, 1, 6}),
 				},
 				newWrites: transactionToWrites{
-					"tx1": blindWrites(state{1, 40, 0}),
+					"tx1": writes(true, state{1, 40, 0}),
 				},
 				invalidTxIndices: map[txID]protoblocktx.Status{
 					"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -325,9 +342,11 @@ func TestCommit(t *testing.T) {
 				"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			},
 			expectedNsRows: writes(
+				false,
 				state{1, 1, 5},
 			),
 			unexpectedNsRows: writes(
+				false,
 				state{2, 7, 0},
 				state{1, 40, 0},
 			),
