@@ -22,7 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type QueryServiceClient interface {
-	GetCommitments(ctx context.Context, in *TokenIDs, opts ...grpc.CallOption) (*Commitments, error)
+	GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error)
 }
 
 type queryServiceClient struct {
@@ -33,9 +33,9 @@ func NewQueryServiceClient(cc grpc.ClientConnInterface) QueryServiceClient {
 	return &queryServiceClient{cc}
 }
 
-func (c *queryServiceClient) GetCommitments(ctx context.Context, in *TokenIDs, opts ...grpc.CallOption) (*Commitments, error) {
-	out := new(Commitments)
-	err := c.cc.Invoke(ctx, "/protoqueryservice.QueryService/GetCommitments", in, out, opts...)
+func (c *queryServiceClient) GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error) {
+	out := new(Rows)
+	err := c.cc.Invoke(ctx, "/protoqueryservice.QueryService/GetRows", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (c *queryServiceClient) GetCommitments(ctx context.Context, in *TokenIDs, o
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility
 type QueryServiceServer interface {
-	GetCommitments(context.Context, *TokenIDs) (*Commitments, error)
+	GetRows(context.Context, *Query) (*Rows, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -54,8 +54,8 @@ type QueryServiceServer interface {
 type UnimplementedQueryServiceServer struct {
 }
 
-func (UnimplementedQueryServiceServer) GetCommitments(context.Context, *TokenIDs) (*Commitments, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetCommitments not implemented")
+func (UnimplementedQueryServiceServer) GetRows(context.Context, *Query) (*Rows, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRows not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -70,20 +70,20 @@ func RegisterQueryServiceServer(s grpc.ServiceRegistrar, srv QueryServiceServer)
 	s.RegisterService(&QueryService_ServiceDesc, srv)
 }
 
-func _QueryService_GetCommitments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TokenIDs)
+func _QueryService_GetRows_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Query)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServiceServer).GetCommitments(ctx, in)
+		return srv.(QueryServiceServer).GetRows(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/protoqueryservice.QueryService/GetCommitments",
+		FullMethod: "/protoqueryservice.QueryService/GetRows",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServiceServer).GetCommitments(ctx, req.(*TokenIDs))
+		return srv.(QueryServiceServer).GetRows(ctx, req.(*Query))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -96,8 +96,8 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*QueryServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetCommitments",
-			Handler:    _QueryService_GetCommitments_Handler,
+			MethodName: "GetRows",
+			Handler:    _QueryService_GetRows_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

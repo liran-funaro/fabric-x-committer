@@ -147,23 +147,39 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 
 func TestQuery(t *testing.T) {
 	env := newQueryServiceTestEnv(t)
-	query := &protoqueryservice.TokenIDs{
-		Keys: make([][]byte, 0, len(env.keys)+1),
-	}
-	query.Keys = append(query.Keys, env.keys...)
-	query.Keys = append(query.Keys, strToBytes("non-tx")...)
-
+	query := &protoqueryservice.Query{}
+	expected := protoqueryservice.Rows{}
+	querySize := 0
 	for _, ns := range env.ns {
-		t.Run(fmt.Sprintf("Query internal NS %d", ns), func(t *testing.T) {
-			ret, err := env.qs.queryRowsIfPresent(context.Background(), vcservice.NamespaceID(ns), query.Keys)
+		qNs := &protoqueryservice.QueryNamespace{
+			NsId: uint32(ns),
+			Keys: make([][]byte, 0, len(env.keys)+1),
+		}
+		qNs.Keys = append(qNs.Keys, env.keys...)
+		qNs.Keys = append(qNs.Keys, strToBytes("non-tx")...)
+		query.Namespaces = append(query.Namespaces, qNs)
+		querySize += len(qNs.Keys)
+
+		eNs := &protoqueryservice.RowsNamespace{
+			NsId: uint32(ns),
+			Rows: make([]*protoqueryservice.Row, 0, len(env.keys)),
+		}
+		for i, k := range env.keys {
+			eNs.Rows = append(eNs.Rows, &protoqueryservice.Row{
+				Key:     k,
+				Value:   env.values[i],
+				Version: env.versions[i],
+			})
+		}
+		expected.Namespaces = append(expected.Namespaces, eNs)
+	}
+
+	for i, qNs := range query.Namespaces {
+		t.Run(fmt.Sprintf("Query internal NS %d", qNs.NsId), func(t *testing.T) {
+			ret, err := env.qs.queryRowsIfPresent(context.Background(), qNs)
 			require.NoError(t, err)
-			require.Len(t, ret, len(env.keys))
-			for i, k := range env.keys {
-				v, ok := ret[string(k)]
-				require.True(t, ok)
-				require.Equal(t, env.values[i], v.Value)
-				require.Equal(t, env.versions[i], v.Version)
-			}
+			require.Equal(t, expected.Namespaces[i].NsId, ret.NsId)
+			require.ElementsMatch(t, expected.Namespaces[i].Rows, ret.Rows)
 		})
 	}
 
@@ -171,34 +187,29 @@ func TestQuery(t *testing.T) {
 	require.Zero(t, test.GetMetricValue(t, env.qs.metrics.keyQueriedTotal))
 
 	t.Run("Query interface", func(t *testing.T) {
-		ret, err := env.qs.GetCommitments(context.Background(), query)
+		ret, err := env.qs.GetRows(context.Background(), query)
 		require.NoError(t, err)
-		env.verifyCommitments(t, ret)
+		for i, eNs := range expected.Namespaces {
+			rNs := ret.Namespaces[i]
+			require.Equal(t, eNs.NsId, rNs.NsId)
+			require.ElementsMatch(t, eNs.Rows, rNs.Rows)
+		}
 
 		require.Equal(t, 1, int(test.GetMetricValue(t, env.qs.metrics.queriesReceivedTotal)))
-		require.Equal(t, len(query.Keys), int(test.GetMetricValue(t, env.qs.metrics.keyQueriedTotal)))
+		require.Equal(t, querySize, int(test.GetMetricValue(t, env.qs.metrics.keyQueriedTotal)))
 	})
 
 	t.Run("Query client", func(t *testing.T) {
 		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		ret, err := client.GetCommitments(context.Background(), query)
+		ret, err := client.GetRows(context.Background(), query)
 		require.NoError(t, err)
-		env.verifyCommitments(t, ret)
+		for i, eNs := range expected.Namespaces {
+			rNs := ret.Namespaces[i]
+			require.Equal(t, eNs.NsId, rNs.NsId)
+			require.ElementsMatch(t, eNs.Rows, rNs.Rows)
+		}
 
 		require.Equal(t, 2, int(test.GetMetricValue(t, env.qs.metrics.queriesReceivedTotal)))
-		require.Equal(t, len(query.Keys)*2, int(test.GetMetricValue(t, env.qs.metrics.keyQueriedTotal)))
+		require.Equal(t, querySize*2, int(test.GetMetricValue(t, env.qs.metrics.keyQueriedTotal)))
 	})
-}
-
-func (e *queryServiceTestEnv) verifyCommitments(t *testing.T, c *protoqueryservice.Commitments) {
-	require.Len(t, c.Output, len(e.keys)+1)
-	for i := range e.keys {
-		require.Equal(t, e.values[i], c.Output[i].Value)
-		require.Equal(t, e.versions[i], c.Output[i].Version)
-	}
-	nonExisting := c.Output[len(e.keys)]
-	if nonExisting != nil {
-		require.Nil(t, nonExisting.Value)
-		require.Nil(t, nonExisting.Version)
-	}
 }

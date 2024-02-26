@@ -57,53 +57,52 @@ func (q *QueryService) StartPrometheusServer() <-chan error {
 	return q.metrics.StartPrometheusServer(q.metricsHost)
 }
 
-// GetCommitments implements the query-service interface.
-func (q *QueryService) GetCommitments(
-	ctx context.Context, ds *protoqueryservice.TokenIDs,
-) (*protoqueryservice.Commitments, error) {
+// GetRows implements the query-service interface.
+func (q *QueryService) GetRows(
+	ctx context.Context, ds *protoqueryservice.Query,
+) (*protoqueryservice.Rows, error) {
 	prometheusmetrics.AddToCounter(q.metrics.queriesReceivedTotal, 1)
-	prometheusmetrics.AddToCounter(q.metrics.keyQueriedTotal, len(ds.Keys))
+
+	res := &protoqueryservice.Rows{
+		Namespaces: make([]*protoqueryservice.RowsNamespace, len(ds.Namespaces)),
+	}
 
 	start := time.Now()
-	rows, err := q.queryRowsIfPresent(ctx, 0, ds.Keys)
-	if err != nil {
-		return nil, err
+	for i, ns := range ds.Namespaces {
+		prometheusmetrics.AddToCounter(q.metrics.keyQueriedTotal, len(ns.Keys))
+		var err error
+		res.Namespaces[i], err = q.queryRowsIfPresent(ctx, ns)
+		if err != nil {
+			return nil, err
+		}
 	}
 	prometheusmetrics.Observe(q.metrics.queryLatencySeconds, time.Since(start))
 
-	output := make([]*protoqueryservice.ValueWithVersion, len(ds.Keys))
-
-	for i, k := range ds.Keys {
-		if v, ok := rows[string(k)]; ok {
-			output[i] = v
-		}
-	}
-
-	return &protoqueryservice.Commitments{
-		Output: output,
-	}, nil
+	return res, nil
 }
 
 // queryRowsIfPresent queries rows for the given keys if they exist.
 func (q *QueryService) queryRowsIfPresent(
-	ctx context.Context, nsID vcservice.NamespaceID, queryKeys [][]byte,
-) (map[string]*protoqueryservice.ValueWithVersion, error) {
-	query := fmt.Sprintf(queryRowSQLTemplate, nsID)
-	r, err := q.pool.Query(ctx, query, queryKeys)
+	ctx context.Context, query *protoqueryservice.QueryNamespace,
+) (*protoqueryservice.RowsNamespace, error) {
+	queryStmt := fmt.Sprintf(queryRowSQLTemplate, query.NsId)
+	r, err := q.pool.Query(ctx, queryStmt, query.Keys)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
 
-	res := make(map[string]*protoqueryservice.ValueWithVersion)
+	res := &protoqueryservice.RowsNamespace{
+		NsId: query.NsId,
+		Rows: make([]*protoqueryservice.Row, 0, len(query.Keys)),
+	}
 
 	for r.Next() {
-		var key []byte
-		v := protoqueryservice.ValueWithVersion{}
-		if err = r.Scan(&key, &v.Value, &v.Version); err != nil {
+		v := &protoqueryservice.Row{}
+		if err = r.Scan(&v.Key, &v.Value, &v.Version); err != nil {
 			return nil, err
 		}
-		res[string(key)] = &v
+		res.Rows = append(res.Rows, v)
 	}
 
 	return res, r.Err()
