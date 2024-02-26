@@ -271,6 +271,84 @@ func TestCoordinatorService(t *testing.T) {
 			test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
 		)
 	})
+
+	t.Run("duplicate active txIDs", func(t *testing.T) {
+		require.NoError(
+			t,
+			env.csStream.Send(&protoblocktx.Block{
+				Number: 601,
+				Txs: []*protoblocktx.Tx{
+					{
+						Id:        "tx1000",
+						Signature: []byte("dummy"),
+					},
+					{
+						Id:        "tx1001",
+						Signature: []byte("dummy"),
+					},
+					{
+						Id:        "tx1000",
+						Signature: []byte("dummy"),
+					},
+				},
+			}))
+
+		expectedStatus := []*protocoordinatorservice.TxValidationStatusBatch{
+			{
+				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+					{
+						TxId:   "tx1000",
+						Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+					},
+				},
+			},
+			{
+				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+					{
+						TxId:   "tx1000",
+						Status: protoblocktx.Status_COMMITTED,
+					},
+					{
+						TxId:   "tx1001",
+						Status: protoblocktx.Status_COMMITTED,
+					},
+				},
+			},
+		}
+
+		for _, expStatus := range expectedStatus {
+			txStatus, err := env.csStream.Recv()
+			require.NoError(t, err)
+			require.Equal(t, expStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+		}
+
+		// as tx1000 is no longer an active txs, the following tx should go through as we are not
+		// executing real validation logic performed by the vcservice.
+		require.NoError(
+			t,
+			env.csStream.Send(&protoblocktx.Block{
+				Number: 602,
+				Txs: []*protoblocktx.Tx{
+					{
+						Id:        "tx1000",
+						Signature: []byte("dummy"),
+					},
+				},
+			}))
+
+		expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
+			TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+				{
+					TxId:   "tx1000",
+					Status: protoblocktx.Status_COMMITTED,
+				},
+			},
+		}
+
+		txStatus, err := env.csStream.Recv()
+		require.NoError(t, err)
+		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	})
 }
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit

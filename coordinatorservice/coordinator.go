@@ -34,6 +34,23 @@ type (
 		metrics                          *perfMetrics
 		promErrChan                      <-chan error
 
+		// uncommittedTxIDs is used to store the transaction IDs of uncommitted transactions. This is used to
+		// detect duplicate transaction IDs among active transactions. While the vcservice detects duplicate txIDs
+		// among committed and to-be-committed transactions, we need to identify duplicate txIDs among active
+		// transactions to avoid sending duplicate transactions to the vcservice. This is because it is possible to
+		// send two transactions with the same txID to either the same or different vcservice nodes.
+		// While vcservice ensures that only one of the transactions is committed, it is possible to commit them in
+		// an incorrect order.
+		// For example, let's assume T1 and T2 have the same txID, and T1 occurred before T2 in  a block. Furthermore,
+		// assume that this txID is not already committed. It is possible that one organization might commit T1 and
+		// abort T2 while another might commit T2 and abort T1. This could result in incorrect results and forks among
+		// network nodes. Hence, we need to identify duplicate txIDs among active transactions and reject them early.
+		// Note that the vcservice will still detect duplicate txIDs among committed and to-be-committed transactions
+		// to ensure that no duplicate transactions are committed. Note that we are not directly limiting the number
+		// of entries in uncommittedTxIDs as it is controlled indirectly by the size of various channels and gRPC
+		// flow control.
+		uncommittedTxIDs *sync.Map
+
 		// sendStreamMu is used to synchronize sending transaction status over grpc stream
 		// to the client between the goroutine that process status from sigverifier and the goroutine
 		// that process status from validator.
@@ -179,6 +196,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		orderEnforcer:                    sync.NewCond(&sync.Mutex{}),
 		metrics:                          metrics,
 		promErrChan:                      promErrChan,
+		uncommittedTxIDs:                 &sync.Map{},
 	}
 }
 
@@ -267,12 +285,16 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 		}
 		logger.Debugf("Coordinator received block [%d] with %d TXs", block.Number, len(block.Txs))
 
+		c.metrics.transactionReceived(len(block.Txs))
+
+		if err := c.handleDuplicateAmongActiveTxs(stream, block); err != nil {
+			return err
+		}
+
 		if len(block.Txs) == 0 {
 			c.queues.blockWithValidSignTxs <- block
 			continue
 		}
-
-		c.metrics.transactionReceived(len(block.Txs))
 
 		c.orderEnforcer.L.Lock()
 		for c.stopSendingBlockToSigVerifierMgr.Load() {
@@ -284,6 +306,39 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 		c.queues.blockForSignatureVerification <- block
 		logger.Debugf("Block [%d] was pushed to the sv manager for processing", block.Number)
 	}
+}
+
+func (c *CoordinatorService) handleDuplicateAmongActiveTxs(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	block *protoblocktx.Block,
+) error {
+	dupTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
+	dupTxIndex := make([]int, 0, len(block.Txs))
+
+	for idx, tx := range block.Txs {
+		_, exist := c.uncommittedTxIDs.LoadOrStore(tx.Id, nil)
+		if !exist {
+			continue
+		}
+
+		dupTxStatus = append(dupTxStatus, &protocoordinatorservice.TxValidationStatus{
+			TxId:   tx.Id,
+			Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+		})
+		dupTxIndex = append(dupTxIndex, idx)
+	}
+
+	if len(dupTxStatus) == 0 {
+		return nil
+	}
+
+	for _, idx := range dupTxIndex {
+		// while this copy is not efficient, it is safe to do so because the number of duplicate transactions
+		// is expected to be very small.
+		block.Txs = append(block.Txs[:idx], block.Txs[idx+1:]...)
+	}
+
+	return c.sendTxsStatus(stream, dupTxStatus)
 }
 
 func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() {
@@ -311,7 +366,8 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 	sendBlockFromOutOfOrderMap := func() {
 		block, ok := outOfOrderBlock[nextBlockNumber]
 		for ok {
-			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. It can now be released and deleted from the map with waiting blocks.", block.Number)
+			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. "+
+				"It can now be released and deleted from the map with waiting blocks.", block.Number)
 			sendBlock(block)
 
 			if len(outOfOrderBlock) == outOfOrderBlockLimit {
@@ -326,7 +382,8 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 			nextBlockNumber++
 			block, ok = outOfOrderBlock[nextBlockNumber]
 		}
-		logger.Debugf("Block [%d] was not out of order (and hence not in the map with waiting blocks). Continuing execution...", nextBlockNumber)
+		logger.Debugf("Block [%d] was not out of order (and hence not in the map with waiting blocks). "+
+			"Continuing execution...", nextBlockNumber)
 	}
 
 	for block := range c.queues.blockWithValidSignTxs {
@@ -376,6 +433,8 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
 				duplicate++
 			}
+
+			c.uncommittedTxIDs.Delete(id)
 		}
 
 		logger.Debugf("Batch contained %d valid TXs, %d version conflicts, and %d duplicates. Forwarding to output stream.", committed, mvccConflict, duplicate)
@@ -403,6 +462,8 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 				TxId:   tx.Id,
 				Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 			}
+
+			c.uncommittedTxIDs.Delete(tx.Id)
 		}
 
 		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. Forwarding to output stream.", len(valStatus))
