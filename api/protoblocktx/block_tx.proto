@@ -56,5 +56,15 @@ enum Status {
     ABORTED_MVCC_CONFLICT = 1;
     ABORTED_DUPLICATE_TXID = 2;
     ABORTED_SIGNATURE_INVALID = 3;
+    ABORTED_MISSING_TXID = 4;
+    ABORTED_DUPLICATE_NAMESPACE = 5;
+    ABORTED_NAMESPACE_POLICY_INVALID = 6;
+    ABORTED_NAMESPACE_ID_INVALID = 7;
+    ABORTED_MISSING_NAMESPACE_VERSION = 8;
 }
 
+// Represents a namespace policy.
+message NamespacePolicy {
+    string scheme = 1; // The scheme for signature verification.
+    bytes public_key = 2; // The public key for signature verification.
+}

@@ -306,7 +306,11 @@ func (db *database) commitNewKeys(
 	}
 
 	for _, ns := range newNs.keys {
-		tableName := TableName(types.NamespaceIDFromBytes(ns))
+		nsID, err := types.NamespaceIDFromBytes(ns)
+		if err != nil {
+			return nil, err
+		}
+		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
 			if _, err := tx.Exec(context.Background(), stmtFmt(stmt, tableName, db.name)); err != nil {
 				return nil, err

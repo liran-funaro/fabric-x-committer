@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto" // nolint: staticcheck
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
@@ -287,7 +290,7 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 
 		c.metrics.transactionReceived(len(block.Txs))
 
-		if err := c.handleDuplicateAmongActiveTxs(stream, block); err != nil {
+		if err := c.preProcessBlock(stream, block); err != nil {
 			return err
 		}
 
@@ -306,6 +309,74 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 		c.queues.blockForSignatureVerification <- block
 		logger.Debugf("Block [%d] was pushed to the sv manager for processing", block.Number)
 	}
+}
+
+func (c *CoordinatorService) preProcessBlock(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	block *protoblocktx.Block,
+) error {
+	if err := c.checkTransactionFormation(stream, block); err != nil {
+		return err
+	}
+
+	return c.handleDuplicateAmongActiveTxs(stream, block)
+}
+
+func (c *CoordinatorService) checkTransactionFormation(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	block *protoblocktx.Block,
+) error {
+	badTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
+	badTxIndex := make([]int, 0, len(block.Txs))
+
+	for idx, tx := range block.Txs {
+		if tx.Id == "" {
+			badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
+				TxId:   tx.Id,
+				Status: protoblocktx.Status_ABORTED_MISSING_TXID,
+			})
+			badTxIndex = append(badTxIndex, idx)
+			continue
+		}
+
+		if len(tx.Namespaces) != len(tx.Signatures) {
+			badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
+				TxId:   tx.Id,
+				Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			})
+			badTxIndex = append(badTxIndex, idx)
+			continue
+		}
+
+		nsIDs := make(map[uint32]any)
+		for _, ns := range tx.Namespaces {
+			if _, ok := nsIDs[ns.NsId]; ok {
+				badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
+					TxId:   tx.Id,
+					Status: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+				})
+				badTxIndex = append(badTxIndex, idx)
+				break
+			}
+
+			nsIDs[ns.NsId] = nil
+
+			badStatus := checkNamespaceFormation(tx.Id, ns)
+			if badStatus != nil {
+				badTxStatus = append(badTxStatus, badStatus)
+				badTxIndex = append(badTxIndex, idx)
+				break
+			}
+		}
+	}
+
+	if len(badTxStatus) == 0 {
+		return nil
+	}
+
+	removeFromBlock(block, badTxIndex)
+
+	return c.sendTxsStatus(stream, badTxStatus)
 }
 
 func (c *CoordinatorService) handleDuplicateAmongActiveTxs(
@@ -332,11 +403,7 @@ func (c *CoordinatorService) handleDuplicateAmongActiveTxs(
 		return nil
 	}
 
-	for _, idx := range dupTxIndex {
-		// while this copy is not efficient, it is safe to do so because the number of duplicate transactions
-		// is expected to be very small.
-		block.Txs = append(block.Txs[:idx], block.Txs[idx+1:]...)
-	}
+	removeFromBlock(block, dupTxIndex)
 
 	return c.sendTxsStatus(stream, dupTxStatus)
 }
@@ -550,4 +617,86 @@ func (c *CoordinatorService) Close() error {
 	close(c.queues.txsStatus)
 
 	return c.metrics.provider.StopServer()
+}
+
+func checkNamespaceFormation(txID string, ns *protoblocktx.TxNamespace) *protocoordinatorservice.TxValidationStatus {
+	if ns.NsVersion == nil {
+		return &protocoordinatorservice.TxValidationStatus{
+			TxId:   txID,
+			Status: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+		}
+	}
+
+	// TODO: need to decide whether we can allow other namespaces
+	//       in the transaction when the MetaNamespaceID is present.
+	if types.NamespaceID(ns.NsId) != types.MetaNamespaceID {
+		return nil
+	}
+
+	nsKeys := [][]byte{}
+	nsPolicy := [][]byte{}
+
+	for _, rw := range ns.ReadWrites {
+		nsKeys = append(nsKeys, rw.Key)
+		nsPolicy = append(nsPolicy, rw.Value)
+	}
+
+	for _, w := range ns.BlindWrites {
+		nsKeys = append(nsKeys, w.Key)
+		nsPolicy = append(nsPolicy, w.Value)
+	}
+
+	for i, key := range nsKeys {
+		badStatus := isValidNamespaceEntry(txID, key, nsPolicy[i])
+		if badStatus != nil {
+			return badStatus
+		}
+	}
+
+	return nil
+}
+
+func isValidNamespaceEntry(
+	txID string,
+	nsID []byte,
+	nsPolicy []byte,
+) *protocoordinatorservice.TxValidationStatus {
+	if _, err := types.NamespaceIDFromBytes(nsID); err != nil {
+		return &protocoordinatorservice.TxValidationStatus{
+			TxId:   txID,
+			Status: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+		}
+	}
+
+	p := &protoblocktx.NamespacePolicy{}
+	if err := proto.Unmarshal(nsPolicy, p); err != nil {
+		return &protocoordinatorservice.TxValidationStatus{
+			TxId:   txID,
+			Status: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
+		}
+	}
+
+	return nil
+}
+
+func removeFromBlock(block *protoblocktx.Block, idx []int) {
+	// Remove duplicates and sort the indices
+	idx = uniqueSortedIndices(idx)
+
+	// Iterate over the indices in reverse order
+	for i := len(idx) - 1; i >= 0; i-- {
+		index := idx[i]
+		block.Txs = append(block.Txs[:index], block.Txs[index+1:]...)
+	}
+}
+
+func uniqueSortedIndices(indices []int) []int {
+	sort.Ints(indices)
+	unique := indices[:0]
+	for _, i := range indices {
+		if len(unique) == 0 || unique[len(unique)-1] != i {
+			unique = append(unique, i)
+		}
+	}
+	return unique
 }

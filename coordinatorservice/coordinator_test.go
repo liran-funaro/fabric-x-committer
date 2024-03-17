@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
@@ -19,6 +20,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 type coordinatorTestEnv struct {
@@ -144,211 +146,376 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 	})
 }
 
-func TestCoordinatorService(t *testing.T) {
+func TestCoordinatorServiceValidTx(t *testing.T) {
+	env := newCoordinatorTestEnv(t)
+	env.start(t)
+	err := env.csStream.Send(&protoblocktx.Block{
+		Number: 0,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+				},
+				Signatures: [][]byte{[]byte("dummy")},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 1
+	}, 1*time.Second, 100*time.Millisecond)
+
+	txStatus, err := env.csStream.Recv()
+	require.NoError(t, err)
+	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			{
+				TxId:   "tx1",
+				Status: protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	require.Equal(
+		t,
+		float64(1),
+		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+	)
+}
+
+func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
 	env.start(t)
 
-	t.Run("valid tx", func(t *testing.T) {
+	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
+		Scheme:    "ECDSA",
+		PublicKey: []byte("publicKey"),
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		tx             *protoblocktx.Tx
+		expectedStatus protoblocktx.Status
+	}{
+		{
+			name:           "missing tx id",
+			tx:             &protoblocktx.Tx{},
+			expectedStatus: protoblocktx.Status_ABORTED_MISSING_TXID,
+		},
+		{
+			name: "invalid signature",
+			tx: &protoblocktx.Tx{
+				Id:         "tx1",
+				Signatures: [][]byte{[]byte("dummy")},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		},
+		{
+			name: "missing namespace version",
+			tx: &protoblocktx.Tx{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: 1,
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+		},
+		{
+			name: "namespace id is invalid in metaNs tx",
+			tx: &protoblocktx.Tx{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+					{
+						NsId:      uint32(types.MetaNamespaceID),
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+					[]byte("dummy"),
+				},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+		},
+		{
+			name: "namespace policy is invalid in metaNs tx",
+			tx: &protoblocktx.Tx{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+					{
+						NsId:      uint32(types.MetaNamespaceID),
+						NsVersion: types.VersionNumber(0).Bytes(),
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key:   types.NamespaceID(2).Bytes(),
+								Value: []byte("value"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+					[]byte("dummy"),
+				},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
+		},
+		{
+			name: "duplicate namespace",
+			tx: &protoblocktx.Tx{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+					{
+						NsId:      uint32(types.MetaNamespaceID),
+						NsVersion: types.VersionNumber(0).Bytes(),
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key:   types.NamespaceID(2).Bytes(),
+								Value: nsPolicy,
+							},
+						},
+					},
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+					[]byte("dummy"),
+					[]byte("dummy"),
+				},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+		},
+	}
+
+	blockNumber := uint64(0)
+	receivedTx := 0
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = env.csStream.Send(&protoblocktx.Block{
+				Number: blockNumber,
+				Txs: []*protoblocktx.Tx{
+					tt.tx,
+				},
+			})
+			require.NoError(t, err)
+			require.Eventually(t, func() bool {
+				totalReceivedTx := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
+				if receivedTx+1 == int(totalReceivedTx) {
+					receivedTx = int(totalReceivedTx)
+					return true
+				}
+				return false
+			}, 1*time.Second, 100*time.Millisecond)
+
+			txStatus, err := env.csStream.Recv()
+			require.NoError(t, err)
+			expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
+				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+					{
+						TxId:   tt.tx.Id,
+						Status: tt.expectedStatus,
+					},
+				},
+			}
+			require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+			require.Equal(
+				t,
+				float64(0),
+				test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+			)
+			blockNumber++
+		})
+	}
+}
+
+func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
+	env := newCoordinatorTestEnv(t)
+	env.start(t)
+	// next expected block is 0, but sending 2 to 600
+	lastBlockNum := 600
+	for i := 2; i <= lastBlockNum; i++ {
 		err := env.csStream.Send(&protoblocktx.Block{
-			Number: 0,
+			Number: uint64(i),
 			Txs: []*protoblocktx.Tx{
 				{
-					Id:         "tx1",
+					Id: "tx" + strconv.Itoa(i),
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: types.VersionNumber(0).Bytes(),
+						},
+					},
 					Signatures: [][]byte{[]byte("dummy")},
 				},
 			},
 		})
 		require.NoError(t, err)
-		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 1
-		}, 1*time.Second, 100*time.Millisecond)
+	}
 
+	require.Never(t, func() bool {
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal) > 10
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// send block 0 which is the next expected block but an empty block
+	err := env.csStream.Send(&protoblocktx.Block{
+		Number: uint64(0),
+		Txs:    []*protoblocktx.Tx{},
+	})
+	require.NoError(t, err)
+
+	// send block 1 which is the next expected block
+	env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
+		Number: 1,
+		Txs:    []*protoblocktx.Tx{},
+	}
+	env.coordinator.queues.blockWithInvalidSignTxs <- &protoblocktx.Block{
+		Number: 1,
+		Txs:    []*protoblocktx.Tx{{Id: "tx3"}},
+	}
+
+	numValid := 0
+	numInvalid := 0
+	for i := 1; i <= lastBlockNum; i++ {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
-		expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-			TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+		if txStatus.TxsValidationStatus[0].Status != protoblocktx.Status_COMMITTED {
+			numInvalid++
+		} else {
+			numValid++
+		}
+	}
+	require.Equal(t, lastBlockNum-1, numValid)
+	require.Equal(t, 1, numInvalid)
+
+	require.Equal(
+		t,
+		float64(lastBlockNum-1), // block 2 to block 600 + old 1 blocks as block 2 is empty
+		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+	)
+	require.Equal(
+		t,
+		float64(1),
+		test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
+	)
+}
+
+func TestCoordinatorServiceDuplicateTxID(t *testing.T) {
+	env := newCoordinatorTestEnv(t)
+	env.start(t)
+	ns := []*protoblocktx.TxNamespace{
+		{
+			NsId:      1,
+			NsVersion: types.VersionNumber(0).Bytes(),
+		},
+	}
+	sign := [][]byte{[]byte("dummy")}
+
+	require.NoError(
+		t,
+		env.csStream.Send(&protoblocktx.Block{
+			Number: 0,
+			Txs: []*protoblocktx.Tx{
 				{
-					TxId:   "tx1",
-					Status: protoblocktx.Status_COMMITTED,
+					Id:         "tx1000",
+					Namespaces: ns,
+					Signatures: sign,
+				},
+				{
+					Id:         "tx1001",
+					Namespaces: ns,
+					Signatures: sign,
+				},
+				{
+					Id:         "tx1000",
+					Namespaces: ns,
+					Signatures: sign,
 				},
 			},
-		}
-		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-		require.Equal(
-			t,
-			float64(1),
-			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
-		)
-	})
+		}))
 
-	t.Run("invalid signature", func(t *testing.T) {
-		err := env.csStream.Send(&protoblocktx.Block{
+	expectedStatus := []*protocoordinatorservice.TxValidationStatus{
+		{
+			TxId:   "tx1000",
+			Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+		},
+		{
+			TxId:   "tx1000",
+			Status: protoblocktx.Status_COMMITTED,
+		},
+		{
+			TxId:   "tx1001",
+			Status: protoblocktx.Status_COMMITTED,
+		},
+	}
+
+	actualTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, 3)
+	for {
+		txStatus, err := env.csStream.Recv()
+		require.NoError(t, err)
+		actualTxStatus = append(actualTxStatus, txStatus.TxsValidationStatus...)
+		if len(actualTxStatus) == len(expectedStatus) {
+			break
+		}
+	}
+	require.ElementsMatch(t, expectedStatus, actualTxStatus)
+
+	// as tx1000 is no longer an active txs, the following tx should go through as we are not
+	// executing real validation logic performed by the vcservice.
+	require.NoError(
+		t,
+		env.csStream.Send(&protoblocktx.Block{
 			Number: 1,
-			Txs:    []*protoblocktx.Tx{{Id: "tx2"}},
-		})
-		require.NoError(t, err)
-		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 2
-		}, 1*time.Second, 100*time.Millisecond)
-
-		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-			TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			Txs: []*protoblocktx.Tx{
 				{
-					TxId:   "tx2",
-					Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+					Id:         "tx1000",
+					Namespaces: ns,
+					Signatures: sign,
 				},
 			},
-		}
-		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-		require.Equal(
-			t,
-			float64(1),
-			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
-		)
-	})
+		}))
 
-	t.Run("out of order block", func(t *testing.T) {
-		// next expected block is 2, but sending 4 to 600
-		lastBlockNum := 600
-		for i := 4; i <= lastBlockNum; i++ {
-			err := env.csStream.Send(&protoblocktx.Block{
-				Number: uint64(i),
-				Txs: []*protoblocktx.Tx{
-					{
-						Id:         "tx" + strconv.Itoa(i),
-						Signatures: [][]byte{[]byte("dummy")},
-					},
-				},
-			})
-			require.NoError(t, err)
-		}
-
-		require.Never(t, func() bool {
-			return test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal) > 10
-		}, 5*time.Second, 100*time.Millisecond)
-
-		// send block 2 which is the next expected block but an empty block
-		err := env.csStream.Send(&protoblocktx.Block{
-			Number: uint64(2),
-			Txs:    []*protoblocktx.Tx{},
-		})
-		require.NoError(t, err)
-
-		// send block 3 which is the next expected block
-		env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
-			Number: 3,
-			Txs:    []*protoblocktx.Tx{},
-		}
-		env.coordinator.queues.blockWithInvalidSignTxs <- &protoblocktx.Block{
-			Number: 3,
-			Txs:    []*protoblocktx.Tx{{Id: "tx3"}},
-		}
-
-		numValid := 0
-		numInvalid := 0
-		for i := 3; i <= lastBlockNum; i++ {
-			txStatus, err := env.csStream.Recv()
-			require.NoError(t, err)
-			if txStatus.TxsValidationStatus[0].Status != protoblocktx.Status_COMMITTED {
-				numInvalid++
-			} else {
-				numValid++
-			}
-		}
-		require.Equal(t, lastBlockNum-3, numValid)
-		require.Equal(t, 1, numInvalid)
-
-		require.Equal(
-			t,
-			float64(lastBlockNum-2), // block 4 to block 600 + old 1 blocks as block 2 is empty
-			test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
-		)
-		require.Equal(
-			t,
-			float64(2),
-			test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
-		)
-	})
-
-	t.Run("duplicate active txIDs", func(t *testing.T) {
-		require.NoError(
-			t,
-			env.csStream.Send(&protoblocktx.Block{
-				Number: 601,
-				Txs: []*protoblocktx.Tx{
-					{
-						Id:         "tx1000",
-						Signatures: [][]byte{[]byte("dummy")},
-					},
-					{
-						Id:         "tx1001",
-						Signatures: [][]byte{[]byte("dummy")},
-					},
-					{
-						Id:         "tx1000",
-						Signatures: [][]byte{[]byte("dummy")},
-					},
-				},
-			}))
-
-		expectedStatus := []*protocoordinatorservice.TxValidationStatusBatch{
+	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
 			{
-				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-					{
-						TxId:   "tx1000",
-						Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-					},
-				},
+				TxId:   "tx1000",
+				Status: protoblocktx.Status_COMMITTED,
 			},
-			{
-				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-					{
-						TxId:   "tx1000",
-						Status: protoblocktx.Status_COMMITTED,
-					},
-					{
-						TxId:   "tx1001",
-						Status: protoblocktx.Status_COMMITTED,
-					},
-				},
-			},
-		}
+		},
+	}
 
-		for _, expStatus := range expectedStatus {
-			txStatus, err := env.csStream.Recv()
-			require.NoError(t, err)
-			require.Equal(t, expStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-		}
-
-		// as tx1000 is no longer an active txs, the following tx should go through as we are not
-		// executing real validation logic performed by the vcservice.
-		require.NoError(
-			t,
-			env.csStream.Send(&protoblocktx.Block{
-				Number: 602,
-				Txs: []*protoblocktx.Tx{
-					{
-						Id:         "tx1000",
-						Signatures: [][]byte{[]byte("dummy")},
-					},
-				},
-			}))
-
-		expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-			TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-				{
-					TxId:   "tx1000",
-					Status: protoblocktx.Status_COMMITTED,
-				},
-			},
-		}
-
-		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-	})
+	txStatus, err := env.csStream.Recv()
+	require.NoError(t, err)
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
 }
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit

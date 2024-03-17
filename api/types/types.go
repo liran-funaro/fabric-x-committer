@@ -1,6 +1,10 @@
 package types
 
-import "google.golang.org/protobuf/encoding/protowire"
+import (
+	"errors"
+
+	"google.golang.org/protobuf/encoding/protowire"
+)
 
 type (
 	// NamespaceID identities a database namespace.
@@ -18,9 +22,12 @@ func (nsID NamespaceID) Bytes() []byte {
 }
 
 // NamespaceIDFromBytes converts a bytes representation of NamespaceID to NamespaceID.
-func NamespaceIDFromBytes(ns []byte) NamespaceID {
-	v, _ := protowire.ConsumeVarint(ns)
-	return NamespaceID(v)
+func NamespaceIDFromBytes(ns []byte) (NamespaceID, error) {
+	v, l := protowire.ConsumeVarint(ns)
+	if l < 0 || l != len(ns) {
+		return 0, errors.New("invalid namespace id")
+	}
+	return NamespaceID(v), nil
 }
 
 // Bytes converts a version number representation to bytes representation.
