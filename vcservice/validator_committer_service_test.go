@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -95,160 +96,214 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 func TestValidatorAndCommitterService(t *testing.T) {
 	env := newValidatorAndCommitServiceTestEnv(t)
 
-	env.dbEnv.populateDataWithCleanup(t, []int{1}, namespaceToWrites{
+	env.dbEnv.populateDataWithCleanup(t, []int{1, int(types.MetaNamespaceID)}, namespaceToWrites{
 		1: &namespaceWrites{
 			keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
 			values:   [][]byte{[]byte("value"), []byte("value")},
+			versions: [][]byte{v0},
+		},
+		types.MetaNamespaceID: &namespaceWrites{
+			keys:     [][]byte{types.NamespaceID(1).Bytes()},
 			versions: [][]byte{v0},
 		},
 	}, nil)
 
 	client := protovcservice.NewValidationAndCommitServiceClient(env.clientConn)
 
-	txBatch := &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
-			// The following 3 TXs test the blind write path, merging to the update path
-			{
-				ID: "Blind write without value",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key: []byte("blind write without value"),
+	t.Run("all valid txs", func(t *testing.T) {
+		txBatch := &protovcservice.TransactionBatch{
+			Transactions: []*protovcservice.Transaction{
+				// The following 3 TXs test the blind write path, merging to the update path
+				{
+					ID: "Blind write without value",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("blind write without value"),
+								},
+							},
+						},
+					},
+				},
+				{
+					ID: "Blind write with value",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key:   []byte("Blind write with value"),
+									Value: []byte("value2"),
+								},
+							},
+						},
+					},
+				},
+				{
+					ID: "Blind write update existing key",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key:   []byte("Existing key update"),
+									Value: []byte("new-value"),
+								},
+							},
+						},
+					},
+				},
+				// The following 2 TXs test the new key path
+				{
+					ID: "New key with value",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:   []byte("New key with value"),
+									Value: []byte("value3"),
+								},
+							},
+						},
+					},
+				},
+				{
+					ID: "New key no value",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key: []byte("New key no value"),
+								},
+							},
+						},
+					},
+				},
+				// The following TX tests the update path
+				{
+					ID: "Existing key",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("Existing key"),
+									Value:   []byte("new-value"),
+									Version: v0,
+								},
 							},
 						},
 					},
 				},
 			},
-			{
-				ID: "Blind write with value",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key:   []byte("Blind write with value"),
-								Value: []byte("value2"),
-							},
-						},
-					},
-				},
-			},
-			{
-				ID: "Blind write update existing key",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key:   []byte("Existing key update"),
-								Value: []byte("new-value"),
-							},
-						},
-					},
-				},
-			},
-			// The following 2 TXs test the new key path
-			{
-				ID: "New key with value",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:   []byte("New key with value"),
-								Value: []byte("value3"),
-							},
-						},
-					},
-				},
-			},
-			{
-				ID: "New key no value",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("New key no value"),
-							},
-						},
-					},
-				},
-			},
-			// The following TX tests the update path
-			{
-				ID: "Existing key",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:     []byte("Existing key"),
-								Value:   []byte("new-value"),
-								Version: v0,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+		}
 
-	vcStream, err := client.StartValidateAndCommitStream(context.Background())
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, vcStream.CloseSend())
+		vcStream, err := client.StartValidateAndCommitStream(context.Background())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, vcStream.CloseSend())
+		})
+
+		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
+
+		require.NoError(t, vcStream.Send(txBatch))
+		txStatus, err := vcStream.Recv()
+		require.NoError(t, err)
+
+		expectedTxStatus := &protovcservice.TransactionStatus{
+			Status: map[string]protoblocktx.Status{},
+		}
+		for _, tx := range txBatch.Transactions {
+			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
+		}
+
+		require.Equal(
+			t,
+			float64(len(txBatch.Transactions)),
+			test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal),
+		)
+		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+
+		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+
+		txBatch = &protovcservice.TransactionBatch{
+			Transactions: []*protovcservice.Transaction{
+				{
+					ID: "New key 2 no value",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v0,
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key: []byte("New key 2 no value"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		env.vcs.minTxBatchSize = 1
+		require.NoError(t, vcStream.Send(txBatch))
+
+		require.Eventually(t, func() bool {
+			txStatus, err = vcStream.Recv()
+			require.NoError(t, err)
+			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"])
+			return true
+		}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
 
-	require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
-
-	require.NoError(t, vcStream.Send(txBatch))
-	txStatus, err := vcStream.Recv()
-	require.NoError(t, err)
-
-	expectedTxStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protoblocktx.Status{},
-	}
-	for _, tx := range txBatch.Transactions {
-		expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
-	}
-
-	require.Equal(
-		t,
-		float64(len(txBatch.Transactions)),
-		test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal),
-	)
-	require.Equal(t, expectedTxStatus.Status, txStatus.Status)
-
-	env.dbEnv.statusExists(t, expectedTxStatus.Status)
-
-	txBatch = &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
-			{
-				ID: "New key 2 no value",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("New key 2 no value"),
+	t.Run("invalid tx", func(t *testing.T) {
+		txBatch := &protovcservice.TransactionBatch{
+			Transactions: []*protovcservice.Transaction{
+				{
+					ID: "Namespace version mismatch",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: v1,
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("blind write without value"),
+								},
 							},
 						},
 					},
 				},
 			},
-		},
-	}
+		}
 
-	env.vcs.minTxBatchSize = 1
-	require.NoError(t, vcStream.Send(txBatch))
-
-	require.Eventually(t, func() bool {
-		txStatus, err = vcStream.Recv()
+		vcStream, err := client.StartValidateAndCommitStream(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key no value"])
-		return true
-	}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
+		t.Cleanup(func() {
+			require.NoError(t, vcStream.CloseSend())
+		})
+
+		require.NoError(t, vcStream.Send(txBatch))
+		txStatus, err := vcStream.Recv()
+		require.NoError(t, err)
+
+		expectedTxStatus := &protovcservice.TransactionStatus{
+			Status: map[string]protoblocktx.Status{},
+		}
+		for _, tx := range txBatch.Transactions {
+			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_ABORTED_MVCC_CONFLICT
+		}
+		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+
+		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+	})
 }

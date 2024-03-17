@@ -119,6 +119,9 @@ func (p *transactionPreparer) prepare() {
 			blindWritesPerTransaction:    make(transactionToWrites),
 			newWrites:                    make(transactionToWrites),
 		}
+		metaNs := &protoblocktx.TxNamespace{
+			NsId: uint32(types.MetaNamespaceID),
+		}
 
 		for _, tx := range txBatch.Transactions {
 			for _, nsOperations := range tx.Namespaces {
@@ -127,6 +130,20 @@ func (p *transactionPreparer) prepare() {
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)
+
+				// each transaction has a namespaceID and a version
+				// on which the transaction was executed. We need to
+				// ensure that the version is not stale. If it is,
+				// we need to reject the transaction. This is done by
+				// adding the namespaceID, and version to the reads-only
+				// list of the metaNamespaceID.
+				metaNs.ReadsOnly = []*protoblocktx.Read{
+					{
+						Key:     types.NamespaceID(nsOperations.NsId).Bytes(),
+						Version: nsOperations.NsVersion,
+					},
+				}
+				prepTxs.addReadsOnly(tID, metaNs)
 			}
 		}
 
