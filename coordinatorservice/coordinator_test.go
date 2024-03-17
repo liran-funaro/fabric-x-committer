@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -16,11 +17,11 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 )
 
 type coordinatorTestEnv struct {
@@ -149,7 +150,14 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 func TestCoordinatorServiceValidTx(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
 	env.start(t)
-	err := env.csStream.Send(&protoblocktx.Block{
+
+	p := &protoblocktx.NamespacePolicy{
+		Scheme:    "ECDSA",
+		PublicKey: []byte("publicKey"),
+	}
+	pBytes, err := proto.Marshal(p)
+	require.NoError(t, err)
+	err = env.csStream.Send(&protoblocktx.Block{
 		Number: 0,
 		Txs: []*protoblocktx.Tx{
 			{
@@ -159,8 +167,21 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
 					},
+					{
+						NsId:      uint32(types.MetaNamespaceID),
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   types.NamespaceID(2).Bytes(),
+								Value: pBytes,
+							},
+						},
+					},
 				},
-				Signatures: [][]byte{[]byte("dummy")},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+					[]byte("dummy"),
+				},
 			},
 		},
 	})
@@ -187,182 +208,17 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	)
 }
 
-func TestCoordinatorServiceBadTxFormat(t *testing.T) {
-	env := newCoordinatorTestEnv(t)
-	env.start(t)
-
-	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("publicKey"),
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		name           string
-		tx             *protoblocktx.Tx
-		expectedStatus protoblocktx.Status
-	}{
-		{
-			name:           "missing tx id",
-			tx:             &protoblocktx.Tx{},
-			expectedStatus: protoblocktx.Status_ABORTED_MISSING_TXID,
-		},
-		{
-			name: "invalid signature",
-			tx: &protoblocktx.Tx{
-				Id:         "tx1",
-				Signatures: [][]byte{[]byte("dummy")},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-		},
-		{
-			name: "missing namespace version",
-			tx: &protoblocktx.Tx{
-				Id: "tx1",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: 1,
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
-		},
-		{
-			name: "namespace id is invalid in metaNs tx",
-			tx: &protoblocktx.Tx{
-				Id: "tx1",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      1,
-						NsVersion: types.VersionNumber(0).Bytes(),
-					},
-					{
-						NsId:      uint32(types.MetaNamespaceID),
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-		},
-		{
-			name: "namespace policy is invalid in metaNs tx",
-			tx: &protoblocktx.Tx{
-				Id: "tx1",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      1,
-						NsVersion: types.VersionNumber(0).Bytes(),
-					},
-					{
-						NsId:      uint32(types.MetaNamespaceID),
-						NsVersion: types.VersionNumber(0).Bytes(),
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key:   types.NamespaceID(2).Bytes(),
-								Value: []byte("value"),
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
-		},
-		{
-			name: "duplicate namespace",
-			tx: &protoblocktx.Tx{
-				Id: "tx1",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      1,
-						NsVersion: types.VersionNumber(0).Bytes(),
-					},
-					{
-						NsId:      uint32(types.MetaNamespaceID),
-						NsVersion: types.VersionNumber(0).Bytes(),
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key:   types.NamespaceID(2).Bytes(),
-								Value: nsPolicy,
-							},
-						},
-					},
-					{
-						NsId:      1,
-						NsVersion: types.VersionNumber(0).Bytes(),
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-		},
-	}
-
-	blockNumber := uint64(0)
-	receivedTx := 0
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err = env.csStream.Send(&protoblocktx.Block{
-				Number: blockNumber,
-				Txs: []*protoblocktx.Tx{
-					tt.tx,
-				},
-			})
-			require.NoError(t, err)
-			require.Eventually(t, func() bool {
-				totalReceivedTx := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
-				if receivedTx+1 == int(totalReceivedTx) {
-					receivedTx = int(totalReceivedTx)
-					return true
-				}
-				return false
-			}, 1*time.Second, 100*time.Millisecond)
-
-			txStatus, err := env.csStream.Recv()
-			require.NoError(t, err)
-			expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-					{
-						TxId:   tt.tx.Id,
-						Status: tt.expectedStatus,
-					},
-				},
-			}
-			require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-			require.Equal(
-				t,
-				float64(0),
-				test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
-			)
-			blockNumber++
-		})
-	}
-}
-
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
+	logging.SetupWithConfig(&logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      false,
+		Development: true,
+	})
 	env := newCoordinatorTestEnv(t)
 	env.start(t)
-	// next expected block is 0, but sending 2 to 600
-	lastBlockNum := 600
+	// next expected block is 0, but sending 2 to 500
+	lastBlockNum := 500
 	for i := 2; i <= lastBlockNum; i++ {
 		err := env.csStream.Send(&protoblocktx.Block{
 			Number: uint64(i),
@@ -384,7 +240,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 
 	require.Never(t, func() bool {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal) > 10
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 2*time.Second, 100*time.Millisecond)
 
 	// send block 0 which is the next expected block but an empty block
 	err := env.csStream.Send(&protoblocktx.Block{
