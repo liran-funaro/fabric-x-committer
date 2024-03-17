@@ -7,7 +7,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
+
+var nsID1ForTest = uint32(1)
 
 func TestTransactionNode(t *testing.T) {
 	t.Parallel()
@@ -78,7 +81,7 @@ func TestTransactionNode(t *testing.T) {
 }
 
 func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
-	tx := createTxForTest(t, readOnly, readWrite, blindWrite)
+	tx := createTxForTest(t, nsID1ForTest, readOnly, readWrite, blindWrite)
 	txNode := newTransactionNode(tx)
 
 	expectedReads := make([]string, 0, len(readOnly))
@@ -90,6 +93,10 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	for _, k := range readOnly {
 		expectedReads = append(expectedReads, constructCompositeKey(nsID, k))
 	}
+	expectedReads = append(
+		expectedReads,
+		constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(nsID).Bytes()),
+	)
 
 	for _, k := range readWrite {
 		expectedReadsAndWrites = append(expectedReadsAndWrites, constructCompositeKey(nsID, k))
@@ -113,9 +120,9 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	return txNode
 }
 
-func createTxForTest(_ *testing.T, readOnly, readWrite, blindWrite [][]byte) *protoblocktx.Tx {
-	nsID := uint32(1)
-
+func createTxForTest( // nolint: revive
+	_ *testing.T, nsID uint32, readOnly, readWrite, blindWrite [][]byte,
+) *protoblocktx.Tx {
 	reads := make([]*protoblocktx.Read, len(readOnly))
 	for i, k := range readOnly {
 		reads[i] = &protoblocktx.Read{Key: k}

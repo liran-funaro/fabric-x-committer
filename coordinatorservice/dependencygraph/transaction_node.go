@@ -6,6 +6,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 type (
@@ -142,6 +143,26 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string
 
 	for _, ns := range txNamespaces {
+		// To establish a clear dependency between namespace lifecycle transactions (involving creating,
+		// updating, or deleting namespaces) and normal transactions (updating states within a namespace),
+		// it's important to include the accessed namespace in the readOnlyKeys. For example, consider a
+		// normal transaction writing to namespace ns1. If a subsequent transaction, a namespace lifecycle
+		// transaction, changes ns1's policy, it should not be validated until the first transaction is
+		// completed. This is ensured by including ns1 in the readOnlyKeys of the normal transaction,
+		// resulting in ns1 also appearing in the readAndWriteKeys of the namespace lifecycle transaction,
+		// thus creating a dependency. Furthermore, to ensure normal transactions following a namespace
+		// lifecycle transaction are processed only post validation of the lifecycle transaction, the
+		// namespace in question should be included in the readOnlyKeys of these subsequent normal
+		// transactions. This method establishes a dependency from normal transactions to the namespace
+		// lifecycle transaction, maintaining the correct sequence of operations.
+		// NOTE: if ns.NsID is a types.MetaNamespaceID, we should use the config namespaceID instead
+		//       of types.MetaNamespaceID when constructing the composite key. This approach would introduce
+		//       dependency between the namespace lifecycle transaction and the config transaction.
+		readOnlyKeys = append(
+			readOnlyKeys,
+			constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(ns.NsId).Bytes()),
+		)
+
 		for _, ro := range ns.ReadsOnly {
 			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(ns.NsId, ro.Key))
 		}
