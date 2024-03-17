@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 func Test_DbInit(t *testing.T) {
@@ -27,7 +28,7 @@ func Test_DbInit(t *testing.T) {
 		require.NoError(t, r.Scan(&key, &value, &version))
 		t.Logf("key: %s", string(key))
 		require.Nil(t, value)
-		require.Equal(t, VersionNumber(0).Bytes(), version)
+		require.Equal(t, types.VersionNumber(0).Bytes(), version)
 	}
 
 	require.NoError(t, clearDatabaseTables(context.Background(), env.db.pool, ns))

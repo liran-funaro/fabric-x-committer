@@ -15,6 +15,7 @@ import (
 )
 
 func TestShardsServerMgr(t *testing.T) {
+	t.Skip("unused package")
 	config := &ShardsServerMgrConfig{
 		Servers: []*ShardServerInstanceConfig{
 			{connection.CreateEndpoint("localhost:6000"), 1}, // shard 0

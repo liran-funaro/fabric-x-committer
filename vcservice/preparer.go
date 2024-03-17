@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
@@ -37,7 +38,7 @@ type (
 	}
 
 	// namespaceToReads maps a namespace ID to a list of reads.
-	namespaceToReads map[NamespaceID]*reads
+	namespaceToReads map[types.NamespaceID]*reads
 
 	// reads is a list of keys and versions.
 	reads struct {
@@ -52,14 +53,14 @@ type (
 
 	// comparableRead is a read that can be used as a map key
 	comparableRead struct {
-		nsID    NamespaceID
+		nsID    types.NamespaceID
 		key     string
 		version string
 	}
 
 	transactionToWrites map[txID]namespaceToWrites
 
-	namespaceToWrites map[NamespaceID]*namespaceWrites
+	namespaceToWrites map[types.NamespaceID]*namespaceWrites
 
 	namespaceWrites struct {
 		keys     [][]byte
@@ -158,7 +159,7 @@ func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespac
 		return
 	}
 
-	nsID := NamespaceID(ns.NsId)
+	nsID := types.NamespaceID(ns.NsId)
 	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
 
 	for _, r := range ns.ReadsOnly {
@@ -183,7 +184,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 		return
 	}
 
-	nsID := NamespaceID(ns.NsId)
+	nsID := types.NamespaceID(ns.NsId)
 	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
 	nsWrites := p.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
 	newWrites := p.newWrites.getOrCreate(id, nsID)
@@ -201,7 +202,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 
 		if rw.Version != nil {
 			nsReads.append(rw.Key, rw.Version)
-			ver := VersionNumberFromBytes(rw.Version) + 1
+			ver := types.VersionNumberFromBytes(rw.Version) + 1
 			nsWrites.append(rw.Key, rw.Value, ver.Bytes())
 		} else {
 			newWrites.append(rw.Key, rw.Value, nil)
@@ -215,7 +216,7 @@ func (p *preparedTransactions) addBlindWrites(id txID, ns *protoblocktx.TxNamesp
 		return
 	}
 
-	nsID := NamespaceID(ns.NsId)
+	nsID := types.NamespaceID(ns.NsId)
 	nsWrites := p.blindWritesPerTransaction.getOrCreate(id, nsID)
 
 	for _, w := range ns.BlindWrites {
@@ -237,7 +238,7 @@ func (nw namespaceToWrites) empty() bool {
 	return true
 }
 
-func (nw namespaceToWrites) getOrCreate(nsID NamespaceID) *namespaceWrites {
+func (nw namespaceToWrites) getOrCreate(nsID types.NamespaceID) *namespaceWrites {
 	nsWrites, ok := nw[nsID]
 	if !ok {
 		nsWrites = &namespaceWrites{}
@@ -246,7 +247,7 @@ func (nw namespaceToWrites) getOrCreate(nsID NamespaceID) *namespaceWrites {
 	return nsWrites
 }
 
-func (nr namespaceToReads) getOrCreate(nsID NamespaceID) *reads {
+func (nr namespaceToReads) getOrCreate(nsID types.NamespaceID) *reads {
 	nsRead, ok := nr[nsID]
 	if !ok {
 		nsRead = &reads{}
@@ -255,7 +256,7 @@ func (nr namespaceToReads) getOrCreate(nsID NamespaceID) *reads {
 	return nsRead
 }
 
-func (tw transactionToWrites) getOrCreate(id txID, nsID NamespaceID) *namespaceWrites {
+func (tw transactionToWrites) getOrCreate(id txID, nsID types.NamespaceID) *namespaceWrites {
 	nsToWrites, ok := tw[id]
 	if !ok {
 		nsToWrites = make(namespaceToWrites)
@@ -279,7 +280,7 @@ func (tw transactionToWrites) clearEmpty() {
 			continue
 		}
 
-		var emptyNsID []NamespaceID
+		var emptyNsID []types.NamespaceID
 		for nsID, nw := range ntw {
 			if nw.empty() {
 				emptyNsID = append(emptyNsID, nsID)

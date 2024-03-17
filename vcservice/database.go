@@ -11,9 +11,9 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"go.uber.org/zap/zapcore"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 const (
@@ -30,8 +30,6 @@ const (
 	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
-	// MetaNamespace is a system namespace which holds information about user's namespaces.
-	MetaNamespace = NamespaceID(1024)
 )
 
 type (
@@ -50,11 +48,6 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *protovcservice.TransactionStatus
 	}
-
-	// NamespaceID identities a database namespace.
-	NamespaceID uint32
-	// VersionNumber represents a row's version.
-	VersionNumber uint64
 )
 
 func (s *statesToBeCommitted) Debug() {
@@ -89,7 +82,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
-func (db *database) validateNamespaceReads(nsID NamespaceID, r *reads) (*reads /* mismatching reads */, error) {
+func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*reads /* mismatching reads */, error) {
 	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
 	// the reads. This function returns the keys and versions of the mismatching reads.
 	// Note that we have a table per namespace.
@@ -119,9 +112,9 @@ func (db *database) validateNamespaceReads(nsID NamespaceID, r *reads) (*reads /
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(nsID NamespaceID, queryKeys [][]byte) (keyToVersion, error) {
+func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
-	query := fmt.Sprintf(queryVersionsSQLTemplate, nsID.TableName())
+	query := fmt.Sprintf(queryVersionsSQLTemplate, TableName(nsID))
 	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
 	if err != nil {
 		return nil, err
@@ -307,13 +300,13 @@ func (db *database) commitNewKeys(
 	}
 
 	// for every new namespace, we need to create a table.
-	newNs, ok := nsToWrites[MetaNamespace]
+	newNs, ok := nsToWrites[types.MetaNamespaceID]
 	if !ok {
 		return nil, nil
 	}
 
 	for _, ns := range newNs.keys {
-		tableName := NamespaceIDFromBytes(ns).TableName()
+		tableName := TableName(types.NamespaceIDFromBytes(ns))
 		for _, stmt := range initStatementsWithTemplate {
 			if _, err := tx.Exec(context.Background(), stmtFmt(stmt, tableName, db.name)); err != nil {
 				return nil, err
@@ -375,28 +368,6 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 }
 
 // TableName returns the table name for the given namespace.
-func (nsID NamespaceID) TableName() string {
+func TableName(nsID types.NamespaceID) string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
-}
-
-// Bytes converts a NamespaceID to bytes representation.
-func (nsID NamespaceID) Bytes() []byte {
-	return protowire.AppendVarint(nil, uint64(nsID))
-}
-
-// NamespaceIDFromBytes converts a bytes representation of NamespaceID to NamespaceID.
-func NamespaceIDFromBytes(ns []byte) NamespaceID {
-	v, _ := protowire.ConsumeVarint(ns)
-	return NamespaceID(v)
-}
-
-// VersionNumberFromBytes converts a version bytes representation to a number representation.
-func VersionNumberFromBytes(version []byte) VersionNumber {
-	v, _ := protowire.ConsumeVarint(version)
-	return VersionNumber(v)
-}
-
-// Bytes converts a version number representation to bytes representation.
-func (v VersionNumber) Bytes() []byte {
-	return protowire.AppendVarint(nil, uint64(v))
 }

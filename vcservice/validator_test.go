@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 type validatorTestEnv struct {
@@ -45,9 +46,9 @@ func TestValidate(t *testing.T) {
 	env := newValidatorTestEnv(t)
 	env.v.start(1)
 
-	v0 := VersionNumber(0).Bytes()
-	v1 := VersionNumber(1).Bytes()
-	v2 := VersionNumber(2).Bytes()
+	v0 := types.VersionNumber(0).Bytes()
+	v1 := types.VersionNumber(1).Bytes()
+	v2 := types.VersionNumber(2).Bytes()
 
 	k1_1 := []byte("key1.1")
 	k1_2 := []byte("key1.2")

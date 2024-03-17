@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -260,9 +261,9 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	}
 	logger.Info("Tx status table is ready.")
 
-	nsIDs = append(nsIDs, int(MetaNamespace))
+	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {
-		tableName := NamespaceID(nsID).TableName()
+		tableName := TableName(types.NamespaceID(nsID))
 		logger.Infof("Creating table '%s' and its methods.", tableName)
 
 		for _, stmt := range initStatementsWithTemplate {
@@ -294,9 +295,9 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 	}
 	logger.Info("tx status table is cleared.")
 
-	nsIDs = append(nsIDs, int(MetaNamespace))
+	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {
-		tableName := NamespaceID(nsID).TableName()
+		tableName := TableName(types.NamespaceID(nsID))
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {

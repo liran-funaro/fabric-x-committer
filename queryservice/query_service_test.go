@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -41,7 +42,7 @@ func strToBytes(str ...string) [][]byte {
 func verToBytes(ver ...int) [][]byte {
 	ret := make([][]byte, len(ver))
 	for i, v := range ver {
-		ret[i] = vcservice.VersionNumber(v).Bytes()
+		ret[i] = types.VersionNumber(v).Bytes()
 	}
 	return ret
 }
@@ -102,7 +103,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		query := fmt.Sprintf(`
 		insert into %s values (
 			UNNEST($1::bytea[]), UNNEST($2::bytea[]), UNNEST($3::bytea[])
-		);`, vcservice.NamespaceID(i).TableName())
+		);`, vcservice.TableName(types.NamespaceID(i)))
 		_, err = pool.Exec(ctx, query, keys, values, versions)
 		require.NoError(t, err)
 	}

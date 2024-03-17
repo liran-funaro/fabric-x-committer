@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 type committerTestEnv struct {
@@ -42,7 +43,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 }
 
 type state struct {
-	namespace      NamespaceID
+	namespace      types.NamespaceID
 	keySuffix      int
 	updateSequence int
 }
@@ -53,7 +54,7 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: rev
 		nw := ntw.getOrCreate(ww.namespace)
 		var ver []byte
 		if !isBlind {
-			ver = VersionNumber(ww.updateSequence).Bytes()
+			ver = types.VersionNumber(ww.updateSequence).Bytes()
 		}
 		nw.append(
 			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.keySuffix)),

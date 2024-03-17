@@ -8,6 +8,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
@@ -168,7 +169,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.Transact
 // fillVersionForBlindWrites fetches the current version of the blind-writes keys, and assigns them
 // to the appropriate category (new/update).
 func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransactions) error {
-	state := make(map[NamespaceID]keyToVersion)
+	state := make(map[types.NamespaceID]keyToVersion)
 	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance
@@ -185,7 +186,7 @@ func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransacti
 			nsState := state[ns]
 			for i, key := range nsWrites.keys {
 				if ver, present := nsState[string(key)]; present {
-					nextVer := (VersionNumberFromBytes(ver) + 1).Bytes()
+					nextVer := (types.VersionNumberFromBytes(ver) + 1).Bytes()
 					vTx.validTxNonBlindWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nextVer)
 				} else {
 					vTx.newWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nil)

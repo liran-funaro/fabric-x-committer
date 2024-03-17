@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
@@ -22,13 +23,13 @@ const (
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
 	queryTxStatusSQLTemplate    = "SELECT tx_id, status FROM tx_status WHERE tx_id = ANY($1)"
 
-	ns1 = NamespaceID(1)
-	ns2 = NamespaceID(2)
+	ns1 = types.NamespaceID(1)
+	ns2 = types.NamespaceID(2)
 )
 
 var (
-	v0 = VersionNumber(0).Bytes()
-	v1 = VersionNumber(1).Bytes()
+	v0 = types.VersionNumber(0).Bytes()
+	v1 = types.VersionNumber(1).Bytes()
 )
 
 type databaseTestEnv struct {
@@ -111,7 +112,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		nsID                    NamespaceID
+		nsID                    types.NamespaceID
 		r                       *reads
 		expectedMismatchedReads *reads
 	}{
@@ -309,8 +310,8 @@ func TestDBCommit(t *testing.T) {
 			values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
 			versions: [][]byte{v1, v1, v1},
 		},
-		MetaNamespace: {
-			keys:     [][]byte{NamespaceID(3).Bytes(), NamespaceID(4).Bytes()},
+		types.MetaNamespaceID: {
+			keys:     [][]byte{types.NamespaceID(3).Bytes(), types.NamespaceID(4).Bytes()},
 			values:   [][]byte{[]byte("value7"), []byte("value8")},
 			versions: [][]byte{v0, v0, v0},
 		},
@@ -323,9 +324,9 @@ func TestDBCommit(t *testing.T) {
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
-	dbEnv.rowExists(t, MetaNamespace, *nsToWrites[MetaNamespace])
-	dbEnv.tableExists(t, NamespaceID(3))
-	dbEnv.tableExists(t, NamespaceID(4))
+	dbEnv.rowExists(t, types.MetaNamespaceID, *nsToWrites[types.MetaNamespaceID])
+	dbEnv.tableExists(t, types.NamespaceID(3))
+	dbEnv.tableExists(t, types.NamespaceID(4))
 
 	nsToWrites = namespaceToWrites{
 		3: {
@@ -351,7 +352,7 @@ func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 			INSERT INTO %s (key, value, version)
 			SELECT _key, _value, _version
 			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
-			nsID.TableName()),
+			TableName(nsID)),
 			writes.keys, writes.values, writes.versions,
 		)
 		require.NoError(t, err)
@@ -372,8 +373,8 @@ func (env *databaseTestEnv) populateDataWithCleanup(
 	})
 }
 
-func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID NamespaceID, keys [][]byte) map[string]*valueVersion {
-	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, nsID.TableName())
+func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*valueVersion {
+	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
 
 	kvPairs, err := env.db.pool.Query(context.Background(), query, keys)
 	require.NoError(t, err)
@@ -394,15 +395,15 @@ func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID NamespaceID, keys [][]b
 	return actualRows
 }
 
-func (env *databaseTestEnv) tableExists(t *testing.T, nsID NamespaceID) {
-	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", nsID.TableName())
+func (env *databaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
+	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
 	names, err := env.db.pool.Query(context.Background(), query)
 	require.NoError(t, err)
 	defer names.Close()
 	require.True(t, names.Next())
 }
 
-func (env *databaseTestEnv) rowExists(t *testing.T, nsID NamespaceID, expectedRows namespaceWrites) {
+func (env *databaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
 	actualRows := env.fetchKeys(t, nsID, expectedRows.keys)
 
 	assert.Len(t, actualRows, len(expectedRows.keys))
@@ -414,13 +415,13 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID NamespaceID, expectedRo
 	}
 }
 
-func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID NamespaceID, keys [][]byte) {
+func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
 	actualRows := env.fetchKeys(t, nsID, keys)
 
 	assert.Len(t, actualRows, 0)
 	for key, valVer := range actualRows {
 		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
-			key, string(valVer.value), VersionNumberFromBytes(valVer.version))
+			key, string(valVer.value), types.VersionNumberFromBytes(valVer.version))
 	}
 }
 

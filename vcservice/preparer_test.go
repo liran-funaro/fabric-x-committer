@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 type prepareTestEnv struct {
@@ -220,7 +221,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v2 := VersionNumber(2).Bytes()
+	v2 := types.VersionNumber(2).Bytes()
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -361,13 +362,13 @@ func TestPrepareTx(t *testing.T) {
 	env := newPrepareTestEnv(t)
 	env.preparer.start(1)
 
-	v1 := VersionNumber(1).Bytes()
-	v2 := VersionNumber(2).Bytes()
-	v3 := VersionNumber(3).Bytes()
-	v4 := VersionNumber(4).Bytes()
-	v8 := VersionNumber(8).Bytes()
-	v9 := VersionNumber(9).Bytes()
-	v10 := VersionNumber(10).Bytes()
+	v1 := types.VersionNumber(1).Bytes()
+	v2 := types.VersionNumber(2).Bytes()
+	v3 := types.VersionNumber(3).Bytes()
+	v4 := types.VersionNumber(4).Bytes()
+	v8 := types.VersionNumber(8).Bytes()
+	v9 := types.VersionNumber(9).Bytes()
+	v10 := types.VersionNumber(10).Bytes()
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
