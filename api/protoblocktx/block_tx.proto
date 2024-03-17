@@ -22,9 +22,10 @@ message Tx {
 message TxNamespace {
     uint32 ns_id = 1; // The namespace ID. Only 256 namespaces are supported, i.e., from 0 to 255.
     // as variable-length encoding is used to serialize the namespace ID, it would occupy 1 byte only.
-    repeated Read reads_only = 2; // List of read only operations within the namespace.
-    repeated ReadWrite read_writes = 3; // List of read-write operations within the namespace.
-    repeated Write blind_writes = 4; // List of blind write operations within the namespace.
+    bytes ns_version = 2; // The version of the namespace.
+    repeated Read reads_only = 3; // List of read only operations within the namespace.
+    repeated ReadWrite read_writes = 4; // List of read-write operations within the namespace.
+    repeated Write blind_writes = 5; // List of blind write operations within the namespace.
 }
 
 // Represents a read operation.
