@@ -260,6 +260,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	}
 	logger.Info("Tx status table is ready.")
 
+	nsIDs = append(nsIDs, int(MetaNamespace))
 	for _, nsID := range nsIDs {
 		tableName := NamespaceID(nsID).TableName()
 		logger.Infof("Creating table '%s' and its methods.", tableName)
@@ -293,6 +294,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 	}
 	logger.Info("tx status table is cleared.")
 
+	nsIDs = append(nsIDs, int(MetaNamespace))
 	for _, nsID := range nsIDs {
 		tableName := NamespaceID(nsID).TableName()
 		logger.Infof("Dropping table '%s' and its methods.", tableName)

@@ -309,6 +309,11 @@ func TestDBCommit(t *testing.T) {
 			values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
 			versions: [][]byte{v1, v1, v1},
 		},
+		MetaNamespace: {
+			keys:     [][]byte{NamespaceID(3).Bytes(), NamespaceID(4).Bytes()},
+			values:   [][]byte{[]byte("value7"), []byte("value8")},
+			versions: [][]byte{v0, v0, v0},
+		},
 	}
 
 	_, _, err := dbEnv.db.commit(&statesToBeCommitted{newWrites: nsToWrites})
@@ -318,6 +323,26 @@ func TestDBCommit(t *testing.T) {
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
+	dbEnv.rowExists(t, MetaNamespace, *nsToWrites[MetaNamespace])
+	dbEnv.tableExists(t, NamespaceID(3))
+	dbEnv.tableExists(t, NamespaceID(4))
+
+	nsToWrites = namespaceToWrites{
+		3: {
+			keys:     [][]byte{k1, k2},
+			values:   [][]byte{[]byte("value1"), []byte("value2")},
+			versions: [][]byte{v0, v0},
+		},
+		4: {
+			keys:     [][]byte{k4, k5},
+			values:   [][]byte{[]byte("value4"), []byte("value5")},
+			versions: [][]byte{v0, v0},
+		},
+	}
+	_, _, err = dbEnv.db.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	require.NoError(t, err)
+	dbEnv.rowExists(t, 3, *nsToWrites[3])
+	dbEnv.rowExists(t, 4, *nsToWrites[4])
 }
 
 func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
@@ -367,6 +392,14 @@ func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID NamespaceID, keys [][]b
 	require.NoError(t, kvPairs.Err())
 
 	return actualRows
+}
+
+func (env *databaseTestEnv) tableExists(t *testing.T, nsID NamespaceID) {
+	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", nsID.TableName())
+	names, err := env.db.pool.Query(context.Background(), query)
+	require.NoError(t, err)
+	defer names.Close()
+	require.True(t, names.Next())
 }
 
 func (env *databaseTestEnv) rowExists(t *testing.T, nsID NamespaceID, expectedRows namespaceWrites) {

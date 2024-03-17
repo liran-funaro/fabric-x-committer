@@ -30,11 +30,14 @@ const (
 	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
+	// MetaNamespace is a system namespace which holds information about user's namespaces.
+	MetaNamespace = NamespaceID(1024)
 )
 
 type (
 	// database handles the database operations.
 	database struct {
+		name    string
 		pool    *pgxpool.Pool
 		metrics *perfMetrics
 	}
@@ -70,7 +73,16 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 		return nil, err
 	}
 
+	dbType, err := getDbType(context.Background(), pool)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: We need to create all system namespaces such as txStatus
+	//       and namespaceLifecycle here. This requires refactoring of dbinit.go.
+
 	return &database{
+		name:    dbType,
 		pool:    pool,
 		metrics: metrics,
 	}, nil
@@ -264,23 +276,21 @@ func (db *database) commitNewKeys(
 	tx pgx.Tx, nsToWrites namespaceToWrites,
 ) (namespaceToReads /* mismatched */, error) {
 	start := time.Now()
-	mismatch, err := commitNewKeys(tx, commitNewWritesSQLTemplate, nsToWrites)
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds, time.Since(start))
-	return mismatch, err
-}
+	defer func() {
+		prometheusmetrics.Observe(
+			db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
+			time.Since(start),
+		)
+	}()
 
-func commitNewKeys(
-	tx pgx.Tx,
-	query string,
-	nsToWrites namespaceToWrites,
-) (namespaceToReads /* mismatched */, error) {
 	mismatch := make(namespaceToReads)
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
 		}
 
-		ret := tx.QueryRow(context.Background(), fmt.Sprintf(query, nsID), writes.keys, writes.values)
+		q := fmt.Sprintf(commitNewWritesSQLTemplate, nsID)
+		ret := tx.QueryRow(context.Background(), q, writes.keys, writes.values)
 		violating, err := readInsertResult(ret, writes.keys)
 		if err != nil {
 			return nil, fmt.Errorf("failed fetching results from query: %w", err)
@@ -292,7 +302,26 @@ func commitNewKeys(
 		}
 	}
 
-	return mismatch, nil
+	if len(mismatch) > 0 {
+		return mismatch, nil
+	}
+
+	// for every new namespace, we need to create a table.
+	newNs, ok := nsToWrites[MetaNamespace]
+	if !ok {
+		return nil, nil
+	}
+
+	for _, ns := range newNs.keys {
+		tableName := NamespaceIDFromBytes(ns).TableName()
+		for _, stmt := range initStatementsWithTemplate {
+			if _, err := tx.Exec(context.Background(), stmtFmt(stmt, tableName, db.name)); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 func (i *statesToBeCommitted) empty() bool {
@@ -348,6 +377,17 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 // TableName returns the table name for the given namespace.
 func (nsID NamespaceID) TableName() string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
+}
+
+// Bytes converts a NamespaceID to bytes representation.
+func (nsID NamespaceID) Bytes() []byte {
+	return protowire.AppendVarint(nil, uint64(nsID))
+}
+
+// NamespaceIDFromBytes converts a bytes representation of NamespaceID to NamespaceID.
+func NamespaceIDFromBytes(ns []byte) NamespaceID {
+	v, _ := protowire.ConsumeVarint(ns)
+	return NamespaceID(v)
 }
 
 // VersionNumberFromBytes converts a version bytes representation to a number representation.
