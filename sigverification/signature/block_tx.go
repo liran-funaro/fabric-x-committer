@@ -8,46 +8,42 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
-func HashTx(t *protoblocktx.Tx) []byte {
-
+func HashTxNamespace(t *protoblocktx.Tx, nsIndex int) []byte {
 	tx := Tx{
-		TxID:       t.Id,
-		Namespaces: make([]Namespace, len(t.Namespaces)),
+		TxID: t.Id,
 	}
 
-	for i, ns := range t.GetNamespaces() {
-
-		n := Namespace{
-			Reads:      make([]Reads, len(ns.ReadsOnly)),
-			ReadWrites: make([]ReadWrites, len(ns.GetReadWrites())),
-			Writes:     make([]BlindWrites, len(ns.GetBlindWrites())),
-		}
-
-		for i, r := range ns.ReadsOnly {
-			n.Reads[i] = Reads{
-				Key:     r.GetKey(),
-				Version: r.GetVersion(),
-			}
-		}
-
-		for i, rw := range ns.ReadWrites {
-			n.ReadWrites[i] = ReadWrites{
-				Key:     rw.GetKey(),
-				Version: rw.GetVersion(),
-				Value:   rw.GetValue(),
-			}
-		}
-
-		for i, bw := range ns.BlindWrites {
-			n.Writes[i] = BlindWrites{
-				Key:     bw.GetKey(),
-				Version: bw.GetValue(),
-				Value:   nil,
-			}
-		}
-
-		tx.Namespaces[i] = n
+	ns := t.Namespaces[nsIndex]
+	n := Namespace{
+		Reads:      make([]Reads, len(ns.ReadsOnly)),
+		ReadWrites: make([]ReadWrites, len(ns.GetReadWrites())),
+		Writes:     make([]BlindWrites, len(ns.GetBlindWrites())),
 	}
+
+	for i, r := range ns.ReadsOnly {
+		n.Reads[i] = Reads{
+			Key:     r.GetKey(),
+			Version: r.GetVersion(),
+		}
+	}
+
+	for i, rw := range ns.ReadWrites {
+		n.ReadWrites[i] = ReadWrites{
+			Key:     rw.GetKey(),
+			Version: rw.GetVersion(),
+			Value:   rw.GetValue(),
+		}
+	}
+
+	for i, bw := range ns.BlindWrites {
+		n.Writes[i] = BlindWrites{
+			Key:     bw.GetKey(),
+			Version: bw.GetValue(),
+			Value:   nil,
+		}
+	}
+
+	tx.Namespace = n
 
 	bytes, err := asn1.Marshal(tx)
 	if err != nil {
@@ -57,12 +53,13 @@ func HashTx(t *protoblocktx.Tx) []byte {
 
 	h := sha256.New()
 	h.Write(bytes)
+
 	return h.Sum(nil)
 }
 
 type Tx struct {
-	TxID       string
-	Namespaces []Namespace
+	TxID      string
+	Namespace Namespace
 }
 
 type Namespace struct {

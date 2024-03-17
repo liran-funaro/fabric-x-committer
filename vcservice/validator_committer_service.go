@@ -200,7 +200,10 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 		if err != nil {
 			return connection.WrapStreamRpcError(err)
 		}
-		logger.Debugf("New batch with %d TXs received in vc. Large batch contains %d TXs and the minimum batch size is %d", len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions), vc.minTxBatchSize)
+		logger.Debugf("New batch with %d TXs received in vc."+
+			" Large batch contains %d TXs and the minimum batch size is %d",
+			len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions),
+			vc.minTxBatchSize)
 
 		mu.Lock()
 		largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)

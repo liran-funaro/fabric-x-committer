@@ -75,11 +75,12 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 				isValid := g.NextValid()
 				if isValid {
-					tx.Signature, _ = txSigner.SignTx(tx)
+					s, _ := txSigner.SignNs(tx, 0)
+					tx.Signatures = append(tx.Signatures, s)
 				}
 				b.StartTimer()
 
-				txVerifier.VerifyTx(tx)
+				txVerifier.VerifyNs(tx, 0)
 			}
 		})
 	}

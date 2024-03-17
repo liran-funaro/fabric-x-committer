@@ -90,7 +90,6 @@ func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
 		Type:  "EC PRIVATE KEY",
 		Bytes: x509encodedPri,
 	}), nil
-
 }
 
 func SignMessage(privateKey *ecdsa.PrivateKey, message []byte) ([]byte, error) {

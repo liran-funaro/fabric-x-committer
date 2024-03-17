@@ -24,27 +24,31 @@ func (c *loadGenClient) Stop() {
 	close(c.stopSender)
 }
 
-func createClient(c *ClientConfig) (blockGenClient, *perfMetrics, error) {
+func createClient(c *ClientConfig) (blockGenClient, *PerfMetrics, error) { //nolint:ireturn
 	logger.Infof("Config passed: %s", utils.LazyJson(c))
-	metrics := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
+	m := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
 
 	if c.CoordinatorClient != nil {
-		return newCoordinatorClient(c.CoordinatorClient, metrics), metrics, nil
+		return newCoordinatorClient(c.CoordinatorClient, m), m, nil
 	}
 	if c.VCClient != nil {
-		return newVCClient(c.VCClient, metrics), metrics, nil
+		return newVCClient(c.VCClient, m), m, nil
 	}
 	if c.SidecarClient != nil {
-		return newSidecarClient(c.SidecarClient, metrics), metrics, nil
+		return newSidecarClient(c.SidecarClient, m), m, nil
 	}
 	if c.SigVerifierClient != nil {
-		return newSVClient(c.SigVerifierClient, metrics), metrics, nil
+		return newSVClient(c.SigVerifierClient, m), m, nil
 	}
 	return nil, nil, errors.New("invalid config passed")
 }
 
-func (c *loadGenClient) startSending(queue <-chan *protoblocktx.Block, stream grpc.ClientStream, send func(*protoblocktx.Block) error) error {
-	defer stream.CloseSend()
+func (c *loadGenClient) startSending(
+	queue <-chan *protoblocktx.Block, stream grpc.ClientStream, send func(*protoblocktx.Block) error,
+) error {
+	defer func() {
+		_ = stream.CloseSend()
+	}()
 	for {
 		select {
 		case <-c.stopSender:
@@ -62,7 +66,10 @@ func (c *loadGenClient) startSending(queue <-chan *protoblocktx.Block, stream gr
 	}
 }
 
-func Starter(c *ClientConfig) (*perfMetrics, *BlockStreamGenerator, blockGenClient, error) {
+// Starter starts the load generator with the given configuration.
+func Starter( //nolint:revive,ireturn
+	c *ClientConfig,
+) (*PerfMetrics, *BlockStreamGenerator, blockGenClient, error) {
 	client, metrics, err := createClient(c)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "failed creating client")

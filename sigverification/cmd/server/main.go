@@ -31,6 +31,6 @@ func main() {
 		if c.Server.Endpoint.Port == 0 {
 			c.Server.Endpoint.Port = port
 		}
-		sigverification.RegisterVerifierServer(server, verifierserver.New(&c.ParallelExecutor, c.Scheme, m))
+		sigverification.RegisterVerifierServer(server, verifierserver.New(&c.ParallelExecutor, m))
 	})
 }

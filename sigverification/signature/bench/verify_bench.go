@@ -30,7 +30,7 @@ var baseConfig = benchmarkConfig{
 
 func BenchmarkTxVerifier(b *testing.B) {
 	config := baseConfig
-	//for _, ratio := range []test.Percentage{0.5, test.Always} {
+	// for _, ratio := range []test.Percentage{0.5, test.Always} {
 	//	config.InputGeneratorParams.ValidSigRatio = ratio
 	b.Run(config.Name, func(b *testing.B) {
 		g := NewInputGenerator(config.InputGeneratorParams)
@@ -56,11 +56,12 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 			isValid := g.NextValid()
 			if isValid {
-				tx.Signature, _ = txSigner.SignTx(tx)
+				s, _ := txSigner.SignNs(tx, 0)
+				tx.Signatures = append(tx.Signatures, s)
 			}
 			b.StartTimer()
 
-			txVerifier.VerifyTx(tx)
+			txVerifier.VerifyNs(tx, 0)
 		}
 	})
 	//}

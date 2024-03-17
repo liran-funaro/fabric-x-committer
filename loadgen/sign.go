@@ -38,12 +38,24 @@ func NewTxSignerVerifier(profile *SignatureProfile) *TxSignerVerifier {
 
 // Sign signs a TX.
 func (e *TxSignerVerifier) Sign(tx *protoblocktx.Tx) {
-	tx.Signature = e.HashSigner.Sign(tx)
+	for nsIndex := range tx.GetNamespaces() {
+		tx.Signatures = append(tx.Signatures, e.HashSigner.Sign(tx, nsIndex))
+	}
 }
 
 // Verify verifies a signature on the transaction.
 func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
-	return e.HashSigner.Verify(tx)
+	if len(tx.Signatures) < len(tx.Namespaces) {
+		return false
+	}
+
+	for nsIndex := range tx.GetNamespaces() {
+		if !e.HashSigner.Verify(tx, nsIndex) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // GetVerificationKey returns the verification key.
@@ -76,6 +88,7 @@ func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
 		signer:   signer,
 		verifier: verifier,
 		pubKey:   verificationKey,
+		scheme:   profile.Scheme,
 	}
 }
 
@@ -92,7 +105,8 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 		if verificationKey, err := os.ReadFile(keyPath.VerificationKey); err != nil {
 			return nil, nil, errors.Wrapf(err, "could not read public key from %s", keyPath.VerificationKey)
 		} else {
-			logger.Infof("Loaded private key and verification key from files %s and %s.", keyPath.SigningKey, keyPath.VerificationKey)
+			logger.Infof("Loaded private key and verification key from files %s and %s.",
+				keyPath.SigningKey, keyPath.VerificationKey)
 			return signingKey, verificationKey, nil
 		}
 	}
@@ -101,7 +115,8 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 		if verificationKey, err := signature.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
 			return nil, nil, errors.Wrapf(err, "could not read sign cert from %s", keyPath.SignCertificate)
 		} else {
-			logger.Infof("Sign cert and key found in files %s/%s. Importing...", keyPath.SignCertificate, keyPath.SigningKey)
+			logger.Infof("Sign cert and key found in files %s/%s. Importing...",
+				keyPath.SignCertificate, keyPath.SigningKey)
 			return signingKey, verificationKey, nil
 		}
 	}
@@ -111,21 +126,22 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 
 // HashSignerVerifier supports signing and verifying a hash value.
 type HashSignerVerifier struct {
-	signer   sigverification_test.TxSigner
-	verifier signature.TxVerifier
+	signer   sigverification_test.NsSigner
+	verifier signature.NsVerifier
 	pubKey   PublicKey
+	scheme   Scheme
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx) Signature {
-	sign, err := e.signer.SignTx(tx)
+func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) Signature {
+	sign, err := e.signer.SignNs(tx, nsIndex)
 	Must(err)
 	return sign
 }
 
 // Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
-	if err := e.verifier.VerifyTx(tx); err != nil {
+func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx, nsIndex int) bool {
+	if err := e.verifier.VerifyNs(tx, nsIndex); err != nil {
 		return false
 	}
 	return true

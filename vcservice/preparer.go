@@ -96,7 +96,7 @@ func (p *transactionPreparer) start(numWorkers int) {
 // the index of invalid transactions when a read is invalid.
 // It sends the prepared transactions to the preparedTxs channel which is an input
 // to the validator.
-func (p *transactionPreparer) prepare() {
+func (p *transactionPreparer) prepare() { //nolint:gocognit
 	p.wg.Add(1)
 	defer p.wg.Done()
 
@@ -170,7 +170,7 @@ func (p *transactionPreparer) prepare() {
 	}
 }
 
-// addReadsOnly adds reads-only to the prepared transactions
+// addReadsOnly adds reads-only to the prepared transactions.
 func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadsOnly) == 0 {
 		return

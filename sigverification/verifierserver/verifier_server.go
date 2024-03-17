@@ -1,12 +1,14 @@
 package verifierserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"time"
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -20,14 +22,18 @@ var logger = logging.New("verifierserver")
 
 type verifierServer struct {
 	sigverification.UnimplementedVerifierServer
-	verificationScheme signature.Scheme
-	streamHandler      *streamhandler.StreamHandler
-	verifier           signature.TxVerifier
-	metrics            *metrics.Metrics
+	streamHandler *streamhandler.StreamHandler
+	verifier      map[types.NamespaceID]*nsVerifierWithVersion
+	metrics       *metrics.Metrics
 }
 
-func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme signature.Scheme, m *metrics.Metrics) *verifierServer {
-	s := &verifierServer{verificationScheme: verificationScheme, metrics: m}
+type nsVerifierWithVersion struct {
+	verifier signature.NsVerifier
+	version  []byte
+}
+
+func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *verifierServer {
+	s := &verifierServer{verifier: make(map[types.NamespaceID]*nsVerifierWithVersion), metrics: m}
 
 	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, m)
 	s.streamHandler = streamhandler.New(
@@ -54,7 +60,6 @@ func New(parallelExecutionConfig *parallelexecutor.Config, verificationScheme si
 			}
 			return &sigverification.ResponseBatch{Responses: outputs}
 		})
-	logger.Infof("Verifier server created with scheme: %s", verificationScheme)
 	return s
 }
 
@@ -63,15 +68,19 @@ func (s *verifierServer) SetVerificationKey(context context.Context, verificatio
 		logger.Info("Attempted to set an empty verification key.")
 		return nil, errors.New("invalid public key")
 	}
-	verifier, err := signature.NewTxVerifier(s.verificationScheme, verificationKey.GetSerializedBytes())
+	verifier, err := signature.NewNsVerifier(verificationKey.GetScheme(), verificationKey.GetSerializedBytes())
 	if err != nil {
 		return nil, err
 	}
-	s.verifier = verifier
+	s.verifier[types.NamespaceID(verificationKey.NsId)] = &nsVerifierWithVersion{
+		verifier: verifier,
+		version:  verificationKey.NsVersion,
+	}
 
 	logger.Info("Set a new verification key.")
 	return &sigverification.Empty{}, nil
 }
+
 func (s *verifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {
 	logger.Infof("Starting new stream.")
 	if s.metrics.Enabled {
@@ -93,26 +102,41 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 
 	start := time.Now()
 
-	if s.verifier == nil {
-		logger.Warnf("No verifier set! Returning invalid status.")
-		response.ErrorMessage = "no verifier set"
+	if len(request.Tx.Signatures) < len(request.Tx.Namespaces) {
+		response.ErrorMessage = "not enough signatures"
 		return response, nil
 	}
 
-	if logger.Level() <= zapcore.DebugLevel {
-		if data, err := json.Marshal(request.Tx); err != nil {
-			logger.Debugf("Failed to marshal TX [%d:%d]", request.BlockNum, request.TxNum)
-		} else {
-			logger.Debugf("Requesting signature on TX [%d:%d]:\n%s", request.BlockNum, request.TxNum, string(data))
+	for nsIndex, ns := range request.Tx.Namespaces {
+		v, ok := s.verifier[types.NamespaceID(ns.NsId)]
+		if !ok {
+			logger.Warnf("No verifier set! Returning invalid status.")
+			response.ErrorMessage = "no verifier set"
+			return response, nil
+		}
+
+		if !bytes.Equal(v.version, ns.NsVersion) {
+			// Note: Coordinator would always set the version of the verifier to the
+			// latest version of the namespace. So, this error should never happen.
+			return nil, errors.New("version of verifier mismatches with the namespace's version")
+		}
+
+		if logger.Level() <= zapcore.DebugLevel {
+			if data, err := json.Marshal(request.Tx); err != nil {
+				logger.Debugf("Failed to marshal TX [%d:%d]", request.BlockNum, request.TxNum)
+			} else {
+				logger.Debugf("Requesting signature on TX [%d:%d]:\n%s", request.BlockNum, request.TxNum, string(data))
+			}
+		}
+
+		if err := v.verifier.VerifyNs(request.Tx, nsIndex); err != nil {
+			logger.Debugf("Invalid signature found: %v", request.GetTx().GetId())
+			response.ErrorMessage = err.Error()
+			return response, nil
 		}
 	}
 
-	if err := s.verifier.VerifyTx(request.Tx); err != nil {
-		logger.Debugf("Invalid signature found: %v", request.GetTx().GetId())
-		response.ErrorMessage = err.Error()
-	} else {
-		response.IsValid = true
-	}
+	response.IsValid = true
 
 	if s.metrics.Enabled {
 		s.metrics.RequestTracer.AddEventAt(request.GetTx().GetId(), "Start verification", start)

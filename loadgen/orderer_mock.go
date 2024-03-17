@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/common/util"
@@ -18,12 +18,14 @@ import (
 
 const capacity = 111
 
+// MockOrderer is a mock orderer.
 type MockOrderer struct {
 	inEnvs    chan<- *common.Envelope
 	outBlocks <-chan *common.Block
 	stop      chan any
 }
 
+// NewSharedMockOrderer creates a new shared mock orderer.
 func NewSharedMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *common.Block) *MockOrderer {
 	return &MockOrderer{
 		inEnvs:    inEnvs,
@@ -32,6 +34,7 @@ func NewSharedMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *comm
 	}
 }
 
+// Close closes the mock orderer.
 func (o *MockOrderer) Close() {
 	logger.Infof("Closing channels on mock orderer")
 	close(o.stop)
@@ -53,7 +56,7 @@ var configTx = marshal(&common.Envelope{
 	}),
 })
 
-func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, timeout time.Duration) <-chan *common.Block {
+func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, _ time.Duration) <-chan *common.Block {
 	logger.Debugf("Start cutting blocks")
 	outBlocks := make(chan *common.Block, capacity)
 	prevBlock := &common.Block{
@@ -91,7 +94,7 @@ func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, timeout time.Du
 	return outBlocks
 }
 
-// Broadcast receives TXs and returns ACKs
+// Broadcast receives TXs and returns ACKs.
 func (o *MockOrderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting broadcast with %s", addr)
@@ -105,7 +108,7 @@ func (o *MockOrderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error
 		}
 
 		env, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			logger.Warnf("Received EOF from %v, hangup\n", stream)
 			return nil
 		}
@@ -124,7 +127,7 @@ func (o *MockOrderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error
 	}
 }
 
-// Deliver receives a seek request and returns a stream of the orderered blocks
+// Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *MockOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting delivery with %s", addr)
@@ -133,7 +136,8 @@ func (o *MockOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	if err != nil {
 		return errors.Wrap(err, "failed reading seek request")
 	}
-	logger.Infof("Received listening request for channel '%s': %v\nWe will ignore the request and send a stream anyway.", channelID, *seekInfo)
+	logger.Infof("Received listening request for channel '%s': %v\n "+
+		"We will ignore the request and send a stream anyway.", channelID, *seekInfo)
 
 	for {
 		select {
@@ -170,6 +174,7 @@ func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, st
 	return seekInfo, chdr.ChannelId, nil
 }
 
+// StartMockOrderingService starts a mock ordering service.
 func StartMockOrderingService(numService int) ([]*connection.ServerConfig, []*MockOrderer, []*grpc.Server) {
 	os := make([]*MockOrderer, numService)
 
@@ -206,14 +211,14 @@ func fanOut(blocks <-chan *common.Block, chans []chan<- *common.Block) {
 
 func fanIn(chans []<-chan *common.Envelope) <-chan *common.Envelope {
 	return chans[0]
-	//TODO: AF
-	//result := make(chan *common.Envelope, 100)
-	//for _, ch := range chans {
-	//	go func(ch <-chan *common.Envelope) {
-	//		for env := range ch {
-	//			result <- env
-	//		}
-	//	}(ch)
-	//}
-	//return result
+	// TODO: AF
+	// result := make(chan *common.Envelope, 100)
+	// for _, ch := range chans {
+	// 	go func(ch <-chan *common.Envelope) {
+	// 		for env := range ch {
+	// 			result <- env
+	// 		}
+	// 	}(ch)
+	// }
+	// return result
 }

@@ -18,7 +18,7 @@ type (
 		Signer               *TxSignerVerifier
 		txQueue              <-chan *protoblocktx.Tx
 		invalidSignGenerator Generator[bool]
-		invalidSignature     []byte
+		invalidSignature     [][]byte
 	}
 
 	dependenciesDecorator struct {
@@ -54,7 +54,7 @@ func newSignTxDecorator(
 		Signer:               signer,
 		txQueue:              txQueue,
 		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
-		invalidSignature:     invalidTx.Signature,
+		invalidSignature:     invalidTx.Signatures,
 	}
 }
 
@@ -62,7 +62,7 @@ func newSignTxDecorator(
 func (g *signTxDecorator) Next() *protoblocktx.Tx {
 	tx := <-g.txQueue
 	if g.invalidSignGenerator.Next() {
-		tx.Signature = g.invalidSignature
+		tx.Signatures = g.invalidSignature
 	} else {
 		g.Signer.Sign(tx)
 	}

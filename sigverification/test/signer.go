@@ -15,12 +15,12 @@ import (
 )
 
 type SignerFactory interface {
-	NewSigner(key signature.PrivateKey) (TxSigner, error)
+	NewSigner(key signature.PrivateKey) (NsSigner, error)
 }
 
-type TxSigner interface {
-	//SignTx signs a message and returns the signature
-	SignTx(*protoblocktx.Tx) (signature.Signature, error)
+type NsSigner interface {
+	// SignNs signs a namespace of a transaction.
+	SignNs(t *protoblocktx.Tx, nsIndex int) (signature.Signature, error)
 }
 
 var signerFactories = map[signature.Scheme]SignerFactory{
@@ -39,13 +39,13 @@ func GetSignerFactory(scheme signature.Scheme) (SignerFactory, error) {
 
 type dummySignerFactory struct{}
 
-func (f *dummySignerFactory) NewSigner(signature.PrivateKey) (TxSigner, error) {
+func (f *dummySignerFactory) NewSigner(signature.PrivateKey) (NsSigner, error) {
 	return &dummyTxSigner{}, nil
 }
 
 type dummyTxSigner struct{}
 
-func (s *dummyTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
+func (s *dummyTxSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
 	return []byte{}, nil
 }
 
@@ -53,8 +53,8 @@ type eddsaTxSigner struct {
 	sk ed25519.PrivateKey
 }
 
-func (b *eddsaTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
-	h := signature2.HashTx(tx)
+func (b *eddsaTxSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
+	h := signature2.HashTxNamespace(tx, nsIndex)
 	return b.sk.Sign(nil, h, &ed25519.Options{
 		Context: "Example_ed25519ctx",
 	})
@@ -62,7 +62,7 @@ func (b *eddsaTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error)
 
 type eddsaSignerFactory struct{}
 
-func (b *eddsaSignerFactory) NewSigner(key signature.PrivateKey) (TxSigner, error) {
+func (b *eddsaSignerFactory) NewSigner(key signature.PrivateKey) (NsSigner, error) {
 	return &eddsaTxSigner{key}, nil
 }
 
@@ -70,9 +70,8 @@ type blsTxSigner struct {
 	sk *big.Int
 }
 
-func (b *blsTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
-	h := signature2.HashTx(tx)
-
+func (b *blsTxSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
+	h := signature2.HashTxNamespace(tx, nsIndex)
 	g1h, err := bn254.HashToG1(h, []byte(signature2.BLS_HASH_PREFIX))
 	if err != nil {
 		panic(err)
@@ -84,7 +83,7 @@ func (b *blsTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
 
 type blsSignerFactory struct{}
 
-func (b *blsSignerFactory) NewSigner(key signature.PrivateKey) (TxSigner, error) {
+func (b *blsSignerFactory) NewSigner(key signature.PrivateKey) (NsSigner, error) {
 	sk := big.NewInt(0)
 	sk.SetBytes(key)
 
@@ -93,7 +92,7 @@ func (b *blsSignerFactory) NewSigner(key signature.PrivateKey) (TxSigner, error)
 
 type ecdsaSignerFactory struct{}
 
-func (f *ecdsaSignerFactory) NewSigner(key signature.PrivateKey) (TxSigner, error) {
+func (f *ecdsaSignerFactory) NewSigner(key signature.PrivateKey) (NsSigner, error) {
 	signingKey, err := crypto.ParseSigningKey(key)
 	if err != nil {
 		return nil, err
@@ -105,6 +104,6 @@ type ecdsaTxSigner struct {
 	signingKey *ecdsa.PrivateKey
 }
 
-func (s *ecdsaTxSigner) SignTx(tx *protoblocktx.Tx) (signature.Signature, error) {
-	return crypto.SignMessage(s.signingKey, signature2.HashTx(tx))
+func (s *ecdsaTxSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
+	return crypto.SignMessage(s.signingKey, signature2.HashTxNamespace(tx, nsIndex))
 }

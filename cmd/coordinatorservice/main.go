@@ -17,7 +17,6 @@ import (
 
 var (
 	configPath   string
-	grpcServer   *grpc.Server
 	coordService *coordinatorservice.CoordinatorService
 )
 
@@ -60,7 +59,7 @@ func versionCmd() *cobra.Command {
 	return cmd
 }
 
-func startCmd() *cobra.Command {
+func startCmd() *cobra.Command { //nolint:gocognit
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Starts a coordinatorservice",
@@ -94,7 +93,6 @@ func startCmd() *cobra.Command {
 						coordConfig.ServerConfig.Endpoint.Port = port
 					}
 					protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
-					grpcServer = server
 					wg.Done()
 				})
 			}()

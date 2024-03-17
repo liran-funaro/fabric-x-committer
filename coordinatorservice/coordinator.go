@@ -437,7 +437,8 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 			c.uncommittedTxIDs.Delete(id)
 		}
 
-		logger.Debugf("Batch contained %d valid TXs, %d version conflicts, and %d duplicates. Forwarding to output stream.", committed, mvccConflict, duplicate)
+		logger.Debugf("Batch contained %d valid TXs, %d version conflicts, and %d duplicates. "+
+			"Forwarding to output stream.", committed, mvccConflict, duplicate)
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
@@ -466,7 +467,8 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 			c.uncommittedTxIDs.Delete(tx.Id)
 		}
 
-		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. Forwarding to output stream.", len(valStatus))
+		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. "+
+			"Forwarding to output stream.", len(valStatus))
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}

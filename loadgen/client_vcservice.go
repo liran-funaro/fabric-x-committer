@@ -18,7 +18,7 @@ type vcClient struct {
 	tracker *vcTracker
 }
 
-func newVCClient(config *VCClientConfig, metrics *perfMetrics) blockGenClient {
+func newVCClient(config *VCClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
 	return &vcClient{
 		loadGenClient: &loadGenClient{
 			stopSender: make(chan any, len(config.Endpoints)),
@@ -53,7 +53,9 @@ func (c *vcClient) Start(blockGen *BlockStreamGenerator) error {
 	return <-errChan
 }
 
-func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
+func (c *vcClient) startReceiving(
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+) error {
 	for {
 		if response, err := stream.Recv(); err != nil {
 			return connection.WrapStreamRpcError(err)
@@ -64,7 +66,10 @@ func (c *vcClient) startReceiving(stream protovcservice.ValidationAndCommitServi
 	}
 }
 
-func (c *vcClient) startSending(blockGen *BlockStreamGenerator, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient) error {
+func (c *vcClient) startSending(
+	blockGen *BlockStreamGenerator,
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		err := stream.Send(mapVCBatch(block))
@@ -87,7 +92,9 @@ func mapVCBatch(block *protoblocktx.Block) *protovcservice.TransactionBatch {
 	return txBatch
 }
 
-func openVCStream(conn *grpc.ClientConn) (protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, error) {
+func openVCStream( //nolint:ireturn
+	conn *grpc.ClientConn,
+) (protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, error) {
 	logger.Infof("Creating client to %s", conn.Target())
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 	logger.Info("VC Client created")
@@ -100,7 +107,7 @@ type vcTracker struct {
 	tracker.ReceiverSender
 }
 
-func newVCTracker(metrics *perfMetrics) *vcTracker {
+func newVCTracker(metrics *PerfMetrics) *vcTracker {
 	return &vcTracker{ReceiverSender: NewClientTracker(metrics)}
 }
 

@@ -27,7 +27,7 @@ type TxGenerator interface {
 }
 
 type ValidTxGenerator struct {
-	TxSigner                TxSigner
+	TxSigner                NsSigner
 	TxSerialNumberGenerator TxInputGenerator
 	TxOutputGenerator       TxInputGenerator
 }
@@ -56,7 +56,6 @@ func NewValidTxGenerator(params *TxGeneratorParams) *ValidTxGenerator {
 }
 
 func (g *ValidTxGenerator) Next() *TxWithStatus {
-
 	tx := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{NsId: 1}},
 	}
@@ -75,7 +74,8 @@ func (g *ValidTxGenerator) Next() *TxWithStatus {
 		})
 	}
 
-	tx.Signature, _ = g.TxSigner.SignTx(tx)
+	s, _ := g.TxSigner.SignNs(tx, 0)
+	tx.Signatures = append(tx.Signatures, s)
 	return &TxWithStatus{tx, protoblocktx.Status_COMMITTED}
 }
 
@@ -96,7 +96,6 @@ type SomeTxInputGenerator struct {
 }
 
 func NewSomeTxInputGenerator(params *SomeTxInputGeneratorParams) *SomeTxInputGenerator {
-
 	serialNumberSizeGenerator := test.NewPositiveIntGenerator(params.SerialNumberSize, 30)
 	serialNumberGenerator := test.NewFastByteArrayGenerator(60)
 	txInputValueGenerator := func() tokenutil.SerialNumber {
@@ -293,9 +292,11 @@ func (e *dummyParallelExecutor) Submit(input []*parallelexecutor.Input) {
 	e.executorDelayGenerator.Next()
 	e.outputs <- e.responseBatchGenerator.NextWithSize(len(input))
 }
+
 func (e *dummyParallelExecutor) Outputs() <-chan []*parallelexecutor.Output {
 	return e.outputs
 }
+
 func (e *dummyParallelExecutor) Errors() <-chan error {
 	panic("unsupported operation")
 }
@@ -321,6 +322,7 @@ func NewDummyVerifierServer(executorDelay test.Distribution) sigverification.Ver
 func (s *dummyVerifierServer) SetVerificationKey(context.Context, *sigverification.Key) (*sigverification.Empty, error) {
 	return nil, nil
 }
+
 func (s *dummyVerifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {
 	s.streamHandler.HandleStream(stream)
 	return nil

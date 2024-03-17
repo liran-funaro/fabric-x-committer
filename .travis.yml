@@ -11,9 +11,9 @@ env:
   - DB_INSTANCE=local VCSERVICE_DB=postgres
 
 cache:
-    directories:
-      - $HOME/.cache/go-build        # Cache the binaries
-      - $HOME/gopath/pkg/mod         # Cache the Go modules
+  directories:
+    - $HOME/.cache/go-build # Cache the binaries
+    - $HOME/gopath/pkg/mod # Cache the Go modules
 
 services:
   - docker

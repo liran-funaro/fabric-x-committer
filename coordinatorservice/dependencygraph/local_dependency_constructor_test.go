@@ -36,7 +36,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 	}
 }
 
-func TestLocalDependencyConstructorWithDependencies(t *testing.T) {
+func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:gocognit
 	t.Parallel()
 
 	keys := makeTestKeys(t, 24)
@@ -263,9 +263,9 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		txsNode := test.txsNodeBatch.txsNode
-		require.Len(t, txsNode, test.len)
+	for _, tc := range tests {
+		txsNode := tc.txsNodeBatch.txsNode
+		require.Len(t, txsNode, tc.len)
 		for _, txNode := range txsNode {
 			require.Len(t, txNode.dependsOnTxs, 0)
 			require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))

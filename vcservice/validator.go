@@ -59,7 +59,7 @@ func newValidator(
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
-) *transactionValidator {
+) *transactionValidator { // nolint:revive
 	logger.Debugf("Creating new validator")
 	return &transactionValidator{
 		ctx:                           ctx,
@@ -125,7 +125,9 @@ func (v *transactionValidator) validate() {
 	}
 }
 
-func (v *transactionValidator) validateReads(nsToReads namespaceToReads) (namespaceToReads /* mismatched */, error) {
+func (v *transactionValidator) validateReads(
+	nsToReads namespaceToReads,
+) (namespaceToReads /* mismatched */, error) {
 	// nsToMismatchingReads maintains all mismatching reads per namespace.
 	// nsID -> mismatchingReads{keys, versions}.
 	nsToMismatchingReads := make(namespaceToReads)
@@ -157,9 +159,12 @@ func (p *preparedTransactions) Debug() {
 	if logger.Level() > zapcore.DebugLevel {
 		return
 	}
-	logger.Debugf("total prepared: %d\n\tvalid non-blind writes: %d\n\tvalid blind writes: %d\n\tnew writes: %d\n\treads: %d\n",
-		len(p.nonBlindWritesPerTransaction)+len(p.blindWritesPerTransaction)+len(p.newWrites)+len(p.readToTransactionIndices),
-		len(p.nonBlindWritesPerTransaction), len(p.blindWritesPerTransaction), len(p.newWrites), len(p.readToTransactionIndices))
+	logger.Debugf("total prepared: %d\n\tvalid non-blind writes: %d\n\t"+
+		"valid blind writes: %d\n\tnew writes: %d\n\treads: %d\n",
+		len(p.nonBlindWritesPerTransaction)+len(p.blindWritesPerTransaction)+
+			len(p.newWrites)+len(p.readToTransactionIndices),
+		len(p.nonBlindWritesPerTransaction), len(p.blindWritesPerTransaction),
+		len(p.newWrites), len(p.readToTransactionIndices))
 }
 
 func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToReads) error {

@@ -27,7 +27,7 @@ type sidecarClient struct {
 	tracker         *sidecarTracker
 }
 
-func newSidecarClient(config *SidecarClientConfig, metrics *perfMetrics) blockGenClient {
+func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
 	conn, err := connection.Connect(connection.NewDialConfig(*config.Coordinator.Endpoint))
 	if err != nil {
 		panic(errors.Wrapf(err, "failed to connect to coordinator on %s", config.Coordinator.Endpoint.String()))
@@ -40,7 +40,6 @@ func newSidecarClient(config *SidecarClientConfig, metrics *perfMetrics) blockGe
 		OrdererConnectionProfile: nil,
 		Reconnect:                -1,
 	}, &deliverclient.PeerDeliverClientProvider{})
-
 	if err != nil {
 		panic(errors.Wrap(err, "failed to create listener"))
 	}
@@ -70,8 +69,10 @@ func (c *sidecarClient) Stop() {
 }
 
 func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
-
-	if _, err := c.coordinator.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()}); err != nil {
+	if _, err := c.coordinator.SetVerificationKey(
+		context.Background(),
+		&protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()},
+	); err != nil {
 		return errors.Wrap(err, "failed connecting to coordinator")
 	}
 	logger.Infof("Set verification key")
@@ -94,7 +95,7 @@ func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
 	return <-errChan
 }
 
-func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) error {
+func (*sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) error {
 	for {
 		if response, err := stream.Recv(); err != nil {
 			return errors.Wrapf(err, "failed receiving")
@@ -106,7 +107,9 @@ func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient
 	}
 }
 
-func (c *sidecarClient) startSending(blockGen *BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient) error {
+func (c *sidecarClient) startSending(
+	blockGen *BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient,
+) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		for _, tx := range block.Txs {
@@ -124,13 +127,14 @@ type sidecarTracker struct {
 	tracker.ReceiverSender
 }
 
-func newSidecarTracker(metrics *perfMetrics) *sidecarTracker {
+func newSidecarTracker(metrics *PerfMetrics) *sidecarTracker {
 	return &sidecarTracker{ReceiverSender: NewClientTracker(metrics)}
 }
 
 func (t *sidecarTracker) OnReceiveSidecarBlock(block *common.Block) {
 	statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
-	logger.Infof("Received block [%d:%d] with %d status codes", block.Header.Number, len(block.Data.Data), len(statusCodes))
+	logger.Infof("Received block [%d:%d] with %d status codes",
+		block.Header.Number, len(block.Data.Data), len(statusCodes))
 
 	for i, data := range block.Data.Data {
 		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {

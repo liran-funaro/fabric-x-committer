@@ -27,6 +27,7 @@ const (
 
 // Distribution is a descriptor of a distribution.
 type Distribution struct {
+	// DistributionType is the type of the distribution.
 	Type DistributionType `mapstructure:"type"`
 
 	Const float64 `mapstructure:"const"`

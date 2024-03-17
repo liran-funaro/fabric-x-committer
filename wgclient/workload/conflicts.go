@@ -13,7 +13,7 @@ import (
 	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
 
-type signerFunc func(tx *protoblocktx.Tx) ([]byte, error)
+type signerFunc func(tx *protoblocktx.Tx, nsIndex int) ([]byte, error)
 
 const defaultDoubleSpendPoolSize = 1000
 
@@ -55,7 +55,9 @@ func (h *statisticalConflictHandler) Next() *sigverificationtest.TxWithStatus {
 
 	if h.invalidSignatureGenerator.Next() {
 		tx := h.delegate.Next().Tx
-		sigverificationtest.Reverse(tx.Signature)
+		for _, s := range tx.Signatures {
+			sigverificationtest.Reverse(s)
+		}
 		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID}
 	}
 
@@ -123,7 +125,9 @@ func (h *scenarioHandler) Next() *sigverificationtest.TxWithStatus {
 
 	tx := h.delegate.Next().Tx
 	if h.isSigConflict[order] {
-		sigverificationtest.Reverse(tx.Signature)
+		for _, s := range tx.Signatures {
+			sigverificationtest.Reverse(s)
+		}
 		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID}
 	}
 	if txDoubles, ok := h.doubles[order]; ok {
@@ -132,7 +136,8 @@ func (h *scenarioHandler) Next() *sigverificationtest.TxWithStatus {
 				tx.Namespaces[0].BlindWrites[snOrder].Key = *sn
 			}
 		}
-		tx.Signature, _ = h.signFnc(tx)
+		s, _ := h.signFnc(tx, 0)
+		tx.Signatures = append(tx.Signatures, s)
 		return &sigverificationtest.TxWithStatus{Tx: tx, Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT}
 	}
 

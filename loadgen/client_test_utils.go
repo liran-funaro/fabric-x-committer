@@ -92,7 +92,7 @@ func tempFile(t *testing.T, filename string) string {
 	return output
 }
 
-func startLoadGenerator(t *testing.T, c *ClientConfig) *perfMetrics {
+func startLoadGenerator(t *testing.T, c *ClientConfig) *PerfMetrics {
 	logger.Debugf("Starting load generator with config: %v", c)
 	metrics, blockGen, client, err := Starter(c)
 	require.NoError(t, err)

@@ -19,7 +19,7 @@ type svClient struct {
 	tracker *svTracker
 }
 
-func newSVClient(config *SVClientConfig, metrics *perfMetrics) blockGenClient {
+func newSVClient(config *SVClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
 	return &svClient{
 		loadGenClient: &loadGenClient{
 			stopSender: make(chan any, len(config.Endpoints)),
@@ -37,7 +37,7 @@ func (c *svClient) Start(blockGen *BlockStreamGenerator) error {
 
 	errChan := make(chan error, len(connections))
 	for _, conn := range connections {
-		stream, err := openVSStream(conn, blockGen.Signer.GetVerificationKey())
+		stream, err := openVSStream(conn, blockGen.Signer.GetVerificationKey(), blockGen.Signer.HashSigner.scheme)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening connection to %s", conn.Target())
 		}
@@ -65,7 +65,9 @@ func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamCli
 	}
 }
 
-func (c *svClient) startSending(blockGen *BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient) error {
+func (c *svClient) startSending(
+	blockGen *BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient,
+) error {
 	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d", block.Number)
 		err := stream.Send(mapVSBatch(block))
@@ -87,12 +89,19 @@ func mapVSBatch(b *protoblocktx.Block) *sigverification.RequestBatch {
 	return batch
 }
 
-func openVSStream(conn *grpc.ClientConn, verificationKey signature.PublicKey) (sigverification.Verifier_StartStreamClient, error) {
+func openVSStream( //nolint:ireturn
+	conn *grpc.ClientConn, verificationKey signature.PublicKey, scheme Scheme,
+) (sigverification.Verifier_StartStreamClient, error) {
 	logger.Infof("Creating client to %s\n", conn.Target())
 	client := sigverification.NewVerifierClient(conn)
 	logger.Infof("Created verifier client")
 
-	_, err := client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: verificationKey})
+	k := &sigverification.Key{
+		NsId:            1,
+		SerializedBytes: verificationKey,
+		Scheme:          scheme,
+	}
+	_, err := client.SetVerificationKey(context.Background(), k)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed setting verification key")
 	}
@@ -106,7 +115,7 @@ type svTracker struct {
 	tracker.ReceiverSender
 }
 
-func newSVTracker(metrics *perfMetrics) *svTracker {
+func newSVTracker(metrics *PerfMetrics) *svTracker {
 	return &svTracker{ReceiverSender: NewClientTracker(metrics)}
 }
 

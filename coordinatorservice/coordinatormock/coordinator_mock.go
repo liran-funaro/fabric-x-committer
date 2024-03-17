@@ -19,26 +19,32 @@ import (
 
 var logger = logging.New("mock-coordinator")
 
+// NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *MockCoordinator {
 	return &MockCoordinator{stop: make(chan any)}
 }
 
+// MockCoordinator is a mock coordinator.
 type MockCoordinator struct {
 	protocoordinatorservice.UnimplementedCoordinatorServer
 	stop chan any
 }
 
+// Close closes the mock coordinator.
 func (s *MockCoordinator) Close() {
 	logger.Infof("Closing mock coordinator")
 	close(s.stop)
 }
 
-func (s *MockCoordinator) SetVerificationKey(c context.Context, k *protosigverifierservice.Key) (*protocoordinatorservice.Empty, error) {
+// SetVerificationKey sets the verification key.
+func (*MockCoordinator) SetVerificationKey(
+	_ context.Context, _ *protosigverifierservice.Key,
+) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, nil
 }
 
+// BlockProcessing processes a block.
 func (s *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
-
 	input := make(chan *protoblocktx.Block, 1000)
 	defer close(input)
 	defer logger.Infof("Closed mock coordinator")
@@ -68,7 +74,9 @@ func (s *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordin
 	}
 }
 
-func (s *MockCoordinator) sendTxsValidationStatus(stream protocoordinatorservice.Coordinator_BlockProcessingServer, input chan *protoblocktx.Block) {
+func (*MockCoordinator) sendTxsValidationStatus(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer, input chan *protoblocktx.Block,
+) {
 	for scBlock := range input {
 		batch := &protocoordinatorservice.TxValidationStatusBatch{
 			TxsValidationStatus: make([]*protocoordinatorservice.TxValidationStatus, len(scBlock.GetTxs())),
@@ -86,6 +94,7 @@ func (s *MockCoordinator) sendTxsValidationStatus(stream protocoordinatorservice
 		perPart := len(scBlock.GetTxs()) / numParts
 
 		for i := 0; i < numParts; i++ {
+			scBlock := scBlock
 			go func(i int) {
 				r := 100 + rand.Intn(1000)
 				time.Sleep(time.Duration(r) * time.Microsecond)
@@ -109,10 +118,11 @@ func (s *MockCoordinator) sendTxsValidationStatus(stream protocoordinatorservice
 	}
 }
 
+// StartMockCoordinatorService starts a mock coordinator service.
 func StartMockCoordinatorService() (*connection.ServerConfig, *MockCoordinator, *grpc.Server) {
 	coordinator := NewMockCoordinator()
 
-	sc, grpcSrvs := test.StartMockServers(1, func(server *grpc.Server, index int) {
+	sc, grpcSrvs := test.StartMockServers(1, func(server *grpc.Server, _ int) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, coordinator)
 	})
 

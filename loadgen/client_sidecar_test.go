@@ -59,7 +59,16 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	})
 	// Start server under test
 	ledgerPath := tempFile(t, "ledger")
-	loadConfig(t, "server-config.yaml", sidecarServerTemplate, tempFile(t, "server-log.txt"), 2110, 9001, ordererServerConfig[0].Endpoint.Port, coordinatorServerConfig.Endpoint.Port, ledgerPath)
+	loadConfig(t,
+		"server-config.yaml",
+		sidecarServerTemplate,
+		tempFile(t, "server-log.txt"),
+		2110,
+		9001,
+		ordererServerConfig[0].Endpoint.Port,
+		coordinatorServerConfig.Endpoint.Port,
+		ledgerPath,
+	)
 	conf := sidecarservice.ReadConfig()
 
 	service, err := sidecarservice.NewService(&conf)

@@ -224,7 +224,8 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs chan<- *protoblocktx.Block,
 ) {
 	for blkWithResult := range sv.validatedBlock {
-		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs", blkWithResult.block.Number, len(blkWithResult.validTxIndex), len(blkWithResult.invalidTxIndex))
+		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
+			blkWithResult.block.Number, len(blkWithResult.validTxIndex), len(blkWithResult.invalidTxIndex))
 		sv.metrics.addToCounter(
 			sv.metrics.sigverifierTransactionProcessedTotal,
 			len(blkWithResult.block.Txs),
@@ -256,7 +257,8 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 			}
 			outgoingBlockWithValidTxs <- validBlockTxs
 			outgoingBlockWithInvalidTxs <- invalidBlockTxs
-			logger.Debugf("Forwarded valid and invalid TXs of block [%d] back to coordinator", blkWithResult.block.Number)
+			logger.Debugf("Forwarded valid and invalid TXs of block [%d] back to coordinator",
+				blkWithResult.block.Number)
 		}
 	}
 }

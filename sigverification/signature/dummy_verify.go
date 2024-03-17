@@ -8,7 +8,7 @@ import (
 
 type dummyVerifierFactory struct{}
 
-func (f *dummyVerifierFactory) NewVerifier(key []byte) (TxVerifier, error) {
+func (f *dummyVerifierFactory) NewVerifier(key []byte) (NsVerifier, error) {
 	return &dummyVerifier{}, nil
 }
 
@@ -16,10 +16,10 @@ func (f *dummyVerifierFactory) NewVerifier(key []byte) (TxVerifier, error) {
 
 type dummyVerifier struct{}
 
-func (v *dummyVerifier) SignTx(*protoblocktx.Tx) (Signature, error) {
+func (v *dummyVerifier) SignNs(*protoblocktx.Tx) (Signature, error) {
 	return []byte{}, nil
 }
 
-func (v *dummyVerifier) VerifyTx(*protoblocktx.Tx) error {
+func (v *dummyVerifier) VerifyNs(t *protoblocktx.Tx, nsIndex int) error {
 	return nil
 }

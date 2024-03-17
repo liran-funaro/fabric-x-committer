@@ -19,7 +19,9 @@ type coordinatorClient struct {
 	tracker *coordinatorTracker
 }
 
-func newCoordinatorClient(config *CoordinatorClientConfig, metrics *perfMetrics) blockGenClient {
+func newCoordinatorClient( //nolint:ireturn
+	config *CoordinatorClientConfig, metrics *PerfMetrics,
+) blockGenClient {
 	return &coordinatorClient{
 		loadGenClient: &loadGenClient{
 			stopSender: make(chan any),
@@ -43,11 +45,12 @@ func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
 
 	errChan := make(chan error)
 	go func() {
-		errChan <- c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
-			err := stream.Send(block)
-			c.tracker.OnSendBlock(block)
-			return err
-		})
+		errChan <- c.loadGenClient.startSending(
+			blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+				err := stream.Send(block)
+				c.tracker.OnSendBlock(block)
+				return err
+			})
 	}()
 	go func() {
 		errChan <- c.startReceiving(stream)
@@ -70,7 +73,7 @@ type coordinatorTracker struct {
 	tracker.ReceiverSender
 }
 
-func newCoordinatorTracker(metrics *perfMetrics) *coordinatorTracker {
+func newCoordinatorTracker(metrics *PerfMetrics) *coordinatorTracker {
 	return &coordinatorTracker{ReceiverSender: NewClientTracker(metrics)}
 }
 
@@ -82,7 +85,9 @@ func (t *coordinatorTracker) OnReceiveCoordinatorBatch(batch *protocoordinatorse
 	}
 }
 
-func openCoordinatorStream(conn *grpc.ClientConn, publicKey signature.PublicKey) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
+func openCoordinatorStream( //nolint:ireturn
+	conn *grpc.ClientConn, publicKey signature.PublicKey,
+) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
 	client := openCoordinatorClient(conn)
 
 	_, err := client.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: publicKey})

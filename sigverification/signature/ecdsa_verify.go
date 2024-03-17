@@ -11,7 +11,7 @@ import (
 
 type EcdsaVerifierFactory struct{}
 
-func (f *EcdsaVerifierFactory) NewVerifier(verificationKey []byte) (TxVerifier, error) {
+func (f *EcdsaVerifierFactory) NewVerifier(verificationKey []byte) (NsVerifier, error) {
 	ecdsaVerificationKey, err := crypto.ParseVerificationKey(verificationKey)
 	if err != nil {
 		return nil, err
@@ -30,6 +30,6 @@ func (v *ecdsaTxVerifier) publicKey() []byte {
 	return key
 }
 
-func (v *ecdsaTxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
-	return crypto.VerifyMessage(v.verificationKey, HashTx(tx), tx.GetSignature())
+func (v *ecdsaTxVerifier) VerifyNs(tx *protoblocktx.Tx, nsIndex int) error {
+	return crypto.VerifyMessage(v.verificationKey, HashTxNamespace(tx, nsIndex), tx.GetSignatures()[nsIndex])
 }

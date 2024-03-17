@@ -20,7 +20,7 @@ const BLS_HASH_PREFIX = "BLS"
 
 type BLSVerifierFactory struct{}
 
-func (f *BLSVerifierFactory) NewVerifier(verificationKey []byte) (TxVerifier, error) {
+func (f *BLSVerifierFactory) NewVerifier(verificationKey []byte) (NsVerifier, error) {
 	var pk bn254.G2Affine
 	_, err := pk.SetBytes(verificationKey)
 	if err != nil {
@@ -36,11 +36,11 @@ type blsTxVerifier struct {
 	pk bn254.G2Affine
 }
 
-func (v *blsTxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
-	digest := HashTx(tx)
+func (v *blsTxVerifier) VerifyNs(tx *protoblocktx.Tx, nsIndex int) error {
+	digest := HashTxNamespace(tx, nsIndex)
 
 	var sig bn254.G1Affine
-	_, err := sig.SetBytes(tx.GetSignature())
+	_, err := sig.SetBytes(tx.GetSignatures()[nsIndex])
 	if err != nil {
 		return fmt.Errorf("cannot set G1 from signature bytes")
 	}

@@ -8,8 +8,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
-var result *BlockWithExpectedResult
-var resultBlock *protoblocktx.Block
+var (
+	result      *BlockWithExpectedResult
+	resultBlock *protoblocktx.Block
+)
 
 // go test -bench . -benchmem -memprofile -blockprofile -cpuprofile profile.out
 // go tool pprof profile.out
@@ -39,7 +41,6 @@ func BenchmarkBBB(b *testing.B) {
 var r *protoblocktx.Tx
 
 func BenchmarkGenSingle(b *testing.B) {
-
 	sigType := "ECDSA"
 	privateKey, _ := sigverification_test.GetSignatureFactory(sigType).NewKeys()
 	signer, _ := sigverification_test.GetSignatureFactory(sigType).NewSigner(privateKey)
@@ -50,7 +51,7 @@ func BenchmarkGenSingle(b *testing.B) {
 		TxSigner:                signer,
 		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
 		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator([]test.DiscreteValue{{1, 1}}),
-	}, &ConflictProfile{Statistical: &StatisticalConflicts{InvalidSignatures: vr}}, signer.SignTx)
+	}, &ConflictProfile{Statistical: &StatisticalConflicts{InvalidSignatures: vr}}, signer.SignNs)
 
 	var tx *protoblocktx.Tx
 	b.ResetTimer()

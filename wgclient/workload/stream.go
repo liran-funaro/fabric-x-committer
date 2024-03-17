@@ -19,7 +19,7 @@ func StartTxGenerator(profile *TransactionProfile, conflicts *ConflictProfile, b
 		TxSigner:                signer,
 		TxSerialNumberGenerator: sigverification_test.NewLinearTxInputGenerator(profile.SerialNumberSize),
 		TxOutputGenerator:       sigverification_test.NewLinearTxInputGenerator(profile.OutputSize),
-	}, conflicts, signer.SignTx)
+	}, conflicts, signer.SignNs)
 
 	numWorker := runtime.NumCPU()
 	w := os.Getenv("NUM_WORKERS")

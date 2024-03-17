@@ -230,7 +230,7 @@ func createBlockForTest(
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			tx.Signature = []byte("dummy")
+			tx.Signatures = [][]byte{[]byte("dummy")}
 			blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
 		case 1:
 			// odd number txs are invalid.

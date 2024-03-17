@@ -140,7 +140,7 @@ func (n *TransactionNode) isDependencyFree() bool {
 }
 
 func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
-	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string
+	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string //nolint:prealloc
 
 	for _, ns := range txNamespaces {
 		// To establish a clear dependency between namespace lifecycle transactions (involving creating,

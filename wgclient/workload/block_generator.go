@@ -67,7 +67,7 @@ func (g *BlockGenerator) startBlockGenRoutine(numTxPerBlock, serialNumPerTx int,
 							NsId:        1,
 							BlindWrites: []*protoblocktx.Write{},
 						}},
-						Signature: randomBytesForSignature,
+						Signatures: [][]byte{randomBytesForSignature},
 					}
 
 					for _, sn := range serialNums {

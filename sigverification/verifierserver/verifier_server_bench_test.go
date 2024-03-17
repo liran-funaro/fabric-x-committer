@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
@@ -50,7 +51,7 @@ var baseConfig = benchmarkConfig{
 }
 
 func BenchmarkVerifierServer(b *testing.B) {
-	var output = test.Open("server", &test.ResultOptions{Columns: []*test.ColumnConfig{
+	output := test.Open("server", &test.ResultOptions{Columns: []*test.ColumnConfig{
 		{Header: "Parallelism", Formatter: test.NoFormatting},
 		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
@@ -65,11 +66,16 @@ func BenchmarkVerifierServer(b *testing.B) {
 			b.Run(fmt.Sprintf("%s-p%d-b%v", config.Name, config.ParallelExecutionConfig.Parallelism, test.ConstantDistributionFormatter(config.InputGeneratorParams.RequestBatch.BatchSize)), func(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
 				m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
-				server := verifierserver.New(config.ParallelExecutionConfig, config.InputGeneratorParams.RequestBatch.Tx.Scheme, m)
+				server := verifierserver.New(config.ParallelExecutionConfig, m)
 				c := sigverification_test.NewTestState(server)
 				t := connection.NewRequestTracker()
 				defer c.TearDown()
-				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{SerializedBytes: publicKey})
+				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{
+					NsId:            1,
+					NsVersion:       types.VersionNumber(0).Bytes(),
+					SerializedBytes: publicKey,
+					Scheme:          config.InputGeneratorParams.RequestBatch.Tx.Scheme,
+				})
 				stream, _ := c.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
 

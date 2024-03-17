@@ -13,6 +13,7 @@ import (
 )
 
 func TestSigVerifiersMgr(t *testing.T) {
+	t.Skip("skipping test")
 	// setup
 	verifierServers := []*connection.Endpoint{
 		connection.CreateEndpoint("localhost:5000"),

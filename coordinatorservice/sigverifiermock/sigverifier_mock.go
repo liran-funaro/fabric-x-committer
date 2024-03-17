@@ -92,7 +92,7 @@ func (m *MockSigVerifier) sendResponseBatch(stream protosigverifierservice.Verif
 			respBatch.Responses[i] = &protosigverifierservice.Response{
 				BlockNum: req.BlockNum,
 				TxNum:    req.TxNum,
-				IsValid:  len(req.GetTx().GetSignature()) > 0,
+				IsValid:  len(req.GetTx().GetSignatures()) > 0,
 			}
 		}
 

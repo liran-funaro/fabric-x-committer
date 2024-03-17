@@ -10,7 +10,7 @@ import (
 
 type EDDSAVerifierFactory struct{}
 
-func (f *EDDSAVerifierFactory) NewVerifier(verificationKey []byte) (TxVerifier, error) {
+func (f *EDDSAVerifierFactory) NewVerifier(verificationKey []byte) (NsVerifier, error) {
 	return &edDSATxVerifier{pk: verificationKey}, nil
 }
 
@@ -20,9 +20,9 @@ type edDSATxVerifier struct {
 	pk ed25519.PublicKey
 }
 
-func (v *edDSATxVerifier) VerifyTx(tx *protoblocktx.Tx) error {
-	digest := HashTx(tx)
-	return ed25519.VerifyWithOptions(v.pk, digest, tx.GetSignature(), &ed25519.Options{
+func (v *edDSATxVerifier) VerifyNs(tx *protoblocktx.Tx, nsIndex int) error {
+	digest := HashTxNamespace(tx, nsIndex)
+	return ed25519.VerifyWithOptions(v.pk, digest, tx.GetSignatures()[nsIndex], &ed25519.Options{
 		Context: "Example_ed25519ctx",
 	})
 }

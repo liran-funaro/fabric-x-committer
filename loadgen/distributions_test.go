@@ -19,7 +19,7 @@ func makeRand() *rand.Rand {
 }
 
 func requireMarshalUnmarshal(t *testing.T, expected string, in *Distribution) {
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	require.NoError(t, yaml.Unmarshal([]byte(expected), &values))
 	out := &Distribution{}
 	require.NoError(t, mapstructure.Decode(values, out))

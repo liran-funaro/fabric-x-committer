@@ -16,13 +16,15 @@ import (
 
 // De facto constants
 
-var SerialNumberCountDistribution = test.Constant(int64(test.TxSize))
-var SerialNumberSize = test.Constant(32)
-var OutputCountDistribution = test.Constant(int64(test.TxSize))
-var OutputSize = test.Constant(32)
-var SignatureValidRatio = test.Always
-var BatchSizeDistribution = test.Constant(int64(test.BatchSize))
-var VerificationScheme = signature.Ecdsa
+var (
+	SerialNumberCountDistribution = test.Constant(int64(test.TxSize))
+	SerialNumberSize              = test.Constant(32)
+	OutputCountDistribution       = test.Constant(int64(test.TxSize))
+	OutputSize                    = test.Constant(32)
+	SignatureValidRatio           = test.Always
+	BatchSizeDistribution         = test.Constant(int64(test.BatchSize))
+	VerificationScheme            = signature.Ecdsa
+)
 
 // Typical result values from experiments
 
@@ -30,8 +32,10 @@ var TypicalTxValidationDelay = int64(time.Second / 10_000)
 
 // Optimal values resulting from benchmarking
 
-var OptimalBatchTimeCutoff = 500 * time.Millisecond
-var OptimalChannelBufferSize = 50
+var (
+	OptimalBatchTimeCutoff   = 500 * time.Millisecond
+	OptimalChannelBufferSize = 50
+)
 
 type State struct {
 	Client     sigverification.VerifierClient

@@ -153,8 +153,8 @@ func TestCoordinatorService(t *testing.T) {
 			Number: 0,
 			Txs: []*protoblocktx.Tx{
 				{
-					Id:        "tx1",
-					Signature: []byte("dummy"),
+					Id:         "tx1",
+					Signatures: [][]byte{[]byte("dummy")},
 				},
 			},
 		})
@@ -217,8 +217,8 @@ func TestCoordinatorService(t *testing.T) {
 				Number: uint64(i),
 				Txs: []*protoblocktx.Tx{
 					{
-						Id:        "tx" + strconv.Itoa(i),
-						Signature: []byte("dummy"),
+						Id:         "tx" + strconv.Itoa(i),
+						Signatures: [][]byte{[]byte("dummy")},
 					},
 				},
 			})
@@ -279,16 +279,16 @@ func TestCoordinatorService(t *testing.T) {
 				Number: 601,
 				Txs: []*protoblocktx.Tx{
 					{
-						Id:        "tx1000",
-						Signature: []byte("dummy"),
+						Id:         "tx1000",
+						Signatures: [][]byte{[]byte("dummy")},
 					},
 					{
-						Id:        "tx1001",
-						Signature: []byte("dummy"),
+						Id:         "tx1001",
+						Signatures: [][]byte{[]byte("dummy")},
 					},
 					{
-						Id:        "tx1000",
-						Signature: []byte("dummy"),
+						Id:         "tx1000",
+						Signatures: [][]byte{[]byte("dummy")},
 					},
 				},
 			}))
@@ -330,8 +330,8 @@ func TestCoordinatorService(t *testing.T) {
 				Number: 602,
 				Txs: []*protoblocktx.Tx{
 					{
-						Id:        "tx1000",
-						Signature: []byte("dummy"),
+						Id:         "tx1000",
+						Signatures: [][]byte{[]byte("dummy")},
 					},
 				},
 			}))

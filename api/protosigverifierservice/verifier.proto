@@ -13,7 +13,10 @@ service Verifier {
 }
 
 message Key {
-    bytes serialized_bytes = 1;
+    uint32 ns_id = 1;
+    bytes ns_version = 2;
+    bytes serialized_bytes = 3;
+    string scheme = 4;
 }
 
 message Empty {

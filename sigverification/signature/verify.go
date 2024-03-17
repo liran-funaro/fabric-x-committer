@@ -9,9 +9,11 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
-type Message = signature.Message
-type Signature = signature.Signature
-type PublicKey = signature.PublicKey
+type (
+	Message   = signature.Message
+	Signature = signature.Signature
+	PublicKey = signature.PublicKey
+)
 
 var log = logging.New("verifier")
 
@@ -25,12 +27,12 @@ const (
 )
 
 type VerifierFactory interface {
-	NewVerifier(key PublicKey) (TxVerifier, error)
+	NewVerifier(key PublicKey) (NsVerifier, error)
 }
 
-type TxVerifier interface {
-	//VerifyTx verifies a signature of a transaction as signed by SignTx
-	VerifyTx(*protoblocktx.Tx) error
+type NsVerifier interface {
+	// VerifyNs verifies a signature on a given namespace signed by SignNs.
+	VerifyNs(t *protoblocktx.Tx, nsIndex int) error
 }
 
 var verifierFactories = map[Scheme]VerifierFactory{
@@ -47,8 +49,8 @@ func GetVerifierFactory(scheme signature.Scheme) (VerifierFactory, error) {
 	return nil, errors.New("scheme not supported for verifier")
 }
 
-// NewTxVerifier creates a new TX verifier according to the implementation scheme
-func NewTxVerifier(scheme Scheme, key []byte) (TxVerifier, error) {
+// NewNsVerifier creates a new namespace verifier according to the implementation scheme
+func NewNsVerifier(scheme Scheme, key []byte) (NsVerifier, error) {
 	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory.NewVerifier(key)
 	} else {

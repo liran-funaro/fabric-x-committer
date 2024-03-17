@@ -7,7 +7,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
-type perfMetrics struct {
+// PerfMetrics is a struct that contains the metrics for the block generator.
+type PerfMetrics struct {
 	provider                        metrics.Provider
 	blockSentTotal                  *metrics.IntCounter
 	transactionSentTotal            *metrics.IntCounter
@@ -16,9 +17,9 @@ type perfMetrics struct {
 	invalidTransactionLatencySecond prometheus.Histogram
 }
 
-func newBlockgenServiceMetrics(p metrics.Provider) *perfMetrics {
+func newBlockgenServiceMetrics(p metrics.Provider) *PerfMetrics {
 	buckets := p.Buckets()
-	return &perfMetrics{
+	return &PerfMetrics{
 		provider: p,
 		blockSentTotal: p.NewIntCounter(prometheus.CounterOpts{
 			Namespace: "blockgen",
@@ -52,30 +53,37 @@ func newBlockgenServiceMetrics(p metrics.Provider) *perfMetrics {
 	}
 }
 
-type clientTracker struct {
+// ClientTracker is a struct that contains the latency tracker and the metrics for the client.
+type ClientTracker struct {
 	latencyTracker tracker.ReceiverSender
-	metrics        *perfMetrics
+	metrics        *PerfMetrics
 }
 
-func NewClientTracker(metrics *perfMetrics) tracker.ReceiverSender {
-	return &clientTracker{
-		metrics:        metrics,
-		latencyTracker: tracker.NewReceiverSender(metrics.provider, metrics.validTransactionLatencySecond, metrics.invalidTransactionLatencySecond),
+// NewClientTracker is a constructor for the clientTracker struct.
+func NewClientTracker(m *PerfMetrics) *ClientTracker {
+	return &ClientTracker{
+		metrics: m,
+		latencyTracker: tracker.NewReceiverSender(
+			m.provider, m.validTransactionLatencySecond, m.invalidTransactionLatencySecond),
 	}
 }
 
-func (c *clientTracker) OnReceiveTransaction(txID string, success bool) {
+// OnReceiveTransaction is a function that increments the transaction received total
+// and calls the latency tracker.
+func (c *ClientTracker) OnReceiveTransaction(txID string, success bool) {
 	c.metrics.transactionReceivedTotal.Inc()
 	c.latencyTracker.OnReceiveTransaction(txID, success)
 }
 
-func (c *clientTracker) OnSendBlock(block *protoblocktx.Block) {
+// OnSendBlock is a function that increments the block sent total and calls the latency tracker.
+func (c *ClientTracker) OnSendBlock(block *protoblocktx.Block) {
 	c.metrics.blockSentTotal.Add(1)
 	c.metrics.transactionSentTotal.Add(len(block.Txs))
 	c.latencyTracker.OnSendBlock(block)
 }
 
-func (c *clientTracker) OnSendTransaction(txId string) {
+// OnSendTransaction is a function that increments the transaction sent total and calls the latency tracker.
+func (c *ClientTracker) OnSendTransaction(txID string) {
 	c.metrics.transactionSentTotal.Add(1)
-	c.latencyTracker.OnSendTransaction(txId)
+	c.latencyTracker.OnSendTransaction(txID)
 }
