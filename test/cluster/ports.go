@@ -2,36 +2,40 @@ package cluster
 
 import (
 	"fmt"
-	"os"
-)
-
-// TestPortRange represents a port range
-type TestPortRange int
-
-const (
-	basePort = 20000
-	// Node denotes a single sigverifier or shardserver
-	portsPerNode = 10
-	// Suite denotes either a group of sigverifier or shardserver
-	portsPerSuite = 50
+	"math/rand"
+	"net"
+	"time"
 )
 
 const (
-	CoordinatorBasePort TestPortRange = basePort + (portsPerSuite*portsPerNode)*iota
-	SigVerifierBasePort
-	ShardServerBasePort
+	minPort = 49152
+	maxPort = 65535
 )
 
-// On linux, the default ephemeral port range is 32768-60999 and can be
-// allocated by the system for the client side of TCP connections or when
-// programs explicitly request one. Given linux is our default CI system,
-// we want to try avoid ports in that range.
-func (t TestPortRange) StartPort() int {
-	const startEphemeral, endEphemeral = 32768, 60999
+// FindAvailablePortRange finds a range of available ports.
+func FindAvailablePortRange(numPorts int) ([]int, error) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var availablePorts []int
 
-	port := int(t)
-	if port >= startEphemeral-portsPerNode && port <= endEphemeral-portsPerNode {
-		fmt.Fprintf(os.Stderr, "WARNING: port %d is part of the default ephemeral port range on linux", port)
+	for len(availablePorts) < numPorts {
+		randomPort := r.Intn(maxPort-minPort+1) + minPort
+		if isPortAvailable(randomPort) {
+			availablePorts = append(availablePorts, randomPort)
+		}
 	}
-	return port
+	if len(availablePorts) < numPorts {
+		return nil, fmt.Errorf("not enough available ports found")
+	}
+	return availablePorts, nil
+}
+
+// Check if a port is available for use.
+func isPortAvailable(port int) bool {
+	addr := fmt.Sprintf(":%d", port)
+	conn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }

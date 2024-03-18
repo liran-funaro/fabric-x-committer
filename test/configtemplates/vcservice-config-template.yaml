@@ -1,0 +1,27 @@
+validator-committer-service:
+  server:
+    endpoint: {{ .ServerEndpoint }}
+  database:
+    host: {{ .DatabaseHost }}
+    port: {{ .DatabasePort }}
+    username: "yugabyte"
+    # TODO: pass password via environment variable
+    password: "yugabyte"
+    database: {{ .DatabaseName }}
+    max-connections: 10
+    min-connections: 5
+
+  resource-limits:
+    max-workers-for-preparer: 2
+    max-workers-for-validator: 2
+    max-workers-for-committer: 2
+    min-transaction-batch-size: 1
+
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: {{ .MetricsEndpoint }}
+logging:
+  development: true
+  enabled: true
+  level: DEBUG

@@ -158,10 +158,12 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 		// NOTE: if ns.NsID is a types.MetaNamespaceID, we should use the config namespaceID instead
 		//       of types.MetaNamespaceID when constructing the composite key. This approach would introduce
 		//       dependency between the namespace lifecycle transaction and the config transaction.
-		readOnlyKeys = append(
-			readOnlyKeys,
-			constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(ns.NsId).Bytes()),
-		)
+		if ns.NsId != uint32(types.MetaNamespaceID) {
+			readOnlyKeys = append(
+				readOnlyKeys,
+				constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(ns.NsId).Bytes()),
+			)
+		}
 
 		for _, ro := range ns.ReadsOnly {
 			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(ns.NsId, ro.Key))

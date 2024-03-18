@@ -37,7 +37,7 @@ func (s *MockCoordinator) Close() {
 }
 
 // SetVerificationKey sets the verification key.
-func (*MockCoordinator) SetVerificationKey(
+func (*MockCoordinator) SetMetaNamespaceVerificationKey(
 	_ context.Context, _ *protosigverifierservice.Key,
 ) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, nil

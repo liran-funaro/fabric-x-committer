@@ -118,6 +118,11 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		if !bytes.Equal(v.version, ns.NsVersion) {
 			// Note: Coordinator would always set the version of the verifier to the
 			// latest version of the namespace. So, this error should never happen.
+			logger.Debugf(
+				"Version of verifier [%d] mismatches with the namespace's version [%d]",
+				v.version,
+				ns.NsVersion,
+			)
 			return nil, errors.New("version of verifier mismatches with the namespace's version")
 		}
 

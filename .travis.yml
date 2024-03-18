@@ -6,10 +6,6 @@ dist: focal
 go:
   - 1.20.3
 
-env:
-  - DB_INSTANCE=local VCSERVICE_DB=yuga
-  - DB_INSTANCE=local VCSERVICE_DB=postgres
-
 cache:
   directories:
     - $HOME/.cache/go-build # Cache the binaries
@@ -25,9 +21,6 @@ stages:
 before_install:
   # Start VCService database
   - scripts/get-and-start-$VCSERVICE_DB.sh
-
-script:
-  - make test
 
 jobs:
   include:
@@ -50,3 +43,15 @@ jobs:
         - git diff | tee /dev/stderr | [ $(wc -c) -eq 0 ]
         # Run lint and test
         - make lint
+    - stage: test
+      name: Unit Tests (postgres)
+      env: DB_INSTANCE=local VCSERVICE_DB=postgres
+      script: make test
+    - stage: test
+      name: Unit Tests (yugabyte)
+      env: DB_INSTANCE=local VCSERVICE_DB=yuga
+      script: make test
+    - stage: test
+      name: Integration Tests (yugabyte)
+      env: DB_INSTANCE=local VCSERVICE_DB=yuga
+      script: make integration-test

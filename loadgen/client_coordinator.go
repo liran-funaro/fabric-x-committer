@@ -7,6 +7,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -90,7 +91,10 @@ func openCoordinatorStream( //nolint:ireturn
 ) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
 	client := openCoordinatorClient(conn)
 
-	_, err := client.SetVerificationKey(context.Background(), &protosigverifierservice.Key{SerializedBytes: publicKey})
+	_, err := client.SetMetaNamespaceVerificationKey(
+		context.Background(),
+		&protosigverifierservice.Key{NsId: uint32(types.MetaNamespaceID), SerializedBytes: publicKey},
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed setting verification key")
 	}

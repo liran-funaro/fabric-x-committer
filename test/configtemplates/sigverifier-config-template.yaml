@@ -1,11 +1,23 @@
 sig-verification:
   server:
-    endpoint: {{.ServerEndpoint}}
+    endpoint: {{ .ServerEndpoint }}
   monitoring:
     metrics:
       enable: true
-      endpoint: {{.MetricsEndpoint}}
+      endpoint: {{ .MetricsEndpoint }}
+
+    latency:
+      span-exporter: jaeger
+      sampler:
+        type: blocktx
+        ratio: 10
+        sample-size: 100
+        sample-period: 100000
+      endpoint: {{ .LatencyEndpoint }}
+      max-latency: 5s
+      bucket-count: 1000
   scheme: "Ecdsa"
+
   parallel-executor:
     parallelism: 40
     batch-time-cutoff: 10ms
@@ -14,5 +26,5 @@ sig-verification:
 
 logging:
   enabled: true
-  level: INFO
+  level: DEBUG
   development: true

@@ -9,32 +9,34 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
-type Input = sigverification.Request
-type Output = sigverification.Response
-type ExecutorFunc = func(*Input) (*Output, error)
+type (
+	Input        = sigverification.Request
+	Output       = sigverification.Response
+	ExecutorFunc = func(*Input) (*Output, error)
+)
 
 var logger = logging.New("parallel_executor")
 
 type Config struct {
-	//Parallelism How many parallel go routines will be launched
+	// Parallelism How many parallel go routines will be launched
 	Parallelism int `mapstructure:"parallelism"`
-	//BatchSizeCutoff The minimum amount of responses we need to collect before emitting a response
+	// BatchSizeCutoff The minimum amount of responses we need to collect before emitting a response
 	BatchSizeCutoff int `mapstructure:"batch-size-cutoff"`
-	//BatchTimeCutoff How often we should empty the non-empty buffer
+	// BatchTimeCutoff How often we should empty the non-empty buffer
 	BatchTimeCutoff time.Duration `mapstructure:"batch-time-cutoff"`
-	//ChannelBufferSize The size of the buffer of the input channels (increase for high fluctuations of load)
+	// ChannelBufferSize The size of the buffer of the input channels (increase for high fluctuations of load)
 	ChannelBufferSize int `mapstructure:"channel-buffer-size"`
 }
 
 type ParallelExecutor interface {
-	//Submit multiple requests that will be distributed to various go routines for execution
-	//The responses will be aggregated and buffered.
-	//When a sufficient amount of responses is collected, it will be emitted from the Outputs channel.
+	// Submit multiple requests that will be distributed to various go routines for execution
+	// The responses will be aggregated and buffered.
+	// When a sufficient amount of responses is collected, it will be emitted from the Outputs channel.
 	Submit([]*Input)
-	//Outputs returns the emitter channel that returns batches of responses of size BatchSizeCutoff
-	//The batches can be even smaller when we cut the batch manually or the batch timeout expires.
+	// Outputs returns the emitter channel that returns batches of responses of size BatchSizeCutoff
+	// The batches can be even smaller when we cut the batch manually or the batch timeout expires.
 	Outputs() <-chan []*Output
-	//Errors returns any error that happened during the execution
+	// Errors returns any error that happened during the execution
 	Errors() <-chan error
 }
 
@@ -85,7 +87,7 @@ func (e *parallelExecutor) handleChannelInput(channel chan *Input, idx int) {
 		logger.Debugf("Received request %v with in go routine %d. Sending for execution.", input.GetTx().GetId(), idx)
 		output, err := e.executor(input)
 		if err != nil {
-			logger.Debugf("Received error from executor %d.", idx)
+			logger.Debugf("Received error from executor %d. %s", idx, err)
 			e.errorCh <- err
 		} else {
 			logger.Debugf("Received output from executor %d: %v", idx, output)
@@ -106,7 +108,7 @@ func (e *parallelExecutor) handleTimeManualCutoff() {
 			logger.Debugf("Attempts to cut a batch, because it was requested manually. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case <-time.After(e.batchTimeCutoff):
-			//logger.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
+			// logger.Debugf("Attempts to cut a batch, because the timer expired. (Buffer size: %d)", len(outputBuffer))
 			outputBuffer = e.cutBatch(outputBuffer, 1)
 		case output := <-e.outputAggregationCh:
 			logger.Debugf("Attempts to emit a batch, because a go routine finished a calculation. (Buffer size: %d)", len(outputBuffer)+1)

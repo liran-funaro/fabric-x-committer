@@ -13,17 +13,17 @@ type validatorTestEnv struct {
 	v            *transactionValidator
 	preparedTxs  chan *preparedTransactions
 	validatedTxs chan *validatedTransactions
-	dbEnv        *databaseTestEnv
+	dbEnv        *DatabaseTestEnv
 }
 
 func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	preparedTxs := make(chan *preparedTransactions, 10)
 	validatedTxs := make(chan *validatedTransactions, 10)
 
-	dbEnv := newDatabaseTestEnv(t)
+	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	ctx, cancel := context.WithCancel(context.Background())
-	v := newValidator(ctx, dbEnv.db, preparedTxs, validatedTxs, metrics)
+	v := newValidator(ctx, dbEnv.DB, preparedTxs, validatedTxs, metrics)
 
 	t.Cleanup(func() {
 		cancel()

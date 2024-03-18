@@ -230,10 +230,13 @@ func (c *CoordinatorService) Start() (chan error, chan error, error) {
 }
 
 // SetVerificationKey sets the verification key for the signature verifier manager.
-func (c *CoordinatorService) SetVerificationKey(
+func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 	_ context.Context,
 	k *protosigverifierservice.Key,
 ) (*protocoordinatorservice.Empty, error) {
+	if k.NsId != uint32(types.MetaNamespaceID) {
+		return nil, errors.New("namespace ID is not meta namespace ID")
+	}
 	return &protocoordinatorservice.Empty{}, c.signatureVerifierMgr.setVerificationKey(k)
 }
 
@@ -493,7 +496,7 @@ func (c *CoordinatorService) postProcessing(txID string, status protoblocktx.Sta
 
 	for _, rw := range ns.ReadWrites {
 		nsID, _ := types.NamespaceIDFromBytes(rw.Key)
-		var nsVersion []byte
+		nsVersion := types.VersionNumber(0).Bytes()
 
 		if rw.Version != nil {
 			preVerNo := types.VersionNumberFromBytes(rw.Version)

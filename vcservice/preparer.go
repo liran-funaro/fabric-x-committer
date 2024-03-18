@@ -137,6 +137,9 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 				// we need to reject the transaction. This is done by
 				// adding the namespaceID, and version to the reads-only
 				// list of the metaNamespaceID.
+				if nsOperations.NsId == uint32(types.MetaNamespaceID) {
+					continue
+				}
 				metaNs.ReadsOnly = []*protoblocktx.Read{
 					{
 						Key:     types.NamespaceID(nsOperations.NsId).Bytes(),

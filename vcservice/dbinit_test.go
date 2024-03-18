@@ -9,18 +9,18 @@ import (
 )
 
 func Test_DbInit(t *testing.T) {
-	env := newDatabaseTestEnv(t)
+	env := NewDatabaseTestEnv(t)
 
 	ns := []int{0, 1, 2, 3}
-	require.NoError(t, initDatabaseTables(context.Background(), env.db.pool, ns))
+	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, ns))
 
-	_, err := env.db.pool.Exec(context.Background(), `insert into ns_0 values (UNNEST($1::bytea[]));`, [][]byte{
+	_, err := env.DB.pool.Exec(context.Background(), `insert into ns_0 values (UNNEST($1::bytea[]));`, [][]byte{
 		[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4"),
 	})
 	require.NoError(t, err)
 
 	// Validate default values
-	r, err := env.db.pool.Query(context.Background(), `select * from ns_0;`)
+	r, err := env.DB.pool.Query(context.Background(), `select * from ns_0;`)
 	require.NoError(t, err)
 	defer r.Close()
 	for r.Next() {
@@ -31,5 +31,5 @@ func Test_DbInit(t *testing.T) {
 		require.Equal(t, types.VersionNumber(0).Bytes(), version)
 	}
 
-	require.NoError(t, clearDatabaseTables(context.Background(), env.db.pool, ns))
+	require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, ns))
 }

@@ -69,7 +69,7 @@ func (c *sidecarClient) Stop() {
 }
 
 func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
-	if _, err := c.coordinator.SetVerificationKey(
+	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
 		context.Background(),
 		&protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()},
 	); err != nil {

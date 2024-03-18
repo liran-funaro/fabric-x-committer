@@ -4,19 +4,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 )
 
+const numPortsPerSigVerifier = 3
+
+// SigVerifierProcess represents a sigverifier process.
 type SigVerifierProcess struct {
-	Name            string
-	ConfigFilePath  string
-	Process         ifrit.Process
-	StartPortNumber int
-	Config          *SigVerifierConfig
-	RootDirPath     string
+	Name           string
+	ConfigFilePath string
+	Process        ifrit.Process
+	Ports          []int
+	Config         *SigVerifierConfig
+	RootDirPath    string
 }
 
+// SigVerifierConfig represents the configuration of the sigverifier process.
 type SigVerifierConfig struct {
 	ServerEndpoint  string
 	MetricsEndpoint string
@@ -24,40 +30,37 @@ type SigVerifierConfig struct {
 }
 
 var (
-	sigverifier_config_template = "../configtemplates/sigverifier-config-template.yaml"
-	sigverifier_cmd             = "../../bin/sigservice"
+	sigverifierConfigTemplate = "../configtemplates/sigverifier-config-template.yaml"
+	sigverifierCmd            = "../../bin/sigservice"
 )
 
-func NewSigVerifierProcess(startPortNumber int, tempDir string) *SigVerifierProcess {
+// NewSigVerifierProcess creates a new sigverifier process.
+func NewSigVerifierProcess(t *testing.T, ports []int, tempDir string) *SigVerifierProcess {
 	sigVerifierProcess := &SigVerifierProcess{
-		Name:            "sigverifier",
-		StartPortNumber: startPortNumber,
-		RootDirPath:     tempDir,
+		Name:        "sigverifier",
+		Ports:       ports,
+		RootDirPath: tempDir,
 	}
-	sigVerifierProcess.createConfigFile()
+	sigVerifierProcess.createConfigFile(t, ports)
 	sigVerifierProcess.start()
 	return sigVerifierProcess
 }
 
-func (s *SigVerifierProcess) createConfigFile() {
+func (s *SigVerifierProcess) createConfigFile(t *testing.T, ports []int) {
+	require.Len(t, ports, 3)
 	s.Config = &SigVerifierConfig{
-		ServerEndpoint:  fmt.Sprintf(":%d", s.nextPort()),
-		MetricsEndpoint: fmt.Sprintf(":%d", s.nextPort()),
-		LatencyEndpoint: fmt.Sprintf(":%d", s.nextPort()),
+		ServerEndpoint:  fmt.Sprintf(":%d", ports[0]),
+		MetricsEndpoint: fmt.Sprintf(":%d", ports[1]),
+		LatencyEndpoint: fmt.Sprintf(":%d", ports[2]),
 	}
 	s.ConfigFilePath = constructConfigFilePath(s.RootDirPath, s.Name, s.Config.ServerEndpoint)
 
-	createConfigFile(s.Config, sigverifier_config_template, s.ConfigFilePath)
+	createConfigFile(t, s.Config, sigverifierConfigTemplate, s.ConfigFilePath)
 }
 
 func (s *SigVerifierProcess) start() {
-	cmd := exec.Command(sigverifier_cmd, "--configs", s.ConfigFilePath)
+	cmd := exec.Command(sigverifierCmd, "--configs", s.ConfigFilePath)
 	s.Process = run(cmd, s.Name, "Was created and initialized with")
-}
-
-func (s *SigVerifierProcess) nextPort() int {
-	s.StartPortNumber++
-	return s.StartPortNumber
 }
 
 func (s *SigVerifierProcess) kill() {

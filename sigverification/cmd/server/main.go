@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
@@ -24,6 +26,7 @@ func main() {
 	config.ParseFlags()
 
 	c := serverconfig.ReadConfig()
+	fmt.Println(c)
 
 	m := monitoring.LaunchMonitoring(c.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
 

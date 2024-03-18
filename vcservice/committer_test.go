@@ -15,17 +15,17 @@ type committerTestEnv struct {
 	c            *transactionCommitter
 	validatedTxs chan *validatedTransactions
 	txStatus     chan *protovcservice.TransactionStatus
-	dbEnv        *databaseTestEnv
+	dbEnv        *DatabaseTestEnv
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
 	txStatus := make(chan *protovcservice.TransactionStatus, 10)
 
-	dbEnv := newDatabaseTestEnv(t)
+	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	ctx, cancel := context.WithCancel(context.Background())
-	c := newCommitter(ctx, dbEnv.db, validatedTxs, txStatus, metrics)
+	c := newCommitter(ctx, dbEnv.DB, validatedTxs, txStatus, metrics)
 
 	t.Cleanup(func() {
 		cancel()

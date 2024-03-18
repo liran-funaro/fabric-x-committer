@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,8 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 // TODO: all the statement templates will be moved to a different package once we decide on the
@@ -32,55 +29,13 @@ var (
 	v1 = types.VersionNumber(1).Bytes()
 )
 
-type databaseTestEnv struct {
-	db     *database
-	dbConf *DatabaseConfig
-}
-
 type valueVersion struct {
 	value   []byte
 	version []byte
 }
 
-func newDatabaseTestEnv(t *testing.T) *databaseTestEnv {
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Info,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
-
-	cs := yuga.PrepareYugaTestEnv(t)
-	port, err := strconv.Atoi(cs.Port)
-	require.NoError(t, err)
-
-	config := &DatabaseConfig{
-		Host:           cs.Host,
-		Port:           port,
-		Username:       cs.User,
-		Password:       cs.Password,
-		Database:       cs.Database,
-		MaxConnections: 10,
-		MinConnections: 1,
-	}
-
-	metrics := newVCServiceMetrics()
-	db, err := newDatabase(config, metrics)
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		db.close()
-	})
-
-	return &databaseTestEnv{
-		db:     db,
-		dbConf: config,
-	}
-}
-
 func TestValidateNamespaceReads(t *testing.T) {
-	env := newDatabaseTestEnv(t)
+	env := NewDatabaseTestEnv(t)
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -207,7 +162,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mismatchingReads, err := env.db.validateNamespaceReads(tt.nsID, tt.r)
+			mismatchingReads, err := env.DB.validateNamespaceReads(tt.nsID, tt.r)
 			require.NoError(t, err)
 			requireReadsMatch(t, tt.expectedMismatchedReads, mismatchingReads)
 		})
@@ -283,7 +238,7 @@ func diffReads(readA, readB *reads) (extraA, extraB *reads) {
 }
 
 func TestDBCommit(t *testing.T) {
-	dbEnv := newDatabaseTestEnv(t)
+	dbEnv := NewDatabaseTestEnv(t)
 
 	dbEnv.populateDataWithCleanup(
 		t,
@@ -317,10 +272,10 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	_, _, err := dbEnv.db.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	_, _, err := dbEnv.DB.commit(&statesToBeCommitted{newWrites: nsToWrites})
 	require.NoError(t, err)
 
-	_, _, err = dbEnv.db.commit(&statesToBeCommitted{updateWrites: nsToWrites})
+	_, _, err = dbEnv.DB.commit(&statesToBeCommitted{updateWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
@@ -340,15 +295,15 @@ func TestDBCommit(t *testing.T) {
 			versions: [][]byte{v0, v0},
 		},
 	}
-	_, _, err = dbEnv.db.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	_, _, err = dbEnv.DB.commit(&statesToBeCommitted{newWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, 3, *nsToWrites[3])
 	dbEnv.rowExists(t, 4, *nsToWrites[4])
 }
 
-func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
+func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
 	for nsID, writes := range nsToWrites {
-		_, err := env.db.pool.Exec(context.Background(), fmt.Sprintf(`
+		_, err := env.DB.pool.Exec(context.Background(), fmt.Sprintf(`
 			INSERT INTO %s (key, value, version)
 			SELECT _key, _value, _version
 			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
@@ -359,24 +314,24 @@ func (env *databaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 	}
 }
 
-func (env *databaseTestEnv) populateDataWithCleanup(
+func (env *DatabaseTestEnv) populateDataWithCleanup(
 	t *testing.T, nsIDs []int, writes namespaceToWrites, batchStatus *protovcservice.TransactionStatus,
 ) {
-	require.NoError(t, initDatabaseTables(context.Background(), env.db.pool, nsIDs))
+	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
 
-	_, _, err := env.db.commit(&statesToBeCommitted{batchStatus: batchStatus})
+	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus})
 	require.NoError(t, err)
 	env.commitState(t, writes)
 
 	t.Cleanup(func() {
-		require.NoError(t, clearDatabaseTables(context.Background(), env.db.pool, nsIDs))
+		require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, nsIDs))
 	})
 }
 
-func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*valueVersion {
+func (env *DatabaseTestEnv) fetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*valueVersion {
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
 
-	kvPairs, err := env.db.pool.Query(context.Background(), query, keys)
+	kvPairs, err := env.DB.pool.Query(context.Background(), query, keys)
 	require.NoError(t, err)
 	defer kvPairs.Close()
 
@@ -395,15 +350,15 @@ func (env *databaseTestEnv) fetchKeys(t *testing.T, nsID types.NamespaceID, keys
 	return actualRows
 }
 
-func (env *databaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
+func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
-	names, err := env.db.pool.Query(context.Background(), query)
+	names, err := env.DB.pool.Query(context.Background(), query)
 	require.NoError(t, err)
 	defer names.Close()
 	require.True(t, names.Next())
 }
 
-func (env *databaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
+func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
 	actualRows := env.fetchKeys(t, nsID, expectedRows.keys)
 
 	assert.Len(t, actualRows, len(expectedRows.keys))
@@ -415,7 +370,7 @@ func (env *databaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expe
 	}
 }
 
-func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
+func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
 	actualRows := env.fetchKeys(t, nsID, keys)
 
 	assert.Len(t, actualRows, 0)
@@ -425,12 +380,12 @@ func (env *databaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, k
 	}
 }
 
-func (env *databaseTestEnv) statusExists(t *testing.T, expected map[string]protoblocktx.Status) {
+func (env *DatabaseTestEnv) statusExists(t *testing.T, expected map[string]protoblocktx.Status) {
 	expectedIds := make([][]byte, 0, len(expected))
 	for id := range expected {
 		expectedIds = append(expectedIds, []byte(id))
 	}
-	kvPairs, err := env.db.pool.Query(context.Background(), queryTxStatusSQLTemplate, expectedIds)
+	kvPairs, err := env.DB.pool.Query(context.Background(), queryTxStatusSQLTemplate, expectedIds)
 	require.NoError(t, err)
 	defer kvPairs.Close()
 

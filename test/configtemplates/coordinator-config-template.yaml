@@ -1,27 +1,30 @@
-coordinator:
+coordinator-service:
   server:
     endpoint: {{.ServerEndpoint}}
+  sign-verifier:
+    server: 
+      {{- range .SigVerifierEndpoints }}
+      - endpoint: {{ . }}
+      {{- end }}
+  validator-committer:
+    server: 
+      {{- range .VCServiceEndpoints }}
+      - endpoint: {{ . }}
+      {{- end }}
+  dependency-graph:
+    num-of-local-dep-constructors: 20
+    waiting-txs-limit: 10000
+    num-of-workers-for-global-dep-manager: 20
+    # Add monitoring configuration here if applicable
+  per-channel-buffer-size-per-goroutine: 300
+
   monitoring:
     metrics:
       enable: true
       endpoint: {{.MetricsEndpoint}}
-  sig-verifiers:
-    endpoints: {{range .SigVerifierEndpoints}}
-      - {{.}}{{end}}
-  shards-servers:
-    servers: {{range .ShardServerEndpoints}}
-      - endpoint: {{.Endpoint}}
-        num-shards: {{.NumShards}}{{end}}
-    delete-existing-shards: true
-    prefix-size-for-shard-calculation: 2
-  limits:
-    shard-request-cut-timeout: 1ms
-    max-dependency-graph-size: 1000000 # 32 bytes per serial number, would cause roughly 32MB memory
-    dependency-graph-update-timeout: 1ms
-    invalid-sig-batch-cutoff-size: 1
 
 logging:
-  enabled: true
-  level: INFO
   development: true
+  enabled: true
+  level: DEBUG
   output: log.txt

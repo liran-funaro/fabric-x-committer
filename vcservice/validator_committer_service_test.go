@@ -22,11 +22,11 @@ type validatorAndCommitterServiceTestEnv struct {
 	vcs        *ValidatorCommitterService
 	grpcServer *grpc.Server
 	clientConn *grpc.ClientConn
-	dbEnv      *databaseTestEnv
+	dbEnv      *DatabaseTestEnv
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
-	dbEnv := newDatabaseTestEnv(t)
+	dbEnv := NewDatabaseTestEnv(t)
 
 	config := &ValidatorCommitterServiceConfig{
 		Server: &connection.ServerConfig{
@@ -35,7 +35,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 				Port: 0,
 			},
 		},
-		Database: dbEnv.dbConf,
+		Database: dbEnv.DBConf,
 		ResourceLimits: &ResourceLimitsConfig{
 			MaxWorkersForPreparer:   2,
 			MaxWorkersForValidator:  2,

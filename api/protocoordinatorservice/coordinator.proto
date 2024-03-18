@@ -8,7 +8,7 @@ import "api/protoblocktx/block_tx.proto";
 import "api/protosigverifierservice/verifier.proto";
 
 service Coordinator {
-    rpc SetVerificationKey(protosigverifierservice.Key) returns (Empty);
+    rpc SetMetaNamespaceVerificationKey(protosigverifierservice.Key) returns (Empty);
     rpc BlockProcessing(stream protoblocktx.Block) returns (stream TxValidationStatusBatch);
 }
 

@@ -51,7 +51,11 @@ endif
 #########################
 
 test: build
-	go test -v ./...
+	#excludes integration test. For integration test, use `make integration-test`.
+	go list ./... | grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/test/" | xargs go test -v
+
+integration-test: build
+	go test -v ./test/...
 
 test-package-%: build
 	go test -v ./$*/...
