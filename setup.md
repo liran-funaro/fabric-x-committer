@@ -85,7 +85,7 @@ Example: Start Yugabyte via docker
 docker run --name sc_yugabyte_unit_tests \
   --platform linux/amd64 \
   -p 5433:5433 \
-  -d yugabytedb/yugabyte:2.20.0.1-b1 \
+  -d yugabytedb/yugabyte:2.20.2.0-b145 \
   bin/yugabyted start \
   --background=false \
   --advertise_address=0.0.0.0 \

@@ -2,8 +2,8 @@
 
 echo "Downloading and extracting YugabyteDB"
 mkdir -p "$HOME/bin/yugabyte"
-curl https://downloads.yugabyte.com/releases/2.20.1.3/yugabyte-2.20.1.3-b3-linux-x86_64.tar.gz | \
-    tar --strip=1 -xz -C "$HOME/bin/yugabyte"
+curl https://downloads.yugabyte.com/releases/2.20.2.0/yugabyte-2.20.2.0-b145-linux-x86_64.tar.gz |
+	tar --strip=1 -xz -C "$HOME/bin/yugabyte"
 cd "$HOME/bin/yugabyte" || exit 1
 
 echo "Installing YugabyteDB"

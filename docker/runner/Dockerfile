@@ -3,7 +3,7 @@ ADD . scalable-commiter
 RUN cd scalable-commiter && make build output_dir=/root/build/
 
 
-FROM yugabytedb/yugabyte:2.19.0.0-b190
+FROM yugabytedb/2.20.2.0-b145
 
 ENV CONFIGS_PATH=/root/config/
 ENV BINS_PATH=/root/bin/
