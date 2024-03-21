@@ -229,7 +229,7 @@ func (c *CoordinatorService) Start() (chan error, chan error, error) {
 	return sigVerifierErrChan, valCommitErrChan, nil
 }
 
-// SetVerificationKey sets the verification key for the signature verifier manager.
+// SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.
 func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 	_ context.Context,
 	k *protosigverifierservice.Key,
@@ -448,7 +448,7 @@ func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 		}
 
 		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. "+
-			"Forwarding to output stream.", len(valStatus))
+			"Forwarding to output stream.", blk.Number, len(valStatus))
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
