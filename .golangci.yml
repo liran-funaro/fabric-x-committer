@@ -105,7 +105,7 @@ linters-settings:
       - name: add-constant
         disabled: true
       - name: unhandled-error
-        arguments: [ "fmt.Printf", "fmt.Println" ]
+        arguments: ["fmt.Printf", "fmt.Println"]
       - name: confusing-naming
         # Due to a bug, this rule fails multiple implementations of the same interface.
         disabled: true
@@ -136,7 +136,6 @@ run:
     - wgclient # may not be a priority
     - sidecar # may not be a priority
     - sigverification # may not be a priority
-    - pipeline # this folder will be removed once we have a new implementation of coordinator service
   # Enables skipping of directories:
   # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
   # Default: true

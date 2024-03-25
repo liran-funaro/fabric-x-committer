@@ -7,26 +7,25 @@ import (
 	"sync"
 
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	protocoordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/pipeline"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
 type mockService struct {
-	coordinatorservice.UnimplementedCoordinatorServer
+	protocoordinatorservice.UnimplementedCoordinatorServer
 	bQueue chan *token.Block
 }
 
-func (m *mockService) SetVerificationKey(c context.Context, k *sigverification.Key) (*coordinatorservice.Empty, error) {
+func (m *mockService) SetVerificationKey(c context.Context, k *sigverification.Key) (*protocoordinatorservice.Empty, error) {
 	fmt.Printf("set key: %v\n", k)
-	return &coordinatorservice.Empty{}, nil
+	return &protocoordinatorservice.Empty{}, nil
 }
 
-func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_BlockProcessingServer) error {
-
+func (m *mockService) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
 	rQueue := make(chan *token.Block, 1000)
 
 	var wg sync.WaitGroup
@@ -34,12 +33,12 @@ func (m *mockService) BlockProcessing(stream coordinatorservice.Coordinator_Bloc
 	go func() {
 		defer wg.Done()
 		for block := range rQueue {
-			resp := &coordinatorservice.TxValidationStatusBatch{
-				TxsValidationStatus: make([]*coordinatorservice.TxValidationStatus, len(block.Txs)),
+			resp := &protocoordinatorservice.TxValidationStatusBatch{
+				TxsValidationStatus: make([]*protocoordinatorservice.TxValidationStatus, len(block.Txs)),
 			}
 
 			for i, tx := range block.Txs {
-				status := &coordinatorservice.TxValidationStatus{
+				status := &protocoordinatorservice.TxValidationStatus{
 					TxId:   tx.GetId(),
 					Status: token.Status_COMMITTED,
 				}
@@ -86,13 +85,13 @@ func main() {
 	fmt.Printf("start mock coordinator service. Config values (except endpoint) will be ignored...\n")
 	config.ParseFlags()
 
-	c := pipeline.ReadConfig()
+	c := coordinatorservice.ReadConfig()
 
 	bQueue := make(chan *token.Block, 1000)
-	connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
-		if c.Server.Endpoint.Port == 0 {
-			c.Server.Endpoint.Port = port
+	connection.RunServerMain(c.ServerConfig, func(server *grpc.Server, port int) {
+		if c.ServerConfig.Endpoint.Port == 0 {
+			c.ServerConfig.Endpoint.Port = port
 		}
-		coordinatorservice.RegisterCoordinatorServer(server, &mockService{bQueue: bQueue})
+		protocoordinatorservice.RegisterCoordinatorServer(server, &mockService{bQueue: bQueue})
 	})
 }
