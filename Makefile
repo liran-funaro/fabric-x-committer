@@ -132,7 +132,6 @@ build: $(output_dir)
 	$(env) go build -buildvcs=false -o "$(output_dir)/mocksigservice" ./cmd/mocksigservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/blockgen" ./cmd/loadgen
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator_setup" ./coordinatorservice/cmd/setup_helper
-	$(env) go build -buildvcs=false -o "$(output_dir)/shardsservice" ./shardsservice/cmd/server
 	$(env) go build -buildvcs=false -o "$(output_dir)/sidecar" ./sidecar/cmd/server
 
 build-docker: $(output_dir)

@@ -132,7 +132,6 @@ run:
   # but default dirs are skipped independently of this option's value (see skip-dirs-use-default).
   # "/" will be replaced by current OS file path separator to properly work on Windows.
   skip-dirs:
-    - shardsservice # this folder will be removed once we integrate coordinatorservice with vcservice
     - wgclient # may not be a priority
     - sidecar # may not be a priority
     - sigverification # may not be a priority

@@ -1,7 +1,0 @@
-shards-service:
-  database:
-    name: "goleveldb"
-    root-dir: "./"
-  limits:
-    max-phase-one-response-batch-item-count: 100
-    phase-one-response-cut-timeout: 50ms
