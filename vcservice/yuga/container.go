@@ -19,7 +19,6 @@ const (
 // yugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
 var yugabyteCMD = []string{
 	"bin/yugabyted", "start",
-	"--advertise_address", "0.0.0.0",
 	"--callhome", "false",
 	"--fault_tolerance", "none",
 	"--background", "false",
