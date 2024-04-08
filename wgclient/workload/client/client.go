@@ -75,14 +75,20 @@ func GenerateAndPump(config workload.BlockgenStreamConfig, pp *workload.Profile)
 }
 
 func Validate(path string) {
-
 	workload.Validate(path)
 }
 
-func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithExpectedResult, eventQueue chan *workload.Event, pp *workload.Profile, endpoint string, rateLimiterConfig *loadgen.LimiterConfig) {
+func PumpToCoordinator(
+	serializedKey []byte,
+	dQueue <-chan *workload.BlockWithExpectedResult,
+	eventQueue chan *workload.Event,
+	pp *workload.Profile,
+	endpoint string,
+	rateLimiterConfig *loadgen.LimiterConfig,
+) {
 	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), rateLimiterConfig)
 
-	utils.Must(cl.SetVerificationKey(serializedKey))
+	utils.Must(cl.SetVerificationKey(serializedKey, ""))
 
 	onReceive := func(response *coordinatorservice.TxValidationStatusBatch) {
 		if eventQueue != nil {
@@ -116,7 +122,6 @@ func PumpToCoordinator(serializedKey []byte, dQueue <-chan *workload.BlockWithEx
 }
 
 func ReadAndForget(path string) {
-
 	_, dQueue, pp := workload.GetByteWorkload(path)
 
 	numTx := pp.Block.Count * pp.Block.Size
@@ -173,6 +178,7 @@ type metricTracker struct {
 func newMetricTracker(p monitoring.Config) *metricTracker {
 	return &metricTracker{workload.NewMetricTracker(p)}
 }
+
 func (t *metricTracker) RegisterEvent(e *workload.Event) {
 	switch e.Msg {
 	case workload.EventSubmitted:

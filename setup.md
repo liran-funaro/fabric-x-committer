@@ -85,7 +85,7 @@ Example: Start Yugabyte via docker
 docker run --name sc_yugabyte_unit_tests \
   --platform linux/amd64 \
   -p 5433:5433 \
-  -d yugabytedb/yugabyte:2.20.2.0-b145 \
+  -d yugabytedb/yugabyte:2.20.2.2-b1 \
   bin/yugabyted start \
   --background=false \
   --advertise_address=0.0.0.0 \
@@ -95,8 +95,6 @@ docker run --name sc_yugabyte_unit_tests \
   --tserver_flags=ysql_max_connections=5000 \
   --insecure
 ```
-
-
 # Run local binaries
 ```shell
 bin/sigservice --configs config/config-sigservice.yaml

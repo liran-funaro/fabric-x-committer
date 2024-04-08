@@ -51,9 +51,9 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *loa
 	}
 }
 
-func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey) error {
+func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey, scheme signature.Scheme) error {
 	logger.Infof("Setting verification key.\n")
-	key := &sigverification.Key{SerializedBytes: publicKey}
+	key := &sigverification.Key{SerializedBytes: publicKey, Scheme: scheme}
 	_, err := c.client.SetMetaNamespaceVerificationKey(c.ctx, key)
 	return err
 }

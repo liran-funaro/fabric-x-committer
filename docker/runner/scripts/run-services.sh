@@ -17,6 +17,6 @@ sleep $DB_INIT_WAIT
 sleep $VCSERVICE_WAIT
 "$BINS_PATH/coordinator" start --configs "$CONFIGS_PATH/config-coordinator.yaml" &
 sleep $COORDINATOR_WAIT
-"$BINS_PATH/coordinator_setup" --coordinator :5002 --key-path "$PUBKEY_PATH/sc_pubkey.pem"
+"$BINS_PATH/coordinator_setup" --coordinator :5002 --key-path "$PUBKEY_PATH/sc_pubkey.pem" --scheme "$METANS_SIG_SCHEME"
 sleep $COORDINATOR_SETUP_WAIT
 "$BINS_PATH/sidecar" --configs "$CONFIGS_PATH/config-sidecar.yaml"

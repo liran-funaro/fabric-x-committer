@@ -56,6 +56,6 @@ docker run \
     -e SC_SIDECAR_ORDERER_ORDERER_CONNECTION_PROFILE_ROOT_CA_PATHS="/root/config/crypto/ca-certs.pem" \
     -e SC_SIDECAR_ORDERER_CHANNEL_ID="mychannel" \
     -e SC_SIDECAR_ORDERER_ENDPOINT=":7050" \
-    -e SC_SIG_VERIFICATION_SCHEME="None" \
+    -e METANS_SIG_SCHEME="ECDSA" \
     sc_runner:latest
 ```

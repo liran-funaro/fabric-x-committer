@@ -31,6 +31,12 @@ env            ?= env
 # E.g., make docker-builder-run cmd="make build-local"
 cmd            ?=
 
+# Set the 'docker_cmd' variable directly (e.g., docker_cmd="podman") to override automatic detection.
+# If the 'docker_cmd' variable is not set, the script will find and use either Docker or Podman.
+# An error will occur if neither container engine is installed.
+docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
+							echo podman || { echo "Error: Neither Docker nor Podman is installed." >&2; exit 1; })
+
 # Set these parameters to compile to a specific os/arch
 # Eg.g, make build-local os=linux arch=amd64
 os             ?=
@@ -76,7 +82,7 @@ clean:
 	@rm -rf $(output_dir)
 
 kill-test-docker:
-	docker ps -aq -f name=sc_yugabyte_unit_tests | xargs docker rm -f
+	${docker_cmd} ps -aq -f name=sc_yugabyte_unit_tests | xargs ${DOCKER_CMD} rm -f
 
 #########################
 # Generate protos
@@ -141,7 +147,7 @@ build-docker: $(output_dir)
 # Executes a command from within the docker image.
 # Requires that docker-builder-image be run once before, to ensure the image exists.
 docker-builder-run: $(cache_dir) $(mod_cache_dir)
-	@docker run --rm -it \
+	${docker_cmd} run --rm -it \
 	  --mount "type=bind,source=$(project_dir),target=$(project_dir)" \
 	  --mount "type=bind,source=$(cache_dir),target=$(cache_dir)" \
 	  --mount "type=bind,source=$(mod_cache_dir),target=$(mod_cache_dir)" \
@@ -154,7 +160,7 @@ docker-builder-run: $(cache_dir) $(mod_cache_dir)
 
 # Simple containerized SC
 docker-runner-image:
-	docker build -f $(sc_runner_dir)/Dockerfile -t sc_runner .
+	${docker_cmd} build -f $(sc_runner_dir)/Dockerfile -t sc_runner .
 
 
 .PHONY: lint
