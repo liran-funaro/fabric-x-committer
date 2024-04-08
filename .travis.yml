@@ -4,7 +4,7 @@ virt: vm
 os: linux
 dist: focal
 go:
-  - 1.20.3
+  - 1.22.2
 
 cache:
   directories:
@@ -25,13 +25,11 @@ before_install:
 jobs:
   include:
     - stage: lint
-      go:
-        - 1.20.3
       before_install:
         # Install dependencies
         - scripts/install-protobuf.sh
         - go install golang.org/x/tools/cmd/goimports@latest
-        - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.53.3
+        - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.57.2
         # Fetch main to only detect issues from changes to main
         - git fetch origin main:main
         # Apply formatting

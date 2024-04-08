@@ -1,10 +1,9 @@
 module github.ibm.com/decentralized-trust-research/scalable-committer/utils
 
-go 1.20
+go 1.22
 
 require (
 	github.com/consensys/gnark-crypto v0.9.1
-	github.com/golang/protobuf v1.5.2
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-protos-go v0.3.0
 	github.com/onsi/gomega v1.24.0
@@ -35,6 +34,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hyperledger/fabric-amcl v0.0.0-20210603140002-2670f91851c8 // indirect

@@ -24,7 +24,7 @@ sc_builder_dir ?= $(project_dir)/docker/builder
 output_dir     ?= $(project_dir)/bin
 cache_dir      ?= $(shell go env GOCACHE)
 mod_cache_dir  ?= $(shell go env GOMODCACHE)
-golang_image   ?= golang:1.20-bullseye
+golang_image   ?= golang:1.22.2-bookworm
 env            ?= env
 
 # Set this parameter when running docker-builder-run
