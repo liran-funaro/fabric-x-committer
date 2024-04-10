@@ -11,16 +11,19 @@ import (
 	"text/template"
 	"time"
 
-	. "github.com/onsi/gomega"
+	"github.com/google/uuid"
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
@@ -38,12 +41,16 @@ type Cluster struct {
 	TxSigner *sync.Map
 
 	ClusterConfig *Config
+
+	NextBlockNumber uint64
+	Stream          protocoordinatorservice.Coordinator_BlockProcessingClient
 }
 
 // Config represents the configuration of the cluster.
 type Config struct {
-	NumSigVerifiers int
-	NumVCService    int
+	NumSigVerifiers     int
+	NumVCService        int
+	InitializeNamespace []types.NamespaceID
 }
 
 // NewCluster creates a new test cluster.
@@ -52,69 +59,41 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	require.NoError(t, err)
 
 	c := &Cluster{
-		RootDir:  tempDir,
-		PubKey:   &sync.Map{},
-		PvtKey:   &sync.Map{},
-		TxSigner: &sync.Map{},
+		SigVerifierProcesses: make([]*SigVerifierProcess, 0, clusterConfig.NumSigVerifiers),
+		VCServiceProcesses:   make([]*VCServiceProcess, 0, clusterConfig.NumSigVerifiers),
+		RootDir:              tempDir,
+		PubKey:               &sync.Map{},
+		PvtKey:               &sync.Map{},
+		TxSigner:             &sync.Map{},
+		ClusterConfig:        clusterConfig,
 	}
 
 	var ports []int
 	for i := 0; i < clusterConfig.NumSigVerifiers; i++ {
-		ports, err = FindAvailablePortRange(numPortsPerSigVerifier)
-		require.NoError(t, err)
-		c.SigVerifierProcesses = append(
-			c.SigVerifierProcesses,
-			NewSigVerifierProcess(t, ports, tempDir),
-		)
+		ports = findAvailablePortRange(t, numPortsPerSigVerifier)
+		c.SigVerifierProcesses = append(c.SigVerifierProcesses, NewSigVerifierProcess(t, ports, tempDir))
 	}
 
 	dbEnv := vcservice.NewDatabaseTestEnv(t)
 	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf, nil))
 	for i := 0; i < clusterConfig.NumVCService; i++ {
-		ports, err = FindAvailablePortRange(numPortsPerVCService)
-		require.NoError(t, err)
-		c.VCServiceProcesses = append(
-			c.VCServiceProcesses,
-			NewVCServiceProcess(t, ports, tempDir, dbEnv),
-		)
+		ports = findAvailablePortRange(t, numPortsPerVCService)
+		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, ports, tempDir, dbEnv))
 	}
 
-	ports, err = FindAvailablePortRange(numPortsForCoordinator)
-	require.NoError(t, err)
-	c.CoordinatorProcess = NewCoordinatorProcess(
-		t,
-		ports,
-		c.SigVerifierProcesses,
-		c.VCServiceProcesses,
-		c.RootDir,
-	)
+	ports = findAvailablePortRange(t, numPortsForCoordinator)
+	c.CoordinatorProcess = NewCoordinatorProcess(t, ports, c.SigVerifierProcesses, c.VCServiceProcesses, c.RootDir)
 
-	c.CreateCoordinatorClient(t)
-
-	c.CreateCryptoForNs(t, types.MetaNamespaceID, &signature.Profile{
-		Scheme: signature.Ecdsa,
-	})
-	metaPubKey, ok := c.PubKey.Load(types.MetaNamespaceID)
-	require.True(t, ok)
-
-	_, err = c.CoordinatorClient.SetMetaNamespaceVerificationKey(
-		context.Background(),
-		&protosigverifierservice.Key{
-			NsId:            uint32(types.MetaNamespaceID),
-			NsVersion:       types.VersionNumber(0).Bytes(),
-			SerializedBytes: metaPubKey.([]byte),
-			Scheme:          signature.Ecdsa,
-		},
-	)
-	require.NoError(t, err)
-
-	c.ClusterConfig = clusterConfig
+	c.createCoordinatorClient(t)
+	c.setMetaNamespaceVerificationKey(t)
+	c.createBlockProcessingStream(t)
+	c.CreateNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
 
 	return c
 }
 
 // CreateCoordinatorClient creates a client for the coordinator.
-func (c *Cluster) CreateCoordinatorClient(t *testing.T) {
+func (c *Cluster) createCoordinatorClient(t *testing.T) {
 	coordEndpoint, err := connection.NewEndpoint(c.CoordinatorProcess.Config.ServerEndpoint)
 	require.NoError(t, err)
 	coordDialConf := connection.NewDialConfig(*coordEndpoint)
@@ -124,22 +103,101 @@ func (c *Cluster) CreateCoordinatorClient(t *testing.T) {
 	c.CoordinatorClient = coordClient
 }
 
-// GetBlockProcessingStream returns a block processing stream from the coordinator.
-func (c *Cluster) GetBlockProcessingStream( //nolint:ireturn
-	t *testing.T,
-) protocoordinatorservice.Coordinator_BlockProcessingClient {
-	blockStream, err := c.CoordinatorClient.BlockProcessing(context.Background())
+func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
+	c.CreateCryptoForNs(t, types.MetaNamespaceID, &signature.Profile{
+		Scheme: signature.Ecdsa,
+	})
+	metaPubKey, ok := c.PubKey.Load(types.MetaNamespaceID)
+	require.True(t, ok)
+
+	_, err := c.CoordinatorClient.SetMetaNamespaceVerificationKey(
+		context.Background(),
+		&protosigverifierservice.Key{
+			NsId:            uint32(types.MetaNamespaceID),
+			NsVersion:       types.VersionNumber(0).Bytes(),
+			SerializedBytes: metaPubKey.([]byte),
+			Scheme:          signature.Ecdsa,
+		},
+	)
 	require.NoError(t, err)
-	return blockStream
 }
 
-// CreateCryptoForNs creates crypto for a namespace.
+func (c *Cluster) createBlockProcessingStream(t *testing.T) {
+	blockStream, err := c.CoordinatorClient.BlockProcessing(context.Background())
+	require.NoError(t, err)
+	c.Stream = blockStream // nolint:ireturn
+}
+
+// CreateNamespacesAndCommit creates namespaces in the committer.
+func (c *Cluster) CreateNamespacesAndCommit(t *testing.T, namespaces []types.NamespaceID) {
+	if len(namespaces) == 0 {
+		return
+	}
+
+	writeToMetaNs := &protoblocktx.TxNamespace{
+		NsId:       uint32(types.MetaNamespaceID),
+		NsVersion:  types.VersionNumber(0).Bytes(),
+		ReadWrites: make([]*protoblocktx.ReadWrite, len(namespaces)),
+	}
+
+	for _, nsID := range namespaces {
+		c.CreateCryptoForNs(t, nsID, &signature.Profile{Scheme: signature.Ecdsa})
+
+		nsPolicy := &protoblocktx.NamespacePolicy{
+			Scheme:    signature.Ecdsa,
+			PublicKey: c.GetPublicKey(t, nsID),
+		}
+		policyBytes, err := proto.Marshal(nsPolicy)
+		require.NoError(t, err)
+
+		writeToMetaNs.ReadWrites = append(writeToMetaNs.ReadWrites, &protoblocktx.ReadWrite{
+			Key:   nsID.Bytes(),
+			Value: policyBytes,
+		})
+	}
+
+	txID := uuid.New().String()
+
+	tx := &protoblocktx.Tx{
+		Id: txID,
+		Namespaces: []*protoblocktx.TxNamespace{
+			writeToMetaNs,
+		},
+	}
+	c.AddSignatures(t, tx)
+	c.SendTransactions(t, []*protoblocktx.Tx{tx})
+	c.ValidateStatus(t, map[string]protoblocktx.Status{
+		txID: protoblocktx.Status_COMMITTED,
+	})
+}
+
+// AddSignatures adds signature for each namespace in a given transaction.
+func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
+	for idx, ns := range tx.Namespaces {
+		tSigner := c.getTxSigner(t, types.NamespaceID(ns.NsId))
+		sig, err := tSigner.SignNs(tx, idx)
+		require.NoError(t, err)
+		tx.Signatures = append(tx.Signatures, sig)
+	}
+}
+
+// SendTransactions creates a block with given transactions and sent it to the committer.
+func (c *Cluster) SendTransactions(t *testing.T, txs []*protoblocktx.Tx) {
+	blk := &protoblocktx.Block{
+		Number: c.NextBlockNumber,
+		Txs:    txs,
+	}
+
+	require.NoError(t, c.Stream.Send(blk))
+	c.NextBlockNumber++
+}
+
 func (c *Cluster) CreateCryptoForNs(
 	t *testing.T,
 	nsID types.NamespaceID,
 	sigProfile *signature.Profile,
 ) {
-	factory := sigverification_test.GetSignatureFactory(sigProfile.Scheme)
+	factory := sigverificationtest.GetSignatureFactory(sigProfile.Scheme)
 	pvtKey, pubKey := factory.NewKeys()
 	txSigner, err := factory.NewSigner(pvtKey)
 	require.NoError(t, err)
@@ -149,32 +207,24 @@ func (c *Cluster) CreateCryptoForNs(
 }
 
 // GetPublicKey returns the public key for a namespace.
-func (c *Cluster) GetPublicKey(nsID types.NamespaceID) []byte {
+func (c *Cluster) GetPublicKey(t *testing.T, nsID types.NamespaceID) []byte {
 	pubKey, ok := c.PubKey.Load(nsID)
 	if !ok {
 		return nil
 	}
-	k, _ := pubKey.([]byte)
-	return k
-}
-
-// GetPrivateKey returns the private key for a namespace.
-func (c *Cluster) GetPrivateKey(nsID types.NamespaceID) []byte {
-	pvtKey, ok := c.PvtKey.Load(nsID)
-	if !ok {
-		return nil
-	}
-	k, _ := pvtKey.([]byte)
+	k, ok := pubKey.([]byte)
+	require.True(t, ok)
 	return k
 }
 
 // GetTxSigner returns the transaction signer for a namespace.
-func (c *Cluster) GetTxSigner(nsID types.NamespaceID) sigverification_test.NsSigner {
+func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificationtest.NsSigner {
 	tSigner, ok := c.TxSigner.Load(nsID)
 	if !ok {
 		return nil
 	}
-	k, _ := tSigner.(sigverification_test.NsSigner)
+	k, ok := tSigner.(sigverificationtest.NsSigner)
+	require.True(t, ok)
 	return k
 }
 
@@ -227,7 +277,7 @@ func run(cmd *exec.Cmd, name string, startCheck string) ifrit.Process {
 		},
 	})
 	process := ifrit.Invoke(p)
-	Eventually(process.Ready(), 20*time.Second, 1*time.Second).Should(BeClosed())
+	gomega.Eventually(process.Ready(), 20*time.Second, 1*time.Second).Should(gomega.BeClosed())
 	return process
 }
 
@@ -245,21 +295,22 @@ func createConfigFile(t *testing.T, config any, templateFilePath, outputFilePath
 
 	outputFile, err := os.Create(outputFilePath)
 	require.NoError(t, err)
-	defer outputFile.Close()
+	defer func() {
+		_ = outputFile.Close()
+	}()
 
 	_, err = outputFile.Write(renderedConfig.Bytes())
 	require.NoError(t, err)
 }
 
 // ValidateStatus validates the status of transactions.
-func ValidateStatus(
+func (c *Cluster) ValidateStatus(
 	t *testing.T,
 	expectedTxStatus map[string]protoblocktx.Status,
-	blockStream protocoordinatorservice.Coordinator_BlockProcessingClient,
 ) {
 	processed := 0
 	for {
-		status, err := blockStream.Recv()
+		status, err := c.Stream.Recv()
 		require.NoError(t, err)
 
 		for _, txStatus := range status.TxsValidationStatus {

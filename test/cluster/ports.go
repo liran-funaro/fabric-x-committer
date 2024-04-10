@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -12,8 +15,8 @@ const (
 	maxPort = 65535
 )
 
-// FindAvailablePortRange finds a range of available ports.
-func FindAvailablePortRange(numPorts int) ([]int, error) {
+// findAvailablePortRange finds a range of available ports.
+func findAvailablePortRange(t *testing.T, numPorts int) []int {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var availablePorts []int
 
@@ -23,10 +26,8 @@ func FindAvailablePortRange(numPorts int) ([]int, error) {
 			availablePorts = append(availablePorts, randomPort)
 		}
 	}
-	if len(availablePorts) < numPorts {
-		return nil, fmt.Errorf("not enough available ports found")
-	}
-	return availablePorts, nil
+	require.GreaterOrEqual(t, len(availablePorts), numPorts, "not enough available ports")
+	return availablePorts
 }
 
 // Check if a port is available for use.

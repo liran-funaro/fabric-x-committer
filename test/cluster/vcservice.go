@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 

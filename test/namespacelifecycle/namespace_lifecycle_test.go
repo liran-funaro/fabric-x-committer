@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestCreateUpdateNamespace(t *testing.T) {
-	RegisterTestingT(t)
+	gomega.RegisterTestingT(t)
 	c := cluster.NewCluster(
 		t,
 		&cluster.Config{
@@ -23,12 +24,10 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	)
 	defer c.Stop()
 
-	blockStream := c.GetBlockProcessingStream(t)
-
 	c.CreateCryptoForNs(t, types.NamespaceID(1), &signature.Profile{Scheme: signature.Ecdsa})
 	ns1Policy := &protoblocktx.NamespacePolicy{
 		Scheme:    signature.Ecdsa,
-		PublicKey: c.GetPublicKey(types.NamespaceID(1)),
+		PublicKey: c.GetPublicKey(t, types.NamespaceID(1)),
 	}
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)
@@ -165,27 +164,14 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		},
 	}
 
-	blkNumber := uint64(0)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, tx := range tt.txs {
-				for idx, ns := range tx.Namespaces {
-					tSigner := c.GetTxSigner(types.NamespaceID(ns.NsId))
-					sig, err := tSigner.SignNs(tx, idx)
-					require.NoError(t, err)
-					tx.Signatures = append(tx.Signatures, sig)
-				}
+				c.AddSignatures(t, tx)
 			}
+			c.SendTransactions(t, tt.txs)
 
-			blk := &protoblocktx.Block{
-				Number: blkNumber,
-				Txs:    tt.txs,
-			}
-
-			require.NoError(t, blockStream.Send(blk))
-
-			cluster.ValidateStatus(t, tt.expectedTxStatus, blockStream)
-			blkNumber++
+			c.ValidateStatus(t, tt.expectedTxStatus)
 		})
 	}
 }
