@@ -34,6 +34,12 @@ type (
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
 		txBeingValidated *sync.Map
+
+		// stopGoroutines is used to stopGoroutines goroutines created by the validatorCommitter.
+		stopGoroutines chan any
+		// wg is used to ensure that all goroutines in the validator and committer manager
+		// are terminated before closing it.
+		wg sync.WaitGroup
 	}
 
 	validatorCommitterManagerConfig struct {
@@ -69,15 +75,19 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 		vcm.validatorCommitter[i] = vc
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 
+		vc.wg.Add(3)
 		go func() {
+			defer vc.wg.Done()
 			errChan <- vc.sendTransactionsToVCService(c.incomingTxsForValidationCommit)
 		}()
 
 		go func() {
+			defer vc.wg.Done()
 			errChan <- vc.receiveTransactionsStatusFromVCService()
 		}()
 
 		go func() {
+			defer vc.wg.Done()
 			errChan <- vc.forwardTransactionsStatusAndTxsNode(
 				c.outgoingValidatedTxsNode,
 				c.outgoingTxsStatus,
@@ -122,13 +132,25 @@ func newValidatorCommitter(
 		statusCollection: make(chan *protovcservice.TransactionStatus, receivedTxsStatusBufferSize),
 		txBeingValidated: &sync.Map{},
 		metrics:          metrics,
+		stopGoroutines:   make(chan any),
 	}, nil
 }
 
 func (vc *validatorCommitter) sendTransactionsToVCService(
 	inputTxsNode <-chan []*dependencygraph.TransactionNode,
 ) error {
-	for txsNode := range inputTxsNode {
+	var txsNode []*dependencygraph.TransactionNode
+	var ok bool
+	for {
+		select {
+		case <-vc.stopGoroutines:
+			return nil
+		case txsNode, ok = <-inputTxsNode:
+			if !ok {
+				return nil
+			}
+		}
+
 		logger.Debugf("New TX node came from coordinator to vc manager")
 		txBatch := make([]*protovcservice.Transaction, len(txsNode))
 		for i, txNode := range txsNode {
@@ -145,22 +167,37 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 		logger.Debugf("TX node contains %d TXs, and was sent to a cv", len(txBatch))
 	}
-
-	return nil
 }
 
 func (vc *validatorCommitter) receiveTransactionsStatusFromVCService() error {
+	status := make(chan *protovcservice.TransactionStatus)
+	streamErr := make(chan error)
+
+	// As the stream.Recv() is blocking, we need to run it in a separate goroutine.
+	// Thus, we can stop the goroutine when the stop channel is closed.
+	go func() {
+		for {
+			txsStatus, err := vc.stream.Recv()
+			if err != nil {
+				streamErr <- err
+				return
+			}
+			status <- txsStatus
+		}
+	}()
+
 	for {
-		txsStatus, err := vc.stream.Recv()
-		logger.Debugf("New batch came from vc to vc manager")
-		if err != nil {
+		select {
+		case <-vc.stopGoroutines:
+			return nil
+		case err := <-streamErr:
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
+		case txsStatus := <-status:
+			vc.statusCollection <- txsStatus
 		}
-
-		vc.statusCollection <- txsStatus
 	}
 }
 
@@ -168,7 +205,18 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 	outputTxsNode chan<- []*dependencygraph.TransactionNode,
 	outputTxsStatus chan<- *protovcservice.TransactionStatus,
 ) error {
-	for txsStatus := range vc.statusCollection {
+	var txsStatus *protovcservice.TransactionStatus
+	var ok bool
+	for {
+		select {
+		case <-vc.stopGoroutines:
+			return nil
+		case txsStatus, ok = <-vc.statusCollection:
+			if !ok {
+				return nil
+			}
+		}
+
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
 		// NOTE: The sidecar reads transactions from the ordering service stream and sends
 		//       them to the coordinator. The coordinator then forwards the transactions to the
@@ -204,11 +252,11 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		outputTxsNode <- txsNode
 		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
 	}
-
-	return nil
 }
 
 func (vc *validatorCommitter) close() error {
+	close(vc.stopGoroutines)
+	vc.wg.Wait()
 	close(vc.statusCollection)
 	return vc.stream.CloseSend()
 }

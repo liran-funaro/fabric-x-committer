@@ -9,6 +9,8 @@ import (
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -17,11 +19,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
 )
 
 type coordinatorTestEnv struct {
@@ -133,11 +133,11 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 	e.csStream = csStream
 
 	t.Cleanup(func() {
+		require.NoError(t, csStream.CloseSend())
+
 		require.NoError(t, conn.Close())
 
 		require.NoError(t, cs.Close())
-
-		require.NoError(t, csStream.CloseSend())
 
 		wgSignErrChan.Wait()
 
@@ -209,12 +209,6 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 }
 
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
-	logging.SetupWithConfig(&logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      false,
-		Development: true,
-	})
 	env := newCoordinatorTestEnv(t)
 	env.start(t)
 	// next expected block is 0, but sending 2 to 500
@@ -239,7 +233,10 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	}
 
 	require.Never(t, func() bool {
-		return test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal) > 10
+		return test.GetMetricValue(
+			t,
+			env.coordinator.metrics.transactionCommittedStatusSentTotal,
+		) > 10
 	}, 2*time.Second, 100*time.Millisecond)
 
 	// send block 0 which is the next expected block but an empty block

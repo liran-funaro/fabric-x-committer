@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -59,6 +60,12 @@ type (
 		// to the client between the goroutine that process status from sigverifier and the goroutine
 		// that process status from validator.
 		sendTxStreamMu sync.Mutex
+
+		// stopGoroutines is used to terminate all goroutines in the coordinator service.
+		stopGoroutines chan any
+		// wg is used to ensure that all goroutines in the coordinator
+		// service are terminated before closing the service.
+		wg sync.WaitGroup
 	}
 
 	channels struct {
@@ -117,34 +124,13 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	bufSzPerChanForLocalDepMgr := c.ChannelBufferSizePerGoroutine * c.DependencyGraphConfig.NumOfLocalDepConstructors
 
 	queues := &channels{
-		blockForSignatureVerification: make(
-			chan *protoblocktx.Block,
-			bufSzPerChanForSignVerifierMgr,
-		),
-		blockWithValidSignTxs: make(
-			chan *protoblocktx.Block,
-			bufSzPerChanForSignVerifierMgr,
-		),
-		blockWithInvalidSignTxs: make(
-			chan *protoblocktx.Block,
-			bufSzPerChanForSignVerifierMgr,
-		),
-		txsBatchForDependencyGraph: make(
-			chan *dependencygraph.TransactionBatch,
-			bufSzPerChanForLocalDepMgr,
-		),
-		dependencyFreeTxsNode: make(
-			chan []*dependencygraph.TransactionNode,
-			bufSzPerChanForValCommitMgr,
-		),
-		validatedTxsNode: make(
-			chan []*dependencygraph.TransactionNode,
-			bufSzPerChanForValCommitMgr,
-		),
-		txsStatus: make(
-			chan *protovcservice.TransactionStatus,
-			bufSzPerChanForValCommitMgr,
-		),
+		blockForSignatureVerification: make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
+		blockWithValidSignTxs:         make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
+		blockWithInvalidSignTxs:       make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
+		txsBatchForDependencyGraph:    make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
+		dependencyFreeTxsNode:         make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
+		validatedTxsNode:              make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
+		txsStatus:                     make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics(c.Monitoring.Metrics.Enable)
@@ -202,12 +188,17 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		promErrChan:                      promErrChan,
 		uncommittedTxIDs:                 &sync.Map{},
 		uncommittedMetaNsTx:              &sync.Map{},
+		stopGoroutines:                   make(chan any),
 	}
 }
 
 // Start starts each manager in the coordinator service.
 func (c *CoordinatorService) Start() (chan error, chan error, error) {
-	go c.monitorQueues()
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.monitorQueues()
+	}()
 
 	logger.Info("Starting signature verifier manager")
 	sigVerifierErrChan, err := c.signatureVerifierMgr.start()
@@ -241,30 +232,37 @@ func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 }
 
 // BlockProcessing receives a stream of blocks from the client and processes them.
-func (c *CoordinatorService) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+func (c *CoordinatorService) BlockProcessing(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+) error {
 	logger.Info("Start validate and commit stream")
 
 	numErrableGoroutines := 3
 	errorChannel := make(chan error, numErrableGoroutines)
 
+	c.wg.Add(numErrableGoroutines + 1)
 	go func() {
+		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block and forward it to the signature verifier manager")
 		errorChannel <- c.receiveAndProcessBlock(stream)
 	}()
 
 	go func() {
+		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block with valid transactions and" +
 			" forward it to the dependency graph manager")
 		c.receiveFromSignatureVerifierAndForwardToDepGraph()
 	}()
 
 	go func() {
+		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block with invalid transactions from signature verifier and" +
 			" forward the status to client")
 		errorChannel <- c.sendTxStatusFromSignatureVerifier(stream)
 	}()
 
 	go func() {
+		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive transaction status from validator committer manager and" +
 			" forward the status to client")
 		errorChannel <- c.sendTxStatusFromValidatorCommitter(stream)
@@ -280,27 +278,52 @@ func (c *CoordinatorService) BlockProcessing(stream protocoordinatorservice.Coor
 	return nil
 }
 
-func (c *CoordinatorService) receiveAndProcessBlock(
+func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
+	block := make(chan *protoblocktx.Block)
+	streamErr := make(chan error)
+
+	// As the stream.Recv() is blocking, we need to run it in a separate goroutine.
+	// Thus, we can stop the goroutine when the stop channel is closed.
+	go func() {
+		for {
+			blk, err := stream.Recv()
+			if err != nil {
+				streamErr <- err
+				return
+			}
+			block <- blk
+		}
+	}()
+
+	var blk *protoblocktx.Block
+	var ok bool
 	for {
-		block, err := stream.Recv()
-		if err != nil {
+		select {
+		case <-c.stopGoroutines:
+			return nil
+		case err := <-streamErr:
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
+		case blk, ok = <-block:
+			if !ok {
+				return nil
+			}
 		}
-		logger.Debugf("Coordinator received block [%d] with %d TXs", block.Number, len(block.Txs))
 
-		c.metrics.transactionReceived(len(block.Txs))
+		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
-		if err := c.preProcessBlock(stream, block); err != nil {
+		c.metrics.transactionReceived(len(blk.Txs))
+
+		if err := c.preProcessBlock(stream, blk); err != nil {
 			return err
 		}
 
-		if len(block.Txs) == 0 {
-			c.queues.blockWithValidSignTxs <- block
+		if len(blk.Txs) == 0 {
+			c.queues.blockWithValidSignTxs <- blk
 			continue
 		}
 
@@ -311,12 +334,12 @@ func (c *CoordinatorService) receiveAndProcessBlock(
 		}
 		c.orderEnforcer.L.Unlock()
 
-		c.queues.blockForSignatureVerification <- block
-		logger.Debugf("Block [%d] was pushed to the sv manager for processing", block.Number)
+		c.queues.blockForSignatureVerification <- blk
+		logger.Debugf("Block [%d] was pushed to the sv manager for processing", blk.Number)
 	}
 }
 
-func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() {
+func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() { // nolint:gocognit
 	// Signature verifier can send blocks out of order. Hence, we need to keep track of the next block number
 	// that we are expecting. If we receive a block with a different block number, we store it in a map.
 	// If the map size reaches a limit, we stop sending blocks to the signature verifier manager till we
@@ -361,7 +384,18 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 			"Continuing execution...", nextBlockNumber)
 	}
 
-	for block := range c.queues.blockWithValidSignTxs {
+	var block *protoblocktx.Block
+	var ok bool
+	for {
+		select {
+		case <-c.stopGoroutines:
+			return
+		case block, ok = <-c.queues.blockWithValidSignTxs:
+			if !ok {
+				return
+			}
+		}
+
 		logger.Debugf("Block [%d] with %d valid TXs reached the dependency graph", block.Number, len(block.Txs))
 		switch block.Number {
 		case nextBlockNumber:
@@ -382,10 +416,21 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 	}
 }
 
-func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
+func (c *CoordinatorService) sendTxStatusFromValidatorCommitter( // nolint:gocognit
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	for txStatus := range c.queues.txsStatus {
+	var txStatus *protovcservice.TransactionStatus
+	var ok bool
+	for {
+		select {
+		case <-c.stopGoroutines:
+			return nil
+		case txStatus, ok = <-c.queues.txsStatus:
+			if !ok {
+				return nil
+			}
+		}
+
 		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
 		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(txStatus.Status))
 		i := 0
@@ -425,37 +470,42 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter(
 		m.addToCounter(m.transactionMVCCConflictStatusSentTotal, mvccConflict)
 		m.addToCounter(m.transactionDuplicateTxStatusSentTotal, duplicate)
 	}
-
-	return nil
 }
 
 func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
 	invalidStatus := protoblocktx.Status_ABORTED_SIGNATURE_INVALID
-	for blk := range c.queues.blockWithInvalidSignTxs {
-		logger.Debugf("New partial block with %d TXs reached the coordinator", len(blk.Txs))
-		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(blk.Txs))
-		for i, tx := range blk.Txs {
+	var blkWithInvalidSign *protoblocktx.Block
+	var ok bool
+	for {
+		select {
+		case <-c.stopGoroutines:
+			return nil
+		case blkWithInvalidSign, ok = <-c.queues.blockWithInvalidSignTxs:
+			if !ok {
+				return nil
+			}
+		}
+
+		logger.Debugf("New partial block with %d TXs reached the coordinator", len(blkWithInvalidSign.Txs))
+		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(blkWithInvalidSign.Txs))
+		for i, tx := range blkWithInvalidSign.Txs {
 			valStatus[i] = &protocoordinatorservice.TxValidationStatus{
 				TxId:   tx.Id,
 				Status: invalidStatus,
 			}
-
 			if err := c.postProcessing(tx.Id, invalidStatus); err != nil {
 				return err
 			}
 		}
-
 		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. "+
-			"Forwarding to output stream.", blk.Number, len(valStatus))
+			"Forwarding to output stream.", blkWithInvalidSign.Number, len(valStatus))
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
-		c.metrics.addToCounter(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blk.Txs))
+		c.metrics.addToCounter(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blkWithInvalidSign.Txs))
 	}
-
-	return nil
 }
 
 func (c *CoordinatorService) sendTxsStatus(
@@ -469,13 +519,14 @@ func (c *CoordinatorService) sendTxsStatus(
 			TxsValidationStatus: txsStatus,
 		},
 	)
-	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus))
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err
 	}
+
+	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus))
 
 	return nil
 }
@@ -526,6 +577,8 @@ func (c *CoordinatorService) monitorQueues() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	for {
 		select {
+		case <-c.stopGoroutines:
+			return
 		case <-ticker.C:
 		case err := <-c.promErrChan:
 			// Once the prometheus server is stopped, we no longer need to monitor the queues.
@@ -562,6 +615,9 @@ func (c *CoordinatorService) Close() error {
 		return err
 	}
 
+	close(c.stopGoroutines)
+	c.wg.Wait()
+
 	close(c.queues.blockForSignatureVerification)
 	close(c.queues.blockWithValidSignTxs)
 	close(c.queues.blockWithInvalidSignTxs)
@@ -570,5 +626,8 @@ func (c *CoordinatorService) Close() error {
 	close(c.queues.validatedTxsNode)
 	close(c.queues.txsStatus)
 
-	return c.metrics.provider.StopServer()
+	if err := c.metrics.provider.StopServer(); err != nil {
+		return err
+	}
+	return <-c.promErrChan
 }

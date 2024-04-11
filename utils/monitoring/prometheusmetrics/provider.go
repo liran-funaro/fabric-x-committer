@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
@@ -75,7 +76,6 @@ func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
 
 // StopServer stops the prometheus server.
 func (p *Provider) StopServer() error {
-	p.url = ""
 	return p.server.Close()
 }
 

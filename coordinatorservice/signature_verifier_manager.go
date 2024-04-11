@@ -41,6 +41,12 @@ type (
 		// result will be placed on this channel.
 		validatedBlock chan *blockWithResult
 		metrics        *perfMetrics
+
+		// stopGoroutines is used to stopGoroutines goroutines created by the signatureVerifier.
+		stopGoroutines chan any
+		// wg is used to ensure that all goroutines in the signature verifier manager
+		// are terminated before closing it.
+		wg sync.WaitGroup
 	}
 
 	blockWithResult struct {
@@ -73,46 +79,40 @@ func (svm *signatureVerifierManager) start() (chan error, error) {
 	numErrorableGoroutinePerServer := 2
 	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
+	perVerifierBufferSizeForInputBlock := cap(c.incomingBlockForSignatureVerification) / len(c.serversConfig)
+	perVerifierBufferSizeForOutputBlock := (cap(c.outgoingBlockWithValidTxs) +
+		cap(c.outgoingBlockWithInvalidTxs)) / len(c.serversConfig)
+
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, serverConfig.Endpoint.String())
-		conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
+		sv, err := newSignatureVerifier(
+			serverConfig,
+			perVerifierBufferSizeForInputBlock,
+			perVerifierBufferSizeForOutputBlock,
+			svm.config.metrics,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		client := protosigverifierservice.NewVerifierClient(conn)
-		vcStream, err := client.StartStream(context.Background())
-		if err != nil {
-			return nil, err
-		}
-
-		sv := &signatureVerifier{
-			client:            client,
-			stream:            vcStream,
-			resultAccumulator: &sync.Map{},
-			responseCollectionChan: make(
-				chan *protosigverifierservice.ResponseBatch,
-				cap(c.incomingBlockForSignatureVerification)/len(c.serversConfig),
-			),
-			validatedBlock: make(
-				chan *blockWithResult,
-				(cap(c.outgoingBlockWithValidTxs)+cap(c.outgoingBlockWithInvalidTxs))/len(c.serversConfig),
-			),
-			metrics: c.metrics,
-		}
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
 
+		sv.wg.Add(4)
 		go func() {
+			defer sv.wg.Done()
 			errChan <- sv.sendTransactionsToSVService(c.incomingBlockForSignatureVerification)
 		}()
 		go func() {
+			defer sv.wg.Done()
 			errChan <- sv.receiveTransactionsStatusFromSVService()
 		}()
 		go func() {
+			defer sv.wg.Done()
 			sv.processTransactionStatus()
 		}()
 		go func() {
+			defer sv.wg.Done()
 			sv.forwardValidatedTransactions(c.outgoingBlockWithValidTxs, c.outgoingBlockWithInvalidTxs)
 		}()
 	}
@@ -136,9 +136,7 @@ func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierser
 func (svm *signatureVerifierManager) close() error {
 	logger.Infof("Closing %d connections to sv's", len(svm.signVerifier))
 	for _, sv := range svm.signVerifier {
-		close(sv.responseCollectionChan)
-		close(sv.validatedBlock)
-		if err := sv.stream.CloseSend(); err != nil {
+		if err := sv.close(); err != nil {
 			return err
 		}
 	}
@@ -146,8 +144,48 @@ func (svm *signatureVerifierManager) close() error {
 	return nil
 }
 
-func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *protoblocktx.Block) error {
-	for block := range inputBlock {
+func newSignatureVerifier(
+	serverConfig *connection.ServerConfig,
+	inputBlockBufferSize, outputBlockBufferSize int,
+	m *perfMetrics,
+) (*signatureVerifier, error) {
+	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
+	if err != nil {
+		return nil, err
+	}
+
+	client := protosigverifierservice.NewVerifierClient(conn)
+	vcStream, err := client.StartStream(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return &signatureVerifier{
+		client:                 client,
+		stream:                 vcStream,
+		resultAccumulator:      &sync.Map{},
+		responseCollectionChan: make(chan *protosigverifierservice.ResponseBatch, inputBlockBufferSize),
+		validatedBlock:         make(chan *blockWithResult, outputBlockBufferSize),
+		metrics:                m,
+		stopGoroutines:         make(chan any),
+	}, nil
+}
+
+func (sv *signatureVerifier) sendTransactionsToSVService( //nolint:gocognit
+	inputBlock <-chan *protoblocktx.Block,
+) error {
+	var block *protoblocktx.Block
+	var ok bool
+	for {
+		select {
+		case <-sv.stopGoroutines:
+			return nil
+		case block, ok = <-inputBlock:
+			if !ok {
+				return nil
+			}
+		}
+
 		logger.Debugf("New block came from coordinator to sv manager")
 		sv.resultAccumulator.Store(
 			block.Number,
@@ -174,33 +212,62 @@ func (sv *signatureVerifier) sendTransactionsToSVService(inputBlock <-chan *prot
 		}
 		logger.Debugf("Block contains %d TXs, and was stored in the accumulator and sent to a sv", len(block.Txs))
 	}
-
-	return nil
 }
 
 func (sv *signatureVerifier) receiveTransactionsStatusFromSVService() error {
+	response := make(chan *protosigverifierservice.ResponseBatch)
+	streamErr := make(chan error)
+
+	// As the stream.Recv() is blocking, we need to run it in a separate goroutine.
+	// Thus, we can stop the goroutine when the stop channel is closed.
+	go func() {
+		for {
+			r, err := sv.stream.Recv()
+			if err != nil {
+				streamErr <- err
+				return
+			}
+			response <- r
+		}
+	}()
+
 	for {
-		response, err := sv.stream.Recv()
-		logger.Debugf("New batch came from sv to sv manager")
-		if err != nil {
+		select {
+		case <-sv.stopGoroutines:
+			return nil
+		case err := <-streamErr:
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
+		case response, ok := <-response:
+			if !ok {
+				return nil
+			}
+			sv.responseCollectionChan <- response
 		}
-
-		sv.responseCollectionChan <- response
 	}
 }
 
-func (sv *signatureVerifier) processTransactionStatus() {
-	for r := range sv.responseCollectionChan {
-		logger.Debugf("Batch contains %d items in total", len(r.Responses))
+func (sv *signatureVerifier) processTransactionStatus() { // nolint:gocognit
+	var response *protosigverifierservice.ResponseBatch
+	var ok bool
+	for {
+		select {
+		case <-sv.stopGoroutines:
+			return
+		case response, ok = <-sv.responseCollectionChan:
+			if !ok {
+				return
+			}
+		}
+
+		logger.Debugf("Batch contains %d items in total", len(response.Responses))
 		var blkWithResult *blockWithResult
-		for _, resp := range r.Responses {
+		for _, resp := range response.Responses {
 			if blkWithResult == nil || blkWithResult.block.Number != resp.BlockNum {
 				v, _ := sv.resultAccumulator.Load(resp.BlockNum)
-				blkWithResult, _ = v.(*blockWithResult)
+				blkWithResult, _ = v.(*blockWithResult) // nolint:revive
 			}
 
 			switch resp.GetIsValid() {
@@ -211,19 +278,31 @@ func (sv *signatureVerifier) processTransactionStatus() {
 			}
 			blkWithResult.pendingResults--
 
-			if blkWithResult.pendingResults == 0 {
-				logger.Debugf("Block [%d] is now fully validated", blkWithResult.block.Number)
-				sv.resultAccumulator.Delete(blkWithResult.block.Number)
-				sv.validatedBlock <- blkWithResult
+			if blkWithResult.pendingResults != 0 {
+				continue
 			}
+			logger.Debugf("Block [%d] is now fully validated", blkWithResult.block.Number)
+			sv.resultAccumulator.Delete(blkWithResult.block.Number)
+			sv.validatedBlock <- blkWithResult
 		}
 	}
 }
 
-func (sv *signatureVerifier) forwardValidatedTransactions(
+func (sv *signatureVerifier) forwardValidatedTransactions( // nolint:gocognit
 	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs chan<- *protoblocktx.Block,
 ) {
-	for blkWithResult := range sv.validatedBlock {
+	var blkWithResult *blockWithResult
+	var ok bool
+	for {
+		select {
+		case <-sv.stopGoroutines:
+			return
+		case blkWithResult, ok = <-sv.validatedBlock:
+			if !ok {
+				return
+			}
+		}
+
 		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
 			blkWithResult.block.Number, len(blkWithResult.validTxIndex), len(blkWithResult.invalidTxIndex))
 		sv.metrics.addToCounter(
@@ -261,4 +340,12 @@ func (sv *signatureVerifier) forwardValidatedTransactions(
 				blkWithResult.block.Number)
 		}
 	}
+}
+
+func (sv *signatureVerifier) close() error {
+	close(sv.stopGoroutines)
+	sv.wg.Wait()
+	close(sv.responseCollectionChan)
+	close(sv.validatedBlock)
+	return sv.stream.CloseSend()
 }
