@@ -13,6 +13,7 @@ import (
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -53,7 +54,12 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *loa
 
 func (c *CoordinatorAdapter) SetVerificationKey(publicKey signature.PublicKey, scheme signature.Scheme) error {
 	logger.Infof("Setting verification key.\n")
-	key := &sigverification.Key{SerializedBytes: publicKey, Scheme: scheme}
+	key := &sigverification.Key{
+		NsId:            uint32(types.MetaNamespaceID),
+		NsVersion:       types.VersionNumber(0).Bytes(),
+		SerializedBytes: publicKey,
+		Scheme:          scheme,
+	}
 	_, err := c.client.SetMetaNamespaceVerificationKey(c.ctx, key)
 	return err
 }

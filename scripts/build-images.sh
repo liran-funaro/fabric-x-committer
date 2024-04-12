@@ -30,6 +30,7 @@ build_image coordinator "9001 2110"
 build_image sigservice "5001 2110"
 build_image vcservice "6001 2110"
 build_image blockgen "2110"
+build_image sidecar "5050 2110"
 
 docker images | grep sc_
 

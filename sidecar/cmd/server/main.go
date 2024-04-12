@@ -9,6 +9,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
@@ -31,9 +33,14 @@ func main() {
 		utils.ServiceErrors(aggErrChan, 1, "aggregator"),
 	)
 
+	// enable health check server
+	healthcheck := health.NewServer()
+	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+
 	go func() {
 		connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
 			peer.RegisterDeliverServer(server, service.Ledger)
+			healthgrpc.RegisterHealthServer(server, healthcheck)
 		})
 	}()
 
