@@ -1,0 +1,575 @@
+package dependenttransactions_test
+
+import (
+	"testing"
+
+	"github.com/onsi/gomega"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/test/cluster"
+)
+
+func testSetup(t *testing.T) *cluster.Cluster {
+	gomega.RegisterTestingT(t)
+	c := cluster.NewCluster(
+		t,
+		&cluster.Config{
+			NumSigVerifiers:     2,
+			NumVCService:        2,
+			InitializeNamespace: []types.NamespaceID{1},
+		},
+	)
+
+	initTx := &protoblocktx.Tx{
+		Id: "blind write keys to ns1",
+		Namespaces: []*protoblocktx.TxNamespace{
+			{
+				NsId:      1,
+				NsVersion: types.VersionNumber(0).Bytes(),
+				BlindWrites: []*protoblocktx.Write{
+					{
+						Key: []byte("k1"),
+					},
+				},
+			},
+		},
+	}
+	c.AddSignatures(t, initTx)
+	c.SendTransactions(t, []*protoblocktx.Tx{initTx})
+	c.ValidateStatus(t, map[string]protoblocktx.Status{
+		"blind write keys to ns1": protoblocktx.Status_COMMITTED,
+	})
+
+	return c
+}
+
+func TestDependentHappyPath(t *testing.T) {
+	c := testSetup(t)
+	defer c.Stop()
+
+	v0 := types.VersionNumber(0).Bytes()
+
+	tests := []struct {
+		name             string
+		txs              []*protoblocktx.Tx
+		expectedTxStatus map[string]protoblocktx.Status
+	}{
+		{
+			name: "valid transactions: second tx waits due to write-write conflict",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "performs read only, read-write, and blind-write",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadsOnly: []*protoblocktx.Read{
+								{
+									Key:     []byte("k3"),
+									Version: nil,
+								},
+							},
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: v0,
+									Value:   []byte("v2"),
+								},
+							},
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k4"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "performs only blind-write",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k4"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"performs read only, read-write, and blind-write": protoblocktx.Status_COMMITTED,
+				"performs only blind-write":                       protoblocktx.Status_COMMITTED,
+			},
+		},
+		{
+			name: "valid transactions: second tx waits due to read-write but uses the updated version",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "performs read-write and blind-write",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: types.VersionNumber(1).Bytes(),
+									Value:   []byte("v3"),
+								},
+							},
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k4"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "performs only read-write",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: types.VersionNumber(2).Bytes(),
+									Value:   []byte("v4"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"performs read-write and blind-write": protoblocktx.Status_COMMITTED,
+				"performs only read-write":            protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, tx := range tt.txs {
+				for _, ns := range tx.Namespaces {
+					ns.NsId = 1
+					ns.NsVersion = v0
+				}
+				c.AddSignatures(t, tx)
+			}
+
+			c.SendTransactions(t, tt.txs)
+			c.ValidateStatus(t, tt.expectedTxStatus)
+		})
+	}
+}
+
+func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
+	c := testSetup(t)
+	defer c.Stop()
+
+	v0 := types.VersionNumber(0).Bytes()
+	v1 := types.VersionNumber(1).Bytes()
+
+	tests := []struct {
+		name             string
+		txID             string
+		readsOnly        []*protoblocktx.Read
+		expectedTxStatus protoblocktx.Status
+	}{
+		{
+			name: "readOnly version is nil but the committed version is not nil, i.e., state exist",
+			txID: "readOnly stale k1",
+			readsOnly: []*protoblocktx.Read{
+				{
+					Key: []byte("k1"),
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "readOnly version is not nil but the committed version is nil, i.e., state does not exist",
+			txID: "readsOnly stale k2",
+			readsOnly: []*protoblocktx.Read{
+				{
+					Key:     []byte("k2"),
+					Version: v0,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "readOnly version is different from the committed version",
+			txID: "readsOnly different version of k1",
+			readsOnly: []*protoblocktx.Read{
+				{
+					Key:     []byte("k1"),
+					Version: v1,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "valid",
+			txID: "valid readOnly",
+			readsOnly: []*protoblocktx.Read{
+				{
+					Key:     []byte("k1"),
+					Version: v0,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_COMMITTED,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Log(tt.name)
+			tx := &protoblocktx.Tx{
+				Id: tt.txID,
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: v0,
+						ReadsOnly: tt.readsOnly,
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key: []byte("k2"),
+							},
+						},
+					},
+				},
+			}
+
+			c.AddSignatures(t, tx)
+			c.SendTransactions(t, []*protoblocktx.Tx{tx})
+			c.ValidateStatus(t, map[string]protoblocktx.Status{
+				tt.txID: tt.expectedTxStatus,
+			})
+		})
+	}
+}
+
+func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
+	c := testSetup(t)
+	defer c.Stop()
+
+	v0 := types.VersionNumber(0).Bytes()
+	v1 := types.VersionNumber(1).Bytes()
+
+	tests := []struct {
+		name             string
+		txID             string
+		readWrites       []*protoblocktx.ReadWrite
+		expectedTxStatus protoblocktx.Status
+	}{
+		{
+			name: "readWrite version is nil but the committed version is not nil, i.e., state exist",
+			txID: "readWrite stale k1",
+			readWrites: []*protoblocktx.ReadWrite{
+				{
+					Key:     []byte("k1"),
+					Version: nil,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "readWrite version is not nil but the committed version is nil, i.e., state does not exist",
+			txID: "readWrites stale k2",
+			readWrites: []*protoblocktx.ReadWrite{
+				{
+					Key:     []byte("k2"),
+					Version: v0,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "readWrite version is different from the committed version",
+			txID: "readWrites different version of k1",
+			readWrites: []*protoblocktx.ReadWrite{
+				{
+					Key:     []byte("k1"),
+					Version: v1,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+		{
+			name: "valid",
+			txID: "valid readWrite",
+			readWrites: []*protoblocktx.ReadWrite{
+				{
+					Key:     []byte("k1"),
+					Version: v0,
+				},
+			},
+			expectedTxStatus: protoblocktx.Status_COMMITTED,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Log(tt.name)
+			tx := &protoblocktx.Tx{
+				Id: tt.txID,
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:       1,
+						NsVersion:  v0,
+						ReadWrites: tt.readWrites,
+					},
+				},
+			}
+
+			c.AddSignatures(t, tx)
+			c.SendTransactions(t, []*protoblocktx.Tx{tx})
+			c.ValidateStatus(t, map[string]protoblocktx.Status{
+				tt.txID: tt.expectedTxStatus,
+			})
+		})
+	}
+}
+
+func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
+	c := testSetup(t)
+	defer c.Stop()
+
+	v0 := types.VersionNumber(0).Bytes()
+
+	tests := []struct {
+		name             string
+		txs              []*protoblocktx.Tx
+		expectedTxStatus map[string]protoblocktx.Status
+	}{
+		{
+			name: "first transaction invalidates the second",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "read-write k1",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: v0,
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k1 but invalid due to the previous tx",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: v0,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"read-write k1": protoblocktx.Status_COMMITTED,
+				"read-write k1 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+		},
+		{
+			name: "as first and second transactions are invalid, the third succeeds",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "read-write k1 but wrong version v0",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: v0,
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k1 but wrong version v2",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: types.VersionNumber(2).Bytes(),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k1 with correct version",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: types.VersionNumber(1).Bytes(),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"read-write k1 but wrong version v0": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"read-write k1 but wrong version v2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				"read-write k1 with correct version": protoblocktx.Status_COMMITTED,
+			},
+		},
+		{
+			name: "first transaction writes non-existing key before the second transaction",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "read-write k2",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k2"),
+									Version: nil,
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k2 but invalid due to the previous tx",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k2"),
+									Version: nil,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"read-write k2": protoblocktx.Status_COMMITTED,
+				"read-write k2 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, tx := range tt.txs {
+				for _, ns := range tx.Namespaces {
+					ns.NsId = 1
+					ns.NsVersion = v0
+				}
+				c.AddSignatures(t, tx)
+			}
+
+			c.SendTransactions(t, tt.txs)
+			c.ValidateStatus(t, tt.expectedTxStatus)
+		})
+	}
+}
+
+func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
+	c := testSetup(t)
+	defer c.Stop()
+
+	v0 := types.VersionNumber(0).Bytes()
+
+	tests := []struct {
+		name             string
+		txs              []*protoblocktx.Tx
+		expectedTxStatus map[string]protoblocktx.Status
+	}{
+		{
+			name: "first transaction invalidates the second",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "blind-write k1",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k1"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k1 but invalid due to the previous tx",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k1"),
+									Version: v0,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"blind-write k1": protoblocktx.Status_COMMITTED,
+				"read-write k1 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+		},
+		{
+			name: "first transaction writes non-existing key before the second transaction",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "blind-write k2",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k2"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "read-write k2 but invalid due to the previous tx",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:     []byte("k2"),
+									Version: nil,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"blind-write k2": protoblocktx.Status_COMMITTED,
+				"read-write k2 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, tx := range tt.txs {
+				for _, ns := range tx.Namespaces {
+					ns.NsId = 1
+					ns.NsVersion = v0
+				}
+				c.AddSignatures(t, tx)
+			}
+
+			c.SendTransactions(t, tt.txs)
+			c.ValidateStatus(t, tt.expectedTxStatus)
+		})
+	}
+}

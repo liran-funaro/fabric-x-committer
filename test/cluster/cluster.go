@@ -137,7 +137,7 @@ func (c *Cluster) CreateNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 	writeToMetaNs := &protoblocktx.TxNamespace{
 		NsId:       uint32(types.MetaNamespaceID),
 		NsVersion:  types.VersionNumber(0).Bytes(),
-		ReadWrites: make([]*protoblocktx.ReadWrite, len(namespaces)),
+		ReadWrites: make([]*protoblocktx.ReadWrite, 0, len(namespaces)),
 	}
 
 	for _, nsID := range namespaces {
@@ -266,7 +266,7 @@ func (c *Cluster) Stop() {
 	os.RemoveAll(c.RootDir)
 }
 
-func run(cmd *exec.Cmd, name string, startCheck string) ifrit.Process {
+func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn
 	p := ginkgomon.New(ginkgomon.Config{
 		Command:           cmd,
 		Name:              name,
