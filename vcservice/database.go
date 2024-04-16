@@ -9,11 +9,12 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"go.uber.org/zap/zapcore"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
-	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -154,7 +155,7 @@ func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []txI
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer func() {
 		rollbackErr := tx.Rollback(ctx)
-		if !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+		if rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
 			logger.Warn("failed rolling-back transaction: ", rollbackErr)
 		}
 	}()
