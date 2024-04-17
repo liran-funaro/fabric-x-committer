@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
@@ -12,6 +13,8 @@ import (
 )
 
 func TestDependencyGraph(t *testing.T) {
+	t.Parallel()
+
 	localDepIncomingTxs := make(chan *TransactionBatch, 10)
 	localDepOutgoingTxs := make(chan *transactionNodeBatch, 10)
 
@@ -114,6 +117,7 @@ func TestDependencyGraph(t *testing.T) {
 
 		validatedTxs <- []*TransactionNode{actualT3, actualT4}
 
+		ensureProcessedAndValidatedMetrics(t, metrics, 4, 4)
 		// after validating all txs, the dependency detector should be empty
 		ensureEmptyDetector(t, dm.dependencyDetector)
 	})
@@ -187,6 +191,7 @@ func TestDependencyGraph(t *testing.T) {
 
 		validatedTxs <- []*TransactionNode{actualT4}
 
+		ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
 		// after validating all txs, the dependency detector should be empty
 		ensureEmptyDetector(t, dm.dependencyDetector)
 	})
