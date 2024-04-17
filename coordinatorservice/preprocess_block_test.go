@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestCoordinatorServiceBadTxFormat(t *testing.T) {
@@ -56,6 +57,27 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
 		},
 		{
+			name: "no writes",
+			tx: &protoblocktx.Tx{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadsOnly: []*protoblocktx.Read{
+							{
+								Key: []byte("k1"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_NO_WRITES,
+		},
+		{
 			name: "namespace id is invalid in metaNs tx",
 			tx: &protoblocktx.Tx{
 				Id: "tx1",
@@ -63,6 +85,11 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 					{
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
 					},
 					{
 						NsId:      uint32(types.MetaNamespaceID),
@@ -89,6 +116,11 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 					{
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
 					},
 					{
 						NsId:      uint32(types.MetaNamespaceID),
@@ -116,6 +148,11 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 					{
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
 					},
 					{
 						NsId:      uint32(types.MetaNamespaceID),
@@ -148,6 +185,11 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 					{
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
 					},
 					{
 						NsId:      uint32(types.MetaNamespaceID),

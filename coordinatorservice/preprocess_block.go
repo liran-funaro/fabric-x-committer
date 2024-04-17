@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -128,6 +129,13 @@ func checkNamespaceFormation(txID string, ns *protoblocktx.TxNamespace) *protoco
 		return &protocoordinatorservice.TxValidationStatus{
 			TxId:   txID,
 			Status: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+		}
+	}
+
+	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
+		return &protocoordinatorservice.TxValidationStatus{
+			TxId:   txID,
+			Status: protoblocktx.Status_ABORTED_NO_WRITES,
 		}
 	}
 

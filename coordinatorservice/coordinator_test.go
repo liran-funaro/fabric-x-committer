@@ -166,6 +166,11 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 					{
 						NsId:      1,
 						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
 					},
 					{
 						NsId:      uint32(types.MetaNamespaceID),
@@ -223,6 +228,11 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 						{
 							NsId:      1,
 							NsVersion: types.VersionNumber(0).Bytes(),
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key: []byte("key"),
+								},
+							},
 						},
 					},
 					Signatures: [][]byte{[]byte("dummy")},
@@ -289,6 +299,11 @@ func TestCoordinatorServiceDuplicateTxID(t *testing.T) {
 		{
 			NsId:      1,
 			NsVersion: types.VersionNumber(0).Bytes(),
+			ReadWrites: []*protoblocktx.ReadWrite{
+				{
+					Key: []byte("key"),
+				},
+			},
 		},
 	}
 	sign := [][]byte{[]byte("dummy")}

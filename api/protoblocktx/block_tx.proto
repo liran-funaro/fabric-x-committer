@@ -62,6 +62,7 @@ enum Status {
     ABORTED_NAMESPACE_ID_INVALID = 7;
     ABORTED_MISSING_NAMESPACE_VERSION = 8;
 	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
+    ABORTED_NO_WRITES = 10;
 }
 
 // Represents a namespace policy.
