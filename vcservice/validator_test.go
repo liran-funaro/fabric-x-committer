@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
@@ -127,7 +128,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "all valid tx",
 			preparedTx: &preparedTransactions{
-				namespaceToReadEntries: namespaceToReads{
+				nsToReads: namespaceToReads{
 					1: &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
@@ -141,7 +142,7 @@ func TestValidate(t *testing.T) {
 						versions: [][]byte{v2, v2},
 					},
 				},
-				readToTransactionIndices: readToTransactions{
+				readToTxIDs: readToTransactions{
 					comparableRead{1, string(k1_1), string(v1)}: []txID{
 						"tx1",
 					},
@@ -167,12 +168,12 @@ func TestValidate(t *testing.T) {
 						"tx1", "tx3",
 					},
 				},
-				nonBlindWritesPerTransaction: transactionToWrites{
+				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
 					"tx2": tx2NonBlindWrites,
 					"tx3": tx3NonBlindWrites,
 				},
-				blindWritesPerTransaction: transactionToWrites{
+				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
 			},
@@ -191,7 +192,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "all invalid tx",
 			preparedTx: &preparedTransactions{
-				namespaceToReadEntries: namespaceToReads{
+				nsToReads: namespaceToReads{
 					1: &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v0, v0, v1},
@@ -205,7 +206,7 @@ func TestValidate(t *testing.T) {
 						versions: [][]byte{v1, v1},
 					},
 				},
-				readToTransactionIndices: readToTransactions{
+				readToTxIDs: readToTransactions{
 					comparableRead{1, string(k1_1), string(v0)}: []txID{
 						"tx1",
 					},
@@ -231,12 +232,12 @@ func TestValidate(t *testing.T) {
 						"tx1", "tx2",
 					},
 				},
-				nonBlindWritesPerTransaction: transactionToWrites{
+				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
 					"tx2": tx2NonBlindWrites,
 					"tx3": tx3NonBlindWrites,
 				},
-				blindWritesPerTransaction: transactionToWrites{
+				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
 			},
@@ -253,7 +254,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid and invalid tx",
 			preparedTx: &preparedTransactions{
-				namespaceToReadEntries: namespaceToReads{
+				nsToReads: namespaceToReads{
 					1: &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
@@ -269,7 +270,7 @@ func TestValidate(t *testing.T) {
 						versions: [][]byte{v2, v2, v1},
 					},
 				},
-				readToTransactionIndices: readToTransactions{
+				readToTxIDs: readToTransactions{
 					comparableRead{1, string(k1_1), string(v1)}: []txID{
 						"tx1",
 					},
@@ -298,12 +299,12 @@ func TestValidate(t *testing.T) {
 						"tx4",
 					},
 				},
-				nonBlindWritesPerTransaction: transactionToWrites{
+				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
 					"tx2": tx2NonBlindWrites,
 					"tx3": tx3NonBlindWrites,
 				},
-				blindWritesPerTransaction: transactionToWrites{
+				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
 			},

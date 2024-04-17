@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -101,7 +102,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	}
 
 	expectedPreparedTxs := &preparedTransactions{
-		namespaceToReadEntries: namespaceToReads{
+		nsToReads: namespaceToReads{
 			1: &reads{
 				keys:     [][]byte{k1, k2, k3, k4, k5},
 				versions: [][]byte{v1, v1, nil, v1, nil},
@@ -115,7 +116,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 				versions: [][]byte{v1, v1},
 			},
 		},
-		readToTransactionIndices: readToTransactions{
+		readToTxIDs: readToTransactions{
 			comparableRead{1, string(k1), string(v1)}: []txID{
 				"tx1", "tx2",
 			},
@@ -135,16 +136,16 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 				"tx1", "tx2",
 			},
 		},
-		nonBlindWritesPerTransaction: transactionToWrites{},
-		blindWritesPerTransaction:    transactionToWrites{},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
 	}
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.namespaceToReadEntries, preparedTxs.namespaceToReadEntries)
-	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
-	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
+	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
+	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
 }
 
 func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
@@ -202,7 +203,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 	}
 
 	expectedPreparedTxs := &preparedTransactions{
-		namespaceToReadEntries: namespaceToReads{
+		nsToReads: namespaceToReads{
 			types.MetaNamespaceID: &reads{
 				keys: [][]byte{
 					types.NamespaceID(1).Bytes(), types.NamespaceID(2).Bytes(), types.NamespaceID(1).Bytes(),
@@ -210,13 +211,13 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 				versions: [][]byte{v1, v1, v2},
 			},
 		},
-		readToTransactionIndices: readToTransactions{
+		readToTxIDs: readToTransactions{
 			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []txID{"tx1"},
 			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []txID{"tx1"},
 			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []txID{"tx2"},
 		},
-		nonBlindWritesPerTransaction: transactionToWrites{},
-		blindWritesPerTransaction: transactionToWrites{
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k1, k2, k3},
@@ -241,10 +242,10 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.namespaceToReadEntries, preparedTxs.namespaceToReadEntries)
-	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
-	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
+	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
+	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
 }
 
 func TestPrepareTxWithReadWritesOnly(t *testing.T) {
@@ -312,7 +313,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	}
 
 	expectedPreparedTxs := &preparedTransactions{
-		namespaceToReadEntries: namespaceToReads{
+		nsToReads: namespaceToReads{
 			1: &reads{
 				keys:     [][]byte{k1, k2, k4},
 				versions: [][]byte{v1, v1, v1},
@@ -326,7 +327,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				versions: [][]byte{v2, v2},
 			},
 		},
-		readToTransactionIndices: readToTransactions{
+		readToTxIDs: readToTransactions{
 			comparableRead{1, string(k1), string(v1)}: []txID{"tx1"},
 			comparableRead{1, string(k2), string(v1)}: []txID{"tx1"},
 			comparableRead{1, string(k3), ""}:         []txID{"tx1"},
@@ -343,7 +344,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				"tx1", "tx2",
 			},
 		},
-		nonBlindWritesPerTransaction: transactionToWrites{
+		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k1, k2},
@@ -364,8 +365,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 		},
-		blindWritesPerTransaction: transactionToWrites{},
-		newWrites: transactionToWrites{
+		txIDToNsBlindWrites: transactionToWrites{},
+		txIDToNsNewWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k3},
@@ -395,11 +396,11 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.namespaceToReadEntries, preparedTxs.namespaceToReadEntries)
-	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
-	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.newWrites, preparedTxs.newWrites)
+	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
+	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, preparedTxs.txIDToNsNewWrites)
 }
 
 func TestPrepareTx(t *testing.T) {
@@ -482,7 +483,7 @@ func TestPrepareTx(t *testing.T) {
 	}
 
 	expectedPreparedTxs := &preparedTransactions{
-		namespaceToReadEntries: namespaceToReads{
+		nsToReads: namespaceToReads{
 			1: &reads{
 				keys:     [][]byte{k1, k2, k3, k8, k9},
 				versions: [][]byte{v1, v2, v3, v8, v9},
@@ -498,7 +499,7 @@ func TestPrepareTx(t *testing.T) {
 				versions: [][]byte{v1, v2, v3},
 			},
 		},
-		readToTransactionIndices: readToTransactions{
+		readToTxIDs: readToTransactions{
 			comparableRead{1, string(k1), string(v1)}:                                               []txID{"tx1"},
 			comparableRead{1, string(k2), string(v2)}:                                               []txID{"tx1"},
 			comparableRead{1, string(k3), string(v3)}:                                               []txID{"tx1"},
@@ -510,7 +511,7 @@ func TestPrepareTx(t *testing.T) {
 			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []txID{"tx1"},
 			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v3)}: []txID{"tx2"},
 		},
-		nonBlindWritesPerTransaction: transactionToWrites{
+		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k3},
@@ -526,7 +527,7 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
-		blindWritesPerTransaction: transactionToWrites{
+		txIDToNsBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				1: &namespaceWrites{
 					keys:     [][]byte{k4},
@@ -547,7 +548,7 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
-		newWrites: transactionToWrites{
+		txIDToNsNewWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
 				2: &namespaceWrites{
 					keys:     [][]byte{k6},
@@ -560,9 +561,9 @@ func TestPrepareTx(t *testing.T) {
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.namespaceToReadEntries, preparedTxs.namespaceToReadEntries)
-	require.Equal(t, expectedPreparedTxs.readToTransactionIndices, preparedTxs.readToTransactionIndices)
-	require.Equal(t, expectedPreparedTxs.nonBlindWritesPerTransaction, preparedTxs.nonBlindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.blindWritesPerTransaction, preparedTxs.blindWritesPerTransaction)
-	require.Equal(t, expectedPreparedTxs.newWrites, preparedTxs.newWrites)
+	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
+	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, preparedTxs.txIDToNsNewWrites)
 }

@@ -30,17 +30,25 @@ type (
 	// preparedTransactions is a list of transactions that are prepared for validation and commit
 	// preparedTransactions is NOT thread safe.
 	preparedTransactions struct {
-		namespaceToReadEntries       namespaceToReads
-		readToTransactionIndices     readToTransactions
-		nonBlindWritesPerTransaction transactionToWrites
-		blindWritesPerTransaction    transactionToWrites
-		newWrites                    transactionToWrites
+		// read validation fields:
+		nsToReads   namespaceToReads   // Maps namespaces to reads performed within them.
+		readToTxIDs readToTransactions // Maps reads to transaction IDs that executed them.
+
+		// write categorization fields:
+		txIDToNsNonBlindWrites transactionToWrites // Maps txIDs to non-blind writes per namespace.
+		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
+		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
+
+		// nsToReads is used to verify the reads performed by each transaction in each namespace.
+		// If a read is found to be invalid due to version mismatch, transactions which performed
+		// this invalid read would be marked invalid and all writes of these transactions present
+		// in the three categories of writes would be removed as well.
 	}
 
-	// namespaceToReads maps a namespace ID to a list of reads.
+	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
 	namespaceToReads map[types.NamespaceID]*reads
 
-	// reads is a list of keys and versions.
+	// reads represents a list of keys and their corresponding versions.
 	reads struct {
 		keys     [][]byte
 		versions [][]byte
@@ -51,7 +59,7 @@ type (
 	// i.e., the read version is not matching the committed version.
 	readToTransactions map[comparableRead][]txID
 
-	// comparableRead is a read that can be used as a map key
+	// comparableRead defines a read with fields suitable for use as a map key (for uniqueness).
 	comparableRead struct {
 		nsID    types.NamespaceID
 		key     string
@@ -113,11 +121,11 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 		logger.Debugf("New batch with %d in the preparer.", len(txBatch.Transactions))
 		start := time.Now()
 		prepTxs := &preparedTransactions{
-			namespaceToReadEntries:       make(namespaceToReads),
-			readToTransactionIndices:     make(readToTransactions),
-			nonBlindWritesPerTransaction: make(transactionToWrites),
-			blindWritesPerTransaction:    make(transactionToWrites),
-			newWrites:                    make(transactionToWrites),
+			nsToReads:              make(namespaceToReads),
+			readToTxIDs:            make(readToTransactions),
+			txIDToNsNonBlindWrites: make(transactionToWrites),
+			txIDToNsBlindWrites:    make(transactionToWrites),
+			txIDToNsNewWrites:      make(transactionToWrites),
 		}
 		metaNs := &protoblocktx.TxNamespace{
 			NsId: uint32(types.MetaNamespaceID),
@@ -150,14 +158,14 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 			}
 		}
 
-		for ns, read := range prepTxs.namespaceToReadEntries {
+		for ns, read := range prepTxs.nsToReads {
 			if len(read.keys) == 0 {
-				delete(prepTxs.namespaceToReadEntries, ns)
+				delete(prepTxs.nsToReads, ns)
 			}
 		}
 
 		for _, lst := range []transactionToWrites{
-			prepTxs.nonBlindWritesPerTransaction, prepTxs.blindWritesPerTransaction, prepTxs.newWrites,
+			prepTxs.txIDToNsNonBlindWrites, prepTxs.txIDToNsBlindWrites, prepTxs.txIDToNsNewWrites,
 		} {
 			lst.clearEmpty()
 		}
@@ -180,7 +188,7 @@ func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespac
 	}
 
 	nsID := types.NamespaceID(ns.NsId)
-	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
+	nsReads := p.nsToReads.getOrCreate(nsID)
 
 	for _, r := range ns.ReadsOnly {
 		// When more than one txs read the same key, we only need to add the key once for validation.
@@ -190,8 +198,8 @@ func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespac
 			key:     string(r.Key),
 			version: string(r.Version),
 		}
-		v, present := p.readToTransactionIndices[cr]
-		p.readToTransactionIndices[cr] = append(v, id)
+		v, present := p.readToTxIDs[cr]
+		p.readToTxIDs[cr] = append(v, id)
 		if !present {
 			nsReads.append(r.Key, r.Version)
 		}
@@ -205,9 +213,9 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 	}
 
 	nsID := types.NamespaceID(ns.NsId)
-	nsReads := p.namespaceToReadEntries.getOrCreate(nsID)
-	nsWrites := p.nonBlindWritesPerTransaction.getOrCreate(id, nsID)
-	newWrites := p.newWrites.getOrCreate(id, nsID)
+	nsReads := p.nsToReads.getOrCreate(nsID)
+	nsWrites := p.txIDToNsNonBlindWrites.getOrCreate(id, nsID)
+	newWrites := p.txIDToNsNewWrites.getOrCreate(id, nsID)
 
 	for _, rw := range ns.ReadWrites {
 		// In read-writes, duplicates are not possible between transactions. This is because
@@ -218,7 +226,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 			key:     string(rw.Key),
 			version: string(rw.Version),
 		}
-		p.readToTransactionIndices[cr] = append(p.readToTransactionIndices[cr], id)
+		p.readToTxIDs[cr] = append(p.readToTxIDs[cr], id)
 
 		if rw.Version != nil {
 			nsReads.append(rw.Key, rw.Version)
@@ -237,7 +245,7 @@ func (p *preparedTransactions) addBlindWrites(id txID, ns *protoblocktx.TxNamesp
 	}
 
 	nsID := types.NamespaceID(ns.NsId)
-	nsWrites := p.blindWritesPerTransaction.getOrCreate(id, nsID)
+	nsWrites := p.txIDToNsBlindWrites.getOrCreate(id, nsID)
 
 	for _, w := range ns.BlindWrites {
 		nsWrites.append(w.Key, w.Value, nil)

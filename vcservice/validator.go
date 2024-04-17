@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap/zapcore"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
-	"go.uber.org/zap/zapcore"
 )
 
 // transactionValidator validates the reads of transactions against the committed states
@@ -99,7 +100,7 @@ func (v *transactionValidator) validate() {
 		// 		 over parallelize and make contention among preparer, validator, and committer
 		//       goroutines to acquire the CPU. Based on performance evaluation, we can decide
 		//       to run per namespace validation in parallel.
-		nsToMismatchingReads, valErr := v.validateReads(prepTx.namespaceToReadEntries)
+		nsToMismatchingReads, valErr := v.validateReads(prepTx.nsToReads)
 		if valErr != nil {
 			// TODO: we should not panic here. We should handle the error and recover accordingly.
 			log.Panic(valErr) // nolint:revive
@@ -147,10 +148,10 @@ func (v *transactionValidator) validateReads(
 
 func (p *preparedTransactions) makeValidated() *validatedTransactions {
 	return &validatedTransactions{
-		validTxNonBlindWrites:    p.nonBlindWritesPerTransaction,
-		validTxBlindWrites:       p.blindWritesPerTransaction,
-		newWrites:                p.newWrites,
-		readToTransactionIndices: p.readToTransactionIndices,
+		validTxNonBlindWrites:    p.txIDToNsNonBlindWrites,
+		validTxBlindWrites:       p.txIDToNsBlindWrites,
+		newWrites:                p.txIDToNsNewWrites,
+		readToTransactionIndices: p.readToTxIDs,
 		invalidTxIndices:         make(map[txID]protoblocktx.Status),
 	}
 }
@@ -161,10 +162,10 @@ func (p *preparedTransactions) Debug() {
 	}
 	logger.Debugf("total prepared: %d\n\tvalid non-blind writes: %d\n\t"+
 		"valid blind writes: %d\n\tnew writes: %d\n\treads: %d\n",
-		len(p.nonBlindWritesPerTransaction)+len(p.blindWritesPerTransaction)+
-			len(p.newWrites)+len(p.readToTransactionIndices),
-		len(p.nonBlindWritesPerTransaction), len(p.blindWritesPerTransaction),
-		len(p.newWrites), len(p.readToTransactionIndices))
+		len(p.txIDToNsNonBlindWrites)+len(p.txIDToNsBlindWrites)+
+			len(p.txIDToNsNewWrites)+len(p.readToTxIDs),
+		len(p.txIDToNsNonBlindWrites), len(p.txIDToNsBlindWrites),
+		len(p.txIDToNsNewWrites), len(p.readToTxIDs))
 }
 
 func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToReads) error {
