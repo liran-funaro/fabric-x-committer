@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -153,12 +152,20 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
+	txBatchChan := make(chan *protovcservice.TransactionBatch)
+	streamErr := make(chan error)
+	go func() {
+		for {
+			b, err := stream.Recv()
+			if err != nil {
+				streamErr <- err
+				return
+			}
+			txBatchChan <- b
+		}
+	}()
+
 	largerBatch := &protovcservice.TransactionBatch{}
-	var mu sync.Mutex
-
-	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
-	defer timer.Stop()
-
 	sendLargeBatch := func() {
 		defer func() {
 			// If the context ended, then we don't care about the panic.
@@ -167,56 +174,38 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 				_ = recover()
 			}
 		}()
+		vc.txBatchChan <- largerBatch
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
-		txs := largerBatch
+		largerBatch = &protovcservice.TransactionBatch{}
+	}
+
+	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
+	defer timer.Stop()
+	for {
 		select {
 		case <-vc.ctx.Done():
-			return
-		case vc.txBatchChan <- txs:
-		}
-		logger.Debugf("Send larger batch to preparer")
-		largerBatch = &protovcservice.TransactionBatch{}
-		timer.Reset(vc.timeoutForMinTxBatchSize)
-	}
-
-	go func() {
-		for {
-			select {
-			case <-vc.ctx.Done():
-				return
-			case <-timer.C:
+			return nil
+		case err := <-streamErr:
+			return connection.WrapStreamRpcError(err)
+		case <-timer.C:
+			if len(largerBatch.Transactions) > 0 {
+				sendLargeBatch()
+				timer.Reset(vc.timeoutForMinTxBatchSize)
 			}
-
-			mu.Lock()
-			if len(largerBatch.GetTransactions()) > 0 {
+		case txBatch, ok := <-txBatchChan:
+			if !ok {
+				return nil
+			}
+			largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)
+			logger.Debugf("New batch with %d TXs received in vc."+
+				" Large batch contains %d TXs and the minimum batch size is %d",
+				len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions),
+				vc.minTxBatchSize)
+			if len(largerBatch.Transactions) >= vc.minTxBatchSize {
 				sendLargeBatch()
 			}
-			mu.Unlock()
 		}
-	}()
-
-	for vc.ctx.Err() == nil {
-		txBatch, err := stream.Recv()
-		if err != nil {
-			return connection.WrapStreamRpcError(err)
-		}
-		logger.Debugf("New batch with %d TXs received in vc."+
-			" Large batch contains %d TXs and the minimum batch size is %d",
-			len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions),
-			vc.minTxBatchSize)
-
-		mu.Lock()
-		largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)
-		if len(largerBatch.GetTransactions()) < vc.minTxBatchSize {
-			mu.Unlock()
-			continue
-		}
-
-		sendLargeBatch()
-		mu.Unlock()
 	}
-
-	return nil
 }
 
 // sendTransactionStatus sends the status of the transactions to the client.
