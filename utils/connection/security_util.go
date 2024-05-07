@@ -34,10 +34,15 @@ func GetOrdererConnectionCreds(config *OrdererConnectionProfile) (credentials.Tr
 		os.Exit(0)
 	}
 
-	signer, err := mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
-	if err != nil {
-		logger.Errorf("failed to load local signing identity: %v", err)
-		os.Exit(0)
+	var signer msp.SigningIdentity
+	if config.MSPID == "" && config.MSPDir == "" {
+		logger.Infof("MSPID and MSPDir not set, skipping signer initialization")
+	} else {
+		signer, err = mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
+		if err != nil {
+			logger.Errorf("failed to load local signing identity: %v", err)
+			os.Exit(0)
+		}
 	}
 
 	tlsConfig, err := tls.LoadTLSCredentials(config.RootCAPaths)
