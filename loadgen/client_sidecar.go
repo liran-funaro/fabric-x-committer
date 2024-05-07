@@ -23,7 +23,8 @@ type sidecarClient struct {
 	coordinator     protocoordinatorservice.CoordinatorClient
 	envelopeCreator broadcastclient.EnvelopeCreator
 	sidecar         deliverclient.Client
-	orderers        []ab.AtomicBroadcast_BroadcastClient
+	broadcasts      []ab.AtomicBroadcast_BroadcastClient
+	delivers        []ab.AtomicBroadcast_BroadcastClient
 	tracker         *sidecarTracker
 }
 
@@ -50,6 +51,11 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) blockGe
 		panic(errors.Wrap(err, "failed to create orderer clients"))
 	}
 
+	delivers, _, err := broadcastclient.New(config.Orderer)
+	if err != nil {
+		panic(errors.Wrap(err, "failed to create orderer clients"))
+	}
+
 	return &sidecarClient{
 		loadGenClient: &loadGenClient{
 			stopSender: make(chan any),
@@ -57,7 +63,8 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) blockGe
 		tracker:         newSidecarTracker(metrics),
 		coordinator:     coordinatorClient,
 		sidecar:         listener,
-		orderers:        broadcastClients,
+		broadcasts:      broadcastClients,
+		delivers:        delivers,
 		envelopeCreator: envelopeCreator,
 	}
 }
@@ -77,16 +84,19 @@ func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
 	}
 	logger.Infof("Set verification key")
 
-	errChan := make(chan error, len(c.orderers))
+	errChan := make(chan error, len(c.broadcasts))
 
 	go func() {
 		errChan <- c.sidecar.RunDeliverOutputListener(context.Background(), c.tracker.OnReceiveSidecarBlock)
 	}()
 
-	for _, stream := range c.orderers {
+	for _, stream := range c.broadcasts {
 		go func(stream ab.AtomicBroadcast_BroadcastClient) {
 			errChan <- c.startSending(blockGen, stream)
 		}(stream)
+	}
+
+	for _, stream := range c.delivers {
 		go func(stream ab.AtomicBroadcast_BroadcastClient) {
 			errChan <- c.startReceiving(stream)
 		}(stream)

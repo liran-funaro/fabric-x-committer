@@ -32,7 +32,7 @@ sidecar-client:
   coordinator:
     endpoint: localhost:%d
   orderer:
-    endpoints:
+    broadcast:
       - localhost:%d
       - localhost:%d
       - localhost:%d

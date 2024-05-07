@@ -15,7 +15,8 @@ import (
 var logger = logging.New("broadcastclient")
 
 type Config struct {
-	Endpoints         []*connection.Endpoint               `mapstructure:"endpoints"`
+	Broadcast         []*connection.Endpoint               `mapstructure:"broadcast"`
+	Deliver           []*connection.Endpoint               `mapstructure:"deliver"`
 	ConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"connection-profile"`
 	SignedEnvelopes   bool                                 `mapstructure:"signed-envelopes"`
 	Type              utils.ConsensusType                  `mapstructure:"type"`
@@ -25,11 +26,11 @@ type Config struct {
 
 func New(config Config) ([]ab.AtomicBroadcast_BroadcastClient, EnvelopeCreator, error) {
 	creds, signer := connection.GetOrdererConnectionCreds(config.ConnectionProfile)
-	connections, err := connection.OpenConnections(config.Endpoints, creds)
+	connections, err := connection.OpenConnections(config.Broadcast, creds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to open connections to orderers")
 	}
-	logger.Infof("Opened %d connections to %d orderers", len(connections), len(config.Endpoints))
+	logger.Infof("Opened %d connections to %d orderers", len(connections), len(config.Broadcast))
 	streams, err := openClientStreams(connections, config.Type, config.Parallelism)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to open orderer streams")
