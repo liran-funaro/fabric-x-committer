@@ -23,21 +23,22 @@ func GetOrdererConnectionCreds(config *OrdererConnectionProfile) (credentials.Tr
 		"\tMSP ID: %s\n"+
 		"\tRoot CA Paths: %v\n"+
 		"\tBCCSP: %v\n", config.MSPDir, config.MSPID, config.RootCAPaths, config.BCCSP)
-	mspConfig, err := msp.GetLocalMspConfig(config.MSPDir, config.BCCSP, config.MSPID)
-	if err != nil {
-		fmt.Println("Failed to load MSP config:", err)
-		os.Exit(0)
-	}
-	err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
-	if err != nil { // Handle errors reading the config file
-		logger.Errorf("failed to initialize local MSP: %v", err)
-		os.Exit(0)
-	}
 
 	var signer msp.SigningIdentity
 	if config.MSPID == "" && config.MSPDir == "" {
 		logger.Infof("MSPID and MSPDir not set, skipping signer initialization")
 	} else {
+		mspConfig, err := msp.GetLocalMspConfig(config.MSPDir, config.BCCSP, config.MSPID)
+		if err != nil {
+			fmt.Println("Failed to load MSP config:", err)
+			os.Exit(0)
+		}
+		err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
+		if err != nil { // Handle errors reading the config file
+			logger.Errorf("failed to initialize local MSP: %v", err)
+			os.Exit(0)
+		}
+
 		signer, err = mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
 		if err != nil {
 			logger.Errorf("failed to load local signing identity: %v", err)
