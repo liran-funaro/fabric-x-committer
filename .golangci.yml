@@ -4,7 +4,7 @@ linters:
     - errname
     - errorlint
     - errcheck
-    - execinquery
+    # The linter 'execinquery' is deprecated (since v1.58.0) due to: The repository of the linter has been archived by the owner.
     - forcetypeassert
     - ginkgolinter
     - goconst

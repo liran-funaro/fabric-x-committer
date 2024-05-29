@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	QueryService_GetRows_FullMethodName = "/protoqueryservice.QueryService/GetRows"
+	QueryService_GetRows_FullMethodName   = "/protoqueryservice.QueryService/GetRows"
+	QueryService_BeginView_FullMethodName = "/protoqueryservice.QueryService/BeginView"
+	QueryService_EndView_FullMethodName   = "/protoqueryservice.QueryService/EndView"
 )
 
 // QueryServiceClient is the client API for QueryService service.
@@ -27,6 +29,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type QueryServiceClient interface {
 	GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error)
+	BeginView(ctx context.Context, in *ViewParameters, opts ...grpc.CallOption) (*View, error)
+	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error)
 }
 
 type queryServiceClient struct {
@@ -46,11 +50,31 @@ func (c *queryServiceClient) GetRows(ctx context.Context, in *Query, opts ...grp
 	return out, nil
 }
 
+func (c *queryServiceClient) BeginView(ctx context.Context, in *ViewParameters, opts ...grpc.CallOption) (*View, error) {
+	out := new(View)
+	err := c.cc.Invoke(ctx, QueryService_BeginView_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryServiceClient) EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error) {
+	out := new(View)
+	err := c.cc.Invoke(ctx, QueryService_EndView_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServiceServer is the server API for QueryService service.
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility
 type QueryServiceServer interface {
 	GetRows(context.Context, *Query) (*Rows, error)
+	BeginView(context.Context, *ViewParameters) (*View, error)
+	EndView(context.Context, *View) (*View, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -60,6 +84,12 @@ type UnimplementedQueryServiceServer struct {
 
 func (UnimplementedQueryServiceServer) GetRows(context.Context, *Query) (*Rows, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRows not implemented")
+}
+func (UnimplementedQueryServiceServer) BeginView(context.Context, *ViewParameters) (*View, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BeginView not implemented")
+}
+func (UnimplementedQueryServiceServer) EndView(context.Context, *View) (*View, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EndView not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -92,6 +122,42 @@ func _QueryService_GetRows_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QueryService_BeginView_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ViewParameters)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).BeginView(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QueryService_BeginView_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).BeginView(ctx, req.(*ViewParameters))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QueryService_EndView_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(View)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).EndView(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QueryService_EndView_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).EndView(ctx, req.(*View))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QueryService_ServiceDesc is the grpc.ServiceDesc for QueryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +168,14 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRows",
 			Handler:    _QueryService_GetRows_Handler,
+		},
+		{
+			MethodName: "BeginView",
+			Handler:    _QueryService_BeginView_Handler,
+		},
+		{
+			MethodName: "EndView",
+			Handler:    _QueryService_EndView_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

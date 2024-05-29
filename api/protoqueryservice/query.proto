@@ -6,14 +6,34 @@ package protoqueryservice;
 
 service QueryService {
   rpc GetRows(Query) returns (Rows) {}
+  rpc BeginView(ViewParameters) returns (View) {}
+  rpc EndView(View) returns (View) {}
+}
+
+message View {
+  string id = 1;
 }
 
 message Query {
-  repeated QueryNamespace namespaces = 1;
+  optional View view = 1;
+  repeated QueryNamespace namespaces = 2;
 }
 
 message Rows {
   repeated RowsNamespace namespaces = 1;
+}
+
+enum IsoLevel {
+  Serializable = 0;
+  RepeatableRead = 1;
+  ReadCommitted = 2;
+  ReadUncommitted = 3;
+}
+
+message ViewParameters {
+  // Defaults to serializable deferrable.
+  IsoLevel iso_level = 1;
+  bool nonDeferrable = 2;
 }
 
 message QueryNamespace {
