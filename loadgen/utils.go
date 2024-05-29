@@ -27,6 +27,11 @@ func Min[T constraints.Ordered](a T, others ...T) T {
 	return a
 }
 
+// Clip returns the given value, clipped between the given boundaries.
+func Clip[T constraints.Ordered](value, low, high T) T {
+	return Min(high, Max(low, value))
+}
+
 // SumInt returns the sum of an array of integers.
 func SumInt[T constraints.Integer](arr []T) int64 {
 	var sum int64

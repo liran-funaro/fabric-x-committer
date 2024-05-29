@@ -10,6 +10,7 @@ import (
 type Profile struct {
 	Block       BlockProfile       `mapstructure:"block"`
 	Transaction TransactionProfile `mapstructure:"transaction"`
+	Query       QueryProfile       `mapstructure:"query"`
 	Conflicts   ConflictProfile    `mapstructure:"conflicts"`
 
 	// The number of workers to generate transactions
@@ -46,6 +47,22 @@ type TransactionProfile struct {
 	// The queue buffer size
 	BufferSize uint32           `mapstructure:"buffer-size"`
 	Signature  SignatureProfile `mapstructure:"signature"`
+}
+
+// QueryProfile describes generate query characteristics.
+type QueryProfile struct {
+	// The size of the key to generate. This should match the respective value in TransactionProfile.
+	KeySize uint32 `mapstructure:"key-size"`
+	// The number of keys to query.
+	QuerySize *Distribution `mapstructure:"query-size"`
+	// The minimal portion of invalid keys (1 => all keys are invalid).
+	// This is a lower bound since some valid keys might have failed to commit due to conflicts.
+	MinInvalidKeysPortion *Distribution `mapstructure:"min-invalid-keys-portion"`
+	// If Shuffle=false, the valid keys will be placed first.
+	// Otherwise, they will be shuffled.
+	Shuffle bool `mapstructure:"shuffle"`
+	// The queue buffer size.
+	BufferSize uint32 `mapstructure:"buffer-size"`
 }
 
 // ConflictProfile describes the TX conflict characteristics.

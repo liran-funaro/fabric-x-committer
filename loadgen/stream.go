@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 )
 
 type (
@@ -18,6 +19,11 @@ type (
 	BlockStreamGenerator struct {
 		BlockQueue <-chan *protoblocktx.Block
 		Signer     *TxSignerVerifier
+	}
+
+	// QueryStreamGenerator is a generator of queries.
+	QueryStreamGenerator struct {
+		QueryQueue <-chan *protoqueryservice.Query
 	}
 )
 
@@ -95,4 +101,24 @@ func StartBlockGenerator(profile *Profile, limiterConfig LimiterConfig) *BlockSt
 		BlockQueue: blockQueue,
 		Signer:     txGen.Signer,
 	}
+}
+
+// StartQueryGenerator starts workers that generates queries into a queue.
+func StartQueryGenerator(profile *Profile, limiterConfig LimiterConfig) *QueryStreamGenerator {
+	seedRnd := rand.New(rand.NewSource(profile.Seed))
+	logger.Debugf("Starting %d workers to generate query load", profile.TxGenWorkers)
+
+	queryQueue := make(chan *protoqueryservice.Query, profile.Query.BufferSize)
+	rateLimiter := NewLimiter(&limiterConfig)
+	for i := uint32(0); i < Max(profile.TxGenWorkers, 1); i++ {
+		queryGen := newQueryGenerator(NewRandFromSeedGenerator(seedRnd), &profile.Query)
+		go func() {
+			for {
+				queryQueue <- queryGen.Next()
+				rateLimiter.Take()
+			}
+		}()
+	}
+
+	return &QueryStreamGenerator{QueryQueue: queryQueue}
 }

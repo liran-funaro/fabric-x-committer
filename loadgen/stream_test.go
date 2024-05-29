@@ -2,6 +2,7 @@ package loadgen
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -31,6 +32,13 @@ func defaultProfile(workers uint32) *Profile {
 			Signature: SignatureProfile{
 				Scheme: signature.Ecdsa,
 			},
+		},
+		Query: QueryProfile{
+			KeySize:               32,
+			QuerySize:             NewConstantDistribution(100),
+			MinInvalidKeysPortion: NewConstantDistribution(0),
+			Shuffle:               false,
+			BufferSize:            workers * 100,
 		},
 		Conflicts: ConflictProfile{
 			InvalidSignatures: Never,
@@ -133,7 +141,14 @@ func requireValidTx(t *testing.T, tx *protoblocktx.Tx, profile *Profile, signer 
 	require.True(t, signer.Verify(tx))
 }
 
-func testProfiles() (profiles []*Profile) {
+func testWorkersProfiles() (profiles []*Profile) {
+	for _, workers := range []uint32{1, 2, 4, 8} {
+		profiles = append(profiles, defaultProfile(workers))
+	}
+	return profiles
+}
+
+func testTxProfiles() (profiles []*Profile) {
 	for _, workers := range []uint32{1, 2, 4, 8} {
 		for _, onlyReadWrite := range []bool{true, false} {
 			p := defaultProfile(workers)
@@ -152,7 +167,7 @@ func testProfiles() (profiles []*Profile) {
 
 func TestGenValidTx(t *testing.T) {
 	t.Parallel()
-	for _, p := range testProfiles() {
+	for _, p := range testTxProfiles() {
 		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
@@ -168,7 +183,7 @@ func TestGenValidTx(t *testing.T) {
 
 func TestGenValidBlock(t *testing.T) {
 	t.Parallel()
-	for _, p := range testProfiles() {
+	for _, p := range testTxProfiles() {
 		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
@@ -296,4 +311,139 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	c.NextN(expectedSeconds * limit)
 	duration := time.Since(start)
 	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1)
+}
+
+type queryTestEnv struct {
+	p        *Profile
+	keys     map[string]*struct{}
+	blockGen *BlockStreamGenerator
+	queryGen *QueryStreamGenerator
+}
+
+func newQueryTestEnv(p *Profile) *queryTestEnv {
+	q := &queryTestEnv{
+		p:        p,
+		keys:     make(map[string]*struct{}),
+		blockGen: StartBlockGenerator(p, NoLimit),
+		queryGen: StartQueryGenerator(p, NoLimit),
+	}
+	for i := 0; i < 10; i++ {
+		q.addBlock()
+	}
+	return q
+}
+
+func (q *queryTestEnv) addBlock() {
+	block := <-q.blockGen.BlockQueue
+	for _, tx := range block.Txs {
+		for _, ns := range tx.Namespaces {
+			for _, r := range ns.ReadsOnly {
+				q.keys[string(r.Key)] = nil
+			}
+			for _, rw := range ns.ReadWrites {
+				q.keys[string(rw.Key)] = nil
+			}
+			for _, w := range ns.BlindWrites {
+				q.keys[string(w.Key)] = nil
+			}
+		}
+	}
+}
+
+func (q *queryTestEnv) exists(key []byte) bool {
+	_, ok := q.keys[string(key)]
+	return ok
+}
+
+func (q *queryTestEnv) countExistingKeys(keys [][]byte) int {
+	if q.keys == nil {
+		return 0
+	}
+	c := 0
+	for _, k := range keys {
+		if q.exists(k) {
+			c++
+		}
+	}
+	return c
+}
+
+func TestQuery(t *testing.T) {
+	t.Parallel()
+	for _, p := range testWorkersProfiles() {
+		p := p
+		t.Run(fmt.Sprintf("workers:%d", p.TxGenWorkers), func(t *testing.T) {
+			t.Parallel()
+			env := newQueryTestEnv(p)
+
+			for i := 0; i < 5; i++ {
+				query := <-env.queryGen.QueryQueue
+				// Since the blocks are generated in parallel, the order of the
+				// keys in the block might not be the same as in the query.
+				// So we need to consume blocks until we found all the keys.
+				require.Eventually(t, func() bool {
+					env.addBlock()
+					return len(query.Namespaces[0].Keys) == env.countExistingKeys(query.Namespaces[0].Keys)
+				}, time.Second*3, 1)
+			}
+		})
+	}
+}
+
+func TestQueryWithInvalid(t *testing.T) {
+	t.Parallel()
+	for _, portion := range []float64{0.1, 0.5, 0.7} {
+		portion := portion
+		t.Run(fmt.Sprintf("invalid-portion:%.1f", portion), func(t *testing.T) {
+			t.Parallel()
+			p := defaultProfile(1)
+			p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
+			env := newQueryTestEnv(p)
+
+			existing := 0
+			total := 0
+			for i := 0; i < 10; i++ {
+				query := <-env.queryGen.QueryQueue
+				total += len(query.Namespaces[0].Keys)
+				existing += env.countExistingKeys(query.Namespaces[0].Keys)
+			}
+
+			require.InDelta(t, portion, float64(total-existing)/float64(total), 1e-3)
+		})
+	}
+}
+
+func TestQueryShuffle(t *testing.T) {
+	t.Parallel()
+	portion := 0.5
+	t.Run("no-shuffle", func(t *testing.T) {
+		t.Parallel()
+		p := defaultProfile(1)
+		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
+		p.Query.Shuffle = false
+		env := newQueryTestEnv(p)
+
+		for i := 0; i < 5; i++ {
+			query := <-env.queryGen.QueryQueue
+			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
+			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
+			require.Equal(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
+		}
+	})
+
+	t.Run("with-shuffle", func(t *testing.T) {
+		t.Parallel()
+		p := defaultProfile(1)
+		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
+		p.Query.Shuffle = true
+		env := newQueryTestEnv(p)
+
+		for i := 0; i < 5; i++ {
+			query := <-env.queryGen.QueryQueue
+			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
+			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys))
+			require.NotEqual(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
+			require.NotEqual(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
+		}
+	})
 }
