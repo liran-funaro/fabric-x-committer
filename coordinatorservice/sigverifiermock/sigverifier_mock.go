@@ -2,8 +2,6 @@ package sigverifiermock
 
 import (
 	"context"
-	"errors"
-	"io"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -21,16 +19,16 @@ var logger = logging.New("sigverifier_mock")
 // - when the tx has non-empty signature, it is valid.
 type MockSigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	requestBatch      chan *protosigverifierservice.RequestBatch
 	verificationKey   []byte
 	numBlocksReceived *atomic.Uint32
+	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
+	MockFaultyNodeDropSize int
 }
 
 // NewMockSigVerifier returns a new mock verifier.
 func NewMockSigVerifier() *MockSigVerifier {
 	return &MockSigVerifier{
 		UnimplementedVerifierServer: protosigverifierservice.UnimplementedVerifierServer{},
-		requestBatch:                make(chan *protosigverifierservice.RequestBatch, 10),
 		numBlocksReceived:           &atomic.Uint32{},
 	}
 }
@@ -48,13 +46,15 @@ func (m *MockSigVerifier) SetVerificationKey(
 // StartStream is a mock implementation of the protosignverifierservice.VerifierServer.
 func (m *MockSigVerifier) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
 	errChan := make(chan error, 2)
+	// We need each stream to have its own requests channel to avoid "stealing" values from other streams.
+	requestBatch := make(chan *protosigverifierservice.RequestBatch, 10)
 
 	go func() {
-		errChan <- m.receiveRequestBatch(stream)
+		errChan <- m.receiveRequestBatch(stream, requestBatch)
 	}()
 
 	go func() {
-		errChan <- m.sendResponseBatch(stream)
+		errChan <- m.sendResponseBatch(stream, requestBatch)
 	}()
 
 	for i := 0; i < 2; i++ {
@@ -67,40 +67,45 @@ func (m *MockSigVerifier) StartStream(stream protosigverifierservice.Verifier_St
 	return nil
 }
 
-func (m *MockSigVerifier) receiveRequestBatch(stream protosigverifierservice.Verifier_StartStreamServer) error {
+func (m *MockSigVerifier) receiveRequestBatch(
+	stream protosigverifierservice.Verifier_StartStreamServer, requestBatch chan *protosigverifierservice.RequestBatch,
+) error {
 	for {
 		reqBatch, err := stream.Recv()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
+			close(requestBatch)
+			return connection.WrapStreamRpcError(err)
 		}
 
-		m.requestBatch <- reqBatch
+		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
+		requestBatch <- reqBatch
 		m.numBlocksReceived.Add(1)
 	}
 }
 
-func (m *MockSigVerifier) sendResponseBatch(stream protosigverifierservice.Verifier_StartStreamServer) error {
-	for reqBatch := range m.requestBatch {
+func (m *MockSigVerifier) sendResponseBatch(
+	stream protosigverifierservice.Verifier_StartStreamServer,
+	requestBatch <-chan *protosigverifierservice.RequestBatch,
+) error {
+	for reqBatch := range requestBatch {
 		respBatch := &protosigverifierservice.ResponseBatch{
-			Responses: make([]*protosigverifierservice.Response, len(reqBatch.Requests)),
+			Responses: make([]*protosigverifierservice.Response, 0, len(reqBatch.Requests)),
 		}
 
 		for i, req := range reqBatch.Requests {
-			respBatch.Responses[i] = &protosigverifierservice.Response{
+			// We simulate a faulty node by not responding to the first X TXs.
+			if i < m.MockFaultyNodeDropSize {
+				continue
+			}
+			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.Response{
 				BlockNum: req.BlockNum,
 				TxNum:    req.TxNum,
 				IsValid:  len(req.GetTx().GetSignatures()) > 0,
-			}
+			})
 		}
 
 		if err := stream.Send(respBatch); err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
+			return connection.WrapStreamRpcError(err)
 		}
 	}
 
@@ -119,7 +124,6 @@ func (m *MockSigVerifier) GetVerificationKey() []byte {
 
 // Close closes the mock verifier.
 func (m *MockSigVerifier) Close() {
-	close(m.requestBatch)
 }
 
 // StartMockSVService starts a specified number of mock verifier service.
@@ -129,9 +133,22 @@ func StartMockSVService(numService int) ([]*connection.ServerConfig, []*MockSigV
 		svs[i] = NewMockSigVerifier()
 	}
 
-	sc, grpcSrvs := test.StartMockServers(numService, func(server *grpc.Server, index int) {
+	sc, grpcServers := StartMockSVServiceFromList(svs)
+	return sc, svs, grpcServers
+}
+
+// StartMockSVServiceFromList starts a specified number of mock verifier service.
+func StartMockSVServiceFromList(svs []*MockSigVerifier) (
+	[]*connection.ServerConfig, []*grpc.Server,
+) {
+	return test.StartMockServers(len(svs), func(server *grpc.Server, index int) {
 		protosigverifierservice.RegisterVerifierServer(server, svs[index])
 	})
+}
 
-	return sc, svs, grpcSrvs
+// StartMockSVServiceFromListWithConfig starts a specified number of mock verifier service.
+func StartMockSVServiceFromListWithConfig(svs []*MockSigVerifier, sc []*connection.ServerConfig) []*grpc.Server {
+	return test.StartMockServersWithConfig(sc, func(server *grpc.Server, index int) {
+		protosigverifierservice.RegisterVerifierServer(server, svs[index])
+	})
 }

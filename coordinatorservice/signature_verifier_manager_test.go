@@ -1,7 +1,7 @@
 package coordinatorservice
 
 import (
-	"sync"
+	"context"
 	"testing"
 	"time"
 
@@ -9,7 +9,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/grpc"
 )
 
 type svMgrTestEnv struct {
@@ -18,16 +21,27 @@ type svMgrTestEnv struct {
 	outputBlockWithValidTxs   chan *protoblocktx.Block
 	outputBlockWithInvalidTxs chan *protoblocktx.Block
 	mockSvService             []*sigverifiermock.MockSigVerifier
+	grpcServers               []*grpc.Server
+	serversConfig             []*connection.ServerConfig
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
-	sc, svs, grpcSrvs := sigverifiermock.StartMockSVService(numSvService)
+	c := &logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      true,
+		Development: true,
+	}
+	logging.SetupWithConfig(c)
+
+	sc, svs, grpcServers := sigverifiermock.StartMockSVService(numSvService)
 
 	inputBlock := make(chan *protoblocktx.Block, 10)
 	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
 	outputBlockWithInvalidTxs := make(chan *protoblocktx.Block, 10)
 
 	svm := newSignatureVerifierManager(
+		context.Background(),
 		&signVerifierManagerConfig{
 			serversConfig:                         sc,
 			incomingBlockForSignatureVerification: inputBlock,
@@ -36,42 +50,54 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 			metrics:                               newPerformanceMetrics(true),
 		},
 	)
-	errChan, err := svm.start()
-	require.NoError(t, err)
+	require.NoError(t, svm.start())
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		numErrorableGoroutines := 2 * len(svs)
-		for i := 0; i < numErrorableGoroutines; i++ {
-			require.NoError(t, <-errChan)
-		}
-		wg.Done()
-	}()
-
-	t.Cleanup(func() {
-		require.NoError(t, svm.close())
-		close(inputBlock)
-		close(outputBlockWithValidTxs)
-		close(outputBlockWithInvalidTxs)
-		for _, mockSv := range svs {
-			mockSv.Close()
-		}
-		wg.Wait()
-		close(errChan)
-		for _, s := range grpcSrvs {
-			s.GracefulStop()
-		}
-	})
-
-	return &svMgrTestEnv{
+	env := &svMgrTestEnv{
 		signVerifierManager:       svm,
 		inputBlock:                inputBlock,
 		outputBlockWithValidTxs:   outputBlockWithValidTxs,
 		outputBlockWithInvalidTxs: outputBlockWithInvalidTxs,
 		mockSvService:             svs,
+		grpcServers:               grpcServers,
+		serversConfig:             sc,
 	}
+
+	t.Cleanup(func() {
+		env.signVerifierManager.close()
+		<-env.signVerifierManager.done()
+		t.Log("All SV services finished.")
+
+		close(env.inputBlock)
+		close(env.outputBlockWithValidTxs)
+		close(env.outputBlockWithInvalidTxs)
+		for _, mockSv := range env.mockSvService {
+			mockSv.Close()
+		}
+
+		for _, s := range env.grpcServers {
+			s.GracefulStop()
+		}
+	})
+
+	return env
+}
+
+func requireBlockFromQueue(
+	t *testing.T, expectedBlk *protoblocktx.Block, blkOutputChan chan *protoblocktx.Block,
+) {
+	select {
+	case actualBlk := <-blkOutputChan:
+		require.Equal(t, expectedBlk, actualBlk)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Did not receive block from output after timeout")
+	}
+}
+
+func (e *svMgrTestEnv) requireBlock(
+	t *testing.T, expectedBlkWithValTxs, expectedBlkWithInvalidTxs *protoblocktx.Block,
+) {
+	requireBlockFromQueue(t, expectedBlkWithValTxs, e.outputBlockWithValidTxs)
+	requireBlockFromQueue(t, expectedBlkWithInvalidTxs, e.outputBlockWithInvalidTxs)
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
@@ -85,8 +111,7 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs := createBlockForTest(t, blkNum, numTxs)
 	env.inputBlock <- blk
 
-	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
-	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
+	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalTxs)
 
 	blkNum = 1
 	numTxs = 1
@@ -105,8 +130,7 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
 	env.inputBlock <- blk
 
-	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
-	require.Equal(t, expectedBlkWithInvalTxs, <-env.outputBlockWithInvalidTxs)
+	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalTxs)
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(
@@ -119,52 +143,33 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	env := newSvMgrTestEnv(t, 2)
 
-	blkNum := 1
 	numTxs := 10
-	blk1, expectedBlk1WithValTxs, expectedBlk1WithInvalTxs := createBlockForTest(t, blkNum, numTxs)
-	blkNum = 2
-	blk2, expectedBlk2WithValTxs, expectedBlk2WithInvalTxs := createBlockForTest(t, blkNum, numTxs)
+	numBlocks := 1000
+	expectedValid := make([]*protoblocktx.Block, numBlocks)
+	expectedInvalid := make([]*protoblocktx.Block, numBlocks)
+	for i := 0; i < numBlocks; i++ {
+		var block *protoblocktx.Block
+		block, expectedValid[i], expectedInvalid[i] = createBlockForTest(t, i, numTxs)
+		env.inputBlock <- block
+	}
 
-	require.Eventually(t, func() bool {
-		env.inputBlock <- blk1
-		env.inputBlock <- blk2
-
-		var outputBlk1ValTxs, outputBlk2ValTxs *protoblocktx.Block
-		var outputBlk1InvalTxs, outputBlk2InvalTxs *protoblocktx.Block
-
-		blk := <-env.outputBlockWithValidTxs
-		switch blk.Number {
-		case 1:
-			outputBlk1ValTxs = blk
-			outputBlk2ValTxs = <-env.outputBlockWithValidTxs
-		case 2:
-			outputBlk2ValTxs = blk
-			outputBlk1ValTxs = <-env.outputBlockWithValidTxs
+	deadline := time.After(5 * time.Second)
+	// For each block in the input, we expect a block in each of the two outputs.
+	for i := 0; i < numBlocks*2; i++ {
+		select {
+		case blk := <-env.outputBlockWithValidTxs:
+			require.Equal(t, expectedValid[blk.Number], blk)
+		case blk := <-env.outputBlockWithInvalidTxs:
+			require.Equal(t, expectedInvalid[blk.Number], blk)
+		case <-deadline:
+			t.Fatal("Did not receive all blocks from output after timeout")
 		}
+	}
 
-		blk = <-env.outputBlockWithInvalidTxs
-		switch blk.Number {
-		case 1:
-			outputBlk1InvalTxs = blk
-			outputBlk2InvalTxs = <-env.outputBlockWithInvalidTxs
-		case 2:
-			outputBlk2InvalTxs = blk
-			outputBlk1InvalTxs = <-env.outputBlockWithInvalidTxs
-		}
-
-		require.Equal(t, expectedBlk1WithValTxs, outputBlk1ValTxs)
-		require.Equal(t, expectedBlk2WithValTxs, outputBlk2ValTxs)
-
-		require.Equal(t, expectedBlk1WithInvalTxs, outputBlk1InvalTxs)
-		require.Equal(t, expectedBlk2WithInvalTxs, outputBlk2InvalTxs)
-
-		for _, sv := range env.mockSvService {
-			if sv.GetNumBlocksReceived() == 0 {
-				return false
-			}
-		}
-		return true
-	}, 4*time.Second, 100*time.Millisecond)
+	for _, sv := range env.mockSvService {
+		// Verify that each service got a reasonable proportion of the requests.
+		require.Greater(t, sv.GetNumBlocksReceived(), uint32(0.2*float32(numBlocks)))
+	}
 }
 
 func TestSignatureVerifierManagerKey(t *testing.T) {
@@ -202,10 +207,7 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	}
 	env.inputBlock <- blk
 
-	require.Equal(t, &protoblocktx.Block{
-		Number: 1,
-	}, <-env.outputBlockWithValidTxs)
-	require.Equal(t, blk, <-env.outputBlockWithInvalidTxs)
+	env.requireBlock(t, &protoblocktx.Block{Number: 1}, blk)
 }
 
 func createBlockForTest(
@@ -241,4 +243,43 @@ func createBlockForTest(
 	}
 
 	return block, blockWithValidTxs, blockWithInvalidTxs
+}
+
+func TestSignatureVerifierManagerRecovery(t *testing.T) {
+	env := newSvMgrTestEnv(t, 1)
+	for _, sv := range env.mockSvService {
+		sv.MockFaultyNodeDropSize = 1
+	}
+
+	blkNum := 0
+	numTxs := 10
+	blk, expectedBlkWithValTxs, expectedBlkWithInvalidTxs := createBlockForTest(t, blkNum, numTxs)
+	env.inputBlock <- blk
+
+	// Validate the full block have not been reported
+	firstSv := env.signVerifierManager.signVerifier[0]
+	require.Eventually(t, func() bool {
+		v, ok := firstSv.resultAccumulator.Load(uint64(blkNum))
+		if !ok {
+			return false
+		}
+		blkWithResult, _ := v.(*blockWithResult) // nolint:revive
+		return blkWithResult.pendingResultCount < len(blkWithResult.block.Txs)
+	}, 4*time.Second, 100*time.Millisecond)
+	require.Empty(t, env.outputBlockWithValidTxs)
+	require.Empty(t, env.outputBlockWithInvalidTxs)
+
+	for _, s := range env.grpcServers {
+		s.Stop()
+	}
+	time.Sleep(time.Second)
+
+	for _, sv := range env.mockSvService {
+		sv.MockFaultyNodeDropSize = 0
+	}
+	env.grpcServers = sigverifiermock.StartMockSVServiceFromListWithConfig(
+		env.mockSvService, env.serversConfig,
+	)
+
+	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalidTxs)
 }

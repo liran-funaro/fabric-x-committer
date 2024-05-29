@@ -21,9 +21,15 @@ func FailHandler(t *testing.T) {
 	})
 }
 
-var TxSize = 1
-var ClientInputDelay = NoDelay
-var BatchSize = 100
+var (
+	TxSize           = 1
+	ClientInputDelay = NoDelay
+	BatchSize        = 100
+	defaultEndPoint  = connection.Endpoint{
+		Host: "localhost",
+		Port: 0,
+	}
+)
 
 // CheckMetrics checks the metrics endpoint for the expected metrics.
 func CheckMetrics(t *testing.T, client *http.Client, url string, expectedMetrics []string) {
@@ -68,31 +74,28 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 }
 
 func StartMockServers(numService int, register func(*grpc.Server, int)) ([]*connection.ServerConfig, []*grpc.Server) {
-	sc := make([]*connection.ServerConfig, 0, numService)
-	for i := 0; i < numService; i++ {
-		sc = append(sc, &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		})
+	sc := make([]*connection.ServerConfig, numService)
+	for i := range sc {
+		sc[i] = &connection.ServerConfig{Endpoint: defaultEndPoint}
 	}
-	grpcSrvs := make([]*grpc.Server, numService)
+	return sc, StartMockServersWithConfig(sc, register)
+}
+
+func StartMockServersWithConfig(sc []*connection.ServerConfig, register func(*grpc.Server, int)) []*grpc.Server {
+	grpcServers := make([]*grpc.Server, len(sc))
 	for i, s := range sc {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		config := s
-		index := i
-		go func() {
+		go func(index int, config *connection.ServerConfig) {
 			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcSrvs[index] = grpcServer
+				grpcServers[index] = grpcServer
 				config.Endpoint.Port = actualListeningPort
 				register(grpcServer, index)
 				wg.Done()
 			})
-		}()
+		}(i, s)
 		wg.Wait()
 	}
-	return sc, grpcSrvs
+	return grpcServers
 }

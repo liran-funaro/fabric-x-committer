@@ -61,7 +61,7 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	conf := coordinatorservice.ReadConfig()
 
 	service := coordinatorservice.NewCoordinatorService(conf)
-	_, _, err := service.Start()
+	_, err := service.Start()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, service.Close()) })
 

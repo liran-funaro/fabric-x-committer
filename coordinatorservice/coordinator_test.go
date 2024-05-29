@@ -84,16 +84,8 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 
 func (e *coordinatorTestEnv) start(t *testing.T) {
 	cs := e.coordinator
-	signErrChan, valErrChan, err := cs.Start()
+	valErrChan, err := cs.Start()
 	require.NoError(t, err)
-
-	var wgSignErrChan sync.WaitGroup
-	wgSignErrChan.Add(1)
-	go func() {
-		errS := <-signErrChan
-		require.NoError(t, errS)
-		wgSignErrChan.Done()
-	}()
 
 	var wgValErrChan sync.WaitGroup
 	wgValErrChan.Add(1)
@@ -139,7 +131,7 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 
 		require.NoError(t, cs.Close())
 
-		wgSignErrChan.Wait()
+		<-cs.signatureVerifierMgr.done()
 
 		wgValErrChan.Wait()
 

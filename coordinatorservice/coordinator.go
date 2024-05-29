@@ -140,6 +140,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	}
 
 	svMgr := newSignatureVerifierManager(
+		context.Background(),
 		&signVerifierManagerConfig{
 			serversConfig:                         c.SignVerifierConfig.ServerConfig,
 			incomingBlockForSignatureVerification: queues.blockForSignatureVerification,
@@ -193,7 +194,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 }
 
 // Start starts each manager in the coordinator service.
-func (c *CoordinatorService) Start() (chan error, chan error, error) {
+func (c *CoordinatorService) Start() (chan error, error) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -201,9 +202,8 @@ func (c *CoordinatorService) Start() (chan error, chan error, error) {
 	}()
 
 	logger.Info("Starting signature verifier manager")
-	sigVerifierErrChan, err := c.signatureVerifierMgr.start()
-	if err != nil {
-		return nil, nil, err
+	if err := c.signatureVerifierMgr.start(); err != nil {
+		return nil, err
 	}
 
 	logger.Info("Starting dependency graph manager")
@@ -212,12 +212,12 @@ func (c *CoordinatorService) Start() (chan error, chan error, error) {
 	logger.Info("Starting validator committer manager")
 	valCommitErrChan, err := c.validatorCommitterMgr.start()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	logger.Info("Coordinator service started successfully")
 
-	return sigVerifierErrChan, valCommitErrChan, nil
+	return valCommitErrChan, nil
 }
 
 // SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.
@@ -605,9 +605,7 @@ func (c *CoordinatorService) monitorQueues() {
 // Close closes each manager in the coordinator service and all channels.
 func (c *CoordinatorService) Close() error {
 	logger.Infof("Closing all connections to managers")
-	if err := c.signatureVerifierMgr.close(); err != nil {
-		return err
-	}
+	c.signatureVerifierMgr.close()
 
 	c.dependencyMgr.Close()
 

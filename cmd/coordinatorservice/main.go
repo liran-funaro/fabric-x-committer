@@ -77,13 +77,13 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			cmd.Println("Starting coordinatorservice")
 			coordService = coordinatorservice.NewCoordinatorService(coordConfig)
 
-			sigVerErr, vcErr, err := coordService.Start()
+			vcErr, err := coordService.Start()
 			if err != nil {
 				return err
 			}
 
 			errChan := make(chan error)
-			captureErrFromCoordService(errChan, coordConfig, sigVerErr, vcErr)
+			captureErrFromCoordService(errChan, coordConfig, vcErr)
 
 			var wg sync.WaitGroup
 			wg.Add(1)
@@ -111,7 +111,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 				// coordinator service if any of them fails. In the future, we can add recovery mechanism
 				// to restart the failed service and stop the coordinator service only if all the services
 				// in vcservice fail or all the services in sigverifier fail.
-				cmd.Println("stream with signature verifier or vcservice closed abrubtly")
+				cmd.Println("stream with vcservice closed abrubtly")
 				return err
 			}
 		},
@@ -124,19 +124,8 @@ func startCmd() *cobra.Command { //nolint:gocognit
 func captureErrFromCoordService(
 	errChan chan error,
 	coordConfig *coordinatorservice.CoordinatorConfig,
-	sigVerErr, vcErr chan error,
+	vcErr chan error,
 ) {
-	go func() {
-		numSigVer := len(coordConfig.SignVerifierConfig.ServerConfig)
-		for i := 0; i < numSigVer; i++ {
-			err := <-sigVerErr
-			if err != nil {
-				errChan <- err
-				break
-			}
-		}
-	}()
-
 	go func() {
 		numVC := len(coordConfig.ValidatorCommitterConfig.ServerConfig)
 		for i := 0; i < numVC; i++ {
