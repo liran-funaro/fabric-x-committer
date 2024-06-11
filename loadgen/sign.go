@@ -60,7 +60,8 @@ func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 
 // GetVerificationKey returns the verification key.
 func (e *TxSignerVerifier) GetVerificationKey() []byte {
-	return e.HashSigner.GetVerificationKey()
+	serializedKey, _ := e.HashSigner.GetVerificationKey()
+	return serializedKey
 }
 
 // NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile.
@@ -148,6 +149,6 @@ func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx, nsIndex int) bool {
 }
 
 // GetVerificationKey returns the verification key.
-func (e *HashSignerVerifier) GetVerificationKey() PublicKey {
-	return e.pubKey
+func (e *HashSignerVerifier) GetVerificationKey() (PublicKey, Scheme) {
+	return e.pubKey, e.scheme
 }

@@ -39,7 +39,8 @@ func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
 	}
 	logger.Info("Connected to coordinator")
 
-	stream, err := openCoordinatorStream(conn, blockGen.Signer.GetVerificationKey())
+	verificationKey, keyScheme := blockGen.Signer.HashSigner.GetVerificationKey()
+	stream, err := openCoordinatorStream(conn, verificationKey, keyScheme)
 	if err != nil {
 		return errors.Wrap(err, "failed creating stream to coordinator")
 	}
@@ -87,13 +88,17 @@ func (t *coordinatorTracker) OnReceiveCoordinatorBatch(batch *protocoordinatorse
 }
 
 func openCoordinatorStream( //nolint:ireturn
-	conn *grpc.ClientConn, publicKey signature.PublicKey,
+	conn *grpc.ClientConn, publicKey signature.PublicKey, keyScheme signature.Scheme,
 ) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
 	client := openCoordinatorClient(conn)
 
 	_, err := client.SetMetaNamespaceVerificationKey(
 		context.Background(),
-		&protosigverifierservice.Key{NsId: uint32(types.MetaNamespaceID), SerializedBytes: publicKey},
+		&protosigverifierservice.Key{
+			NsId:            uint32(types.MetaNamespaceID),
+			SerializedBytes: publicKey,
+			Scheme:          keyScheme,
+		},
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed setting verification key")

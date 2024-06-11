@@ -1,9 +1,9 @@
 package signature
 
 import (
+	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
@@ -46,7 +46,7 @@ func GetVerifierFactory(scheme signature.Scheme) (VerifierFactory, error) {
 	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory, nil
 	}
-	return nil, errors.New("scheme not supported for verifier")
+	return nil, fmt.Errorf("scheme %v not supported for verifier", strings.ToUpper(scheme))
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme
@@ -54,6 +54,6 @@ func NewNsVerifier(scheme Scheme, key []byte) (NsVerifier, error) {
 	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory.NewVerifier(key)
 	} else {
-		return nil, errors.New("scheme not supported")
+		return nil, fmt.Errorf("scheme %v not supported", strings.ToUpper(scheme))
 	}
 }

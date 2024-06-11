@@ -162,6 +162,8 @@ docker-builder-run: $(cache_dir) $(mod_cache_dir)
 docker-runner-image:
 	${docker_cmd} build -f $(sc_runner_dir)/Dockerfile -t sc_runner .
 
+docker-images:
+	./scripts/build-images.sh
 
 .PHONY: lint
 lint:
