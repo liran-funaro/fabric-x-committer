@@ -35,9 +35,10 @@ type (
 		readToTxIDs readToTransactions // Maps reads to transaction IDs that executed them.
 
 		// write categorization fields:
-		txIDToNsNonBlindWrites transactionToWrites // Maps txIDs to non-blind writes per namespace.
-		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
-		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
+		txIDToNsNonBlindWrites transactionToWrites          // Maps txIDs to non-blind writes per namespace.
+		txIDToNsBlindWrites    transactionToWrites          // Maps txIDs to blind writes per namespace.
+		txIDToNsNewWrites      transactionToWrites          // Maps txIDs to new writes per namespace.
+		invalidTxIDStatus      map[txID]protoblocktx.Status // Maps txIDs to the status.
 
 		// nsToReads is used to verify the reads performed by each transaction in each namespace.
 		// If a read is found to be invalid due to version mismatch, transactions which performed
@@ -126,12 +127,21 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 			txIDToNsNonBlindWrites: make(transactionToWrites),
 			txIDToNsBlindWrites:    make(transactionToWrites),
 			txIDToNsNewWrites:      make(transactionToWrites),
+			invalidTxIDStatus:      make(map[txID]protoblocktx.Status),
 		}
 		metaNs := &protoblocktx.TxNamespace{
 			NsId: uint32(types.MetaNamespaceID),
 		}
 
 		for _, tx := range txBatch.Transactions {
+			// If the preliminary invalid transaction status is set,
+			// the vcservice does not need to validate the transaction,
+			// but it will still commit the status only if the txID is not a duplicate.
+			if tx.PrelimInvalidTxStatus != nil {
+				prepTxs.invalidTxIDStatus[txID(tx.ID)] = tx.PrelimInvalidTxStatus.Code
+				continue
+			}
+
 			for _, nsOperations := range tx.Namespaces {
 				tID := txID(tx.ID)
 

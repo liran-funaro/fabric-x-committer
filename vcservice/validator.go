@@ -36,7 +36,7 @@ type validatedTransactions struct {
 	validTxBlindWrites       transactionToWrites
 	newWrites                transactionToWrites
 	readToTransactionIndices readToTransactions
-	invalidTxIndices         map[txID]protoblocktx.Status
+	invalidTxStatus          map[txID]protoblocktx.Status
 }
 
 func (v *validatedTransactions) Debug() {
@@ -48,9 +48,9 @@ func (v *validatedTransactions) Debug() {
 		"valid blind writes: %d\n\t"+
 		"new writes: %d\n\treads: %d\n\tinvalid: %d\n",
 		len(v.validTxNonBlindWrites)+len(v.validTxBlindWrites)+len(v.newWrites)+
-			len(v.readToTransactionIndices)+len(v.invalidTxIndices),
+			len(v.readToTransactionIndices)+len(v.invalidTxStatus),
 		len(v.validTxNonBlindWrites), len(v.validTxBlindWrites), len(v.newWrites),
-		len(v.readToTransactionIndices), len(v.invalidTxIndices))
+		len(v.readToTransactionIndices), len(v.invalidTxStatus))
 }
 
 // NewValidator creates a new validator
@@ -152,7 +152,7 @@ func (p *preparedTransactions) makeValidated() *validatedTransactions {
 		validTxBlindWrites:       p.txIDToNsBlindWrites,
 		newWrites:                p.txIDToNsNewWrites,
 		readToTransactionIndices: p.readToTxIDs,
-		invalidTxIndices:         make(map[txID]protoblocktx.Status),
+		invalidTxStatus:          p.invalidTxIDStatus,
 	}
 }
 
@@ -197,6 +197,6 @@ func (v *validatedTransactions) updateInvalidTxs(txIDs []txID, status protoblock
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)
 		delete(v.newWrites, tID)
-		v.invalidTxIndices[tID] = status
+		v.invalidTxStatus[tID] = status
 	}
 }

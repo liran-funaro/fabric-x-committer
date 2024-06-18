@@ -176,6 +176,7 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
+				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -186,7 +187,7 @@ func TestValidate(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIndices: map[txID]protoblocktx.Status{},
+				invalidTxStatus: map[txID]protoblocktx.Status{},
 			},
 		},
 		{
@@ -240,11 +241,12 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
+				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxIndices: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[txID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -307,16 +309,22 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
+				invalidTxIDStatus: map[txID]protoblocktx.Status{
+					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+				},
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxIndices: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[txID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
 			},
 		},
@@ -328,7 +336,7 @@ func TestValidate(t *testing.T) {
 			validatedTxs := <-env.validatedTxs
 			require.Equal(t, tt.expectedValidatedTx.validTxNonBlindWrites, validatedTxs.validTxNonBlindWrites)
 			require.Equal(t, tt.expectedValidatedTx.validTxBlindWrites, validatedTxs.validTxBlindWrites)
-			require.Equal(t, tt.expectedValidatedTx.invalidTxIndices, validatedTxs.invalidTxIndices)
+			require.Equal(t, tt.expectedValidatedTx.invalidTxStatus, validatedTxs.invalidTxStatus)
 		})
 	}
 }

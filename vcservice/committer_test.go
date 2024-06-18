@@ -120,7 +120,7 @@ func TestCommit(t *testing.T) {
 						state{2, 21, 0},
 					),
 				},
-				invalidTxIndices: map[txID]protoblocktx.Status{},
+				invalidTxStatus: map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-new-1": protoblocktx.Status_COMMITTED,
@@ -152,7 +152,7 @@ func TestCommit(t *testing.T) {
 				},
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
-				invalidTxIndices:   map[txID]protoblocktx.Status{},
+				invalidTxStatus:    map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
 			expectedNsRows: writes(
@@ -176,8 +176,8 @@ func TestCommit(t *testing.T) {
 						state{2, 2, 2},
 					),
 				},
-				newWrites:        transactionToWrites{},
-				invalidTxIndices: map[txID]protoblocktx.Status{},
+				newWrites:       transactionToWrites{},
+				invalidTxStatus: map[txID]protoblocktx.Status{},
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-blind-1": protoblocktx.Status_COMMITTED,
@@ -229,7 +229,7 @@ func TestCommit(t *testing.T) {
 						state{2, 31, 0},
 					),
 				},
-				invalidTxIndices: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[txID]protoblocktx.Status{
 					"tx-conflict-1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -292,7 +292,7 @@ func TestCommit(t *testing.T) {
 						state{1, 12, 0}, // not violate
 					),
 				},
-				invalidTxIndices: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[txID]protoblocktx.Status{
 					"tx-conflict-4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 				readToTransactionIndices: map[comparableRead][]txID{
@@ -330,7 +330,7 @@ func TestCommit(t *testing.T) {
 				newWrites: transactionToWrites{
 					"tx1": writes(true, state{1, 40, 0}),
 				},
-				invalidTxIndices: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[txID]protoblocktx.Status{
 					"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,

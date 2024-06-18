@@ -283,6 +283,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 				},
+				{
+					ID: "prelim invalid tx",
+					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+						Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					},
+				},
 			},
 		}
 
@@ -297,10 +303,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedTxStatus := &protovcservice.TransactionStatus{
-			Status: map[string]protoblocktx.Status{},
-		}
-		for _, tx := range txBatch.Transactions {
-			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_ABORTED_MVCC_CONFLICT
+			Status: map[string]protoblocktx.Status{
+				txBatch.Transactions[0].ID: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				txBatch.Transactions[1].ID: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			},
 		}
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 

@@ -152,7 +152,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.Transact
 		Status: map[string]protoblocktx.Status{},
 	}
 
-	for txID, status := range vTx.invalidTxIndices {
+	for txID, status := range vTx.invalidTxStatus {
 		txCommitStatus.Status[string(txID)] = status
 	}
 	for _, lst := range []transactionToWrites{

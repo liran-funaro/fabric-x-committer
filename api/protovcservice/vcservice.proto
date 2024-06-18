@@ -17,6 +17,11 @@ message TransactionBatch {
 message Transaction {
   string ID = 1;
   repeated protoblocktx.TxNamespace namespaces = 2;
+  optional InvalidTxStatus prelim_invalid_tx_status = 3;
+}
+
+message InvalidTxStatus {
+    protoblocktx.Status code = 1;
 }
 
 message TransactionStatus {

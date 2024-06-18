@@ -479,6 +479,18 @@ func TestPrepareTx(t *testing.T) {
 					},
 				},
 			},
+			{
+				ID: "tx3",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_NO_WRITES,
+				},
+			},
+			{
+				ID: "tx4",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+				},
+			},
 		},
 	}
 
@@ -557,6 +569,10 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
+		invalidTxIDStatus: map[txID]protoblocktx.Status{
+			"tx3": protoblocktx.Status_ABORTED_NO_WRITES,
+			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+		},
 	}
 
 	env.txBatch <- tx
@@ -566,4 +582,5 @@ func TestPrepareTx(t *testing.T) {
 	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
 	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
 	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, preparedTxs.txIDToNsNewWrites)
+	require.Equal(t, expectedPreparedTxs.invalidTxIDStatus, preparedTxs.invalidTxIDStatus)
 }
