@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -49,9 +48,9 @@ func NewSigVerifierProcess(t *testing.T, ports []int, tempDir string) *SigVerifi
 func (s *SigVerifierProcess) createConfigFile(t *testing.T, ports []int) {
 	require.Len(t, ports, 3)
 	s.Config = &SigVerifierConfig{
-		ServerEndpoint:  fmt.Sprintf(":%d", ports[0]),
-		MetricsEndpoint: fmt.Sprintf(":%d", ports[1]),
-		LatencyEndpoint: fmt.Sprintf(":%d", ports[2]),
+		ServerEndpoint:  makeLocalListenAddress(ports[0]),
+		MetricsEndpoint: makeLocalListenAddress(ports[1]),
+		LatencyEndpoint: makeLocalListenAddress(ports[2]),
 	}
 	s.ConfigFilePath = constructConfigFilePath(s.RootDirPath, s.Name, s.Config.ServerEndpoint)
 

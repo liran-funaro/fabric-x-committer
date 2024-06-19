@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path"
@@ -322,4 +323,9 @@ func (c *Cluster) ValidateStatus(
 			break
 		}
 	}
+}
+
+// makeLocalListenAddress returning the endpoint's address together with the port chosen.
+func makeLocalListenAddress(port int) string {
+	return fmt.Sprintf("localhost:%d", port)
 }

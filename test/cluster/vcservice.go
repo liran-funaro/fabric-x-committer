@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -61,9 +60,9 @@ func NewVCServiceProcess(
 func (s *VCServiceProcess) createConfigFile(t *testing.T, ports []int) {
 	require.Len(t, ports, 3)
 	s.Config = &VCServiceConfig{
-		ServerEndpoint:  fmt.Sprintf(":%d", ports[0]),
-		MetricsEndpoint: fmt.Sprintf(":%d", ports[1]),
-		LatencyEndpoint: fmt.Sprintf(":%d", ports[2]),
+		ServerEndpoint:  makeLocalListenAddress(ports[0]),
+		MetricsEndpoint: makeLocalListenAddress(ports[1]),
+		LatencyEndpoint: makeLocalListenAddress(ports[2]),
 		DatabaseHost:    s.DBEnv.DBConf.Host,
 		DatabasePort:    s.DBEnv.DBConf.Port,
 		DatabaseName:    s.DBEnv.DBConf.Database,

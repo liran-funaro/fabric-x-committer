@@ -23,3 +23,6 @@ docker/runner/out
 **/generated/**
 .idea
 *coverage.profile
+
+# Log files produced by the tests
+test/**/*.log

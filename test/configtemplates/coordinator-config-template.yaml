@@ -27,4 +27,4 @@ logging:
   development: true
   enabled: true
   level: DEBUG
-  output: log.txt
+  output: test.log

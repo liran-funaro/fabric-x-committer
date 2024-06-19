@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -64,9 +63,9 @@ func (c *CoordinatorProcess) createConfigFile(
 ) {
 	require.Len(t, ports, 3)
 	c.Config = &CoordinatorConfig{
-		ServerEndpoint:  fmt.Sprintf(":%d", ports[0]),
-		MetricsEndpoint: fmt.Sprintf(":%d", ports[1]),
-		LatencyEndpoint: fmt.Sprintf(":%d", ports[2]),
+		ServerEndpoint:  makeLocalListenAddress(ports[0]),
+		MetricsEndpoint: makeLocalListenAddress(ports[1]),
+		LatencyEndpoint: makeLocalListenAddress(ports[2]),
 	}
 
 	for _, sigVerifierProcess := range sigVerifierProcesses {

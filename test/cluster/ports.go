@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
 	"testing"
@@ -32,7 +31,7 @@ func findAvailablePortRange(t *testing.T, numPorts int) []int {
 
 // Check if a port is available for use.
 func isPortAvailable(port int) bool {
-	addr := fmt.Sprintf(":%d", port)
+	addr := makeLocalListenAddress(port)
 	conn, err := net.Listen("tcp", addr)
 	if err != nil {
 		return false
