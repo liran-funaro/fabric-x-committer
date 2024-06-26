@@ -137,8 +137,8 @@ func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierser
 }
 
 func ingestBlocks(
-	incomingBlocks channel.Reader[protoblocktx.Block],
-	blocksQueue channel.Writer[blockWithResult],
+	incomingBlocks channel.Reader[*protoblocktx.Block],
+	blocksQueue channel.Writer[*blockWithResult],
 ) {
 	for block, ok := incomingBlocks.Read(); ok; block, ok = incomingBlocks.Read() {
 		blockSize := len(block.Txs)
@@ -152,8 +152,8 @@ func ingestBlocks(
 }
 
 func (svm *signatureVerifierManager) forwardValidatedTransactions(
-	validated channel.Reader[blockWithResult],
-	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs channel.Writer[protoblocktx.Block],
+	validated channel.Reader[*blockWithResult],
+	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs channel.Writer[*protoblocktx.Block],
 ) {
 	for blkWithResult, ok := validated.Read(); ok; blkWithResult, ok = validated.Read() {
 		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
@@ -218,8 +218,8 @@ func (sv *signatureVerifier) waitForConnection() {
 // It reconnects the stream in case of failure.
 // It stops only when the context was cancelled, i.e., the SVM have closed.
 func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
-	inputBlocks channel.ReaderWriter[blockWithResult],
-	validatedBlocks channel.Writer[blockWithResult],
+	inputBlocks channel.ReaderWriter[*blockWithResult],
+	validatedBlocks channel.Writer[*blockWithResult],
 ) {
 	for sv.ctx.Err() == nil {
 		// Re-enter previous blocks to the queue so other workers can fetch them.
@@ -252,7 +252,7 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 
 func (sv *signatureVerifier) sendTransactionsToSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	inputBlocks channel.Writer[blockWithResult],
+	inputBlocks channel.Writer[*blockWithResult],
 ) {
 	// This make sure we exit immediately when the stream ends.
 	streamInputBlocks := inputBlocks.WithContext(stream.Context())
@@ -299,7 +299,7 @@ func makeRequest(blkWithResult *blockWithResult) *protosigverifierservice.Reques
 
 func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	validatedBlocks channel.Writer[blockWithResult],
+	validatedBlocks channel.Writer[*blockWithResult],
 ) {
 	// This make sure we exit immediately when the stream ends.
 	streamValidatedBlocks := validatedBlocks.WithContext(stream.Context())

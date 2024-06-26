@@ -24,21 +24,21 @@ type WithContex[T any] interface {
 
 type Reader[T any] interface {
 	WithContex[T]
-	Read() (*T, bool)
+	Read() (T, bool)
 }
 
 type Writer[T any] interface {
 	WithContex[T]
-	Write(value *T) bool
+	Write(value T) bool
 }
 
 type channel[T any] struct {
 	ctx    context.Context
-	input  <-chan *T
-	output chan<- *T
+	input  <-chan T
+	output chan<- T
 }
 
-func NewReaderWriter[T any](ctx context.Context, inputOutput chan *T) ReaderWriter[T] {
+func NewReaderWriter[T any](ctx context.Context, inputOutput chan T) ReaderWriter[T] {
 	return &channel[T]{
 		ctx:    ctx,
 		input:  inputOutput,
@@ -46,14 +46,14 @@ func NewReaderWriter[T any](ctx context.Context, inputOutput chan *T) ReaderWrit
 	}
 }
 
-func NewReader[T any](ctx context.Context, input <-chan *T) Reader[T] {
+func NewReader[T any](ctx context.Context, input <-chan T) Reader[T] {
 	return &channel[T]{
 		ctx:   ctx,
 		input: input,
 	}
 }
 
-func NewWriter[T any](ctx context.Context, output chan<- *T) Writer[T] {
+func NewWriter[T any](ctx context.Context, output chan<- T) Writer[T] {
 	return &channel[T]{
 		ctx:    ctx,
 		output: output,
@@ -76,13 +76,13 @@ func (c *channel[T]) WithContext(ctx context.Context) ReaderWriter[T] {
 
 // Read one value from the channel.
 // Returns false if the channel is closed or the context is done.
-func (c *channel[T]) Read() (*T, bool) {
+func (c *channel[T]) Read() (T, bool) {
 	if c.input == nil || c.ctx.Err() != nil {
-		return nil, false
+		return *new(T), false
 	}
 	select {
 	case <-c.ctx.Done():
-		return nil, false
+		return *new(T), false
 	case val, ok := <-c.input:
 		return val, ok
 	}
@@ -90,7 +90,7 @@ func (c *channel[T]) Read() (*T, bool) {
 
 // Write one value to the channel.
 // Returns false if the context is done.
-func (c *channel[T]) Write(value *T) bool {
+func (c *channel[T]) Write(value T) bool {
 	if c.output == nil || c.ctx.Err() != nil {
 		return false
 	}
