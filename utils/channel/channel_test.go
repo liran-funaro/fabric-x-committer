@@ -1,4 +1,4 @@
-package utils
+package channel
 
 import (
 	"context"
@@ -21,13 +21,13 @@ func TestChannel(t *testing.T) {
 
 	d := &data{5}
 
-	t.Run("input", func(t *testing.T) {
+	t.Run("reader", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(testContext)
 		t.Cleanup(cancel)
 
 		chan1 := make(chan *data, 10)
-		c := NewInputChannel(ctx, chan1)
+		c := NewReader(ctx, chan1)
 		require.Equal(t, ctx, c.Context())
 
 		chan1 <- d
@@ -50,13 +50,13 @@ func TestChannel(t *testing.T) {
 		wg.Wait()
 	})
 
-	t.Run("output", func(t *testing.T) {
+	t.Run("writer", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(testContext)
 		t.Cleanup(cancel)
 
 		chan1 := make(chan *data, 1)
-		c := NewOutputChannel(ctx, chan1)
+		c := NewWriter(ctx, chan1)
 		require.Equal(t, ctx, c.Context())
 		require.True(t, c.Write(d))
 
@@ -76,13 +76,13 @@ func TestChannel(t *testing.T) {
 		require.Equal(t, d, <-chan1)
 	})
 
-	t.Run("input-output", func(t *testing.T) {
+	t.Run("reader-writer", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(testContext)
 		t.Cleanup(cancel)
 
 		chan1 := make(chan *data)
-		c := NewInputOutputChannel(ctx, chan1)
+		c := NewReaderWriter(ctx, chan1)
 		require.Equal(t, ctx, c.Context())
 
 		go func() {
@@ -116,7 +116,7 @@ func TestChannel(t *testing.T) {
 		t.Cleanup(cancel)
 
 		chan1 := make(chan *data, 10)
-		c := NewInputOutputChannel(ctx, chan1)
+		c := NewReaderWriter(ctx, chan1)
 		require.Equal(t, ctx, c.Context())
 
 		require.True(t, c.Write(d))

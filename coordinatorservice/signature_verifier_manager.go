@@ -7,7 +7,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -86,16 +86,16 @@ func (svm *signatureVerifierManager) start() error {
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
 
 	internalQueueSize := cap(c.outgoingBlockWithValidTxs) + cap(c.outgoingBlockWithInvalidTxs)
-	blocksQueue := utils.NewInputOutputChannel(svm.ctx, make(chan *blockWithResult, internalQueueSize))
+	blocksQueue := channel.NewReaderWriter(svm.ctx, make(chan *blockWithResult, internalQueueSize))
 	go ingestBlocks(
-		utils.NewInputChannel(svm.ctx, c.incomingBlockForSignatureVerification),
+		channel.NewReader(svm.ctx, c.incomingBlockForSignatureVerification),
 		blocksQueue,
 	)
-	validateBlocksQueue := utils.NewInputOutputChannel(svm.ctx, make(chan *blockWithResult, internalQueueSize))
+	validateBlocksQueue := channel.NewReaderWriter(svm.ctx, make(chan *blockWithResult, internalQueueSize))
 	go svm.forwardValidatedTransactions(
 		validateBlocksQueue,
-		utils.NewOutputChannel(svm.ctx, c.outgoingBlockWithValidTxs),
-		utils.NewOutputChannel(svm.ctx, c.outgoingBlockWithInvalidTxs),
+		channel.NewWriter(svm.ctx, c.outgoingBlockWithValidTxs),
+		channel.NewWriter(svm.ctx, c.outgoingBlockWithInvalidTxs),
 	)
 
 	for i, serverConfig := range c.serversConfig {
@@ -137,8 +137,8 @@ func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierser
 }
 
 func ingestBlocks(
-	incomingBlocks utils.InputChannel[protoblocktx.Block],
-	blocksQueue utils.OutputChannel[blockWithResult],
+	incomingBlocks channel.Reader[protoblocktx.Block],
+	blocksQueue channel.Writer[blockWithResult],
 ) {
 	for block, ok := incomingBlocks.Read(); ok; block, ok = incomingBlocks.Read() {
 		blockSize := len(block.Txs)
@@ -152,8 +152,8 @@ func ingestBlocks(
 }
 
 func (svm *signatureVerifierManager) forwardValidatedTransactions(
-	validated utils.InputChannel[blockWithResult],
-	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs utils.OutputChannel[protoblocktx.Block],
+	validated channel.Reader[blockWithResult],
+	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs channel.Writer[protoblocktx.Block],
 ) {
 	for blkWithResult, ok := validated.Read(); ok; blkWithResult, ok = validated.Read() {
 		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
@@ -218,8 +218,8 @@ func (sv *signatureVerifier) waitForConnection() {
 // It reconnects the stream in case of failure.
 // It stops only when the context was cancelled, i.e., the SVM have closed.
 func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
-	inputBlocks utils.InputOutputChannel[blockWithResult],
-	validatedBlocks utils.OutputChannel[blockWithResult],
+	inputBlocks channel.ReaderWriter[blockWithResult],
+	validatedBlocks channel.Writer[blockWithResult],
 ) {
 	for sv.ctx.Err() == nil {
 		// Re-enter previous blocks to the queue so other workers can fetch them.
@@ -252,7 +252,7 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 
 func (sv *signatureVerifier) sendTransactionsToSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	inputBlocks utils.InputChannel[blockWithResult],
+	inputBlocks channel.Writer[blockWithResult],
 ) {
 	// This make sure we exit immediately when the stream ends.
 	streamInputBlocks := inputBlocks.WithContext(stream.Context())
@@ -299,7 +299,7 @@ func makeRequest(blkWithResult *blockWithResult) *protosigverifierservice.Reques
 
 func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	validatedBlocks utils.OutputChannel[blockWithResult],
+	validatedBlocks channel.Writer[blockWithResult],
 ) {
 	// This make sure we exit immediately when the stream ends.
 	streamValidatedBlocks := validatedBlocks.WithContext(stream.Context())

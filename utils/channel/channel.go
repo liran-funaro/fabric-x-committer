@@ -1,8 +1,8 @@
-package utils
+package channel
 
 import "context"
 
-// InputOutputChannel helps manage channels with context.
+// ReaderWriter helps in reading and writing to channels with context.
 // It enforces a quick release pattern so a worker will stop
 // immediately when the context is done, and won't be hanged until
 // the channel is closed (if ever).
@@ -12,22 +12,22 @@ import "context"
 //  1. We want to stop the worker even if there are still items in the channel.
 //  2. There are multiple writers to a channel, so it is difficult to close the channel
 //     while avoiding possible panics.
-type InputOutputChannel[T any] interface {
-	InputChannel[T]
-	OutputChannel[T]
+type ReaderWriter[T any] interface {
+	Reader[T]
+	Writer[T]
 }
 
 type WithContex[T any] interface {
 	Context() context.Context
-	WithContext(ctx context.Context) InputOutputChannel[T]
+	WithContext(ctx context.Context) ReaderWriter[T]
 }
 
-type InputChannel[T any] interface {
+type Reader[T any] interface {
 	WithContex[T]
 	Read() (*T, bool)
 }
 
-type OutputChannel[T any] interface {
+type Writer[T any] interface {
 	WithContex[T]
 	Write(value *T) bool
 }
@@ -38,7 +38,7 @@ type channel[T any] struct {
 	output chan<- *T
 }
 
-func NewInputOutputChannel[T any](ctx context.Context, inputOutput chan *T) InputOutputChannel[T] {
+func NewReaderWriter[T any](ctx context.Context, inputOutput chan *T) ReaderWriter[T] {
 	return &channel[T]{
 		ctx:    ctx,
 		input:  inputOutput,
@@ -46,14 +46,14 @@ func NewInputOutputChannel[T any](ctx context.Context, inputOutput chan *T) Inpu
 	}
 }
 
-func NewInputChannel[T any](ctx context.Context, input <-chan *T) InputChannel[T] {
+func NewReader[T any](ctx context.Context, input <-chan *T) Reader[T] {
 	return &channel[T]{
 		ctx:   ctx,
 		input: input,
 	}
 }
 
-func NewOutputChannel[T any](ctx context.Context, output chan<- *T) OutputChannel[T] {
+func NewWriter[T any](ctx context.Context, output chan<- *T) Writer[T] {
 	return &channel[T]{
 		ctx:    ctx,
 		output: output,
@@ -66,7 +66,7 @@ func (c *channel[T]) Context() context.Context {
 }
 
 // WithContext creates a new instance with a different context.
-func (c *channel[T]) WithContext(ctx context.Context) InputOutputChannel[T] {
+func (c *channel[T]) WithContext(ctx context.Context) ReaderWriter[T] {
 	return &channel[T]{
 		ctx:    ctx,
 		input:  c.input,
