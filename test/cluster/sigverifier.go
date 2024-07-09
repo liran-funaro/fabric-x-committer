@@ -3,6 +3,7 @@ package cluster
 import (
 	"os"
 	"os/exec"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,7 +47,7 @@ func NewSigVerifierProcess(t *testing.T, ports []int, tempDir string) *SigVerifi
 }
 
 func (s *SigVerifierProcess) createConfigFile(t *testing.T, ports []int) {
-	require.Len(t, ports, 3)
+	require.Len(t, ports, numPortsPerSigVerifier)
 	s.Config = &SigVerifierConfig{
 		ServerEndpoint:  makeLocalListenAddress(ports[0]),
 		MetricsEndpoint: makeLocalListenAddress(ports[1]),
@@ -62,6 +63,10 @@ func (s *SigVerifierProcess) start() {
 	s.Process = run(cmd, s.Name, "Was created and initialized with")
 }
 
-func (s *SigVerifierProcess) kill() {
-	s.Process.Signal(os.Kill)
+func (s *SigVerifierProcess) killAndWait(wg *sync.WaitGroup) {
+	defer wg.Done()
+	if s != nil {
+		s.Process.Signal(os.Kill)
+		<-s.Process.Wait()
+	}
 }

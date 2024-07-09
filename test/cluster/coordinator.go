@@ -3,6 +3,7 @@ package cluster
 import (
 	"os"
 	"os/exec"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,7 @@ func (c *CoordinatorProcess) createConfigFile(
 	sigVerifierProcesses []*SigVerifierProcess,
 	vcserviceProcesses []*VCServiceProcess,
 ) {
-	require.Len(t, ports, 3)
+	require.Len(t, ports, numPortsForCoordinator)
 	c.Config = &CoordinatorConfig{
 		ServerEndpoint:  makeLocalListenAddress(ports[0]),
 		MetricsEndpoint: makeLocalListenAddress(ports[1]),
@@ -86,6 +87,10 @@ func (c *CoordinatorProcess) start() {
 	c.Process = run(cmd, c.Name, "Serving")
 }
 
-func (c *CoordinatorProcess) kill() {
-	c.Process.Signal(os.Kill)
+func (c *CoordinatorProcess) killAndWait(wg *sync.WaitGroup) {
+	defer wg.Done()
+	if c != nil {
+		c.Process.Signal(os.Kill)
+		<-c.Process.Wait()
+	}
 }

@@ -3,6 +3,7 @@ package cluster
 import (
 	"os"
 	"os/exec"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,7 +59,7 @@ func NewVCServiceProcess(
 }
 
 func (s *VCServiceProcess) createConfigFile(t *testing.T, ports []int) {
-	require.Len(t, ports, 3)
+	require.Len(t, ports, numPortsPerVCService)
 	s.Config = &VCServiceConfig{
 		ServerEndpoint:  makeLocalListenAddress(ports[0]),
 		MetricsEndpoint: makeLocalListenAddress(ports[1]),
@@ -77,6 +78,10 @@ func (s *VCServiceProcess) start() {
 	s.Process = run(cmd, s.Name, "Serving")
 }
 
-func (s *VCServiceProcess) kill() {
-	s.Process.Signal(os.Kill)
+func (s *VCServiceProcess) killAndWait(wg *sync.WaitGroup) {
+	defer wg.Done()
+	if s != nil {
+		s.Process.Signal(os.Kill)
+		<-s.Process.Wait()
+	}
 }

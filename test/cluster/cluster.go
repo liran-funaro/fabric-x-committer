@@ -21,21 +21,25 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
+	"google.golang.org/grpc"
 )
 
-// Cluster represents a test cluster of Coordinator, SigVerifier and VCService processes.
+// Cluster represents a test cluster of Coordinator, SigVerifier, VCService and Query processes.
 type Cluster struct {
 	CoordinatorProcess   *CoordinatorProcess
+	QueryServiceProcess  *QueryServiceProcess
 	SigVerifierProcesses []*SigVerifierProcess
 	VCServiceProcesses   []*VCServiceProcess
 	RootDir              string
 	CoordinatorClient    protocoordinatorservice.CoordinatorClient
+	QueryServiceClient   protoqueryservice.QueryServiceClient
 
 	PubKey   *sync.Map
 	PvtKey   *sync.Map
@@ -69,23 +73,25 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		ClusterConfig:        clusterConfig,
 	}
 
-	var ports []int
 	for i := 0; i < clusterConfig.NumSigVerifiers; i++ {
-		ports = findAvailablePortRange(t, numPortsPerSigVerifier)
+		ports := findAvailablePortRange(t, numPortsPerSigVerifier)
 		c.SigVerifierProcesses = append(c.SigVerifierProcesses, NewSigVerifierProcess(t, ports, tempDir))
 	}
 
 	dbEnv := vcservice.NewDatabaseTestEnv(t)
 	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf, nil))
 	for i := 0; i < clusterConfig.NumVCService; i++ {
-		ports = findAvailablePortRange(t, numPortsPerVCService)
+		ports := findAvailablePortRange(t, numPortsPerVCService)
 		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, ports, tempDir, dbEnv))
 	}
 
-	ports = findAvailablePortRange(t, numPortsForCoordinator)
+	ports := findAvailablePortRange(t, numPortsForCoordinator)
 	c.CoordinatorProcess = NewCoordinatorProcess(t, ports, c.SigVerifierProcesses, c.VCServiceProcesses, c.RootDir)
 
-	c.createCoordinatorClient(t)
+	ports = findAvailablePortRange(t, numPortsPerQueryService)
+	c.QueryServiceProcess = NewQueryServiceProcess(t, ports, c.RootDir, dbEnv)
+
+	c.createClients(t)
 	c.setMetaNamespaceVerificationKey(t)
 	c.createBlockProcessingStream(t)
 	c.CreateNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
@@ -93,15 +99,25 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	return c
 }
 
-// CreateCoordinatorClient creates a client for the coordinator.
-func (c *Cluster) createCoordinatorClient(t *testing.T) {
-	coordEndpoint, err := connection.NewEndpoint(c.CoordinatorProcess.Config.ServerEndpoint)
+// createClients utilize createClientConnection for connection creation
+// and responsible for the creation of the clients.
+func (c *Cluster) createClients(t *testing.T) {
+	serviceConnection := createClientConnection(t, c.CoordinatorProcess.Config.ServerEndpoint)
+	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(serviceConnection)
+
+	serviceConnection = createClientConnection(t, c.QueryServiceProcess.Config.ServerEndpoint)
+	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(serviceConnection)
+}
+
+// createClientConnection creates a service connection using its given server endpoint.
+func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientConn {
+	serviceEndpoint, err := connection.NewEndpoint(serverEndPoint)
 	require.NoError(t, err)
-	coordDialConf := connection.NewDialConfig(*coordEndpoint)
-	coordConn, err := connection.Connect(coordDialConf)
+	serviceDialConfig := connection.NewDialConfig(*serviceEndpoint)
+	serviceConnection, err := connection.Connect(serviceDialConfig)
 	require.NoError(t, err)
-	coordClient := protocoordinatorservice.NewCoordinatorClient(coordConn) //nolint:ireturn
-	c.CoordinatorClient = coordClient
+
+	return serviceConnection
 }
 
 func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
@@ -230,41 +246,25 @@ func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificat
 }
 
 // Stop stops the cluster.
-func (c *Cluster) Stop() {
+func (c *Cluster) Stop(t *testing.T) {
 	var wg sync.WaitGroup
-	wg.Add(3)
+	totalNumberOfServiceProcesses := len(c.SigVerifierProcesses) + len(c.VCServiceProcesses) + 2
+	wg.Add(totalNumberOfServiceProcesses)
 
-	go func() {
-		defer wg.Done()
-		for _, sigVerifierProcess := range c.SigVerifierProcesses {
-			if sigVerifierProcess != nil {
-				sigVerifierProcess.kill()
-				<-sigVerifierProcess.Process.Wait()
-			}
-		}
-	}()
+	for _, sigVerifierProcess := range c.SigVerifierProcesses {
+		go sigVerifierProcess.killAndWait(&wg)
+	}
 
-	go func() {
-		defer wg.Done()
-		for _, vcserviceProcess := range c.VCServiceProcesses {
-			if vcserviceProcess != nil {
-				vcserviceProcess.kill()
-				<-vcserviceProcess.Process.Wait()
-			}
-		}
-	}()
+	for _, vcserviceProcess := range c.VCServiceProcesses {
+		go vcserviceProcess.killAndWait(&wg)
+	}
 
-	go func() {
-		defer wg.Done()
-		if c.CoordinatorProcess != nil {
-			c.CoordinatorProcess.kill()
-			<-c.CoordinatorProcess.Process.Wait()
-		}
-	}()
+	go c.CoordinatorProcess.killAndWait(&wg)
+	go c.QueryServiceProcess.killAndWait(&wg)
 
 	wg.Wait()
 
-	os.RemoveAll(c.RootDir)
+	require.NoError(t, os.RemoveAll(c.RootDir))
 }
 
 func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn

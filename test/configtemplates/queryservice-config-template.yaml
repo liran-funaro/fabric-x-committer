@@ -1,0 +1,23 @@
+query-service:
+  # Configuration for the server
+  server:
+    # The server's endpoint configuration
+    endpoint: {{ .ServerEndpoint }}
+    # Credentials for the server
+  database:
+    host: {{ .DatabaseHost }}
+    port: {{ .DatabasePort }}
+    username: "yugabyte"                       # The username for the database
+    password: "yugabyte"                       # The password for the database
+    database: {{ .DatabaseName }}
+    max-connections: 10                        # The maximum size of the connection pool
+    min-connections: 5                         # The minimum size of the connection pool.
+  # Resource limit configurations
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: {{ .MetricsEndpoint }}
+logging:
+  development: true
+  enabled: true
+  level: DEBUG

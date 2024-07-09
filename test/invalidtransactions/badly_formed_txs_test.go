@@ -22,7 +22,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 			NumVCService:    2,
 		},
 	)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	c.CreateCryptoForNs(t, types.NamespaceID(1), &signature.Profile{Scheme: signature.Ecdsa})
 	ns1Policy := &protoblocktx.NamespacePolicy{

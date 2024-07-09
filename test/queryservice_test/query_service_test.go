@@ -1,0 +1,161 @@
+package queryservice_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/test/cluster"
+)
+
+// requireQueryResults requires that the items retrieved by the Query service
+// equals to the test items that added to the DB.
+func requireQueryResults(
+	t *testing.T,
+	requiredItems []*protoqueryservice.RowsNamespace,
+	retNamespaces []*protoqueryservice.RowsNamespace,
+) {
+	require.Len(t, retNamespaces, len(requiredItems))
+	for idx := range retNamespaces {
+		require.ElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
+	}
+}
+
+func TestQueryService(t *testing.T) {
+	gomega.RegisterTestingT(t)
+	c := cluster.NewCluster(
+		t,
+		&cluster.Config{
+			NumSigVerifiers:     2,
+			NumVCService:        2,
+			InitializeNamespace: []types.NamespaceID{1, 2},
+		},
+	)
+	defer c.Stop(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
+	defer t.Cleanup(cancel)
+
+	insertions := []struct {
+		txs              []*protoblocktx.Tx
+		expectedTxStatus map[string]protoblocktx.Status
+	}{
+		{
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "write items to namespaces",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      uint32(1),
+							NsVersion: types.VersionNumber(0).Bytes(),
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key:   []byte("k1"),
+									Value: []byte("v1"),
+								},
+								{
+									Key:   []byte("k2"),
+									Value: []byte("v2"),
+								},
+							},
+						},
+						{
+							NsId:      uint32(2),
+							NsVersion: types.VersionNumber(0).Bytes(),
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key:   []byte("k3"),
+									Value: []byte("v3"),
+								},
+								{
+									Key:   []byte("k4"),
+									Value: []byte("v4"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTxStatus: map[string]protoblocktx.Status{
+				"write items to namespaces": protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+
+	for _, operation := range insertions {
+		for _, tx := range operation.txs {
+			c.AddSignatures(t, tx)
+		}
+		c.SendTransactions(t, operation.txs)
+		c.ValidateStatus(t, operation.expectedTxStatus)
+	}
+
+	t.Run("Query-GetRows-Both-Namespaces", func(t *testing.T) {
+		ret, err := c.QueryServiceClient.GetRows(
+			ctx,
+			&protoqueryservice.Query{
+				Namespaces: []*protoqueryservice.QueryNamespace{
+					{
+						NsId: 1,
+						Keys: [][]byte{
+							[]byte("k1"), []byte("k2"),
+						},
+					},
+					{
+						NsId: 2,
+						Keys: [][]byte{
+							[]byte("k3"), []byte("k4"),
+						},
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+
+		testItemsVersion := types.VersionNumber(0).Bytes()
+
+		requiredItems := []*protoqueryservice.RowsNamespace{
+			{
+				NsId: uint32(1),
+				Rows: []*protoqueryservice.Row{
+					{
+						Key:     []byte("k1"),
+						Value:   []byte("v1"),
+						Version: testItemsVersion,
+					},
+					{
+						Key:     []byte("k2"),
+						Value:   []byte("v2"),
+						Version: testItemsVersion,
+					},
+				},
+			},
+			{
+				NsId: uint32(2),
+				Rows: []*protoqueryservice.Row{
+					{
+						Key:     []byte("k3"),
+						Value:   []byte("v3"),
+						Version: testItemsVersion,
+					},
+					{
+						Key:     []byte("k4"),
+						Value:   []byte("v4"),
+						Version: testItemsVersion,
+					},
+				},
+			},
+		}
+
+		requireQueryResults(
+			t,
+			requiredItems,
+			ret.Namespaces,
+		)
+	})
+}

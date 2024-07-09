@@ -46,7 +46,7 @@ func testSetup(t *testing.T) *cluster.Cluster {
 
 func TestDependentHappyPath(t *testing.T) {
 	c := testSetup(t)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	v0 := types.VersionNumber(0).Bytes()
 
@@ -163,7 +163,7 @@ func TestDependentHappyPath(t *testing.T) {
 
 func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 	c := testSetup(t)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	v0 := types.VersionNumber(0).Bytes()
 	v1 := types.VersionNumber(1).Bytes()
@@ -249,7 +249,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 
 func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 	c := testSetup(t)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	v0 := types.VersionNumber(0).Bytes()
 	v1 := types.VersionNumber(1).Bytes()
@@ -331,7 +331,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 
 func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 	c := testSetup(t)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	v0 := types.VersionNumber(0).Bytes()
 
@@ -479,7 +479,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 
 func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 	c := testSetup(t)
-	defer c.Stop()
+	defer c.Stop(t)
 
 	v0 := types.VersionNumber(0).Bytes()
 
