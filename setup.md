@@ -1,12 +1,15 @@
 # Prerequisites
 
 ### Golang 1.20
+
 #### Mac:
+
 ```shell
 brew install go@1.20
 ```
 
 #### Ubuntu:
+
 ```shell
 apt-get update
 wget https://go.dev/dl/go1.20.3.linux-amd64.tar.gz
@@ -15,60 +18,72 @@ rm ./go1.20.3.linux-amd64.tar.gz
 mv ./go/ /usr/local/
 ```
 
-
 Add the following lines in `~/.profile`:
+
 ```shell
 export GOPATH=$HOME/go
 export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 ```
 
 Test the version:
+
 ```shell
 go version
 ```
 
 ### Docker client
+
 #### Mac:
+
 ```shell
 brew install docker
 ```
 
 #### Ubuntu:
+
 Follow instructions [here](https://docs.docker.com/engine/install/ubuntu/)
 
 To grant access to a non-root user:
+
 ```shell
 apt install acl
 setfacl --modify user:cbdcdemo:rw /var/run/docker.sock
 ```
 
-
 # Quickstart
 
 ## Build
+
 You can build locally or via a docker.
 
 Local build:
+
 ```shell
 make build
 ```
 
 Docker build:
+
 ```shell
 make build-docker
 ```
 
 Build linux binaries for remote machines:
+
 ```shell
 make build os=linux arch=amd64 output_dir=./bin-linux
 ```
 
 ## Test
+
 To execute the tests, use:
+
 ```shell
 make test
 ```
+
 ## Golang Linter Check Installation
+
 ```shell
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.0
 ```
@@ -85,11 +100,12 @@ This will instruct the test harness to connect to your local DB instance at port
 YugabyteDB's [quick start guide](https://docs.yugabyte.com/preview/quick-start/) offers more information on how to install and run the database locally.
 
 Example: Start Yugabyte via docker
+
 ```bash
 docker run --name sc_yugabyte_unit_tests \
   --platform linux/amd64 \
   -p 5433:5433 \
-  -d yugabytedb/yugabyte:2.20.2.2-b1 \
+  -d yugabytedb/yugabyte:2.20.2.3-b2 \
   bin/yugabyted start \
   --background=false \
   --advertise_address=0.0.0.0 \
@@ -99,12 +115,12 @@ docker run --name sc_yugabyte_unit_tests \
   --tserver_flags=ysql_max_connections=5000 \
   --insecure
 ```
+
 # Run local binaries
+
 ```shell
 bin/sigservice --configs config/config-sigservice.yaml
 bin/shardsservice --configs config/config-shardsservice.yaml
 bin/coordinator --configs config/config-coordinator.yaml
 bin/blockgen stream --configs config/config-blockgen.yaml
 ```
-
-

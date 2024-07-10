@@ -3,7 +3,7 @@ ADD . scalable-commiter
 RUN cd scalable-commiter && \
     CGO_ENABLED=0 make build output_dir=/root/build/
 
-FROM yugabytedb/yugabyte:2.20.2.2-b1
+FROM yugabytedb/yugabyte:2.20.2.3-b2
 
 ENV CONFIGS_PATH=/root/config
 ENV BINS_PATH=/root/bin
