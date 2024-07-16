@@ -167,6 +167,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	)
 
 	vcMgr := newValidatorCommitterManager(
+		context.Background(),
 		&validatorCommitterManagerConfig{
 			serversConfig:                  c.ValidatorCommitterConfig.ServerConfig,
 			incomingTxsForValidationCommit: queues.dependencyFreeTxsNode,
@@ -609,9 +610,7 @@ func (c *CoordinatorService) Close() error {
 
 	c.dependencyMgr.Close()
 
-	if err := c.validatorCommitterMgr.close(); err != nil {
-		return err
-	}
+	c.validatorCommitterMgr.close()
 
 	close(c.stopGoroutines)
 	c.wg.Wait()

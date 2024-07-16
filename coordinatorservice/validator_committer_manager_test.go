@@ -1,6 +1,7 @@
 package coordinatorservice
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"testing"
@@ -29,7 +30,9 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxsStatus := make(chan *protovcservice.TransactionStatus, 10)
 
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 2*time.Minute)
 	vcm := newValidatorCommitterManager(
+		ctx,
 		&validatorCommitterManagerConfig{
 			serversConfig:                  sc,
 			incomingTxsForValidationCommit: inputTxs,
@@ -39,6 +42,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		},
 	)
 	errChan, err := vcm.start()
+	t.Cleanup(cancelFunc)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -53,7 +57,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	}()
 
 	t.Cleanup(func() {
-		require.NoError(t, vcm.close())
+		vcm.close()
 		close(inputTxs)
 		close(outputTxs)
 		for _, mockVC := range vcs {

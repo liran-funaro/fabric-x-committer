@@ -96,6 +96,14 @@ func IsStreamEnd(rpcErr error) bool {
 	return false
 }
 
+func FilterStreamErrors(err error) error {
+	code := status.Code(err)
+	if errors.Is(err, io.EOF) || code == codes.Canceled || code == codes.DeadlineExceeded {
+		return nil
+	}
+	return err
+}
+
 func WrapStreamRpcError(rpcErr error) error {
 	if IsStreamEnd(rpcErr) {
 		return nil
