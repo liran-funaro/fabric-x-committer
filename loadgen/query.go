@@ -18,16 +18,14 @@ type QueryGenerator struct {
 }
 
 // newIndependentTxGenerator creates a new QueryGenerator.
-func newQueryGenerator(rnd *rand.Rand, profile *QueryProfile) *QueryGenerator {
-	// We reproduce the exact procedure in the TX generator to ensure we generate the same valid keys.
-	validKeyRnd := NewRandFromSeedGenerator(rnd)
+func newQueryGenerator(rnd *rand.Rand, keys Generator[Key], profile *Profile) *QueryGenerator {
 	return &QueryGenerator{
-		ValidKeyGenerator:   &ByteArrayGenerator{Size: profile.KeySize, Rnd: validKeyRnd},
-		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.KeySize, Rnd: rnd},
-		Size:                profile.QuerySize.MakeIntGenerator(rnd),
-		InvalidPortion:      profile.MinInvalidKeysPortion.MakeGenerator(rnd),
+		ValidKeyGenerator:   keys,
+		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: rnd},
+		Size:                profile.Query.QuerySize.MakeIntGenerator(rnd),
+		InvalidPortion:      profile.Query.MinInvalidKeysPortion.MakeGenerator(rnd),
 		ShuffleRnd:          rnd,
-		Shuffle:             profile.Shuffle,
+		Shuffle:             profile.Query.Shuffle,
 	}
 }
 

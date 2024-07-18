@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	"context"
 	"log"
 
 	"github.com/pkg/errors"
@@ -11,20 +12,41 @@ import (
 	"google.golang.org/grpc"
 )
 
-type blockGenClient interface {
-	Start(*BlockStreamGenerator) error
+// ErrStoppedByUser is returned if the client terminated by request.
+var ErrStoppedByUser = errors.New("stopped by the user")
+
+// BlockGenClient is the interface for all supported clients.
+type BlockGenClient interface {
+	// Start a workload generator client in the background.
+	Start(*BlockStream) error
+	// Stop the workload generator.
 	Stop()
+	// Context returns the used context.
+	Context() context.Context
 }
 
 type loadGenClient struct {
-	stopSender chan any
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+}
+
+func newLoadGenClient() *loadGenClient {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	return &loadGenClient{
+		ctx:    ctx,
+		cancel: cancel,
+	}
 }
 
 func (c *loadGenClient) Stop() {
-	close(c.stopSender)
+	c.cancel(ErrStoppedByUser)
 }
 
-func createClient(c *ClientConfig) (blockGenClient, *PerfMetrics, error) { //nolint:ireturn
+func (c *loadGenClient) Context() context.Context {
+	return c.ctx
+}
+
+func createClient(c *ClientConfig) (BlockGenClient, *PerfMetrics, error) { //nolint:ireturn
 	logger.Infof("Config passed: %s", utils.LazyJson(c))
 	m := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
 
@@ -44,24 +66,20 @@ func createClient(c *ClientConfig) (blockGenClient, *PerfMetrics, error) { //nol
 }
 
 func (c *loadGenClient) startSending(
-	queue <-chan *protoblocktx.Block, stream grpc.ClientStream, send func(*protoblocktx.Block) error,
-) error {
+	blockGen Generator[*protoblocktx.Block], stream grpc.ClientStream, send func(*protoblocktx.Block) error,
+) {
 	defer func() {
 		_ = stream.CloseSend()
 	}()
-	for {
-		select {
-		case <-c.stopSender:
-			logger.Infof("stopping senders")
-			return nil
-		case block, ok := <-queue:
-			if !ok {
-				logger.Infof("block generator terminated")
-				return nil
-			}
-			if err := send(block); err != nil {
-				return connection.WrapStreamRpcError(err)
-			}
+	for c.ctx.Err() == nil {
+		block := blockGen.Next()
+		if block == nil {
+			// If the context ended, the block generator returns nil.
+			logger.Infof("block generator terminated")
+			break
+		}
+		if err := send(block); err != nil {
+			c.cancel(connection.WrapStreamRpcError(err))
 		}
 	}
 }
@@ -69,13 +87,13 @@ func (c *loadGenClient) startSending(
 // Starter starts the load generator with the given configuration.
 func Starter( //nolint:revive,ireturn
 	c *ClientConfig,
-) (*PerfMetrics, *BlockStreamGenerator, blockGenClient, error) {
-	client, metrics, err := createClient(c)
+) (*PerfMetrics, *BlockStream, BlockGenClient, error) {
+	client, perfMetrics, err := createClient(c)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "failed creating client")
 	}
 
-	promErrChan := metrics.provider.StartPrometheusServer()
+	promErrChan := perfMetrics.provider.StartPrometheusServer()
 
 	go func() {
 		if errProm := <-promErrChan; errProm != nil {
@@ -83,7 +101,7 @@ func Starter( //nolint:revive,ireturn
 		}
 	}()
 
-	blockGen := StartBlockGenerator(c.LoadProfile, c.RateLimit)
+	blockGen := StartBlockGenerator(client.Context(), c.LoadProfile, c.Stream)
 
-	return metrics, blockGen, client, nil
+	return perfMetrics, blockGen, client, nil
 }

@@ -1,0 +1,14 @@
+
+sidecar-client:
+  endpoint: localhost:%d
+  coordinator:
+    endpoint: localhost:%d
+  orderer:
+    broadcast:
+      - localhost:%d
+      - localhost:%d
+      - localhost:%d
+    channel-id: mychannel
+    type: BFT
+    signed-envelopes: false
+    parallelism: 50

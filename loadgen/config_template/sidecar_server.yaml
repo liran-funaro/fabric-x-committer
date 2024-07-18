@@ -1,0 +1,10 @@
+
+sidecar:
+  orderer:
+    endpoint: localhost:%d
+    channel-id: mychannel
+    reconnect: 10s
+  committer:
+    endpoint: localhost:%d
+  ledger:
+    path: %s

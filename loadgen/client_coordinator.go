@@ -1,8 +1,6 @@
 package loadgen
 
 import (
-	"context"
-
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -20,19 +18,17 @@ type coordinatorClient struct {
 	tracker *coordinatorTracker
 }
 
-func newCoordinatorClient( //nolint:ireturn
+func newCoordinatorClient(
 	config *CoordinatorClientConfig, metrics *PerfMetrics,
-) blockGenClient {
+) *coordinatorClient {
 	return &coordinatorClient{
-		loadGenClient: &loadGenClient{
-			stopSender: make(chan any),
-		},
-		tracker: newCoordinatorTracker(metrics),
-		config:  config,
+		loadGenClient: newLoadGenClient(),
+		tracker:       newCoordinatorTracker(metrics),
+		config:        config,
 	}
 }
 
-func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
+func (c *coordinatorClient) Start(blockGen *BlockStream) error {
 	conn, err := connection.Connect(connection.NewDialConfig(*c.config.Endpoint))
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint.String())
@@ -40,31 +36,25 @@ func (c *coordinatorClient) Start(blockGen *BlockStreamGenerator) error {
 	logger.Info("Connected to coordinator")
 
 	verificationKey, keyScheme := blockGen.Signer.HashSigner.GetVerificationKey()
-	stream, err := openCoordinatorStream(conn, verificationKey, keyScheme)
+	stream, err := c.openCoordinatorStream(conn, verificationKey, keyScheme)
 	if err != nil {
 		return errors.Wrap(err, "failed creating stream to coordinator")
 	}
 
-	errChan := make(chan error)
-	go func() {
-		errChan <- c.loadGenClient.startSending(
-			blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
-				err := stream.Send(block)
-				c.tracker.OnSendBlock(block)
-				return err
-			})
-	}()
-	go func() {
-		errChan <- c.startReceiving(stream)
-	}()
-
-	return <-errChan
+	go c.loadGenClient.startSending(
+		blockGen, stream, func(block *protoblocktx.Block) error {
+			err := stream.Send(block)
+			c.tracker.OnSendBlock(block)
+			return err
+		})
+	go c.startReceiving(stream)
+	return nil
 }
 
-func (c *coordinatorClient) startReceiving(stream protocoordinatorservice.Coordinator_BlockProcessingClient) error {
-	for {
+func (c *coordinatorClient) startReceiving(stream protocoordinatorservice.Coordinator_BlockProcessingClient) {
+	for c.ctx.Err() == nil {
 		if txStatus, err := stream.Recv(); err != nil {
-			return errors.Wrap(err, "failed receiving tx")
+			c.cancel(errors.Wrap(err, "failed receiving tx"))
 		} else {
 			c.tracker.OnReceiveCoordinatorBatch(txStatus)
 		}
@@ -87,13 +77,13 @@ func (t *coordinatorTracker) OnReceiveCoordinatorBatch(batch *protocoordinatorse
 	}
 }
 
-func openCoordinatorStream( //nolint:ireturn
+func (c *coordinatorClient) openCoordinatorStream( //nolint:ireturn
 	conn *grpc.ClientConn, publicKey signature.PublicKey, keyScheme signature.Scheme,
 ) (protocoordinatorservice.Coordinator_BlockProcessingClient, error) {
 	client := openCoordinatorClient(conn)
 
 	_, err := client.SetMetaNamespaceVerificationKey(
-		context.Background(),
+		c.ctx,
 		&protosigverifierservice.Key{
 			NsId:            uint32(types.MetaNamespaceID),
 			SerializedBytes: publicKey,
@@ -106,7 +96,7 @@ func openCoordinatorStream( //nolint:ireturn
 	logger.Info("Verification key set")
 
 	logger.Info("Opening stream")
-	return client.BlockProcessing(context.Background())
+	return client.BlockProcessing(c.ctx)
 }
 
 func openCoordinatorClient(conn *grpc.ClientConn) protocoordinatorservice.CoordinatorClient {

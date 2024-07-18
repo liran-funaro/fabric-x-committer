@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	_ "embed"
 	"fmt"
 	"net/http"
 	"testing"
@@ -15,23 +16,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	sigVerifierServerTemplate = loggingTemplate + `
-sig-verification:` + serverTemplate + `
-  parallel-executor:
-    batch-size-cutoff: 50
-    batch-time-cutoff: 10ms
-    channel-buffer-size: 50
-    parallelism: 40
-  scheme: Ecdsa
-`
-	sigVerifierClientTemplate = clientTemplate +
-		`
-sig-verifier-client:
-  endpoints:
-    - localhost:%d
-    - localhost:%d
-`
+//go:embed config_template/sig_server.yaml
+var sigVerifierServerOnlyTemplate string
+
+//go:embed config_template/sig_client.yaml
+var sigVerifierClientOnlyTemplate string
+
+var (
+	sigVerifierServerTemplate = loggingTemplate + sigVerifierServerOnlyTemplate + serverTemplate
+	sigVerifierClientTemplate = loggingTemplate + clientOnlyTemplate + sigVerifierClientOnlyTemplate
 )
 
 func TestBlockGenForSigVerifier(t *testing.T) { // nolint: gocognit
@@ -52,7 +45,7 @@ func TestBlockGenForSigVerifier(t *testing.T) { // nolint: gocognit
 		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
 			protosigverifierservice.RegisterVerifierServer(server, service)
 		})
-		t.Cleanup(func() { server.Stop() })
+		t.Cleanup(server.Stop)
 	}
 
 	// Start client

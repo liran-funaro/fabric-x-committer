@@ -2,6 +2,7 @@ package loadgen
 
 import (
 	"context"
+	_ "embed"
 	"net/http"
 	"testing"
 	"time"
@@ -14,33 +15,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	sidecarServerTemplate = loggingTemplate + `
-sidecar:` + serverTemplate + `
-  orderer:
-    endpoint: localhost:%d
-    channel-id: mychannel
-    reconnect: 10s
-  committer:
-    endpoint: localhost:%d
-  ledger:
-    path: %s
-`
-	sidecarClientTemplate = clientTemplate + `
-sidecar-client:
-  endpoint: localhost:%d
-  coordinator:
-    endpoint: localhost:%d
-  orderer:
-    broadcast:
-      - localhost:%d
-      - localhost:%d
-      - localhost:%d
-    channel-id: mychannel
-    type: BFT
-    signed-envelopes: false
-    parallelism: 50
-`
+//go:embed config_template/sidecar_server.yaml
+var sidecarServerOnlyTemplate string
+
+//go:embed config_template/sidecar_client.yaml
+var sidecarClientOnlyTemplate string
+
+var (
+	sidecarServerTemplate = loggingTemplate + sidecarServerOnlyTemplate + serverTemplate
+	sidecarClientTemplate = loggingTemplate + clientOnlyTemplate + sidecarClientOnlyTemplate
 )
 
 func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
@@ -63,11 +46,11 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 		"server-config.yaml",
 		sidecarServerTemplate,
 		tempFile(t, "server-log.txt"),
-		2110,
-		9001,
 		ordererServerConfig[0].Endpoint.Port,
 		coordinatorServerConfig.Endpoint.Port,
 		ledgerPath,
+		2110,
+		9001,
 	)
 	conf := sidecarservice.ReadConfig()
 
@@ -80,10 +63,7 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, service.Ledger)
 	})
-	t.Cleanup(func() {
-		logger.Infof("cleaning up")
-		server.Stop()
-	})
+	t.Cleanup(server.Stop)
 
 	// Start client
 	loadConfig(t, "client-config.yaml", sidecarClientTemplate, tempFile(t, "client-log.txt"), 2111, sidecarServerConfig.Port, coordinatorServerConfig.Endpoint.Port, ordererServerConfig[0].Endpoint.Port, ordererServerConfig[1].Endpoint.Port, ordererServerConfig[2].Endpoint.Port)

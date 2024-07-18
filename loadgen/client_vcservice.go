@@ -1,8 +1,6 @@
 package loadgen
 
 import (
-	"context"
-
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -18,47 +16,39 @@ type vcClient struct {
 	tracker *vcTracker
 }
 
-func newVCClient(config *VCClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
+func newVCClient(config *VCClientConfig, metrics *PerfMetrics) *vcClient {
 	return &vcClient{
-		loadGenClient: &loadGenClient{
-			stopSender: make(chan any, len(config.Endpoints)),
-		},
-		tracker: newVCTracker(metrics),
-		config:  config,
+		loadGenClient: newLoadGenClient(),
+		tracker:       newVCTracker(metrics),
+		config:        config,
 	}
 }
 
-func (c *vcClient) Start(blockGen *BlockStreamGenerator) error {
+func (c *vcClient) Start(blockGen *BlockStream) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
 
-	errChan := make(chan error, len(connections))
 	for _, conn := range connections {
-		stream, err := openVCStream(conn)
+		stream, err := c.openVCStream(conn)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening stream to %s", conn.Target())
 		}
 
-		go func() {
-			errChan <- c.startSending(blockGen, stream)
-		}()
-
-		go func() {
-			errChan <- c.startReceiving(stream)
-		}()
+		go c.startSending(blockGen, stream)
+		go c.startReceiving(stream)
 	}
 
-	return <-errChan
+	return nil
 }
 
 func (c *vcClient) startReceiving(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-) error {
-	for {
+) {
+	for c.ctx.Err() == nil {
 		if response, err := stream.Recv(); err != nil {
-			return connection.WrapStreamRpcError(err)
+			c.cancel(connection.WrapStreamRpcError(err))
 		} else {
 			logger.Debugf("Received batch with %d responses", len(response.Status))
 			c.tracker.OnReceiveVCBatch(response)
@@ -67,10 +57,10 @@ func (c *vcClient) startReceiving(
 }
 
 func (c *vcClient) startSending(
-	blockGen *BlockStreamGenerator,
+	blockGen *BlockStream,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-) error {
-	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+) {
+	c.loadGenClient.startSending(blockGen, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		err := stream.Send(mapVCBatch(block))
 		c.tracker.OnSendBlock(block)
@@ -92,7 +82,7 @@ func mapVCBatch(block *protoblocktx.Block) *protovcservice.TransactionBatch {
 	return txBatch
 }
 
-func openVCStream( //nolint:ireturn
+func (c *vcClient) openVCStream( //nolint:ireturn
 	conn *grpc.ClientConn,
 ) (protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, error) {
 	logger.Infof("Creating client to %s", conn.Target())
@@ -100,7 +90,7 @@ func openVCStream( //nolint:ireturn
 	logger.Info("VC Client created")
 
 	logger.Info("Opening VC stream")
-	return client.StartValidateAndCommitStream(context.Background())
+	return client.StartValidateAndCommitStream(c.ctx)
 }
 
 type vcTracker struct {

@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	_ "embed"
 	"net/http"
 	"testing"
 	"time"
@@ -14,27 +15,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	coordinatorServerTemplate = loggingTemplate + `
-coordinator-service:` + serverTemplate + `
-  sign-verifier:
-    server:
-      - # server 1 configuration
-        endpoint: localhost:%d
-  validator-committer:
-    server:
-      - # server 1 configuration
-        endpoint: localhost:%d
-  dependency-graph:
-    num-of-local-dep-constructors: 1
-    waiting-txs-limit: 10000
-    num-of-workers-for-global-dep-manager: 1
-  per-channel-buffer-size-per-goroutine: 10
-`
-	coordinatorClientTemplate = clientTemplate + `
-coordinator-client:
-  endpoint: localhost:%d
-`
+//go:embed config_template/coordinator_server.yaml
+var coordinatorServerOnlyTemplate string
+
+//go:embed config_template/coordinator_client.yaml
+var coordinatorClientOnlyTemplate string
+
+var (
+	coordinatorServerTemplate = loggingTemplate + coordinatorServerOnlyTemplate + serverTemplate
+	coordinatorClientTemplate = loggingTemplate + clientOnlyTemplate + coordinatorClientOnlyTemplate
 )
 
 func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
@@ -57,7 +46,8 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	})
 
 	// Start server under test
-	loadConfig(t, "server-config.yaml", coordinatorServerTemplate, tempFile(t, "client-log.txt"), 2110, 9001, sigVerServerConfig[0].Endpoint.Port, vcServerConfig[0].Endpoint.Port)
+	loadConfig(t, "server-config.yaml", coordinatorServerTemplate, tempFile(t, "client-log.txt"),
+		sigVerServerConfig[0].Endpoint.Port, vcServerConfig[0].Endpoint.Port, 2110, 9001)
 	conf := coordinatorservice.ReadConfig()
 
 	service := coordinatorservice.NewCoordinatorService(conf)
@@ -68,7 +58,7 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	server, _ := startServer(*conf.ServerConfig, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, service)
 	})
-	t.Cleanup(func() { server.Stop() })
+	t.Cleanup(server.Stop)
 
 	// Start client
 	loadConfig(t, "client-config.yaml", coordinatorClientTemplate, tempFile(t, "client-log.txt"), 2112, 9001)

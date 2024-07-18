@@ -1,0 +1,5 @@
+
+sig-verifier-client:
+  endpoints:
+    - localhost:%d
+    - localhost:%d

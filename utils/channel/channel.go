@@ -17,18 +17,18 @@ type ReaderWriter[T any] interface {
 	Writer[T]
 }
 
-type WithContex[T any] interface {
+type WithContext[T any] interface {
 	Context() context.Context
 	WithContext(ctx context.Context) ReaderWriter[T]
 }
 
 type Reader[T any] interface {
-	WithContex[T]
+	WithContext[T]
 	Read() (T, bool)
 }
 
 type Writer[T any] interface {
-	WithContex[T]
+	WithContext[T]
 	Write(value T) bool
 }
 
@@ -36,6 +36,10 @@ type channel[T any] struct {
 	ctx    context.Context
 	input  <-chan T
 	output chan<- T
+}
+
+func Make[T any](ctx context.Context, size int) ReaderWriter[T] {
+	return NewReaderWriter[T](ctx, make(chan T, size))
 }
 
 func NewReaderWriter[T any](ctx context.Context, inputOutput chan T) ReaderWriter[T] {

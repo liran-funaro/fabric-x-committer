@@ -14,15 +14,15 @@ const (
 )
 
 type (
-	signTxDecorator struct {
+	// signTxModifier signs transactions according to the conflicts profile.
+	signTxModifier struct {
 		Signer               *TxSignerVerifier
-		txQueue              <-chan *protoblocktx.Tx
 		invalidSignGenerator Generator[bool]
 		invalidSignature     [][]byte
 	}
 
-	dependenciesDecorator struct {
-		txQueue         <-chan *protoblocktx.Tx
+	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
+	dependenciesModifier struct {
 		keyGenerator    Generator[[]byte]
 		dependencies    []dependencyDesc
 		dependenciesMap map[uint64][]dependency
@@ -43,39 +43,34 @@ type (
 	}
 )
 
-// newSignTxDecorator wraps a TX generator and signs it given the conflicts profile.
-func newSignTxDecorator(
-	rnd *rand.Rand, txQueue <-chan *protoblocktx.Tx, signer *TxSignerVerifier, profile *Profile,
-) *signTxDecorator {
+func newSignTxModifier(
+	rnd *rand.Rand, signer *TxSignerVerifier, profile *Profile,
+) *signTxModifier {
 	dist := NewBernoulliDistribution(profile.Conflicts.InvalidSignatures)
 	var invalidTx protoblocktx.Tx
 	signer.Sign(&invalidTx)
-	return &signTxDecorator{
+	return &signTxModifier{
 		Signer:               signer,
-		txQueue:              txQueue,
 		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
 		invalidSignature:     invalidTx.Signatures,
 	}
 }
 
-// Next generate a new TX.
-func (g *signTxDecorator) Next() *protoblocktx.Tx {
-	tx := <-g.txQueue
+// Modify signs a transaction.
+func (g *signTxModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
 	if g.invalidSignGenerator.Next() {
 		tx.Signatures = g.invalidSignature
 	} else {
 		g.Signer.Sign(tx)
 	}
-	return tx
+	return tx, nil
 }
 
-// newTxDependenciesDecorator wraps a tx generator and adds dependencies conflicts.
-func newTxDependenciesDecorator(
-	rnd *rand.Rand, txQueue <-chan *protoblocktx.Tx, profile *Profile,
-) *dependenciesDecorator {
-	return &dependenciesDecorator{
-		txQueue:      txQueue,
-		keyGenerator: &ByteArrayGenerator{Size: profile.Transaction.KeySize, Rnd: rnd},
+func newTxDependenciesModifier(
+	rnd *rand.Rand, profile *Profile,
+) *dependenciesModifier {
+	return &dependenciesModifier{
+		keyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: rnd},
 		dependencies: Map(profile.Conflicts.Dependencies, func(
 			_ int, value DependencyDescription,
 		) dependencyDesc {
@@ -99,9 +94,8 @@ func newTxDependenciesDecorator(
 	}
 }
 
-// Next generate a new tx.
-func (g *dependenciesDecorator) Next() *protoblocktx.Tx {
-	tx := <-g.txQueue
+// Modify injects dependencies.
+func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
 	depList, ok := g.dependenciesMap[g.index]
 	if ok {
 		delete(g.dependenciesMap, g.index)
@@ -126,7 +120,7 @@ func (g *dependenciesDecorator) Next() *protoblocktx.Tx {
 	}
 
 	g.index++
-	return tx
+	return tx, nil
 }
 
 func addKey(tx *protoblocktx.Tx, dependencyType string, key []byte) {

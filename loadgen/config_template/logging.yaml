@@ -1,0 +1,7 @@
+
+logging:
+  enabled: true
+  level: info
+  caller: true
+  development: true
+  output: %s

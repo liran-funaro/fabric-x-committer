@@ -1,8 +1,6 @@
 package loadgen
 
 import (
-	"context"
-
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -19,45 +17,37 @@ type svClient struct {
 	tracker *svTracker
 }
 
-func newSVClient(config *SVClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
+func newSVClient(config *SVClientConfig, metrics *PerfMetrics) *svClient {
 	return &svClient{
-		loadGenClient: &loadGenClient{
-			stopSender: make(chan any, len(config.Endpoints)),
-		},
-		tracker: newSVTracker(metrics),
-		config:  config,
+		loadGenClient: newLoadGenClient(),
+		tracker:       newSVTracker(metrics),
+		config:        config,
 	}
 }
 
-func (c *svClient) Start(blockGen *BlockStreamGenerator) error {
+func (c *svClient) Start(blockGen *BlockStream) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
 
-	errChan := make(chan error, len(connections))
 	for _, conn := range connections {
-		stream, err := openVSStream(conn, blockGen.Signer.GetVerificationKey(), blockGen.Signer.HashSigner.scheme)
+		stream, err := c.openVSStream(conn, blockGen.Signer.GetVerificationKey(), blockGen.Signer.HashSigner.scheme)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening connection to %s", conn.Target())
 		}
 
-		go func() {
-			errChan <- c.startSending(blockGen, stream)
-		}()
-
-		go func() {
-			errChan <- c.startReceiving(stream)
-		}()
+		go c.startSending(blockGen, stream)
+		go c.startReceiving(stream)
 	}
 
-	return <-errChan
+	return nil
 }
 
-func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamClient) error {
-	for {
+func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamClient) {
+	for c.ctx.Err() == nil {
 		if response, err := stream.Recv(); err != nil {
-			return errors.Wrapf(err, "failed receiving")
+			c.cancel(errors.Wrapf(err, "failed receiving"))
 		} else {
 			logger.Debugf("Got %d responses", len(response.GetResponses()))
 			c.tracker.OnReceiveSVBatch(response)
@@ -66,9 +56,9 @@ func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamCli
 }
 
 func (c *svClient) startSending(
-	blockGen *BlockStreamGenerator, stream sigverification.Verifier_StartStreamClient,
-) error {
-	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+	blockGen *BlockStream, stream sigverification.Verifier_StartStreamClient,
+) {
+	c.loadGenClient.startSending(blockGen, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d", block.Number)
 		err := stream.Send(mapVSBatch(block))
 		c.tracker.OnSendBlock(block)
@@ -89,7 +79,7 @@ func mapVSBatch(b *protoblocktx.Block) *sigverification.RequestBatch {
 	return batch
 }
 
-func openVSStream( //nolint:ireturn
+func (c *svClient) openVSStream( //nolint:ireturn
 	conn *grpc.ClientConn, verificationKey signature.PublicKey, scheme Scheme,
 ) (sigverification.Verifier_StartStreamClient, error) {
 	logger.Infof("Creating client to %s\n", conn.Target())
@@ -101,14 +91,14 @@ func openVSStream( //nolint:ireturn
 		SerializedBytes: verificationKey,
 		Scheme:          scheme,
 	}
-	_, err := client.SetVerificationKey(context.Background(), k)
+	_, err := client.SetVerificationKey(c.ctx, k)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed setting verification key")
 	}
 	logger.Infof("Set verification verificationKey")
 
 	logger.Infof("Opening stream")
-	return client.StartStream(context.Background())
+	return client.StartStream(c.ctx)
 }
 
 type svTracker struct {

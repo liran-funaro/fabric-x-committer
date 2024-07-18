@@ -70,6 +70,7 @@ func (c *Client) Start(ctx context.Context, outputChan chan<- *protocoordinators
 }
 
 func (c *Client) receiveFromCoordinator(ctx context.Context) error {
+	defer close(c.outputChan)
 	for {
 		response, err := c.stream.Recv()
 		if err != nil {
@@ -103,7 +104,6 @@ func (c *Client) sendToCoordinator() error {
 }
 
 func (c *Client) Close() error {
-	close(c.outputChan)
 	if err := c.stream.CloseSend(); err != nil {
 		return err
 	}

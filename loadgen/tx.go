@@ -7,26 +7,35 @@ import (
 )
 
 // IndependentTxGenerator generates a new valid TX given key generators.
-type IndependentTxGenerator struct {
-	TxIDGenerator            Generator[string]
-	ReadOnlyKeyGenerator     Generator[[][]byte]
-	ReadWriteKeyGenerator    Generator[[][]byte]
-	BlindWriteKeyGenerator   Generator[[][]byte]
-	ReadWriteValueGenerator  Generator[[]byte]
-	BlindWriteValueGenerator Generator[[]byte]
-}
+type (
+	IndependentTxGenerator struct {
+		TxIDGenerator            Generator[string]
+		ReadOnlyKeyGenerator     Generator[[][]byte]
+		ReadWriteKeyGenerator    Generator[[][]byte]
+		BlindWriteKeyGenerator   Generator[[][]byte]
+		ReadWriteValueGenerator  Generator[[]byte]
+		BlindWriteValueGenerator Generator[[]byte]
+	}
+
+	txModifierDecorator struct {
+		txGen     Generator[*protoblocktx.Tx]
+		modifiers []Modifier
+	}
+
+	Modifier interface {
+		Modify(*protoblocktx.Tx) (*protoblocktx.Tx, error)
+	}
+)
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
-func newIndependentTxGenerator(rnd *rand.Rand, profile *TransactionProfile) *IndependentTxGenerator {
-	// We create a new random generator just for the keys to allow reproducing the generated keys without having
-	// to regenerate the entire transaction.
-	// This is useful when we want to query the DB.
-	keyRnd := NewRandFromSeedGenerator(rnd)
+func newIndependentTxGenerator(
+	rnd *rand.Rand, keys Generator[Key], profile *TransactionProfile,
+) *IndependentTxGenerator {
 	return &IndependentTxGenerator{
 		TxIDGenerator:            &UUIDGenerator{Rnd: rnd},
-		ReadOnlyKeyGenerator:     keyGenerator(keyRnd, profile.KeySize, profile.ReadOnlyCount),
-		ReadWriteKeyGenerator:    keyGenerator(keyRnd, profile.KeySize, profile.ReadWriteCount),
-		BlindWriteKeyGenerator:   keyGenerator(keyRnd, profile.KeySize, profile.BlindWriteCount),
+		ReadOnlyKeyGenerator:     multiKeyGenerator(rnd, keys, profile.ReadOnlyCount),
+		ReadWriteKeyGenerator:    multiKeyGenerator(rnd, keys, profile.ReadWriteCount),
+		BlindWriteKeyGenerator:   multiKeyGenerator(rnd, keys, profile.BlindWriteCount),
 		ReadWriteValueGenerator:  valueGenerator(rnd, profile.ReadWriteValueSize),
 		BlindWriteValueGenerator: valueGenerator(rnd, profile.BlindWriteValueSize),
 	}
@@ -71,10 +80,11 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	return tx
 }
 
-func keyGenerator(rnd *rand.Rand, keySize uint32, keyCount *Distribution) *MultiGenerator[[]byte] {
-	ret := &MultiGenerator[[]byte]{
-		Gen: &ByteArrayGenerator{Size: keySize, Rnd: rnd},
-	}
+// Key is an alias for byte array.
+type Key = []byte
+
+func multiKeyGenerator(rnd *rand.Rand, keyGen Generator[Key], keyCount *Distribution) *MultiGenerator[Key] {
+	ret := &MultiGenerator[Key]{Gen: keyGen}
 
 	if keyCount == nil {
 		ret.Count = &ConstGenerator[int]{Const: 0}
@@ -94,7 +104,7 @@ func valueGenerator(rnd *rand.Rand, valueSize uint32) Generator[[]byte] {
 
 // BlockGenerator generates new blocks given a TX generator.
 type BlockGenerator struct {
-	TxGenerator *TxStreamGenerator
+	TxGenerator Generator[*protoblocktx.Tx]
 	BlockSize   uint64
 	blockNum    uint64
 }
@@ -103,8 +113,29 @@ type BlockGenerator struct {
 func (g *BlockGenerator) Next() *protoblocktx.Block {
 	block := &protoblocktx.Block{
 		Number: g.blockNum,
-		Txs:    g.TxGenerator.NextN(int(g.BlockSize)),
+		Txs:    NextN(g.TxGenerator, int(g.BlockSize)),
 	}
 	g.blockNum++
 	return block
+}
+
+// newTxModifierTxDecorator wraps a TX generator and apply one or more modification methods.
+func newTxModifierTxDecorator(txGen Generator[*protoblocktx.Tx], modifiers ...Modifier) *txModifierDecorator {
+	return &txModifierDecorator{
+		txGen:     txGen,
+		modifiers: modifiers,
+	}
+}
+
+// Next apply all the modifiers to a transaction.
+func (g *txModifierDecorator) Next() *protoblocktx.Tx {
+	tx := g.txGen.Next()
+	var err error
+	for _, mod := range g.modifiers {
+		tx, err = mod.Modify(tx)
+		if err != nil {
+			logger.Infof("Failed modifiying TX with error: %s", err)
+		}
+	}
+	return tx
 }

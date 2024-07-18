@@ -1,0 +1,17 @@
+
+  # The indentation is intentional as this will be appended
+  # under the specific server configuration.
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: localhost:%d
+      latency:
+        sampler:
+          type: timer
+          sampling-interval: 10s
+        buckets:
+          type: uniform
+          max-latency: 5s
+          bucket-count: 1000
+  server:
+    endpoint: localhost:%d

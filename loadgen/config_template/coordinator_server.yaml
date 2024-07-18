@@ -1,0 +1,15 @@
+
+coordinator-service:
+  sign-verifier:
+    server:
+      - # server 1 configuration
+        endpoint: localhost:%d
+  validator-committer:
+    server:
+      - # server 1 configuration
+        endpoint: localhost:%d
+  dependency-graph:
+    num-of-local-dep-constructors: 1
+    waiting-txs-limit: 10000
+    num-of-workers-for-global-dep-manager: 1
+  per-channel-buffer-size-per-goroutine: 10

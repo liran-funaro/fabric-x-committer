@@ -7,34 +7,40 @@ import (
 )
 
 // Profile describes the generated workload characteristics.
+// It only contains parameters that deterministically affect the
+// generated items.
+// The items order, however, might be affected by other parameters.
 type Profile struct {
 	Block       BlockProfile       `mapstructure:"block"`
+	Key         KeyProfile         `mapstructure:"key"`
 	Transaction TransactionProfile `mapstructure:"transaction"`
 	Query       QueryProfile       `mapstructure:"query"`
 	Conflicts   ConflictProfile    `mapstructure:"conflicts"`
 
-	// The number of workers to generate transactions
-	TxGenWorkers          uint32 `mapstructure:"tx-gen-workers"`
-	TxSignWorkers         uint32 `mapstructure:"tx-sign-workers"`
-	TxDependenciesWorkers uint32 `mapstructure:"tx-dependencies-workers"`
-
 	// The seed to generate the seeds for each worker
 	Seed int64 `mapstructure:"seed"`
+
+	// Workers is the number of independent producers.
+	// Each worker uses a unique seed that is generated from the main seed.
+	// To ensure responsibility of items between runs (e.g., for query)
+	// the number of workers must be preserved.
+	Workers uint32 `mapstructure:"workers"`
+}
+
+// KeyProfile describes generated keys characteristics.
+type KeyProfile struct {
+	// Size is the size of the key to generate.
+	Size uint32 `mapstructure:"size"`
 }
 
 // BlockProfile describes generate block characteristics.
 type BlockProfile struct {
 	// Size of the block
 	Size int64 `mapstructure:"size"`
-
-	// The queue buffer size
-	BufferSize uint32 `mapstructure:"buffer-size"`
 }
 
 // TransactionProfile describes generate TX characteristics.
 type TransactionProfile struct {
-	// The size of the key to generate
-	KeySize uint32 `mapstructure:"key-size"`
 	// The sizes of the values to generate (size=0 => value=nil)
 	ReadWriteValueSize  uint32 `mapstructure:"read-write-value-size"`
 	BlindWriteValueSize uint32 `mapstructure:"blind-write-value-size"`
@@ -43,16 +49,12 @@ type TransactionProfile struct {
 	// The number of keys to generate (read ver=nil/write)
 	ReadWriteCount *Distribution `mapstructure:"read-write-count"`
 	// The number of keys to generate (write)
-	BlindWriteCount *Distribution `mapstructure:"write-count"`
-	// The queue buffer size
-	BufferSize uint32           `mapstructure:"buffer-size"`
-	Signature  SignatureProfile `mapstructure:"signature"`
+	BlindWriteCount *Distribution    `mapstructure:"write-count"`
+	Signature       SignatureProfile `mapstructure:"signature"`
 }
 
 // QueryProfile describes generate query characteristics.
 type QueryProfile struct {
-	// The size of the key to generate. This should match the respective value in TransactionProfile.
-	KeySize uint32 `mapstructure:"key-size"`
 	// The number of keys to query.
 	QuerySize *Distribution `mapstructure:"query-size"`
 	// The minimal portion of invalid keys (1 => all keys are invalid).
@@ -61,8 +63,6 @@ type QueryProfile struct {
 	// If Shuffle=false, the valid keys will be placed first.
 	// Otherwise, they will be shuffled.
 	Shuffle bool `mapstructure:"shuffle"`
-	// The queue buffer size.
-	BufferSize uint32 `mapstructure:"buffer-size"`
 }
 
 // ConflictProfile describes the TX conflict characteristics.
@@ -101,11 +101,34 @@ type KeyPath struct {
 	SignCertificate string `mapstructure:"sign-certificate"`
 }
 
+// StreamOptions allows adjustment to the stream rate.
+// It only contains parameters that do not affect the produced items.
+// However, these parameters might affect the order of the items.
+type StreamOptions struct {
+	// RateLimit directly impacts the rate by limiting it.
+	RateLimit *LimiterConfig `mapstructure:"rate-limit"`
+	// GenBatch impacts the rate by batching generated items before inserting then the channel.
+	// This helps overcome the inherit rate limitation of Go channels.
+	GenBatch uint32 `mapstructure:"gen-batch"`
+	// BuffersSize impact the rate by masking fluctuation in performance.
+	BuffersSize int `mapstructure:"buffers-size"`
+}
+
+// Debug outputs the profile to stdout.
 func (p *Profile) Debug() {
-	d, err := yaml.Marshal(p)
+	debug("Profile", p)
+}
+
+// Debug outputs the stream configuration to stdout.
+func (o *StreamOptions) Debug() {
+	debug("Stream Config", o)
+}
+
+func debug(title string, val any) {
+	d, err := yaml.Marshal(val)
 	Must(err)
 	fmt.Println("############################################################")
-	fmt.Println("# Profile")
+	fmt.Printf("# %s\n", title)
 	fmt.Println("############################################################")
 	fmt.Println(string(d))
 	fmt.Println("############################################################")

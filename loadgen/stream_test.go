@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 )
 
@@ -21,44 +24,65 @@ func printResult() {
 
 func defaultProfile(workers uint32) *Profile {
 	return &Profile{
+		Key: KeyProfile{
+			Size: 32,
+		},
 		Block: BlockProfile{
-			Size:       100,
-			BufferSize: 2,
+			// We use a small block to reduce the CPU load during tests.
+			Size: 10,
 		},
 		Transaction: TransactionProfile{
-			KeySize:        32,
 			ReadWriteCount: NewConstantDistribution(2),
-			BufferSize:     workers * 100,
 			Signature: SignatureProfile{
 				Scheme: signature.Ecdsa,
 			},
 		},
 		Query: QueryProfile{
-			KeySize:               32,
 			QuerySize:             NewConstantDistribution(100),
 			MinInvalidKeysPortion: NewConstantDistribution(0),
 			Shuffle:               false,
-			BufferSize:            workers * 100,
 		},
 		Conflicts: ConflictProfile{
 			InvalidSignatures: Never,
 		},
-		Seed:                  249822374033311501,
-		TxGenWorkers:          workers,
-		TxDependenciesWorkers: workers,
-		TxSignWorkers:         workers,
+		Seed:    249822374033311501,
+		Workers: workers,
 	}
 }
 
-func genericBlockBench(b *testing.B, workers uint32) {
-	var sum float64
+func defaultStreamOptions() *StreamOptions {
+	// We set low values for the buffer and batch to reduce the CPU load during tests.
+	return &StreamOptions{
+		BuffersSize: 1,
+		GenBatch:    1,
+	}
+}
+
+func defaultBenchProfile(workers uint32) *Profile {
+	p := defaultProfile(workers)
+	p.Block.Size = 1024
+	p.Query.QuerySize = NewConstantDistribution(1024)
+	return p
+}
+
+func defaultBenchStreamOptions() *StreamOptions {
+	o := defaultStreamOptions()
+	o.BuffersSize = 1000
+	o.GenBatch = 4096
+	return o
+}
+
+func genericBlockBench(b *testing.B, p *Profile) {
+	ctx, cancel := context.WithCancel(context.Background())
+	b.Cleanup(cancel)
 
 	b.ResetTimer()
-	c := StartBlockGenerator(defaultProfile(workers), NoLimit)
+	c := StartBlockGenerator(ctx, p, defaultBenchStreamOptions())
 
+	var sum float64
 	for i := 0; i < b.N; i++ {
-		blk := <-c.BlockQueue
-		sum += float64(blk.Number)
+		blk := c.Next()
+		sum += float64(len(blk.Txs))
 	}
 	b.StopTimer()
 
@@ -66,14 +90,16 @@ func genericBlockBench(b *testing.B, workers uint32) {
 	result += sum
 }
 
-func genericTxBench(b *testing.B, workers uint32) {
-	var sum float64
+func genericTxBench(b *testing.B, p *Profile) {
+	ctx, cancel := context.WithCancel(context.Background())
+	b.Cleanup(cancel)
 
 	b.ResetTimer()
-	c := StartTxGenerator(defaultProfile(workers), NoLimit)
+	c := StartTxGenerator(ctx, p, defaultBenchStreamOptions())
 
+	var sum float64
 	for i := 0; i < b.N; i++ {
-		tx := <-c.TxQueue
+		tx := c.Next()
 		sum += float64(len(tx.Namespaces))
 	}
 	b.StopTimer()
@@ -82,26 +108,67 @@ func genericTxBench(b *testing.B, workers uint32) {
 	result += sum
 }
 
-func BenchmarkGenBlock(b *testing.B) {
-	for _, workers := range []uint32{1, 2, 4, 8} {
-		b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
-			genericBlockBench(b, workers)
+func genericQueryBench(b *testing.B, p *Profile) {
+	ctx, cancel := context.WithCancel(context.Background())
+	b.Cleanup(cancel)
+
+	b.ResetTimer()
+	c := StartQueryGenerator(ctx, p, defaultBenchStreamOptions()).MakeGenerator()
+
+	var sum float64
+	for i := 0; i < b.N; i++ {
+		q := c.Next()
+		sum += float64(len(q.Namespaces))
+	}
+	b.StopTimer()
+
+	// Prevent compiler optimizations.
+	result += sum
+}
+
+func benchWorkersProfiles() (profiles []*Profile) {
+	for _, workers := range []uint32{1, 2, 4, 8, 16, 32, 64} {
+		profiles = append(profiles, defaultBenchProfile(workers))
+	}
+	return profiles
+}
+
+func benchTxProfiles() (profiles []*Profile) {
+	for _, sign := range []bool{true, false} {
+		for _, p := range benchWorkersProfiles() {
+			if !sign {
+				p.Transaction.Signature.Scheme = signature.NoScheme
+			}
+			profiles = append(profiles, p)
+		}
+	}
+	return profiles
+}
+
+func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
+	for _, p := range benchTxProfiles() {
+		name := fmt.Sprintf("workers-%d-sign-%s", p.Workers, p.Transaction.Signature.Scheme)
+		b.Run(name, func(b *testing.B) {
+			benchFunc(b, p)
 		})
 	}
 	printResult()
+}
+
+func BenchmarkGenBlock(b *testing.B) {
+	genericBench(b, genericBlockBench)
 }
 
 func BenchmarkGenTx(b *testing.B) {
-	for _, workers := range []uint32{1, 2, 4, 8, 16, 32} {
-		b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
-			genericTxBench(b, workers)
-		})
-	}
-	printResult()
+	genericBench(b, genericTxBench)
+}
+
+func BenchmarkGenQuery(b *testing.B) {
+	genericBench(b, genericQueryBench)
 }
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
-	require.Len(t, key, int(profile.Transaction.KeySize))
+	require.Len(t, key, int(profile.Key.Size))
 	require.Greater(t, SumInt(key), int64(0))
 }
 
@@ -149,9 +216,8 @@ func testWorkersProfiles() (profiles []*Profile) {
 }
 
 func testTxProfiles() (profiles []*Profile) {
-	for _, workers := range []uint32{1, 2, 4, 8} {
-		for _, onlyReadWrite := range []bool{true, false} {
-			p := defaultProfile(workers)
+	for _, onlyReadWrite := range []bool{true, false} {
+		for _, p := range testWorkersProfiles() {
 			if !onlyReadWrite {
 				p.Transaction.ReadOnlyCount = NewConstantDistribution(1)
 				p.Transaction.BlindWriteCount = NewConstantDistribution(3)
@@ -165,17 +231,35 @@ func testTxProfiles() (profiles []*Profile) {
 	return profiles
 }
 
+func startTxGeneratorUnderTest(
+	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
+) *TxStream {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	return StartTxGenerator(ctx, profile, options, modifierGenerators...)
+}
+
+func startBlockGeneratorUnderTest(
+	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
+) *BlockStream {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	return StartBlockGenerator(ctx, profile, options, modifierGenerators...)
+}
+
 func TestGenValidTx(t *testing.T) {
 	t.Parallel()
 	for _, p := range testTxProfiles() {
 		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
-		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
+		t.Run(fmt.Sprintf(
+			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
+		), func(t *testing.T) {
 			t.Parallel()
-			c := StartTxGenerator(p, NoLimit)
+			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 
 			for i := 0; i < 100; i++ {
-				requireValidTx(t, <-c.TxQueue, p, c.Signer)
+				requireValidTx(t, c.Next(), p, c.Signer)
 			}
 		})
 	}
@@ -186,12 +270,14 @@ func TestGenValidBlock(t *testing.T) {
 	for _, p := range testTxProfiles() {
 		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
-		t.Run(fmt.Sprintf("workers:%d-onlyReadWrite:%v", p.TxGenWorkers, onlyReadWrite), func(t *testing.T) {
+		t.Run(fmt.Sprintf(
+			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
+		), func(t *testing.T) {
 			t.Parallel()
-			c := StartBlockGenerator(p, NoLimit)
+			c := startBlockGeneratorUnderTest(t, p, defaultStreamOptions())
 
 			for i := 0; i < 5; i++ {
-				block := <-c.BlockQueue
+				block := c.Next()
 				for _, tx := range block.Txs {
 					requireValidTx(t, tx, p, c.Signer)
 				}
@@ -205,10 +291,10 @@ func TestGenInvalidSigTx(t *testing.T) {
 	p := defaultProfile(1)
 	p.Conflicts.InvalidSignatures = 0.2
 
-	c := StartTxGenerator(p, NoLimit)
-	txs := c.NextN(1e3)
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
+	txs := NextN(c, 1e4)
 	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
-		if !c.Signer.Verify(<-c.TxQueue) {
+		if !c.Signer.Verify(c.Next()) {
 			return 1
 		}
 		return 0
@@ -247,9 +333,9 @@ func TestGenDependentTx(t *testing.T) {
 		},
 	}
 
-	c := StartTxGenerator(p, NoLimit)
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 
-	txs := c.NextN(1e6)
+	txs := NextN(c, 1e6)
 	m := make(map[string]uint64)
 	for _, tx := range txs {
 		for _, ns := range tx.Namespaces {
@@ -278,8 +364,8 @@ func TestBlindWriteWithValue(t *testing.T) {
 	p.Transaction.BlindWriteValueSize = 32
 	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
 
-	c := StartTxGenerator(p, NoLimit)
-	tx := <-c.TxQueue
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
+	tx := c.Next()
 	require.Len(t, tx.Namespaces[0].BlindWrites, 2)
 	for _, v := range tx.Namespaces[0].BlindWrites {
 		require.Len(t, v.Value, 32)
@@ -292,8 +378,8 @@ func TestReadWriteWithValue(t *testing.T) {
 	p.Transaction.ReadWriteValueSize = 32
 	p.Transaction.ReadWriteCount = NewConstantDistribution(2)
 
-	c := StartTxGenerator(p, NoLimit)
-	tx := <-c.TxQueue
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
+	tx := c.Next()
 	require.Len(t, tx.Namespaces[0].ReadWrites, 2)
 	for _, v := range tx.Namespaces[0].ReadWrites {
 		require.Len(t, v.Value, 32)
@@ -306,35 +392,68 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	limit := 100
 	expectedSeconds := 3
 
-	c := StartTxGenerator(p, LimiterConfig{InitialLimit: limit})
+	options := defaultStreamOptions()
+	options.RateLimit = &LimiterConfig{InitialLimit: limit}
+	c := startTxGeneratorUnderTest(t, p, options)
 	start := time.Now()
-	c.NextN(expectedSeconds * limit)
+	NextN(c, expectedSeconds*limit)
 	duration := time.Since(start)
 	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1)
+}
+
+// modGenTester simulates querying the version from the query service.
+type modGenTester struct {
+	nsVersion []byte
+}
+
+func (m *modGenTester) Next() Modifier {
+	return m
+}
+
+func (m *modGenTester) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
+	for _, ns := range tx.Namespaces {
+		ns.NsVersion = m.nsVersion
+	}
+	return tx, nil
+}
+
+func TestGenTxWithModifier(t *testing.T) {
+	t.Parallel()
+	p := defaultProfile(8)
+
+	mod0 := &modGenTester{types.VersionNumber(0).Bytes()}
+	mod1 := &modGenTester{types.VersionNumber(1).Bytes()}
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions(), mod0, mod1)
+	tx := c.Next()
+	for _, ns := range tx.Namespaces {
+		require.Equal(t, mod1.nsVersion, ns.NsVersion)
+	}
 }
 
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	blockGen *BlockStreamGenerator
-	queryGen *QueryStreamGenerator
+	blockGen Generator[*protoblocktx.Block]
+	queryGen Generator[*protoqueryservice.Query]
 }
 
-func newQueryTestEnv(p *Profile) *queryTestEnv {
+func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	q := &queryTestEnv{
 		p:        p,
 		keys:     make(map[string]*struct{}),
-		blockGen: StartBlockGenerator(p, NoLimit),
-		queryGen: StartQueryGenerator(p, NoLimit),
+		blockGen: startBlockGeneratorUnderTest(t, p, o),
+		queryGen: StartQueryGenerator(ctx, p, o).MakeGenerator(),
 	}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		q.addBlock()
 	}
 	return q
 }
 
 func (q *queryTestEnv) addBlock() {
-	block := <-q.blockGen.BlockQueue
+	block := q.blockGen.Next()
 	for _, tx := range block.Txs {
 		for _, ns := range tx.Namespaces {
 			for _, r := range ns.ReadsOnly {
@@ -372,19 +491,19 @@ func TestQuery(t *testing.T) {
 	t.Parallel()
 	for _, p := range testWorkersProfiles() {
 		p := p
-		t.Run(fmt.Sprintf("workers:%d", p.TxGenWorkers), func(t *testing.T) {
+		t.Run(fmt.Sprintf("workers:%d", p.Workers), func(t *testing.T) {
 			t.Parallel()
-			env := newQueryTestEnv(p)
+			env := newQueryTestEnv(t, p, defaultStreamOptions())
 
 			for i := 0; i < 5; i++ {
-				query := <-env.queryGen.QueryQueue
+				query := env.queryGen.Next()
 				// Since the blocks are generated in parallel, the order of the
 				// keys in the block might not be the same as in the query.
 				// So we need to consume blocks until we found all the keys.
-				require.Eventually(t, func() bool {
+				require.Eventuallyf(t, func() bool {
 					env.addBlock()
 					return len(query.Namespaces[0].Keys) == env.countExistingKeys(query.Namespaces[0].Keys)
-				}, time.Second*3, 1)
+				}, time.Second*5, 1, "iteration %d", i)
 			}
 		})
 	}
@@ -398,12 +517,12 @@ func TestQueryWithInvalid(t *testing.T) {
 			t.Parallel()
 			p := defaultProfile(1)
 			p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
-			env := newQueryTestEnv(p)
+			env := newQueryTestEnv(t, p, defaultStreamOptions())
 
 			existing := 0
 			total := 0
 			for i := 0; i < 10; i++ {
-				query := <-env.queryGen.QueryQueue
+				query := env.queryGen.Next()
 				total += len(query.Namespaces[0].Keys)
 				existing += env.countExistingKeys(query.Namespaces[0].Keys)
 			}
@@ -421,10 +540,10 @@ func TestQueryShuffle(t *testing.T) {
 		p := defaultProfile(1)
 		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
 		p.Query.Shuffle = false
-		env := newQueryTestEnv(p)
+		env := newQueryTestEnv(t, p, defaultStreamOptions())
 
 		for i := 0; i < 5; i++ {
-			query := <-env.queryGen.QueryQueue
+			query := env.queryGen.Next()
 			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
 			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
 			require.Equal(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
@@ -436,10 +555,10 @@ func TestQueryShuffle(t *testing.T) {
 		p := defaultProfile(1)
 		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
 		p.Query.Shuffle = true
-		env := newQueryTestEnv(p)
+		env := newQueryTestEnv(t, p, defaultStreamOptions())
 
 		for i := 0; i < 5; i++ {
-			query := <-env.queryGen.QueryQueue
+			query := env.queryGen.Next()
 			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
 			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys))
 			require.NotEqual(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))

@@ -1,0 +1,5 @@
+
+vc-client:
+  endpoints:
+    - localhost:%d
+    - localhost:%d

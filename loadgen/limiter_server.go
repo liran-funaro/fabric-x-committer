@@ -9,9 +9,6 @@ import (
 	"go.uber.org/ratelimit"
 )
 
-// NoLimit is the default configuration that instance an unlimited limiter.
-var NoLimit = LimiterConfig{}
-
 // LimiterConfig is used to create a limiter.
 type LimiterConfig struct {
 	Endpoint     connection.Endpoint `mapstructure:"endpoint"`

@@ -4,6 +4,8 @@ import (
 	"math/rand"
 
 	"github.com/google/uuid"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"go.uber.org/ratelimit"
 )
 
 // Generator generates new T each time Next() is called.
@@ -11,14 +13,62 @@ type Generator[T any] interface {
 	Next() T
 }
 
+// NextN returns the next N values from the generator.
+func NextN[T any](g Generator[T], num int) []T {
+	txs := make([]T, 0, num)
+	for i := 0; i < num; i++ {
+		txs = append(txs, g.Next())
+	}
+	return txs
+}
+
 // ChanGenerator pull values from a channel.
 type ChanGenerator[T any] struct {
-	Chan <-chan T
+	Chan channel.Reader[T]
 }
 
 // Next yields a new value from the channel.
+// If the channel is closed, a default value is returned.
 func (g *ChanGenerator[T]) Next() T {
-	return <-g.Chan
+	if g.Chan == nil {
+		return *new(T)
+	}
+	val, ok := g.Chan.Read()
+	if !ok {
+		g.Chan = nil
+		return *new(T)
+	}
+	return val
+}
+
+// BatchChanGenerator pull batch of values from a channel and yield them one by one.
+type BatchChanGenerator[T any] struct {
+	Chan      channel.Reader[[]T]
+	lastBatch []T
+	index     int
+}
+
+// Next yields a new value from the channel.
+// If the channel is closed, a default value is returned.
+func (g *BatchChanGenerator[T]) Next() T {
+	if g.Chan == nil {
+		return *new(T)
+	}
+	if g.index >= len(g.lastBatch) {
+		var ok bool
+		g.lastBatch, ok = g.Chan.Read()
+		g.index = 0
+		if !ok {
+			g.Chan = nil
+			return *new(T)
+		}
+		if len(g.lastBatch) == 0 {
+			return *new(T)
+		}
+	}
+	next := g.lastBatch[g.index]
+	g.index++
+	return next
 }
 
 // FloatToIntGenerator wraps a float generator and produces integers.
@@ -113,4 +163,17 @@ func (g *UUIDGenerator) Next() string {
 	uuidObj, err := uuid.NewRandomFromReader(g.Rnd)
 	Must(err)
 	return uuidObj.String()
+}
+
+// RateLimiterGenerator limits the generator's rate.
+type RateLimiterGenerator[T any] struct {
+	Generator[T]
+	Limiter ratelimit.Limiter
+}
+
+// Next yields a value at the required rate.
+func (g *RateLimiterGenerator[T]) Next() T {
+	val := g.Generator.Next()
+	g.Limiter.Take()
+	return val
 }

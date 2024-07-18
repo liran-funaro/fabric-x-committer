@@ -7,39 +7,43 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
-// ClientConfig is a struct that contains the configuration for the client.
-type ClientConfig struct {
-	VCClient          *VCClientConfig          `mapstructure:"vc-client"`
-	CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
-	SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
-	SigVerifierClient *SVClientConfig          `mapstructure:"sig-verifier-client"`
+type (
+	// ClientConfig is a struct that contains the configuration for the client.
+	ClientConfig struct {
+		VCClient          *VCClientConfig          `mapstructure:"vc-client"`
+		CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
+		SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
+		SigVerifierClient *SVClientConfig          `mapstructure:"sig-verifier-client"`
 
-	Monitoring  *monitoring.Config `mapstructure:"monitoring"`
-	RateLimit   LimiterConfig      `mapstructure:"rate-limit"`
-	LoadProfile *Profile           `mapstructure:"load-profile"`
-}
+		Monitoring *monitoring.Config `mapstructure:"monitoring"`
+		BufferSize int                `mapstructure:"buffer-size"`
 
-// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
-type SidecarClientConfig struct {
-	Endpoint    *connection.Endpoint     `mapstructure:"endpoint"`
-	Coordinator *CoordinatorClientConfig `mapstructure:"coordinator"`
-	Orderer     broadcastclient.Config   `mapstructure:"orderer"`
-}
+		LoadProfile *Profile       `mapstructure:"load-profile"`
+		Stream      *StreamOptions `mapstructure:"stream"`
+	}
 
-// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
-type CoordinatorClientConfig struct {
-	Endpoint *connection.Endpoint `mapstructure:"endpoint"`
-}
+	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
+	SidecarClientConfig struct {
+		Endpoint    *connection.Endpoint     `mapstructure:"endpoint"`
+		Coordinator *CoordinatorClientConfig `mapstructure:"coordinator"`
+		Orderer     broadcastclient.Config   `mapstructure:"orderer"`
+	}
 
-// VCClientConfig is a struct that contains the configuration for the VC client.
-type VCClientConfig struct {
-	Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
-}
+	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
+	CoordinatorClientConfig struct {
+		Endpoint *connection.Endpoint `mapstructure:"endpoint"`
+	}
 
-// SVClientConfig is a struct that contains the configuration for the signature verifier client.
-type SVClientConfig struct {
-	Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
-}
+	// VCClientConfig is a struct that contains the configuration for the VC client.
+	VCClientConfig struct {
+		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
+	}
+
+	// SVClientConfig is a struct that contains the configuration for the signature verifier client.
+	SVClientConfig struct {
+		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
+	}
+)
 
 // ReadConfig is a function that reads the client configuration.
 func ReadConfig() *ClientConfig {

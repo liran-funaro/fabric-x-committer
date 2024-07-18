@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	_ "embed"
 	"fmt"
 	"net/http"
 	"testing"
@@ -14,29 +15,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	vcServerTemplate = loggingTemplate + `
-validator-committer-service:` + serverTemplate + `
-  database:
-    host: %s
-    port: %s
-    username: %s
-    password: %s
-    database: %s
-    max-connections: 10
-    min-connections: 1
-    load-balance: false
-  resource-limits:
-    max-workers-for-preparer: 2
-    max-workers-for-validator: 2
-    max-workers-for-committer: 2
-`
-	vcClientTemplate = clientTemplate + `
-vc-client:
-  endpoints:
-    - localhost:%d
-    - localhost:%d
-`
+//go:embed config_template/vc_server.yaml
+var vcServerOnlyTemplate string
+
+//go:embed config_template/vc_client.yaml
+var vcClientOnlyTemplate string
+
+var (
+	vcServerTemplate = loggingTemplate + vcServerOnlyTemplate + serverTemplate
+	vcClientTemplate = loggingTemplate + clientOnlyTemplate + vcClientOnlyTemplate
 )
 
 func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
@@ -46,8 +33,9 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 	for i := 0; i < 2; i++ {
 		// Start server under test
 		loadConfig(t, fmt.Sprintf("server-config-%d.yaml", i), vcServerTemplate,
-			tempFile(t, fmt.Sprintf("server-log-%d.txt", i)), 10000+i, 9002+i,
-			conn.Host, conn.Port, conn.User, conn.Password, conn.Database)
+			tempFile(t, fmt.Sprintf("server-log-%d.txt", i)),
+			conn.Host, conn.Port, conn.User, conn.Password, conn.Database,
+			10000+i, 9002+i)
 		conf := vcservice.ReadConfig()
 
 		if i == 0 {
@@ -56,14 +44,12 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 
 		service, err := vcservice.NewValidatorCommitterService(conf)
 		require.NoError(t, err)
+		t.Cleanup(service.Close)
 
 		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
-		t.Cleanup(func() {
-			server.Stop()
-			service.Close()
-		})
+		t.Cleanup(server.Stop)
 	}
 
 	// Start client

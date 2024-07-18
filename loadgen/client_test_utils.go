@@ -1,6 +1,8 @@
 package loadgen
 
 import (
+	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path"
@@ -16,66 +18,14 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	loggingTemplate = `
-logging:
-  enabled: true
-  level: info
-  caller: true
-  development: true
-  output: %s
-`
-	clientTemplate = loggingTemplate + `
-monitoring:
-  metrics:
-    enable: true
-    endpoint: localhost:%d
-    latency:
-      sampler:
-        type: timer
-        sampling-interval: 10s
-      buckets:
-        type: uniform
-        max-latency: 5s
-        bucket-count: 1000
-load-profile:
-  block:
-    size: 500
-    buffer-size: 1000
-  transaction:
-    key-size: 32
-    read-write-count:
-      type: constant
-      const: 2
-    buffer-size: 500
-    signature:
-      scheme: ECDSA
-  conflicts:
-    invalid-signatures: 0.1
-  tx-gen-workers: 5
-  tx-sign-workers: 3
-  tx-dependencies-workers: 2
-  seed: 12345
-rate-limit:
-  initial-limit: 1000
-`
-	serverTemplate = `
-  monitoring:
-    metrics:
-      enable: true
-      endpoint: localhost:%d
-      latency:
-        sampler:
-          type: timer
-          sampling-interval: 10s
-        buckets:
-          type: uniform
-          max-latency: 5s
-          bucket-count: 1000
-  server:
-    endpoint: localhost:%d
-`
-)
+//go:embed config_template/logging.yaml
+var loggingTemplate string
+
+//go:embed config_template/client.yaml
+var clientOnlyTemplate string
+
+//go:embed config_template/server.yaml
+var serverTemplate string
 
 func loadConfig(t *testing.T, fileName, template string, params ...any) {
 	conf := fmt.Sprintf(template, params...)
@@ -99,16 +49,18 @@ func startLoadGenerator(t *testing.T, c *ClientConfig) *PerfMetrics {
 	t.Cleanup(func() {
 		require.NoError(t, metrics.provider.StopServer())
 	})
+	require.NoError(t, client.Start(blockGen))
 	go func() {
-		require.NoError(t, client.Start(blockGen))
+		<-client.Context().Done()
+		require.ErrorIs(t, context.Cause(client.Context()), ErrStoppedByUser)
 	}()
+	t.Cleanup(client.Stop)
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) > 0 &&
 			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 0
 	}, 20*time.Second, 100*time.Millisecond)
 
-	client.Stop()
 	return metrics
 }
 

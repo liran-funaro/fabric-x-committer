@@ -1,124 +1,159 @@
 package loadgen
 
 import (
-	"encoding/json"
+	"context"
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"go.uber.org/ratelimit"
 )
 
 type (
-	// TxStreamGenerator is a generator of TXs.
-	TxStreamGenerator struct {
-		TxQueue <-chan *protoblocktx.Tx
-		Signer  *TxSignerVerifier
+	// TxStream yields transactions from the  stream.
+	TxStream = StreamWithGenerator[*protoblocktx.Tx]
+
+	// BlockStream yields blocks from the stream.
+	BlockStream = StreamWithGenerator[*protoblocktx.Block]
+
+	// QueryStream generates stream's queries consumers.
+	QueryStream = Stream[*protoqueryservice.Query]
+
+	// StreamWithGenerator combines stream information with a generator that yields from the stream.
+	StreamWithGenerator[T any] struct {
+		Generator[T]
+		Stream Stream[T]
+		Signer *TxSignerVerifier
 	}
 
-	// BlockStreamGenerator is a generator of blocks.
-	BlockStreamGenerator struct {
-		BlockQueue <-chan *protoblocktx.Block
-		Signer     *TxSignerVerifier
-	}
-
-	// QueryStreamGenerator is a generator of queries.
-	QueryStreamGenerator struct {
-		QueryQueue <-chan *protoqueryservice.Query
+	// Stream makes generators that consume from a stream (BatchQueue).
+	// Each generator cannot be used concurrently by different goroutines.
+	// To consume the stream by multiple goroutines, generate a consumer
+	// for each goroutine.
+	Stream[T any] struct {
+		Limiter    ratelimit.Limiter
+		BatchQueue channel.ReaderWriter[[]T]
 	}
 )
 
-// StartTxGenerator starts workers that generates TXs into a queue.
-func StartTxGenerator(profile *Profile, limiterConfig LimiterConfig) *TxStreamGenerator {
-	seedRnd := rand.New(rand.NewSource(profile.Seed))
-	logger.Debugf("Starting %d workers to generate load", profile.TxGenWorkers)
-
-	indTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
-	for i := uint32(0); i < Max(profile.TxGenWorkers, 1); i++ {
-		txGen := newIndependentTxGenerator(NewRandFromSeedGenerator(seedRnd), &profile.Transaction)
-		go func() {
-			for {
-				indTxQueue <- txGen.Next()
-			}
-		}()
+// MakeGenerator creates a new generator that consumes from the stream.
+// Each generator must be used from a single goroutine, but different
+// generators from the same Stream can be used concurrently.
+func (s *Stream[T]) MakeGenerator() Generator[T] {
+	return &RateLimiterGenerator[T]{
+		Generator: &BatchChanGenerator[T]{
+			Chan: s.BatchQueue,
+		},
+		Limiter: s.Limiter,
 	}
+}
 
-	depTxQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
-	for i := uint32(0); i < Max(profile.TxDependenciesWorkers, 1); i++ {
-		txGen := newTxDependenciesDecorator(NewRandFromSeedGenerator(seedRnd), indTxQueue, profile)
-		go func() {
-			for {
-				depTxQueue <- txGen.Next()
-			}
-		}()
-	}
+// StartTxGenerator starts workers that generates transactions into a queue and apply the modifiers.
+// Each worker will have a unique instance of the modifier to avoid concurrency issues.
+// The modifiers will be applied in the order they are given.
+// A transaction modifier can modify any of its fields to adjust the workload.
+// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
+// The signature modifier is applied last so all previous modifications will be signed correctly.
+func StartTxGenerator(
+	ctx context.Context, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
+) *TxStream {
+	logger.Debugf("Starting %d workers to generate load", profile.Workers)
 
-	txQueue := make(chan *protoblocktx.Tx, profile.Transaction.BufferSize)
 	signer := NewTxSignerVerifier(&profile.Transaction.Signature)
-	rateLimiter := NewLimiter(&limiterConfig)
-	for i := uint32(0); i < Max(profile.TxSignWorkers, 1); i++ {
-		txGen := newSignTxDecorator(NewRandFromSeedGenerator(seedRnd), depTxQueue, signer, profile)
-		go func() {
-			for {
-				txQueue <- txGen.Next()
-				rateLimiter.Take()
-			}
-		}()
+	txQueue := channel.Make[[]*protoblocktx.Tx](ctx, Max(options.BuffersSize, 1))
+	for _, w := range makeWorkersData(profile) {
+		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
+		if len(profile.Conflicts.Dependencies) > 0 {
+			modifiers = append(modifiers, newTxDependenciesModifier(NewRandFromSeedGenerator(w.seed), profile))
+		}
+		for _, mod := range modifierGenerators {
+			modifiers = append(modifiers, mod.Next())
+		}
+		// The signer must be the last modifier.
+		modifiers = append(modifiers, newSignTxModifier(NewRandFromSeedGenerator(w.seed), signer, profile))
+
+		txGen := newIndependentTxGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, &profile.Transaction)
+		modGen := newTxModifierTxDecorator(txGen, modifiers...)
+		go ingestBatchesToQueue(txQueue, modGen, int(options.GenBatch))
 	}
 
-	return &TxStreamGenerator{
-		TxQueue: txQueue,
-		Signer:  signer,
+	stream := Stream[*protoblocktx.Tx]{
+		Limiter:    NewLimiter(options.RateLimit),
+		BatchQueue: txQueue,
+	}
+	return &TxStream{
+		Generator: stream.MakeGenerator(),
+		Stream:    stream,
+		Signer:    signer,
 	}
 }
 
-// NextN returns the next N TXs.
-func (txGen *TxStreamGenerator) NextN(num int) []*protoblocktx.Tx {
-	txs := make([]*protoblocktx.Tx, num)
-	for i := 0; i < num; i++ {
-		txs[i] = <-txGen.TxQueue
-	}
-	return txs
-}
-
-// StartBlockGenerator starts workers that generates blocks into a queue.
-func StartBlockGenerator(profile *Profile, limiterConfig LimiterConfig) *BlockStreamGenerator {
-	p, _ := json.Marshal(profile)
-	logger.Infof("Profile passed: %s", string(p))
-	txGen := StartTxGenerator(profile, limiterConfig)
+// StartBlockGenerator starts workers that generates blocks into a queue with modifier.
+func StartBlockGenerator(
+	ctx context.Context, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
+) *BlockStream {
+	txGen := StartTxGenerator(ctx, profile, options, modifierGenerators...)
+	queue := channel.Make[[]*protoblocktx.Block](ctx, Max(options.BuffersSize, 1))
 	blockGen := &BlockGenerator{
 		TxGenerator: txGen,
 		BlockSize:   uint64(profile.Block.Size),
 	}
-
-	blockQueue := make(chan *protoblocktx.Block, profile.Block.BufferSize)
-	go func() {
-		for {
-			blockQueue <- blockGen.Next()
-		}
-	}()
-
-	return &BlockStreamGenerator{
-		BlockQueue: blockQueue,
-		Signer:     txGen.Signer,
+	go ingestBatchesToQueue(queue, blockGen, 1)
+	stream := Stream[*protoblocktx.Block]{
+		Limiter:    NewLimiter(nil),
+		BatchQueue: queue,
+	}
+	return &BlockStream{
+		Generator: stream.MakeGenerator(),
+		Stream:    stream,
+		Signer:    txGen.Signer,
 	}
 }
 
 // StartQueryGenerator starts workers that generates queries into a queue.
-func StartQueryGenerator(profile *Profile, limiterConfig LimiterConfig) *QueryStreamGenerator {
-	seedRnd := rand.New(rand.NewSource(profile.Seed))
-	logger.Debugf("Starting %d workers to generate query load", profile.TxGenWorkers)
+func StartQueryGenerator(ctx context.Context, profile *Profile, options *StreamOptions) *QueryStream {
+	logger.Debugf("Starting %d workers to generate query load", profile.Workers)
 
-	queryQueue := make(chan *protoqueryservice.Query, profile.Query.BufferSize)
-	rateLimiter := NewLimiter(&limiterConfig)
-	for i := uint32(0); i < Max(profile.TxGenWorkers, 1); i++ {
-		queryGen := newQueryGenerator(NewRandFromSeedGenerator(seedRnd), &profile.Query)
-		go func() {
-			for {
-				queryQueue <- queryGen.Next()
-				rateLimiter.Take()
-			}
-		}()
+	queryQueue := channel.Make[[]*protoqueryservice.Query](ctx, Max(options.BuffersSize, 1))
+	for _, w := range makeWorkersData(profile) {
+		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
+		go ingestBatchesToQueue(queryQueue, queryGen, int(options.GenBatch))
 	}
 
-	return &QueryStreamGenerator{QueryQueue: queryQueue}
+	return &QueryStream{
+		Limiter:    NewLimiter(options.RateLimit),
+		BatchQueue: queryQueue,
+	}
+}
+
+type workerData struct {
+	seed   *rand.Rand
+	keyGen Generator[Key]
+}
+
+func makeWorkersData(profile *Profile) []workerData {
+	seedGen := rand.New(rand.NewSource(profile.Seed))
+	workers := make([]workerData, Max(profile.Workers, 1))
+	for i := range workers {
+		seed := NewRandFromSeedGenerator(seedGen)
+		// Each worker has a unique seed to generate keys in addition the seed for the other content.
+		// This allows reproducing the generated keys regardless of the other generated content.
+		// It is useful when generating transactions, and later generating queries for the same keys.
+		keySeed := NewRandFromSeedGenerator(seed)
+		workers[i] = workerData{
+			seed:   seed,
+			keyGen: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: keySeed},
+		}
+	}
+	return workers
+}
+
+func ingestBatchesToQueue[T any](q channel.Writer[[]T], g Generator[T], batchSize int) {
+	batchGen := &MultiGenerator[T]{
+		Gen:   g,
+		Count: &ConstGenerator[int]{Const: Max(batchSize, 1)},
+	}
+	for q.Write(batchGen.Next()) {
+	}
 }

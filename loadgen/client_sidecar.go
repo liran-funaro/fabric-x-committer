@@ -1,8 +1,6 @@
 package loadgen
 
 import (
-	"context"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
@@ -28,7 +26,7 @@ type sidecarClient struct {
 	tracker         *sidecarTracker
 }
 
-func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) blockGenClient { //nolint:ireturn
+func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) *sidecarClient {
 	conn, err := connection.Connect(connection.NewDialConfig(*config.Coordinator.Endpoint))
 	if err != nil {
 		panic(errors.Wrapf(err, "failed to connect to coordinator on %s", config.Coordinator.Endpoint.String()))
@@ -57,9 +55,7 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) blockGe
 	}
 
 	return &sidecarClient{
-		loadGenClient: &loadGenClient{
-			stopSender: make(chan any),
-		},
+		loadGenClient:   newLoadGenClient(),
 		tracker:         newSidecarTracker(metrics),
 		coordinator:     coordinatorClient,
 		sidecar:         listener,
@@ -75,42 +71,38 @@ func (c *sidecarClient) Stop() {
 	c.loadGenClient.Stop()
 }
 
-func (c *sidecarClient) Start(blockGen *BlockStreamGenerator) error {
+func (c *sidecarClient) Start(blockGen *BlockStream) error {
 	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
-		context.Background(),
+		c.ctx,
 		&protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()},
 	); err != nil {
 		return errors.Wrap(err, "failed connecting to coordinator")
 	}
 	logger.Infof("Set verification key")
 
-	errChan := make(chan error, len(c.broadcasts))
-
 	go func() {
-		errChan <- c.sidecar.RunDeliverOutputListener(context.Background(), c.tracker.OnReceiveSidecarBlock)
+		if err := c.sidecar.RunDeliverOutputListener(c.ctx, c.tracker.OnReceiveSidecarBlock); err != nil {
+			c.cancel(err)
+		}
 	}()
 
 	for _, stream := range c.broadcasts {
-		go func(stream ab.AtomicBroadcast_BroadcastClient) {
-			errChan <- c.startSending(blockGen, stream)
-		}(stream)
+		go c.startSending(blockGen, stream)
 	}
 
 	for _, stream := range c.delivers {
-		go func(stream ab.AtomicBroadcast_BroadcastClient) {
-			errChan <- c.startReceiving(stream)
-		}(stream)
+		go c.startReceiving(stream)
 	}
 
-	return <-errChan
+	return nil
 }
 
-func (*sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) error {
-	for {
+func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) {
+	for c.ctx.Err() == nil {
 		if response, err := stream.Recv(); err != nil {
-			return errors.Wrapf(err, "failed receiving")
+			c.cancel(errors.Wrapf(err, "failed receiving"))
 		} else if response.Status != common.Status_SUCCESS {
-			return errors.Errorf("unexpected status: %v - %s", response.Status, response.Info)
+			c.cancel(errors.Errorf("unexpected status: %v - %s", response.Status, response.Info))
 		} else {
 			logger.Debugf("Received ack for TX")
 		}
@@ -118,12 +110,15 @@ func (*sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) 
 }
 
 func (c *sidecarClient) startSending(
-	blockGen *BlockStreamGenerator, stream ab.AtomicBroadcast_BroadcastClient,
-) error {
-	return c.loadGenClient.startSending(blockGen.BlockQueue, stream, func(block *protoblocktx.Block) error {
+	blockGen *BlockStream, stream ab.AtomicBroadcast_BroadcastClient,
+) {
+	c.loadGenClient.startSending(blockGen, stream, func(block *protoblocktx.Block) error {
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		for _, tx := range block.Txs {
-			env, txID, _ := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+			env, txID, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+			if err != nil {
+				return errors.Wrapf(err, "failed enveloping block %d", block.Number)
+			}
 			if err := stream.Send(env); err != nil {
 				return errors.Wrapf(err, "failed sending block %d", block.Number)
 			}

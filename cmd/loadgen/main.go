@@ -66,16 +66,18 @@ func startCmd() *cobra.Command {
 				return err
 			}
 
-			ctx, cancel := context.WithCancelCause(cmd.Context())
-			go func() {
-				cancel(client.Start(blockGen))
-			}()
+			if err = client.Start(blockGen); err != nil {
+				return err
+			}
 
-			<-ctx.Done()
-			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			<-client.Context().Done()
+			if errors.Is(client.Context().Err(), context.DeadlineExceeded) {
 				return nil
 			}
-			return context.Cause(ctx)
+			if err = context.Cause(client.Context()); !errors.Is(err, loadgen.ErrStoppedByUser) {
+				return err
+			}
+			return nil
 		},
 	}
 

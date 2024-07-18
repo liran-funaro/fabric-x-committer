@@ -1,0 +1,15 @@
+
+validator-committer-service:
+  database:
+    host: %s
+    port: %s
+    username: %s
+    password: %s
+    database: %s
+    max-connections: 10
+    min-connections: 1
+    load-balance: false
+  resource-limits:
+    max-workers-for-preparer: 2
+    max-workers-for-validator: 2
+    max-workers-for-committer: 2

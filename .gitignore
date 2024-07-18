@@ -22,6 +22,7 @@ docker/runner/out
 
 **/generated/**
 .idea
+.vscode
 *coverage.profile
 
 # Log files produced by the tests

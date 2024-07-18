@@ -111,7 +111,12 @@ func (*MockCoordinator) sendTxsValidationStatus(
 					b.TxsValidationStatus = batch.TxsValidationStatus[lo:hi]
 				}
 
-				utils.Must(stream.Send(b))
+				rpcErr := stream.Send(b)
+				if connection.IsStreamEnd(rpcErr) {
+					logger.Debugf("stream ended")
+				} else {
+					utils.Must(connection.WrapStreamRpcError(rpcErr))
+				}
 				logger.Debugf("Sent back batch with %d TXs", len(b.TxsValidationStatus))
 			}(i)
 		}
