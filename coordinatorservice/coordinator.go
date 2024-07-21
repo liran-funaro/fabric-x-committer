@@ -97,6 +97,11 @@ type (
 		// 		     that receives dependency free transactions nodes from this channel.
 		dependencyFreeTxsNode chan []*dependencygraph.TransactionNode
 
+		// sender: coordinator sends invalid transactions (due to incorrect formation) to this channel.
+		// receiver: validator committer manager receives these invalid transactions from this channel
+		//           and forwards them to vcservice for the commit of the invalid status code.
+		preliminaryInvalidTxsStatus chan []*protovcservice.Transaction
+
 		// sender: validator committer manager sends validated transactions nodes to this channel. For each validator
 		// 	       committer server, there is a goroutine that sends validated transactions nodes to this channel.
 		// receiver: dependency graph manager receives validated transactions nodes from this channel and update
@@ -129,6 +134,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		blockWithInvalidSignTxs:       make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
 		txsBatchForDependencyGraph:    make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
 		dependencyFreeTxsNode:         make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
+		preliminaryInvalidTxsStatus:   make(chan []*protovcservice.Transaction, bufSzPerChanForValCommitMgr),
 		validatedTxsNode:              make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
 		txsStatus:                     make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
 	}
@@ -169,11 +175,12 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	vcMgr := newValidatorCommitterManager(
 		context.Background(),
 		&validatorCommitterManagerConfig{
-			serversConfig:                  c.ValidatorCommitterConfig.ServerConfig,
-			incomingTxsForValidationCommit: queues.dependencyFreeTxsNode,
-			outgoingValidatedTxsNode:       queues.validatedTxsNode,
-			outgoingTxsStatus:              queues.txsStatus,
-			metrics:                        metrics,
+			serversConfig:                           c.ValidatorCommitterConfig.ServerConfig,
+			incomingTxsForValidationCommit:          queues.dependencyFreeTxsNode,
+			incomingPrelimInvalidTxsStatusForCommit: queues.preliminaryInvalidTxsStatus,
+			outgoingValidatedTxsNode:                queues.validatedTxsNode,
+			outgoingTxsStatus:                       queues.txsStatus,
+			metrics:                                 metrics,
 		},
 	)
 
@@ -238,10 +245,10 @@ func (c *CoordinatorService) BlockProcessing(
 ) error {
 	logger.Info("Start validate and commit stream")
 
-	numErrableGoroutines := 3
+	numErrableGoroutines := 2
 	errorChannel := make(chan error, numErrableGoroutines)
 
-	c.wg.Add(numErrableGoroutines + 1)
+	c.wg.Add(4)
 	go func() {
 		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block and forward it to the signature verifier manager")
@@ -258,8 +265,8 @@ func (c *CoordinatorService) BlockProcessing(
 	go func() {
 		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block with invalid transactions from signature verifier and" +
-			" forward the status to client")
-		errorChannel <- c.sendTxStatusFromSignatureVerifier(stream)
+			" forward the status to validator-committer manager")
+		c.receiveFromSignatureVerifierAndForwardToValidatorCommitter()
 	}()
 
 	go func() {
@@ -433,79 +440,51 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter( // nolint:gocog
 		}
 
 		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
-		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(txStatus.Status))
-		i := 0
-		committed := 0
-		mvccConflict := 0
-		duplicate := 0
+		valStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(txStatus.Status))
 
 		for id, status := range txStatus.Status {
-			valStatus[i] = &protocoordinatorservice.TxValidationStatus{
+			valStatus = append(valStatus, &protocoordinatorservice.TxValidationStatus{
 				TxId:   id,
 				Status: status,
-			}
-			i++
-
-			switch status {
-			case protoblocktx.Status_COMMITTED:
-				committed++
-			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
-				mvccConflict++
-			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
-				duplicate++
-			}
+			})
 
 			if err := c.postProcessing(id, status); err != nil {
 				return err
 			}
 		}
 
-		logger.Debugf("Batch contained %d valid TXs, %d version conflicts, and %d duplicates. "+
-			"Forwarding to output stream.", committed, mvccConflict, duplicate)
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
-
-		m := c.metrics
-		m.addToCounter(m.transactionCommittedStatusSentTotal, committed)
-		m.addToCounter(m.transactionMVCCConflictStatusSentTotal, mvccConflict)
-		m.addToCounter(m.transactionDuplicateTxStatusSentTotal, duplicate)
 	}
 }
 
-func (c *CoordinatorService) sendTxStatusFromSignatureVerifier(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-) error {
-	invalidStatus := protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCommitter() {
 	var blkWithInvalidSign *protoblocktx.Block
 	var ok bool
 	for {
 		select {
 		case <-c.stopGoroutines:
-			return nil
+			return
 		case blkWithInvalidSign, ok = <-c.queues.blockWithInvalidSignTxs:
 			if !ok {
-				return nil
+				return
 			}
 		}
 
-		logger.Debugf("New partial block with %d TXs reached the coordinator", len(blkWithInvalidSign.Txs))
-		valStatus := make([]*protocoordinatorservice.TxValidationStatus, len(blkWithInvalidSign.Txs))
+		invalidTxsStatus := make([]*protovcservice.Transaction, len(blkWithInvalidSign.Txs))
 		for i, tx := range blkWithInvalidSign.Txs {
-			valStatus[i] = &protocoordinatorservice.TxValidationStatus{
-				TxId:   tx.Id,
-				Status: invalidStatus,
-			}
-			if err := c.postProcessing(tx.Id, invalidStatus); err != nil {
-				return err
+			invalidTxsStatus[i] = &protovcservice.Transaction{
+				ID: tx.Id,
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+				},
 			}
 		}
-		logger.Debugf("Partial block [%d] contained %d TXs with invalid signatures. "+
-			"Forwarding to output stream.", blkWithInvalidSign.Number, len(valStatus))
-		if err := c.sendTxsStatus(stream, valStatus); err != nil {
-			return err
-		}
-		c.metrics.addToCounter(c.metrics.transactionInvalidSignatureStatusSentTotal, len(blkWithInvalidSign.Txs))
+		// NOTE: we are not sending the invalid tx status immediately to the client as
+		// this status code can change if the txID is found to be duplicate by the
+		// vcservice.
+		c.queues.preliminaryInvalidTxsStatus <- invalidTxsStatus
 	}
 }
 
@@ -528,6 +507,21 @@ func (c *CoordinatorService) sendTxsStatus(
 	}
 
 	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus))
+
+	// TODO: introduce metrics to record all sent statuses. Issue #436.
+	m := c.metrics
+	for _, tx := range txsStatus {
+		switch tx.Status {
+		case protoblocktx.Status_COMMITTED:
+			m.addToCounter(m.transactionCommittedStatusSentTotal, 1)
+		case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+			m.addToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
+		case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+			m.addToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
+		case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
+			m.addToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
+		}
+	}
 
 	return nil
 }

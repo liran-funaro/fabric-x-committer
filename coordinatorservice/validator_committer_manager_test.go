@@ -20,6 +20,7 @@ type vcMgrTestEnv struct {
 	inputTxs                  chan []*dependencygraph.TransactionNode
 	outputTxs                 chan []*dependencygraph.TransactionNode
 	outputTxsStatus           chan *protovcservice.TransactionStatus
+	prelimInvalidTxStatus     chan []*protovcservice.Transaction
 	mockVcServices            []*vcservicemock.MockVcService
 }
 
@@ -29,16 +30,18 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	inputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxsStatus := make(chan *protovcservice.TransactionStatus, 10)
+	prelimInvalidTxStatus := make(chan []*protovcservice.Transaction, 10)
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 2*time.Minute)
 	vcm := newValidatorCommitterManager(
 		ctx,
 		&validatorCommitterManagerConfig{
-			serversConfig:                  sc,
-			incomingTxsForValidationCommit: inputTxs,
-			outgoingValidatedTxsNode:       outputTxs,
-			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        newPerformanceMetrics(true),
+			serversConfig:                           sc,
+			incomingTxsForValidationCommit:          inputTxs,
+			outgoingValidatedTxsNode:                outputTxs,
+			outgoingTxsStatus:                       outputTxsStatus,
+			incomingPrelimInvalidTxsStatusForCommit: prelimInvalidTxStatus,
+			metrics:                                 newPerformanceMetrics(true),
 		},
 	)
 	errChan, err := vcm.start()
@@ -49,7 +52,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	wg.Add(1)
 
 	go func() {
-		numErrorableVCMGoroutines := 3 * len(vcs)
+		numErrorableVCMGoroutines := 4 * len(vcs)
 		for i := 0; i < numErrorableVCMGoroutines; i++ {
 			require.NoError(t, <-errChan)
 		}
@@ -60,6 +63,8 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		vcm.close()
 		close(inputTxs)
 		close(outputTxs)
+		close(outputTxsStatus)
+		close(prelimInvalidTxStatus)
 		for _, mockVC := range vcs {
 			mockVC.Close()
 		}
@@ -75,6 +80,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		inputTxs:                  inputTxs,
 		outputTxs:                 outputTxs,
 		outputTxsStatus:           outputTxsStatus,
+		prelimInvalidTxStatus:     prelimInvalidTxStatus,
 		mockVcServices:            vcs,
 	}
 }
@@ -151,6 +157,31 @@ func TestValidatorCommitterManager(t *testing.T) {
 			}
 			return true
 		}, 4*time.Second, 100*time.Millisecond)
+	})
+
+	t.Run("send transactions with preliminary invalid status", func(t *testing.T) {
+		txBatch := []*protovcservice.Transaction{
+			{
+				ID: "1",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+				},
+			},
+			{
+				ID: "2",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+				},
+			},
+		}
+		env.prelimInvalidTxStatus <- txBatch
+
+		outTxsStatus := <-env.outputTxsStatus
+
+		require.Equal(t, map[string]protoblocktx.Status{
+			"1": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+			"2": protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+		}, outTxsStatus.Status)
 	})
 }
 

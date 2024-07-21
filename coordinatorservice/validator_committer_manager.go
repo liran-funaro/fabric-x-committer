@@ -30,6 +30,7 @@ type (
 	// vcserver.
 	validatorCommitter struct {
 		stream           protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
+		sendOnStreamMu   sync.Mutex
 		statusCollection channel.ReaderWriter[*protovcservice.TransactionStatus]
 		metrics          *perfMetrics
 
@@ -41,11 +42,12 @@ type (
 	}
 
 	validatorCommitterManagerConfig struct {
-		serversConfig                  []*connection.ServerConfig
-		incomingTxsForValidationCommit <-chan []*dependencygraph.TransactionNode
-		outgoingValidatedTxsNode       chan<- []*dependencygraph.TransactionNode
-		outgoingTxsStatus              chan<- *protovcservice.TransactionStatus
-		metrics                        *perfMetrics
+		serversConfig                           []*connection.ServerConfig
+		incomingTxsForValidationCommit          <-chan []*dependencygraph.TransactionNode
+		incomingPrelimInvalidTxsStatusForCommit <-chan []*protovcservice.Transaction
+		outgoingValidatedTxsNode                chan<- []*dependencygraph.TransactionNode
+		outgoingTxsStatus                       chan<- *protovcservice.TransactionStatus
+		metrics                                 *perfMetrics
 	}
 )
 
@@ -64,7 +66,7 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
 
-	numErrorableGoroutinePerServer := 3
+	numErrorableGoroutinePerServer := 4
 	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
 	for i, serverConfig := range c.serversConfig {
@@ -78,6 +80,11 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 
 		go func() {
 			errChan <- vc.sendTransactionsToVCService(channel.NewReader(vcm.ctx, c.incomingTxsForValidationCommit))
+		}()
+
+		go func() {
+			errChan <- vc.sendPrelimInvalidTxsStatusToVCService(
+				channel.NewReader(vcm.ctx, c.incomingPrelimInvalidTxsStatusForCommit))
 		}()
 
 		go func() {
@@ -146,15 +153,37 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			txBatch[i] = txNode.Tx
 		}
 
-		if err := vc.stream.Send(
-			&protovcservice.TransactionBatch{
-				Transactions: txBatch,
-			},
-		); err != nil {
-			return connection.FilterStreamErrors(err)
+		if err := vc.sendTxs(txBatch); err != nil {
+			return err
 		}
+
 		logger.Debugf("TX node contains %d TXs, and was sent to a cv", len(txBatch))
 	}
+}
+
+func (vc *validatorCommitter) sendPrelimInvalidTxsStatusToVCService(
+	inputPrelimInvalidTxsStatus channel.Reader[[]*protovcservice.Transaction],
+) error {
+	for {
+		invalidTxs, ok := inputPrelimInvalidTxsStatus.Read()
+		if !ok {
+			return nil
+		}
+
+		if err := vc.sendTxs(invalidTxs); err != nil {
+			return err
+		}
+	}
+}
+
+func (vc *validatorCommitter) sendTxs(txs []*protovcservice.Transaction) error {
+	vc.sendOnStreamMu.Lock()
+	defer vc.sendOnStreamMu.Unlock()
+	return vc.stream.Send(
+		&protovcservice.TransactionBatch{
+			Transactions: txs,
+		},
+	)
 }
 
 func (vc *validatorCommitter) receiveTransactionsStatusFromVCService() error {
@@ -204,7 +233,10 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		for txID := range txsStatus.Status {
 			v, ok := vc.txBeingValidated.LoadAndDelete(txID)
 			if !ok {
-				return errors.New("failed to load and delete txNode from the txBeingValidated map")
+				// Transactions sent with a preliminary invalid status will not be
+				// found in the txBeingValidated list. Furthermore, these transactions
+				// are not part of the dependency graph and, hence, we can move to the next.
+				continue
 			}
 
 			txNode, ok := v.(*dependencygraph.TransactionNode)

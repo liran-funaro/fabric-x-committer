@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
@@ -14,11 +15,11 @@ func (c *CoordinatorService) preProcessBlock(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 	block *protoblocktx.Block,
 ) error {
-	if err := c.checkTransactionFormation(stream, block); err != nil {
+	if err := c.handleDuplicateAmongActiveTxs(stream, block); err != nil {
 		return err
 	}
 
-	if err := c.handleDuplicateAmongActiveTxs(stream, block); err != nil {
+	if err := c.handleIncorrectlyFormedTxs(block); err != nil {
 		return err
 	}
 
@@ -26,10 +27,7 @@ func (c *CoordinatorService) preProcessBlock(
 	return nil
 }
 
-func (c *CoordinatorService) checkTransactionFormation(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	block *protoblocktx.Block,
-) error {
+func (c *CoordinatorService) handleIncorrectlyFormedTxs(block *protoblocktx.Block) error {
 	badTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
 	badTxIndex := make([]int, 0, len(block.Txs))
 
@@ -80,7 +78,18 @@ func (c *CoordinatorService) checkTransactionFormation(
 
 	removeFromBlock(block, badTxIndex)
 
-	return c.sendTxsStatus(stream, badTxStatus)
+	vcTxs := make([]*protovcservice.Transaction, 0, len(badTxStatus))
+	for _, t := range badTxStatus {
+		vcTxs = append(vcTxs, &protovcservice.Transaction{
+			ID: t.TxId,
+			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+				Code: t.Status,
+			},
+		})
+	}
+
+	c.queues.preliminaryInvalidTxsStatus <- vcTxs
+	return nil
 }
 
 func (c *CoordinatorService) handleDuplicateAmongActiveTxs(

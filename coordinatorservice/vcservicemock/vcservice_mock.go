@@ -78,7 +78,11 @@ func (vc *MockVcService) sendTransactionStatus(
 		}
 
 		for _, tx := range txBatch.Transactions {
-			txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
+			if tx.PrelimInvalidTxStatus != nil {
+				txsStatus.Status[tx.ID] = tx.PrelimInvalidTxStatus.Code
+			} else {
+				txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
+			}
 		}
 
 		err := stream.Send(txsStatus)
