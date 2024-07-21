@@ -131,8 +131,6 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 
 		require.NoError(t, cs.Close())
 
-		<-cs.signatureVerifierMgr.done()
-
 		wgValErrChan.Wait()
 
 		grpcSrv.Stop()

@@ -23,9 +23,9 @@ type (
 		config       *signVerifierManagerConfig
 		signVerifier []*signatureVerifier
 
-		// ctx and cancelFunc is responsible to stop all SV streams once the SVM is closed.
-		ctx        context.Context
-		cancelFunc context.CancelFunc
+		// ctx and cancel is responsible to stop all SV streams once the SVM is closed.
+		ctx    context.Context
+		cancel context.CancelFunc
 
 		metrics *perfMetrics
 	}
@@ -73,10 +73,10 @@ const (
 func newSignatureVerifierManager(ctx context.Context, config *signVerifierManagerConfig) *signatureVerifierManager {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	return &signatureVerifierManager{
-		config:     config,
-		ctx:        ctx,
-		cancelFunc: cancelFunc,
-		metrics:    config.metrics,
+		config:  config,
+		ctx:     ctx,
+		cancel:  cancelFunc,
+		metrics: config.metrics,
 	}
 }
 
@@ -116,11 +116,8 @@ func (svm *signatureVerifierManager) start() error {
 func (svm *signatureVerifierManager) close() {
 	logger.Infof("Closing %d connections to sv's", len(svm.signVerifier))
 	// This also cancels the stream.
-	svm.cancelFunc()
-}
-
-func (svm *signatureVerifierManager) done() <-chan struct{} {
-	return svm.ctx.Done()
+	svm.cancel()
+	<-svm.ctx.Done()
 }
 
 func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierservice.Key) error {
@@ -140,7 +137,12 @@ func ingestBlocks(
 	incomingBlocks channel.Reader[*protoblocktx.Block],
 	blocksQueue channel.Writer[*blockWithResult],
 ) {
-	for block, ok := incomingBlocks.Read(); ok; block, ok = incomingBlocks.Read() {
+	for {
+		block, ctxAlive := incomingBlocks.Read()
+		if !ctxAlive {
+			return
+		}
+
 		blockSize := len(block.Txs)
 		logger.Debugf("New block (size: %d) came from coordinator to sv manager", blockSize)
 		blocksQueue.Write(&blockWithResult{
@@ -155,7 +157,11 @@ func (svm *signatureVerifierManager) forwardValidatedTransactions(
 	validated channel.Reader[*blockWithResult],
 	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs channel.Writer[*protoblocktx.Block],
 ) {
-	for blkWithResult, ok := validated.Read(); ok; blkWithResult, ok = validated.Read() {
+	for {
+		blkWithResult, ctxAlive := validated.Read()
+		if !ctxAlive {
+			return
+		}
 		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
 			blkWithResult.block.Number, blkWithResult.validTxCount, blkWithResult.invalidTxCount)
 		svm.metrics.addToCounter(
@@ -242,9 +248,11 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// NOTE: validatedBlocks should not use the stream context. Otherwise, these is a
+			// possibility of losing a validated block.
 			sv.receiveTransactionsStatusFromSVService(stream, validatedBlocks)
 		}()
-		sv.sendTransactionsToSVService(stream, inputBlocks)
+		sv.sendTransactionsToSVService(stream, inputBlocks.WithContext(stream.Context()))
 		wg.Wait()
 		logger.Debug("Stream ended")
 	}
@@ -252,58 +260,45 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 
 func (sv *signatureVerifier) sendTransactionsToSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	inputBlocks channel.Writer[*blockWithResult],
+	inputBlocks channel.Reader[*blockWithResult],
 ) {
-	// This make sure we exit immediately when the stream ends.
-	streamInputBlocks := inputBlocks.WithContext(stream.Context())
-	for blkWithResult, ok := streamInputBlocks.Read(); ok; blkWithResult, ok = streamInputBlocks.Read() {
+	for {
+		blkWithResult, ctxAlive := inputBlocks.Read()
+		if !ctxAlive {
+			return
+		}
+
 		blockSize := len(blkWithResult.block.Txs)
 		sv.resultAccumulator.Store(blkWithResult.block.Number, blkWithResult)
 		logger.Debugf("Block contains %d TXs was stored in the accumulator", blockSize)
 
-		if !sendRequest(stream, blkWithResult) {
-			// The stream ended or the SVM was closed.
+		request := &protosigverifierservice.RequestBatch{
+			Requests: make([]*protosigverifierservice.Request, len(blkWithResult.block.Txs)),
+		}
+		for txNum, tx := range blkWithResult.block.Txs {
+			if blkWithResult.txStatus[txNum] != txStatusUnknown {
+				continue
+			}
+			request.Requests[txNum] = &protosigverifierservice.Request{
+				BlockNum: blkWithResult.block.Number,
+				TxNum:    uint64(txNum),
+				Tx:       tx,
+			}
+		}
+
+		if err := stream.Send(request); err != nil {
+			logger.Warnf("Send to stream ended with error: %s. Reconnecting.", err)
 			return
 		}
 		logger.Debugf("Block contains %d TXs, and was stored in the accumulator and sent to a sv", blockSize)
 	}
 }
 
-func sendRequest(
-	stream protosigverifierservice.Verifier_StartStreamClient,
-	blkWithResult *blockWithResult,
-) bool {
-	if err := stream.Send(makeRequest(blkWithResult)); err != nil {
-		logger.Warnf("Send to stream ended with error: %s. Reconnecting.", err)
-		return false
-	}
-	return true
-}
-
-func makeRequest(blkWithResult *blockWithResult) *protosigverifierservice.RequestBatch {
-	request := &protosigverifierservice.RequestBatch{
-		Requests: make([]*protosigverifierservice.Request, 0, len(blkWithResult.block.Txs)),
-	}
-	for txNum, tx := range blkWithResult.block.Txs {
-		if blkWithResult.txStatus[txNum] != txStatusUnknown {
-			continue
-		}
-		request.Requests = append(request.Requests, &protosigverifierservice.Request{
-			BlockNum: blkWithResult.block.Number,
-			TxNum:    uint64(txNum),
-			Tx:       tx,
-		})
-	}
-	return request
-}
-
 func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
 	validatedBlocks channel.Writer[*blockWithResult],
 ) {
-	// This make sure we exit immediately when the stream ends.
-	streamValidatedBlocks := validatedBlocks.WithContext(stream.Context())
-	for stream.Context().Err() == nil {
+	for {
 		// stream.Recv() is using `sv.ctx`, so it will unblock once the context ended.
 		response, err := stream.Recv()
 		if err != nil {
@@ -319,7 +314,7 @@ func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 			if blkWithResult.pendingResultCount == 0 {
 				logger.Debugf("Block [%d] is now fully validated", blkWithResult.block.Number)
 				sv.resultAccumulator.Delete(blkWithResult.block.Number)
-				if ok := streamValidatedBlocks.Write(blkWithResult); !ok {
+				if ctxAlive := validatedBlocks.Write(blkWithResult); !ctxAlive {
 					return
 				}
 			}

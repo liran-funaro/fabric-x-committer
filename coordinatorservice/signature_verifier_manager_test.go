@@ -64,7 +64,6 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 
 	t.Cleanup(func() {
 		env.signVerifierManager.close()
-		<-env.signVerifierManager.done()
 		t.Log("All SV services finished.")
 
 		close(env.inputBlock)
