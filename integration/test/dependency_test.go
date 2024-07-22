@@ -1,4 +1,4 @@
-package dependenttransactions_test
+package test
 
 import (
 	"testing"
@@ -7,14 +7,14 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/test/cluster"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
-func testSetup(t *testing.T) *cluster.Cluster {
+func testSetup(t *testing.T) *runner.Cluster {
 	gomega.RegisterTestingT(t)
-	c := cluster.NewCluster(
+	c := runner.NewCluster(
 		t,
-		&cluster.Config{
+		&runner.Config{
 			NumSigVerifiers:     2,
 			NumVCService:        2,
 			InitializeNamespace: []types.NamespaceID{1},

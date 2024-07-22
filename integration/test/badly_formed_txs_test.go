@@ -1,4 +1,4 @@
-package invalidtransactions_test
+package test
 
 import (
 	"testing"
@@ -9,15 +9,15 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/test/cluster"
 )
 
 func TestBadlyFormedTxs(t *testing.T) {
 	RegisterTestingT(t)
-	c := cluster.NewCluster(
+	c := runner.NewCluster(
 		t,
-		&cluster.Config{
+		&runner.Config{
 			NumSigVerifiers: 2,
 			NumVCService:    2,
 		},

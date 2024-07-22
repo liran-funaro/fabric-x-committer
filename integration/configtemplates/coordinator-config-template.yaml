@@ -23,8 +23,9 @@ coordinator-service:
       enable: true
       endpoint: {{.MetricsEndpoint}}
 
+# For debugging, change the output to: xxx.log and the level to: DEBUG
 logging:
   development: true
   enabled: true
-  level: DEBUG
-  output: test.log
+  level: INFO
+  output:
