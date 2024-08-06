@@ -29,10 +29,9 @@ type (
 	// validatorCommitter is responsible for managing the communication with a single
 	// vcserver.
 	validatorCommitter struct {
-		stream           protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
-		sendOnStreamMu   sync.Mutex
-		statusCollection channel.ReaderWriter[*protovcservice.TransactionStatus]
-		metrics          *perfMetrics
+		stream         protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
+		sendOnStreamMu sync.Mutex
+		metrics        *perfMetrics
 
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
@@ -66,12 +65,12 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
 
-	numErrorableGoroutinePerServer := 4
+	numErrorableGoroutinePerServer := 3
 	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, serverConfig.Endpoint.String())
-		vc, err := newValidatorCommitter(vcm.ctx, serverConfig, vcm.txsStatusBufferSize, c.metrics)
+		vc, err := newValidatorCommitter(vcm.ctx, serverConfig, c.metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -85,10 +84,6 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 		go func() {
 			errChan <- vc.sendPrelimInvalidTxsStatusToVCService(
 				channel.NewReader(vcm.ctx, c.incomingPrelimInvalidTxsStatusForCommit))
-		}()
-
-		go func() {
-			errChan <- vc.receiveTransactionsStatusFromVCService()
 		}()
 
 		go func() {
@@ -109,7 +104,6 @@ func (vcm *validatorCommitterManager) close() {
 func newValidatorCommitter(
 	ctx context.Context,
 	serverConfig *connection.ServerConfig,
-	receivedTxsStatusBufferSize int,
 	metrics *perfMetrics,
 ) (
 	*validatorCommitter, error,
@@ -126,11 +120,7 @@ func newValidatorCommitter(
 	}
 
 	return &validatorCommitter{
-		stream: vcStream,
-		statusCollection: channel.NewReaderWriter(
-			ctx,
-			make(chan *protovcservice.TransactionStatus, receivedTxsStatusBufferSize),
-		),
+		stream:           vcStream,
 		txBeingValidated: &sync.Map{},
 		metrics:          metrics,
 		ctx:              ctx,
@@ -186,27 +176,14 @@ func (vc *validatorCommitter) sendTxs(txs []*protovcservice.Transaction) error {
 	)
 }
 
-func (vc *validatorCommitter) receiveTransactionsStatusFromVCService() error {
-	for {
-		txsStatus, err := vc.stream.Recv()
-		if err != nil {
-			return connection.FilterStreamErrors(err)
-		}
-
-		if ok := vc.statusCollection.Write(txsStatus); !ok {
-			return nil
-		}
-	}
-}
-
 func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 	outputTxsNode channel.Writer[[]*dependencygraph.TransactionNode],
 	outputTxsStatus channel.Writer[*protovcservice.TransactionStatus],
 ) error {
 	for {
-		txsStatus, ok := vc.statusCollection.Read()
-		if !ok {
-			return nil
+		txsStatus, err := vc.stream.Recv()
+		if err != nil {
+			return connection.FilterStreamErrors(err)
 		}
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))

@@ -52,7 +52,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	wg.Add(1)
 
 	go func() {
-		numErrorableVCMGoroutines := 4 * len(vcs)
+		numErrorableVCMGoroutines := 3 * len(vcs)
 		for i := 0; i < numErrorableVCMGoroutines; i++ {
 			require.NoError(t, <-errChan)
 		}
