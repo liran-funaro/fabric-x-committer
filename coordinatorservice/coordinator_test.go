@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -27,6 +28,8 @@ import (
 type coordinatorTestEnv struct {
 	coordinator *CoordinatorService
 	csStream    protocoordinatorservice.Coordinator_BlockProcessingClient
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
@@ -57,7 +60,8 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 		},
 	}
 
-	cs := NewCoordinatorService(c)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	cs := NewCoordinatorService(ctx, c)
 
 	t.Cleanup(func() {
 		for _, mockSV := range svServices {
@@ -79,6 +83,8 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 
 	return &coordinatorTestEnv{
 		coordinator: cs,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
@@ -119,15 +125,19 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 	require.NoError(t, err)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	csStream, err := client.BlockProcessing(context.Background())
+
+	ctx, cancel := context.WithTimeout(e.ctx, 2*time.Minute)
+	csStream, err := client.BlockProcessing(ctx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
 
 	t.Cleanup(func() {
-		require.NoError(t, csStream.CloseSend())
+		cancel() // cancelling the child (stream context) explicitly though parent can cancel it.
+		<-ctx.Done()
 
-		require.NoError(t, conn.Close())
+		e.cancel() // cancelling the parent/global context.
+		<-e.ctx.Done()
 
 		require.NoError(t, cs.Close())
 
@@ -140,6 +150,13 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 func TestCoordinatorServiceValidTx(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
 	env.start(t)
+	c := &logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      true,
+		Development: true,
+	}
+	logging.SetupWithConfig(c)
 
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",

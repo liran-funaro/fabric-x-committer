@@ -16,6 +16,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
@@ -61,11 +62,11 @@ type (
 		// that process status from validator.
 		sendTxStreamMu sync.Mutex
 
-		// stopGoroutines is used to terminate all goroutines in the coordinator service.
-		stopGoroutines chan any
-		// wg is used to ensure that all goroutines in the coordinator
-		// service are terminated before closing the service.
-		wg sync.WaitGroup
+		// ctx is a derived context, linked to its parent, that specifically controls the cancellation
+		// of all goroutines within the coordinator service.
+		ctx context.Context
+		// cancel is a function to manually trigger the cancellation of this context (and its children).
+		cancel context.CancelFunc
 	}
 
 	channels struct {
@@ -116,7 +117,7 @@ type (
 )
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
+func NewCoordinatorService(ctx context.Context, c *CoordinatorConfig) *CoordinatorService {
 	// We need to calculate the buffer size for each channel based on the number of goroutines accessing the channel
 	// in each manager. For sign verifier manager and validator committer manager, we have a goroutine per server to
 	// read from and write to the channel. Hence, we define a buffer size for each manager by multiplying the number
@@ -145,8 +146,10 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		promErrChan = metrics.provider.StartPrometheusServer(c.Monitoring.Metrics.Endpoint)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	svMgr := newSignatureVerifierManager(
-		context.Background(),
+		ctx,
 		&signVerifierManagerConfig{
 			serversConfig:                         c.SignVerifierConfig.ServerConfig,
 			incomingBlockForSignatureVerification: queues.blockForSignatureVerification,
@@ -173,7 +176,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	)
 
 	vcMgr := newValidatorCommitterManager(
-		context.Background(),
+		ctx,
 		&validatorCommitterManagerConfig{
 			serversConfig:                           c.ValidatorCommitterConfig.ServerConfig,
 			incomingTxsForValidationCommit:          queues.dependencyFreeTxsNode,
@@ -197,17 +200,14 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		promErrChan:                      promErrChan,
 		uncommittedTxIDs:                 &sync.Map{},
 		uncommittedMetaNsTx:              &sync.Map{},
-		stopGoroutines:                   make(chan any),
+		ctx:                              ctx,
+		cancel:                           cancel,
 	}
 }
 
 // Start starts each manager in the coordinator service.
 func (c *CoordinatorService) Start() (chan error, error) {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.monitorQueues()
-	}()
+	go c.monitorQueues()
 
 	logger.Info("Starting signature verifier manager")
 	if err := c.signatureVerifierMgr.start(); err != nil {
@@ -224,6 +224,14 @@ func (c *CoordinatorService) Start() (chan error, error) {
 	}
 
 	logger.Info("Coordinator service started successfully")
+
+	logger.Info("Started a goroutine to receive block with valid transactions and" +
+		" forward it to the dependency graph manager")
+	go c.receiveFromSignatureVerifierAndForwardToDepGraph()
+
+	logger.Info("Started a goroutine to receive block with invalid transactions from signature verifier and" +
+		" forward the status to validator-committer manager")
+	go c.receiveFromSignatureVerifierAndForwardToValidatorCommitter()
 
 	return valCommitErrChan, nil
 }
@@ -248,29 +256,17 @@ func (c *CoordinatorService) BlockProcessing(
 	numErrableGoroutines := 2
 	errorChannel := make(chan error, numErrableGoroutines)
 
-	c.wg.Add(4)
+	// NOTE: The below two goroutines are tightly coupled to the lifecycle of the stream.
+	//       They terminate when the stream ends. Other goroutines within the coordinator
+	//       service can safely continue operating to process existing blocks and enqueue
+	//       transaction statuses, even after the stream concludes.
+
 	go func() {
-		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive block and forward it to the signature verifier manager")
 		errorChannel <- c.receiveAndProcessBlock(stream)
 	}()
 
 	go func() {
-		defer c.wg.Done()
-		logger.Info("Started a goroutine to receive block with valid transactions and" +
-			" forward it to the dependency graph manager")
-		c.receiveFromSignatureVerifierAndForwardToDepGraph()
-	}()
-
-	go func() {
-		defer c.wg.Done()
-		logger.Info("Started a goroutine to receive block with invalid transactions from signature verifier and" +
-			" forward the status to validator-committer manager")
-		c.receiveFromSignatureVerifierAndForwardToValidatorCommitter()
-	}()
-
-	go func() {
-		defer c.wg.Done()
 		logger.Info("Started a goroutine to receive transaction status from validator committer manager and" +
 			" forward the status to client")
 		errorChannel <- c.sendTxStatusFromValidatorCommitter(stream)
@@ -289,61 +285,53 @@ func (c *CoordinatorService) BlockProcessing(
 func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	block := make(chan *protoblocktx.Block)
-	streamErr := make(chan error)
-
-	// As the stream.Recv() is blocking, we need to run it in a separate goroutine.
-	// Thus, we can stop the goroutine when the stop channel is closed.
-	go func() {
-		for {
-			blk, err := stream.Recv()
-			if err != nil {
-				streamErr <- err
-				return
-			}
-			block <- blk
-		}
-	}()
-
-	var blk *protoblocktx.Block
-	var ok bool
 	for {
-		select {
-		case <-c.stopGoroutines:
-			return nil
-		case err := <-streamErr:
+		blk, err := stream.Recv()
+		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
-		case blk, ok = <-block:
-			if !ok {
-				return nil
-			}
 		}
+
+		// NOTE: Block processing is decoupled from the stream's lifecycle.
+		// Even if the stream terminates unexpectedly, any received blocks will
+		// still be forwarded to downstream components for complete processing.
 
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
 		c.metrics.transactionReceived(len(blk.Txs))
 
-		if err := c.preProcessBlock(stream, blk); err != nil {
-			return err
+		dupTxs, malformedTxs := c.preProcessBlock(blk)
+		if len(malformedTxs) != 0 {
+			c.queues.preliminaryInvalidTxsStatus <- malformedTxs
 		}
 
 		if len(blk.Txs) == 0 {
 			c.queues.blockWithValidSignTxs <- blk
+		} else {
+			c.orderEnforcer.L.Lock()
+			for c.stopSendingBlockToSigVerifierMgr.Load() {
+				logger.Warn("Stop sending block to signature verifier manager due to out of order blocks")
+				c.orderEnforcer.Wait()
+			}
+			c.orderEnforcer.L.Unlock()
+
+			c.queues.blockForSignatureVerification <- blk
+			logger.Debugf("Block [%d] was pushed to the sv manager for processing", blk.Number)
+		}
+
+		if len(dupTxs) == 0 {
 			continue
 		}
 
-		c.orderEnforcer.L.Lock()
-		for c.stopSendingBlockToSigVerifierMgr.Load() {
-			logger.Warn("Stop sending block to signature verifier manager due to out of order blocks")
-			c.orderEnforcer.Wait()
+		// NOTE: If the stream closes unexpectedly before a transaction status is
+		//       delivered to the client, the status is NOT re-queued. Clients MUST
+		//       implement robust recovery mechanisms to retrieve lost transaction
+		//       statuses directly from the ledger.
+		if err := c.sendTxsStatus(stream, dupTxs); err != nil {
+			return err
 		}
-		c.orderEnforcer.L.Unlock()
-
-		c.queues.blockForSignatureVerification <- blk
-		logger.Debugf("Block [%d] was pushed to the sv manager for processing", blk.Number)
 	}
 }
 
@@ -357,24 +345,31 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 	outOfOrderBlock := make(map[uint64]*protoblocktx.Block)
 	outOfOrderBlockLimit := 500 // TODO: make it configurable
 
-	sendBlock := func(block *protoblocktx.Block) {
+	txsBatchForDependencyGraph := channel.NewWriter(c.ctx, c.queues.txsBatchForDependencyGraph)
+	sendBlock := func(block *protoblocktx.Block) (contextAlive bool) {
 		if len(block.Txs) == 0 {
-			return
+			return true
 		}
 
-		c.queues.txsBatchForDependencyGraph <- &dependencygraph.TransactionBatch{
-			ID:  txBatchID,
-			Txs: block.Txs,
+		if ctxAlive := txsBatchForDependencyGraph.Write(
+			&dependencygraph.TransactionBatch{
+				ID:  txBatchID,
+				Txs: block.Txs,
+			}); !ctxAlive {
+			return false
 		}
 		txBatchID++
+		return true
 	}
 
-	sendBlockFromOutOfOrderMap := func() {
+	sendBlockFromOutOfOrderMap := func() (contextAlive bool) {
 		block, ok := outOfOrderBlock[nextBlockNumber]
 		for ok {
 			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. "+
 				"It can now be released and deleted from the map with waiting blocks.", block.Number)
-			sendBlock(block)
+			if ctxAlive := sendBlock(block); !ctxAlive {
+				return false
+			}
 
 			if len(outOfOrderBlock) == outOfOrderBlockLimit {
 				logger.Info("Received the block that we were expecting. Resuming sending blocks to signature verifier")
@@ -390,18 +385,14 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 		}
 		logger.Debugf("Block [%d] was not out of order (and hence not in the map with waiting blocks). "+
 			"Continuing execution...", nextBlockNumber)
+		return true
 	}
 
-	var block *protoblocktx.Block
-	var ok bool
+	blockWithValidSignTxs := channel.NewReader(c.ctx, c.queues.blockWithValidSignTxs)
 	for {
-		select {
-		case <-c.stopGoroutines:
+		block, ctxAlive := blockWithValidSignTxs.Read()
+		if !ctxAlive {
 			return
-		case block, ok = <-c.queues.blockWithValidSignTxs:
-			if !ok {
-				return
-			}
 		}
 
 		logger.Debugf("Block [%d] with %d valid TXs reached the dependency graph", block.Number, len(block.Txs))
@@ -427,16 +418,11 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 func (c *CoordinatorService) sendTxStatusFromValidatorCommitter( // nolint:gocognit
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	var txStatus *protovcservice.TransactionStatus
-	var ok bool
+	txsStatus := channel.NewReader(stream.Context(), c.queues.txsStatus)
 	for {
-		select {
-		case <-c.stopGoroutines:
+		txStatus, ctxAlive := txsStatus.Read()
+		if !ctxAlive {
 			return nil
-		case txStatus, ok = <-c.queues.txsStatus:
-			if !ok {
-				return nil
-			}
 		}
 
 		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
@@ -460,16 +446,12 @@ func (c *CoordinatorService) sendTxStatusFromValidatorCommitter( // nolint:gocog
 }
 
 func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCommitter() {
-	var blkWithInvalidSign *protoblocktx.Block
-	var ok bool
+	blockWithInvalidSignTxs := channel.NewReader(c.ctx, c.queues.blockWithInvalidSignTxs)
+	preliminaryInvalidTxsStatus := channel.NewWriter(c.ctx, c.queues.preliminaryInvalidTxsStatus)
 	for {
-		select {
-		case <-c.stopGoroutines:
+		blkWithInvalidSign, ctxAlive := blockWithInvalidSignTxs.Read()
+		if !ctxAlive {
 			return
-		case blkWithInvalidSign, ok = <-c.queues.blockWithInvalidSignTxs:
-			if !ok {
-				return
-			}
 		}
 
 		invalidTxsStatus := make([]*protovcservice.Transaction, len(blkWithInvalidSign.Txs))
@@ -484,7 +466,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCo
 		// NOTE: we are not sending the invalid tx status immediately to the client as
 		// this status code can change if the txID is found to be duplicate by the
 		// vcservice.
-		c.queues.preliminaryInvalidTxsStatus <- invalidTxsStatus
+		preliminaryInvalidTxsStatus.Write(invalidTxsStatus)
 	}
 }
 
@@ -494,15 +476,11 @@ func (c *CoordinatorService) sendTxsStatus(
 ) error {
 	c.sendTxStreamMu.Lock()
 	defer c.sendTxStreamMu.Unlock()
-	err := stream.Send(
+	if err := stream.Send(
 		&protocoordinatorservice.TxValidationStatusBatch{
 			TxsValidationStatus: txsStatus,
 		},
-	)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
+	); err != nil {
 		return err
 	}
 
@@ -572,7 +550,7 @@ func (c *CoordinatorService) monitorQueues() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	for {
 		select {
-		case <-c.stopGoroutines:
+		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
 		case err := <-c.promErrChan:
@@ -600,14 +578,9 @@ func (c *CoordinatorService) monitorQueues() {
 // Close closes each manager in the coordinator service and all channels.
 func (c *CoordinatorService) Close() error {
 	logger.Infof("Closing all connections to managers")
-	c.signatureVerifierMgr.close()
-
+	c.cancel()
+	<-c.ctx.Done()
 	c.dependencyMgr.Close()
-
-	c.validatorCommitterMgr.close()
-
-	close(c.stopGoroutines)
-	c.wg.Wait()
 
 	close(c.queues.blockForSignatureVerification)
 	close(c.queues.blockWithValidSignTxs)

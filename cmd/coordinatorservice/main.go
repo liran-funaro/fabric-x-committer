@@ -75,7 +75,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			cmd.SilenceUsage = true
 
 			cmd.Println("Starting coordinatorservice")
-			coordService = coordinatorservice.NewCoordinatorService(coordConfig)
+			coordService = coordinatorservice.NewCoordinatorService(cmd.Context(), coordConfig)
 
 			vcErr, err := coordService.Start()
 			if err != nil {

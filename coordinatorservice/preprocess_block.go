@@ -12,22 +12,15 @@ import (
 )
 
 func (c *CoordinatorService) preProcessBlock(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 	block *protoblocktx.Block,
-) error {
-	if err := c.handleDuplicateAmongActiveTxs(stream, block); err != nil {
-		return err
-	}
-
-	if err := c.handleIncorrectlyFormedTxs(block); err != nil {
-		return err
-	}
-
+) (dupTxs []*protocoordinatorservice.TxValidationStatus, malformedTxs []*protovcservice.Transaction) {
+	dupTxs = c.filterDuplicateAmongActiveTxs(block)
+	malformedTxs = filterMalformedTxs(block)
 	c.recordMetaNsTxs(block)
-	return nil
+	return dupTxs, malformedTxs
 }
 
-func (c *CoordinatorService) handleIncorrectlyFormedTxs(block *protoblocktx.Block) error {
+func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction {
 	badTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
 	badTxIndex := make([]int, 0, len(block.Txs))
 
@@ -78,24 +71,21 @@ func (c *CoordinatorService) handleIncorrectlyFormedTxs(block *protoblocktx.Bloc
 
 	removeFromBlock(block, badTxIndex)
 
-	vcTxs := make([]*protovcservice.Transaction, 0, len(badTxStatus))
+	malformedTxs := make([]*protovcservice.Transaction, 0, len(badTxStatus))
 	for _, t := range badTxStatus {
-		vcTxs = append(vcTxs, &protovcservice.Transaction{
+		malformedTxs = append(malformedTxs, &protovcservice.Transaction{
 			ID: t.TxId,
 			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 				Code: t.Status,
 			},
 		})
 	}
-
-	c.queues.preliminaryInvalidTxsStatus <- vcTxs
-	return nil
+	return malformedTxs
 }
 
-func (c *CoordinatorService) handleDuplicateAmongActiveTxs(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+func (c *CoordinatorService) filterDuplicateAmongActiveTxs(
 	block *protoblocktx.Block,
-) error {
+) []*protocoordinatorservice.TxValidationStatus {
 	dupTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
 	dupTxIndex := make([]int, 0, len(block.Txs))
 
@@ -118,7 +108,7 @@ func (c *CoordinatorService) handleDuplicateAmongActiveTxs(
 
 	removeFromBlock(block, dupTxIndex)
 
-	return c.sendTxsStatus(stream, dupTxStatus)
+	return dupTxStatus
 }
 
 func (c *CoordinatorService) recordMetaNsTxs(block *protoblocktx.Block) {

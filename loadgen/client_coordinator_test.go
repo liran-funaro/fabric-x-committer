@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	"context"
 	_ "embed"
 	"net/http"
 	"testing"
@@ -50,7 +51,9 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 		sigVerServerConfig[0].Endpoint.Port, vcServerConfig[0].Endpoint.Port, 2110, 9001)
 	conf := coordinatorservice.ReadConfig()
 
-	service := coordinatorservice.NewCoordinatorService(conf)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	service := coordinatorservice.NewCoordinatorService(ctx, conf)
 	_, err := service.Start()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, service.Close()) })
