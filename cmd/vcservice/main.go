@@ -73,7 +73,7 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			cmd.Println("Starting vcservice")
-			vc, err := vcservice.NewValidatorCommitterService(vcConfig)
+			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), vcConfig)
 			if err != nil {
 				return err
 			}

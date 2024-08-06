@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -23,6 +22,7 @@ type validatorAndCommitterServiceTestEnv struct {
 	grpcServer *grpc.Server
 	clientConn *grpc.ClientConn
 	dbEnv      *DatabaseTestEnv
+	ctx        context.Context
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
@@ -57,8 +57,11 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
 
-	vcs, err := NewValidatorCommitterService(config)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	vcs, err := NewValidatorCommitterService(ctx, config)
 	require.NoError(t, err)
+	t.Cleanup(vcs.Close)
 
 	var grpcSrv *grpc.Server
 
@@ -75,14 +78,12 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	}()
 
 	wg.Wait()
+	t.Cleanup(grpcSrv.Stop)
 
 	clientConn, err := connection.Connect(connection.NewDialConfig(sConfig.Endpoint))
 	require.NoError(t, err)
-
 	t.Cleanup(func() {
-		assert.NoError(t, clientConn.Close())
-		grpcSrv.Stop()
-		vcs.Close()
+		require.NoError(t, clientConn.Close())
 	})
 
 	return &validatorAndCommitterServiceTestEnv{
@@ -90,6 +91,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		grpcServer: grpcSrv,
 		clientConn: clientConn,
 		dbEnv:      dbEnv,
+		ctx:        ctx,
 	}
 }
 
@@ -109,6 +111,13 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	}, nil)
 
 	client := protovcservice.NewValidationAndCommitServiceClient(env.clientConn)
+	ctx, cancel := context.WithTimeout(env.ctx, 2*time.Minute)
+	t.Cleanup(cancel)
+	vcStream, err := client.StartValidateAndCommitStream(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, vcStream.CloseSend())
+	})
 
 	t.Run("all valid txs", func(t *testing.T) {
 		txBatch := &protovcservice.TransactionBatch{
@@ -208,12 +217,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			},
 		}
 
-		vcStream, err := client.StartValidateAndCommitStream(context.Background())
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, vcStream.CloseSend())
-		})
-
 		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
 
 		require.NoError(t, vcStream.Send(txBatch))
@@ -291,12 +294,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 			},
 		}
-
-		vcStream, err := client.StartValidateAndCommitStream(context.Background())
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, vcStream.CloseSend())
-		})
 
 		require.NoError(t, vcStream.Send(txBatch))
 		txStatus, err := vcStream.Recv()

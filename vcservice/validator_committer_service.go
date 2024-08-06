@@ -6,6 +6,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
@@ -50,7 +51,10 @@ type Limits struct {
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*ValidatorCommitterService, error) {
+func NewValidatorCommitterService(
+	ctx context.Context,
+	config *ValidatorCommitterServiceConfig,
+) (*ValidatorCommitterService, error) {
 	l := config.ResourceLimits
 
 	// TODO: make queueMultiplier configurable
@@ -66,7 +70,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	vc := &ValidatorCommitterService{
 		ctx:                      ctx,
 		ctxCancel:                cancel,
@@ -152,7 +156,7 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := make(chan *protovcservice.TransactionBatch)
+	receivedTxBatch := make(chan *protovcservice.TransactionBatch)
 	streamErr := make(chan error)
 	go func() {
 		for {
@@ -161,38 +165,37 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 				streamErr <- err
 				return
 			}
-			txBatchChan <- b
+			receivedTxBatch <- b
 		}
 	}()
 
 	largerBatch := &protovcservice.TransactionBatch{}
-	sendLargeBatch := func() {
-		defer func() {
-			// If the context ended, then we don't care about the panic.
-			// Specifically, panic that resulted from a closed channel.
-			if vc.ctx.Err() != nil {
-				_ = recover()
-			}
-		}()
-		vc.txBatchChan <- largerBatch
-		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
-		largerBatch = &protovcservice.TransactionBatch{}
-	}
-
+	txBatch := channel.NewWriter(vc.ctx, vc.txBatchChan)
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
+	sendLargeBatch := func() {
+		if len(largerBatch.Transactions) == 0 {
+			return
+		}
+		if ok := txBatch.Write(largerBatch); !ok {
+			return
+		}
+		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
+		largerBatch = &protovcservice.TransactionBatch{}
+		timer.Reset(vc.timeoutForMinTxBatchSize)
+	}
+
 	for {
 		select {
 		case <-vc.ctx.Done():
 			return nil
 		case err := <-streamErr:
+			// Even if the stream end, we process all received transactions.
+			sendLargeBatch()
 			return connection.WrapStreamRpcError(err)
 		case <-timer.C:
-			if len(largerBatch.Transactions) > 0 {
-				sendLargeBatch()
-				timer.Reset(vc.timeoutForMinTxBatchSize)
-			}
-		case txBatch, ok := <-txBatchChan:
+			sendLargeBatch()
+		case txBatch, ok := <-receivedTxBatch:
 			if !ok {
 				return nil
 			}
@@ -214,23 +217,14 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 ) error {
 	logger.Info("Send transaction status")
 
-	ctx := stream.Context()
-	var txStatus *protovcservice.TransactionStatus
-
+	txsStatus := channel.NewReader(stream.Context(), vc.txsStatusChan)
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case txStatus = <-vc.txsStatusChan:
-		}
-
-		if txStatus == nil {
-			// txsStatusChan is closed
+		txStatus, ok := txsStatus.Read()
+		if !ok {
 			return nil
 		}
 
-		err := stream.Send(txStatus)
-		if err != nil {
+		if err := stream.Send(txStatus); err != nil {
 			return connection.WrapStreamRpcError(err)
 		}
 
@@ -258,6 +252,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 // Close stops the VC service and blocks until it is done.
 func (vc *ValidatorCommitterService) Close() {
 	vc.ctxCancel()
+	<-vc.ctx.Done()
 
 	err := vc.metrics.provider.StopServer()
 	if err != nil {

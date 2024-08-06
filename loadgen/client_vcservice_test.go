@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -42,9 +43,11 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 			require.NoError(t, vcservice.InitDatabase(conf.Database, []int{0}))
 		}
 
-		service, err := vcservice.NewValidatorCommitterService(conf)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		t.Cleanup(cancel)
+		service, err := vcservice.NewValidatorCommitterService(ctx, conf)
 		require.NoError(t, err)
-		t.Cleanup(service.Close)
+		t.Cleanup(func() { service.Close() })
 
 		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
