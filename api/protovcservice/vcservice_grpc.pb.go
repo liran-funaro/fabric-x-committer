@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
+	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName         = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
+	ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protovcservice.ValidationAndCommitService/NumberOfWaitingTransactionsForStatus"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
+	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -68,11 +70,21 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*
 	return m, nil
 }
 
+func (c *validationAndCommitServiceClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error) {
+	out := new(WaitingTransactions)
+	err := c.cc.Invoke(ctx, ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ValidationAndCommitServiceServer is the server API for ValidationAndCommitService service.
 // All implementations must embed UnimplementedValidationAndCommitServiceServer
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
+	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -82,6 +94,9 @@ type UnimplementedValidationAndCommitServiceServer struct {
 
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
+}
+func (UnimplementedValidationAndCommitServiceServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
 }
@@ -123,13 +138,36 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*
 	return m, nil
 }
 
+func _ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ValidationAndCommitServiceServer).NumberOfWaitingTransactionsForStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ValidationAndCommitServiceServer).NumberOfWaitingTransactionsForStatus(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ValidationAndCommitService_ServiceDesc is the grpc.ServiceDesc for ValidationAndCommitService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "protovcservice.ValidationAndCommitService",
 	HandlerType: (*ValidationAndCommitServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NumberOfWaitingTransactionsForStatus",
+			Handler:    _ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "StartValidateAndCommitStream",

@@ -80,7 +80,7 @@ func (v *transactionValidator) start(numWorkers int) {
 
 func (v *transactionValidator) validate() {
 	v.wg.Add(1)
-	v.wg.Done()
+	defer v.wg.Done()
 
 	var prepTx *preparedTransactions
 	for {

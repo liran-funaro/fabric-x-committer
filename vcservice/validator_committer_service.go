@@ -2,6 +2,8 @@ package vcservice
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -38,6 +40,8 @@ type ValidatorCommitterService struct {
 	timeoutForMinTxBatchSize time.Duration
 	ctx                      context.Context
 	ctxCancel                context.CancelFunc
+	isStreamActive           atomic.Bool
+	numWaitingTxsForStatus   atomic.Int32
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -130,8 +134,11 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	logger.Info("Start validate and commit stream")
+	vc.isStreamActive.Store(true)
+	defer vc.isStreamActive.Store(false)
 
-	errorChannel := make(chan error)
+	numErrableGoroutines := 2
+	errorChannel := make(chan error, numErrableGoroutines)
 
 	go func() {
 		logger.Info("Started a goroutine to receive and process transactions")
@@ -143,12 +150,29 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 		errorChannel <- vc.sendTransactionStatus(stream)
 	}()
 
-	err := <-errorChannel
-	if err != nil {
-		logger.Error(err)
+	for i := 0; i < numErrableGoroutines; i++ {
+		err := <-errorChannel
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting  to get the final status.
+func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
+	_ context.Context,
+	_ *protovcservice.Empty,
+) (*protovcservice.WaitingTransactions, error) {
+	if vc.isStreamActive.Load() {
+		return nil, fmt.Errorf("stream is still active." +
+			"NumberOfWaitingTransactionsForStatus should be called only when the stream is inactive")
+	}
+
+	return &protovcservice.WaitingTransactions{
+		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatusChan)),
+	}, nil
 }
 
 // receiveAndProcessTransactions receives transactions from the client, prepares them,
@@ -165,6 +189,9 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 				streamErr <- err
 				return
 			}
+			txCount := len(b.Transactions)
+			vc.numWaitingTxsForStatus.Add(int32(txCount))
+			prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 			receivedTxBatch <- b
 		}
 	}()
@@ -180,7 +207,6 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 		if ok := txBatch.Write(largerBatch); !ok {
 			return
 		}
-		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, len(largerBatch.Transactions))
 		largerBatch = &protovcservice.TransactionBatch{}
 		timer.Reset(vc.timeoutForMinTxBatchSize)
 	}
@@ -223,6 +249,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		if !ok {
 			return nil
 		}
+		vc.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status)))
 
 		if err := stream.Send(txStatus); err != nil {
 			return connection.WrapStreamRpcError(err)

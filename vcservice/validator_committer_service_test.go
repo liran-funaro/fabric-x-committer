@@ -18,11 +18,11 @@ import (
 )
 
 type validatorAndCommitterServiceTestEnv struct {
-	vcs        *ValidatorCommitterService
-	grpcServer *grpc.Server
-	clientConn *grpc.ClientConn
-	dbEnv      *DatabaseTestEnv
-	ctx        context.Context
+	vcs          *ValidatorCommitterService
+	client       protovcservice.ValidationAndCommitServiceClient
+	stream       protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
+	streamCancel func()
+	dbEnv        *DatabaseTestEnv
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
@@ -40,7 +40,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 			MaxWorkersForPreparer:   2,
 			MaxWorkersForValidator:  2,
 			MaxWorkersForCommitter:  2,
-			MinTransactionBatchSize: 10,
+			MinTransactionBatchSize: 1,
 		},
 		Monitoring: &monitoring.Config{
 			Metrics: &metrics.Config{
@@ -86,12 +86,24 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		require.NoError(t, clientConn.Close())
 	})
 
+	client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
+	sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
+	t.Cleanup(sCancel)
+	vcStream, err := client.StartValidateAndCommitStream(sCtx)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return vcs.isStreamActive.Load()
+	}, 2*time.Second, 50*time.Millisecond)
+	t.Cleanup(func() {
+		require.NoError(t, vcStream.CloseSend())
+	})
+
 	return &validatorAndCommitterServiceTestEnv{
-		vcs:        vcs,
-		grpcServer: grpcSrv,
-		clientConn: clientConn,
-		dbEnv:      dbEnv,
-		ctx:        ctx,
+		vcs:          vcs,
+		client:       client,
+		stream:       vcStream,
+		streamCancel: sCancel,
+		dbEnv:        dbEnv,
 	}
 }
 
@@ -109,15 +121,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			versions: [][]byte{v0},
 		},
 	}, nil)
-
-	client := protovcservice.NewValidationAndCommitServiceClient(env.clientConn)
-	ctx, cancel := context.WithTimeout(env.ctx, 2*time.Minute)
-	t.Cleanup(cancel)
-	vcStream, err := client.StartValidateAndCommitStream(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, vcStream.CloseSend())
-	})
 
 	t.Run("all valid txs", func(t *testing.T) {
 		txBatch := &protovcservice.TransactionBatch{
@@ -219,8 +222,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
 
-		require.NoError(t, vcStream.Send(txBatch))
-		txStatus, err := vcStream.Recv()
+		require.NoError(t, env.stream.Send(txBatch))
+		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
 
 		expectedTxStatus := &protovcservice.TransactionStatus{
@@ -258,11 +261,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			},
 		}
 
-		env.vcs.minTxBatchSize = 1
-		require.NoError(t, vcStream.Send(txBatch))
+		require.NoError(t, env.stream.Send(txBatch))
 
 		require.Eventually(t, func() bool {
-			txStatus, err = vcStream.Recv()
+			txStatus, err = env.stream.Recv()
 			require.NoError(t, err)
 			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"])
 			return true
@@ -295,8 +297,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			},
 		}
 
-		require.NoError(t, vcStream.Send(txBatch))
-		txStatus, err := vcStream.Recv()
+		require.NoError(t, env.stream.Send(txBatch))
+		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
 
 		expectedTxStatus := &protovcservice.TransactionStatus{
@@ -309,4 +311,68 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		env.dbEnv.statusExists(t, expectedTxStatus.Status)
 	})
+}
+
+func TestWaitingTxsCount(t *testing.T) {
+	env := newValidatorAndCommitServiceTestEnv(t)
+	env.dbEnv.populateDataWithCleanup(t, nil, nil, nil)
+	// NOTE: We are setting the minTxBatchSize to 10 so that the
+	//       received batch can wait for at most 5 seconds, which
+	//       is the default timeout for minTxBatchSize. This should
+	//       help to avoid flaky tests.
+	//       This timer starts when the stream is started by the
+	//       call to newValidatorAndCommitServiceTestEnv. By the
+	//       time we send the batch, we can be sure that the
+	//       batch would wait for the test to pass, as populateDataWithCleanup
+	//       and other operations should not consume more than 5 seconds.
+	//       Once we make the timeoutForMinTxBatchSize configurable, we can
+	//       increase the timeout further.
+	env.vcs.minTxBatchSize = 10
+
+	success := make(chan bool, 1)
+	go func() {
+		require.Eventually(t, func() bool {
+			if env.vcs.numWaitingTxsForStatus.Load() == int32(1) {
+				success <- true
+				return true
+			}
+			return false
+		}, 2*time.Second, 100*time.Microsecond)
+		success <- false
+	}()
+
+	require.NoError(t, env.stream.Send(
+		&protovcservice.TransactionBatch{
+			Transactions: []*protovcservice.Transaction{
+				{
+					ID: "1",
+					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+						Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					},
+				},
+			},
+		},
+	))
+	require.True(t, <-success)
+
+	count, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+	require.Contains(t, err.Error(), "stream is still active")
+	require.Nil(t, count)
+
+	txStatus, err := env.stream.Recv()
+	require.NoError(t, err)
+	require.Len(t, txStatus.Status, 1)
+
+	env.streamCancel()
+	require.Eventually(t, func() bool {
+		return !env.vcs.isStreamActive.Load()
+	}, 2*time.Second, 100*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+		if err != nil {
+			return false
+		}
+		return wTxs.GetCount() == 0
+	}, 2*time.Second, 100*time.Millisecond)
 }

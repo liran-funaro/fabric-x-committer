@@ -7,7 +7,8 @@ package protovcservice;
 import "api/protoblocktx/block_tx.proto";
 
 service ValidationAndCommitService {
-  rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream TransactionStatus) {}
+  rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream TransactionStatus);
+  rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
 }
 
 message TransactionBatch {
@@ -27,3 +28,9 @@ message InvalidTxStatus {
 message TransactionStatus {
     map<string, protoblocktx.Status> status = 1;
 }
+
+message WaitingTransactions {
+    int32 count = 1;
+}
+
+message Empty {}
