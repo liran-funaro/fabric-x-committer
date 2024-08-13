@@ -3,8 +3,6 @@ package test
 import (
 	"crypto/rand"
 	"time"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 type PositiveIntGenerator struct {
@@ -15,7 +13,7 @@ type PositiveIntGenerator struct {
 func NewPositiveIntGenerator(distribution Distribution, precalculatedItems int) *PositiveIntGenerator {
 	items := make([]int, precalculatedItems)
 	for i := 0; i < precalculatedItems; i++ {
-		items[i] = utils.Max(int(distribution.Generate()), 1)
+		items[i] = max(int(distribution.Generate()), 1)
 	}
 	return &PositiveIntGenerator{items: items, idx: &cyclicIndexIterator{size: len(items)}}
 }
@@ -99,7 +97,7 @@ func NewFastByteArrayGenerator(sampleSize int) *FastByteArrayGenerator {
 func (g *FastByteArrayGenerator) NextWithSize(targetSize int) []S {
 	var batch []S
 	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
-		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
+		batch = append(batch, g.sample[:min(len(g.sample), remaining)]...)
 	}
 	return batch
 }

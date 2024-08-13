@@ -71,7 +71,7 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			cmd.Println("Starting queryservice")
-			qs, err := queryservice.NewQueryService(serviceConfig)
+			qs, err := queryservice.NewQueryService(cmd.Context(), serviceConfig)
 			if err != nil {
 				return err
 			}

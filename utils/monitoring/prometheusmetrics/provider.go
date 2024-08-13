@@ -142,6 +142,11 @@ func SetQueueSize(queue prometheus.Gauge, size int) {
 }
 
 // Observe observes a prometheus histogram.
-func Observe(h prometheus.Histogram, d time.Duration) {
+func Observe(h prometheus.Observer, d time.Duration) {
 	h.Observe(d.Seconds())
+}
+
+// ObserveSize observes a prometheus histogram size.
+func ObserveSize(h prometheus.Observer, size int) {
+	h.Observe(float64(size))
 }

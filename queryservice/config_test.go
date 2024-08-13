@@ -2,6 +2,7 @@ package queryservice
 
 import (
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,11 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				},
+				MinBatchKeys:          1024,
+				MaxBatchWait:          100 * time.Millisecond,
+				ViewAggregationWindow: 100 * time.Millisecond,
+				MaxAggregatedViews:    1024,
+				MaxViewTimeout:        10 * time.Second,
 			},
 			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},
@@ -78,6 +84,11 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				},
+				MinBatchKeys:          1024,
+				MaxBatchWait:          100 * time.Millisecond,
+				ViewAggregationWindow: 100 * time.Millisecond,
+				MaxAggregatedViews:    1024,
+				MaxViewTimeout:        10 * time.Second,
 			},
 			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},

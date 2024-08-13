@@ -6,49 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"time"
 
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
-
-var logger = logging.New("utils-logging")
-
-func Every(interval time.Duration, runnable func()) {
-	go func() {
-		for {
-			<-time.After(interval)
-			runnable()
-		}
-	}()
-}
-
-func Min(a, b int) int {
-	min, _ := sorted(a, b)
-	return min
-}
-
-func Max(a, b int) int {
-	_, max := sorted(a, b)
-	return max
-}
-
-func sorted(a, b int) (int, int) {
-	if a < b {
-		return a, b
-	}
-	return b, a
-}
-
-func CurrentDir() string {
-	_, b, _, _ := runtime.Caller(1)
-	dir := filepath.Dir(b)
-	if !FileExists(dir) {
-		return "."
-	}
-	return dir
-}
 
 func FileExists(path string) bool {
 	_, err := os.Stat(path)

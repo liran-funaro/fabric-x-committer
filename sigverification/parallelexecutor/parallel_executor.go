@@ -5,7 +5,6 @@ import (
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -126,7 +125,7 @@ func (e *parallelExecutor) cutBatch(buffer []*Output, minBatchSize int) []*Outpu
 		}
 		return buffer
 	}
-	batchSize := utils.Min(e.batchSizeCutoff, len(buffer))
+	batchSize := min(e.batchSizeCutoff, len(buffer))
 	logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(buffer))
 	if e.metrics.Enabled {
 		e.metrics.ParallelExecutorOutTxs.Add(batchSize)

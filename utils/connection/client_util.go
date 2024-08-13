@@ -20,7 +20,7 @@ type DialConfig struct {
 	DialOpts []grpc.DialOption
 }
 
-var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused`)
+var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
 func NewDialConfig(endpoint Endpoint) *DialConfig {
 	return NewDialConfigWithCreds(endpoint, insecure.NewCredentials())

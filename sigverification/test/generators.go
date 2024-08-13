@@ -11,7 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/streamhandler"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	tokenutil "github.ibm.com/decentralized-trust-research/scalable-committer/utils/token"
 )
@@ -191,7 +190,7 @@ func NewFastOutputSliceGenerator(valueGenerator func() T, sampleSize int) *FastO
 func (g *FastOutputArrayGenerator) NextWithSize(targetSize int) []T {
 	var batch []T
 	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
-		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
+		batch = append(batch, g.sample[:min(len(g.sample), remaining)]...)
 	}
 	return batch
 }
@@ -235,7 +234,7 @@ func NewFastInputSliceGenerator(valueGenerator func() S, sampleSize int) *FastIn
 func (g *FastInputArrayGenerator) NextWithSize(targetSize int) []S {
 	var batch []S
 	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
-		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
+		batch = append(batch, g.sample[:min(len(g.sample), remaining)]...)
 	}
 	return batch
 }
@@ -262,7 +261,7 @@ func NewFastTxInputSliceGenerator(valueGenerator func() R, sampleSize int) *Fast
 func (g *FastTxInputSliceGenerator) NextWithSize(targetSize int) []R {
 	var batch []R
 	for remaining := targetSize; remaining > 0; remaining = targetSize - len(batch) {
-		batch = append(batch, g.sample[:utils.Min(len(g.sample), remaining)]...)
+		batch = append(batch, g.sample[:min(len(g.sample), remaining)]...)
 	}
 	return batch
 }

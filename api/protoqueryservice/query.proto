@@ -34,6 +34,8 @@ message ViewParameters {
   // Defaults to serializable deferrable.
   IsoLevel iso_level = 1;
   bool nonDeferrable = 2;
+  // Zero => maximal value
+  uint64 timeout_milliseconds = 3;
 }
 
 message QueryNamespace {
