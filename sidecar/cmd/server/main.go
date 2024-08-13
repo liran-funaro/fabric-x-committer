@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/sidecarservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -14,15 +14,13 @@ import (
 )
 
 func main() {
-
 	// TODO in the future we may want to use cobra to be consistent with other apps, i.e., coordinator service ...
-
 	config.ServerConfig("sidecar")
 	config.ParseFlags()
 
-	c := sidecarservice.ReadConfig()
+	c := sidecar.ReadConfig()
 
-	service, err := sidecarservice.NewService(&c)
+	service, err := sidecar.New(&c)
 	utils.Must(err)
 
 	ordererErrChan, coordinatorErrChan, aggErrChan, err := service.Start(context.Background())
@@ -38,8 +36,8 @@ func main() {
 	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 
 	go func() {
-		connection.RunServerMain(c.Server, func(server *grpc.Server, port int) {
-			peer.RegisterDeliverServer(server, service.Ledger)
+		connection.RunServerMain(c.Server, func(server *grpc.Server, _ int) {
+			peer.RegisterDeliverServer(server, service.LedgerService)
 			healthgrpc.RegisterHealthServer(server, healthcheck)
 		})
 	}()

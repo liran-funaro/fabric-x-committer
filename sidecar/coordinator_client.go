@@ -1,4 +1,4 @@
-package coordinatorclient
+package sidecar
 
 import (
 	"context"
@@ -9,24 +9,17 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"google.golang.org/grpc"
 )
 
-var logger = logging.New("coordinator")
-
-type Client struct {
+type coordinatorClient struct {
 	client     protocoordinatorservice.CoordinatorClient
 	stream     protocoordinatorservice.Coordinator_BlockProcessingClient
 	inputChan  chan *protoblocktx.Block
 	outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch
 }
 
-type Config struct {
-	Endpoint connection.Endpoint `mapstructure:"endpoint"`
-}
-
-func New(config *Config) (*Client, error) {
+func newCoordinatorClient(config *CoordinatorConfig) (*coordinatorClient, error) {
 	logger.Infof("Create coordinator client and connect to %v\n", config.Endpoint)
 	coordinatorConn, err := connection.Connect(connection.NewDialConfig(config.Endpoint))
 	if err != nil {
@@ -35,18 +28,21 @@ func New(config *Config) (*Client, error) {
 	return newClient(coordinatorConn), nil
 }
 
-func newClient(conn grpc.ClientConnInterface) *Client {
-	return &Client{
+func newClient(conn grpc.ClientConnInterface) *coordinatorClient {
+	return &coordinatorClient{
 		client:    protocoordinatorservice.NewCoordinatorClient(conn),
 		inputChan: make(chan *protoblocktx.Block, 100),
 	}
 }
 
-func (c *Client) Input() chan<- *protoblocktx.Block {
+func (c *coordinatorClient) Input() chan<- *protoblocktx.Block {
 	return c.inputChan
 }
 
-func (c *Client) Start(ctx context.Context, outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch) (chan error, error) {
+func (c *coordinatorClient) Start(
+	ctx context.Context,
+	outputChan chan<- *protocoordinatorservice.TxValidationStatusBatch,
+) (chan error, error) {
 	stream, err := c.client.BlockProcessing(ctx)
 	if err != nil {
 		// TODO implement retry if needed ...
@@ -69,7 +65,7 @@ func (c *Client) Start(ctx context.Context, outputChan chan<- *protocoordinators
 	return errChan, nil
 }
 
-func (c *Client) receiveFromCoordinator(ctx context.Context) error {
+func (c *coordinatorClient) receiveFromCoordinator(ctx context.Context) error {
 	defer close(c.outputChan)
 	for {
 		response, err := c.stream.Recv()
@@ -89,7 +85,7 @@ func (c *Client) receiveFromCoordinator(ctx context.Context) error {
 	}
 }
 
-func (c *Client) sendToCoordinator() error {
+func (c *coordinatorClient) sendToCoordinator() error {
 	for block := range c.inputChan {
 		if err := c.stream.SendMsg(block); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -103,10 +99,6 @@ func (c *Client) sendToCoordinator() error {
 	return nil
 }
 
-func (c *Client) Close() error {
-	if err := c.stream.CloseSend(); err != nil {
-		return err
-	}
-
-	return nil
+func (c *coordinatorClient) Close() error {
+	return c.stream.CloseSend()
 }

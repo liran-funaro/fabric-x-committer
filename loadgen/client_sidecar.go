@@ -8,9 +8,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/broadcastclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -144,7 +144,7 @@ func (t *sidecarTracker) OnReceiveSidecarBlock(block *common.Block) {
 	for i, data := range block.Data.Data {
 		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {
 			t.OnReceiveTransaction(
-				channelHeader.TxId, aggregator.StatusInverseMap[statusCodes[i]] == protoblocktx.Status_COMMITTED)
+				channelHeader.TxId, sidecar.StatusInverseMap[statusCodes[i]] == protoblocktx.Status_COMMITTED)
 		}
 	}
 }

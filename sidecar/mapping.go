@@ -1,4 +1,4 @@
-package aggregator
+package sidecar
 
 import (
 	"github.com/hyperledger/fabric-protos-go/common"

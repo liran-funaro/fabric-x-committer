@@ -1,4 +1,4 @@
-package aggregator
+package sidecar
 
 import (
 	"context"
@@ -8,10 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
-
-var logger = logging.New("aggregator")
 
 type inProgressBlock struct {
 	block     *common.Block
@@ -20,6 +17,7 @@ type inProgressBlock struct {
 	remaining int
 }
 
+// Aggregator sends the block to committer and aggregates the transaction status.
 type Aggregator struct {
 	// state
 	nextCommittedBlockNum uint64
@@ -33,7 +31,8 @@ type Aggregator struct {
 	stop              chan any
 }
 
-func New(sendToCoordinator func(scBlock *protoblocktx.Block), output func(block *common.Block)) *Aggregator {
+// NewAggregator creates a new aggregator.
+func NewAggregator(sendToCoordinator func(scBlock *protoblocktx.Block), output func(block *common.Block)) *Aggregator {
 	return &Aggregator{
 		nextCommittedBlockNum: 0,
 		inProgressBlocks:      make(map[uint64]*inProgressBlock, 100),
@@ -44,12 +43,18 @@ func New(sendToCoordinator func(scBlock *protoblocktx.Block), output func(block 
 	}
 }
 
+// Close closes the aggregator.
 func (a *Aggregator) Close() {
 	logger.Infof("Stop aggregator")
 	close(a.stop)
 }
 
-func (a *Aggregator) Start(ctx context.Context, blockChan <-chan *common.Block, statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch) chan error {
+// Start starts the aggregator.
+func (a *Aggregator) Start(
+	ctx context.Context,
+	blockChan <-chan *common.Block,
+	statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch,
+) chan error {
 	errChan := make(chan error)
 	go func() {
 		errChan <- a.run(ctx, blockChan, statusChan)
@@ -57,7 +62,11 @@ func (a *Aggregator) Start(ctx context.Context, blockChan <-chan *common.Block, 
 	return errChan
 }
 
-func (a *Aggregator) run(ctx context.Context, blockChan <-chan *common.Block, statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch) error {
+func (a *Aggregator) run( //nolint:gocognit
+	ctx context.Context,
+	blockChan <-chan *common.Block,
+	statusChan <-chan *protocoordinatorservice.TxValidationStatusBatch,
+) error {
 	defer logger.Infof("Stopped running")
 	logger.Infof("Started aggregator for sidecar")
 	for {
@@ -123,7 +132,12 @@ func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 		txIDs:     make(map[string]int, txCount),
 		remaining: txCount - len(filteredTxs),
 	}
-	logger.Debugf("New block [%d] has %d TX's of which %d were filtered", block.Header.Number, txCount, newBlock.remaining)
+	logger.Debugf(
+		"New block [%d] has %d TX's of which %d were filtered",
+		block.Header.Number,
+		txCount,
+		newBlock.remaining,
+	)
 
 	// set all filtered transaction to valid by default
 	// TODO once SC V2 can process config transaction and alike, this needs to be changed
@@ -141,10 +155,12 @@ func (a *Aggregator) enqueueNewBlock(block *common.Block) error {
 		a.inProgressTxs[tx.GetId()] = blockNum
 	}
 
-	a.enqueuedBlocks += 1
+	a.enqueuedBlocks++
 
-	// in the case that we got a config block, we will not get any TX status back from the coordinator, so we register it here as completed.
-	// We also send it to the coordinator, so that it keeps track of which blocks have already passed (to avoid delivering out of order blocks)
+	// in the case that we got a config block, we will not get any TX status
+	// back from the coordinator, so we register it here as completed.
+	// We also send it to the coordinator, so that it keeps track of which
+	// blocks have already passed (to avoid delivering out of order blocks)
 	if len(scBlock.GetTxs()) == 0 && newBlock.remaining == 0 {
 		a.tryComplete()
 	}
@@ -175,7 +191,12 @@ func (a *Aggregator) processStatusBatch(batch *protocoordinatorservice.TxValidat
 
 		// check that the tx has not yet been validated
 		if block.returned[pos] != notYetValidated {
-			return fmt.Errorf("two results for the same TX (txID=%v). blockNum: %d, txNum: %d", txStatus.GetTxId(), blockNum, pos)
+			return fmt.Errorf(
+				"two results for the same TX (txID=%v). blockNum: %d, txNum: %d",
+				txStatus.GetTxId(),
+				blockNum,
+				pos,
+			)
 		}
 
 		block.returned[pos] = statusMap[txStatus.GetStatus()]
@@ -184,7 +205,7 @@ func (a *Aggregator) processStatusBatch(batch *protocoordinatorservice.TxValidat
 
 		// cleanup
 		delete(a.inProgressTxs, txStatus.GetTxId())
-		block.remaining -= 1
+		block.remaining--
 	}
 
 	// after each batch we try to complete the next block
@@ -205,8 +226,8 @@ func (a *Aggregator) tryComplete() {
 
 	// cleanup
 	delete(a.inProgressBlocks, currentBlockNum)
-	a.nextCommittedBlockNum += 1
-	a.enqueuedBlocks -= 1
+	a.nextCommittedBlockNum++
+	a.enqueuedBlocks--
 
 	// send block to output
 	a.output(updateMetadata(currentBlock.block, currentBlock.returned))
@@ -217,7 +238,9 @@ func (a *Aggregator) tryComplete() {
 
 func updateMetadata(block *common.Block, metadataTransactionFilter []byte) *common.Block {
 	if block.Metadata == nil {
-		block.Metadata = &common.BlockMetadata{Metadata: make([][]byte, common.BlockMetadataIndex_TRANSACTIONS_FILTER+1)}
+		block.Metadata = &common.BlockMetadata{
+			Metadata: make([][]byte, common.BlockMetadataIndex_TRANSACTIONS_FILTER+1),
+		}
 	}
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = metadataTransactionFilter
 	return block

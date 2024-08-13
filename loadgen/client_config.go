@@ -1,7 +1,7 @@
 package loadgen
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"

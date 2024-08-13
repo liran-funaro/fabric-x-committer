@@ -1,28 +1,38 @@
-package sidecarservice
+package sidecar
 
 import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/coordinatorclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
+// SidecarConfig holds the configuration of the sidecar service. This includes
+// sidecar endpoint, orderer endpoint from which the sidecar pulls the block,
+// committer endpoint to which the sidecar pushes the block and pulls statuses,
+// and the config of ledger service.
 type SidecarConfig struct {
-	Monitoring *monitoring.Config        `mapstructure:"monitoring"`
-	Server     *connection.ServerConfig  `mapstructure:"server"`
-	Orderer    *deliverclient.Config     `mapstructure:"orderer"`
-	Committer  *coordinatorclient.Config `mapstructure:"committer"`
-	Ledger     *LedgerConfig             `mapstructure:"ledger"`
+	Monitoring *monitoring.Config       `mapstructure:"monitoring"`
+	Server     *connection.ServerConfig `mapstructure:"server"`
+	Orderer    *deliverclient.Config    `mapstructure:"orderer"`
+	Committer  *CoordinatorConfig       `mapstructure:"committer"`
+	Ledger     *LedgerConfig            `mapstructure:"ledger"`
+}
+
+// CoordinatorConfig holds the endpoint of the coordinator component in the
+// committer service.
+type CoordinatorConfig struct {
+	Endpoint connection.Endpoint `mapstructure:"endpoint"`
 }
 
 type LedgerConfig struct {
 	Path string `mapstructure:"path"`
 }
 
+// ReadConfig reads the config.
 func ReadConfig() SidecarConfig {
 	wrapper := new(struct {
 		Config SidecarConfig `mapstructure:"sidecar"`

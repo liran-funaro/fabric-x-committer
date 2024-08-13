@@ -21,10 +21,10 @@ type defaultListener struct {
 	stop           chan any
 }
 
-func (o *defaultListener) Start(ctx context.Context, outputChan chan<- *common.Block) (chan error, error) {
+func (l *defaultListener) Start(ctx context.Context, outputChan chan<- *common.Block) (chan error, error) {
 	errChan := make(chan error)
 	go func() {
-		errChan <- o.RunDeliverOutputListener(ctx, func(block *common.Block) {
+		errChan <- l.RunDeliverOutputListener(ctx, func(block *common.Block) {
 			outputChan <- block
 		})
 	}()
@@ -48,11 +48,10 @@ func (l *defaultListener) RunDeliverOutputListener(ctx context.Context, onReceiv
 		if l.reconnect < 0 {
 			logger.Infof("Error: %v.\nNot reconnecting.", err)
 			return err
-		} else {
-			reconnectAttempts += 1
-			logger.Infof("Error: %v.\nReconnecting in %v. Attempt %d", err, l.reconnect, reconnectAttempts)
-			<-time.After(l.reconnect)
 		}
+		reconnectAttempts++
+		logger.Infof("Error: %v.\nReconnecting in %v. Attempt %d", err, l.reconnect, reconnectAttempts)
+		<-time.After(l.reconnect)
 	}
 }
 
@@ -62,7 +61,9 @@ func (l *defaultListener) openDeliverStream(ctx context.Context, onReceive func(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed opening stream")
 	}
-	defer client.CloseSend()
+	defer func() {
+		_ = client.CloseSend()
+	}()
 	logger.Infof("Opened stream to orderer.")
 
 	logger.Infof("Sending seek request starting from block %d.", l.startBlock)
@@ -80,7 +81,11 @@ func (l *defaultListener) openDeliverStream(ctx context.Context, onReceive func(
 	return errChan, nil
 }
 
-func (l *defaultListener) receiveFromOrderer(ctx context.Context, onReceive func(*common.Block), client deliverStream) error {
+func (l *defaultListener) receiveFromOrderer(
+	ctx context.Context,
+	onReceive func(*common.Block),
+	client deliverStream,
+) error {
 	for {
 		select {
 		case <-l.stop:
@@ -115,7 +120,6 @@ func (l *defaultListener) receiveFromOrderer(ctx context.Context, onReceive func
 		default:
 		}
 
-		//logger.Debugf("Block: %v", block)
 		l.startBlock = int64(block.Header.Number) + 1
 		onReceive(block)
 	}

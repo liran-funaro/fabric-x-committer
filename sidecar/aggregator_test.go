@@ -1,4 +1,4 @@
-package aggregator_test
+package sidecar
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/aggregator"
 )
 
 const (
@@ -87,7 +86,7 @@ func TestNewAggregator(t *testing.T) {
 	}
 
 	ctx, stop := context.WithCancel(context.Background())
-	agg := aggregator.New(sendToCoordinator, output)
+	agg := NewAggregator(sendToCoordinator, output)
 	errChan := agg.Start(ctx, blockChan, statusChan)
 	go func() {
 		wg.Add(1)

@@ -10,7 +10,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/pkg/sidecarservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -52,16 +52,15 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 		2110,
 		9001,
 	)
-	conf := sidecarservice.ReadConfig()
-
-	service, err := sidecarservice.NewService(&conf)
+	conf := sidecar.ReadConfig()
+	service, err := sidecar.New(&conf)
 	require.NoError(t, err)
 	_, _, _, err = service.Start(context.Background())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, service.Close()) })
 
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, service.Ledger)
+		peer.RegisterDeliverServer(server, service.LedgerService)
 	})
 	t.Cleanup(server.Stop)
 
