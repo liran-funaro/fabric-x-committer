@@ -1,6 +1,6 @@
 module github.ibm.com/decentralized-trust-research/scalable-committer
 
-go 1.22.2
+go 1.23
 
 require (
 	github.com/briandowns/spinner v1.23.0
