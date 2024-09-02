@@ -1,0 +1,233 @@
+package sidecar
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
+
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
+)
+
+type (
+	relay struct {
+		coordConfig                  *CoordinatorConfig
+		incomingBlockToBeCommitted   <-chan *common.Block
+		outgoingCommittedBlock       chan<- *common.Block
+		nextBlockNumberToBeCommitted atomic.Uint64
+		activeBlocksCount            atomic.Int32
+		blkNumToBlkWithStatus        sync.Map
+		txIDToBlkNum                 sync.Map
+	}
+
+	blockWithStatus struct {
+		block         *common.Block
+		txStatus      []validationCode
+		txIDToTxIndex map[string]int
+		pendingCount  int
+	}
+)
+
+func newRelay(
+	config *CoordinatorConfig,
+	uncommittedBlock <-chan *common.Block,
+	committedBlock chan<- *common.Block,
+) *relay {
+	return &relay{
+		coordConfig:                config,
+		incomingBlockToBeCommitted: uncommittedBlock,
+		outgoingCommittedBlock:     committedBlock,
+	}
+}
+
+// Run starts the relay service. The call to Run blocks until an error occurs or the context is canceled.
+func (r *relay) Run(ctx context.Context) error {
+	rCtx, rCancel := context.WithCancel(ctx)
+	defer rCancel()
+
+	logger.Infof("Create coordinator client and connect to %v\n", r.coordConfig.Endpoint)
+	conn, err := connection.Connect(connection.NewDialConfig(r.coordConfig.Endpoint))
+	if err != nil {
+		return fmt.Errorf("failed to connect to coordinator: %w", err)
+	}
+	defer conn.Close() // nolint:errcheck
+
+	client := protocoordinatorservice.NewCoordinatorClient(conn)
+
+	stream, err := client.BlockProcessing(rCtx)
+	if err != nil {
+		return fmt.Errorf("failed to open stream for block processing: %w", err)
+	}
+
+	logger.Infof("Starting coordinator sender and receiver")
+
+	g, gCtx := errgroup.WithContext(stream.Context())
+	g.Go(func() error {
+		return r.preProcessBlockAndSendToCoordinator(gCtx, stream)
+	})
+
+	statusBatch := make(chan *protocoordinatorservice.TxValidationStatusBatch, 1000)
+	defer close(statusBatch)
+	g.Go(func() error {
+		return receiveStatusFromCoordinator(gCtx, stream, statusBatch)
+	})
+
+	g.Go(func() error {
+		return r.processStatusBatch(gCtx, statusBatch)
+	})
+
+	return g.Wait()
+}
+
+func (r *relay) preProcessBlockAndSendToCoordinator(
+	ctx context.Context,
+	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+) error {
+	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
+	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
+	for {
+		block, ok := incomingBlockToBeCommitted.Read()
+		if !ok {
+			return nil
+		}
+		blockNum := block.Header.Number
+		logger.Debugf("Block %d arrived in the relay", blockNum)
+
+		// TODO: If we are expecting only scalable committer transactions, we
+		//       do not need to filter any transactions. We need to discuss about
+		//       the potential use-case. If there is none, we can remove the
+		//       filtering of transactions.
+		scBlock, filteredTxsIndex := mapBlock(block)
+
+		txCount := len(block.Data.Data)
+		blkWithResult := &blockWithStatus{
+			block:         block,
+			txStatus:      newValidationCodes(txCount),
+			txIDToTxIndex: make(map[string]int, txCount),
+			pendingCount:  txCount - len(filteredTxsIndex),
+		}
+
+		// set all filtered transaction to valid by default
+		// TODO once SC V2 can process config transaction and alike, this needs to be changed
+		for txIndex := range filteredTxsIndex {
+			logger.Debugf("TX [%d:%d] is excluded: %v", blockNum, txIndex, excludedStatus)
+			blkWithResult.txStatus[txIndex] = excludedStatus
+		}
+
+		r.blkNumToBlkWithStatus.Store(blockNum, blkWithResult)
+
+		for txIndex, tx := range scBlock.Txs {
+			logger.Debugf("Adding txID [%s] to in progress list", tx.GetId())
+			blkWithResult.txIDToTxIndex[tx.GetId()] = txIndex
+			r.txIDToBlkNum.Store(tx.GetId(), blockNum)
+		}
+
+		r.activeBlocksCount.Add(1)
+
+		// TODO: The following needs to be validated when the config transaction
+		//       is implemented.
+		//       In the case that we got a config block, we will not get any TX status
+		//       back from the coordinator, so we register it here as completed.
+		//       We also send it to the coordinator, so that it keeps track of which
+		//       blocks have already passed (to avoid delivering out of order blocks)
+		if len(scBlock.GetTxs()) == 0 && blkWithResult.pendingCount == 0 {
+			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
+		}
+
+		if err := stream.SendMsg(scBlock); err != nil {
+			return connection.FilterStreamErrors(err)
+		}
+		logger.Debugf("Sent scBlock %d with %d transactions to Coordinator", scBlock.Number, len(scBlock.Txs))
+	}
+}
+
+func receiveStatusFromCoordinator(
+	ctx context.Context,
+	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	statusBatch chan<- *protocoordinatorservice.TxValidationStatusBatch,
+) error {
+	txsStatus := channel.NewWriter(ctx, statusBatch)
+	for {
+		response, err := stream.Recv()
+		if err != nil {
+			return connection.FilterStreamErrors(err)
+		}
+		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetTxsValidationStatus()))
+
+		txsStatus.Write(response)
+	}
+}
+
+func (r *relay) processStatusBatch(
+	ctx context.Context,
+	statusBatch <-chan *protocoordinatorservice.TxValidationStatusBatch,
+) error {
+	txsStatus := channel.NewReader(ctx, statusBatch)
+	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
+	for {
+		tStatus, ok := txsStatus.Read()
+		if !ok {
+			return nil
+		}
+
+		for _, txStatus := range tStatus.GetTxsValidationStatus() {
+			txID := txStatus.GetTxId()
+			blockNum, ok := r.txIDToBlkNum.Load(txID)
+			if !ok {
+				return fmt.Errorf("TxID = %v is not associated with a block", txID)
+			}
+
+			v, ok := r.blkNumToBlkWithStatus.Load(blockNum)
+			if !ok {
+				return fmt.Errorf("block %d has never been submitted", blockNum)
+			}
+			blkWithStatus, _ := v.(*blockWithStatus) // nolint:revive
+
+			txIndex := blkWithStatus.txIDToTxIndex[txID]
+
+			if blkWithStatus.txStatus[txIndex] != notYetValidated {
+				return fmt.Errorf("two results for the same TX (txID=%v). blockNum: %d, txNum: %d",
+					txID, blockNum, txIndex)
+			}
+
+			blkWithStatus.txStatus[txIndex] = statusMap[txStatus.GetStatus()]
+
+			r.txIDToBlkNum.Delete(txID)
+			blkWithStatus.pendingCount--
+		}
+
+		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
+	}
+}
+
+func (r *relay) processCommittedBlocksInOrder(
+	ctx context.Context,
+	outgoingCommittedBlock channel.Writer[*common.Block],
+) {
+	for ctx.Err() == nil {
+		nextBlockNumberToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
+		v, exists := r.blkNumToBlkWithStatus.Load(nextBlockNumberToBeCommitted)
+		if !exists {
+			logger.Debugf("Next block [%d] to be committed is not in progress", nextBlockNumberToBeCommitted)
+			return
+		}
+		blkWithStatus, _ := v.(*blockWithStatus) //nolint:revive
+		if blkWithStatus.pendingCount > 0 {
+			return
+		}
+		logger.Debugf("Next block [%d] has been committed", nextBlockNumberToBeCommitted)
+
+		r.blkNumToBlkWithStatus.Delete(nextBlockNumberToBeCommitted)
+		r.nextBlockNumberToBeCommitted.Add(1)
+		r.activeBlocksCount.Add(-1)
+
+		blkWithStatus.block.Metadata = &common.BlockMetadata{
+			Metadata: [][]byte{nil, nil, blkWithStatus.txStatus},
+		}
+		outgoingCommittedBlock.Write(blkWithStatus.block)
+	}
+}

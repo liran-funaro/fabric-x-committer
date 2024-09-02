@@ -20,7 +20,8 @@ type sidecarClient struct {
 	*loadGenClient
 	coordinator     protocoordinatorservice.CoordinatorClient
 	envelopeCreator broadcastclient.EnvelopeCreator
-	sidecar         deliverclient.Client
+	ledgerReceiver  *deliverclient.Receiver
+	committedBlock  chan *common.Block
 	broadcasts      []ab.AtomicBroadcast_BroadcastClient
 	delivers        []ab.AtomicBroadcast_BroadcastClient
 	tracker         *sidecarTracker
@@ -33,12 +34,12 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) *sideca
 	}
 	coordinatorClient := openCoordinatorClient(conn)
 
-	listener, err := deliverclient.New(&deliverclient.Config{
-		ChannelID:                config.Orderer.ChannelID,
-		Endpoint:                 *config.Endpoint,
-		OrdererConnectionProfile: nil,
-		Reconnect:                -1,
-	}, &deliverclient.PeerDeliverClientProvider{})
+	committedBlock := make(chan *common.Block, 100)
+	receiver, err := deliverclient.New(&deliverclient.Config{
+		ChannelID: config.Orderer.ChannelID,
+		Endpoint:  *config.Endpoint,
+		Reconnect: -1,
+	}, deliverclient.Ledger, committedBlock)
 	if err != nil {
 		panic(errors.Wrap(err, "failed to create listener"))
 	}
@@ -58,17 +59,12 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) *sideca
 		loadGenClient:   newLoadGenClient(),
 		tracker:         newSidecarTracker(metrics),
 		coordinator:     coordinatorClient,
-		sidecar:         listener,
+		ledgerReceiver:  receiver,
+		committedBlock:  committedBlock,
 		broadcasts:      broadcastClients,
 		delivers:        delivers,
 		envelopeCreator: envelopeCreator,
 	}
-}
-
-func (c *sidecarClient) Stop() {
-	logger.Infof("Stopping sidecar client")
-	c.sidecar.Stop()
-	c.loadGenClient.Stop()
 }
 
 func (c *sidecarClient) Start(blockGen *BlockStream) error {
@@ -80,11 +76,7 @@ func (c *sidecarClient) Start(blockGen *BlockStream) error {
 	}
 	logger.Infof("Set verification key")
 
-	go func() {
-		if err := c.sidecar.RunDeliverOutputListener(c.ctx, c.tracker.OnReceiveSidecarBlock); err != nil {
-			c.cancel(err)
-		}
-	}()
+	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
 
 	for _, stream := range c.broadcasts {
 		go c.startSending(blockGen, stream)
@@ -94,19 +86,9 @@ func (c *sidecarClient) Start(blockGen *BlockStream) error {
 		go c.startReceiving(stream)
 	}
 
-	return nil
-}
+	go c.receiveCommittedBlock()
 
-func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) {
-	for c.ctx.Err() == nil {
-		if response, err := stream.Recv(); err != nil {
-			c.cancel(errors.Wrapf(err, "failed receiving"))
-		} else if response.Status != common.Status_SUCCESS {
-			c.cancel(errors.Errorf("unexpected status: %v - %s", response.Status, response.Info))
-		} else {
-			logger.Debugf("Received ack for TX")
-		}
-	}
+	return nil
 }
 
 func (c *sidecarClient) startSending(
@@ -126,6 +108,29 @@ func (c *sidecarClient) startSending(
 		}
 		return nil
 	})
+}
+
+func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) {
+	for c.ctx.Err() == nil {
+		if response, err := stream.Recv(); err != nil {
+			c.cancel(errors.Wrapf(err, "failed receiving"))
+		} else if response.Status != common.Status_SUCCESS {
+			c.cancel(errors.Errorf("unexpected status: %v - %s", response.Status, response.Info))
+		} else {
+			logger.Debugf("Received ack for TX")
+		}
+	}
+}
+
+func (c *sidecarClient) receiveCommittedBlock() {
+	for b := range c.committedBlock {
+		c.tracker.OnReceiveSidecarBlock(b)
+	}
+}
+
+func (c *sidecarClient) Stop() {
+	logger.Infof("Stopping sidecar client")
+	c.loadGenClient.Stop()
 }
 
 type sidecarTracker struct {

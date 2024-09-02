@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -28,18 +29,22 @@ var (
 
 func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	// Start dependencies
-	ordererServerConfig, mockOrderer, ordererGrpc := StartMockOrderingService(3)
-	coordinatorServerConfig, mockCoordinator, coordinatorGrpc := coordinatormock.StartMockCoordinatorService()
+	ordererServerConfig, mockOrderer, ordererGrpc := orderermock.StartMockOrderingService(3)
 	t.Cleanup(func() {
-		for _, o := range mockOrderer {
-			o.Close()
-		}
-		mockCoordinator.Close()
 		for _, oGrpc := range ordererGrpc {
 			oGrpc.Stop()
 		}
-		coordinatorGrpc.Stop()
+		for _, o := range mockOrderer {
+			o.Close()
+		}
 	})
+
+	coordinatorServerConfig, mockCoordinator, coordinatorGrpc := coordinatormock.StartMockCoordinatorService()
+	t.Cleanup(func() {
+		coordinatorGrpc.Stop()
+		mockCoordinator.Close()
+	})
+
 	// Start server under test
 	ledgerPath := tempFile(t, "ledger")
 	loadConfig(t,
@@ -55,17 +60,29 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	conf := sidecar.ReadConfig()
 	service, err := sidecar.New(&conf)
 	require.NoError(t, err)
-	_, _, _, err = service.Start(context.Background())
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, service.Close()) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	go func() { require.NoError(t, service.Run(ctx)) }()
 
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, service.LedgerService)
+		peer.RegisterDeliverServer(server, service.GetLedgerService())
 	})
 	t.Cleanup(server.Stop)
 
 	// Start client
-	loadConfig(t, "client-config.yaml", sidecarClientTemplate, tempFile(t, "client-log.txt"), 2111, sidecarServerConfig.Port, coordinatorServerConfig.Endpoint.Port, ordererServerConfig[0].Endpoint.Port, ordererServerConfig[1].Endpoint.Port, ordererServerConfig[2].Endpoint.Port)
+	loadConfig(
+		t,
+		"client-config.yaml",
+		sidecarClientTemplate,
+		tempFile(t, "client-log.txt"),
+		2111,
+		sidecarServerConfig.Port,
+		coordinatorServerConfig.Endpoint.Port,
+		ordererServerConfig[0].Endpoint.Port,
+		ordererServerConfig[1].Endpoint.Port,
+		ordererServerConfig[2].Endpoint.Port,
+	)
 	metrics := startLoadGenerator(t, ReadConfig())
 
 	// Check results

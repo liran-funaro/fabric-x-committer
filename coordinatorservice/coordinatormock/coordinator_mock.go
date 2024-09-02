@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"math/rand"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -90,35 +89,18 @@ func (*MockCoordinator) sendTxsValidationStatus(
 		}
 
 		// coordinator sends responses in multiple chunks (parts)
-		numParts := 1 + rand.Intn(6)
-		perPart := len(scBlock.GetTxs()) / numParts
+		for len(batch.TxsValidationStatus) > 0 {
+			chunkSize := rand.Intn(len(batch.TxsValidationStatus)) + 1
+			chunk := batch.TxsValidationStatus[:chunkSize]
+			batch.TxsValidationStatus = batch.TxsValidationStatus[chunkSize:]
 
-		for i := 0; i < numParts; i++ {
-			scBlock := scBlock
-			go func(i int) {
-				r := 100 + rand.Intn(1000)
-				time.Sleep(time.Duration(r) * time.Microsecond)
-
-				lo := i * perPart
-				hi := lo + perPart
-
-				total := len(scBlock.GetTxs())
-				b := &protocoordinatorservice.TxValidationStatusBatch{}
-				// check if we have a rest
-				if total-hi > 0 && total-hi < perPart {
-					b.TxsValidationStatus = batch.TxsValidationStatus[lo:]
-				} else {
-					b.TxsValidationStatus = batch.TxsValidationStatus[lo:hi]
-				}
-
-				rpcErr := stream.Send(b)
-				if connection.IsStreamEnd(rpcErr) {
-					logger.Debugf("stream ended")
-				} else {
-					utils.Must(connection.WrapStreamRpcError(rpcErr))
-				}
-				logger.Debugf("Sent back batch with %d TXs", len(b.TxsValidationStatus))
-			}(i)
+			rpcErr := stream.Send(&protocoordinatorservice.TxValidationStatusBatch{TxsValidationStatus: chunk})
+			if connection.IsStreamEnd(rpcErr) {
+				logger.Debugf("stream ended")
+			} else {
+				utils.Must(connection.WrapStreamRpcError(rpcErr))
+			}
+			logger.Debugf("Sent back batch with %d TXs", len(chunk))
 		}
 	}
 }

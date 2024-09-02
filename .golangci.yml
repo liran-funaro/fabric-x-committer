@@ -147,7 +147,6 @@ issues:
   # "/" will be replaced by current OS file path separator to properly work on Windows.
   exclude-dirs:
     - wgclient # may not be a priority
-    - sidecar # may not be a priority
     - sigverification # may not be a priority
   # Enables skipping of directories:
   # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$

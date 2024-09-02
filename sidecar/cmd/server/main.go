@@ -23,24 +23,16 @@ func main() {
 	service, err := sidecar.New(&c)
 	utils.Must(err)
 
-	ordererErrChan, coordinatorErrChan, aggErrChan, err := service.Start(context.Background())
-	utils.Must(err)
-	errChan := utils.Capture(
-		utils.ServiceErrors(ordererErrChan, 1, "orderer"),
-		utils.ServiceErrors(coordinatorErrChan, 1, "coordinator"),
-		utils.ServiceErrors(aggErrChan, 1, "aggregator"),
-	)
-
 	// enable health check server
 	healthcheck := health.NewServer()
 	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 
 	go func() {
 		connection.RunServerMain(c.Server, func(server *grpc.Server, _ int) {
-			peer.RegisterDeliverServer(server, service.LedgerService)
+			peer.RegisterDeliverServer(server, service.GetLedgerService())
 			healthgrpc.RegisterHealthServer(server, healthcheck)
 		})
 	}()
 
-	utils.Must(<-errChan)
+	utils.Must(service.Run(context.Background()))
 }

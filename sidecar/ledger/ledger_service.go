@@ -1,8 +1,8 @@
-package deliverserver
+package ledger
 
 import (
+	"context"
 	"io"
-	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -13,61 +13,67 @@ import (
 	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 var logger = logging.New("ledger")
 
-type Server interface {
-	peer.DeliverServer
-	Input() chan<- *common.Block
+// Service implements peer.DeliverServer.
+type Service struct {
+	ledger         blockledger.ReadWriter
+	ledgerProvider blockledger.Factory
+	channelID      string
+	committedBlock <-chan *common.Block
 }
 
-type ledgerServer struct {
-	ab.UnimplementedAtomicBroadcastServer
-	mu        *sync.RWMutex
-	input     chan *common.Block
-	ledger    blockledger.ReadWriter
-	channelId string
-}
-
-func New(channelId, ledgerDir string) *ledgerServer {
-	logger.Infof("Create ledger files for channel %s under %s", channelId, ledgerDir)
+// New creates a new ledger service.
+func New(channelID, ledgerDir string, input <-chan *common.Block) (*Service, error) {
+	logger.Infof("Create ledger files for channel %s under %s", channelID, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
-	utils.Must(err)
-	ledger, err := factory.GetOrCreate(channelId)
-	utils.Must(err)
-	srv := &ledgerServer{
-		mu:        &sync.RWMutex{},
-		input:     make(chan *common.Block, 100),
-		ledger:    ledger,
-		channelId: channelId,
+	if err != nil {
+		return nil, err
 	}
 
-	go func() {
-		for commonBlock := range srv.input {
-			logger.Debugf("Appending block %d to ledger.\n", commonBlock.Header.Number)
-			utils.Must(srv.ledger.Append(commonBlock))
-			logger.Debugf("Appended block %d to ledger.\n", commonBlock.Header.Number)
+	ledger, err := factory.GetOrCreate(channelID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Service{
+		ledger:         ledger,
+		ledgerProvider: factory,
+		channelID:      channelID,
+		committedBlock: input,
+	}, nil
+}
+
+// Run starts the ledger service. The call to Run blocks until an error occurs or the context is canceled.
+func (s *Service) Run(ctx context.Context) error {
+	inputBlock := channel.NewReader(ctx, s.committedBlock)
+	for {
+		block, ok := inputBlock.Read()
+		if !ok {
+			return nil
 		}
-	}()
-	return srv
+		logger.Debugf("Appending block %d to ledger.\n", block.Header.Number)
+		if err := (s.ledger.Append(block)); err != nil {
+			return err
+		}
+		logger.Debugf("Appended block %d to ledger.\n", block.Header.Number)
+	}
 }
 
-func (i *ledgerServer) Input() chan<- *common.Block {
-	return i.input
-}
-
-func (i *ledgerServer) Deliver(srv peer.Deliver_DeliverServer) error {
+// Deliver delivers the requested blocks.
+func (s *Service) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
 	logger.Infof("Starting new deliver loop for %s", addr)
 	for {
 		logger.Infof("Attempting to read seek info message from %s", addr)
 		envelope, err := srv.Recv()
 		logger.Infof("Received seek info message from %s", addr)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			logger.Infof("Received EOF from %s,", addr)
 			return nil
 		}
@@ -75,18 +81,16 @@ func (i *ledgerServer) Deliver(srv peer.Deliver_DeliverServer) error {
 			return err
 		}
 
-		status, err := i.deliverBlocks(srv, envelope)
+		status, err := s.deliverBlocks(srv, envelope)
 		if err != nil {
 			logger.Infof("Failed delivering to %s with status %v: %v", addr, status, err)
 			return err
 		}
 		logger.Infof("Done delivering to %s", addr)
 
-		err = srv.Send(&peer.DeliverResponse{
+		if err = srv.Send(&peer.DeliverResponse{
 			Type: &peer.DeliverResponse_Status{Status: status},
-		})
-
-		if err != nil {
+		}); err != nil {
 			logger.Infof("Error sending to %s: %s", addr, err)
 			return err
 		}
@@ -95,36 +99,42 @@ func (i *ledgerServer) Deliver(srv peer.Deliver_DeliverServer) error {
 	}
 }
 
-func (i *ledgerServer) DeliverFiltered(server peer.Deliver_DeliverFilteredServer) error {
-	//TODO implement me
-	panic("implement me")
+// DeliverFiltered implements an API in peer.DeliverServer.
+// Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
+// can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
+func (*Service) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
+	return errors.New("method is deprecated")
 }
 
-func (i *ledgerServer) DeliverWithPrivateData(server peer.Deliver_DeliverWithPrivateDataServer) error {
-	//TODO implement me
-	panic("implement me")
+// DeliverWithPrivateData implements an API in peer.DeliverServer.
+// Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
+// can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
+func (*Service) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
+	return errors.New("method is deprecated")
 }
 
-func (i *ledgerServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *common.Envelope) (common.Status, error) {
-
+func (s *Service) deliverBlocks(
+	srv peer.Deliver_DeliverServer,
+	envelope *common.Envelope,
+) (common.Status, error) {
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
 		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
 	}
 
-	if chdr.ChannelId != i.channelId {
+	if chdr.ChannelId != s.channelID {
 		// Note, we log this at DEBUG because SDKs will poll waiting for channels to be created
 		// So we would expect our log to be somewhat flooded with these
 		return common.Status_NOT_FOUND, errors.New("channel not found")
 	}
 
-	cursor, stopNum, err := i.getCursor(payload.Data)
+	cursor, stopNum, err := s.getCursor(payload.Data)
 	if err != nil {
 		return common.Status_BAD_REQUEST, err
 	}
 	logger.Debugf("Received seekInfo.")
 
-	for {
+	for srv.Context().Err() == nil {
 		block, status := cursor.Next()
 
 		if status != common.Status_SUCCESS {
@@ -143,7 +153,7 @@ func (i *ledgerServer) deliverBlocks(srv peer.Deliver_DeliverServer, envelope *c
 	return common.Status_SUCCESS, nil
 }
 
-func (i *ledgerServer) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
+func (s *Service) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
 	seekInfo := &ab.SeekInfo{}
 	if err := proto.Unmarshal(payload, seekInfo); err != nil {
 		return nil, 0, errors.New("malformed seekInfo payload")
@@ -152,7 +162,7 @@ func (i *ledgerServer) getCursor(payload []byte) (blockledger.Iterator, uint64, 
 		return nil, 0, errors.New("seekInfo missing start or stop")
 	}
 
-	cursor, number := i.ledger.Iterator(seekInfo.Start)
+	cursor, number := s.ledger.Iterator(seekInfo.Start)
 
 	switch stop := seekInfo.Stop.Type.(type) {
 	case *ab.SeekPosition_Oldest:
@@ -165,7 +175,7 @@ func (i *ledgerServer) getCursor(payload []byte) (blockledger.Iterator, uint64, 
 		if proto.Equal(seekInfo.Start, seekInfo.Stop) {
 			return cursor, number, nil
 		}
-		return cursor, i.ledger.Height() - 1, nil
+		return cursor, s.ledger.Height() - 1, nil
 	case *ab.SeekPosition_Specified:
 
 		if stop.Specified.Number < number {

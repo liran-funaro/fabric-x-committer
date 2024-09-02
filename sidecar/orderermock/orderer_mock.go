@@ -1,7 +1,6 @@
-package loadgen
+package orderermock
 
 import (
-	"io"
 	"time"
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -12,9 +11,12 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
+
+var logger = logging.New("orderer-mock")
 
 const capacity = 111
 
@@ -108,13 +110,8 @@ func (o *MockOrderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error
 		}
 
 		env, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			logger.Warnf("Received EOF from %v, hangup\n", stream)
-			return nil
-		}
 		if err != nil {
-			logger.Errorf("Error reading from %v: %s\n", stream, err)
-			return err
+			return connection.FilterStreamErrors(err)
 		}
 		o.inEnvs <- env
 
@@ -201,7 +198,12 @@ func StartMockOrderingService(numService int) ([]*connection.ServerConfig, []*Mo
 func fanOut(blocks <-chan *common.Block, chans []chan<- *common.Block) {
 	go func() {
 		for block := range blocks {
-			logger.Debugf("Block %d, prev: [%x], current: [%x]", block.Header.Number, block.Header.PreviousHash, block.Header.DataHash)
+			logger.Debugf(
+				"Block %d, prev: [%x], current: [%x]",
+				block.Header.Number,
+				block.Header.PreviousHash,
+				block.Header.DataHash,
+			)
 			for _, ch := range chans {
 				ch <- block
 			}
