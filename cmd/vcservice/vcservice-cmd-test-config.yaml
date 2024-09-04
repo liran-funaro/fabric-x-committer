@@ -1,0 +1,24 @@
+logging:
+  enabled: true
+  level: debug
+  Caller: true
+  Development: true
+  Output: %s
+  
+validator-committer-service:
+  server:
+    endpoint: localhost:6006
+
+  database:
+    host: %s
+    port: %s
+    username: %s
+    password: %s
+    database: %s
+    max-connections: 10
+    min-connections: 1
+    load-balance: false
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: localhost:2111

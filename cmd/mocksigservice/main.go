@@ -1,20 +1,22 @@
 package main
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
-var configPath string
+const (
+	serviceName    = "mocksigverifierservice"
+	serviceVersion = "0.0.1"
+)
 
 func main() {
 	cmd := mocksigverifierserviceCmd()
@@ -28,40 +30,35 @@ func main() {
 
 func mocksigverifierserviceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "mocksigverifierservice",
-		Short: "mocksigverifierservice is a mock signature verification service.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a mock signature verification service.", serviceName),
 	}
+
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a mocksigverifierservice",
+		Short: fmt.Sprintf("Starts a %v", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs must be set")
-			}
-
-			cmd.SilenceUsage = true
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			sigConfig := serverconfig.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
 
 			sv := sigverifiermock.NewMockSigVerifier()
 			go connection.RunServerMain(sigConfig.Server, func(grpcServer *grpc.Server, _ int) {
 				protosigverifierservice.RegisterVerifierServer(grpcServer, sv)
 			})
 
-			ctx := cmd.Context()
-			<-ctx.Done()
-			err := context.Cause(ctx)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil
-			}
-			return err
+			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
 

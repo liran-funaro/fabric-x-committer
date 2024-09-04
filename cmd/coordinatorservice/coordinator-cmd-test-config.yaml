@@ -1,0 +1,26 @@
+logging:
+  enabled: true
+  level: info
+  Caller: false
+  Development: true
+  Output: %s
+coordinator-service:
+  server:
+    endpoint: localhost:3001
+  sign-verifier:
+    server:
+      - # server 1 configuration
+        endpoint: localhost:%d
+  validator-committer:
+    server:
+      - # server 1 configuration
+        endpoint: localhost:%d
+  dependency-graph:
+    num-of-local-dep-constructors: 20
+    waiting-txs-limit: 10000
+    num-of-workers-for-global-dep-manager: 20
+  per-channel-buffer-size-per-goroutine: 300
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: localhost:2110

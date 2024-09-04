@@ -1,170 +1,79 @@
 package main
 
 import (
-	"bytes"
-	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
-	"path"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
-var configTemplate = `
-logging:
-  enabled: true
-  level: debug
-  Caller: true
-  Development: true
-  Output: %s
-validator-committer-service:
-  server:
-    endpoint:
-      host: localhost
-      port: 6002
-  database:
-    host: %s
-    port: %s
-    username: %s
-    password: %s
-    database: %s
-    max-connections: 10
-    min-connections: 1
-    load-balance: false
-  monitoring:
-    metrics:
-      enable: true
-      endpoint: localhost:2111
-`
-
-const (
-	expectedStartUsage = "Usage:\n" +
-		"  vcservice start [flags]\n\n" +
-		"Flags:\n" +
-		"      --configs string   set the absolute path of config directory\n" +
-		"  -h, --help             help for start\n\n"
-
-	expectedVersionUsage = "Usage:\n" +
-		"  vcservice version [flags]\n\n" +
-		"Flags:\n" +
-		"  -h, --help   help for version\n"
-)
+//go:embed vcservice-cmd-test-config.yaml
+var configTemplate string
 
 func TestVCServiceCmd(t *testing.T) {
 	conn := yuga.PrepareYugaTestEnv(t)
-
-	tmpDir := t.TempDir()
-	outputPath := filepath.Clean(path.Join(tmpDir, "logger-output.txt"))
-	testConfigPath := filepath.Clean(path.Join(tmpDir, "test-config.yaml"))
-	config := fmt.Sprintf(configTemplate, outputPath, conn.Host, conn.Port, conn.User, conn.Password, conn.Database)
+	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
+	config := fmt.Sprintf(
+		configTemplate,
+		loggerOutputPath,
+		conn.Host,
+		conn.Port,
+		conn.User,
+		conn.Password,
+		conn.Database,
+	)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
-	test := []struct {
-		name            string
-		args            []string
-		cmdLoggerOutput string
-		cmdStdOutput    string
-		errStr          string
-		err             error
-	}{
+	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
+	// identified. Instead, string concatenation is used for better compatibility.
+	commonTests := []cobracmd.CommandTest{
 		{
-			name:            "init the vcservice",
-			args:            []string{"init", "--configs", testConfigPath, "--namespaces", "0,1"},
-			cmdStdOutput:    "Initializing database",
-			cmdLoggerOutput: "Table 'ns_1' is ready",
-			errStr:          "",
-			err:             nil,
+			Name:            "start the " + serviceName,
+			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8000"},
+			CmdLoggerOutput: "Serving",
+			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
+			Endpoint:        "localhost:8000",
 		},
 		{
-			name:            "start the vcservice",
-			args:            []string{"start", "--configs", testConfigPath},
-			cmdLoggerOutput: "Running server",
-			cmdStdOutput:    "Starting vcservice",
-			errStr:          "",
-			err:             nil,
+			Name:            "init the " + serviceName,
+			Args:            []string{"init", "--configs", testConfigPath, "--namespaces", "0,1"},
+			CmdStdOutput:    "Initializing database",
+			CmdLoggerOutput: "Table 'ns_1' is ready",
+			Err:             nil,
 		},
 		{
-			name:            "clear the vcservice",
-			args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0,1"},
-			cmdStdOutput:    "Clearing database",
-			cmdLoggerOutput: "Table 'ns_1' is cleared",
-			errStr:          "",
-			err:             nil,
+			Name:            "clear the " + serviceName,
+			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0,1"},
+			CmdStdOutput:    "Clearing database",
+			CmdLoggerOutput: "Table 'ns_1' is cleared",
+			Err:             nil,
 		},
 		{
-			name:         "trailing args for start",
-			args:         []string{"start", "arg1", "arg2"},
-			cmdStdOutput: expectedStartUsage,
-			errStr:       "Error: --configs flag must be set to the path of configuration file\n",
-			err:          errors.New("--configs flag must be set to the path of configuration file"),
+			Name:         "print version",
+			Args:         []string{"version"},
+			CmdStdOutput: fmt.Sprintf("%v %v", serviceName, serviceVersion),
 		},
 		{
-			name:         "print version",
-			args:         []string{"version"},
-			cmdStdOutput: "vcservice 0.2\n",
+			Name: "trailing flag args for version",
+			Args: []string{"version", "--test"},
+			Err:  errors.New("unknown flag: --test"),
 		},
 		{
-			name:         "trailing args for version",
-			args:         []string{"version", "arg1", "arg2"},
-			cmdStdOutput: expectedVersionUsage + "\n",
-			errStr:       "Error: trailing arguments detected\n",
-			err:          errors.New("trailing arguments detected"),
+			Name: "trailing command args for version",
+			Args: []string{"version", "test"},
+			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, serviceName),
 		},
 	}
 
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-		Output:      outputPath,
-	}
-
-	for _, tc := range test {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			logging.SetupWithConfig(c)
-			cmd := vcserviceCmd()
-
-			cmdStdOut := new(bytes.Buffer)
-			cmdStdErr := new(bytes.Buffer)
-			cmd.SetOut(cmdStdOut)
-			cmd.SetErr(cmdStdErr)
-			cmd.SetArgs(tc.args)
-
-			errChan := make(chan error)
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
-			go func() {
-				_, err := cmd.ExecuteContextC(ctx)
-				errChan <- err
-			}()
-
-			require.Eventually(t, func() bool {
-				return strings.Contains(cmdStdOut.String(), tc.cmdStdOutput)
-			}, 4*time.Second, 100*time.Millisecond)
-
-			require.Eventually(t, func() bool {
-				logOut, errFile := os.ReadFile(outputPath)
-				if errFile != nil {
-					return false
-				}
-				return strings.Contains(string(logOut), tc.cmdLoggerOutput)
-			}, 30*time.Second, 500*time.Millisecond)
-
-			cancel()
-
-			require.Equal(t, tc.err, <-errChan)
-			require.Equal(t, tc.errStr, cmdStdErr.String())
-
-			require.NoError(t, os.Remove(outputPath))
+	for _, test := range commonTests {
+		tc := test
+		t.Run(tc.Name, func(t *testing.T) {
+			cobracmd.UnitTestRunner(t, vcserviceCmd(), loggerOutputPath, tc)
 		})
 	}
 }

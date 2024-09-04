@@ -5,48 +5,46 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
 )
 
-//go:embed coordinator-cmd-test-config.yaml
-var configTemplate string
+//go:embed sidecar-cmd-test-config.yaml
+var serverTemplate string
 
-func TestCoordinatorServiceCmd(t *testing.T) {
-	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-
+func TestSidecarCmd(t *testing.T) {
+	ordererServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingService(1)
 	t.Cleanup(func() {
-		for _, svGrpc := range sigVerGrpc {
-			svGrpc.Stop()
+		for _, o := range orderers {
+			o.Close()
 		}
-
-		for _, sv := range mockSigVer {
-			sv.Close()
+		for _, oGrpc := range orderersGrpcServer {
+			oGrpc.Stop()
 		}
 	})
 
-	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
-
+	coordinatorServerConfig, coordinator, coordGrpcServer := coordinatormock.StartMockCoordinatorService()
 	t.Cleanup(func() {
-		for _, svGrpc := range vcGrpc {
-			svGrpc.Stop()
-		}
-
-		for _, sv := range mockVC {
-			sv.Close()
-		}
+		coordinator.Close()
+		coordGrpcServer.Stop()
 	})
 
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
+	ledgerPath := filepath.Clean(path.Join(t.TempDir(), "ledger"))
 	config := fmt.Sprintf(
-		configTemplate,
+		serverTemplate,
+		ordererServerConfig[0].Endpoint.Port,
+		coordinatorServerConfig.Endpoint.Port,
+		ledgerPath,
+		3111,
+		9111,
 		loggerOutputPath,
-		sigVerServerConfig[0].Endpoint.Port,
-		vcServerConfig[0].Endpoint.Port,
 	)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
@@ -55,10 +53,10 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 	commonTests := []cobracmd.CommandTest{
 		{
 			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8004"},
+			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8002"},
 			CmdLoggerOutput: "Serving",
 			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
-			Endpoint:        "localhost:8004",
+			Endpoint:        "localhost:8002",
 		},
 		{
 			Name:         "print version",
@@ -80,7 +78,7 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, coordinatorserviceCmd(), loggerOutputPath, tc)
+			cobracmd.UnitTestRunner(t, sidecarCmd(), loggerOutputPath, tc)
 		})
 	}
 }

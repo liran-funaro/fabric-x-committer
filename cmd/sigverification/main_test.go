@@ -9,44 +9,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 )
 
-//go:embed coordinator-cmd-test-config.yaml
+//go:embed sigverification-cmd-test-config.yaml
 var configTemplate string
 
-func TestCoordinatorServiceCmd(t *testing.T) {
-	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-
-	t.Cleanup(func() {
-		for _, svGrpc := range sigVerGrpc {
-			svGrpc.Stop()
-		}
-
-		for _, sv := range mockSigVer {
-			sv.Close()
-		}
-	})
-
-	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
-
-	t.Cleanup(func() {
-		for _, svGrpc := range vcGrpc {
-			svGrpc.Stop()
-		}
-
-		for _, sv := range mockVC {
-			sv.Close()
-		}
-	})
-
+func TestSigverifierCmd(t *testing.T) {
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(
 		configTemplate,
+		50,
+		"10ms",
+		50,
+		40,
+		"Ecdsa",
+		"localhost:5000",
+		1,
+		"localhost:2222",
 		loggerOutputPath,
-		sigVerServerConfig[0].Endpoint.Port,
-		vcServerConfig[0].Endpoint.Port,
 	)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
@@ -55,10 +35,10 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 	commonTests := []cobracmd.CommandTest{
 		{
 			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8004"},
+			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8001"},
 			CmdLoggerOutput: "Serving",
 			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
-			Endpoint:        "localhost:8004",
+			Endpoint:        "localhost:8001",
 		},
 		{
 			Name:         "print version",
@@ -80,7 +60,7 @@ func TestCoordinatorServiceCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, coordinatorserviceCmd(), loggerOutputPath, tc)
+			cobracmd.UnitTestRunner(t, sigverifierCmd(), loggerOutputPath, tc)
 		})
 	}
 }

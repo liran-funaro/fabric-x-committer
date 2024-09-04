@@ -1,20 +1,21 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"google.golang.org/grpc"
 )
 
-var configPath string
+const (
+	serviceName    = "validator-committer-service"
+	serviceVersion = "0.0.2"
+)
 
 func main() {
 	cmd := vcserviceCmd()
@@ -28,51 +29,31 @@ func main() {
 
 func vcserviceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "vcservice",
-		Short: "vcservice is a validator and committer service.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a validator and committer service.", serviceName),
 	}
-	cmd.AddCommand(versionCmd())
+
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(initCmd())
 	cmd.AddCommand(startCmd())
 	cmd.AddCommand(clearCmd())
 	return cmd
 }
 
-func versionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print the version of the vcservice.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return fmt.Errorf("trailing arguments detected")
-			}
-
-			cmd.SilenceUsage = true
-			cmd.Println("vcservice 0.2")
-
-			return nil
-		},
-	}
-
-	return cmd
-}
-
 func startCmd() *cobra.Command {
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a vcservice",
+		Short: fmt.Sprintf("Starts a %v service.", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
-			vcConfig := vcservice.ReadConfig()
 			cmd.SilenceUsage = true
+			vcConfig := vcservice.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
 
-			cmd.Println("Starting vcservice")
 			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), vcConfig)
 			if err != nil {
 				return err
@@ -86,35 +67,28 @@ func startCmd() *cobra.Command {
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
 
-			ctx := cmd.Context()
-			<-ctx.Done()
-			err = context.Cause(ctx)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil
-			}
-			return err
+			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
 }
 
 func initCmd() *cobra.Command {
-	var namespaces []int
+	var (
+		configPath string
+		namespaces []int
+	)
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Init the database",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
-			vcConfig := vcservice.ReadConfig()
 			cmd.SilenceUsage = true
+			vcConfig := vcservice.ReadConfig()
 
 			cmd.Printf("Initializing database: %v\n", namespaces)
 
@@ -128,20 +102,20 @@ func initCmd() *cobra.Command {
 }
 
 func clearCmd() *cobra.Command {
-	var namespaces []int
+	var (
+		configPath string
+		namespaces []int
+	)
 	cmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Clear the database",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
-			vcConfig := vcservice.ReadConfig()
 			cmd.SilenceUsage = true
+			vcConfig := vcservice.ReadConfig()
 
 			cmd.Printf("Clearing database: %v\n", namespaces)
 

@@ -1,90 +1,65 @@
 package main
 
 import (
-	"bytes"
-	"context"
+	_ "embed"
+	"errors"
 	"fmt"
 	"os"
-	"path"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
-var configTemplate = `
-logging:
-  enabled: true
-  level: debug
-  Caller: true
-  Development: true
-  Output: %s
-query-service:
-  server:
-    endpoint: localhost:7003
-  database:
-    host: %s
-    port: %s
-    username: %s
-    password: %s
-    database: %s
-    max-connections: 10
-    min-connections: 1
-    load-balance: false
-  monitoring:
-    metrics:
-      enable: true
-      endpoint: localhost:7004
-`
+//go:embed query-cmd-test-config.yaml
+var configTemplate string
 
 func TestQueryServiceCmd(t *testing.T) {
 	conn := yuga.PrepareYugaTestEnv(t)
-
-	tmpDir := t.TempDir()
-	outputPath := filepath.Clean(path.Join(tmpDir, "logger-output.txt"))
-	testConfigPath := filepath.Clean(path.Join(tmpDir, "test-config.yaml"))
-	config := fmt.Sprintf(configTemplate,
-		outputPath, conn.Host, conn.Port, conn.User, conn.Password, conn.Database)
+	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
+	config := fmt.Sprintf(
+		configTemplate,
+		loggerOutputPath,
+		conn.Host,
+		conn.Port,
+		conn.User,
+		conn.Password,
+		conn.Database,
+	)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-		Output:      outputPath,
+	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
+	// identified. Instead, string concatenation is used for better compatibility.
+	commonTests := []cobracmd.CommandTest{
+		{
+			Name:            "start the " + serviceName,
+			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8003"},
+			CmdLoggerOutput: "Serving",
+			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
+			Endpoint:        "localhost:8003",
+		},
+		{
+			Name:         "print version",
+			Args:         []string{"version"},
+			CmdStdOutput: fmt.Sprintf("%v %v", serviceName, serviceVersion),
+		},
+		{
+			Name: "trailing flag args for version",
+			Args: []string{"version", "--test"},
+			Err:  errors.New("unknown flag: --test"),
+		},
+		{
+			Name: "trailing command args for version",
+			Args: []string{"version", "test"},
+			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, serviceName),
+		},
 	}
-	logging.SetupWithConfig(c)
-	cmd := queryServiceCmd()
 
-	cmdStdOut := new(bytes.Buffer)
-	cmdStdErr := new(bytes.Buffer)
-	cmd.SetOut(cmdStdOut)
-	cmd.SetErr(cmdStdErr)
-	cmd.SetArgs([]string{"start", "--configs", testConfigPath})
-
-	errChan := make(chan error)
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go func() {
-		_, err := cmd.ExecuteContextC(ctx)
-		errChan <- err
-	}()
-
-	require.Eventually(t, func() bool {
-		logOut, errFile := os.ReadFile(outputPath)
-		if errFile != nil {
-			return false
-		}
-		return strings.Contains(string(logOut), "Running server")
-	}, 2*time.Second, 500*time.Millisecond)
-	cancel()
-
-	require.NoError(t, <-errChan)
-
-	require.NoError(t, os.Remove(outputPath))
+	for _, test := range commonTests {
+		tc := test
+		t.Run(test.Name, func(t *testing.T) {
+			cobracmd.UnitTestRunner(t, queryServiceCmd(), loggerOutputPath, tc)
+		})
+	}
 }

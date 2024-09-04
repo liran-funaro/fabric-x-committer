@@ -6,8 +6,9 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pkg/errors"
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	protocoordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
@@ -20,12 +21,15 @@ type mockService struct {
 	bQueue chan *token.Block
 }
 
-func (m *mockService) SetVerificationKey(c context.Context, k *sigverification.Key) (*protocoordinatorservice.Empty, error) {
+func (*mockService) SetVerificationKey(
+	_ context.Context,
+	k *sigverification.Key,
+) (*protocoordinatorservice.Empty, error) {
 	fmt.Printf("set key: %v\n", k)
 	return &protocoordinatorservice.Empty{}, nil
 }
 
-func (m *mockService) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+func (*mockService) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
 	rQueue := make(chan *token.Block, 1000)
 
 	var wg sync.WaitGroup
@@ -36,7 +40,6 @@ func (m *mockService) BlockProcessing(stream protocoordinatorservice.Coordinator
 			resp := &protocoordinatorservice.TxValidationStatusBatch{
 				TxsValidationStatus: make([]*protocoordinatorservice.TxValidationStatus, len(block.Txs)),
 			}
-
 			for i, tx := range block.Txs {
 				status := &protocoordinatorservice.TxValidationStatus{
 					TxId:   tx.GetId(),
@@ -51,16 +54,16 @@ func (m *mockService) BlockProcessing(stream protocoordinatorservice.Coordinator
 				}
 
 				resp.TxsValidationStatus[i] = status
-
 			}
-			stream.Send(resp)
+			err := stream.Send(resp)
+			fmt.Printf("error raised on BlockProcessing: %v\n", err)
 		}
 	}()
 
 	fmt.Printf("New Connection...\n")
 	for {
 		block, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			// end of stream
 			fmt.Printf("BlockProcessing EOF\n")
 			break

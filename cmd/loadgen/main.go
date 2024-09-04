@@ -7,11 +7,14 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 )
 
-var configPath string
+const (
+	serviceName    = "blockgen"
+	serviceVersion = "0.0.2"
+)
 
 func main() {
 	cmd := blockgenCmd()
@@ -25,42 +28,29 @@ func main() {
 
 func blockgenCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "blockgen",
-		Short: "blockgen is a block generator for coordinator service.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a block generator for coordinator service.", serviceName),
 	}
-	cmd.AddCommand(versionCmd())
+
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
-func versionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print the version of the blockgen.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return fmt.Errorf("trailing arguments detected")
-			}
-
-			cmd.SilenceUsage = true
-			cmd.Println("blockgen 0.2")
-
-			return nil
-		},
-	}
-
-	return cmd
-}
-
 func startCmd() *cobra.Command {
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a blockgen",
+		Short: fmt.Sprintf("Starts a %v", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
-				return errors.Wrapf(err, "failed to read config path %s", configPath)
+			if err := cobracmd.ReadYaml(configPath); err != nil {
+				return err
 			}
+			cmd.SilenceUsage = true
 			clientConfig := loadgen.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
+
 			_, blockGen, client, err := loadgen.Starter(clientConfig)
 			if err != nil {
 				return err

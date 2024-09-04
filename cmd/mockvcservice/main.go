@@ -1,20 +1,22 @@
 package main
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"google.golang.org/grpc"
 )
 
-var configPath string
+const (
+	serviceName    = "mockvcservice"
+	serviceVersion = "0.0.1"
+)
 
 func main() {
 	cmd := mockvcserviceCmd()
@@ -28,40 +30,35 @@ func main() {
 
 func mockvcserviceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "mockvcservice",
-		Short: "mockvcservice is a mock validator and committer service.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a mock validator and committer service.", serviceName),
 	}
+
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a mockvcservice",
+		Short: fmt.Sprintf("Starts a %v.", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs must be set")
-			}
-
-			cmd.SilenceUsage = true
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			vcConfig := vcservice.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
 
 			vcs := vcservicemock.NewMockVcService()
 			go connection.RunServerMain(vcConfig.Server, func(grpcServer *grpc.Server, _ int) {
 				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
 			})
 
-			ctx := cmd.Context()
-			<-ctx.Done()
-			err := context.Cause(ctx)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil
-			}
-			return err
+			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
 

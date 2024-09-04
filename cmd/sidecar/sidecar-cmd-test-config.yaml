@@ -1,0 +1,30 @@
+sidecar:
+  orderer:
+    endpoint: localhost:%d
+    channel-id: mychannel
+    reconnect: 10s
+  committer:
+    endpoint: localhost:%d
+  ledger:
+    path: %s
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: localhost:%d
+      latency:
+        sampler:
+          type: timer
+          sampling-interval: 10s
+        buckets:
+          type: uniform
+          max-latency: 5s
+          bucket-count: 1000
+  server:
+    endpoint: localhost:%d
+
+logging:
+  enabled: true
+  level: info
+  caller: true
+  development: true
+  output: %s

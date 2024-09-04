@@ -1,0 +1,20 @@
+sig-verification:
+  parallel-executor:
+    batch-size-cutoff: %v
+    batch-time-cutoff: %v
+    channel-buffer-size: %v
+    parallelism: %v
+  scheme: %s
+  server:
+    endpoint: %s
+
+  monitoring:
+    metrics:
+      enable: %b
+      endpoint: %s
+
+logging:
+  development: true
+  enabled: true
+  level: debug
+  output: %s

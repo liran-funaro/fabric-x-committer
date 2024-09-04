@@ -130,15 +130,14 @@ $(cache_dir) $(mod_cache_dir):
 
 build: $(output_dir)
 	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator" ./cmd/coordinatorservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/mockcoordinator" ./wgclient/cmd/mockcoordinator
+	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator_setup" ./cmd/coordinatorservice/setup_helper
 	$(env) go build -buildvcs=false -o "$(output_dir)/vcservice" ./cmd/vcservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/queryservice" ./cmd/queryservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/mockvcservice" ./cmd/mockvcservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/sigservice" ./sigverification/cmd/server
+	$(env) go build -buildvcs=false -o "$(output_dir)/sigservice" ./cmd/sigverification
 	$(env) go build -buildvcs=false -o "$(output_dir)/mocksigservice" ./cmd/mocksigservice
 	$(env) go build -buildvcs=false -o "$(output_dir)/blockgen" ./cmd/loadgen
-	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator_setup" ./coordinatorservice/cmd/setup_helper
-	$(env) go build -buildvcs=false -o "$(output_dir)/sidecar" ./sidecar/cmd/server
+	$(env) go build -buildvcs=false -o "$(output_dir)/sidecar" ./cmd/sidecar
 
 build-docker: $(output_dir)
 	make docker-builder-run cmd="make build output_dir=$(output_dir)"

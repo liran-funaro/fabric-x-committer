@@ -1,23 +1,21 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
-var (
-	configPath   string
-	coordService *coordinatorservice.CoordinatorService
+const (
+	serviceName    = "coordinator-service"
+	serviceVersion = "0.0.2"
 )
 
 func main() {
@@ -32,50 +30,29 @@ func main() {
 
 func coordinatorserviceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "coordinatorservice",
-		Short: "coordinatorservice is a coordinator for the scalable committer.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a coordinator for the scalable committer.", serviceName),
 	}
-	cmd.AddCommand(versionCmd())
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
-func versionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print the version of the coordinatorservice.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return fmt.Errorf("trailing arguments detected")
-			}
-
-			cmd.SilenceUsage = true
-			cmd.Println("coordinatorservice 0.2")
-
-			return nil
-		},
-	}
-
-	return cmd
-}
-
 func startCmd() *cobra.Command { //nolint:gocognit
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a coordinatorservice",
+		Short: fmt.Sprintf("Starts a %v", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
-			coordConfig := coordinatorservice.ReadConfig()
 			cmd.SilenceUsage = true
+			coordConfig := coordinatorservice.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
 
-			cmd.Println("Starting coordinatorservice")
-			coordService = coordinatorservice.NewCoordinatorService(cmd.Context(), coordConfig)
+			coordService := coordinatorservice.NewCoordinatorService(cmd.Context(), coordConfig)
 
 			vcErr, err := coordService.Start()
 			if err != nil {
@@ -98,26 +75,14 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			}()
 			wg.Wait()
 
-			ctx := cmd.Context()
-			select {
-			case <-ctx.Done():
-				err := context.Cause(ctx)
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return nil
-				}
-				return err
-			case err := <-errChan:
-				// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
-				// coordinator service if any of them fails. In the future, we can add recovery mechanism
-				// to restart the failed service and stop the coordinator service only if all the services
-				// in vcservice fail or all the services in sigverifier fail.
-				cmd.Println("stream with vcservice closed abrubtly")
-				return err
-			}
+			// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
+			// coordinator service if any of them fails. In the future, we can add recovery mechanism
+			// to restart the failed service and stop the coordinator service only if all the services
+			// in vcservice fail or all the services in sigverifier fail.
+			return cobracmd.WaitUntilServiceDoneWithChan(cmd.Context(), errChan)
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
 }
 

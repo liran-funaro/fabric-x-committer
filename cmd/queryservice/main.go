@@ -8,13 +8,16 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
-var configPath string
+const (
+	serviceName    = "query-service"
+	serviceVersion = "0.0.1"
+)
 
 func main() {
 	cmd := queryServiceCmd()
@@ -28,49 +31,28 @@ func main() {
 
 func queryServiceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "queryservice",
-		Short: "queryservice is a service to query the state.",
+		Use:   serviceName,
+		Short: fmt.Sprintf("%v is a service to query the state.", serviceName),
 	}
-	cmd.AddCommand(versionCmd())
+	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
-func versionCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print the version of the queryservice.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return fmt.Errorf("trailing arguments detected")
-			}
-
-			cmd.SilenceUsage = true
-			cmd.Println("queryservice 0.1")
-
-			return nil
-		},
-	}
-
-	return cmd
-}
-
 func startCmd() *cobra.Command {
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Starts a queryservice",
+		Short: fmt.Sprintf("Starts a %v", serviceName),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if configPath == "" {
-				return errors.New("--configs flag must be set to the path of configuration file")
-			}
-
-			if err := config.ReadYamlConfigs([]string{configPath}); err != nil {
+			if err := cobracmd.ReadYaml(configPath); err != nil {
 				return err
 			}
-			serviceConfig := queryservice.ReadConfig()
 			cmd.SilenceUsage = true
+			serviceConfig := queryservice.ReadConfig()
+			cmd.Printf("Starting %v service\n", serviceName)
 
-			cmd.Println("Starting queryservice")
 			qs, err := queryservice.NewQueryService(cmd.Context(), serviceConfig)
 			if err != nil {
 				return err
@@ -93,8 +75,7 @@ func startCmd() *cobra.Command {
 			return err
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
 }
 

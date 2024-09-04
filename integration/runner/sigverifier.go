@@ -59,7 +59,7 @@ func (s *SigVerifierProcess) createConfigFile(t *testing.T, ports []int) {
 }
 
 func (s *SigVerifierProcess) start() {
-	cmd := exec.Command(sigverifierCmd, "--configs", s.ConfigFilePath)
+	cmd := exec.Command(sigverifierCmd, "start", "--configs", s.ConfigFilePath)
 	s.Process = run(cmd, s.Name, "Was created and initialized with")
 }
 
