@@ -3,8 +3,10 @@ package coordinatorservice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -29,6 +31,7 @@ type (
 	// validatorCommitter is responsible for managing the communication with a single
 	// vcserver.
 	validatorCommitter struct {
+		client         protovcservice.ValidationAndCommitServiceClient
 		stream         protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
 		sendOnStreamMu sync.Mutex
 		metrics        *perfMetrics
@@ -97,6 +100,35 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 	return errChan, nil
 }
 
+func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
+	ctx context.Context,
+	lastBlock *protoblocktx.LastCommittedBlock,
+) error {
+	var err error
+	for _, vc := range vcm.validatorCommitter {
+		if _, err = vc.client.SetLastCommittedBlockNumber(ctx, lastBlock); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to set the last committed block number [%d]: %w", lastBlock.Number, err)
+}
+
+func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
+	ctx context.Context,
+) (*protoblocktx.LastCommittedBlock, error) {
+	var err error
+	var lastBlock *protoblocktx.LastCommittedBlock
+	for _, vc := range vcm.validatorCommitter {
+		lastBlock, err = vc.client.GetLastCommittedBlockNumber(ctx, nil)
+		if err == nil {
+			return lastBlock, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
+}
+
 func (vcm *validatorCommitterManager) close() {
 	vcm.cancel()
 }
@@ -120,6 +152,7 @@ func newValidatorCommitter(
 	}
 
 	return &validatorCommitter{
+		client:           client,
 		stream:           vcStream,
 		txBeingValidated: &sync.Map{},
 		metrics:          metrics,

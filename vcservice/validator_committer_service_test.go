@@ -23,6 +23,7 @@ type validatorAndCommitterServiceTestEnv struct {
 	stream       protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
 	streamCancel func()
 	dbEnv        *DatabaseTestEnv
+	ctx          context.Context
 }
 
 func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
@@ -85,8 +86,8 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	t.Cleanup(func() {
 		require.NoError(t, clientConn.Close())
 	})
-
 	client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
+
 	sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
 	t.Cleanup(sCancel)
 	vcStream, err := client.StartValidateAndCommitStream(sCtx)
@@ -104,6 +105,7 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		stream:       vcStream,
 		streamCancel: sCancel,
 		dbEnv:        dbEnv,
+		ctx:          ctx,
 	}
 }
 
@@ -375,4 +377,19 @@ func TestWaitingTxsCount(t *testing.T) {
 		}
 		return wTxs.GetCount() == 0
 	}, 2*time.Second, 100*time.Millisecond)
+}
+
+func TestLastCommittedBlockNumber(t *testing.T) {
+	env := newValidatorAndCommitServiceTestEnv(t)
+	require.NoError(t, initDatabaseTables(context.Background(), env.dbEnv.DB.pool, nil))
+	b, err := env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	require.Error(t, err, ErrNoBlockCommitted)
+	require.Nil(t, b)
+
+	_, err = env.client.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.LastCommittedBlock{Number: 0})
+	require.NoError(t, err)
+
+	b, err = env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), b.Number)
 }

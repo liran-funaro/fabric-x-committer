@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,9 +62,12 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	service, err := sidecar.New(&conf)
 	require.NoError(t, err)
 
+	wg := &sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	go func() { require.NoError(t, service.Run(ctx)) }()
+	wg.Add(1)
+	go func() { require.NoError(t, service.Run(ctx)); wg.Done() }()
 
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, service.GetLedgerService())

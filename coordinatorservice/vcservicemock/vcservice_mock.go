@@ -1,6 +1,7 @@
 package vcservicemock
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync/atomic"
@@ -15,9 +16,11 @@ import (
 // MockVcService implements the protovcservice.ValidationAndCommitServiceServer interface.
 // It is used for testing the client which is the coordinator service.
 type MockVcService struct {
-	protovcservice.UnimplementedValidationAndCommitServiceServer
-	txBatchChan        chan *protovcservice.TransactionBatch
-	numBatchesReceived *atomic.Uint32
+	protovcservice.ValidationAndCommitServiceServer
+	txBatchChan            chan *protovcservice.TransactionBatch
+	numBatchesReceived     *atomic.Uint32
+	lastCommittedBlock     atomic.Uint64
+	numWaitingTransactions atomic.Int32
 }
 
 // NewMockVcService returns a new MockVcService.
@@ -26,6 +29,31 @@ func NewMockVcService() *MockVcService {
 		txBatchChan:        make(chan *protovcservice.TransactionBatch),
 		numBatchesReceived: &atomic.Uint32{},
 	}
+}
+
+// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
+func (vc *MockVcService) NumberOfWaitingTransactionsForStatus(
+	_ context.Context,
+	_ *protovcservice.Empty,
+) (*protovcservice.WaitingTransactions, error) {
+	return &protovcservice.WaitingTransactions{Count: vc.numWaitingTransactions.Load()}, nil
+}
+
+// SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
+func (vc *MockVcService) SetLastCommittedBlockNumber(
+	_ context.Context,
+	lastBlock *protoblocktx.LastCommittedBlock,
+) (*protovcservice.Empty, error) {
+	vc.lastCommittedBlock.Store(lastBlock.Number)
+	return nil, nil
+}
+
+// GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
+func (vc *MockVcService) GetLastCommittedBlockNumber(
+	_ context.Context,
+	_ *protovcservice.Empty,
+) (*protoblocktx.LastCommittedBlock, error) {
+	return &protoblocktx.LastCommittedBlock{Number: vc.lastCommittedBlock.Load()}, nil
 }
 
 // StartValidateAndCommitStream is the mock implementation of the
@@ -64,6 +92,7 @@ func (vc *MockVcService) receiveAndProcessTransactions(
 			return err
 		}
 
+		vc.numWaitingTransactions.Add(int32(len(txBatch.Transactions)))
 		vc.numBatchesReceived.Add(1)
 		vc.txBatchChan <- txBatch
 	}
@@ -92,6 +121,8 @@ func (vc *MockVcService) sendTransactionStatus(
 			}
 			return err
 		}
+
+		vc.numWaitingTransactions.Add(-int32((len(txBatch.Transactions))))
 	}
 
 	return nil

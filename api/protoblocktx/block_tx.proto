@@ -70,3 +70,7 @@ message NamespacePolicy {
     string scheme = 1; // The scheme for signature verification.
     bytes public_key = 2; // The public key for signature verification.
 }
+
+message LastCommittedBlock {
+    uint64 number = 1;
+}

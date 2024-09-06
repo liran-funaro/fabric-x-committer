@@ -2,11 +2,14 @@ package sidecar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -15,13 +18,14 @@ import (
 
 type (
 	relay struct {
-		coordConfig                  *CoordinatorConfig
-		incomingBlockToBeCommitted   <-chan *common.Block
-		outgoingCommittedBlock       chan<- *common.Block
-		nextBlockNumberToBeCommitted atomic.Uint64
-		activeBlocksCount            atomic.Int32
-		blkNumToBlkWithStatus        sync.Map
-		txIDToBlkNum                 sync.Map
+		coordConfig                   *CoordinatorConfig
+		incomingBlockToBeCommitted    <-chan *common.Block
+		outgoingCommittedBlock        chan<- *common.Block
+		nextBlockNumberToBeCommitted  atomic.Uint64
+		activeBlocksCount             atomic.Int32
+		blkNumToBlkWithStatus         sync.Map
+		txIDToBlkNum                  sync.Map
+		lastCommittedBlockSetInterval time.Duration
 	}
 
 	blockWithStatus struct {
@@ -38,9 +42,10 @@ func newRelay(
 	committedBlock chan<- *common.Block,
 ) *relay {
 	return &relay{
-		coordConfig:                config,
-		incomingBlockToBeCommitted: uncommittedBlock,
-		outgoingCommittedBlock:     committedBlock,
+		coordConfig:                   config,
+		incomingBlockToBeCommitted:    uncommittedBlock,
+		outgoingCommittedBlock:        committedBlock,
+		lastCommittedBlockSetInterval: 2 * time.Second, // TODO: make it configurable.
 	}
 }
 
@@ -65,19 +70,24 @@ func (r *relay) Run(ctx context.Context) error {
 
 	logger.Infof("Starting coordinator sender and receiver")
 
+	expectedNextBlockToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
+
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
 		return r.preProcessBlockAndSendToCoordinator(gCtx, stream)
 	})
 
 	statusBatch := make(chan *protocoordinatorservice.TxValidationStatusBatch, 1000)
-	defer close(statusBatch)
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(gCtx, stream, statusBatch)
 	})
 
 	g.Go(func() error {
 		return r.processStatusBatch(gCtx, statusBatch)
+	})
+
+	g.Go(func() error {
+		return r.setLastCommittedBlockNumber(gCtx, client, expectedNextBlockToBeCommitted)
 	})
 
 	return g.Wait()
@@ -229,5 +239,42 @@ func (r *relay) processCommittedBlocksInOrder(
 			Metadata: [][]byte{nil, nil, blkWithStatus.txStatus},
 		}
 		outgoingCommittedBlock.Write(blkWithStatus.block)
+	}
+}
+
+func (r *relay) setLastCommittedBlockNumber(
+	ctx context.Context,
+	client protocoordinatorservice.CoordinatorClient,
+	expectedNextBlockToBeCommitted uint64,
+) error {
+	for {
+		// NOTE: We are not strictly committing each committed block
+		//       number immediately and also not in sequence.
+		//       Instead, there is an implicit batching of block number.
+		//       Even if the last committed block number
+		//       set in the committer is different from the actual last committed
+		//       block number, we have adequate recovery mechanism to detect
+		//       them and recover correctly after a failure.
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(r.lastCommittedBlockSetInterval):
+		}
+
+		if r.nextBlockNumberToBeCommitted.Load() == expectedNextBlockToBeCommitted {
+			continue
+		}
+
+		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
+		logger.Debugf("Setting the last committed block number: %d", blkNum)
+		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.LastCommittedBlock{Number: blkNum})
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
+			return err
+		}
+		expectedNextBlockToBeCommitted = blkNum + 1
 	}
 }

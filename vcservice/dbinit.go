@@ -17,6 +17,27 @@ CREATE TABLE IF NOT EXISTS tx_status (
 ) %[2]s;
 `
 
+const lastCommittedBlockNumberKey = "last committed block number"
+
+const createMetadataTableStmt = `
+CREATE TABLE IF NOT EXISTS metadata (
+  key bytea NOT NULL PRIMARY KEY,
+  value bytea
+);
+`
+
+const initializeMetadataPrepStmt = `
+  INSERT INTO metadata VALUES ($1, $2);
+`
+
+const setMetadataPrepStmt = `
+  UPDATE metadata SET value = $2 where key = $1;
+`
+
+const getMetadataPrepStmt = `
+  SELECT value from metadata where key = $1;
+`
+
 const commitTxStatus = `
 CREATE OR REPLACE FUNCTION commit_tx_status(
 	IN _tx_ids bytea[], IN _statues integer[], OUT result text, OUT violating bytea[]
@@ -139,6 +160,7 @@ const (
 var initStatements = []string{
 	createTxTableStmt,
 	commitTxStatus,
+	createMetadataTableStmt,
 }
 
 var initStatementsWithTemplate = []string{
@@ -260,6 +282,16 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 		}
 	}
 	logger.Info("Tx status table is ready.")
+
+	if err := yuga.ExecRetry(
+		ctx,
+		pool,
+		stmtFmt(initializeMetadataPrepStmt, "", dbType),
+		[]byte(lastCommittedBlockNumberKey),
+		nil,
+	); err != nil {
+		return err
+	}
 
 	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {

@@ -218,6 +218,13 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		float64(1),
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 	)
+
+	_, err = env.coordinator.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.LastCommittedBlock{Number: 0})
+	require.NoError(t, err)
+
+	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(env.ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), lastBlock.Number)
 }
 
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {

@@ -127,6 +127,25 @@ func (vc *ValidatorCommitterService) monitorQueues() {
 	}
 }
 
+// SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
+func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
+	ctx context.Context,
+	lastCommittedBlock *protoblocktx.LastCommittedBlock,
+) (*protovcservice.Empty, error) {
+	if lastCommittedBlock == nil {
+		return nil, fmt.Errorf("the last committed block number is not set")
+	}
+	return nil, vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock.Number)
+}
+
+// GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
+func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
+	ctx context.Context,
+	_ *protovcservice.Empty,
+) (*protoblocktx.LastCommittedBlock, error) {
+	return vc.db.getLastCommittedBlockNumber(ctx)
+}
+
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
 // It receives transactions from the client, prepares them, validates them and commits them to the database.
 // It also sends the status of the transactions to the client.
@@ -160,7 +179,7 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	return nil
 }
 
-// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting  to get the final status.
+// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
 func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
 	_ context.Context,
 	_ *protovcservice.Empty,

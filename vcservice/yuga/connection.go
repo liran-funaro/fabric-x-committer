@@ -159,13 +159,14 @@ func (y *Connection) DropDB(ctx context.Context, dbName string) error {
 //     See: https://support.yugabyte.com/hc/en-us/articles/10552861830541-Unable-to-Drop-Database.
 //   - Creating/dropping tables immediately after creating a database.
 //     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
-func ExecRetry(ctx context.Context, pool *pgxpool.Pool, stmt string) error {
+func ExecRetry(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) error {
 	var err error
 	for i := 0; i < 60; i++ {
 		if i > 0 {
 			time.Sleep(time.Second)
 		}
-		_, err = pool.Exec(ctx, stmt)
+
+		_, err = pool.Exec(ctx, stmt, args...)
 		if err == nil {
 			return nil
 		}

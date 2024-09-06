@@ -148,6 +148,7 @@ issues:
   exclude-dirs:
     - wgclient # may not be a priority
     - sigverification # may not be a priority
+
   # Enables skipping of directories:
   # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
   # Default: true

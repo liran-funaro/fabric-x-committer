@@ -2,6 +2,7 @@ package sidecar
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,16 +29,21 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 
 	uncommittedBlock := make(chan *common.Block, 10)
 	committedBlock := make(chan *common.Block, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
 	relay := newRelay(
 		&CoordinatorConfig{Endpoint: coordinatorServerConfig.Endpoint},
 		uncommittedBlock,
 		committedBlock,
 	)
 
-	go func() { require.NoError(t, relay.Run(ctx)) }()
+	wg := &sync.WaitGroup{}
+	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
+	//       order of cleanup matters, which is last added first called.
+	t.Cleanup(wg.Wait)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, relay.Run(ctx)); wg.Done() }()
 	return &relayTestEnv{
 		relay:            relay,
 		uncommittedBlock: uncommittedBlock,

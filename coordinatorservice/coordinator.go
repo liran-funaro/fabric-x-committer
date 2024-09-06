@@ -247,6 +247,22 @@ func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 	return &protocoordinatorservice.Empty{}, c.signatureVerifierMgr.setVerificationKey(k)
 }
 
+// SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
+func (c *CoordinatorService) SetLastCommittedBlockNumber(
+	ctx context.Context,
+	lastBlock *protoblocktx.LastCommittedBlock,
+) (*protocoordinatorservice.Empty, error) {
+	return &protocoordinatorservice.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
+}
+
+// GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
+func (c *CoordinatorService) GetLastCommittedBlockNumber(
+	ctx context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protoblocktx.LastCommittedBlock, error) {
+	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
+}
+
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
@@ -516,7 +532,7 @@ func (c *CoordinatorService) postProcessing(txID string, status protoblocktx.Sta
 		return nil
 	}
 
-	ns, _ := txNs.(*protoblocktx.TxNamespace)
+	ns, _ := txNs.(*protoblocktx.TxNamespace) //nolint:revive
 
 	for _, rw := range ns.ReadWrites {
 		nsID, _ := types.NamespaceIDFromBytes(rw.Key)

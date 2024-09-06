@@ -9,6 +9,8 @@ import "api/protoblocktx/block_tx.proto";
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream TransactionStatus);
   rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
+  rpc SetLastCommittedBlockNumber (protoblocktx.LastCommittedBlock) returns (Empty) {}
+  rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {}
 }
 
 message TransactionBatch {
@@ -34,3 +36,4 @@ message WaitingTransactions {
 }
 
 message Empty {}
+

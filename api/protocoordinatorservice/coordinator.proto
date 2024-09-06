@@ -10,6 +10,8 @@ import "api/protosigverifierservice/verifier.proto";
 service Coordinator {
     rpc SetMetaNamespaceVerificationKey(protosigverifierservice.Key) returns (Empty);
     rpc BlockProcessing(stream protoblocktx.Block) returns (stream TxValidationStatusBatch);
+    rpc SetLastCommittedBlockNumber (protoblocktx.LastCommittedBlock) returns (Empty) {}
+    rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {}
 }
 
 message Empty {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math/rand"
+	"sync/atomic"
 
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -18,21 +19,26 @@ import (
 
 var logger = logging.New("mock-coordinator")
 
-// NewMockCoordinator creates a new mock coordinator.
-func NewMockCoordinator() *MockCoordinator {
-	return &MockCoordinator{stop: make(chan any)}
-}
-
 // MockCoordinator is a mock coordinator.
 type MockCoordinator struct {
-	protocoordinatorservice.UnimplementedCoordinatorServer
-	stop chan any
+	protocoordinatorservice.CoordinatorServer
+	lastCommittedBlockNumber atomic.Int64
+	stop                     chan any
+}
+
+// NewMockCoordinator creates a new mock coordinator.
+func NewMockCoordinator() *MockCoordinator {
+	c := &MockCoordinator{
+		stop: make(chan any),
+	}
+	c.lastCommittedBlockNumber.Store(-1)
+	return c
 }
 
 // Close closes the mock coordinator.
-func (s *MockCoordinator) Close() {
+func (c *MockCoordinator) Close() {
 	logger.Infof("Closing mock coordinator")
-	close(s.stop)
+	close(c.stop)
 }
 
 // SetMetaNamespaceVerificationKey sets the verification key.
@@ -42,18 +48,34 @@ func (*MockCoordinator) SetMetaNamespaceVerificationKey(
 	return &protocoordinatorservice.Empty{}, nil
 }
 
+// SetLastCommittedBlockNumber sets the last committed block number.
+func (c *MockCoordinator) SetLastCommittedBlockNumber(
+	_ context.Context, lastBlock *protoblocktx.LastCommittedBlock,
+) (*protocoordinatorservice.Empty, error) {
+	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number))
+	return &protocoordinatorservice.Empty{}, nil
+}
+
+// GetLastCommittedBlockNumber returns the last committed block number.
+func (c *MockCoordinator) GetLastCommittedBlockNumber(
+	_ context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protoblocktx.LastCommittedBlock, error) {
+	return &protoblocktx.LastCommittedBlock{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil
+}
+
 // BlockProcessing processes a block.
-func (s *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+func (c *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
 	input := make(chan *protoblocktx.Block, 1000)
 	defer close(input)
 	defer logger.Infof("Closed mock coordinator")
 
-	go s.sendTxsValidationStatus(stream, input)
+	go sendTxsValidationStatus(stream, input)
 
 	// start listening
 	for {
 		select {
-		case <-s.stop:
+		case <-c.stop:
 			logger.Infof("Stopping server")
 			return nil
 		default:
@@ -73,8 +95,9 @@ func (s *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordin
 	}
 }
 
-func (*MockCoordinator) sendTxsValidationStatus(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer, input chan *protoblocktx.Block,
+func sendTxsValidationStatus(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	input chan *protoblocktx.Block,
 ) {
 	for scBlock := range input {
 		batch := &protocoordinatorservice.TxValidationStatusBatch{

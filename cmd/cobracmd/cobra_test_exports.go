@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,7 +66,12 @@ func UnitTestRunner(
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	go runService(ctx, t, cmd, test.Err)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		runService(ctx, t, cmd, test.Err)
+		wg.Done()
+	}()
 
 	// Require that the cmd output will align with the test expected output.
 	require.Eventually(t, func() bool {
@@ -83,6 +89,7 @@ func UnitTestRunner(
 
 	// Delete the logger's files of the current test.
 	require.NoError(t, os.Remove(logger.Output))
+	wg.Wait()
 }
 
 func runService(ctx context.Context, t *testing.T, cmd *cobra.Command, expectedErr error) {

@@ -77,6 +77,7 @@ func TestSidecar(t *testing.T) {
 	// when we start the broadcastclient, it would pull the config block
 	// from the orderer and commit it.
 	ledger.EnsureHeight(t, sidecar.GetLedgerService(), 1)
+	checkLastCommittedBlock(ctx, t, coordinator, 0)
 
 	// orderermock expects 100 txs to create the next block
 	txs := make([]*protoblocktx.Tx, 100)
@@ -90,6 +91,7 @@ func TestSidecar(t *testing.T) {
 		require.NoError(t, broadcastClients[0].Send(env))
 	}
 	ledger.EnsureHeight(t, sidecar.GetLedgerService(), 2)
+	checkLastCommittedBlock(ctx, t, coordinator, 1)
 
 	committedBlock := ledger.StartDeliverClient(ctx, t, channelID, config.Server.Endpoint)
 	configBlock := <-committedBlock
@@ -107,4 +109,19 @@ func TestSidecar(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i], tx))
 	}
+}
+
+func checkLastCommittedBlock(
+	ctx context.Context,
+	t *testing.T,
+	coordinator *coordinatormock.MockCoordinator,
+	expectedBlockNumber uint64,
+) {
+	require.Eventually(t, func() bool {
+		lastBlock, err := coordinator.GetLastCommittedBlockNumber(ctx, nil)
+		if err != nil {
+			return false
+		}
+		return expectedBlockNumber == lastBlock.Number
+	}, 4*time.Second, 1*time.Second)
 }

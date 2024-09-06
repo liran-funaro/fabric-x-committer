@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgtype"
@@ -32,6 +33,10 @@ const (
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
+
+// ErrNoBlockCommitted occurs when getLastCommittedBlockNumber is called when the
+// block 0 itself is not yet committed.
+var ErrNoBlockCommitted = errors.New("no block is committed")
 
 type (
 	// database handles the database operations.
@@ -136,6 +141,41 @@ func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][
 	return kToV, nil
 }
 
+func (db *database) setLastCommittedBlockNumber(ctx context.Context, number uint64) error {
+	// NOTE: We can actually batch this transaction with regular user transactions and perform
+	//       a single commit. However, we need to implement special logic to handle cases
+	//       when there are no waiting user transactions. Hence, for simplicity, we are not
+	//       batching this transaction with regular user transactions. After performance
+	//       benchmarking, if there is a significant benefit in performing the batching,
+	//       we will implement further optimizations.
+	if _, err := db.pool.Exec(
+		ctx,
+		setMetadataPrepStmt,
+		[]byte(lastCommittedBlockNumberKey),
+		strconv.FormatUint(number, 10),
+	); err != nil {
+		return fmt.Errorf("failed to set the last committed block number: %w", err)
+	}
+
+	return nil
+}
+
+func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.LastCommittedBlock, error) {
+	r := db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(lastCommittedBlockNumberKey))
+	var value []byte
+	if err := r.Scan(&value); err != nil {
+		return nil, err
+	}
+	if len(value) == 0 {
+		return nil, ErrNoBlockCommitted
+	}
+	blkNumber, err := strconv.ParseUint(string(value), 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &protoblocktx.LastCommittedBlock{Number: blkNumber}, nil
+}
+
 // commit commits the writes to the database.
 func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []txID, error) {
 	start := time.Now()
@@ -147,18 +187,13 @@ func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []txI
 	// so we use a database transaction. Otherwise, the failure and recovery
 	// logic will be very complicated.
 	ctx := context.Background()
-	tx, err := db.pool.Begin(ctx)
+	tx, rollBackFunc, err := db.beginTx(context.Background())
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx begin: %w", err)
+		return nil, nil, err
 	}
 
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
-	defer func() {
-		rollbackErr := tx.Rollback(ctx)
-		if rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			logger.Warn("failed rolling-back transaction: ", rollbackErr)
-		}
-	}()
+	defer rollBackFunc()
 
 	mismatched, duplicated, err := db.commitStatesByGroup(ctx, tx, states)
 	if err != nil {
@@ -320,6 +355,20 @@ func (db *database) commitNewKeys(
 	}
 
 	return nil, nil
+}
+
+func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx begin: %w", err)
+	}
+
+	return tx, func() {
+		rollbackErr := tx.Rollback(context.Background())
+		if rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			logger.Warn("failed rolling-back transaction: ", rollbackErr)
+		}
+	}, nil
 }
 
 func (i *statesToBeCommitted) empty() bool {
