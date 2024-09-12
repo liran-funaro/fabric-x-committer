@@ -33,6 +33,17 @@ services:
     depends_on:
       - db
 
+  queryservice:
+    image: "sc_queryservice:latest"
+    ports:
+      - "7001:7001"
+    volumes:
+      - ./config/config-queryservice.yaml:/config.yaml
+      - ./scripts/queryservice.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+    depends_on:
+      - db
+
   db:
     image: "postgres:16.1"
     ports:

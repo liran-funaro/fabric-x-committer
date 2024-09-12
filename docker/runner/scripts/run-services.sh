@@ -5,6 +5,8 @@ set -e
 "$BINS_PATH/sigservice" start --configs "$CONFIGS_PATH/config-sigservice.yaml" &
 /home/yugabyte/bin/yugabyted start --advertise_address=0.0.0.0
 
+"$BINS_PATH/queryservice" start --configs "$CONFIGS_PATH/config-queryservice.yaml" &
+
 "$BINS_PATH/vcservice" init --configs "$CONFIGS_PATH/config-vcservice.yaml" --namespaces 0
 "$BINS_PATH/vcservice" start --configs "$CONFIGS_PATH/config-vcservice.yaml" &
 

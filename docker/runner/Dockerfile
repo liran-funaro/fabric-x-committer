@@ -1,4 +1,4 @@
-FROM golang:1.22.2-bookworm as sc_builder
+FROM golang:1.23.0-bookworm as sc_builder
 ADD . scalable-commiter
 RUN cd scalable-commiter && \
     CGO_ENABLED=0 make build output_dir=/root/build/

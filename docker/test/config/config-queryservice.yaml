@@ -1,0 +1,21 @@
+query-service:
+  server:
+    endpoint:
+      host: localhost   # The host of the server
+      port: 7001        # The port of the server
+  database:
+    host: "db"                                 # The host of the database
+    port: 5432                                 # The port of the database
+    username: "yugabyte"                       # The username for the database
+    password: "yugabyte"                       # The password for the database
+    database: "yugabyte"                       # The database name
+    max-connections: 10                        # The maximum size of the connection pool
+    min-connections: 5                         # The minimum size of the connection pool.
+  monitoring:
+    metrics:
+      enable: true
+      endpoint: :2110
+logging:
+  development: true
+  enabled: true
+  level: INFO
