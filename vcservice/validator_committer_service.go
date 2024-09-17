@@ -130,20 +130,28 @@ func (vc *ValidatorCommitterService) monitorQueues() {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastCommittedBlock *protoblocktx.LastCommittedBlock,
+	lastCommittedBlock *protoblocktx.BlockInfo,
 ) (*protovcservice.Empty, error) {
 	if lastCommittedBlock == nil {
 		return nil, fmt.Errorf("the last committed block number is not set")
 	}
-	return nil, vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock.Number)
+	return nil, vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 }
 
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 	ctx context.Context,
 	_ *protovcservice.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
+) (*protoblocktx.BlockInfo, error) {
 	return vc.db.getLastCommittedBlockNumber(ctx)
+}
+
+// GetMaxSeenBlockNumber get the last committed block number in the database/ledger.
+func (vc *ValidatorCommitterService) GetMaxSeenBlockNumber(
+	ctx context.Context,
+	_ *protovcservice.Empty,
+) (*protoblocktx.BlockInfo, error) {
+	return vc.db.getMaxSeenBlockNumber(ctx)
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.

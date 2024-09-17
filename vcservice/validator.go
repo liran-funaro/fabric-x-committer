@@ -37,6 +37,7 @@ type validatedTransactions struct {
 	newWrites                transactionToWrites
 	readToTransactionIndices readToTransactions
 	invalidTxStatus          map[txID]protoblocktx.Status
+	maxBlockNumber           uint64
 }
 
 func (v *validatedTransactions) Debug() {
@@ -153,6 +154,7 @@ func (p *preparedTransactions) makeValidated() *validatedTransactions {
 		newWrites:                p.txIDToNsNewWrites,
 		readToTransactionIndices: p.readToTxIDs,
 		invalidTxStatus:          p.invalidTxIDStatus,
+		maxBlockNumber:           p.maxBlockNumber,
 	}
 }
 

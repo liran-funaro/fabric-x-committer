@@ -250,7 +250,7 @@ func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *CoordinatorService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *protoblocktx.LastCommittedBlock,
+	lastBlock *protoblocktx.BlockInfo,
 ) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -259,8 +259,16 @@ func (c *CoordinatorService) SetLastCommittedBlockNumber(
 func (c *CoordinatorService) GetLastCommittedBlockNumber(
 	ctx context.Context,
 	_ *protocoordinatorservice.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
+) (*protoblocktx.BlockInfo, error) {
 	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
+}
+
+// GetMaxSeenBlockNumber get the last committed block number in the database/ledger.
+func (c *CoordinatorService) GetMaxSeenBlockNumber(
+	ctx context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protoblocktx.BlockInfo, error) {
+	return c.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
 }
 
 // BlockProcessing receives a stream of blocks from the client and processes them.
@@ -369,8 +377,9 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph() 
 
 		if ctxAlive := txsBatchForDependencyGraph.Write(
 			&dependencygraph.TransactionBatch{
-				ID:  txBatchID,
-				Txs: block.Txs,
+				ID:          txBatchID,
+				BlockNumber: block.Number,
+				Txs:         block.Txs,
 			}); !ctxAlive {
 			return false
 		}
@@ -477,6 +486,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCo
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 				},
+				BlockNumber: blkWithInvalidSign.Number,
 			}
 		}
 		// NOTE: we are not sending the invalid tx status immediately to the client as

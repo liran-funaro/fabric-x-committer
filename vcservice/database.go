@@ -2,9 +2,9 @@ package vcservice
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgtype"
@@ -34,9 +34,8 @@ const (
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
 
-// ErrNoBlockCommitted occurs when getLastCommittedBlockNumber is called when the
-// block 0 itself is not yet committed.
-var ErrNoBlockCommitted = errors.New("no block is committed")
+// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
+var ErrMetadataEmpty = errors.New("metadata value is empty")
 
 type (
 	// database handles the database operations.
@@ -50,9 +49,10 @@ type (
 	keyToVersion map[string][]byte
 
 	statesToBeCommitted struct {
-		updateWrites namespaceToWrites
-		newWrites    namespaceToWrites
-		batchStatus  *protovcservice.TransactionStatus
+		updateWrites   namespaceToWrites
+		newWrites      namespaceToWrites
+		batchStatus    *protovcservice.TransactionStatus
+		maxBlockNumber uint64
 	}
 )
 
@@ -141,39 +141,46 @@ func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][
 	return kToV, nil
 }
 
-func (db *database) setLastCommittedBlockNumber(ctx context.Context, number uint64) error {
+func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
+	return db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
+}
+
+func (db *database) getMaxSeenBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
+	return db.getBlockInfoMetadata(ctx, maxSeenBlockNumberKey)
+}
+
+func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
+	r := db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
+	var value []byte
+	if err := r.Scan(&value); err != nil {
+		return nil, err
+	}
+	if len(value) == 0 {
+		return nil, ErrMetadataEmpty
+	}
+
+	return &protoblocktx.BlockInfo{Number: binary.BigEndian.Uint64(value)}, nil
+}
+
+func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *protoblocktx.BlockInfo) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
 	//       when there are no waiting user transactions. Hence, for simplicity, we are not
 	//       batching this transaction with regular user transactions. After performance
 	//       benchmarking, if there is a significant benefit in performing the batching,
 	//       we will implement further optimizations.
-	if _, err := db.pool.Exec(
-		ctx,
-		setMetadataPrepStmt,
-		[]byte(lastCommittedBlockNumberKey),
-		strconv.FormatUint(number, 10),
-	); err != nil {
+
+	// NOTE: As we store an integer and allow comparisons, we must ensure consistent byte representation.
+	//       This means using the same length value and big-endian byte ordering for all stored integers.
+	//       Both PostgreSQL and YugabyteDB support comparison of big-endian bytes through the BYTEA data type
+	//       and standard comparison operators.
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint64(v, bInfo.Number)
+	if _, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v); err != nil {
 		return fmt.Errorf("failed to set the last committed block number: %w", err)
 	}
 
 	return nil
-}
-
-func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.LastCommittedBlock, error) {
-	r := db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(lastCommittedBlockNumberKey))
-	var value []byte
-	if err := r.Scan(&value); err != nil {
-		return nil, err
-	}
-	if len(value) == 0 {
-		return nil, ErrNoBlockCommitted
-	}
-	blkNumber, err := strconv.ParseUint(string(value), 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	return &protoblocktx.LastCommittedBlock{Number: blkNumber}, nil
 }
 
 // commit commits the writes to the database.
@@ -235,7 +242,7 @@ func (db *database) commitStatesByGroup(
 
 	if len(duplicated) > 0 {
 		// Since a duplicate ID causes a rollback, we fail fast.
-		return mismatched, duplicated, nil
+		return nil, duplicated, nil
 	}
 
 	// Updates cannot have a mismatch because their versions are validated beforehand.
@@ -243,7 +250,17 @@ func (db *database) commitStatesByGroup(
 		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
 	}
 
-	return mismatched, duplicated, nil
+	// NOTE: As we store an integer and allow comparisons, we must ensure consistent byte representation.
+	//       This means using the same length value and big-endian byte ordering for all stored integers.
+	//       Both PostgreSQL and YugabyteDB support comparison of big-endian bytes through the BYTEA data type
+	//       and standard comparison operators.
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint64(v, states.maxBlockNumber)
+	if _, err := tx.Exec(ctx, setMetadataIfGreaterPrepStmt, []byte(maxSeenBlockNumberKey), v); err != nil {
+		return nil, nil, fmt.Errorf("failed to set the last seen max block number: %w", err)
+	}
+
+	return nil, nil, nil
 }
 
 func (db *database) commitTxStatus(
@@ -371,8 +388,8 @@ func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
 	}, nil
 }
 
-func (i *statesToBeCommitted) empty() bool {
-	return i.updateWrites.empty() && i.newWrites.empty() && (i.batchStatus == nil || len(i.batchStatus.Status) == 0)
+func (s *statesToBeCommitted) empty() bool {
+	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
 }
 
 func (db *database) close() {

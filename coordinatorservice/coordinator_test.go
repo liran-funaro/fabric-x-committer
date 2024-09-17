@@ -219,7 +219,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 	)
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.LastCommittedBlock{Number: 0})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
 	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(env.ctx, nil)

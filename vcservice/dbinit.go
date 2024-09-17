@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS tx_status (
 ) %[2]s;
 `
 
-const lastCommittedBlockNumberKey = "last committed block number"
+const (
+	lastCommittedBlockNumberKey = "last committed block number"
+	maxSeenBlockNumberKey       = "max seen block number"
+)
 
 const createMetadataTableStmt = `
 CREATE TABLE IF NOT EXISTS metadata (
@@ -32,6 +35,10 @@ const initializeMetadataPrepStmt = `
 
 const setMetadataPrepStmt = `
   UPDATE metadata SET value = $2 where key = $1;
+`
+
+const setMetadataIfGreaterPrepStmt = `
+  UPDATE metadata SET value = $2 where key = $1 and (value IS NULL or value < $2);
 `
 
 const getMetadataPrepStmt = `
@@ -283,14 +290,16 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	}
 	logger.Info("Tx status table is ready.")
 
-	if err := yuga.ExecRetry(
-		ctx,
-		pool,
-		stmtFmt(initializeMetadataPrepStmt, "", dbType),
-		[]byte(lastCommittedBlockNumberKey),
-		nil,
-	); err != nil {
-		return err
+	for _, key := range []string{lastCommittedBlockNumberKey, maxSeenBlockNumberKey} {
+		if err := yuga.ExecRetry(
+			ctx,
+			pool,
+			stmtFmt(initializeMetadataPrepStmt, "", dbType),
+			[]byte(key),
+			nil,
+		); err != nil {
+			return err
+		}
 	}
 
 	nsIDs = append(nsIDs, int(types.MetaNamespaceID))

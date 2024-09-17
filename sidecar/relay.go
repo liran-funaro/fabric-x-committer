@@ -268,7 +268,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
-		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.LastCommittedBlock{Number: blkNum})
+		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: blkNum})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil

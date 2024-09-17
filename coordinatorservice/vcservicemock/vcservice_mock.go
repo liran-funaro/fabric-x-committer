@@ -21,6 +21,7 @@ type MockVcService struct {
 	numBatchesReceived     *atomic.Uint32
 	lastCommittedBlock     atomic.Uint64
 	numWaitingTransactions atomic.Int32
+	maxBlockNumber         atomic.Uint64
 }
 
 // NewMockVcService returns a new MockVcService.
@@ -42,7 +43,7 @@ func (vc *MockVcService) NumberOfWaitingTransactionsForStatus(
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *MockVcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *protoblocktx.LastCommittedBlock,
+	lastBlock *protoblocktx.BlockInfo,
 ) (*protovcservice.Empty, error) {
 	vc.lastCommittedBlock.Store(lastBlock.Number)
 	return nil, nil
@@ -52,8 +53,16 @@ func (vc *MockVcService) SetLastCommittedBlockNumber(
 func (vc *MockVcService) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protovcservice.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return &protoblocktx.LastCommittedBlock{Number: vc.lastCommittedBlock.Load()}, nil
+) (*protoblocktx.BlockInfo, error) {
+	return &protoblocktx.BlockInfo{Number: vc.lastCommittedBlock.Load()}, nil
+}
+
+// GetMaxSeenBlockNumber get the last seen maximum block number in the database/ledger.
+func (vc *MockVcService) GetMaxSeenBlockNumber(
+	_ context.Context,
+	_ *protovcservice.Empty,
+) (*protoblocktx.BlockInfo, error) {
+	return &protoblocktx.BlockInfo{Number: vc.maxBlockNumber.Load()}, nil
 }
 
 // StartValidateAndCommitStream is the mock implementation of the
@@ -106,13 +115,16 @@ func (vc *MockVcService) sendTransactionStatus(
 			Status: make(map[string]protoblocktx.Status),
 		}
 
+		maxNum := uint64(0)
 		for _, tx := range txBatch.Transactions {
 			if tx.PrelimInvalidTxStatus != nil {
 				txsStatus.Status[tx.ID] = tx.PrelimInvalidTxStatus.Code
 			} else {
 				txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
 			}
+			maxNum = max(maxNum, tx.BlockNumber)
 		}
+		vc.maxBlockNumber.Store(maxNum)
 
 		err := stream.Send(txsStatus)
 		if err != nil {

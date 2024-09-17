@@ -89,7 +89,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 	env := newVcMgrTestEnv(t, 2)
 
 	t.Run("Send tx batch to use any vcservice", func(t *testing.T) {
-		txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, 5, 1)
+		txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, 5, 1, 1)
 		env.inputTxs <- txBatch
 
 		outTxs := <-env.outputTxs
@@ -108,8 +108,8 @@ func TestValidatorCommitterManager(t *testing.T) {
 	})
 
 	t.Run("send batches to ensure all vcservices are used", func(t *testing.T) {
-		txBatch1, expectedTxsStatus1 := createInputTxsNodeForTest(t, 5, 1)
-		txBatch2, expectedTxsStatus2 := createInputTxsNodeForTest(t, 5, 6)
+		txBatch1, expectedTxsStatus1 := createInputTxsNodeForTest(t, 5, 1, 2)
+		txBatch2, expectedTxsStatus2 := createInputTxsNodeForTest(t, 5, 6, 3)
 
 		require.Eventually(t, func() bool {
 			env.inputTxs <- txBatch1
@@ -166,12 +166,14 @@ func TestValidatorCommitterManager(t *testing.T) {
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
+				BlockNumber: 15,
 			},
 			{
 				ID: "2",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
 				},
+				BlockNumber: 4,
 			},
 		}
 		env.prelimInvalidTxStatus <- txBatch
@@ -182,10 +184,23 @@ func TestValidatorCommitterManager(t *testing.T) {
 			"1": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 			"2": protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
 		}, outTxsStatus.Status)
+
+		maxNum := uint64(0)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+		for _, vc := range env.mockVcServices {
+			// NOTE: As we are using mock service, the ledger data is not shared. Hence,
+			//       we have to query each mock vcservice to find the last seen maximum
+			//       block number.
+			blk, err := vc.GetMaxSeenBlockNumber(ctx, nil)
+			require.NoError(t, err)
+			maxNum = max(maxNum, blk.Number)
+		}
+		require.Equal(t, uint64(15), maxNum)
 	})
 }
 
-func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int) (
+func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex, blkNum int) (
 	[]*dependencygraph.TransactionNode, *protovcservice.TransactionStatus,
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
@@ -197,7 +212,8 @@ func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int) (
 		id := "tx" + strconv.Itoa(startIndex+i)
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
-				ID: id,
+				ID:          id,
+				BlockNumber: uint64(blkNum),
 			},
 		}
 		expectedTxsStatus.Status[id] = protoblocktx.Status_COMMITTED

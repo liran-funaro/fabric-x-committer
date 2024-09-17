@@ -141,6 +141,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 1,
 				},
 				{
 					ID: "Blind write with value",
@@ -156,6 +157,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 1,
 				},
 				{
 					ID: "Blind write update existing key",
@@ -171,6 +173,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 2,
 				},
 				// The following 2 TXs test the new key path
 				{
@@ -187,6 +190,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 2,
 				},
 				{
 					ID: "New key no value",
@@ -201,6 +205,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 3,
 				},
 				// The following TX tests the update path
 				{
@@ -218,11 +223,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 2,
 				},
 			},
 		}
 
 		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
+
+		maxSeenBlk, err := env.client.GetMaxSeenBlockNumber(env.ctx, nil)
+		require.Error(t, err, ErrMetadataEmpty)
+		require.Nil(t, maxSeenBlk)
 
 		require.NoError(t, env.stream.Send(txBatch))
 		txStatus, err := env.stream.Recv()
@@ -243,6 +253,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+		ensureLastSeenMaxBlock(t, env.client, 3)
 
 		txBatch = &protovcservice.TransactionBatch{
 			Transactions: []*protovcservice.Transaction{
@@ -259,6 +270,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 2,
 				},
 			},
 		}
@@ -271,6 +283,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"])
 			return true
 		}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
+		ensureLastSeenMaxBlock(t, env.client, 3)
 	})
 
 	t.Run("invalid tx", func(t *testing.T) {
@@ -289,12 +302,14 @@ func TestValidatorAndCommitterService(t *testing.T) {
 							},
 						},
 					},
+					BlockNumber: 4,
 				},
 				{
 					ID: "prelim invalid tx",
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 						Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					},
+					BlockNumber: 5,
 				},
 			},
 		}
@@ -312,6 +327,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+		ensureLastSeenMaxBlock(t, env.client, 5)
 	})
 }
 
@@ -379,17 +395,25 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
-func TestLastCommittedBlockNumber(t *testing.T) {
+func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
 	env := newValidatorAndCommitServiceTestEnv(t)
 	require.NoError(t, initDatabaseTables(context.Background(), env.dbEnv.DB.pool, nil))
-	b, err := env.client.GetLastCommittedBlockNumber(env.ctx, nil)
-	require.Error(t, err, ErrNoBlockCommitted)
-	require.Nil(t, b)
+	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	require.Error(t, err, ErrMetadataEmpty)
+	require.Nil(t, lastCommittedBlock)
 
-	_, err = env.client.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.LastCommittedBlock{Number: 0})
+	_, err = env.client.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
-	b, err = env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	lastCommittedBlock, err = env.client.GetLastCommittedBlockNumber(env.ctx, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), b.Number)
+	require.Equal(t, uint64(0), lastCommittedBlock.Number)
+}
+
+func ensureLastSeenMaxBlock(t *testing.T, client protovcservice.ValidationAndCommitServiceClient, number uint64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+	maxSeenBlk, err := client.GetMaxSeenBlockNumber(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, number, maxSeenBlk.Number)
 }

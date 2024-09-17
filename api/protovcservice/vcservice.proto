@@ -9,8 +9,9 @@ import "api/protoblocktx/block_tx.proto";
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream TransactionStatus);
   rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
-  rpc SetLastCommittedBlockNumber (protoblocktx.LastCommittedBlock) returns (Empty) {}
-  rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {}
+  rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
+  rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
+  rpc GetMaxSeenBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
 }
 
 message TransactionBatch {
@@ -21,6 +22,7 @@ message Transaction {
   string ID = 1;
   repeated protoblocktx.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;
+  uint64 block_number = 4;
 }
 
 message InvalidTxStatus {

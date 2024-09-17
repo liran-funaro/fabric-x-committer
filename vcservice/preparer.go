@@ -34,6 +34,8 @@ type (
 		nsToReads   namespaceToReads   // Maps namespaces to reads performed within them.
 		readToTxIDs readToTransactions // Maps reads to transaction IDs that executed them.
 
+		maxBlockNumber uint64
+
 		// write categorization fields:
 		txIDToNsNonBlindWrites transactionToWrites          // Maps txIDs to non-blind writes per namespace.
 		txIDToNsBlindWrites    transactionToWrites          // Maps txIDs to blind writes per namespace.
@@ -78,7 +80,7 @@ type (
 	}
 )
 
-// newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs
+// newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs.
 func newPreparer(
 	ctx context.Context,
 	txBatch <-chan *protovcservice.TransactionBatch,
@@ -133,7 +135,9 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 			NsId: uint32(types.MetaNamespaceID),
 		}
 
+		maxBlkNum := uint64(0)
 		for _, tx := range txBatch.Transactions {
+			maxBlkNum = max(maxBlkNum, tx.BlockNumber)
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.
@@ -144,7 +148,6 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 
 			for _, nsOperations := range tx.Namespaces {
 				tID := txID(tx.ID)
-
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)
@@ -167,6 +170,8 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 				prepTxs.addReadsOnly(tID, metaNs)
 			}
 		}
+
+		prepTxs.maxBlockNumber = maxBlkNum
 
 		for ns, read := range prepTxs.nsToReads {
 			if len(read.keys) == 0 {
@@ -216,7 +221,7 @@ func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespac
 	}
 }
 
-// addReadWrites adds read-writes to the prepared transactions
+// addReadWrites adds read-writes to the prepared transactions.
 func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadWrites) == 0 {
 		return
@@ -248,7 +253,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 	}
 }
 
-// addBlindWrites adds the blind writes to the prepared transactions
+// addBlindWrites adds the blind writes to the prepared transactions.
 func (p *preparedTransactions) addBlindWrites(id txID, ns *protoblocktx.TxNamespace) {
 	if len(ns.BlindWrites) == 0 {
 		return

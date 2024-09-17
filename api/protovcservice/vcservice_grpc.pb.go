@@ -24,6 +24,7 @@ const (
 	ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protovcservice.ValidationAndCommitService/NumberOfWaitingTransactionsForStatus"
 	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
 	ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/GetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetMaxSeenBlockNumber_FullMethodName                = "/protovcservice.ValidationAndCommitService/GetMaxSeenBlockNumber"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -32,8 +33,9 @@ const (
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
-	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.LastCommittedBlock, opts ...grpc.CallOption) (*Empty, error)
-	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
+	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
+	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
+	GetMaxSeenBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -84,7 +86,7 @@ func (c *validationAndCommitServiceClient) NumberOfWaitingTransactionsForStatus(
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.LastCommittedBlock, opts ...grpc.CallOption) (*Empty, error) {
+func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error) {
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -93,9 +95,18 @@ func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx conte
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error) {
-	out := new(protoblocktx.LastCommittedBlock)
+func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error) {
+	out := new(protoblocktx.BlockInfo)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *validationAndCommitServiceClient) GetMaxSeenBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error) {
+	out := new(protoblocktx.BlockInfo)
+	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetMaxSeenBlockNumber_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +119,9 @@ func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx conte
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
 	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
-	SetLastCommittedBlockNumber(context.Context, *protoblocktx.LastCommittedBlock) (*Empty, error)
-	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.LastCommittedBlock, error)
+	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
+	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
+	GetMaxSeenBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -123,11 +135,14 @@ func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStrea
 func (UnimplementedValidationAndCommitServiceServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.LastCommittedBlock) (*Empty, error) {
+func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.LastCommittedBlock, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
+}
+func (UnimplementedValidationAndCommitServiceServer) GetMaxSeenBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMaxSeenBlockNumber not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
 }
@@ -188,7 +203,7 @@ func _ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_Handler(sr
 }
 
 func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(protoblocktx.LastCommittedBlock)
+	in := new(protoblocktx.BlockInfo)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -200,7 +215,7 @@ func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interfa
 		FullMethod: ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).SetLastCommittedBlockNumber(ctx, req.(*protoblocktx.LastCommittedBlock))
+		return srv.(ValidationAndCommitServiceServer).SetLastCommittedBlockNumber(ctx, req.(*protoblocktx.BlockInfo))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -223,6 +238,24 @@ func _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ValidationAndCommitService_GetMaxSeenBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ValidationAndCommitServiceServer).GetMaxSeenBlockNumber(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ValidationAndCommitService_GetMaxSeenBlockNumber_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ValidationAndCommitServiceServer).GetMaxSeenBlockNumber(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ValidationAndCommitService_ServiceDesc is the grpc.ServiceDesc for ValidationAndCommitService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -241,6 +274,10 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLastCommittedBlockNumber",
 			Handler:    _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler,
+		},
+		{
+			MethodName: "GetMaxSeenBlockNumber",
+			Handler:    _ValidationAndCommitService_GetMaxSeenBlockNumber_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

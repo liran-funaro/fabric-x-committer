@@ -78,6 +78,7 @@ func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction
 			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 				Code: t.Status,
 			},
+			BlockNumber: block.Number,
 		})
 	}
 	return malformedTxs

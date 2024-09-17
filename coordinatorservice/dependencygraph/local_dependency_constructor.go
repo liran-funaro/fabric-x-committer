@@ -34,8 +34,9 @@ type (
 	// dependency graph. The id field denotes the order in which the batch
 	// needs to be processed.
 	TransactionBatch struct {
-		ID  uint64
-		Txs []*protoblocktx.Tx
+		ID          uint64
+		BlockNumber uint64
+		Txs         []*protoblocktx.Tx
 	}
 
 	transactionNodeBatch struct {
@@ -74,7 +75,7 @@ func (p *localDependencyConstructor) construct() {
 		for i, tx := range txs.Txs {
 			// NOTE: we can parallelize newTransactionNode(), and
 			//       addDependenciesAndUpdateDependents() across txs.
-			txNode := newTransactionNode(tx)
+			txNode := newTransactionNode(txs.BlockNumber, tx)
 
 			// using the dependency detector, we find the transactions that
 			// txNode depends on. We then add these transactions as

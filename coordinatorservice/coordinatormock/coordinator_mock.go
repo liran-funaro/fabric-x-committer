@@ -50,7 +50,7 @@ func (*MockCoordinator) SetMetaNamespaceVerificationKey(
 
 // SetLastCommittedBlockNumber sets the last committed block number.
 func (c *MockCoordinator) SetLastCommittedBlockNumber(
-	_ context.Context, lastBlock *protoblocktx.LastCommittedBlock,
+	_ context.Context, lastBlock *protoblocktx.BlockInfo,
 ) (*protocoordinatorservice.Empty, error) {
 	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number))
 	return &protocoordinatorservice.Empty{}, nil
@@ -60,8 +60,8 @@ func (c *MockCoordinator) SetLastCommittedBlockNumber(
 func (c *MockCoordinator) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protocoordinatorservice.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return &protoblocktx.LastCommittedBlock{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil
+) (*protoblocktx.BlockInfo, error) {
+	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil
 }
 
 // BlockProcessing processes a block.

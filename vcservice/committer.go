@@ -122,9 +122,10 @@ func (c *transactionCommitter) commitTransactions(
 	for i := 0; i < maxRetries; i++ {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
-			newWrites:    groupWritesByNamespace(vTx.newWrites),
-			batchStatus:  prepareStatusForCommit(vTx),
+			updateWrites:   groupWritesByNamespace(vTx.validTxNonBlindWrites),
+			newWrites:      groupWritesByNamespace(vTx.newWrites),
+			batchStatus:    prepareStatusForCommit(vTx),
+			maxBlockNumber: vTx.maxBlockNumber,
 		}
 
 		mismatch, duplicated, err := c.db.commit(info)

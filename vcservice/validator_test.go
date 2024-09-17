@@ -177,6 +177,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
+				maxBlockNumber:    4,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -188,6 +189,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxStatus: map[txID]protoblocktx.Status{},
+				maxBlockNumber:  4,
 			},
 		},
 		{
@@ -242,6 +244,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
+				maxBlockNumber:    5,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
@@ -251,6 +254,7 @@ func TestValidate(t *testing.T) {
 					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
+				maxBlockNumber: 5,
 			},
 		},
 		{
@@ -313,6 +317,7 @@ func TestValidate(t *testing.T) {
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
+				maxBlockNumber: 7,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -326,6 +331,7 @@ func TestValidate(t *testing.T) {
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
+				maxBlockNumber: 7,
 			},
 		},
 	}

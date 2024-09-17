@@ -74,6 +74,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 1,
 			},
 			{
 				ID: "tx2",
@@ -97,6 +98,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 4,
 			},
 		},
 	}
@@ -138,14 +140,14 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites:      transactionToWrites{},
+		invalidTxIDStatus:      make(map[txID]protoblocktx.Status),
+		maxBlockNumber:         4,
 	}
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
-	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
 func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
@@ -185,6 +187,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 						}},
 					},
 				},
+				BlockNumber: 10,
 			},
 			{
 				ID: "tx2",
@@ -198,6 +201,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 6,
 			},
 		},
 	}
@@ -238,14 +242,14 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 				},
 			},
 		},
+		txIDToNsNewWrites: transactionToWrites{},
+		invalidTxIDStatus: make(map[txID]protoblocktx.Status),
+		maxBlockNumber:    10,
 	}
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
-	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
 func TestPrepareTxWithReadWritesOnly(t *testing.T) {
@@ -287,6 +291,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 7,
 			},
 			{
 				ID: "tx2",
@@ -308,6 +313,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 7,
 			},
 		},
 	}
@@ -392,15 +398,13 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 		},
+		invalidTxIDStatus: make(map[txID]protoblocktx.Status),
+		maxBlockNumber:    7,
 	}
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
-	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, preparedTxs.txIDToNsNewWrites)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
 func TestPrepareTx(t *testing.T) {
@@ -460,6 +464,7 @@ func TestPrepareTx(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 8,
 			},
 			{
 				ID: "tx2",
@@ -478,18 +483,21 @@ func TestPrepareTx(t *testing.T) {
 						},
 					},
 				},
+				BlockNumber: 9,
 			},
 			{
 				ID: "tx3",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_NO_WRITES,
 				},
+				BlockNumber: 6,
 			},
 			{
 				ID: "tx4",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 				},
+				BlockNumber: 5,
 			},
 		},
 	}
@@ -573,14 +581,20 @@ func TestPrepareTx(t *testing.T) {
 			"tx3": protoblocktx.Status_ABORTED_NO_WRITES,
 			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 		},
+		maxBlockNumber: 9,
 	}
 
 	env.txBatch <- tx
 	preparedTxs := <-env.preparedTxs
-	require.Equal(t, expectedPreparedTxs.nsToReads, preparedTxs.nsToReads)
-	require.Equal(t, expectedPreparedTxs.readToTxIDs, preparedTxs.readToTxIDs)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, preparedTxs.txIDToNsNonBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, preparedTxs.txIDToNsBlindWrites)
-	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, preparedTxs.txIDToNsNewWrites)
-	require.Equal(t, expectedPreparedTxs.invalidTxIDStatus, preparedTxs.invalidTxIDStatus)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
+}
+
+func ensurePreparedTx(t *testing.T, expectedPreparedTxs, actualPreparedTxs *preparedTransactions) {
+	require.Equal(t, expectedPreparedTxs.nsToReads, actualPreparedTxs.nsToReads)
+	require.Equal(t, expectedPreparedTxs.readToTxIDs, actualPreparedTxs.readToTxIDs)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, actualPreparedTxs.txIDToNsNonBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, actualPreparedTxs.txIDToNsBlindWrites)
+	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, actualPreparedTxs.txIDToNsNewWrites)
+	require.Equal(t, expectedPreparedTxs.invalidTxIDStatus, actualPreparedTxs.invalidTxIDStatus)
+	require.Equal(t, expectedPreparedTxs.maxBlockNumber, actualPreparedTxs.maxBlockNumber)
 }

@@ -71,6 +71,6 @@ message NamespacePolicy {
     bytes public_key = 2; // The public key for signature verification.
 }
 
-message LastCommittedBlock {
+message BlockInfo {
     uint64 number = 1;
 }

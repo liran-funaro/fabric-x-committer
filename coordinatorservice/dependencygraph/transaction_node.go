@@ -54,15 +54,12 @@ type (
 	}
 )
 
-func newTransactionNode(tx *protoblocktx.Tx) *TransactionNode {
+func newTransactionNode(blockNum uint64, tx *protoblocktx.Tx) *TransactionNode {
 	return &TransactionNode{
-		// TODO: instead of using a separate transaction format for vcservice
-		//       we can set nil to the signature field in the transaction and
-		//       send the protoblocktx.Tx itself instead of protovcservice.Transaction.
-		//       Issue: #273
 		Tx: &protovcservice.Transaction{
-			ID:         tx.Id,
-			Namespaces: tx.Namespaces,
+			ID:          tx.Id,
+			Namespaces:  tx.Namespaces,
+			BlockNumber: blockNum,
 		},
 		dependentTxs: newDependentTxs(),
 		rwKeys:       readAndWriteKeys(tx.Namespaces),

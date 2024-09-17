@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -93,11 +94,12 @@ func TestCommit(t *testing.T) {
 
 	// Note: the order of the subtest is important
 	tests := []struct {
-		name               string
-		txs                *validatedTransactions
-		expectedTxStatuses map[string]protoblocktx.Status
-		expectedNsRows     namespaceToWrites
-		unexpectedNsRows   namespaceToWrites
+		name                      string
+		txs                       *validatedTransactions
+		expectedTxStatuses        map[string]protoblocktx.Status
+		expectedNsRows            namespaceToWrites
+		unexpectedNsRows          namespaceToWrites
+		expectedMaxSeenBlocNumber uint64
 	}{
 		{
 			name: "new writes",
@@ -121,6 +123,7 @@ func TestCommit(t *testing.T) {
 					),
 				},
 				invalidTxStatus: map[txID]protoblocktx.Status{},
+				maxBlockNumber:  244,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-new-1": protoblocktx.Status_COMMITTED,
@@ -137,6 +140,7 @@ func TestCommit(t *testing.T) {
 				state{2, 20, 0},
 				state{2, 21, 0},
 			),
+			expectedMaxSeenBlocNumber: 244,
 		},
 		{
 			name: "non-blind writes",
@@ -153,6 +157,7 @@ func TestCommit(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
 				invalidTxStatus:    map[txID]protoblocktx.Status{},
+				maxBlockNumber:     239,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
 			expectedNsRows: writes(
@@ -162,6 +167,7 @@ func TestCommit(t *testing.T) {
 				state{2, 1, 1},
 				state{2, 2, 1},
 			),
+			expectedMaxSeenBlocNumber: 244,
 		},
 		{
 			name: "blind writes",
@@ -178,6 +184,7 @@ func TestCommit(t *testing.T) {
 				},
 				newWrites:       transactionToWrites{},
 				invalidTxStatus: map[txID]protoblocktx.Status{},
+				maxBlockNumber:  1024,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-blind-1": protoblocktx.Status_COMMITTED,
@@ -189,6 +196,7 @@ func TestCommit(t *testing.T) {
 				state{2, 1, 2},
 				state{2, 2, 2},
 			),
+			expectedMaxSeenBlocNumber: 1024,
 		},
 		{
 			name: "blind, non-blind, and new writes",
@@ -234,6 +242,7 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
+				maxBlockNumber: 396,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-all-1":      protoblocktx.Status_COMMITTED,
@@ -257,6 +266,7 @@ func TestCommit(t *testing.T) {
 				state{2, 30, 0},
 				state{2, 31, 0},
 			),
+			expectedMaxSeenBlocNumber: 1024,
 		},
 		{
 			name: "new writes with violating",
@@ -298,6 +308,7 @@ func TestCommit(t *testing.T) {
 				readToTransactionIndices: map[comparableRead][]txID{
 					{1, "key1.10", ""}: {"tx-violate-1"},
 				},
+				maxBlockNumber: 10000,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-violate-1":     protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -317,6 +328,7 @@ func TestCommit(t *testing.T) {
 				false,
 				state{1, 12, 0},
 			),
+			expectedMaxSeenBlocNumber: 10000,
 		},
 		{
 			name: "all invalid txs",
@@ -335,6 +347,7 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
+				maxBlockNumber: 66000,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx1":            protoblocktx.Status_ABORTED_DUPLICATE_TXID,
@@ -351,9 +364,12 @@ func TestCommit(t *testing.T) {
 				state{2, 7, 0},
 				state{1, 40, 0},
 			),
+			expectedMaxSeenBlocNumber: 66000,
 		},
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env.validatedTxs <- tt.txs
@@ -366,6 +382,9 @@ func TestCommit(t *testing.T) {
 				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
 			}
 			env.dbEnv.statusExists(t, tt.expectedTxStatuses)
+			maxSeenBlock, err := env.dbEnv.DB.getMaxSeenBlockNumber(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedMaxSeenBlocNumber, maxSeenBlock.Number)
 		})
 	}
 }

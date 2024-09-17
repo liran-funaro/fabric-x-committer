@@ -102,7 +102,7 @@ func (vcm *validatorCommitterManager) start() (chan error, error) {
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *protoblocktx.LastCommittedBlock,
+	lastBlock *protoblocktx.BlockInfo,
 ) error {
 	var err error
 	for _, vc := range vcm.validatorCommitter {
@@ -116,11 +116,26 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
 	ctx context.Context,
-) (*protoblocktx.LastCommittedBlock, error) {
+) (*protoblocktx.BlockInfo, error) {
 	var err error
-	var lastBlock *protoblocktx.LastCommittedBlock
+	var lastBlock *protoblocktx.BlockInfo
 	for _, vc := range vcm.validatorCommitter {
 		lastBlock, err = vc.client.GetLastCommittedBlockNumber(ctx, nil)
+		if err == nil {
+			return lastBlock, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
+}
+
+func (vcm *validatorCommitterManager) getMaxSeenBlockNumber(
+	ctx context.Context,
+) (*protoblocktx.BlockInfo, error) {
+	var err error
+	var lastBlock *protoblocktx.BlockInfo
+	for _, vc := range vcm.validatorCommitter {
+		lastBlock, err = vc.client.GetMaxSeenBlockNumber(ctx, nil)
 		if err == nil {
 			return lastBlock, nil
 		}

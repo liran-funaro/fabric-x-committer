@@ -209,6 +209,7 @@ func (c *Cluster) SendTransactions(t *testing.T, txs []*protoblocktx.Tx) {
 	c.NextBlockNumber++
 }
 
+// CreateCryptoForNs creates required crypto materials for a given namespace using the signature profile.
 func (c *Cluster) CreateCryptoForNs(
 	t *testing.T,
 	nsID types.NamespaceID,
@@ -323,6 +324,17 @@ func (c *Cluster) ValidateStatus(
 			break
 		}
 	}
+	c.EnsureMaxSeenBlockNumber(t)
+}
+
+// EnsureMaxSeenBlockNumber ensures that the last submitted block number
+// is the maximum seen block number by the committer.
+func (c *Cluster) EnsureMaxSeenBlockNumber(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+	maxSeenBlock, err := c.CoordinatorClient.GetMaxSeenBlockNumber(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, c.NextBlockNumber-1, maxSeenBlock.Number)
 }
 
 // makeLocalListenAddress returning the endpoint's address together with the port chosen.
