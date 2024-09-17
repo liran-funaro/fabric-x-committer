@@ -54,7 +54,7 @@ func startCmd() *cobra.Command {
 			vcConfig := vcservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), vcConfig)
+			vc, err := vcservice.NewValidatorCommitterService(vcConfig)
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func startCmd() *cobra.Command {
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
 
-			return cobracmd.WaitUntilServiceDone(cmd.Context())
+			return vc.Run(cmd.Context())
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

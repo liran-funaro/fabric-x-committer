@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,9 +44,7 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 			require.NoError(t, vcservice.InitDatabase(conf.Database, []int{0}))
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		t.Cleanup(cancel)
-		service, err := vcservice.NewValidatorCommitterService(ctx, conf)
+		service, err := vcservice.NewValidatorCommitterService(conf)
 		require.NoError(t, err)
 		t.Cleanup(func() { service.Close() })
 
@@ -53,6 +52,15 @@ func TestBlockGenForVCService(t *testing.T) { //nolint:gocognit
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
 		t.Cleanup(server.Stop)
+
+		wg := sync.WaitGroup{}
+		t.Cleanup(wg.Wait)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		t.Cleanup(cancel)
+
+		wg.Add(1)
+		go func() { require.NoError(t, service.Run(ctx)); wg.Done() }()
 	}
 
 	// Start client

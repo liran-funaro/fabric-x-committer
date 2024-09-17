@@ -3,19 +3,18 @@ package vcservice
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"golang.org/x/sync/errgroup"
 )
 
 // transactionCommitter is responsible for committing the transactions.
 type transactionCommitter struct {
-	ctx context.Context
-
 	// db is a handler for the state database holding all the committed states
 	db *database
 	// incomingValidatedTransactions is the channel from which the committer receives the validated transactions
@@ -26,13 +25,10 @@ type transactionCommitter struct {
 	outgoingTransactionsStatus chan<- *protovcservice.TransactionStatus
 
 	metrics *perfMetrics
-
-	wg sync.WaitGroup
 }
 
 // newCommitter creates a new transactionCommitter.
 func newCommitter(
-	ctx context.Context,
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *protovcservice.TransactionStatus,
@@ -40,7 +36,6 @@ func newCommitter(
 ) *transactionCommitter {
 	logger.Debugf("Creating committer")
 	return &transactionCommitter{
-		ctx:                           ctx,
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
 		outgoingTransactionsStatus:    txsStatus,
@@ -48,31 +43,30 @@ func newCommitter(
 	}
 }
 
-func (c *transactionCommitter) start(numWorkers int) {
+func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
+	g, eCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
-		go c.commit()
+		g.Go(func() error {
+			return c.commit(eCtx)
+		})
 	}
+
+	return g.Wait()
 }
 
-func (c *transactionCommitter) commit() {
-	c.wg.Add(1)
-	defer c.wg.Done()
-
+func (c *transactionCommitter) commit(ctx context.Context) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
 	maxRetryAttempt := 3
 	var attempts int
 	var txsStatus *protovcservice.TransactionStatus
 	var err error
 
-	var vTx *validatedTransactions
+	incomingValidatedTransactions := channel.NewReader(ctx, c.incomingValidatedTransactions)
+	outgoingTransactionsStatus := channel.NewWriter(ctx, c.outgoingTransactionsStatus)
 	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case vTx = <-c.incomingValidatedTransactions:
-			if vTx == nil {
-				return
-			}
+		vTx, ok := incomingValidatedTransactions.Read()
+		if !ok {
+			return nil
 		}
 
 		logger.Debugf("Batch of validated TXs in the committer")
@@ -93,16 +87,11 @@ func (c *transactionCommitter) commit() {
 		}
 
 		if attempts == maxRetryAttempt {
-			// TODO: Handle error gracefully.
-			logger.Fatalf("failed to commit transactions: %v", err)
+			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
 
 		prometheusmetrics.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
-		select {
-		case <-c.ctx.Done():
-			return
-		case c.outgoingTransactionsStatus <- txsStatus:
-		}
+		outgoingTransactionsStatus.Write(txsStatus)
 		logger.Debugf("Batch of TXs sent from the committer to the output")
 	}
 }

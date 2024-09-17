@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"golang.org/x/sync/errgroup"
 )
 
 var logger = logging.New("validator and committer service")
@@ -29,19 +30,19 @@ type ValidatorCommitterService struct {
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	txBatchChan              chan *protovcservice.TransactionBatch
-	preparedTxsChan          chan *preparedTransactions
-	validatedTxsChan         chan *validatedTransactions
-	txsStatusChan            chan *protovcservice.TransactionStatus
+	receivedTxBatch          chan *protovcservice.TransactionBatch
+	toPrepareTxs             chan *protovcservice.TransactionBatch
+	preparedTxs              chan *preparedTransactions
+	validatedTxs             chan *validatedTransactions
+	txsStatus                chan *protovcservice.TransactionStatus
 	db                       *database
 	metrics                  *perfMetrics
 	promErrChan              <-chan error
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
-	ctx                      context.Context
-	ctxCancel                context.CancelFunc
 	isStreamActive           atomic.Bool
 	numWaitingTxsForStatus   atomic.Int32
+	config                   *ValidatorCommitterServiceConfig
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -55,15 +56,13 @@ type Limits struct {
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(
-	ctx context.Context,
-	config *ValidatorCommitterServiceConfig,
-) (*ValidatorCommitterService, error) {
+func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*ValidatorCommitterService, error) {
 	l := config.ResourceLimits
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	txBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	receivedTxBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	toPrepareTxs := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
@@ -74,45 +73,65 @@ func NewValidatorCommitterService(
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	vc := &ValidatorCommitterService{
-		ctx:                      ctx,
-		ctxCancel:                cancel,
-		preparer:                 newPreparer(ctx, txBatch, preparedTxs, metrics),
-		validator:                newValidator(ctx, db, preparedTxs, validatedTxs, metrics),
-		committer:                newCommitter(ctx, db, validatedTxs, txsStatus, metrics),
-		txBatchChan:              txBatch,
-		preparedTxsChan:          preparedTxs,
-		validatedTxsChan:         validatedTxs,
-		txsStatusChan:            txsStatus,
+		preparer:                 newPreparer(toPrepareTxs, preparedTxs, metrics),
+		validator:                newValidator(db, preparedTxs, validatedTxs, metrics),
+		committer:                newCommitter(db, validatedTxs, txsStatus, metrics),
+		receivedTxBatch:          receivedTxBatch,
+		toPrepareTxs:             toPrepareTxs,
+		preparedTxs:              preparedTxs,
+		validatedTxs:             validatedTxs,
+		txsStatus:                txsStatus,
 		db:                       db,
 		metrics:                  metrics,
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
 		timeoutForMinTxBatchSize: 5 * time.Second,
+		config:                   config,
 	}
-
-	vc.promErrChan = metrics.provider.StartPrometheusServer(config.Monitoring.Metrics.Endpoint)
-	go vc.monitorQueues()
-
-	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
-	vc.preparer.start(l.MaxWorkersForPreparer)
-
-	logger.Infof("Starting %d workers for the transaction validator", l.MaxWorkersForValidator)
-	vc.validator.start(l.MaxWorkersForValidator)
-
-	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
-	vc.committer.start(l.MaxWorkersForCommitter)
 
 	return vc, nil
 }
 
-func (vc *ValidatorCommitterService) monitorQueues() {
+// Run starts the validator and committer service.
+func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
+	g, eCtx := errgroup.WithContext(ctx)
+
+	vc.promErrChan = vc.metrics.provider.StartPrometheusServer(vc.config.Monitoring.Metrics.Endpoint)
+	g.Go(func() error {
+		vc.monitorQueues(eCtx)
+		return nil
+	})
+
+	g.Go(func() error {
+		return vc.batchReceivedTransactionsAndForwardForProcessing(eCtx)
+	})
+
+	l := vc.config.ResourceLimits
+	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
+	g.Go(func() error {
+		return vc.preparer.run(eCtx, l.MaxWorkersForPreparer)
+	})
+
+	logger.Infof("Starting %d workers for the transaction validator", l.MaxWorkersForValidator)
+	g.Go(func() error {
+		return vc.validator.run(eCtx, l.MaxWorkersForValidator)
+	})
+
+	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
+	g.Go(func() error {
+		return vc.committer.run(eCtx, l.MaxWorkersForCommitter)
+	})
+
+	return g.Wait()
+}
+
+func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 	// TODO: make sampling time configurable
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-vc.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		case err := <-vc.promErrChan:
@@ -120,10 +139,10 @@ func (vc *ValidatorCommitterService) monitorQueues() {
 			logger.Errorf("Prometheus ended with error: %s", err)
 			return
 		}
-		prometheusmetrics.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.txBatchChan))
-		prometheusmetrics.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxsChan))
-		prometheusmetrics.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxsChan))
-		prometheusmetrics.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatusChan))
+		prometheusmetrics.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
+		prometheusmetrics.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
+		prometheusmetrics.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
+		prometheusmetrics.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
 	}
 }
 
@@ -164,27 +183,19 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	vc.isStreamActive.Store(true)
 	defer vc.isStreamActive.Store(false)
 
-	numErrableGoroutines := 2
-	errorChannel := make(chan error, numErrableGoroutines)
+	g, ctx := errgroup.WithContext(stream.Context())
 
-	go func() {
+	g.Go(func() error {
 		logger.Info("Started a goroutine to receive and process transactions")
-		errorChannel <- vc.receiveAndProcessTransactions(stream)
-	}()
+		return vc.receiveTransactions(ctx, stream)
+	})
 
-	go func() {
+	g.Go(func() error {
 		logger.Info("Started a goroutine to send transaction status to the submitter")
-		errorChannel <- vc.sendTransactionStatus(stream)
-	}()
+		return vc.sendTransactionStatus(ctx, stream)
+	})
 
-	for i := 0; i < numErrableGoroutines; i++ {
-		err := <-errorChannel
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return g.Wait()
 }
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
@@ -198,40 +209,39 @@ func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
 	}
 
 	return &protovcservice.WaitingTransactions{
-		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatusChan)),
+		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatus)),
 	}, nil
 }
 
-// receiveAndProcessTransactions receives transactions from the client, prepares them,
-// validates them and commits them to the database.
-func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
+func (vc *ValidatorCommitterService) receiveTransactions(
+	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	receivedTxBatch := make(chan *protovcservice.TransactionBatch)
-	streamErr := make(chan error)
-	go func() {
-		for {
-			b, err := stream.Recv()
-			if err != nil {
-				streamErr <- err
-				return
-			}
-			txCount := len(b.Transactions)
-			vc.numWaitingTxsForStatus.Add(int32(txCount))
-			prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
-			receivedTxBatch <- b
+	for ctx.Err() == nil {
+		b, err := stream.Recv()
+		if err != nil {
+			return connection.WrapStreamRpcError(err)
 		}
-	}()
+		txCount := len(b.Transactions)
+		vc.numWaitingTxsForStatus.Add(int32(txCount))
+		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
+		vc.receivedTxBatch <- b
+	}
 
+	return nil
+}
+
+func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) error {
 	largerBatch := &protovcservice.TransactionBatch{}
-	txBatch := channel.NewWriter(vc.ctx, vc.txBatchChan)
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
+	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
+
 	sendLargeBatch := func() {
 		if len(largerBatch.Transactions) == 0 {
 			return
 		}
-		if ok := txBatch.Write(largerBatch); !ok {
+		if ok := toPrepareTxs.Write(largerBatch); !ok {
 			return
 		}
 		largerBatch = &protovcservice.TransactionBatch{}
@@ -240,15 +250,11 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 
 	for {
 		select {
-		case <-vc.ctx.Done():
+		case <-ctx.Done():
 			return nil
-		case err := <-streamErr:
-			// Even if the stream end, we process all received transactions.
-			sendLargeBatch()
-			return connection.WrapStreamRpcError(err)
 		case <-timer.C:
 			sendLargeBatch()
-		case txBatch, ok := <-receivedTxBatch:
+		case txBatch, ok := <-vc.receivedTxBatch:
 			if !ok {
 				return nil
 			}
@@ -266,11 +272,12 @@ func (vc *ValidatorCommitterService) receiveAndProcessTransactions(
 
 // sendTransactionStatus sends the status of the transactions to the client.
 func (vc *ValidatorCommitterService) sendTransactionStatus(
+	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	logger.Info("Send transaction status")
 
-	txsStatus := channel.NewReader(stream.Context(), vc.txsStatusChan)
+	txsStatus := channel.NewReader(ctx, vc.txsStatus)
 	for {
 		txStatus, ok := txsStatus.Read()
 		if !ok {
@@ -303,36 +310,12 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 	}
 }
 
-// Close stops the VC service and blocks until it is done.
+// Close stops the VC service.
 func (vc *ValidatorCommitterService) Close() {
-	vc.ctxCancel()
-	<-vc.ctx.Done()
-
 	err := vc.metrics.provider.StopServer()
 	if err != nil {
 		logger.Errorf("Failed stopping prometheus server: %s", err)
 	}
-
-	logger.Info("Closing VC service output channel")
-	close(vc.txBatchChan)
-
-	logger.Info("Waiting for preparer to finish")
-	vc.preparer.wg.Wait()
-
-	logger.Info("Closing preparer output channel")
-	close(vc.preparedTxsChan)
-
-	logger.Info("Waiting for validator to finish")
-	vc.validator.wg.Wait()
-
-	logger.Info("Closing validator output channel")
-	close(vc.validatedTxsChan)
-
-	logger.Info("Waiting for committer to finish")
-	vc.committer.wg.Wait()
-
-	logger.Info("Closing committer output channel")
-	close(vc.txsStatusChan)
 
 	logger.Info("Closing the database connection")
 	vc.db.close()

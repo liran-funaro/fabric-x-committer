@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,15 +24,15 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
-	ctx, cancel := context.WithCancel(context.Background())
-	v := newValidator(ctx, dbEnv.DB, preparedTxs, validatedTxs, metrics)
+	v := newValidator(dbEnv.DB, preparedTxs, validatedTxs, metrics)
 
-	t.Cleanup(func() {
-		cancel()
-		close(preparedTxs)
-		v.wg.Wait()
-		close(validatedTxs)
-	})
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, v.run(ctx, 1)); wg.Done() }()
 
 	return &validatorTestEnv{
 		v:            v,
@@ -45,7 +46,6 @@ func TestValidate(t *testing.T) {
 	t.Parallel()
 
 	env := newValidatorTestEnv(t)
-	env.v.start(1)
 
 	v0 := types.VersionNumber(0).Bytes()
 	v1 := types.VersionNumber(1).Bytes()

@@ -3,20 +3,18 @@ package vcservice
 import (
 	"context"
 	"fmt"
-	"log"
-	"sync"
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
 // transactionValidator validates the reads of transactions against the committed states
 type transactionValidator struct {
-	ctx context.Context
-
 	// db is the state database holding all the committed states.
 	db *database
 	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions
@@ -26,8 +24,6 @@ type transactionValidator struct {
 	outgoingValidatedTransactions chan<- *validatedTransactions
 
 	metrics *perfMetrics
-
-	wg sync.WaitGroup
 }
 
 // validatedTransactions contains the writes of valid transactions and the txIDs of invalid transactions
@@ -56,7 +52,6 @@ func (v *validatedTransactions) Debug() {
 
 // NewValidator creates a new validator
 func newValidator(
-	ctx context.Context,
 	db *database,
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
@@ -64,7 +59,6 @@ func newValidator(
 ) *transactionValidator { // nolint:revive
 	logger.Debugf("Creating new validator")
 	return &transactionValidator{
-		ctx:                           ctx,
 		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
 		outgoingValidatedTransactions: validatedTxs,
@@ -73,26 +67,26 @@ func newValidator(
 }
 
 // start starts the validator with the given number of workers
-func (v *transactionValidator) start(numWorkers int) {
+func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
+	g, eCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
-		go v.validate()
+		g.Go(func() error {
+			return v.validate(eCtx)
+		})
 	}
+
+	return g.Wait()
 }
 
-func (v *transactionValidator) validate() {
-	v.wg.Add(1)
-	defer v.wg.Done()
-
-	var prepTx *preparedTransactions
+func (v *transactionValidator) validate(ctx context.Context) error {
+	incomingPreparedTransactions := channel.NewReader(ctx, v.incomingPreparedTransactions)
+	outgoingValidatedTransactions := channel.NewWriter(ctx, v.outgoingValidatedTransactions)
 	for {
-		select {
-		case <-v.ctx.Done():
-			return
-		case prepTx = <-v.incomingPreparedTransactions:
-			if prepTx == nil {
-				return
-			}
+		prepTx, ok := incomingPreparedTransactions.Read()
+		if !ok {
+			return nil
 		}
+
 		logger.Debugf("Batch of prepared TXs in the validator.")
 		prepTx.Debug()
 		start := time.Now()
@@ -103,24 +97,18 @@ func (v *transactionValidator) validate() {
 		//       to run per namespace validation in parallel.
 		nsToMismatchingReads, valErr := v.validateReads(prepTx.nsToReads)
 		if valErr != nil {
-			// TODO: we should not panic here. We should handle the error and recover accordingly.
-			log.Panic(valErr) // nolint:revive
+			return valErr
 		}
 
 		// Step 2: we construct validated transactions by removing the writes of invalid transactions
 		// and recording the txIDs of invalid transactions.
 		validatedTxs := prepTx.makeValidated()
 		if matchErr := validatedTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
-			// TODO: we should not panic here. We should handle the error and recover accordingly.
-			log.Panic(matchErr) // nolint:revive
+			return matchErr
 		}
 
 		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
-		select {
-		case <-v.ctx.Done():
-			return
-		case v.outgoingValidatedTransactions <- validatedTxs:
-		}
+		outgoingValidatedTransactions.Write(validatedTxs)
 
 		logger.Debugf("Validator sent batch of validated TXs to the committer")
 		validatedTxs.Debug()

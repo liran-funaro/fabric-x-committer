@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,18 +22,18 @@ func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	txBatch := make(chan *protovcservice.TransactionBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
-	ctx, cancel := context.WithCancel(context.Background())
-	preparer := newPreparer(ctx, txBatch, preparedTxs, metrics)
+	p := newPreparer(txBatch, preparedTxs, metrics)
 
-	t.Cleanup(func() {
-		cancel()
-		close(txBatch)
-		preparer.wg.Wait()
-		close(preparedTxs)
-	})
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, p.run(ctx, 1)); wg.Done() }()
 
 	return &prepareTestEnv{
-		preparer:    preparer,
+		preparer:    p,
 		txBatch:     txBatch,
 		preparedTxs: preparedTxs,
 	}
@@ -42,7 +43,6 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)
-	env.preparer.start(1)
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -154,7 +154,6 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)
-	env.preparer.start(1)
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -256,7 +255,6 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)
-	env.preparer.start(1)
 
 	v2 := types.VersionNumber(2).Bytes()
 
@@ -411,7 +409,6 @@ func TestPrepareTx(t *testing.T) {
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)
-	env.preparer.start(1)
 
 	v2 := types.VersionNumber(2).Bytes()
 	v3 := types.VersionNumber(3).Bytes()

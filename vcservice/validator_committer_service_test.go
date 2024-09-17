@@ -58,27 +58,33 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	vcs, err := NewValidatorCommitterService(ctx, config)
+	vcs, err := NewValidatorCommitterService(config)
 	require.NoError(t, err)
 	t.Cleanup(vcs.Close)
 
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, vcs.Run(ctx)); wg.Done() }()
+
 	var grpcSrv *grpc.Server
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	var serviceG sync.WaitGroup
+	serviceG.Add(1)
 
 	go func() {
 		connection.RunServerMain(&sConfig, func(grpcServer *grpc.Server, actualListeningPort int) {
 			grpcSrv = grpcServer
 			sConfig.Endpoint.Port = actualListeningPort
 			protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
-			wg.Done()
+			serviceG.Done()
 		})
 	}()
 
-	wg.Wait()
+	serviceG.Wait()
 	t.Cleanup(grpcSrv.Stop)
 
 	clientConn, err := connection.Connect(connection.NewDialConfig(sConfig.Endpoint))

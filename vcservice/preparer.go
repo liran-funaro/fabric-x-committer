@@ -2,27 +2,25 @@ package vcservice
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
 	// transactionPreparer prepares transaction batches for validation and commit.
 	transactionPreparer struct {
-		ctx context.Context
 		// incomingTransactionBatch is an input to the preparer
 		incomingTransactionBatch <-chan *protovcservice.TransactionBatch
 		// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 		outgoingPreparedTransactions chan<- *preparedTransactions
 		// metrics is the metrics collector
 		metrics *perfMetrics
-
-		wg sync.WaitGroup
 	}
 
 	txID string
@@ -82,24 +80,29 @@ type (
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs.
 func newPreparer(
-	ctx context.Context,
 	txBatch <-chan *protovcservice.TransactionBatch,
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
 	logger.Debugf("Creating new preparer")
 	return &transactionPreparer{
-		ctx:                          ctx,
 		incomingTransactionBatch:     txBatch,
 		outgoingPreparedTransactions: preparedTxs,
 		metrics:                      metrics,
 	}
 }
 
-func (p *transactionPreparer) start(numWorkers int) {
+func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
+	g, eCtx := errgroup.WithContext(ctx)
+
 	for i := 0; i < numWorkers; i++ {
-		go p.prepare()
+		g.Go(func() error {
+			p.prepare(eCtx)
+			return nil
+		})
 	}
+
+	return g.Wait()
 }
 
 // prepare reads transactions from the txBatch channel and prepares them for validation.
@@ -107,19 +110,13 @@ func (p *transactionPreparer) start(numWorkers int) {
 // the index of invalid transactions when a read is invalid.
 // It sends the prepared transactions to the preparedTxs channel which is an input
 // to the validator.
-func (p *transactionPreparer) prepare() { //nolint:gocognit
-	p.wg.Add(1)
-	defer p.wg.Done()
-
-	var txBatch *protovcservice.TransactionBatch
+func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
+	incomingTransactionBatch := channel.NewReader(ctx, p.incomingTransactionBatch)
+	outgoingPreparedTransactions := channel.NewWriter(ctx, p.outgoingPreparedTransactions)
 	for {
-		select {
-		case <-p.ctx.Done():
+		txBatch, ok := incomingTransactionBatch.Read()
+		if !ok {
 			return
-		case txBatch = <-p.incomingTransactionBatch:
-			if txBatch == nil {
-				return
-			}
 		}
 		logger.Debugf("New batch with %d in the preparer.", len(txBatch.Transactions))
 		start := time.Now()
@@ -186,11 +183,7 @@ func (p *transactionPreparer) prepare() { //nolint:gocognit
 		}
 
 		prometheusmetrics.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
-		select {
-		case <-p.ctx.Done():
-			return
-		case p.outgoingPreparedTransactions <- prepTxs:
-		}
+		outgoingPreparedTransactions.Write(prepTxs)
 
 		logger.Debugf("Transaction preparing finished.")
 	}

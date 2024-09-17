@@ -3,6 +3,7 @@ package vcservice
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,15 +26,15 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
-	ctx, cancel := context.WithCancel(context.Background())
-	c := newCommitter(ctx, dbEnv.DB, validatedTxs, txStatus, metrics)
+	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
 
-	t.Cleanup(func() {
-		cancel()
-		close(validatedTxs)
-		c.wg.Wait()
-		close(txStatus)
-	})
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, c.run(ctx, 1)); wg.Done() }()
 
 	return &committerTestEnv{
 		c:            c,
@@ -68,7 +69,6 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: rev
 
 func TestCommit(t *testing.T) {
 	env := newCommitterTestEnv(t)
-	env.c.start(1)
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
