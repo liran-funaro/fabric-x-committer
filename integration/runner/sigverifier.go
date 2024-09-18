@@ -31,7 +31,7 @@ type SigVerifierConfig struct {
 
 var (
 	sigverifierConfigTemplate = "../configtemplates/sigverifier-config-template.yaml"
-	sigverifierCmd            = "../../bin/sigservice"
+	sigverifierCmd            = "../../bin/signatureverifier"
 )
 
 // NewSigVerifierProcess creates a new sigverifier process.

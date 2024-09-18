@@ -18,14 +18,17 @@
 # Constants
 #########################
 
+version        := 0.0.2
 project_dir    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-sc_runner_dir  ?= $(project_dir)/docker/runner
-sc_builder_dir ?= $(project_dir)/docker/builder
 output_dir     ?= $(project_dir)/bin
 cache_dir      ?= $(shell go env GOCACHE)
 mod_cache_dir  ?= $(shell go env GOMODCACHE)
 golang_image   ?= golang:1.23.0-bookworm
-env            ?= env
+db_image       ?= yugabyte/yugabytedb:2.20.6.0-b66
+
+dockerfile_base_dir       ?= $(project_dir)/docker/images
+dockerfile_test_node_dir  ?= $(dockerfile_base_dir)/test_node
+dockerfile_release_dir    ?= $(dockerfile_base_dir)/release
 
 # Set this parameter when running docker-builder-run
 # E.g., make docker-builder-run cmd="make build-local"
@@ -36,18 +39,14 @@ cmd            ?=
 # An error will occur if neither container engine is installed.
 docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 							echo podman || { echo "Error: Neither Docker nor Podman is installed." >&2; exit 1; })
+image_namespace=icr.io/cbdc
 
 # Set these parameters to compile to a specific os/arch
 # Eg.g, make build-local os=linux arch=amd64
-os             ?=
-arch           ?=
-
-ifneq ($(os),)
-env += "GOOS=$(os)"
-endif
-ifneq ($(arch),)
-env += "GOARCH=$(arch)"
-endif
+os             ?= $(shell go env GOOS)
+arch           ?= $(shell go env GOARCH)
+env            ?= env GOOS=$(os) GOARCH=$(arch)
+go_build       ?= $(env) go build -buildvcs=false -o
 
 
 .PHONY: test clean
@@ -82,7 +81,7 @@ clean:
 	@rm -rf $(output_dir)
 
 kill-test-docker:
-	${docker_cmd} ps -aq -f name=sc_yugabyte_unit_tests | xargs ${DOCKER_CMD} rm -f
+	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(DOCKER_CMD) rm -f
 
 #########################
 # Generate protos
@@ -128,25 +127,40 @@ $(cache_dir) $(mod_cache_dir):
 	# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
-build: $(output_dir)
-	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator" ./cmd/coordinatorservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/coordinator_setup" ./cmd/coordinatorservice/setup_helper
-	$(env) go build -buildvcs=false -o "$(output_dir)/vcservice" ./cmd/vcservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/queryservice" ./cmd/queryservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/mockvcservice" ./cmd/mockvcservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/sigservice" ./cmd/sigverification
-	$(env) go build -buildvcs=false -o "$(output_dir)/mocksigservice" ./cmd/mocksigservice
-	$(env) go build -buildvcs=false -o "$(output_dir)/blockgen" ./cmd/loadgen
-	$(env) go build -buildvcs=false -o "$(output_dir)/sidecar" ./cmd/sidecar
+BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor \
+							loadgen coordinator_setup mockvcservice mocksigservice
 
-build-docker: $(output_dir)
-	make docker-builder-run cmd="make build output_dir=$(output_dir)"
-	scripts/amend-permissions.sh "$(output_dir)"
+build: $(output_dir) $(BUILD_TARGETS)
 
-# Executes a command from within the docker image.
-# Requires that docker-builder-image be run once before, to ensure the image exists.
-docker-builder-run: $(cache_dir) $(mod_cache_dir)
-	${docker_cmd} run --rm -it \
+coordinator: $(output_dir)
+	$(go_build) "$(output_dir)/coordinator" ./cmd/coordinatorservice
+
+signatureverifier: $(output_dir)
+	$(go_build) "$(output_dir)/signatureverifier" ./cmd/sigverification
+
+validatorpersister: $(output_dir)
+	$(go_build) "$(output_dir)/validatorpersister" ./cmd/vcservice
+
+sidecar: $(output_dir)
+	$(go_build) "$(output_dir)/sidecar" ./cmd/sidecar
+
+queryexecutor: $(output_dir)
+	$(go_build) "$(output_dir)/queryexecutor" ./cmd/queryservice
+
+loadgen: $(output_dir)
+	$(go_build) "$(output_dir)/loadgen" ./cmd/loadgen
+
+coordinator_setup: $(output_dir)
+	$(go_build) "$(output_dir)/coordinator_setup" ./cmd/coordinatorservice/setup_helper
+
+mockvcservice: $(output_dir)
+	$(go_build) "$(output_dir)/mockvcservice" ./cmd/mockvcservice
+
+mocksigservice: $(output_dir)
+	$(go_build) "$(output_dir)/mocksigservice" ./cmd/mocksigservice
+
+build-docker: $(cache_dir) $(mod_cache_dir)
+	$(docker_cmd) run --rm -it \
 	  --mount "type=bind,source=$(project_dir),target=$(project_dir)" \
 	  --mount "type=bind,source=$(cache_dir),target=$(cache_dir)" \
 	  --mount "type=bind,source=$(mod_cache_dir),target=$(mod_cache_dir)" \
@@ -154,15 +168,14 @@ docker-builder-run: $(cache_dir) $(mod_cache_dir)
 	  --env GOCACHE="$(cache_dir)" \
 	  --env GOMODCACHE="$(mod_cache_dir)" \
 	  $(golang_image) \
-	  $(cmd)
+    make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
-# Simple containerized SC
-docker-runner-image:
-	${docker_cmd} build -f $(sc_runner_dir)/Dockerfile -t sc_runner .
+build-test-node-image:
+	${docker_cmd} build -f $(dockerfile_test_node_dir)/Dockerfile -t ${image_namespace}/committer-test-node:${version} .
 
-docker-images:
-	./scripts/build-images.sh
+build-release-images:
+	./scripts/build-release-images.sh $(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir)
 
 .PHONY: lint
 lint:

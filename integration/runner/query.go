@@ -36,7 +36,7 @@ type QueryServiceConfig struct {
 
 var (
 	queryServiceConfigTemplate = "../configtemplates/queryservice-config-template.yaml"
-	queryServiceCmd            = "../../bin/queryservice"
+	queryServiceCmd            = "../../bin/queryexecutor"
 )
 
 // NewQueryServiceProcess creates a new query-service process.

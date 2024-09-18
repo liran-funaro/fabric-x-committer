@@ -37,7 +37,7 @@ type VCServiceConfig struct {
 
 var (
 	vcserviceConfigTemplate = "../configtemplates/vcservice-config-template.yaml"
-	vcserviceCmd            = "../../bin/vcservice"
+	vcserviceCmd            = "../../bin/validatorpersister"
 )
 
 // NewVCServiceProcess creates a new vcservice process.
