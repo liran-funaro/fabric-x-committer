@@ -13,11 +13,10 @@ import (
 
 func (c *CoordinatorService) preProcessBlock(
 	block *protoblocktx.Block,
-) (dupTxs []*protocoordinatorservice.TxValidationStatus, malformedTxs []*protovcservice.Transaction) {
-	dupTxs = c.filterDuplicateAmongActiveTxs(block)
-	malformedTxs = filterMalformedTxs(block)
+) []*protovcservice.Transaction {
+	malformedTxs := filterMalformedTxs(block)
 	c.recordMetaNsTxs(block)
-	return dupTxs, malformedTxs
+	return malformedTxs
 }
 
 func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction {
@@ -82,34 +81,6 @@ func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction
 		})
 	}
 	return malformedTxs
-}
-
-func (c *CoordinatorService) filterDuplicateAmongActiveTxs(
-	block *protoblocktx.Block,
-) []*protocoordinatorservice.TxValidationStatus {
-	dupTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
-	dupTxIndex := make([]int, 0, len(block.Txs))
-
-	for idx, tx := range block.Txs {
-		_, exist := c.uncommittedTxIDs.LoadOrStore(tx.Id, nil)
-		if !exist {
-			continue
-		}
-
-		dupTxStatus = append(dupTxStatus, &protocoordinatorservice.TxValidationStatus{
-			TxId:   tx.Id,
-			Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-		})
-		dupTxIndex = append(dupTxIndex, idx)
-	}
-
-	if len(dupTxStatus) == 0 {
-		return nil
-	}
-
-	removeFromBlock(block, dupTxIndex)
-
-	return dupTxStatus
 }
 
 func (c *CoordinatorService) recordMetaNsTxs(block *protoblocktx.Block) {

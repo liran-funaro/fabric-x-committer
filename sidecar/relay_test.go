@@ -65,6 +65,31 @@ func TestRelayNormalBlock(t *testing.T) {
 	require.Equal(t, blk0, committedBlock0)
 }
 
+func TestBlockWithDuplicateTransactions(t *testing.T) {
+	relayEnv := newRelayTestEnv(t)
+	blk0 := test.CreateBlockForTest(nil, 0, nil, [3]string{"tx1", "tx1", "tx1"})
+	require.Nil(t, blk0.Metadata)
+	relayEnv.uncommittedBlock <- blk0
+	committedBlock0 := <-relayEnv.committedBlock
+	valid := byte(peer.TxValidationCode_VALID)
+	duplicate := byte(peer.TxValidationCode_DUPLICATE_TXID)
+	expectedMetadata := &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid, duplicate, duplicate}},
+	}
+	require.Equal(t, expectedMetadata, committedBlock0.Metadata)
+	require.Equal(t, blk0, committedBlock0)
+
+	blk1 := test.CreateBlockForTest(nil, 1, nil, [3]string{"tx2", "tx3", "tx2"})
+	require.Nil(t, blk1.Metadata)
+	relayEnv.uncommittedBlock <- blk1
+	committedBlock1 := <-relayEnv.committedBlock
+	expectedMetadata = &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid, valid, duplicate}},
+	}
+	require.Equal(t, expectedMetadata, committedBlock1.Metadata)
+	require.Equal(t, blk1, committedBlock1)
+}
+
 func TestRelayConfigBlock(t *testing.T) {
 	relayEnv := newRelayTestEnv(t)
 	configBlk := createConfigBlockForTest(nil, 0)

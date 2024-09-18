@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,7 @@ func (r *relay) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (r *relay) preProcessBlockAndSendToCoordinator(
+func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
 ) error {
@@ -130,10 +131,22 @@ func (r *relay) preProcessBlockAndSendToCoordinator(
 
 		r.blkNumToBlkWithStatus.Store(blockNum, blkWithResult)
 
+		dupIdx := make([]int, 0, len(scBlock.Txs))
 		for txIndex, tx := range scBlock.Txs {
-			logger.Debugf("Adding txID [%s] to in progress list", tx.GetId())
-			blkWithResult.txIDToTxIndex[tx.GetId()] = txIndex
-			r.txIDToBlkNum.Store(tx.GetId(), blockNum)
+			if _, loaded := r.txIDToBlkNum.LoadOrStore(tx.GetId(), blockNum); !loaded {
+				logger.Debugf("Adding txID [%s] to in progress list", tx.GetId())
+				blkWithResult.txIDToTxIndex[tx.GetId()] = txIndex
+				continue
+			}
+			logger.Debugf("txID [%s] is duplicate", tx.GetId())
+			blkWithResult.pendingCount--
+			blkWithResult.txStatus[txIndex] = statusMap[protoblocktx.Status_ABORTED_DUPLICATE_TXID]
+			dupIdx = append(dupIdx, txIndex)
+		}
+
+		// Iterate over the indices in reverse order. Note that the dupIdx is sorted by default.
+		for _, index := range slices.Backward(dupIdx) {
+			scBlock.Txs = append(scBlock.Txs[:index], scBlock.Txs[index+1:]...)
 		}
 
 		r.activeBlocksCount.Add(1)

@@ -38,23 +38,6 @@ type (
 		metrics                          *perfMetrics
 		promErrChan                      <-chan error
 
-		// uncommittedTxIDs is used to store the transaction IDs of uncommitted transactions. This is used to
-		// detect duplicate transaction IDs among active transactions. While the vcservice detects duplicate txIDs
-		// among committed and to-be-committed transactions, we need to identify duplicate txIDs among active
-		// transactions to avoid sending duplicate transactions to the vcservice. This is because it is possible to
-		// send two transactions with the same txID to either the same or different vcservice nodes.
-		// While vcservice ensures that only one of the transactions is committed, it is possible to commit them in
-		// an incorrect order.
-		// For example, let's assume T1 and T2 have the same txID, and T1 occurred before T2 in  a block. Furthermore,
-		// assume that this txID is not already committed. It is possible that one organization might commit T1 and
-		// abort T2 while another might commit T2 and abort T1. This could result in incorrect results and forks among
-		// network nodes. Hence, we need to identify duplicate txIDs among active transactions and reject them early.
-		// Note that the vcservice will still detect duplicate txIDs among committed and to-be-committed transactions
-		// to ensure that no duplicate transactions are committed. Note that we are not directly limiting the number
-		// of entries in uncommittedTxIDs as it is controlled indirectly by the size of various channels and gRPC
-		// flow control.
-		uncommittedTxIDs *sync.Map
-
 		uncommittedMetaNsTx *sync.Map
 
 		// sendStreamMu is used to synchronize sending transaction status over grpc stream
@@ -198,7 +181,6 @@ func NewCoordinatorService(ctx context.Context, c *CoordinatorConfig) *Coordinat
 		orderEnforcer:                    sync.NewCond(&sync.Mutex{}),
 		metrics:                          metrics,
 		promErrChan:                      promErrChan,
-		uncommittedTxIDs:                 &sync.Map{},
 		uncommittedMetaNsTx:              &sync.Map{},
 		ctx:                              ctx,
 		cancel:                           cancel,
@@ -326,7 +308,7 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 
 		c.metrics.transactionReceived(len(blk.Txs))
 
-		dupTxs, malformedTxs := c.preProcessBlock(blk)
+		malformedTxs := c.preProcessBlock(blk)
 		if len(malformedTxs) != 0 {
 			c.queues.preliminaryInvalidTxsStatus <- malformedTxs
 		}
@@ -343,18 +325,6 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 
 			c.queues.blockForSignatureVerification <- blk
 			logger.Debugf("Block [%d] was pushed to the sv manager for processing", blk.Number)
-		}
-
-		if len(dupTxs) == 0 {
-			continue
-		}
-
-		// NOTE: If the stream closes unexpectedly before a transaction status is
-		//       delivered to the client, the status is NOT re-queued. Clients MUST
-		//       implement robust recovery mechanisms to retrieve lost transaction
-		//       statuses directly from the ledger.
-		if err := c.sendTxsStatus(stream, dupTxs); err != nil {
-			return err
 		}
 	}
 }
@@ -531,8 +501,6 @@ func (c *CoordinatorService) sendTxsStatus(
 }
 
 func (c *CoordinatorService) postProcessing(txID string, status protoblocktx.Status) error {
-	c.uncommittedTxIDs.Delete(txID)
-
 	txNs, ok := c.uncommittedMetaNsTx.Load(txID)
 	if !ok {
 		return nil
