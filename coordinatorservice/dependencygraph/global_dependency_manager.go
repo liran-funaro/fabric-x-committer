@@ -1,11 +1,13 @@
 package dependencygraph
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -29,10 +31,6 @@ type (
 
 		// dependencyDetector holds mapping between reads/writes and transactions.
 		dependencyDetector *dependencyDetector
-
-		// workerPool is used to process transactions in parallel. This workerPool is
-		// currently used only during the construction of the dependency graph.
-		workerPool *workerpool.WorkerPool
 
 		mu sync.Mutex
 
@@ -70,7 +68,6 @@ type (
 		incomingTxsNode        <-chan *transactionNodeBatch
 		outgoingDepFreeTxsNode chan<- []*TransactionNode
 		validatedTxsNode       <-chan []*TransactionNode
-		workerPoolConfig       *workerpool.Config
 		waitingTxsLimit        int
 		metrics                *perfMetrics
 	}
@@ -85,7 +82,6 @@ func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
 		outgoingDepFreeTransactionsNode: c.outgoingDepFreeTxsNode,
 		validatedTransactionsNode:       c.validatedTxsNode,
 		dependencyDetector:              newDependencyDetector(),
-		workerPool:                      workerpool.New(c.workerPoolConfig),
 		mu:                              sync.Mutex{},
 		freedTransactionsSet: &dependencyFreedTransactions{
 			txsNode:  []*TransactionNode{},
@@ -102,17 +98,37 @@ func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
 	}
 }
 
-func (dm *globalDependencyManager) start() {
-	go dm.constructDependencyGraph()
-	go dm.processValidatedTransactions()
-	go dm.outputFreedExistingTransactions()
+func (dm *globalDependencyManager) run(ctx context.Context) {
+	g, gCtx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		dm.constructDependencyGraph(gCtx)
+		return nil
+	})
+
+	g.Go(func() error {
+		dm.processValidatedTransactions(gCtx)
+		return nil
+	})
+
+	g.Go(func() error {
+		dm.outputFreedExistingTransactions(gCtx)
+		return nil
+	})
+
+	_ = g.Wait()
 }
 
-func (dm *globalDependencyManager) constructDependencyGraph() {
+func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context) {
 	m := dm.metrics
 	var txsNode []*TransactionNode
+	incomingTransactionsNode := channel.NewReader(ctx, dm.incomingTransactionsNode)
+	for {
+		txsNodeBatch, ok := incomingTransactionsNode.Read()
+		if !ok {
+			return
+		}
 
-	for txsNodeBatch := range dm.incomingTransactionsNode {
 		constructionStart := time.Now()
 
 		txsNode = txsNodeBatch.txsNode
@@ -164,16 +180,17 @@ func (dm *globalDependencyManager) constructDependencyGraph() {
 		m.addToCounter(m.gdgTxProcessedTotal, len(txsNode))
 		m.observe(m.gdgConstructionSeconds, time.Since(constructionStart))
 	}
-
-	dm.workerPool.Close()
 }
 
-func (dm *globalDependencyManager) processValidatedTransactions() {
+func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Context) {
 	m := dm.metrics
-	var txsNode []*TransactionNode
 	var fullyFreedDependents []*TransactionNode
-
-	for txsNode = range dm.validatedTransactionsNode {
+	validatedTransactionsNode := channel.NewReader(ctx, dm.validatedTransactionsNode)
+	for {
+		txsNode, ok := validatedTransactionsNode.Read()
+		if !ok {
+			return
+		}
 		processValidatedStart := time.Now()
 		dm.waitingTxsSlots.release(uint32(len(txsNode)))
 		m.setQueueSize(
@@ -210,8 +227,14 @@ func (dm *globalDependencyManager) processValidatedTransactions() {
 	}
 }
 
-func (dm *globalDependencyManager) outputFreedExistingTransactions() {
-	for {
+func (dm *globalDependencyManager) outputFreedExistingTransactions(ctx context.Context) {
+	stop := context.AfterFunc(ctx, func() {
+		dm.freedTransactionsSet.nonEmpty.Store(true)
+		dm.freedTransactionsSet.cond.Signal()
+	})
+	defer stop()
+
+	for ctx.Err() == nil {
 		start := time.Now()
 		txsNode := dm.freedTransactionsSet.waitAndRemove()
 

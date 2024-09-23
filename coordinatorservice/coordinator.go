@@ -190,9 +190,11 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return c.signatureVerifierMgr.run(eCtx)
 	})
 
-	// TODO: make dependency graph manager use context.
-	logger.Info("Starting dependency graph manager")
-	c.dependencyMgr.Start()
+	g.Go(func() error {
+		logger.Info("Starting dependency graph manager")
+		c.dependencyMgr.Run(eCtx)
+		return nil
+	})
 
 	g.Go(func() error {
 		logger.Info("Starting validator committer manager")
@@ -577,10 +579,7 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 	}
 }
 
-// Close closes dependencyMgr and prometheus server.
+// Close closes the prometheus server.
 func (c *CoordinatorService) Close() error {
-	logger.Infof("Closing all connections to managers")
-	c.dependencyMgr.Close()
-
 	return c.metrics.provider.StopServer()
 }

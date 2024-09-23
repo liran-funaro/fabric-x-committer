@@ -1,6 +1,8 @@
 package dependencygraph
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,7 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 func TestDependencyGraph(t *testing.T) {
@@ -20,32 +21,26 @@ func TestDependencyGraph(t *testing.T) {
 
 	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs, metrics)
-	ldc.start(2)
 
 	globalDepOutgoingTxs := make(chan []*TransactionNode, 10)
 	validatedTxs := make(chan []*TransactionNode, 10)
-	workerConfig := &workerpool.Config{
-		Parallelism:     10,
-		ChannelCapacity: 20,
-	}
 	dm := newGlobalDependencyManager(
 		&globalDepConfig{
 			incomingTxsNode:        localDepOutgoingTxs,
 			outgoingDepFreeTxsNode: globalDepOutgoingTxs,
 			validatedTxsNode:       validatedTxs,
-			workerPoolConfig:       workerConfig,
 			waitingTxsLimit:        20,
 			metrics:                metrics,
 		},
 	)
-	dm.start()
 
-	t.Cleanup(func() {
-		close(localDepIncomingTxs)
-		close(localDepOutgoingTxs)
-		close(globalDepOutgoingTxs)
-		close(validatedTxs)
-	})
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(2)
+	go func() { ldc.run(ctx, 2); wg.Done() }()
+	go func() { dm.run(ctx); wg.Done() }()
 
 	t.Run("check reads and writes dependency tracking", func(t *testing.T) {
 		keys := makeTestKeys(t, 10)

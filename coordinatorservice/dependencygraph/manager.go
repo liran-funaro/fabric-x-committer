@@ -1,10 +1,12 @@
 package dependencygraph
 
 import (
+	"context"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -57,7 +59,6 @@ func NewManager(c *Config) *Manager {
 		incomingTxsNode:        outgoingTxsNodeWithLocalDep,
 		outgoingDepFreeTxsNode: c.OutgoingDepFreeTxsNode,
 		validatedTxsNode:       c.IncomingValidatedTxsNode,
-		workerPoolConfig:       c.WorkerPoolConfigForGlobalDepManager,
 		waitingTxsLimit:        c.WaitingTxsLimit,
 		metrics:                metrics,
 	}
@@ -73,19 +74,38 @@ func NewManager(c *Config) *Manager {
 	}
 }
 
-// Start starts the dependency graph manager by starting the
+// Run starts the dependency graph manager by starting the
 // local dependency constructors and global dependency graph manager.
-func (m *Manager) Start() {
-	go m.monitorQueues()
-	m.localDepConstructor.start(m.config.NumOfLocalDepConstructors)
-	m.globalDepManager.start()
+func (m *Manager) Run(ctx context.Context) {
+	g, gCtx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		m.monitorQueues(gCtx)
+		return nil
+	})
+
+	g.Go(func() error {
+		m.localDepConstructor.run(gCtx, m.config.NumOfLocalDepConstructors)
+		return nil
+	})
+
+	g.Go(func() error {
+		m.globalDepManager.run(gCtx)
+		return nil
+	})
+
+	_ = g.Wait()
 }
 
-func (m *Manager) monitorQueues() {
+func (m *Manager) monitorQueues(ctx context.Context) {
 	// TODO: make sampling time configurable
 	ticker := time.NewTicker(100 * time.Millisecond)
 	for {
-		<-ticker.C
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 
 		m.metrics.setQueueSize(
 			m.metrics.ldgInputTxBatchQueueSize,
@@ -96,9 +116,4 @@ func (m *Manager) monitorQueues() {
 			len(m.globalDepManager.incomingTransactionsNode),
 		)
 	}
-}
-
-// Close closes internal channels.
-func (m *Manager) Close() {
-	close(m.outgoingTxsNodeWithLocalDep)
 }

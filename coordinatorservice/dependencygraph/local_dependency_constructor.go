@@ -1,11 +1,14 @@
 package dependencygraph
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 var logger = logging.New("dependencygraph")
@@ -59,14 +62,30 @@ func newLocalDependencyConstructor(
 	}
 }
 
-func (p *localDependencyConstructor) start(numWorkers int) {
+func (p *localDependencyConstructor) run(ctx context.Context, numWorkers int) {
+	g, gCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
-		go p.construct()
+		g.Go(func() error {
+			p.construct(gCtx)
+			return nil
+		})
 	}
+
+	_ = g.Wait()
 }
 
-func (p *localDependencyConstructor) construct() {
-	for txs := range p.incomingTransactions {
+func (p *localDependencyConstructor) construct(ctx context.Context) {
+	stop := context.AfterFunc(ctx, func() {
+		p.orderEnforcer.Broadcast()
+	})
+	defer stop()
+
+	incomingTransactions := channel.NewReader(ctx, p.incomingTransactions)
+	for {
+		txs, ok := incomingTransactions.Read()
+		if !ok {
+			return
+		}
 		logger.Debugf("Constructing dependencies for txs with id %d", txs.ID)
 
 		depDetector := newDependencyDetector()
@@ -90,39 +109,32 @@ func (p *localDependencyConstructor) construct() {
 			txsNode[i] = txNode
 		}
 
-		p.sendTxsNodeToGlobalDependencyManager(
-			txs.ID,
-			&transactionNodeBatch{
-				txsNode:          txsNode,
-				localDepDetector: depDetector,
-			},
-		)
+		// NOTE: We are running the construction of local dependencies in parallel
+		//       for various transaction batches. However, when we output the
+		// 	     transaction batches to the global dependency manager, we need to
+		//       ensure that the order of the transaction batches is the same as
+		//       the order in which they were received by the scalable committer.
+		//       This is achieved by using the lastOutputtedID field. The first
+		//       ever value of id field is 1 and should not be 0.
+		p.orderEnforcer.L.Lock()
+		id := txs.ID
+		for ctx.Err() == nil && !p.lastOutputtedID.CompareAndSwap(id-1, id) {
+			// We intentionally cause the goroutine to wait such that the one needing
+			// to complete the task and enqueue the next ID can get the CPU.
+			// Thus limiting to processing only N batches ahead of the last outputted batch,
+			// where N is the number of workers.
+			p.orderEnforcer.Wait()
+		}
+
+		p.metrics.addToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode))
+		p.outgoingTransactionsNode <- &transactionNodeBatch{
+			txsNode:          txsNode,
+			localDepDetector: depDetector,
+		}
+
+		logger.Debugf("Constructed dependencies for txs with id %d", id)
+
+		p.orderEnforcer.L.Unlock()
+		p.orderEnforcer.Broadcast()
 	}
-}
-
-func (p *localDependencyConstructor) sendTxsNodeToGlobalDependencyManager(id uint64, txsNode *transactionNodeBatch) {
-	p.orderEnforcer.L.Lock()
-
-	// NOTE: We are running the construction of local dependencies in parallel
-	//       for various transaction batches. However, when we output the
-	// 	     transaction batches to the global dependency manager, we need to
-	//       ensure that the order of the transaction batches is the same as
-	//       the order in which they were received by the scalable committer.
-	//       This is achieved by using the lastOutputtedID field. The first
-	//       ever value of id field is 1 and should not be 0.
-	for !p.lastOutputtedID.CompareAndSwap(id-1, id) {
-		// We intentionally cause the goroutine to wait such that the one needing
-		// to complete the task and enqueue the next ID can get the CPU.
-		// Thus limiting to processing only N batches ahead of the last outputted batch,
-		// where N is the number of workers.
-		p.orderEnforcer.Wait()
-	}
-
-	p.metrics.addToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode.txsNode))
-	p.outgoingTransactionsNode <- txsNode
-
-	logger.Debugf("Constructed dependencies for txs with id %d", id)
-
-	p.orderEnforcer.L.Unlock()
-	p.orderEnforcer.Broadcast()
 }

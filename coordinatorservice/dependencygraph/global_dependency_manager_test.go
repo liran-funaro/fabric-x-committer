@@ -1,6 +1,8 @@
 package dependencygraph
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -8,7 +10,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 type globalDependencyTestEnv struct {
@@ -19,7 +20,7 @@ type globalDependencyTestEnv struct {
 	dm           *globalDependencyManager
 }
 
-func newGlobalDependencyTestEnv(_ *testing.T) *globalDependencyTestEnv {
+func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	env := &globalDependencyTestEnv{
 		incomingTxs:  make(chan *transactionNodeBatch, 10),
 		outgoingTxs:  make(chan []*TransactionNode, 10),
@@ -27,23 +28,23 @@ func newGlobalDependencyTestEnv(_ *testing.T) *globalDependencyTestEnv {
 		metrics:      newPerformanceMetrics(true, prometheusmetrics.NewProvider()),
 	}
 
-	workerConfig := &workerpool.Config{
-		Parallelism:     10,
-		ChannelCapacity: 20,
-	}
 	dm := newGlobalDependencyManager(
 		&globalDepConfig{
 			incomingTxsNode:        env.incomingTxs,
 			outgoingDepFreeTxsNode: env.outgoingTxs,
 			validatedTxsNode:       env.validatedTxs,
-			workerPoolConfig:       workerConfig,
 			waitingTxsLimit:        10,
 			metrics:                env.metrics,
 		},
 	)
 
 	env.dm = dm
-	dm.start()
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	ctx, cancel := context.WithCancel(context.Background())
+	wg.Add(1)
+	go func() { dm.run(ctx); wg.Done() }()
+	t.Cleanup(cancel)
 	return env
 }
 
