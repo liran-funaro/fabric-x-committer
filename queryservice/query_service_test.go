@@ -15,7 +15,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -244,14 +243,6 @@ func verToBytes(ver ...int) [][]byte {
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
-
 	cs := yuga.PrepareYugaTestEnv(t)
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
