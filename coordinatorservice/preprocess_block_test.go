@@ -1,6 +1,7 @@
 package coordinatorservice
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 
 func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
-	env.start(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
 
 	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",

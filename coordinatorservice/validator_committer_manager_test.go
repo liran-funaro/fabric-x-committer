@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -26,15 +27,21 @@ type vcMgrTestEnv struct {
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	sc, vcs, grpcSrvs := vcservicemock.StartMockVCService(numVCService)
+	t.Cleanup(func() {
+		for _, mockVC := range vcs {
+			mockVC.Close()
+		}
+		for _, s := range grpcSrvs {
+			s.Stop()
+		}
+	})
 
 	inputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxsStatus := make(chan *protovcservice.TransactionStatus, 10)
 	prelimInvalidTxStatus := make(chan []*protovcservice.Transaction, 10)
 
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 2*time.Minute)
 	vcm := newValidatorCommitterManager(
-		ctx,
 		&validatorCommitterManagerConfig{
 			serversConfig:                           sc,
 			incomingTxsForValidationCommit:          inputTxs,
@@ -44,36 +51,14 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 			metrics:                                 newPerformanceMetrics(true),
 		},
 	)
-	errChan, err := vcm.start()
-	t.Cleanup(cancelFunc)
-	require.NoError(t, err)
 
 	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 	wg.Add(1)
-
-	go func() {
-		numErrorableVCMGoroutines := 3 * len(vcs)
-		for i := 0; i < numErrorableVCMGoroutines; i++ {
-			require.NoError(t, <-errChan)
-		}
-		wg.Done()
-	}()
-
-	t.Cleanup(func() {
-		vcm.close()
-		close(inputTxs)
-		close(outputTxs)
-		close(outputTxsStatus)
-		close(prelimInvalidTxStatus)
-		for _, mockVC := range vcs {
-			mockVC.Close()
-		}
-		wg.Wait()
-		close(errChan)
-		for _, s := range grpcSrvs {
-			s.Stop()
-		}
-	})
+	go func() { require.NoError(t, connection.FilterStreamErrors(vcm.run(ctx))); wg.Done() }()
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
@@ -187,7 +172,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 
 		maxNum := uint64(0)
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-		defer cancel()
+		t.Cleanup(cancel)
 		for _, vc := range env.mockVcServices {
 			// NOTE: As we are using mock service, the ledger data is not shared. Hence,
 			//       we have to query each mock vcservice to find the last seen maximum

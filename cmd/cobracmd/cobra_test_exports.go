@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -94,5 +95,6 @@ func UnitTestRunner(
 
 func runService(ctx context.Context, t *testing.T, cmd *cobra.Command, expectedErr error) {
 	_, err := cmd.ExecuteContextC(ctx)
-	require.Equal(t, err, expectedErr)
+	err = connection.FilterStreamErrors(err)
+	require.Equal(t, expectedErr, err)
 }

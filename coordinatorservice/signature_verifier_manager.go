@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -22,18 +23,12 @@ type (
 	signatureVerifierManager struct {
 		config       *signVerifierManagerConfig
 		signVerifier []*signatureVerifier
-
-		// ctx and cancel is responsible to stop all SV streams once the SVM is closed.
-		ctx    context.Context
-		cancel context.CancelFunc
-
-		metrics *perfMetrics
+		metrics      *perfMetrics
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
 	// signature verifier server.
 	signatureVerifier struct {
-		ctx    context.Context
 		conn   *grpc.ClientConn
 		client protosigverifierservice.VerifierClient
 
@@ -70,60 +65,65 @@ const (
 	txStatusInvalid
 )
 
-func newSignatureVerifierManager(ctx context.Context, config *signVerifierManagerConfig) *signatureVerifierManager {
-	ctx, cancelFunc := context.WithCancel(ctx)
+func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	return &signatureVerifierManager{
 		config:  config,
-		ctx:     ctx,
-		cancel:  cancelFunc,
 		metrics: config.metrics,
 	}
 }
 
-func (svm *signatureVerifierManager) start() error {
+func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	c := svm.config
 	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.serversConfig))
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
 
+	derivedCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	g, eCtx := errgroup.WithContext(derivedCtx)
+
 	internalQueueSize := cap(c.outgoingBlockWithValidTxs) + cap(c.outgoingBlockWithInvalidTxs)
-	blocksQueue := channel.NewReaderWriter(svm.ctx, make(chan *blockWithResult, internalQueueSize))
-	go ingestBlocks(
-		channel.NewReader(svm.ctx, c.incomingBlockForSignatureVerification),
-		blocksQueue,
-	)
-	validateBlocksQueue := channel.NewReaderWriter(svm.ctx, make(chan *blockWithResult, internalQueueSize))
-	go svm.forwardValidatedTransactions(
-		validateBlocksQueue,
-		channel.NewWriter(svm.ctx, c.outgoingBlockWithValidTxs),
-		channel.NewWriter(svm.ctx, c.outgoingBlockWithInvalidTxs),
-	)
+	blocksQueue := channel.NewReaderWriter(eCtx, make(chan *blockWithResult, internalQueueSize))
+	g.Go(func() error {
+		ingestBlocks(
+			channel.NewReader(eCtx, c.incomingBlockForSignatureVerification),
+			blocksQueue,
+		)
+		return nil
+	})
+
+	validateBlocksQueue := channel.NewReaderWriter(eCtx, make(chan *blockWithResult, internalQueueSize))
+	g.Go(func() error {
+		svm.forwardValidatedTransactions(
+			validateBlocksQueue,
+			channel.NewWriter(eCtx, c.outgoingBlockWithValidTxs),
+			channel.NewWriter(eCtx, c.outgoingBlockWithInvalidTxs),
+		)
+		return nil
+	})
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, serverConfig.Endpoint.String())
-		sv, err := newSignatureVerifier(svm.ctx, serverConfig)
+		sv, err := newSignatureVerifier(serverConfig)
 		if err != nil {
 			return err
 		}
 
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
-		go sv.sendTransactionsAndReceiveStatus(blocksQueue, validateBlocksQueue)
+		g.Go(func() error {
+			sv.sendTransactionsAndReceiveStatus(eCtx, blocksQueue, validateBlocksQueue)
+			return nil
+		})
 	}
 
-	return nil
+	return g.Wait()
 }
 
-func (svm *signatureVerifierManager) close() {
-	logger.Infof("Closing %d connections to sv's", len(svm.signVerifier))
-	// This also cancels the stream.
-	svm.cancel()
-	<-svm.ctx.Done()
-}
-
-func (svm *signatureVerifierManager) setVerificationKey(key *protosigverifierservice.Key) error {
+func (svm *signatureVerifierManager) setVerificationKey(ctx context.Context, key *protosigverifierservice.Key) error {
 	for i, sv := range svm.signVerifier {
 		logger.Debugf("Setting verification key to sv [%d]", i)
-		_, err := sv.client.SetVerificationKey(sv.ctx, key)
+		_, err := sv.client.SetVerificationKey(ctx, key)
 		logger.Debugf("Verification key successfully set")
 		if err != nil {
 			return err
@@ -179,44 +179,17 @@ func (svm *signatureVerifierManager) forwardValidatedTransactions(
 	}
 }
 
-func newSignatureVerifier(
-	ctx context.Context,
-	serverConfig *connection.ServerConfig,
-) (*signatureVerifier, error) {
+func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVerifier, error) {
 	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
 	if err != nil {
 		return nil, err
 	}
 
 	return &signatureVerifier{
-		ctx:               ctx,
 		conn:              conn,
 		client:            protosigverifierservice.NewVerifierClient(conn),
 		resultAccumulator: &sync.Map{},
 	}, nil
-}
-
-// waitForConnection returns when SV is connected or the SVM have closed.
-func (sv *signatureVerifier) waitForConnection() {
-	if sv.conn.GetState() == connectivity.Ready {
-		return
-	}
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-sv.ctx.Done():
-			return
-		case <-ticker.C:
-			logger.Debug("Reconnecting SV.")
-			sv.conn.Connect()
-			if sv.conn.GetState() == connectivity.Ready {
-				return
-			}
-			logger.Debug("SV connection is not ready.")
-		}
-	}
 }
 
 // sendTransactionsAndReceiveStatus initiates a stream to a verifier
@@ -224,10 +197,11 @@ func (sv *signatureVerifier) waitForConnection() {
 // It reconnects the stream in case of failure.
 // It stops only when the context was cancelled, i.e., the SVM have closed.
 func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
+	ctx context.Context,
 	inputBlocks channel.ReaderWriter[*blockWithResult],
 	validatedBlocks channel.Writer[*blockWithResult],
 ) {
-	for sv.ctx.Err() == nil {
+	for ctx.Err() == nil {
 		// Re-enter previous blocks to the queue so other workers can fetch them.
 		sv.resultAccumulator.Range(func(key, value any) bool {
 			blkWithResult, _ := value.(*blockWithResult) // nolint:revive
@@ -236,8 +210,8 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 		})
 		sv.resultAccumulator = &sync.Map{}
 
-		sv.waitForConnection()
-		stream, err := sv.client.StartStream(sv.ctx)
+		sv.waitForConnection(ctx)
+		stream, err := sv.client.StartStream(ctx)
 		if err != nil {
 			logger.Warnf("Failed starting stream with error: %s", err)
 			continue
@@ -255,6 +229,29 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 		sv.sendTransactionsToSVService(stream, inputBlocks.WithContext(stream.Context()))
 		wg.Wait()
 		logger.Debug("Stream ended")
+	}
+}
+
+// waitForConnection returns when SV is connected or the SVM have closed.
+func (sv *signatureVerifier) waitForConnection(ctx context.Context) {
+	if sv.conn.GetState() == connectivity.Ready {
+		return
+	}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			logger.Debug("Reconnecting SV.")
+			sv.conn.Connect()
+			if sv.conn.GetState() == connectivity.Ready {
+				return
+			}
+			logger.Debug("SV connection is not ready.")
+		}
 	}
 }
 
@@ -299,7 +296,6 @@ func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 	validatedBlocks channel.Writer[*blockWithResult],
 ) {
 	for {
-		// stream.Recv() is using `sv.ctx`, so it will unblock once the context ended.
 		response, err := stream.Recv()
 		if err != nil {
 			// The stream ended or the SVM was closed.

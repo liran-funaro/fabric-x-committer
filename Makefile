@@ -57,7 +57,7 @@ go_build       ?= $(env) go build -buildvcs=false -o
 
 test: build
 	#excludes integration test. For integration test, use `make integration-test`.
-	go list ./... | grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/test/" | xargs go test -v
+	go list ./... | grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/integration/test/" | xargs go test -v
 
 integration-test: build
 	go test -v ./integration/...

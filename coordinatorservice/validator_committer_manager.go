@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -24,8 +25,6 @@ type (
 		config              *validatorCommitterManagerConfig
 		validatorCommitter  []*validatorCommitter
 		txsStatusBufferSize int
-		ctx                 context.Context
-		cancel              context.CancelFunc
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -39,8 +38,6 @@ type (
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
 		txBeingValidated *sync.Map
-
-		ctx context.Context
 	}
 
 	validatorCommitterManagerConfig struct {
@@ -53,51 +50,50 @@ type (
 	}
 )
 
-func newValidatorCommitterManager(ctx context.Context, c *validatorCommitterManagerConfig) *validatorCommitterManager {
-	ctx, cancel := context.WithCancel(ctx)
+func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validatorCommitterManager {
 	return &validatorCommitterManager{
 		config:              c,
 		txsStatusBufferSize: cap(c.outgoingTxsStatus),
-		ctx:                 ctx,
-		cancel:              cancel,
 	}
 }
 
-func (vcm *validatorCommitterManager) start() (chan error, error) {
+func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
 
-	numErrorableGoroutinePerServer := 3
-	errChan := make(chan error, numErrorableGoroutinePerServer*len(c.serversConfig))
+	derivedCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	g, eCtx := errgroup.WithContext(derivedCtx)
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, serverConfig.Endpoint.String())
-		vc, err := newValidatorCommitter(vcm.ctx, serverConfig, c.metrics)
+		vc, err := newValidatorCommitter(derivedCtx, serverConfig, c.metrics)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		vcm.validatorCommitter[i] = vc
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 
-		go func() {
-			errChan <- vc.sendTransactionsToVCService(channel.NewReader(vcm.ctx, c.incomingTxsForValidationCommit))
-		}()
+		g.Go(func() error {
+			return vc.sendTransactionsToVCService(channel.NewReader(eCtx, c.incomingTxsForValidationCommit))
+		})
 
-		go func() {
-			errChan <- vc.sendPrelimInvalidTxsStatusToVCService(
-				channel.NewReader(vcm.ctx, c.incomingPrelimInvalidTxsStatusForCommit))
-		}()
+		g.Go(func() error {
+			return vc.sendPrelimInvalidTxsStatusToVCService(
+				channel.NewReader(eCtx, c.incomingPrelimInvalidTxsStatusForCommit))
+		})
 
-		go func() {
-			errChan <- vc.forwardTransactionsStatusAndTxsNode(
-				channel.NewWriter(vcm.ctx, c.outgoingValidatedTxsNode),
-				channel.NewWriter(vcm.ctx, c.outgoingTxsStatus),
+		g.Go(func() error {
+			return vc.forwardTransactionsStatusAndTxsNode(
+				channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
+				channel.NewWriter(eCtx, c.outgoingTxsStatus),
 			)
-		}()
+		})
 	}
 
-	return errChan, nil
+	return g.Wait()
 }
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
@@ -144,10 +140,6 @@ func (vcm *validatorCommitterManager) getMaxSeenBlockNumber(
 	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
 }
 
-func (vcm *validatorCommitterManager) close() {
-	vcm.cancel()
-}
-
 func newValidatorCommitter(
 	ctx context.Context,
 	serverConfig *connection.ServerConfig,
@@ -171,7 +163,6 @@ func newValidatorCommitter(
 		stream:           vcStream,
 		txBeingValidated: &sync.Map{},
 		metrics:          metrics,
-		ctx:              ctx,
 	}, nil
 }
 
@@ -231,7 +222,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 	for {
 		txsStatus, err := vc.stream.Recv()
 		if err != nil {
-			return connection.FilterStreamErrors(err)
+			return err
 		}
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))

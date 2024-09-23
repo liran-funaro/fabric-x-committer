@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -51,12 +53,15 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 		sigVerServerConfig[0].Endpoint.Port, vcServerConfig[0].Endpoint.Port, 2110, 9001)
 	conf := coordinatorservice.ReadConfig()
 
+	service := coordinatorservice.NewCoordinatorService(conf)
+	t.Cleanup(func() { require.NoError(t, service.Close()) })
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	service := coordinatorservice.NewCoordinatorService(ctx, conf)
-	_, err := service.Start()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, service.Close()) })
+	wg.Add(1)
+	go func() { require.NoError(t, connection.FilterStreamErrors(service.Run(ctx))); wg.Done() }()
 
 	server, _ := startServer(*conf.ServerConfig, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, service)

@@ -2,6 +2,7 @@ package coordinatorservice
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -26,22 +26,22 @@ type svMgrTestEnv struct {
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
-
 	sc, svs, grpcServers := sigverifiermock.StartMockSVService(numSvService)
+	t.Cleanup(func() {
+		for _, s := range grpcServers {
+			s.GracefulStop()
+		}
+
+		for _, mockSv := range svs {
+			mockSv.Close()
+		}
+	})
 
 	inputBlock := make(chan *protoblocktx.Block, 10)
 	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
 	outputBlockWithInvalidTxs := make(chan *protoblocktx.Block, 10)
 
 	svm := newSignatureVerifierManager(
-		context.Background(),
 		&signVerifierManagerConfig{
 			serversConfig:                         sc,
 			incomingBlockForSignatureVerification: inputBlock,
@@ -50,7 +50,17 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 			metrics:                               newPerformanceMetrics(true),
 		},
 	)
-	require.NoError(t, svm.start())
+
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, svm.run(ctx)); wg.Done() }()
+
+	require.Eventually(t, func() bool {
+		return len(svm.signVerifier) > 0
+	}, 4*time.Second, 250*time.Millisecond)
 
 	env := &svMgrTestEnv{
 		signVerifierManager:       svm,
@@ -61,22 +71,6 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		grpcServers:               grpcServers,
 		serversConfig:             sc,
 	}
-
-	t.Cleanup(func() {
-		env.signVerifierManager.close()
-		t.Log("All SV services finished.")
-
-		close(env.inputBlock)
-		close(env.outputBlockWithValidTxs)
-		close(env.outputBlockWithInvalidTxs)
-		for _, mockSv := range env.mockSvService {
-			mockSv.Close()
-		}
-
-		for _, s := range env.grpcServers {
-			s.GracefulStop()
-		}
-	})
 
 	return env
 }
@@ -180,7 +174,10 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 	}
 
 	// set verification key
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
 	err := env.signVerifierManager.setVerificationKey(
+		ctx,
 		&protosigverifierservice.Key{
 			SerializedBytes: []byte("dummy"),
 		},

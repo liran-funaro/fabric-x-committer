@@ -19,7 +19,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -28,13 +27,28 @@ import (
 type coordinatorTestEnv struct {
 	coordinator *CoordinatorService
 	csStream    protocoordinatorservice.Coordinator_BlockProcessingClient
-	ctx         context.Context
-	cancel      context.CancelFunc
 }
 
 func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 	svServerConfigs, svServices, svGrpcServers := sigverifiermock.StartMockSVService(3)
+	t.Cleanup(func() {
+		for _, mockSV := range svServices {
+			mockSV.Close()
+		}
+		for _, s := range svGrpcServers {
+			s.Stop()
+		}
+	})
+
 	vcServerConfigs, vcServices, vcGrpcServers := vcservicemock.StartMockVCService(3)
+	t.Cleanup(func() {
+		for _, mockVC := range vcServices {
+			mockVC.Close()
+		}
+		for _, s := range vcGrpcServers {
+			s.Stop()
+		}
+	})
 
 	c := &CoordinatorConfig{
 		SignVerifierConfig: &SignVerifierConfig{
@@ -60,46 +74,18 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	cs := NewCoordinatorService(ctx, c)
-
-	t.Cleanup(func() {
-		for _, mockSV := range svServices {
-			mockSV.Close()
-		}
-
-		for _, mockVC := range vcServices {
-			mockVC.Close()
-		}
-
-		for _, s := range svGrpcServers {
-			s.Stop()
-		}
-
-		for _, s := range vcGrpcServers {
-			s.Stop()
-		}
-	})
-
 	return &coordinatorTestEnv{
-		coordinator: cs,
-		ctx:         ctx,
-		cancel:      cancel,
+		coordinator: NewCoordinatorService(c),
 	}
 }
 
-func (e *coordinatorTestEnv) start(t *testing.T) {
+func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
+	dCtx, cancel := context.WithCancel(ctx)
 	cs := e.coordinator
-	valErrChan, err := cs.Start()
-	require.NoError(t, err)
-
-	var wgValErrChan sync.WaitGroup
-	wgValErrChan.Add(1)
-	go func() {
-		errV := <-valErrChan
-		require.NoError(t, errV)
-		wgValErrChan.Done()
-	}()
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
+	go func() { require.NoError(t, connection.FilterStreamErrors(cs.Run(dCtx))); wg.Done() }()
 
 	sc := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{
@@ -109,54 +95,41 @@ func (e *coordinatorTestEnv) start(t *testing.T) {
 	}
 	var grpcSrv *grpc.Server
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	var grpcSrvG sync.WaitGroup
+	grpcSrvG.Add(1)
 	go func() {
 		connection.RunServerMain(sc, func(grpcServer *grpc.Server, actualListeningPort int) {
 			grpcSrv = grpcServer
 			sc.Endpoint.Port = actualListeningPort
 			protocoordinatorservice.RegisterCoordinatorServer(grpcServer, cs)
-			wg.Done()
+			grpcSrvG.Done()
 		})
 	}()
-	wg.Wait()
+	grpcSrvG.Wait()
+	t.Cleanup(grpcSrv.Stop)
 
 	conn, err := connection.Connect(connection.NewDialConfig(sc.Endpoint))
 	require.NoError(t, err)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	ctx, cancel := context.WithTimeout(e.ctx, 2*time.Minute)
 	csStream, err := client.BlockProcessing(ctx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
 
 	t.Cleanup(func() {
-		cancel() // cancelling the child (stream context) explicitly though parent can cancel it.
-		<-ctx.Done()
-
-		e.cancel() // cancelling the parent/global context.
-		<-e.ctx.Done()
-
 		require.NoError(t, cs.Close())
-
-		wgValErrChan.Wait()
-
-		grpcSrv.Stop()
 	})
+
+	t.Cleanup(cancel)
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
-	env.start(t)
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
 
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -219,17 +192,19 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 	)
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.BlockInfo{Number: 0})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
-	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(env.ctx, nil)
+	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastBlock.Number)
 }
 
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	env := newCoordinatorTestEnv(t)
-	env.start(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
 	// next expected block is 0, but sending 2 to 500
 	lastBlockNum := 500
 	for i := 2; i <= lastBlockNum; i++ {
@@ -309,7 +284,9 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 func TestQueueSize(t *testing.T) { // nolint:gocognit
 	env := newCoordinatorTestEnv(t)
 	env.coordinator.promErrChan = make(chan error)
-	go env.coordinator.monitorQueues()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	go env.coordinator.monitorQueues(ctx)
 
 	q := env.coordinator.queues
 	m := env.coordinator.metrics

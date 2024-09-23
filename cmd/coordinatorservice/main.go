@@ -52,15 +52,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			coordConfig := coordinatorservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			coordService := coordinatorservice.NewCoordinatorService(cmd.Context(), coordConfig)
-
-			vcErr, err := coordService.Start()
-			if err != nil {
-				return err
-			}
-
-			errChan := make(chan error)
-			captureErrFromCoordService(errChan, coordConfig, vcErr)
+			coordService := coordinatorservice.NewCoordinatorService(coordConfig)
 
 			var wg sync.WaitGroup
 			wg.Add(1)
@@ -79,26 +71,9 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			// coordinator service if any of them fails. In the future, we can add recovery mechanism
 			// to restart the failed service and stop the coordinator service only if all the services
 			// in vcservice fail or all the services in sigverifier fail.
-			return cobracmd.WaitUntilServiceDoneWithChan(cmd.Context(), errChan)
+			return coordService.Run(cmd.Context())
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
-}
-
-func captureErrFromCoordService(
-	errChan chan error,
-	coordConfig *coordinatorservice.CoordinatorConfig,
-	vcErr chan error,
-) {
-	go func() {
-		numVC := len(coordConfig.ValidatorCommitterConfig.ServerConfig)
-		for i := 0; i < numVC; i++ {
-			err := <-vcErr
-			if err != nil {
-				errChan <- err
-				break
-			}
-		}
-	}()
 }
