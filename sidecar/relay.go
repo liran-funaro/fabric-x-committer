@@ -2,7 +2,6 @@ package sidecar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -177,7 +176,7 @@ func receiveStatusFromCoordinator(
 	for {
 		response, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamErrors(err)
+			return err
 		}
 		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetTxsValidationStatus()))
 
@@ -283,9 +282,6 @@ func (r *relay) setLastCommittedBlockNumber(
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
 		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: blkNum})
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil
-			}
 			return err
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type relayTestEnv struct {
@@ -43,7 +44,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	wg.Add(1)
-	go func() { require.NoError(t, relay.Run(ctx)); wg.Done() }()
+	go func() { require.NoError(t, connection.FilterStreamErrors(relay.Run(ctx))); wg.Done() }()
 	return &relayTestEnv{
 		relay:            relay,
 		uncommittedBlock: uncommittedBlock,

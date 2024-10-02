@@ -3,6 +3,7 @@ package sidecar
 import (
 	"context"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,9 +62,12 @@ func TestSidecar(t *testing.T) {
 	sidecar, err := New(config)
 	require.NoError(t, err)
 
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	go func() { require.NoError(t, sidecar.Run(ctx)) }()
+	wg.Add(1)
+	go func() { require.NoError(t, connection.FilterStreamErrors(sidecar.Run(ctx))); wg.Done() }()
 	ledger.StartGrpcServer(t, config.Server, sidecar.GetLedgerService())
 
 	broadcastClients, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{

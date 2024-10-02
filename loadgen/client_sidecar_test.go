@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
@@ -67,7 +68,7 @@ func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	wg.Add(1)
-	go func() { require.NoError(t, service.Run(ctx)); wg.Done() }()
+	go func() { require.NoError(t, connection.FilterStreamErrors(service.Run(ctx))); wg.Done() }()
 
 	server, sidecarServerConfig := startServer(*conf.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, service.GetLedgerService())
