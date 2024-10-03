@@ -15,7 +15,7 @@ import (
 )
 
 func TestCoordinatorServiceBadTxFormat(t *testing.T) {
-	env := newCoordinatorTestEnv(t)
+	env := newCoordinatorTestEnv(t, 2, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)

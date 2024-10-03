@@ -334,6 +334,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		env.dbEnv.statusExists(t, expectedTxStatus.Status)
 		ensureLastSeenMaxBlock(t, env.client, 5)
+
+		status, err := env.client.GetTransactionsStatus(env.ctx, &protoblocktx.QueryStatus{
+			TxIDs: []string{txBatch.Transactions[0].ID, txBatch.Transactions[1].ID},
+		})
+		require.NoError(t, err)
+		require.Equal(t, expectedTxStatus.Status, status.Status)
 	})
 }
 

@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS tx_status (
 ) %[2]s;
 `
 
+const queryTxIDsStatus = `
+SELECT tx_id, status
+FROM tx_status
+WHERE tx_id = ANY($1)
+`
+
 const (
 	lastCommittedBlockNumberKey = "last committed block number"
 	maxSeenBlockNumberKey       = "max seen block number"
@@ -26,11 +32,11 @@ const createMetadataTableStmt = `
 CREATE TABLE IF NOT EXISTS metadata (
   key bytea NOT NULL PRIMARY KEY,
   value bytea
-);
+)
 `
 
 const initializeMetadataPrepStmt = `
-  INSERT INTO metadata VALUES ($1, $2);
+INSERT INTO metadata VALUES ($1, $2);
 `
 
 const setMetadataPrepStmt = `

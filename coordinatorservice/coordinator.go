@@ -3,6 +3,7 @@ package coordinatorservice
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 var logger = logging.New("coordinator service")
@@ -44,6 +46,13 @@ type (
 		// to the client between the goroutine that process status from sigverifier and the goroutine
 		// that process status from validator.
 		sendTxStreamMu sync.Mutex
+
+		// postRecoveryStartBlockNumber denotes the block number at which the coordinator would stop running in
+		// the recovery state after a failure.
+		postRecoveryStartBlockNumber uint64
+
+		// firstExpectedBlockNumber denotes the first block number to be received by the coordinator.
+		firstExpectedBlockNumber uint64
 	}
 
 	channels struct {
@@ -201,6 +210,34 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return c.validatorCommitterMgr.run(eCtx)
 	})
 
+	select {
+	case <-eCtx.Done():
+		return nil
+	case <-c.validatorCommitterMgr.connectionReady:
+	}
+
+	lastCommittedBlock, err := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
+	if err != nil {
+		if !hasErrMetadataEmpty(err) {
+			return err
+		}
+		// no block has been committed.
+		c.firstExpectedBlockNumber = 0
+	} else {
+		c.firstExpectedBlockNumber = lastCommittedBlock.Number + 1
+	}
+
+	lastSeenBlock, err := c.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
+	if err != nil {
+		if !hasErrMetadataEmpty(err) {
+			return err
+		}
+		// no transaction has been committed.
+		c.postRecoveryStartBlockNumber = 0
+	} else if lastSeenBlock.Number >= c.firstExpectedBlockNumber {
+		c.postRecoveryStartBlockNumber = lastSeenBlock.Number + 1
+	}
+
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive block with valid transactions and" +
 			" forward it to the dependency graph manager")
@@ -300,6 +337,32 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
+		if blk.Number < c.postRecoveryStartBlockNumber {
+			// 1. Fetch status of transactions if already processed.
+			txIDs := make([]string, 0, len(blk.Txs))
+			for _, tx := range blk.Txs {
+				txIDs = append(txIDs, tx.Id)
+			}
+			status, err := c.validatorCommitterMgr.getTransactionsStatus(ctx, txIDs)
+			if err != nil {
+				return err
+			}
+
+			// 2. Forward the status to the client
+			if len(status.Status) > 0 {
+				c.queues.txsStatus <- status
+			}
+
+			// 3. Make the block to contain only unvalidated transactions.
+			idx := make([]int, 0, len(blk.Txs))
+			for i, tx := range blk.Txs {
+				if _, ok := status.Status[tx.Id]; ok {
+					idx = append(idx, i)
+				}
+			}
+			removeFromBlock(blk, idx)
+		}
+
 		c.metrics.transactionReceived(len(blk.Txs))
 
 		malformedTxs := c.preProcessBlock(blk)
@@ -330,7 +393,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ct
 	// that we are expecting. If we receive a block with a different block number, we store it in a map.
 	// If the map size reaches a limit, we stop sending blocks to the signature verifier manager till we
 	// receive the block that we are expecting.
-	nextBlockNumber := uint64(0)
+	nextBlockNumber := c.firstExpectedBlockNumber
 	txBatchID := uint64(1)
 	outOfOrderBlock := make(map[uint64]*protoblocktx.Block)
 	outOfOrderBlockLimit := 500 // TODO: make it configurable
@@ -582,4 +645,8 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 // Close closes the prometheus server.
 func (c *CoordinatorService) Close() error {
 	return c.metrics.provider.StopServer()
+}
+
+func hasErrMetadataEmpty(err error) bool {
+	return strings.Contains(err.Error(), vcservice.ErrMetadataEmpty.Error())
 }

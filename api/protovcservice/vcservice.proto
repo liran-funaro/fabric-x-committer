@@ -12,6 +12,7 @@ service ValidationAndCommitService {
   rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
   rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
   rpc GetMaxSeenBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
+  rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (TransactionStatus) {}
 }
 
 message TransactionBatch {

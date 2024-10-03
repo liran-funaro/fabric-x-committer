@@ -26,11 +26,14 @@ import (
 
 type coordinatorTestEnv struct {
 	coordinator *CoordinatorService
+	config      *CoordinatorConfig
+	grpcServer  *grpc.Server
+	client      protocoordinatorservice.CoordinatorClient
 	csStream    protocoordinatorservice.Coordinator_BlockProcessingClient
 }
 
-func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
-	svServerConfigs, svServices, svGrpcServers := sigverifiermock.StartMockSVService(3)
+func newCoordinatorTestEnv(t *testing.T, numSigService, numVcService int) *coordinatorTestEnv {
+	svServerConfigs, svServices, svGrpcServers := sigverifiermock.StartMockSVService(numSigService)
 	t.Cleanup(func() {
 		for _, mockSV := range svServices {
 			mockSV.Close()
@@ -39,8 +42,7 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 			s.Stop()
 		}
 	})
-
-	vcServerConfigs, vcServices, vcGrpcServers := vcservicemock.StartMockVCService(3)
+	vcServerConfigs, vcServices, vcGrpcServers := vcservicemock.StartMockVCService(numVcService)
 	t.Cleanup(func() {
 		for _, mockVC := range vcServices {
 			mockVC.Close()
@@ -76,6 +78,7 @@ func newCoordinatorTestEnv(t *testing.T) *coordinatorTestEnv {
 
 	return &coordinatorTestEnv{
 		coordinator: NewCoordinatorService(c),
+		config:      c,
 	}
 }
 
@@ -108,12 +111,16 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	grpcSrvG.Wait()
 	t.Cleanup(grpcSrv.Stop)
 
+	e.grpcServer = grpcSrv
 	conn, err := connection.Connect(connection.NewDialConfig(sc.Endpoint))
 	require.NoError(t, err)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
+	e.client = client
 
-	csStream, err := client.BlockProcessing(ctx)
+	sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
+	t.Cleanup(sCancel)
+	csStream, err := client.BlockProcessing(sCtx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
@@ -126,7 +133,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
-	env := newCoordinatorTestEnv(t)
+	env := newCoordinatorTestEnv(t, 2, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
@@ -201,7 +208,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 }
 
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
-	env := newCoordinatorTestEnv(t)
+	env := newCoordinatorTestEnv(t, 2, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
@@ -282,7 +289,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 }
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit
-	env := newCoordinatorTestEnv(t)
+	env := newCoordinatorTestEnv(t, 2, 2)
 	env.coordinator.promErrChan = make(chan error)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -323,4 +330,195 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
 	}, 3*time.Second, 500*time.Millisecond)
+}
+
+func TestCoordinatorRecovery(t *testing.T) {
+	env := newCoordinatorTestEnv(t, 1, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
+
+	require.Equal(t, uint64(0), env.coordinator.firstExpectedBlockNumber)
+	require.Equal(t, uint64(0), env.coordinator.postRecoveryStartBlockNumber)
+
+	err := env.csStream.Send(&protoblocktx.Block{
+		Number: 0,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   []byte("key1"),
+								Value: []byte("value1"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	txStatus, err := env.csStream.Recv()
+	require.NoError(t, err)
+	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			{
+				TxId:   "tx1",
+				Status: protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
+	require.NoError(t, err)
+
+	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), lastCommittedBlock.Number)
+
+	// To simulate a failure scenario in which a block is partially committed, we first create block 1
+	// with single transaction but actual block 1 is supposed to have 2 transactions. Once the partial block 1
+	// is committed, we will restart the service and send a full block 1 with 2 transactions.
+	block1 := &protoblocktx.Block{
+		Number: 1,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx2",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key2"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+		},
+	}
+	require.NoError(t, env.csStream.Send(block1))
+
+	txStatus, err = env.csStream.Recv()
+	require.NoError(t, err)
+	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			{
+				TxId:   "tx2",
+				Status: protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+
+	require.Eventually(t, func() bool {
+		lastSeenBlock, lastSeenErr := env.coordinator.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
+		if lastSeenErr != nil {
+			return false
+		}
+		return uint64(1) == lastSeenBlock.Number
+	}, 2*time.Second, 250*time.Millisecond)
+
+	require.Equal(t, uint64(0), env.coordinator.firstExpectedBlockNumber)
+	require.Equal(t, uint64(0), env.coordinator.postRecoveryStartBlockNumber)
+
+	cancel()
+	require.NoError(t, env.coordinator.Close())
+	env.grpcServer.Stop()
+
+	ctx, cancel = context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	env.coordinator = NewCoordinatorService(env.config)
+	env.start(ctx, t)
+
+	require.Eventually(t, func() bool {
+		return uint64(1) == env.coordinator.firstExpectedBlockNumber
+	}, 4*time.Second, 250*time.Millisecond)
+	require.Equal(t, uint64(2), env.coordinator.postRecoveryStartBlockNumber)
+
+	// Now, we are sending the full block 1. As tx2 is already committed, we get the status of
+	// tx2 first. Then, tx3 will be validated and committed.
+	block1 = &protoblocktx.Block{
+		Number: 1,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx2",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key2"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+			{
+				Id: "tx3",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key3"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+		},
+	}
+
+	require.NoError(t, env.csStream.Send(block1))
+
+	tx2Status, err := env.csStream.Recv()
+	require.NoError(t, err)
+	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			{
+				TxId:   "tx2",
+				Status: protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, tx2Status.TxsValidationStatus)
+	tx3Status, err := env.csStream.Recv()
+	require.NoError(t, err)
+	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
+		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
+			{
+				TxId:   "tx3",
+				Status: protoblocktx.Status_COMMITTED,
+			},
+		},
+	}
+	require.Equal(t, expectedTxStatus.TxsValidationStatus, tx3Status.TxsValidationStatus)
+
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(1), env.coordinator.firstExpectedBlockNumber)
+	require.Equal(t, uint64(2), env.coordinator.postRecoveryStartBlockNumber)
 }

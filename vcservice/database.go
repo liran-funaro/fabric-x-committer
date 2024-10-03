@@ -106,7 +106,7 @@ func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*r
 	}
 	defer mismatch.Close()
 
-	keys, values, err := readKeysAndVersions(mismatch)
+	keys, values, err := readKeysAndValues[[]byte, []byte](mismatch)
 	if err != nil {
 		return nil, fmt.Errorf("failed reading key and version: %w", err)
 	}
@@ -128,7 +128,7 @@ func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][
 	}
 	defer keysVers.Close()
 
-	foundKeys, foundVersions, err := readKeysAndVersions(keysVers)
+	foundKeys, foundVersions, err := readKeysAndValues[[]byte, []byte](keysVers)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +161,32 @@ func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*prot
 	}
 
 	return &protoblocktx.BlockInfo{Number: binary.BigEndian.Uint64(value)}, nil
+}
+
+func (db *database) queryTransactionsStatus(
+	ctx context.Context,
+	txIDs [][]byte,
+) (*protovcservice.TransactionStatus, error) {
+	txIDsStatus, err := db.pool.Query(ctx, queryTxIDsStatus, txIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer txIDsStatus.Close()
+
+	txIDs, status, err := readKeysAndValues[[]byte, int32](txIDsStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &protovcservice.TransactionStatus{
+		Status: make(map[string]protoblocktx.Status),
+	}
+
+	for i, txID := range txIDs {
+		s.Status[string(txID)] = protoblocktx.Status(status[i])
+	}
+
+	return s, nil
 }
 
 func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *protoblocktx.BlockInfo) error {
@@ -397,20 +423,22 @@ func (db *database) close() {
 	db.pool.Close()
 }
 
-// readKeysAndVersions reads the keys and versions from the given rows.
-func readKeysAndVersions(r pgx.Rows) ([][]byte, [][]byte, error) {
-	var keys, versions [][]byte
+// readKeysAndValues reads the keys and values from the given rows.
+func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
+	var keys []K
+	var values []V
 
 	for r.Next() {
-		var key, version []byte
-		if err := r.Scan(&key, &version); err != nil {
+		var key K
+		var value V
+		if err := r.Scan(&key, &value); err != nil {
 			return nil, nil, err
 		}
 		keys = append(keys, key)
-		versions = append(versions, version)
+		values = append(values, value)
 	}
 
-	return keys, versions, r.Err()
+	return keys, values, r.Err()
 }
 
 func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {

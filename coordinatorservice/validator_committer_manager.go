@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -25,6 +26,7 @@ type (
 		config              *validatorCommitterManagerConfig
 		validatorCommitter  []*validatorCommitter
 		txsStatusBufferSize int
+		connectionReady     chan any
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -54,10 +56,12 @@ func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validator
 	return &validatorCommitterManager{
 		config:              c,
 		txsStatusBufferSize: cap(c.outgoingTxsStatus),
+		connectionReady:     make(chan any),
 	}
 }
 
 func (vcm *validatorCommitterManager) run(ctx context.Context) error {
+	defer func() { vcm.connectionReady = make(chan any) }()
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
@@ -93,6 +97,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		})
 	}
 
+	close(vcm.connectionReady)
 	return g.Wait()
 }
 
@@ -137,7 +142,23 @@ func (vcm *validatorCommitterManager) getMaxSeenBlockNumber(
 		}
 	}
 
-	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
+	return nil, fmt.Errorf("failed to get the max seen block number: %w", err)
+}
+
+func (vcm *validatorCommitterManager) getTransactionsStatus(
+	ctx context.Context,
+	txIDs []string,
+) (*protovcservice.TransactionStatus, error) {
+	var err error
+	var status *protovcservice.TransactionStatus
+	for _, vc := range vcm.validatorCommitter {
+		status, err = vc.client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+		if err == nil {
+			return status, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to get transactions status: %w", err)
 }
 
 func newValidatorCommitter(
@@ -154,6 +175,23 @@ func newValidatorCommitter(
 	logger.Infof("validator persister manager connected to validator persister at %s", serverConfig.Endpoint.String())
 
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+
+	for {
+		waitingTxs, statusErr := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		if statusErr != nil {
+			return nil, err
+		}
+		if waitingTxs.Count == 0 {
+			break
+		}
+		logger.Infof(
+			"Waiting for vcservice [%s] to complete processing [%d] pending transactions",
+			&serverConfig.Endpoint,
+			waitingTxs.Count,
+		)
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	vcStream, err := client.StartValidateAndCommitStream(ctx)
 	if err != nil {
 		return nil, err
@@ -176,7 +214,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			return nil
 		}
 
-		logger.Debugf("New TX node came from coordinator to vc manager")
+		logger.Debugf("New TX node came from dependency graph manager to vc manager")
 		txBatch := make([]*protovcservice.Transaction, len(txsNode))
 		for i, txNode := range txsNode {
 			vc.txBeingValidated.Store(txNode.Tx.ID, txNode)
@@ -187,7 +225,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			return err
 		}
 
-		logger.Debugf("TX node contains %d TXs, and was sent to a cv", len(txBatch))
+		logger.Debugf("TX node contains %d TXs, and was sent to a vcservice", len(txBatch))
 	}
 }
 

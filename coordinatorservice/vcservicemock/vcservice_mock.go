@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"google.golang.org/grpc"
 )
 
@@ -19,17 +22,23 @@ type MockVcService struct {
 	protovcservice.ValidationAndCommitServiceServer
 	txBatchChan            chan *protovcservice.TransactionBatch
 	numBatchesReceived     *atomic.Uint32
-	lastCommittedBlock     atomic.Uint64
+	lastCommittedBlock     atomic.Int64
 	numWaitingTransactions atomic.Int32
-	maxBlockNumber         atomic.Uint64
+	maxBlockNumber         atomic.Int64
+	txsStatus              *sync.Map
 }
 
 // NewMockVcService returns a new MockVcService.
 func NewMockVcService() *MockVcService {
-	return &MockVcService{
+	m := &MockVcService{
 		txBatchChan:        make(chan *protovcservice.TransactionBatch),
 		numBatchesReceived: &atomic.Uint32{},
+		txsStatus:          &sync.Map{},
 	}
+	m.lastCommittedBlock.Store(-1)
+	m.maxBlockNumber.Store(-1)
+
+	return m
 }
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
@@ -45,7 +54,7 @@ func (vc *MockVcService) SetLastCommittedBlockNumber(
 	_ context.Context,
 	lastBlock *protoblocktx.BlockInfo,
 ) (*protovcservice.Empty, error) {
-	vc.lastCommittedBlock.Store(lastBlock.Number)
+	vc.lastCommittedBlock.Store(int64(lastBlock.Number)) // nolint:gosec
 	return nil, nil
 }
 
@@ -54,7 +63,10 @@ func (vc *MockVcService) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: vc.lastCommittedBlock.Load()}, nil
+	if vc.lastCommittedBlock.Load() == -1 {
+		return nil, vcservice.ErrMetadataEmpty
+	}
+	return &protoblocktx.BlockInfo{Number: uint64(vc.lastCommittedBlock.Load())}, nil // nolint:gosec
 }
 
 // GetMaxSeenBlockNumber get the last seen maximum block number in the database/ledger.
@@ -62,7 +74,26 @@ func (vc *MockVcService) GetMaxSeenBlockNumber(
 	_ context.Context,
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: vc.maxBlockNumber.Load()}, nil
+	if vc.maxBlockNumber.Load() == -1 {
+		return nil, vcservice.ErrMetadataEmpty
+	}
+	return &protoblocktx.BlockInfo{Number: uint64(vc.maxBlockNumber.Load())}, nil // nolint:gosec
+}
+
+// GetTransactionsStatus get the status for a given set of transactions IDs.
+func (vc *MockVcService) GetTransactionsStatus(
+	_ context.Context,
+	query *protoblocktx.QueryStatus,
+) (*protovcservice.TransactionStatus, error) {
+	s := &protovcservice.TransactionStatus{Status: make(map[string]protoblocktx.Status)}
+	for _, id := range query.TxIDs {
+		v, ok := vc.txsStatus.Load(id)
+		if ok {
+			s.Status[id] = v.(protoblocktx.Status) //nolint
+		}
+	}
+
+	return s, nil
 }
 
 // StartValidateAndCommitStream is the mock implementation of the
@@ -101,7 +132,7 @@ func (vc *MockVcService) receiveAndProcessTransactions(
 			return err
 		}
 
-		vc.numWaitingTransactions.Add(int32(len(txBatch.Transactions)))
+		vc.numWaitingTransactions.Add(int32(len(txBatch.Transactions))) // nolint:gosec
 		vc.numBatchesReceived.Add(1)
 		vc.txBatchChan <- txBatch
 	}
@@ -110,19 +141,26 @@ func (vc *MockVcService) receiveAndProcessTransactions(
 func (vc *MockVcService) sendTransactionStatus(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	for txBatch := range vc.txBatchChan {
+	txBatchChan := channel.NewReader(stream.Context(), vc.txBatchChan)
+	for {
+		txBatch, ok := txBatchChan.Read()
+		if !ok {
+			return nil
+		}
 		txsStatus := &protovcservice.TransactionStatus{
 			Status: make(map[string]protoblocktx.Status),
 		}
 
-		maxNum := uint64(0)
+		maxNum := vc.lastCommittedBlock.Load()
 		for _, tx := range txBatch.Transactions {
 			if tx.PrelimInvalidTxStatus != nil {
 				txsStatus.Status[tx.ID] = tx.PrelimInvalidTxStatus.Code
+				vc.txsStatus.Store(tx.ID, tx.PrelimInvalidTxStatus.Code)
 			} else {
 				txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
+				vc.txsStatus.Store(tx.ID, protoblocktx.Status_COMMITTED)
 			}
-			maxNum = max(maxNum, tx.BlockNumber)
+			maxNum = max(maxNum, int64(tx.BlockNumber)) // nolint:gosec
 		}
 		vc.maxBlockNumber.Store(maxNum)
 
@@ -134,10 +172,8 @@ func (vc *MockVcService) sendTransactionStatus(
 			return err
 		}
 
-		vc.numWaitingTransactions.Add(-int32((len(txBatch.Transactions))))
+		vc.numWaitingTransactions.Add(-int32(len(txBatch.Transactions))) // nolint:gosec
 	}
-
-	return nil
 }
 
 // GetNumBatchesReceived returns the number of batches received by MockVcService.

@@ -173,6 +173,18 @@ func (vc *ValidatorCommitterService) GetMaxSeenBlockNumber(
 	return vc.db.getMaxSeenBlockNumber(ctx)
 }
 
+// GetTransactionsStatus gets the status of a given set of transaction IDs.
+func (vc *ValidatorCommitterService) GetTransactionsStatus(
+	ctx context.Context,
+	query *protoblocktx.QueryStatus,
+) (*protovcservice.TransactionStatus, error) {
+	txIDs := make([][]byte, len(query.GetTxIDs()))
+	for i, txID := range query.GetTxIDs() {
+		txIDs[i] = []byte(txID)
+	}
+	return vc.db.queryTransactionsStatus(ctx, txIDs)
+}
+
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
 // It receives transactions from the client, prepares them, validates them and commits them to the database.
 // It also sends the status of the transactions to the client.
