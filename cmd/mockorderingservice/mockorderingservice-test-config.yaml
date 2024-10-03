@@ -1,0 +1,9 @@
+logging:
+  enabled: true
+  level: debug
+  Caller: true
+  Development: true
+  Output: %s
+mock-ordering-service:
+  server:
+    endpoint: localhost:4001

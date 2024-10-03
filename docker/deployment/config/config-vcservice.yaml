@@ -1,14 +1,14 @@
 validator-committer-service:
   server:
     endpoint:
-      host: ""
+      host:
       port: 6001
   database:
-    host: "db"
+    host: db
     port: 5432
-    username: "yugabyte"
-    password: "yugabyte"
-    database: "yugabyte"
+    username: yugabyte
+    password: yugabyte
+    database: yugabyte
     max-connections: 10
     min-connections: 5
   resource-limits:
@@ -24,4 +24,3 @@ logging:
   development: true
   enabled: true
   level: INFO
-

@@ -45,6 +45,7 @@ image_namespace=icr.io/cbdc
 # Eg.g, make build-local os=linux arch=amd64
 os             ?= $(shell go env GOOS)
 arch           ?= $(shell go env GOARCH)
+multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 go_build       ?= $(env) go build -buildvcs=false -o
 
@@ -128,7 +129,7 @@ $(cache_dir) $(mod_cache_dir):
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
 BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor \
-							loadgen coordinator_setup mockvcservice mocksigservice
+							loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
 
 build: $(output_dir) $(BUILD_TARGETS)
 
@@ -159,6 +160,9 @@ mockvcservice: $(output_dir)
 mocksigservice: $(output_dir)
 	$(go_build) "$(output_dir)/mocksigservice" ./cmd/mocksigservice
 
+mockorderingservice: $(output_dir)
+	$(go_build) "$(output_dir)/mockorderingservice" ./cmd/mockorderingservice
+
 build-docker: $(cache_dir) $(mod_cache_dir)
 	$(docker_cmd) run --rm -it \
 	  --mount "type=bind,source=$(project_dir),target=$(project_dir)" \
@@ -175,7 +179,14 @@ build-test-node-image:
 	${docker_cmd} build -f $(dockerfile_test_node_dir)/Dockerfile -t ${image_namespace}/committer-test-node:${version} .
 
 build-release-images:
-	./scripts/build-release-images.sh $(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir)
+	./scripts/build-release-images.sh $(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform)
+
+build-mock-orderer-image:
+	${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
+		-t ${image_namespace}/mock-ordering-service:${version} \
+		--build-arg SERVICE_NAME=mockorderingservice \
+		--build-arg PORTS=4001 \
+		.
 
 .PHONY: lint
 lint:

@@ -184,6 +184,7 @@ func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVeri
 	if err != nil {
 		return nil, err
 	}
+	logger.Infof("signature verifier manager connected to signature verifier at %s", serverConfig.Endpoint.String())
 
 	return &signatureVerifier{
 		conn:              conn,

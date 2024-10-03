@@ -31,7 +31,7 @@ var (
 
 func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit
 	// Start dependencies
-	ordererServerConfig, mockOrderer, ordererGrpc := orderermock.StartMockOrderingService(3)
+	ordererServerConfig, mockOrderer, ordererGrpc := orderermock.StartMockOrderingServices(3, nil)
 	t.Cleanup(func() {
 		for _, oGrpc := range ordererGrpc {
 			oGrpc.Stop()

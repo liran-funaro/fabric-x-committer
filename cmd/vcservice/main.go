@@ -97,7 +97,7 @@ func initCmd() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to initialize")
+	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{}, "set the namespaces to initialize")
 	return cmd
 }
 

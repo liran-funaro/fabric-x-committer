@@ -23,7 +23,7 @@ services:
       - testnet
 
   blockgen:
-    image: "sc_blockgen:latest"
+    image: "committer-loadgen:latest"
     volumes:
       - ../config/config-blockgen.yaml:/config.yaml
       - ../scripts/blockgen.docker-entrypoint.sh:/docker-entrypoint.sh

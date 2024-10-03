@@ -1,0 +1,10 @@
+logging:
+  enabled: true
+  level: debug
+  Caller: true
+  Development: true
+mock-ordering-service:
+  server:
+    endpoint:
+      host: ""
+      port: 4001

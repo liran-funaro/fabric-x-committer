@@ -171,8 +171,11 @@ func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, st
 	return seekInfo, chdr.ChannelId, nil
 }
 
-// StartMockOrderingService starts a mock ordering service.
-func StartMockOrderingService(numService int) ([]*connection.ServerConfig, []*MockOrderer, []*grpc.Server) {
+// StartMockOrderingServices starts a specified number of mock ordering service.
+func StartMockOrderingServices(
+	numService int,
+	serverConfigs []*connection.ServerConfig,
+) ([]*connection.ServerConfig, []*MockOrderer, []*grpc.Server) {
 	os := make([]*MockOrderer, numService)
 
 	inEnvsPerOrderer := make([]<-chan *common.Envelope, numService)
@@ -188,6 +191,12 @@ func StartMockOrderingService(numService int) ([]*connection.ServerConfig, []*Mo
 	allInEnvs := fanIn(inEnvsPerOrderer)
 	allOutBlocks := cutBlocks(allInEnvs, 100, 10*time.Second)
 	fanOut(allOutBlocks, outBlocksPerOrderer)
+
+	if len(serverConfigs) == numService {
+		return serverConfigs, os, test.StartMockServersWithConfig(serverConfigs, func(server *grpc.Server, index int) {
+			ab.RegisterAtomicBroadcastServer(server, os[index])
+		})
+	}
 
 	sc, grpcSrvs := test.StartMockServers(numService, func(server *grpc.Server, index int) {
 		ab.RegisterAtomicBroadcastServer(server, os[index])

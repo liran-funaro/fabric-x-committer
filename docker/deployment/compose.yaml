@@ -1,45 +1,55 @@
 version: "3.8"
 
 services:
+  mock-ordering-service:
+    image: "icr.io/cbdc/mock-ordering-service:0.0.2"
+    ports:
+      - "4001:4001"
+    volumes:
+      - ./config/config-mockorderingservice.yaml:/config.yaml
+      - ./scripts/mockorderingservice.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+
   coordinator:
-    image: "sc_coordinator:latest"
+    image: "icr.io/cbdc/committer-coordinator:0.0.2"
     ports:
       - "9001:9001"
     volumes:
       - ./config/config-coordinator.yaml:/config.yaml
       - ./scripts/coordinator.docker-entrypoint.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
-    depends_on:
-      - sigservice
-      - vcservice
+    # depends_on:
+    #   - db
+    #   - validator-persister
+    #   - signature-verifier
 
-  sigservice:
-    image: "sc_sigservice:latest"
+  signature-verifier:
+    image: "icr.io/cbdc/committer-signature-verifier:0.0.2"
     ports:
       - "5001:5001"
     volumes:
       - ./config/config-sigservice.yaml:/config.yaml
-      - ./scripts/sigservice.docker-entrypoint.sh:/docker-entrypoint.sh
+      - ./scripts/signatureverifier.docker-entrypoint.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
 
-  vcservice:
-    image: "sc_vcservice:latest"
+  validator-persister:
+    image: "icr.io/cbdc/committer-validator-persister:0.0.2"
     ports:
       - "6001:6001"
     volumes:
       - ./config/config-vcservice.yaml:/config.yaml
-      - ./scripts/vcservice.docker-entrypoint.sh:/docker-entrypoint.sh
+      - ./scripts/validatorpersister.docker-entrypoint.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
     depends_on:
       - db
 
-  queryservice:
-    image: "sc_queryservice:latest"
+  query-executor:
+    image: "icr.io/cbdc/committer-query-executor:0.0.2"
     ports:
       - "7001:7001"
     volumes:
       - ./config/config-queryservice.yaml:/config.yaml
-      - ./scripts/queryservice.docker-entrypoint.sh:/docker-entrypoint.sh
+      - ./scripts/queryexecutor.docker-entrypoint.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
     depends_on:
       - db
@@ -52,3 +62,14 @@ services:
       POSTGRES_USER: yugabyte
       POSTGRES_PASSWORD: yugabyte
 
+  sidecar:
+    image: "icr.io/cbdc/committer-sidecar:0.0.2"
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./config/config-sidecar.yaml:/config.yaml
+      - ./scripts/sidecar.docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ./docker-entrypoint.sh
+    depends_on:
+      - coordinator
+      - mock-ordering-service

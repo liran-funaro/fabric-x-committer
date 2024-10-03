@@ -151,6 +151,7 @@ func newValidatorCommitter(
 	if err != nil {
 		return nil, err
 	}
+	logger.Infof("validator persister manager connected to validator persister at %s", serverConfig.Endpoint.String())
 
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 	vcStream, err := client.StartValidateAndCommitStream(ctx)

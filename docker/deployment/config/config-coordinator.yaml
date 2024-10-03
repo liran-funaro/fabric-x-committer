@@ -1,19 +1,19 @@
 coordinator-service:
   server:
     endpoint:
-      host: ""
+      host:
       port: 9001
   sign-verifier:
     server:
       - # server 1 configuration
         endpoint:
-          host: "sigservice"
+          host: "signature-verifier"
           port: 5001
   validator-committer:
     server:
       - # server 1 configuration
         endpoint:
-          host: "vcservice"
+          host: "validator-persister"
           port: 6001
   dependency-graph:
     num-of-local-dep-constructors: 20
@@ -28,4 +28,3 @@ logging:
   development: true
   enabled: true
   level: INFO
-

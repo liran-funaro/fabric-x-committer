@@ -71,6 +71,7 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 	if err != nil {
 		return nil, err
 	}
+	logger.Infof("validator persister connected to database at %s:%d", config.Host, config.Port)
 
 	dbType, err := getDbType(context.Background(), pool)
 	if err != nil {
