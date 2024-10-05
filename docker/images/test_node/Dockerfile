@@ -1,9 +1,12 @@
-FROM golang:1.23.0-bookworm as sc_builder
+ARG GO_IMAGE
+FROM ${GO_IMAGE} as sc_builder
+
 ADD . scalable-commiter
 RUN cd scalable-commiter && \
   CGO_ENABLED=0 make build output_dir=/root/build
 
-FROM yugabytedb/yugabyte:2.20.2.3-b2
+FROM ${DB_IMAGE} as node
+ARG DB_IMAGE
 
 ENV CONFIGS_PATH=/root/config
 ENV BINS_PATH=/root/bin

@@ -23,8 +23,9 @@ project_dir    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 output_dir     ?= $(project_dir)/bin
 cache_dir      ?= $(shell go env GOCACHE)
 mod_cache_dir  ?= $(shell go env GOMODCACHE)
-golang_image   ?= golang:1.23.0-bookworm
-db_image       ?= yugabyte/yugabytedb:2.20.6.0-b66
+go_version     ?= 1.23.2
+golang_image   ?= golang:$(go_version)-bookworm
+db_image       ?= yugabytedb/yugabyte:2.20.7.0-b58
 
 dockerfile_base_dir       ?= $(project_dir)/docker/images
 dockerfile_test_node_dir  ?= $(dockerfile_base_dir)/test_node
@@ -176,10 +177,15 @@ build-docker: $(cache_dir) $(mod_cache_dir)
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
 build-test-node-image:
-	${docker_cmd} build -f $(dockerfile_test_node_dir)/Dockerfile -t ${image_namespace}/committer-test-node:${version} .
+	${docker_cmd} build -f $(dockerfile_test_node_dir)/Dockerfile \
+	  -t ${image_namespace}/committer-test-node:${version} \
+		--build-arg GO_IMAGE=${golang_image} \
+		--build-arg DB_IMAGE=${db_image} \
+	  .
 
 build-release-images:
-	./scripts/build-release-images.sh $(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform)
+	./scripts/build-release-images.sh \
+		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(golang_image)
 
 build-mock-orderer-image:
 	${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \

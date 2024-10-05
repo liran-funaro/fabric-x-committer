@@ -6,6 +6,7 @@ version=$2
 namespace=$3
 dockerfile_release_dir=$4
 multiplatform=$5
+go_image_name=$6
 image_prefix=committer-
 
 function build_image() {
@@ -23,6 +24,7 @@ function build_image() {
       --platform linux/amd64,linux/arm64,linux/s390x --manifest ${manifest_name} \
       --build-arg SERVICE_NAME="${service_name}" \
       --build-arg PORTS="${service_ports}" \
+      --build-arg GO_IMAGE="${go_image_name}" \
       .
   else
     # Current platform build
@@ -30,6 +32,7 @@ function build_image() {
       -t ${manifest_name} \
       --build-arg SERVICE_NAME="${service_name}" \
       --build-arg PORTS="${service_ports}" \
+      --build-arg GO_IMAGE="${go_image_name}" \
       .
   fi
 }

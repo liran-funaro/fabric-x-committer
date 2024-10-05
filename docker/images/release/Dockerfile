@@ -1,4 +1,5 @@
-FROM golang:1.23.0-bookworm as sc_builder
+ARG GO_IMAGE
+FROM ${GO_IMAGE} as sc_builder
 
 ARG SERVICE_NAME
 

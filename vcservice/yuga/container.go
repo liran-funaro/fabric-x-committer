@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultImage        = "yugabytedb/yugabyte:2.20.2.3-b2"
+	defaultImage        = "yugabytedb/yugabyte:2.20.7.0-b58"
 	defaultInstanceName = "sc_yugabyte_unit_tests"
 	defaultHostIP       = "127.0.0.1"
 )
