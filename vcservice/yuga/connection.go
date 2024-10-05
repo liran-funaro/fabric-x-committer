@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -62,11 +63,14 @@ func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MaxConns = 1
 	poolConfig.MinConns = 1
 
-	pool, err := pgxpool.ConnectConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, fmt.Errorf("[%s] error making pool: %w", y.AddressString(), err)
+	var pool *pgxpool.Pool
+	if retryErr := utils.Retry(func() error {
+		pool, err = pgxpool.ConnectConfig(context.Background(), poolConfig)
+		return err
+	}, 15*time.Second); retryErr != nil {
+		return nil, fmt.Errorf("[%s] error making pool: %w", y.AddressString(), retryErr)
 	}
-	return pool, err
+	return pool, nil
 }
 
 // WaitFirstReady waits for a successful interaction with the database on one of the connections.

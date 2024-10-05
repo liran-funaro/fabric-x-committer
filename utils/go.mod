@@ -3,6 +3,7 @@ module github.ibm.com/decentralized-trust-research/scalable-committer/utils
 go 1.22
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/consensys/gnark-crypto v0.12.1
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20221121030113-dd63f08100c7
 	github.com/hyperledger/fabric-protos-go v0.3.3

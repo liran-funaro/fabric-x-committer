@@ -4,22 +4,27 @@ validator-committer-service:
     # The server's endpoint configuration
     endpoint:
       host: "localhost" # The host of the server
-      port: 6002        # The port of the server
+      port: 6002 # The port of the server
     # Credentials for the server
   database:
-    host: "localhost"                          # The host of the database
-    port: 5433                                 # The port of the database
-    username: "yugabyte"                       # The username for the database
+    host: "localhost" # The host of the database
+    port: 5433 # The port of the database
+    username: "yugabyte" # The username for the database
     # TODO: pass password via environment variable
-    password: "yugabyte"                       # The password for the database
-    database: "yugabyte"                       # The database name
-    max-connections: 10                        # The maximum size of the connection pool
-    min-connections: 5                         # The minimum size of the connection pool.
+    password: "yugabyte" # The password for the database
+    database: "yugabyte" # The database name
+    max-connections: 10 # The maximum size of the connection pool
+    min-connections: 5 # The minimum size of the connection pool.
+    # conn-pool-create-timeout denotes the maximum time allowed for the connection pool to be created.
+    # Creation attempts will be retried in case of errors, but will ultimately be abandoned if the pool
+    # cannot be established within this timeout period. A value of 0 indicates no timeout, but
+    # a default timeout is enforced to prevent forever execution.
+    conn-pool-create-timeout: 15s
   # Resource limit configurations
   resource-limits:
-    max-workers-for-preparer: 2                # Maximum number of workers for the preparer
-    max-workers-for-validator: 2               # Maximum number of workers for the validator
-    max-workers-for-committer: 2               # Maximum number of workers for the committer
+    max-workers-for-preparer: 2 # Maximum number of workers for the preparer
+    max-workers-for-validator: 2 # Maximum number of workers for the validator
+    max-workers-for-committer: 2 # Maximum number of workers for the committer
     min-transaction-batch-size: 2
     timeout-for-min-transaction-batch-size: 2s
   monitoring:

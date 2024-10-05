@@ -20,14 +20,15 @@ type ValidatorCommitterServiceConfig struct {
 
 // DatabaseConfig is the configuration for the database.
 type DatabaseConfig struct {
-	Host           string `mapstructure:"host"`
-	Port           int    `mapstructure:"port"`
-	Username       string `mapstructure:"username"`
-	Password       string `mapstructure:"password"`
-	Database       string `mapstructure:"database"`
-	MaxConnections int32  `mapstructure:"max-connections"`
-	MinConnections int32  `mapstructure:"min-connections"`
-	LoadBalance    bool   `mapstructure:"load-balance"`
+	Host                  string        `mapstructure:"host"`
+	Port                  int           `mapstructure:"port"`
+	Username              string        `mapstructure:"username"`
+	Password              string        `mapstructure:"password"`
+	Database              string        `mapstructure:"database"`
+	MaxConnections        int32         `mapstructure:"max-connections"`
+	MinConnections        int32         `mapstructure:"min-connections"`
+	LoadBalance           bool          `mapstructure:"load-balance"`
+	ConnPoolCreateTimeout time.Duration `mapstructure:"conn-pool-create-timeout"`
 }
 
 // DataSourceName returns the data source name of the database.
@@ -80,6 +81,7 @@ func setDefaults() {
 	viper.SetDefault(prefix+"database", "yugabyte")
 	viper.SetDefault(prefix+"max-connections", 20)
 	viper.SetDefault(prefix+"min-connections", 10)
+	viper.SetDefault(prefix+"conn-pool-create-timeout", 20*time.Second)
 
 	// defaults for ResourceLimitsConfig
 	prefix = "validator-committer-service.resource-limits."

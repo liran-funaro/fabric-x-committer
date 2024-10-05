@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 )
 
@@ -95,3 +97,14 @@ const (
 	Raft ConsensusType = "etcdraft"
 	Bft                = "BFT"
 )
+
+// Retry executes the given operation repeatedly until it succeeds or a timeout occurs.
+// It returns nil on success, or the error returned by the final attempt on timeout.
+func Retry(o backoff.Operation, timeout time.Duration) error {
+	if timeout.Seconds() == 0 {
+		return errors.New("Invalid timeout value. The timeout must be a positive number to prevent infinite retries.")
+	}
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.MaxElapsedTime = timeout
+	return backoff.Retry(o, expBackoff)
+}

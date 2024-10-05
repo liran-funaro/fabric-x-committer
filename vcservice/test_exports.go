@@ -3,6 +3,7 @@ package vcservice
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -22,13 +23,14 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	require.NoError(t, err)
 
 	config := &DatabaseConfig{
-		Host:           cs.Host,
-		Port:           port,
-		Username:       cs.User,
-		Password:       cs.Password,
-		Database:       cs.Database,
-		MaxConnections: 10,
-		MinConnections: 1,
+		Host:                  cs.Host,
+		Port:                  port,
+		Username:              cs.User,
+		Password:              cs.Password,
+		Database:              cs.Database,
+		MaxConnections:        10,
+		MinConnections:        1,
+		ConnPoolCreateTimeout: 15 * time.Second,
 	}
 
 	metrics := newVCServiceMetrics()

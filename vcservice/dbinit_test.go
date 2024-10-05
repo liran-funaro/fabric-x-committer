@@ -3,6 +3,7 @@ package vcservice
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -32,4 +33,17 @@ func Test_DbInit(t *testing.T) {
 	}
 
 	require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, ns))
+}
+
+func TestRetry(t *testing.T) {
+	pool, err := NewDatabasePool(&DatabaseConfig{
+		Host:                  "",
+		Port:                  1234,
+		Username:              "name",
+		Password:              "pwd",
+		MaxConnections:        5,
+		ConnPoolCreateTimeout: 15 * time.Second,
+	})
+	require.ErrorContains(t, err, "failed making pool")
+	require.Nil(t, pool)
 }
