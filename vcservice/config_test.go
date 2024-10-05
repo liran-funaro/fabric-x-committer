@@ -2,6 +2,7 @@ package vcservice
 
 import (
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -38,10 +39,11 @@ func TestConfig(t *testing.T) {
 					MinConnections: 5,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:   2,
-					MaxWorkersForValidator:  2,
-					MaxWorkersForCommitter:  2,
-					MinTransactionBatchSize: 2,
+					MaxWorkersForPreparer:             2,
+					MaxWorkersForValidator:            2,
+					MaxWorkersForCommitter:            2,
+					MinTransactionBatchSize:           2,
+					TimeoutForMinTransactionBatchSize: 2 * time.Second,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
@@ -76,10 +78,11 @@ func TestConfig(t *testing.T) {
 					MinConnections: 10,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:   10,
-					MaxWorkersForValidator:  10,
-					MaxWorkersForCommitter:  10,
-					MinTransactionBatchSize: 100,
+					MaxWorkersForPreparer:             10,
+					MaxWorkersForValidator:            10,
+					MaxWorkersForCommitter:            10,
+					MinTransactionBatchSize:           100,
+					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
@@ -113,10 +116,11 @@ func TestConfig(t *testing.T) {
 					MinConnections: 10,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:   10,
-					MaxWorkersForValidator:  10,
-					MaxWorkersForCommitter:  10,
-					MinTransactionBatchSize: 100,
+					MaxWorkersForPreparer:             10,
+					MaxWorkersForValidator:            10,
+					MaxWorkersForCommitter:            10,
+					MinTransactionBatchSize:           100,
+					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{

@@ -2,14 +2,13 @@ package vcservice
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
-
-var defaultLocalConfigFile = "config.yaml"
 
 // ValidatorCommitterServiceConfig is the configuration for the validator-committer service.
 type ValidatorCommitterServiceConfig struct {
@@ -46,10 +45,11 @@ func (d *DatabaseConfig) DataSourceName() string {
 
 // ResourceLimitsConfig is the configuration for the resource limits.
 type ResourceLimitsConfig struct {
-	MaxWorkersForPreparer   int `mapstructure:"max-workers-for-preparer"`
-	MaxWorkersForValidator  int `mapstructure:"max-workers-for-validator"`
-	MaxWorkersForCommitter  int `mapstructure:"max-workers-for-committer"`
-	MinTransactionBatchSize int `mapstructure:"min-transaction-batch-size"`
+	MaxWorkersForPreparer             int           `mapstructure:"max-workers-for-preparer"`
+	MaxWorkersForValidator            int           `mapstructure:"max-workers-for-validator"`
+	MaxWorkersForCommitter            int           `mapstructure:"max-workers-for-committer"`
+	MinTransactionBatchSize           int           `mapstructure:"min-transaction-batch-size"`
+	TimeoutForMinTransactionBatchSize time.Duration `mapstructure:"timeout-for-min-transaction-batch-size"`
 }
 
 // ReadConfig reads the configuration from the viper instance.
@@ -87,6 +87,7 @@ func setDefaults() {
 	viper.SetDefault(prefix+"max-workers-for-validator", 10)
 	viper.SetDefault(prefix+"max-workers-for-committer", 10)
 	viper.SetDefault(prefix+"min-transaction-batch-size", 100)
+	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
 
 	// defaults for monitoring.config
 	prefix = "validator-committer-service.monitoring."

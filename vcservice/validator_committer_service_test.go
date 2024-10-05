@@ -38,10 +38,12 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 		},
 		Database: dbEnv.DBConf,
 		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:   2,
-			MaxWorkersForValidator:  2,
-			MaxWorkersForCommitter:  2,
-			MinTransactionBatchSize: 1,
+			MaxWorkersForPreparer:             2,
+			MaxWorkersForValidator:            2,
+			MaxWorkersForCommitter:            2,
+			MinTransactionBatchSize:           1,
+			TimeoutForMinTransactionBatchSize: 10 * time.Second, // to avoid flakyness in TestWaitingTxsCount, we are
+			// setting the timeout value to 10 seconds
 		},
 		Monitoring: &monitoring.Config{
 			Metrics: &metrics.Config{
@@ -354,9 +356,8 @@ func TestWaitingTxsCount(t *testing.T) {
 	//       call to newValidatorAndCommitServiceTestEnv. By the
 	//       time we send the batch, we can be sure that the
 	//       batch would wait for the test to pass, as populateDataWithCleanup
-	//       and other operations should not consume more than 5 seconds.
-	//       Once we make the timeoutForMinTxBatchSize configurable, we can
-	//       increase the timeout further.
+	//       and other operations should not consume more than 10 seconds
+	//       which is the timeoutForMinTxBatchSize defined in newValidatorAndCommitServiceTestEnv.
 	env.vcs.minTxBatchSize = 10
 
 	success := make(chan bool, 1)

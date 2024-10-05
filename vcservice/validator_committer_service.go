@@ -85,7 +85,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 		db:                       db,
 		metrics:                  metrics,
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
-		timeoutForMinTxBatchSize: 5 * time.Second,
+		timeoutForMinTxBatchSize: config.ResourceLimits.TimeoutForMinTransactionBatchSize,
 		config:                   config,
 	}
 
