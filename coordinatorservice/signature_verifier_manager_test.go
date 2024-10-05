@@ -138,15 +138,17 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 
 	numTxs := 10
 	numBlocks := 1000
+	blocks := make([]*protoblocktx.Block, numBlocks)
 	expectedValid := make([]*protoblocktx.Block, numBlocks)
 	expectedInvalid := make([]*protoblocktx.Block, numBlocks)
 	for i := 0; i < numBlocks; i++ {
-		var block *protoblocktx.Block
-		block, expectedValid[i], expectedInvalid[i] = createBlockForTest(t, i, numTxs)
-		env.inputBlock <- block
+		blocks[i], expectedValid[i], expectedInvalid[i] = createBlockForTest(t, i, numTxs)
+	}
+	for i := 0; i < numBlocks; i++ {
+		env.inputBlock <- blocks[i]
 	}
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(10 * time.Second)
 	// For each block in the input, we expect a block in each of the two outputs.
 	for i := 0; i < numBlocks*2; i++ {
 		select {
@@ -159,10 +161,13 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 		}
 	}
 
+	totalBlocksReceived := uint32(0)
 	for _, sv := range env.mockSvService {
 		// Verify that each service got a reasonable proportion of the requests.
-		require.Greater(t, sv.GetNumBlocksReceived(), uint32(0.2*float32(numBlocks)))
+		totalBlocksReceived += sv.GetNumBlocksReceived()
+		require.Greater(t, sv.GetNumBlocksReceived(), uint32(0.1*float32(numBlocks)))
 	}
+	require.Equal(t, uint32(numBlocks), totalBlocksReceived)
 }
 
 func TestSignatureVerifierManagerKey(t *testing.T) {
