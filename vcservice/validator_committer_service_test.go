@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -421,6 +422,21 @@ func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
 	lastCommittedBlock, err = env.client.GetLastCommittedBlockNumber(env.ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastCommittedBlock.Number)
+}
+
+func TestVCServiceOneActiveStreamOnly(t *testing.T) {
+	env := newValidatorAndCommitServiceTestEnv(t)
+
+	require.Eventually(t, func() bool {
+		return env.vcs.isStreamActive.Load()
+	}, 4*time.Second, 250*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	stream, err := env.client.StartValidateAndCommitStream(ctx)
+	require.NoError(t, err)
+	_, err = stream.Recv()
+	require.ErrorContains(t, err, utils.ErrActiveStream.Error())
 }
 
 func ensureLastSeenMaxBlock(t *testing.T, client protovcservice.ValidationAndCommitServiceClient, number uint64) {

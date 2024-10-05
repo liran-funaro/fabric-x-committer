@@ -8,6 +8,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -40,9 +41,17 @@ type ValidatorCommitterService struct {
 	promErrChan              <-chan error
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
-	isStreamActive           atomic.Bool
 	numWaitingTxsForStatus   atomic.Int32
 	config                   *ValidatorCommitterServiceConfig
+
+	// isStreamActive indicates whether a stream from the client (i.e., coordinator) to the vcservice
+	// is currently active. We permit a maximum of one active stream at a time. If multiple
+	// streams were allowed concurrently, transaction status might not reach the client
+	// reliably, as we are not currently associating requests and their corresponding responses
+	// (i.e., status updates) with specific streams.
+	// Further, when isStreamActive is active, NumberOfWaitingTransactionsForStatus would return an
+	// error as this gRPC api can be called only when the stream is inactive.
+	isStreamActive atomic.Bool
 }
 
 // Limits is the struct that contains the limits of the service.
@@ -103,7 +112,8 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return vc.batchReceivedTransactionsAndForwardForProcessing(eCtx)
+		vc.batchReceivedTransactionsAndForwardForProcessing(eCtx)
+		return nil
 	})
 
 	l := vc.config.ResourceLimits
@@ -191,8 +201,9 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	logger.Info("Start validate and commit stream")
-	vc.isStreamActive.Store(true)
+	if !vc.isStreamActive.CompareAndSwap(false, true) {
+		return utils.ErrActiveStream
+	}
 	defer vc.isStreamActive.Store(false)
 
 	g, ctx := errgroup.WithContext(stream.Context())
@@ -243,7 +254,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 	return nil
 }
 
-func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) error {
+func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) {
 	largerBatch := &protovcservice.TransactionBatch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
@@ -263,12 +274,12 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case <-timer.C:
 			sendLargeBatch()
 		case txBatch, ok := <-vc.receivedTxBatch:
 			if !ok {
-				return nil
+				return
 			}
 			largerBatch.Transactions = append(largerBatch.Transactions, txBatch.Transactions...)
 			logger.Debugf("New batch with %d TXs received in vc."+

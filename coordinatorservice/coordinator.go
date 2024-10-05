@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
@@ -53,6 +54,13 @@ type (
 
 		// firstExpectedBlockNumber denotes the first block number to be received by the coordinator.
 		firstExpectedBlockNumber uint64
+
+		// isStreamActive indicates whether a stream from the client (i.e., sidecar) to the coordinator
+		// is currently active. We permit a maximum of one active stream at a time. If multiple
+		// streams were allowed concurrently, transaction status might not reach the client
+		// reliably, as we are not currently associating requests and their corresponding responses
+		// (i.e., status updates) with specific streams.
+		isStreamActive atomic.Bool
 	}
 
 	channels struct {
@@ -298,6 +306,11 @@ func (c *CoordinatorService) GetMaxSeenBlockNumber(
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
+	if !c.isStreamActive.CompareAndSwap(false, true) {
+		return utils.ErrActiveStream
+	}
+	defer c.isStreamActive.Store(false)
+
 	logger.Info("Start validate and commit stream")
 
 	g, eCtx := errgroup.WithContext(stream.Context())

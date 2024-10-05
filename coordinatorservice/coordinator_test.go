@@ -18,6 +18,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -130,6 +131,22 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	})
 
 	t.Cleanup(cancel)
+}
+
+func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
+	env := newCoordinatorTestEnv(t, 1, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
+
+	require.Eventually(t, func() bool {
+		return env.coordinator.isStreamActive.Load()
+	}, 4*time.Second, 250*time.Millisecond)
+
+	stream, err := env.client.BlockProcessing(ctx)
+	require.NoError(t, err)
+	_, err = stream.Recv()
+	require.ErrorContains(t, err, utils.ErrActiveStream.Error())
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
