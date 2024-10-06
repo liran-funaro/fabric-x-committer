@@ -105,9 +105,12 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
-	vc.promErrChan = vc.metrics.provider.StartPrometheusServer(vc.config.Monitoring.Metrics.Endpoint)
 	g.Go(func() error {
-		vc.monitorQueues(eCtx)
+		_ = vc.metrics.provider.StartPrometheusServer(
+			eCtx, vc.config.Monitoring.Metrics.Endpoint, vc.monitorQueues,
+		)
+		// We don't return error here to avoid stopping the service due to monitoring error.
+		// But we use the errgroup to ensure the method returns only when the server exits.
 		return nil
 	})
 
@@ -335,11 +338,6 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 
 // Close stops the VC service.
 func (vc *ValidatorCommitterService) Close() {
-	err := vc.metrics.provider.StopServer()
-	if err != nil {
-		logger.Errorf("Failed stopping prometheus server: %s", err)
-	}
-
 	logger.Info("Closing the database connection")
 	vc.db.close()
 }

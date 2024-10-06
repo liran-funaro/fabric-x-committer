@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -53,13 +51,10 @@ func startCmd() *cobra.Command {
 			serviceConfig := queryservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			qs, err := queryservice.NewQueryService(cmd.Context(), serviceConfig)
+			qs, err := queryservice.NewQueryService(serviceConfig)
 			if err != nil {
 				return err
 			}
-			defer qs.Close()
-
-			promErr := qs.StartPrometheusServer()
 
 			go connection.RunServerMain(serviceConfig.Server, func(server *grpc.Server, port int) {
 				if serviceConfig.Server.Endpoint.Port == 0 {
@@ -68,26 +63,9 @@ func startCmd() *cobra.Command {
 				protoqueryservice.RegisterQueryServiceServer(server, qs)
 			})
 
-			err = getCmdErr(cmd.Context(), promErr)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil
-			}
-			return err
+			return qs.Run(cmd.Context())
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
-}
-
-func getCmdErr(ctx context.Context, errChan <-chan error) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		case err := <-errChan:
-			if err != nil {
-				return err
-			}
-		}
-	}
 }

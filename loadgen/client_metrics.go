@@ -1,10 +1,14 @@
 package loadgen
 
 import (
+	"context"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
 // PerfMetrics is a struct that contains the metrics for the block generator.
@@ -86,4 +90,33 @@ func (c *ClientTracker) OnSendBlock(block *protoblocktx.Block) {
 func (c *ClientTracker) OnSendTransaction(txID string) {
 	c.metrics.transactionSentTotal.Add(1)
 	c.latencyTracker.OnSendTransaction(txID)
+}
+
+func createProvider(c *metrics.Config) metrics.Provider {
+	if !c.Enable {
+		return metrics.NewNoOpProvider()
+	}
+	return &defaultProvider{
+		LatencyConfig:  &c.Latency,
+		Provider:       prometheusmetrics.NewProvider(),
+		serverEndpoint: c.Endpoint,
+	}
+}
+
+type defaultProvider struct {
+	*metrics.LatencyConfig
+	*prometheusmetrics.Provider
+	serverEndpoint *connection.Endpoint
+}
+
+func (p *defaultProvider) StartPrometheusServer(ctx context.Context) error {
+	return p.Provider.StartPrometheusServer(ctx, p.serverEndpoint)
+}
+
+func (p *defaultProvider) NewIntCounter(opts prometheus.CounterOpts) *metrics.IntCounter {
+	return &metrics.IntCounter{Counter: p.NewCounter(opts)}
+}
+
+func (p *defaultProvider) NewIntGauge(opts prometheus.GaugeOpts) *metrics.IntGauge {
+	return &metrics.IntGauge{Gauge: p.NewGauge(opts)}
 }

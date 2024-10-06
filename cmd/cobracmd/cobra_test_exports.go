@@ -55,6 +55,10 @@ func UnitTestRunner(
 		Output:      loggerOutputPath,
 	}
 	logging.SetupWithConfig(logger)
+	t.Cleanup(func() {
+		// Delete the logger's files of the current test.
+		require.NoError(t, os.Remove(logger.Output))
+	})
 
 	// Creating new buffers for the cmd stdout and stderr.
 	cmdStdOut := new(bytes.Buffer)
@@ -64,14 +68,18 @@ func UnitTestRunner(
 	cmd.SetErr(cmdStdErr)
 	cmd.SetArgs(test.Args)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	wg := &sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
 
-	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		runService(ctx, t, cmd, test.Err)
-		wg.Done()
+		defer wg.Done()
+		_, err := cmd.ExecuteContextC(ctx)
+		err = connection.FilterStreamErrors(err)
+		require.Equal(t, test.Err, err)
 	}()
 
 	// Require that the cmd output will align with the test expected output.
@@ -87,14 +95,4 @@ func UnitTestRunner(
 		}
 		return strings.Contains(string(logOut), test.CmdLoggerOutput) && strings.Contains(string(logOut), test.Endpoint)
 	}, 30*time.Second, 500*time.Millisecond)
-
-	// Delete the logger's files of the current test.
-	require.NoError(t, os.Remove(logger.Output))
-	wg.Wait()
-}
-
-func runService(ctx context.Context, t *testing.T, cmd *cobra.Command, expectedErr error) {
-	_, err := cmd.ExecuteContextC(ctx)
-	err = connection.FilterStreamErrors(err)
-	require.Equal(t, expectedErr, err)
 }

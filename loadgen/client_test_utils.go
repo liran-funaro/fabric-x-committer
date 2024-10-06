@@ -46,15 +46,12 @@ func startLoadGenerator(t *testing.T, c *ClientConfig) *PerfMetrics {
 	logger.Debugf("Starting load generator with config: %v", c)
 	metrics, blockGen, client, err := Starter(c)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, metrics.provider.StopServer())
-	})
+	t.Cleanup(client.Stop)
 	require.NoError(t, client.Start(blockGen))
 	go func() {
 		<-client.Context().Done()
 		require.ErrorIs(t, context.Cause(client.Context()), ErrStoppedByUser)
 	}()
-	t.Cleanup(client.Stop)
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) > 0 &&

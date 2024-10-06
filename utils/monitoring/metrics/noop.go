@@ -1,24 +1,21 @@
 package metrics
 
 import (
+	"context"
+
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
 
 func NewNoOpProvider() Provider {
-	return &noOpProvider{LatencyConfig: &LatencyConfig{}, errChan: make(chan error)}
+	return &noOpProvider{LatencyConfig: &LatencyConfig{}}
 }
 
 type noOpProvider struct {
 	*LatencyConfig
-	errChan chan error
 }
 
-func (p *noOpProvider) StartPrometheusServer() <-chan error {
-	return p.errChan
-}
-func (p *noOpProvider) StopServer() error {
-	p.errChan <- nil
+func (p *noOpProvider) StartPrometheusServer(context.Context) error {
 	return nil
 }
 func (p *noOpProvider) URL() string                                          { return "" }
@@ -26,9 +23,11 @@ func (p *noOpProvider) NewCounter(prometheus.CounterOpts) prometheus.Counter { r
 func (p *noOpProvider) NewIntCounter(prometheus.CounterOpts) *IntCounter {
 	return &IntCounter{Counter: &noOpCounter{}}
 }
+
 func (p *noOpProvider) NewIntGauge(prometheus.GaugeOpts) *IntGauge {
 	return &IntGauge{Gauge: &noOpGauge{}}
 }
+
 func (p *noOpProvider) NewCounterVec(prometheus.CounterOpts, []string) *prometheus.CounterVec {
 	return &prometheus.CounterVec{MetricVec: prometheus.NewMetricVec(&prometheus.Desc{}, func(...string) prometheus.Metric {
 		return &noOpMetric{}
@@ -40,9 +39,11 @@ func (p *noOpProvider) NewGaugeVec(prometheus.GaugeOpts, []string) *prometheus.G
 		return &noOpGauge{}
 	})}
 }
+
 func (p *noOpProvider) NewHistogram(prometheus.HistogramOpts) prometheus.Histogram {
 	return &noOpHistogram{}
 }
+
 func (p *noOpProvider) NewHistogramVec(prometheus.HistogramOpts, []string) *prometheus.HistogramVec {
 	return &prometheus.HistogramVec{MetricVec: prometheus.NewMetricVec(&prometheus.Desc{}, func(...string) prometheus.Metric {
 		return &noOpHistogram{}

@@ -1,12 +1,12 @@
 package prometheusmetrics
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -27,9 +27,15 @@ func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
 	}
 	p := NewProvider()
 	client := &http.Client{}
+	t.Cleanup(func() {
+		client.CloseIdleConnections()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 
 	go func() {
-		require.NoError(t, <-p.StartPrometheusServer(c.Endpoint))
+		require.NoError(t, p.StartPrometheusServer(ctx, c.Endpoint))
 	}()
 
 	require.Eventually(t, func() bool {
@@ -40,11 +46,6 @@ func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
 		_, err := client.Get(p.URL())
 		return err == nil
 	}, 5*time.Second, 100*time.Millisecond)
-
-	t.Cleanup(func() {
-		assert.NoError(t, p.StopServer())
-		client.CloseIdleConnections()
-	})
 
 	return &metricsProviderTestEnv{
 		provider: p,

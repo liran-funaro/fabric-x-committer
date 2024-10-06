@@ -8,7 +8,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -48,7 +47,7 @@ func (c *loadGenClient) Context() context.Context {
 
 func createClient(c *ClientConfig) (BlockGenClient, *PerfMetrics, error) { //nolint:ireturn
 	logger.Infof("Config passed: %s", utils.LazyJson(c))
-	m := newBlockgenServiceMetrics(metrics.CreateProvider(c.Monitoring.Metrics))
+	m := newBlockgenServiceMetrics(createProvider(c.Monitoring.Metrics))
 
 	if c.CoordinatorClient != nil {
 		return newCoordinatorClient(c.CoordinatorClient, m), m, nil
@@ -93,10 +92,9 @@ func Starter( //nolint:revive,ireturn
 		return nil, nil, nil, errors.Wrap(err, "failed creating client")
 	}
 
-	promErrChan := perfMetrics.provider.StartPrometheusServer()
-
 	go func() {
-		if errProm := <-promErrChan; errProm != nil {
+		errProm := perfMetrics.provider.StartPrometheusServer(client.Context())
+		if errProm != nil {
 			log.Panic(err) // nolint: revive
 		}
 	}()

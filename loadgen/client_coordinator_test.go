@@ -32,16 +32,18 @@ var (
 func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	// Start dependencies
 	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
 	t.Cleanup(func() {
 		for _, sv := range mockSigVer {
 			sv.Close()
 		}
-		for _, vc := range mockVC {
-			vc.Close()
-		}
 		for _, svGrpc := range sigVerGrpc {
 			svGrpc.Stop()
+		}
+	})
+	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
+	t.Cleanup(func() {
+		for _, vc := range mockVC {
+			vc.Close()
 		}
 		for _, svGrpc := range vcGrpc {
 			svGrpc.Stop()
@@ -54,7 +56,6 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	conf := coordinatorservice.ReadConfig()
 
 	service := coordinatorservice.NewCoordinatorService(conf)
-	t.Cleanup(func() { require.NoError(t, service.Close()) })
 
 	var wg sync.WaitGroup
 	t.Cleanup(wg.Wait)

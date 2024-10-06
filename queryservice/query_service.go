@@ -8,69 +8,58 @@ import (
 
 	"github.com/google/uuid"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
-var (
-	logger = logging.New("query service")
-
-	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
-	ErrInvalidOrStaleView = errors.New("invalid or stale view")
-)
+// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
+var ErrInvalidOrStaleView = errors.New("invalid or stale view")
 
 type (
 	// QueryService is a gRPC service that implements the QueryServiceServer interface.
 	QueryService struct {
 		protoqueryservice.UnimplementedQueryServiceServer
-		viewsBatcher
+		batcher viewsBatcher
+		config  *Config
+		metrics *perfMetrics
 	}
 )
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(ctx context.Context, config *Config) (*QueryService, error) {
-	metrics := newQueryServiceMetrics()
-	pool, poolErr := vcservice.NewDatabasePool(config.Database)
-	if poolErr != nil {
-		return nil, poolErr
-	}
-
-	serviceCtx, serviceCancel := context.WithCancel(ctx)
-	context.AfterFunc(serviceCtx, func() {
-		pool.Close()
-		if stopErr := metrics.StopServer(); stopErr != nil {
-			logger.Errorf("Failed stopping prometheus server: %s", stopErr)
-		}
-	})
-
+func NewQueryService(config *Config) (*QueryService, error) {
 	return &QueryService{
-		viewsBatcher: viewsBatcher{
-			ctx:     serviceCtx,
-			cancel:  serviceCancel,
-			config:  config,
-			metrics: metrics,
-			pool:    pool,
-			nonConsistentBatcher: batcher{
-				ctx: serviceCtx,
-				cancel: func() {
-				},
-				config:   config,
-				metrics:  metrics,
-				queryObj: &sharedPool{pool: pool},
-			},
-		},
+		config:  config,
+		metrics: newQueryServiceMetrics(),
 	}, nil
 }
 
-// Close releases the QueryService resources.
-func (q *QueryService) Close() {
-	q.cancel()
-}
+// Run starts the Prometheus server.
+func (q *QueryService) Run(ctx context.Context) error {
+	pool, poolErr := vcservice.NewDatabasePool(q.config.Database)
+	if poolErr != nil {
+		return poolErr
+	}
+	defer pool.Close()
 
-// StartPrometheusServer see Provider.StartPrometheusServer().
-func (q *QueryService) StartPrometheusServer() <-chan error {
-	return q.metrics.StartPrometheusServer(q.config.Monitoring.Metrics.Endpoint)
+	q.batcher = viewsBatcher{
+		ctx:     ctx,
+		config:  q.config,
+		metrics: q.metrics,
+		pool:    pool,
+		nonConsistentBatcher: batcher{
+			ctx: ctx,
+			cancel: func() {
+			},
+			config:   q.config,
+			metrics:  q.metrics,
+			queryObj: &sharedPool{pool: pool},
+		},
+	}
+
+	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring.Metrics.Endpoint)
+	// We don't use the error here as we avoid stopping the service due to monitoring error.
+	<-ctx.Done()
+	return nil
 }
 
 // BeginView implements the query-service interface.
@@ -90,7 +79,7 @@ func (q *QueryService) BeginView(
 		if err != nil {
 			return nil, err
 		}
-		if q.makeView(viewID, params) {
+		if q.batcher.makeView(viewID, params) {
 			return &protoqueryservice.View{Id: viewID}, nil
 		}
 	}
@@ -103,7 +92,7 @@ func (q *QueryService) EndView(
 ) (*protoqueryservice.View, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
 	defer q.requestLatency(grpcEndView, time.Now())
-	return view, q.removeViewID(view.Id)
+	return view, q.batcher.removeViewID(view.Id)
 }
 
 // GetRows implements the query-service interface.
@@ -144,7 +133,7 @@ func (q *QueryService) assignRequest(
 	defer func(start time.Time) {
 		prometheusmetrics.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))
 	}(time.Now())
-	batcher, err := q.getBatcher(ctx, query.View)
+	batcher, err := q.batcher.getBatcher(ctx, query.View)
 	if err != nil {
 		return nil, err
 	}

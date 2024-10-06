@@ -39,7 +39,6 @@ type (
 		stopSendingBlockToSigVerifierMgr *atomic.Bool
 		orderEnforcer                    *sync.Cond
 		metrics                          *perfMetrics
-		promErrChan                      <-chan error
 
 		uncommittedMetaNsTx *sync.Map
 
@@ -196,9 +195,12 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 func (c *CoordinatorService) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
-	c.promErrChan = c.metrics.provider.StartPrometheusServer(c.config.Monitoring.Metrics.Endpoint)
 	g.Go(func() error {
-		c.monitorQueues(eCtx)
+		_ = c.metrics.provider.StartPrometheusServer(
+			eCtx, c.config.Monitoring.Metrics.Endpoint, c.monitorQueues,
+		)
+		// We don't return error here to avoid stopping the service due to monitoring error.
+		// But we use the errgroup to ensure the method returns only when the server exits.
 		return nil
 	})
 
@@ -633,15 +635,6 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-		case err := <-c.promErrChan:
-			// Once the prometheus server is stopped, we no longer need to monitor the queues.
-			ticker.Stop()
-			if err != nil {
-				logger.Errorf("Prometheus ended with error: %v", err)
-			} else {
-				logger.Info("Prometheus server has been stopped")
-			}
-			return
 		}
 
 		m := c.metrics
@@ -653,11 +646,6 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.validatedTxsNode))
 		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.txsStatus))
 	}
-}
-
-// Close closes the prometheus server.
-func (c *CoordinatorService) Close() error {
-	return c.metrics.provider.StopServer()
 }
 
 func hasErrMetadataEmpty(err error) bool {

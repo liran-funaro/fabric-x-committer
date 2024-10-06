@@ -35,9 +35,7 @@ const (
 // This allows them to fetch the results once the query is done.
 type (
 	viewsBatcher struct {
-		// ctx and cancel allows stopping all active queries immediately.
 		ctx     context.Context
-		cancel  context.CancelFunc
 		config  *Config
 		metrics *perfMetrics
 		pool    *pgxpool.Pool

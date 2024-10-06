@@ -1,17 +1,25 @@
 package prometheusmetrics
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+)
+
+const (
+	schema         = "http://"
+	metricsSubPath = "/metrics"
 )
 
 var logger = logging.New("prometheus provider")
@@ -19,7 +27,6 @@ var logger = logging.New("prometheus provider")
 // Provider is a prometheus metrics provider.
 type Provider struct {
 	registry *prometheus.Registry
-	server   *http.Server
 	url      string
 }
 
@@ -27,21 +34,19 @@ type Provider struct {
 func NewProvider() *Provider {
 	return &Provider{
 		registry: prometheus.NewRegistry(),
-		server: &http.Server{
-			ReadTimeout: 30 * time.Second,
-		},
-		url: "",
 	}
 }
 
-// StartPrometheusServer starts a prometheus server in a separate goroutine
-// and returns an error channel that will receive an error if the server
-// stops unexpectedly.
-func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
+// StartPrometheusServer starts a prometheus server.
+// It also starts the given monitoring methods. Their context will cancel once the server is cancelled.
+// This method returns once the server is shutdown and all monitoring methods returns.
+func (p *Provider) StartPrometheusServer(
+	ctx context.Context, e *connection.Endpoint, monitor ...func(context.Context),
+) error {
 	logger.Debugf("Creating prometheus server")
 	mux := http.NewServeMux()
 	mux.Handle(
-		"/metrics",
+		metricsSubPath,
 		promhttp.HandlerFor(
 			p.Registry(),
 			promhttp.HandlerOpts{
@@ -49,34 +54,51 @@ func (p *Provider) StartPrometheusServer(e *connection.Endpoint) <-chan error {
 			},
 		),
 	)
-	p.server.Handler = mux
-
-	errorChan := make(chan error)
-	l, err := net.Listen("tcp", e.Address())
-	if err != nil {
-		errorChan <- fmt.Errorf("failed to start prometheus server: %w", err)
+	server := &http.Server{
+		ReadTimeout: 30 * time.Second,
+		Handler:     mux,
 	}
 
-	p.url = fmt.Sprintf("http://%s/metrics", l.Addr().String())
+	l, err := net.Listen("tcp", e.Address())
+	if err != nil {
+		return fmt.Errorf("failed to start prometheus server: %w", err)
+	}
 
-	go func() {
-		logger.Infof("Prometheus client serving on URL: %s", p.url)
-		err = p.server.Serve(l)
-		if err == nil || errors.Is(err, http.ErrServerClosed) {
-			logger.Debugf("Prometheus server started successfully")
-			errorChan <- nil
-		} else {
-			logger.Errorf("Prometheus server started with error: %v", err)
-			errorChan <- fmt.Errorf("prometheus server stopped unexpectedly: %w", err)
-		}
-	}()
+	p.url, err = url.JoinPath(schema, l.Addr().String(), metricsSubPath)
+	if err != nil {
+		return fmt.Errorf("failed formatting URL: %w", err)
+	}
 
-	return errorChan
-}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		logger.Infof("Prometheus serving on URL: %s", p.url)
+		defer logger.Info("Prometheus stopped serving")
+		return server.Serve(l)
+	})
 
-// StopServer stops the prometheus server.
-func (p *Provider) StopServer() error {
-	return p.server.Close()
+	// The following ensures the method does not return before all monitor methods return.
+	for _, m := range monitor {
+		g.Go(func() error {
+			m(gCtx)
+			return nil
+		})
+	}
+
+	// The following ensures the method does not return before the close procedure is complete.
+	stopAfter := context.AfterFunc(ctx, func() {
+		g.Go(func() error {
+			if err := server.Close(); err != nil {
+				return fmt.Errorf("failed to close prometheus server: %w", err)
+			}
+			return nil
+		})
+	})
+	defer stopAfter()
+
+	if err = g.Wait(); !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("prometheus server stopped with an error: %w", err)
+	}
+	return nil
 }
 
 // URL returns the prometheus server URL.

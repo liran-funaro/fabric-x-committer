@@ -126,10 +126,6 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 
 	e.csStream = csStream
 
-	t.Cleanup(func() {
-		require.NoError(t, cs.Close())
-	})
-
 	t.Cleanup(cancel)
 }
 
@@ -307,7 +303,6 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit
 	env := newCoordinatorTestEnv(t, 2, 2)
-	env.coordinator.promErrChan = make(chan error)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	go env.coordinator.monitorQueues(ctx)
@@ -453,7 +448,6 @@ func TestCoordinatorRecovery(t *testing.T) {
 	require.Equal(t, uint64(0), env.coordinator.postRecoveryStartBlockNumber)
 
 	cancel()
-	require.NoError(t, env.coordinator.Close())
 	env.grpcServer.Stop()
 
 	ctx, cancel = context.WithCancel(context.Background())

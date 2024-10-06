@@ -1,20 +1,16 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-)
+	"context"
 
-var logger = logging.New("prometheus provider")
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type Provider interface {
 	// StartPrometheusServer starts a prometheus server in a separate goroutine
 	// and returns an error channel that will receive an error if the server
 	// stops unexpectedly.
-	StartPrometheusServer() <-chan error
-
-	// StopServer stops the prometheus server.
-	StopServer() error
+	StartPrometheusServer(ctx context.Context) error
 
 	// URL returns the prometheus server URL.
 	URL() string

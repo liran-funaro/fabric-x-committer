@@ -68,7 +68,7 @@ func TestQuery(t *testing.T) {
 
 	for i, qNs := range query.Namespaces {
 		t.Run(fmt.Sprintf("Query internal NS %d", qNs.NsId), func(t *testing.T) {
-			ret, err := unsafeQueryRows(env.ctx, env.qs.pool, qNs.NsId, qNs.Keys)
+			ret, err := unsafeQueryRows(env.ctx, env.qs.batcher.pool, qNs.NsId, qNs.Keys)
 			require.NoError(t, err)
 			requireRow(t, requiredItems[i], &protoqueryservice.RowsNamespace{
 				NsId: qNs.NsId,
@@ -104,13 +104,13 @@ func TestQuery(t *testing.T) {
 		expectedMetricsSize++
 		requireResults(t, requiredItems, ret.Namespaces)
 
-		requireMapSize(t, 1, &env.qs.viewIDToViewHolder)
+		requireMapSize(t, 1, &env.qs.batcher.viewIDToViewHolder)
 		requireIntVecMetricValue(t, 1, env.qs.metrics.requests.MetricVec, grpcBeginView)
 		requireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 		requireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
 	})
 
-	requireMapSize(t, 0, &env.qs.viewIDToViewHolder)
+	requireMapSize(t, 0, &env.qs.batcher.viewIDToViewHolder)
 	requireIntVecMetricValue(t, expectedMetricsSize, env.qs.metrics.requests.MetricVec, grpcGetRows)
 	requireIntMetricValue(t, expectedMetricsSize*querySize, env.qs.metrics.keysRequested)
 	requireIntMetricValue(t, expectedMetricsSize*keyCount, env.qs.metrics.keysResponded)
@@ -212,7 +212,7 @@ func TestQuery(t *testing.T) {
 	// Check view and transaction's life cycle.
 	// We sleep to allow all the context's after functions to fire.
 	time.Sleep(time.Millisecond)
-	requireMapSize(t, 0, &env.qs.viewIDToViewHolder)
+	requireMapSize(t, 0, &env.qs.batcher.viewIDToViewHolder)
 	requireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	requireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
 }
@@ -284,13 +284,19 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		assert.NoError(t, vcservice.ClearDatabase(config.Database, ns))
 	})
 
+	qs, err := NewQueryService(config)
+	require.NoError(t, err)
+
+	var serviceWg sync.WaitGroup
+	t.Cleanup(serviceWg.Wait)
 	// We set a default context with timeout to make sure the test never halts progress.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
 	t.Cleanup(cancel)
-
-	qs, err := NewQueryService(ctx, config)
-	require.NoError(t, err)
-	t.Cleanup(qs.Close)
+	serviceWg.Add(1)
+	go func() {
+		defer serviceWg.Done()
+		assert.NoError(t, qs.Run(ctx))
+	}()
 
 	var grpcSrv *grpc.Server
 	var wg sync.WaitGroup
