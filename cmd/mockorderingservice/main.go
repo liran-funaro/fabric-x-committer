@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
@@ -19,7 +20,9 @@ const (
 // MockOrderingServiceConfig holds the server configuration of
 // the mock ordering service.
 type MockOrderingServiceConfig struct {
-	Server *connection.ServerConfig `mapstructure:"server"`
+	Server       *connection.ServerConfig `mapstructure:"server"`
+	BlockSize    uint64                   `mapstructure:"block-size"`
+	BlockTimeout time.Duration            `mapstructure:"block-timeout"`
 }
 
 func main() {
@@ -61,7 +64,12 @@ func startCmd() *cobra.Command {
 			mockConfig := &wrapper.Config
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			orderermock.StartMockOrderingServices(1, []*connection.ServerConfig{mockConfig.Server})
+			orderermock.StartMockOrderingServices(
+				1,
+				[]*connection.ServerConfig{mockConfig.Server},
+				mockConfig.BlockSize,
+				mockConfig.BlockTimeout,
+			)
 			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}

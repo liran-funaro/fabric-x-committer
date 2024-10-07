@@ -1,87 +1,56 @@
 package runner
 
 import (
-	"os"
-	"os/exec"
-	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
-const numPortsPerVCService = 3
+type (
+	// VCServiceProcess represents a vcservice process.
+	VCServiceProcess struct {
+		Name    string
+		Process ifrit.Process
+		Config  *VCServiceConfig
+	}
 
-// VCServiceProcess represents a vcservice process.
-type VCServiceProcess struct {
-	Name           string
-	ConfigFilePath string
-	Process        ifrit.Process
-	Ports          []int
-	Config         *VCServiceConfig
-	RootDirPath    string
-	DBEnv          *vcservice.DatabaseTestEnv
-}
+	// VCServiceConfig represents the configuration of the vcservice process.
+	VCServiceConfig struct {
+		ServerEndpoint  string
+		MetricsEndpoint string
+		LatencyEndpoint string
+		DatabaseHost    string
+		DatabasePort    int
+		DatabaseName    string
+	}
+)
 
-// VCServiceConfig represents the configuration of the vcservice process.
-type VCServiceConfig struct {
-	ServerEndpoint  string
-	MetricsEndpoint string
-	LatencyEndpoint string
-	DatabaseHost    string
-	DatabasePort    int
-	DatabaseName    string
-}
-
-var (
+const (
 	vcserviceConfigTemplate = "../configtemplates/vcservice-config-template.yaml"
 	vcserviceCmd            = "../../bin/validatorpersister"
+	numPortsForVCService    = 3
 )
 
 // NewVCServiceProcess creates a new vcservice process.
-func NewVCServiceProcess(
-	t *testing.T,
-	ports []int,
-	rootDir string,
-	dbEnv *vcservice.DatabaseTestEnv,
-) *VCServiceProcess {
-	vcserviceProcess := &VCServiceProcess{
-		Name:        "vcservice",
-		Ports:       ports,
-		RootDirPath: rootDir,
-		DBEnv:       dbEnv,
+func NewVCServiceProcess(t *testing.T, rootDir string, dbEnv *vcservice.DatabaseTestEnv) *VCServiceProcess {
+	ports := findAvailablePortRange(t, numPortsForVCService)
+	v := &VCServiceProcess{
+		Name: "vcservice",
+		Config: &VCServiceConfig{
+			ServerEndpoint:  makeLocalListenAddress(ports[0]),
+			MetricsEndpoint: makeLocalListenAddress(ports[1]),
+			LatencyEndpoint: makeLocalListenAddress(ports[2]),
+			DatabaseHost:    dbEnv.DBConf.Host,
+			DatabasePort:    dbEnv.DBConf.Port,
+			DatabaseName:    dbEnv.DBConf.Database,
+		},
 	}
-	vcserviceProcess.createConfigFile(t, ports)
-	vcserviceProcess.start()
-	return vcserviceProcess
-}
 
-func (s *VCServiceProcess) createConfigFile(t *testing.T, ports []int) {
-	require.Len(t, ports, numPortsPerVCService)
-	s.Config = &VCServiceConfig{
-		ServerEndpoint:  makeLocalListenAddress(ports[0]),
-		MetricsEndpoint: makeLocalListenAddress(ports[1]),
-		LatencyEndpoint: makeLocalListenAddress(ports[2]),
-		DatabaseHost:    s.DBEnv.DBConf.Host,
-		DatabasePort:    s.DBEnv.DBConf.Port,
-		DatabaseName:    s.DBEnv.DBConf.Database,
-	}
-	s.ConfigFilePath = constructConfigFilePath(s.RootDirPath, s.Name, s.Config.ServerEndpoint)
+	configFilePath := constructConfigFilePath(rootDir, v.Name, v.Config.ServerEndpoint)
+	createConfigFile(t, v.Config, vcserviceConfigTemplate, configFilePath)
 
-	createConfigFile(t, s.Config, vcserviceConfigTemplate, s.ConfigFilePath)
-}
-
-func (s *VCServiceProcess) start() {
-	cmd := exec.Command(vcserviceCmd, "start", "--configs", s.ConfigFilePath)
-	s.Process = run(cmd, s.Name, "Serving")
-}
-
-func (s *VCServiceProcess) killAndWait(wg *sync.WaitGroup) {
-	defer wg.Done()
-	if s != nil {
-		s.Process.Signal(os.Kill)
-		<-s.Process.Wait()
-	}
+	v.Process = start(vcserviceCmd, configFilePath, v.Name)
+	return v
 }

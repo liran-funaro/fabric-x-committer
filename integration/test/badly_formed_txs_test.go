@@ -1,7 +1,9 @@
 package test
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
@@ -20,6 +22,8 @@ func TestBadlyFormedTxs(t *testing.T) {
 		&runner.Config{
 			NumSigVerifiers: 2,
 			NumVCService:    2,
+			BlockSize:       5,
+			BlockTimeout:    2 * time.Second,
 		},
 	)
 	defer c.Stop(t)
@@ -33,9 +37,9 @@ func TestBadlyFormedTxs(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name             string
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		name            string
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "missing entries",
@@ -61,10 +65,13 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Signatures: [][]byte{[]byte("signature")},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"":                  protoblocktx.Status_ABORTED_MISSING_TXID,
-				"missing signature": protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-				"missing namespace": protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{"", "missing signature", "missing namespace"},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_ABORTED_MISSING_TXID,
+					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+					protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+				},
 			},
 		},
 		{
@@ -133,11 +140,19 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Signatures: [][]byte{[]byte("signature")},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"blind writes not allowed in ns lifecycle": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-				"invalid namespace id in ns lifecycle":     protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-				"invalid policy in ns lifecycle":           protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
-				"invalid signature":                        protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"blind writes not allowed in ns lifecycle",
+					"invalid namespace id in ns lifecycle",
+					"invalid policy in ns lifecycle",
+					"invalid signature",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+					protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+					protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
+					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+				},
 			},
 		},
 		{
@@ -170,16 +185,22 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Signatures: [][]byte{[]byte("signature"), []byte("signature")},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"duplicate namespace": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"duplicate namespace",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c.SendTransactions(t, tt.txs)
-			c.ValidateStatus(t, tt.expectedTxStatus)
+			c.SendTransactionsToOrderer(t, tt.txs)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
+	fmt.Println("done")
 }

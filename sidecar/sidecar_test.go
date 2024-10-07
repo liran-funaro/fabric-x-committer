@@ -22,7 +22,7 @@ import (
 )
 
 func TestSidecar(t *testing.T) {
-	orderersServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil)
+	orderersServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil, 100, 0)
 	t.Cleanup(func() {
 		for _, o := range orderers {
 			o.Close()

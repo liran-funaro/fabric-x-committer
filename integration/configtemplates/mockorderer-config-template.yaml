@@ -1,0 +1,9 @@
+mock-ordering-service:
+  server:
+    endpoint: {{ .ServerEndpoint }}
+  block-size: {{ .BlockSize }}
+  block-timeout: {{ .BlockTimeout }}
+logging:
+  Development: true
+  enabled: true
+  level: INFO

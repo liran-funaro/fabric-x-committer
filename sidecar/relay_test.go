@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -58,7 +58,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	require.Nil(t, blk0.Metadata)
 	relayEnv.uncommittedBlock <- blk0
 	committedBlock0 := <-relayEnv.committedBlock
-	valid := byte(peer.TxValidationCode_VALID)
+	valid := byte(protoblocktx.Status_COMMITTED)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}
@@ -72,8 +72,8 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	require.Nil(t, blk0.Metadata)
 	relayEnv.uncommittedBlock <- blk0
 	committedBlock0 := <-relayEnv.committedBlock
-	valid := byte(peer.TxValidationCode_VALID)
-	duplicate := byte(peer.TxValidationCode_DUPLICATE_TXID)
+	valid := byte(protoblocktx.Status_COMMITTED)
+	duplicate := byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, duplicate, duplicate}},
 	}

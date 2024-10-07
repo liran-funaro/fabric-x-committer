@@ -58,17 +58,31 @@ var configTx = marshal(&common.Envelope{
 	}),
 })
 
-func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, _ time.Duration) <-chan *common.Block {
+func cutBlocks( //nolint:gocognit
+	inEnvs <-chan *common.Envelope,
+	blockSize uint64,
+	timeout time.Duration,
+) <-chan *common.Block {
 	logger.Debugf("Start cutting blocks")
+	var prevBlock *common.Block
+	tick := time.NewTicker(timeout)
 	outBlocks := make(chan *common.Block, capacity)
-	prevBlock := &common.Block{
+
+	sendBlock := func(b *common.Block) {
+		outBlocks <- b
+		prevBlock = b
+		tick.Reset(timeout)
+	}
+
+	sendBlock(&common.Block{
 		Header: &common.BlockHeader{
 			Number: 0,
 		},
 		Data: &common.BlockData{Data: [][]byte{configTx}},
-	}
-	outBlocks <- prevBlock
-	logger.Debugf("Cut debug block")
+	})
+
+	var env *common.Envelope
+	var ok bool
 	go func() {
 		for blockNum := uint64(1); true; blockNum++ {
 			block := &common.Block{
@@ -77,20 +91,39 @@ func cutBlocks(inEnvs <-chan *common.Envelope, blockSize uint64, _ time.Duration
 					PreviousHash: protoutil.BlockHeaderHash(prevBlock.Header),
 				},
 				Data: &common.BlockData{
-					Data: make([][]byte, blockSize),
+					Data: make([][]byte, 0, blockSize),
 				},
 			}
-			for txNum := uint64(0); txNum < blockSize; txNum++ {
-				env, ok := <-inEnvs
-				if !ok {
-					logger.Infof("Closing block cutter")
-					return
+			for {
+				select {
+				case <-tick.C:
+					if len(block.Data.Data) == 0 {
+						continue
+					}
+					logger.Debugf(
+						"block [%d] with [%d] txs has been cut due to timeout",
+						blockNum,
+						len(block.Data.Data),
+					)
+				case env, ok = <-inEnvs:
+					if !ok {
+						logger.Infof("Closing block cutter")
+						return
+					}
+					envB, _ := proto.Marshal(env)
+					block.Data.Data = append(block.Data.Data, envB)
+					if len(block.Data.Data) != int(blockSize) { // nolint:gosec
+						continue
+					}
+					logger.Debug(
+						"block [%d] has been cut as it reached the required block size [%d]",
+						blockNum,
+						blockSize,
+					)
 				}
-				block.Data.Data[txNum], _ = proto.Marshal(env)
+				sendBlock(block)
+				break
 			}
-			logger.Debugf("Cut block %d", blockNum)
-			outBlocks <- block
-			prevBlock = block
 		}
 	}()
 	return outBlocks
@@ -175,7 +208,16 @@ func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, st
 func StartMockOrderingServices(
 	numService int,
 	serverConfigs []*connection.ServerConfig,
+	blockSize uint64,
+	blockTimeout time.Duration,
 ) ([]*connection.ServerConfig, []*MockOrderer, []*grpc.Server) {
+	if blockSize == 0 {
+		blockSize = 100
+	}
+
+	if blockTimeout.Abs() == 0 {
+		blockTimeout = 5 * time.Second
+	}
 	os := make([]*MockOrderer, numService)
 
 	inEnvsPerOrderer := make([]<-chan *common.Envelope, numService)
@@ -189,7 +231,7 @@ func StartMockOrderingServices(
 	}
 
 	allInEnvs := fanIn(inEnvsPerOrderer)
-	allOutBlocks := cutBlocks(allInEnvs, 100, 10*time.Second)
+	allOutBlocks := cutBlocks(allInEnvs, blockSize, blockTimeout)
 	fanOut(allOutBlocks, outBlocksPerOrderer)
 
 	if len(serverConfigs) == numService {

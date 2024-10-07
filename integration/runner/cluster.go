@@ -13,10 +13,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -24,39 +28,55 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"google.golang.org/grpc"
 )
 
-// Cluster represents a test cluster of Coordinator, SigVerifier, VCService and Query processes.
-type Cluster struct {
-	CoordinatorProcess   *CoordinatorProcess
-	QueryServiceProcess  *QueryServiceProcess
-	SigVerifierProcesses []*SigVerifierProcess
-	VCServiceProcesses   []*VCServiceProcess
-	RootDir              string
-	CoordinatorClient    protocoordinatorservice.CoordinatorClient
-	QueryServiceClient   protoqueryservice.QueryServiceClient
+type (
+	// Cluster represents a test cluster of Coordinator, SigVerifier, VCService and Query processes.
+	Cluster struct {
+		MockOrdererProcess   *OrdererProcess
+		SidecarProcess       *SidecarProcess
+		CoordinatorProcess   *CoordinatorProcess
+		QueryServiceProcess  *QueryServiceProcess
+		SigVerifierProcesses []*SigVerifierProcess
+		VCServiceProcesses   []*VCServiceProcess
 
-	PubKey   *sync.Map
-	PvtKey   *sync.Map
-	TxSigner *sync.Map
+		OrdererClient      orderer.AtomicBroadcast_BroadcastClient
+		CoordinatorClient  protocoordinatorservice.CoordinatorClient
+		QueryServiceClient protoqueryservice.QueryServiceClient
+		SidecarClient      *deliverclient.Receiver
 
-	ClusterConfig *Config
+		EnvelopeCreator broadcastclient.EnvelopeCreator
 
-	NextBlockNumber uint64
-	Stream          protocoordinatorservice.Coordinator_BlockProcessingClient
-}
+		CommittedBlock chan *common.Block
+		RootDir        string
 
-// Config represents the configuration of the cluster.
-type Config struct {
-	NumSigVerifiers     int
-	NumVCService        int
-	InitializeNamespace []types.NamespaceID
-}
+		PubKey   *sync.Map
+		PvtKey   *sync.Map
+		TxSigner *sync.Map
+
+		ClusterConfig *Config
+
+		ChannelID string
+	}
+
+	// Config represents the configuration of the cluster.
+	Config struct {
+		NumSigVerifiers     int
+		NumVCService        int
+		InitializeNamespace []types.NamespaceID
+		BlockSize           uint64
+		BlockTimeout        time.Duration
+	}
+)
 
 // NewCluster creates a new test cluster.
 func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
@@ -71,30 +91,36 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		PvtKey:               &sync.Map{},
 		TxSigner:             &sync.Map{},
 		ClusterConfig:        clusterConfig,
+		ChannelID:            "channel1",
+		CommittedBlock:       make(chan *common.Block, 100),
 	}
 
 	for i := 0; i < clusterConfig.NumSigVerifiers; i++ {
-		ports := findAvailablePortRange(t, numPortsPerSigVerifier)
-		c.SigVerifierProcesses = append(c.SigVerifierProcesses, NewSigVerifierProcess(t, ports, tempDir))
+		c.SigVerifierProcesses = append(c.SigVerifierProcesses, NewSigVerifierProcess(t, c.RootDir))
 	}
 
 	dbEnv := vcservice.NewDatabaseTestEnv(t)
 	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf, nil))
 	for i := 0; i < clusterConfig.NumVCService; i++ {
-		ports := findAvailablePortRange(t, numPortsPerVCService)
-		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, ports, tempDir, dbEnv))
+		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, c.RootDir, dbEnv))
 	}
 
-	ports := findAvailablePortRange(t, numPortsForCoordinator)
-	c.CoordinatorProcess = NewCoordinatorProcess(t, ports, c.SigVerifierProcesses, c.VCServiceProcesses, c.RootDir)
+	c.CoordinatorProcess = NewCoordinatorProcess(t, c.SigVerifierProcesses, c.VCServiceProcesses, c.RootDir)
 
-	ports = findAvailablePortRange(t, numPortsPerQueryService)
-	c.QueryServiceProcess = NewQueryServiceProcess(t, ports, c.RootDir, dbEnv)
+	c.QueryServiceProcess = NewQueryServiceProcess(t, c.RootDir, dbEnv)
+
+	c.MockOrdererProcess = NewOrdererProcess(t, c.RootDir, clusterConfig.BlockSize, clusterConfig.BlockTimeout)
+
+	c.SidecarProcess = NewSidecarProcess(t, c.MockOrdererProcess, c.CoordinatorProcess, c.RootDir, c.ChannelID)
 
 	c.createClients(t)
 	c.setMetaNamespaceVerificationKey(t)
-	c.createBlockProcessingStream(t)
-	c.CreateNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
+	c.ensureLastCommittedBlockNumber(t, 0)
+	go func() {
+		require.True(t, connection.IsStreamEnd(c.SidecarClient.Run(context.TODO())))
+	}()
+	<-c.CommittedBlock
+	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
 
 	return c
 }
@@ -102,22 +128,29 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 // createClients utilize createClientConnection for connection creation
 // and responsible for the creation of the clients.
 func (c *Cluster) createClients(t *testing.T) {
-	serviceConnection := createClientConnection(t, c.CoordinatorProcess.Config.ServerEndpoint)
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(serviceConnection)
+	coordConn := createClientConnection(t, c.CoordinatorProcess.Config.ServerEndpoint)
+	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
-	serviceConnection = createClientConnection(t, c.QueryServiceProcess.Config.ServerEndpoint)
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(serviceConnection)
-}
+	qsConn := createClientConnection(t, c.QueryServiceProcess.Config.ServerEndpoint)
+	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
-// createClientConnection creates a service connection using its given server endpoint.
-func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientConn {
-	serviceEndpoint, err := connection.NewEndpoint(serverEndPoint)
+	ordererClient, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{
+		Broadcast:       []*connection.Endpoint{connection.CreateEndpoint(c.MockOrdererProcess.Config.ServerEndpoint)},
+		SignedEnvelopes: false,
+		ChannelID:       c.ChannelID,
+		Type:            utils.Raft,
+		Parallelism:     1,
+	})
 	require.NoError(t, err)
-	serviceDialConfig := connection.NewDialConfig(*serviceEndpoint)
-	serviceConnection, err := connection.Connect(serviceDialConfig)
-	require.NoError(t, err)
+	c.OrdererClient = ordererClient[0]
+	c.EnvelopeCreator = envelopeCreator
 
-	return serviceConnection
+	c.SidecarClient, err = deliverclient.New(&deliverclient.Config{
+		ChannelID: c.ChannelID,
+		Endpoint:  *connection.CreateEndpoint(c.SidecarProcess.Config.ServerEndpoint),
+		Reconnect: -1,
+	}, deliverclient.Ledger, c.CommittedBlock)
+	require.NoError(t, err)
 }
 
 func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
@@ -139,14 +172,8 @@ func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func (c *Cluster) createBlockProcessingStream(t *testing.T) {
-	blockStream, err := c.CoordinatorClient.BlockProcessing(context.Background())
-	require.NoError(t, err)
-	c.Stream = blockStream // nolint:ireturn
-}
-
-// CreateNamespacesAndCommit creates namespaces in the committer.
-func (c *Cluster) CreateNamespacesAndCommit(t *testing.T, namespaces []types.NamespaceID) {
+// createNamespacesAndCommit creates namespaces in the committer.
+func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.NamespaceID) {
 	if len(namespaces) == 0 {
 		return
 	}
@@ -182,10 +209,12 @@ func (c *Cluster) CreateNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 		},
 	}
 	c.AddSignatures(t, tx)
-	c.SendTransactions(t, []*protoblocktx.Tx{tx})
-	c.ValidateStatus(t, map[string]protoblocktx.Status{
-		txID: protoblocktx.Status_COMMITTED,
-	})
+	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{tx})
+	c.ValidateExpectedResultsInCommittedBlock(t, &ExpectedStatusInBlock{
+		TxIDs:    []string{txID},
+		Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+	},
+	)
 }
 
 // AddSignatures adds signature for each namespace in a given transaction.
@@ -198,15 +227,16 @@ func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 	}
 }
 
-// SendTransactions creates a block with given transactions and sent it to the committer.
-func (c *Cluster) SendTransactions(t *testing.T, txs []*protoblocktx.Tx) {
-	blk := &protoblocktx.Block{
-		Number: c.NextBlockNumber,
-		Txs:    txs,
+// SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
+func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
+	for _, tx := range txs {
+		env, _, err := c.EnvelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+		require.NoError(t, err)
+		require.NoError(t, c.OrdererClient.Send(env))
+		resp, err := c.OrdererClient.Recv()
+		require.NoError(t, err)
+		require.Equal(t, common.Status_SUCCESS, resp.Status)
 	}
-
-	require.NoError(t, c.Stream.Send(blk))
-	c.NextBlockNumber++
 }
 
 // CreateCryptoForNs creates required crypto materials for a given namespace using the signature profile.
@@ -248,24 +278,38 @@ func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificat
 
 // Stop stops the cluster.
 func (c *Cluster) Stop(t *testing.T) {
+	process := make([]ifrit.Process, 0, len(c.SigVerifierProcesses)+len(c.VCServiceProcesses)+4)
+
+	for _, sigVerifier := range c.SigVerifierProcesses {
+		process = append(process, sigVerifier.Process)
+	}
+	for _, vcser := range c.VCServiceProcesses {
+		process = append(process, vcser.Process)
+	}
+	process = append(process, c.CoordinatorProcess.Process)
+	process = append(process, c.SidecarProcess.Process)
+	process = append(process, c.QueryServiceProcess.Process)
+	process = append(process, c.MockOrdererProcess.Process)
+
 	var wg sync.WaitGroup
-	totalNumberOfServiceProcesses := len(c.SigVerifierProcesses) + len(c.VCServiceProcesses) + 2
-	wg.Add(totalNumberOfServiceProcesses)
-
-	for _, sigVerifierProcess := range c.SigVerifierProcesses {
-		go sigVerifierProcess.killAndWait(&wg)
+	wg.Add(len(process))
+	for _, p := range process {
+		go killAndWait(&wg, p)
 	}
-
-	for _, vcserviceProcess := range c.VCServiceProcesses {
-		go vcserviceProcess.killAndWait(&wg)
-	}
-
-	go c.CoordinatorProcess.killAndWait(&wg)
-	go c.QueryServiceProcess.killAndWait(&wg)
-
 	wg.Wait()
 
 	require.NoError(t, os.RemoveAll(c.RootDir))
+}
+
+// createClientConnection creates a service connection using its given server endpoint.
+func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientConn {
+	serviceEndpoint, err := connection.NewEndpoint(serverEndPoint)
+	require.NoError(t, err)
+	serviceDialConfig := connection.NewDialConfig(*serviceEndpoint)
+	serviceConnection, err := connection.Connect(serviceDialConfig)
+	require.NoError(t, err)
+
+	return serviceConnection
 }
 
 func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn
@@ -305,36 +349,64 @@ func createConfigFile(t *testing.T, config any, templateFilePath, outputFilePath
 	require.NoError(t, err)
 }
 
-// ValidateStatus validates the status of transactions.
-func (c *Cluster) ValidateStatus(
-	t *testing.T,
-	expectedTxStatus map[string]protoblocktx.Status,
-) {
-	processed := 0
-	for {
-		status, err := c.Stream.Recv()
-		require.NoError(t, err)
-
-		for _, txStatus := range status.TxsValidationStatus {
-			require.Equal(t, expectedTxStatus[txStatus.TxId], txStatus.Status)
-		}
-
-		processed += len(status.TxsValidationStatus)
-		if processed == len(expectedTxStatus) {
-			break
-		}
-	}
-	c.EnsureMaxSeenBlockNumber(t)
+// ExpectedStatusInBlock holds pairs of expected txID and the corresponding status in a block. The order of statuses
+// is expected to be the same as in the committed block.
+type ExpectedStatusInBlock struct {
+	TxIDs    []string
+	Statuses []protoblocktx.Status
 }
 
-// EnsureMaxSeenBlockNumber ensures that the last submitted block number
-// is the maximum seen block number by the committer.
-func (c *Cluster) EnsureMaxSeenBlockNumber(t *testing.T) {
+// ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
+func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expectedResults *ExpectedStatusInBlock) {
+	require.Len(t, expectedResults.Statuses, len(expectedResults.TxIDs))
+	blk, ok := <-c.CommittedBlock
+	if !ok {
+		return
+	}
+
+	expectedStatuses := make([]byte, 0, len(expectedResults.Statuses))
+	for _, s := range expectedResults.Statuses {
+		expectedStatuses = append(expectedStatuses, byte(s))
+	}
+
+	for txNum, txEnv := range blk.Data.Data {
+		txBytes, _, err := serialization.UnwrapEnvelope(txEnv)
+		require.NoError(t, err)
+		tx, err := sidecar.UnmarshalTx(txBytes)
+		require.NoError(t, err)
+		require.Equal(t, expectedResults.TxIDs[txNum], tx.GetId())
+	}
+
+	require.Equal(t, expectedStatuses, blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+
+	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
+}
+
+func (c *Cluster) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
-	maxSeenBlock, err := c.CoordinatorClient.GetMaxSeenBlockNumber(ctx, nil)
-	require.NoError(t, err)
-	require.Equal(t, c.NextBlockNumber-1, maxSeenBlock.Number)
+
+	require.Eventually(t, func() bool {
+		lastBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+		if err != nil {
+			return false
+		}
+		return lastBlock.Number == blkNum
+	}, 10*time.Second, 250*time.Millisecond)
+}
+
+func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
+	c := exec.Command(cmd, "start", "--configs", configFilePath)
+	return run(c, name, "Serving")
+}
+
+func killAndWait(wg *sync.WaitGroup, p ifrit.Process) {
+	defer wg.Done()
+	if p == nil {
+		return
+	}
+	p.Signal(os.Kill)
+	<-p.Wait()
 }
 
 // makeLocalListenAddress returning the endpoint's address together with the port chosen.

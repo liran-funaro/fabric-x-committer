@@ -1,11 +1,28 @@
-sig-verification:
+sidecar:
   server:
     endpoint: {{ .ServerEndpoint }}
+    keep-alive:
+      params:
+        time: 300s
+        timeout: 600s
+      enforcement-policy:
+        min-time: 60s
+        permit-without-stream: false
+
+  orderer:
+    endpoint: {{ .OrdererEndpoint }}
+    channel-id: {{ .ChannelID }}
+    reconnect: 10s
+  committer:
+    endpoint: {{ .CoordinatorEndpoint }}
+
+  ledger:
+    path: {{ .LedgerPath }}
+
   monitoring:
     metrics:
       enable: true
       endpoint: {{ .MetricsEndpoint }}
-
     latency:
       span-exporter: jaeger
       sampler:
@@ -16,15 +33,8 @@ sig-verification:
       endpoint: {{ .LatencyEndpoint }}
       max-latency: 5s
       bucket-count: 1000
-  scheme: "Ecdsa"
-
-  parallel-executor:
-    parallelism: 40
-    batch-time-cutoff: 10ms
-    batch-size-cutoff: 50
-    channel-buffer-size: 50
 
 logging:
+  development: true
   enabled: true
   level: INFO
-  development: true

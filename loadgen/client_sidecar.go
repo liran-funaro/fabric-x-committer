@@ -9,7 +9,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -148,8 +147,7 @@ func (t *sidecarTracker) OnReceiveSidecarBlock(block *common.Block) {
 
 	for i, data := range block.Data.Data {
 		if _, channelHeader, err := serialization.UnwrapEnvelope(data); err == nil {
-			t.OnReceiveTransaction(
-				channelHeader.TxId, sidecar.StatusInverseMap[statusCodes[i]] == protoblocktx.Status_COMMITTED)
+			t.OnReceiveTransaction(channelHeader.TxId, statusCodes[i] == byte(protoblocktx.Status_COMMITTED))
 		}
 	}
 }

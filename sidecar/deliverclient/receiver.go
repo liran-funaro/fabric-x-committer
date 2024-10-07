@@ -75,7 +75,7 @@ func (l *Receiver) Run(ctx context.Context) error {
 	defer rCancel()
 
 	reconnectAttempts := 0
-	for rCtx.Err() == nil {
+	for {
 		err := l.receiveFromBlockDeliverer(rCtx)
 		if err == nil {
 			return nil
@@ -87,10 +87,13 @@ func (l *Receiver) Run(ctx context.Context) error {
 		}
 		reconnectAttempts++
 		logger.Infof("Error: %v.\nReconnecting in %v. Attempt %d", err, l.reconnect, reconnectAttempts)
-		<-time.After(l.reconnect)
-	}
 
-	return nil
+		select {
+		case <-time.After(l.reconnect):
+		case <-rCtx.Done():
+			return nil
+		}
+	}
 }
 
 func (l *Receiver) receiveFromBlockDeliverer(ctx context.Context) error {
@@ -123,7 +126,7 @@ func (l *Receiver) receiveFromBlockDeliverer(ctx context.Context) error {
 	}
 	defer stream.CloseSend() // nolint:errcheck
 
-	logger.Infof("Sending seek request starting from block %d.", l.startBlock)
+	logger.Infof("Sending seek request starting from block %d on channel %s.", l.startBlock, l.channelID)
 	if err := stream.Send(seekSince(l.startBlock, l.channelID, signer)); err != nil {
 		return errors.Wrap(err, "failed to send seek request")
 	}
@@ -138,6 +141,7 @@ func (l *Receiver) receiveFromBlockDeliverer(ctx context.Context) error {
 		}
 
 		l.startBlock = int64(block.Header.Number) + 1
+		logger.Infof("next expected block number is %d", l.startBlock)
 		outputBlock.Write(block)
 	}
 

@@ -1,72 +1,48 @@
 package runner
 
 import (
-	"os"
-	"os/exec"
-	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 )
 
-const numPortsPerSigVerifier = 3
+type (
+	// SigVerifierProcess represents a sigverifier process.
+	SigVerifierProcess struct {
+		Name    string
+		Process ifrit.Process
+		Config  *SigVerifierConfig
+	}
 
-// SigVerifierProcess represents a sigverifier process.
-type SigVerifierProcess struct {
-	Name           string
-	ConfigFilePath string
-	Process        ifrit.Process
-	Ports          []int
-	Config         *SigVerifierConfig
-	RootDirPath    string
-}
+	// SigVerifierConfig represents the configuration of the sigverifier process.
+	SigVerifierConfig struct {
+		ServerEndpoint  string
+		MetricsEndpoint string
+		LatencyEndpoint string
+	}
+)
 
-// SigVerifierConfig represents the configuration of the sigverifier process.
-type SigVerifierConfig struct {
-	ServerEndpoint  string
-	MetricsEndpoint string
-	LatencyEndpoint string
-}
-
-var (
+const (
 	sigverifierConfigTemplate = "../configtemplates/sigverifier-config-template.yaml"
 	sigverifierCmd            = "../../bin/signatureverifier"
+	numPortsForSigVerifier    = 3
 )
 
 // NewSigVerifierProcess creates a new sigverifier process.
-func NewSigVerifierProcess(t *testing.T, ports []int, tempDir string) *SigVerifierProcess {
-	sigVerifierProcess := &SigVerifierProcess{
-		Name:        "sigverifier",
-		Ports:       ports,
-		RootDirPath: tempDir,
+func NewSigVerifierProcess(t *testing.T, tempDir string) *SigVerifierProcess {
+	ports := findAvailablePortRange(t, numPortsForSigVerifier)
+	s := &SigVerifierProcess{
+		Name: "sigverifier",
+		Config: &SigVerifierConfig{
+			ServerEndpoint:  makeLocalListenAddress(ports[0]),
+			MetricsEndpoint: makeLocalListenAddress(ports[1]),
+			LatencyEndpoint: makeLocalListenAddress(ports[2]),
+		},
 	}
-	sigVerifierProcess.createConfigFile(t, ports)
-	sigVerifierProcess.start()
-	return sigVerifierProcess
-}
 
-func (s *SigVerifierProcess) createConfigFile(t *testing.T, ports []int) {
-	require.Len(t, ports, numPortsPerSigVerifier)
-	s.Config = &SigVerifierConfig{
-		ServerEndpoint:  makeLocalListenAddress(ports[0]),
-		MetricsEndpoint: makeLocalListenAddress(ports[1]),
-		LatencyEndpoint: makeLocalListenAddress(ports[2]),
-	}
-	s.ConfigFilePath = constructConfigFilePath(s.RootDirPath, s.Name, s.Config.ServerEndpoint)
+	configFilePath := constructConfigFilePath(tempDir, s.Name, s.Config.ServerEndpoint)
+	createConfigFile(t, s.Config, sigverifierConfigTemplate, configFilePath)
 
-	createConfigFile(t, s.Config, sigverifierConfigTemplate, s.ConfigFilePath)
-}
-
-func (s *SigVerifierProcess) start() {
-	cmd := exec.Command(sigverifierCmd, "start", "--configs", s.ConfigFilePath)
-	s.Process = run(cmd, s.Name, "Was created and initialized with")
-}
-
-func (s *SigVerifierProcess) killAndWait(wg *sync.WaitGroup) {
-	defer wg.Done()
-	if s != nil {
-		s.Process.Signal(os.Kill)
-		<-s.Process.Wait()
-	}
+	s.Process = start(sigverifierCmd, configFilePath, s.Name)
+	return s
 }

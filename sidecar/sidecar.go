@@ -38,7 +38,7 @@ func New(c *SidecarConfig) (*Service, error) {
 	relay := newRelay(c.Committer, blockToBeCommitted, committedBlock)
 
 	// 3. Deliver the block with status to client.
-	logger.Infof("Create ledger service at %v\n", c.Server.Endpoint.Address())
+	logger.Infof("Create ledger service at %v for channel %s\n", c.Server.Endpoint.Address(), c.Orderer.ChannelID)
 	ledgerService, err := ledger.New(c.Orderer.ChannelID, c.Ledger.Path, committedBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ledger: %w", err)

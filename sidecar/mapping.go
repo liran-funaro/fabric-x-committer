@@ -23,22 +23,6 @@ func newValidationCodes(expected int) []validationCode {
 	return codes
 }
 
-var statusMap = map[protoblocktx.Status]validationCode{
-	protoblocktx.Status_COMMITTED:                 validationCode(peer.TxValidationCode_VALID),
-	protoblocktx.Status_ABORTED_MVCC_CONFLICT:     validationCode(peer.TxValidationCode_MVCC_READ_CONFLICT),
-	protoblocktx.Status_ABORTED_SIGNATURE_INVALID: validationCode(peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE),
-	protoblocktx.Status_ABORTED_DUPLICATE_TXID:    validationCode(peer.TxValidationCode_DUPLICATE_TXID),
-}
-var StatusInverseMap = inverseStatusMap(statusMap)
-
-func inverseStatusMap(m map[protoblocktx.Status]validationCode) map[validationCode]protoblocktx.Status {
-	r := make(map[validationCode]protoblocktx.Status, len(m))
-	for status, code := range m {
-		r[code] = status
-	}
-	return r
-}
-
 func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
 	excluded := make([]int, 0, len(block.Data.Data))
 	txs := make([]*protoblocktx.Tx, 0, len(block.Data.Data))

@@ -1,7 +1,9 @@
 package test
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/onsi/gomega"
 
@@ -18,6 +20,8 @@ func testSetup(t *testing.T) *runner.Cluster {
 			NumSigVerifiers:     2,
 			NumVCService:        2,
 			InitializeNamespace: []types.NamespaceID{1},
+			BlockSize:           5,
+			BlockTimeout:        2 * time.Second,
 		},
 	)
 
@@ -36,9 +40,9 @@ func testSetup(t *testing.T) *runner.Cluster {
 		},
 	}
 	c.AddSignatures(t, initTx)
-	c.SendTransactions(t, []*protoblocktx.Tx{initTx})
-	c.ValidateStatus(t, map[string]protoblocktx.Status{
-		"blind write keys to ns1": protoblocktx.Status_COMMITTED,
+	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{initTx})
+	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
+		TxIDs: []string{"blind write keys to ns1"}, Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 	})
 
 	return c
@@ -51,9 +55,9 @@ func TestDependentHappyPath(t *testing.T) {
 	v0 := types.VersionNumber(0).Bytes()
 
 	tests := []struct {
-		name             string
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		name            string
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "valid transactions: second tx waits due to write-write conflict",
@@ -96,9 +100,9 @@ func TestDependentHappyPath(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"performs read only, read-write, and blind-write": protoblocktx.Status_COMMITTED,
-				"performs only blind-write":                       protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"performs read only, read-write, and blind-write", "performs only blind-write"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED},
 			},
 		},
 		{
@@ -138,9 +142,9 @@ func TestDependentHappyPath(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"performs read-write and blind-write": protoblocktx.Status_COMMITTED,
-				"performs only read-write":            protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"performs read-write and blind-write", "performs only read-write"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED},
 			},
 		},
 	}
@@ -155,10 +159,11 @@ func TestDependentHappyPath(t *testing.T) {
 				c.AddSignatures(t, tx)
 			}
 
-			c.SendTransactions(t, tt.txs)
-			c.ValidateStatus(t, tt.expectedTxStatus)
+			c.SendTransactionsToOrderer(t, tt.txs)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
+	fmt.Println("done")
 }
 
 func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
@@ -169,10 +174,10 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 	v1 := types.VersionNumber(1).Bytes()
 
 	tests := []struct {
-		name             string
-		txID             string
-		readsOnly        []*protoblocktx.Read
-		expectedTxStatus protoblocktx.Status
+		name            string
+		txID            string
+		readsOnly       []*protoblocktx.Read
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "readOnly version is nil but the committed version is not nil, i.e., state exist",
@@ -182,7 +187,10 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Key: []byte("k1"),
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readOnly stale k1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "readOnly version is not nil but the committed version is nil, i.e., state does not exist",
@@ -193,7 +201,10 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: v0,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readsOnly stale k2"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "readOnly version is different from the committed version",
@@ -204,7 +215,10 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: v1,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readsOnly different version of k1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "valid",
@@ -215,7 +229,10 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: v0,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"valid readOnly"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+			},
 		},
 	}
 
@@ -239,10 +256,8 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			}
 
 			c.AddSignatures(t, tx)
-			c.SendTransactions(t, []*protoblocktx.Tx{tx})
-			c.ValidateStatus(t, map[string]protoblocktx.Status{
-				tt.txID: tt.expectedTxStatus,
-			})
+			c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{tx})
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
 }
@@ -255,10 +270,10 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 	v1 := types.VersionNumber(1).Bytes()
 
 	tests := []struct {
-		name             string
-		txID             string
-		readWrites       []*protoblocktx.ReadWrite
-		expectedTxStatus protoblocktx.Status
+		name            string
+		txID            string
+		readWrites      []*protoblocktx.ReadWrite
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "readWrite version is nil but the committed version is not nil, i.e., state exist",
@@ -269,7 +284,10 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: nil,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readWrite stale k1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "readWrite version is not nil but the committed version is nil, i.e., state does not exist",
@@ -280,7 +298,10 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: v0,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readWrites stale k2"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "readWrite version is different from the committed version",
@@ -291,7 +312,10 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: v1,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"readWrites different version of k1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			},
 		},
 		{
 			name: "valid",
@@ -302,7 +326,10 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: v0,
 				},
 			},
-			expectedTxStatus: protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"valid readWrite"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+			},
 		},
 	}
 
@@ -321,10 +348,8 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			}
 
 			c.AddSignatures(t, tx)
-			c.SendTransactions(t, []*protoblocktx.Tx{tx})
-			c.ValidateStatus(t, map[string]protoblocktx.Status{
-				tt.txID: tt.expectedTxStatus,
-			})
+			c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{tx})
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
 }
@@ -336,9 +361,9 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 	v0 := types.VersionNumber(0).Bytes()
 
 	tests := []struct {
-		name             string
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		name            string
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "first transaction invalidates the second",
@@ -370,9 +395,15 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"read-write k1": protoblocktx.Status_COMMITTED,
-				"read-write k1 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"read-write k1",
+					"read-write k1 but invalid due to the previous tx",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
 			},
 		},
 		{
@@ -418,10 +449,17 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"read-write k1 but wrong version v0": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"read-write k1 but wrong version v2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"read-write k1 with correct version": protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"read-write k1 but wrong version v0",
+					"read-write k1 but wrong version v2",
+					"read-write k1 with correct version",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+					protoblocktx.Status_COMMITTED,
+				},
 			},
 		},
 		{
@@ -454,9 +492,15 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"read-write k2": protoblocktx.Status_COMMITTED,
-				"read-write k2 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"read-write k2",
+					"read-write k2 but invalid due to the previous tx",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
 			},
 		},
 	}
@@ -471,8 +515,8 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 				c.AddSignatures(t, tx)
 			}
 
-			c.SendTransactions(t, tt.txs)
-			c.ValidateStatus(t, tt.expectedTxStatus)
+			c.SendTransactionsToOrderer(t, tt.txs)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
 }
@@ -484,9 +528,9 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 	v0 := types.VersionNumber(0).Bytes()
 
 	tests := []struct {
-		name             string
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		name            string
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "first transaction invalidates the second",
@@ -517,9 +561,15 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"blind-write k1": protoblocktx.Status_COMMITTED,
-				"read-write k1 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"blind-write k1",
+					"read-write k1 but invalid due to the previous tx",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
 			},
 		},
 		{
@@ -551,9 +601,15 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"blind-write k2": protoblocktx.Status_COMMITTED,
-				"read-write k2 but invalid due to the previous tx": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"blind-write k2",
+					"read-write k2 but invalid due to the previous tx",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
 			},
 		},
 	}
@@ -568,8 +624,8 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 				c.AddSignatures(t, tx)
 			}
 
-			c.SendTransactions(t, tt.txs)
-			c.ValidateStatus(t, tt.expectedTxStatus)
+			c.SendTransactionsToOrderer(t, tt.txs)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
 }

@@ -19,7 +19,7 @@ import (
 var serverTemplate string
 
 func TestSidecarCmd(t *testing.T) {
-	ordererServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil)
+	ordererServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil, 100, 0)
 	t.Cleanup(func() {
 		for _, o := range orderers {
 			o.Close()

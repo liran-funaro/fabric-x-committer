@@ -2,6 +2,7 @@ package test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		&runner.Config{
 			NumSigVerifiers: 2,
 			NumVCService:    2,
+			BlockTimeout:    2 * time.Second,
 		},
 	)
 	defer c.Stop(t)
@@ -33,9 +35,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name             string
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		name            string
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			name: "create namespace ns1",
@@ -56,8 +58,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"create ns 1": protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"create ns 1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 			},
 		},
 		{
@@ -79,8 +82,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"write to ns 1": protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"write to ns 1"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 			},
 		},
 		{
@@ -133,10 +137,17 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"write to ns 1 before updating ns1": protoblocktx.Status_COMMITTED,
-				"update ns 1":                       protoblocktx.Status_COMMITTED,
-				"write to stale ns 1":               protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{
+					"write to ns 1 before updating ns1",
+					"update ns 1",
+					"write to stale ns 1",
+				},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
 			},
 		},
 		{
@@ -158,8 +169,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"write to ns1 again": protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"write to ns1 again"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 			},
 		},
 	}
@@ -169,9 +181,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 			for _, tx := range tt.txs {
 				c.AddSignatures(t, tx)
 			}
-			c.SendTransactions(t, tt.txs)
+			c.SendTransactionsToOrderer(t, tt.txs)
 
-			c.ValidateStatus(t, tt.expectedTxStatus)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
 }

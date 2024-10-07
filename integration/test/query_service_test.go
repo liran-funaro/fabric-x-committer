@@ -34,6 +34,7 @@ func TestQueryService(t *testing.T) {
 			NumSigVerifiers:     2,
 			NumVCService:        2,
 			InitializeNamespace: []types.NamespaceID{1, 2},
+			BlockTimeout:        2 * time.Second,
 		},
 	)
 	defer c.Stop(t)
@@ -42,8 +43,8 @@ func TestQueryService(t *testing.T) {
 	defer t.Cleanup(cancel)
 
 	insertions := []struct {
-		txs              []*protoblocktx.Tx
-		expectedTxStatus map[string]protoblocktx.Status
+		txs             []*protoblocktx.Tx
+		expectedResults *runner.ExpectedStatusInBlock
 	}{
 		{
 			txs: []*protoblocktx.Tx{
@@ -81,8 +82,9 @@ func TestQueryService(t *testing.T) {
 					},
 				},
 			},
-			expectedTxStatus: map[string]protoblocktx.Status{
-				"write items to namespaces": protoblocktx.Status_COMMITTED,
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs:    []string{"write items to namespaces"},
+				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 			},
 		},
 	}
@@ -91,8 +93,8 @@ func TestQueryService(t *testing.T) {
 		for _, tx := range operation.txs {
 			c.AddSignatures(t, tx)
 		}
-		c.SendTransactions(t, operation.txs)
-		c.ValidateStatus(t, operation.expectedTxStatus)
+		c.SendTransactionsToOrderer(t, operation.txs)
+		c.ValidateExpectedResultsInCommittedBlock(t, operation.expectedResults)
 	}
 
 	t.Run("Query-GetRows-Both-Namespaces", func(t *testing.T) {

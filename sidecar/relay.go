@@ -140,7 +140,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 			}
 			logger.Debugf("txID [%s] is duplicate", tx.GetId())
 			blkWithResult.pendingCount--
-			blkWithResult.txStatus[txIndex] = statusMap[protoblocktx.Status_ABORTED_DUPLICATE_TXID]
+			blkWithResult.txStatus[txIndex] = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 			dupIdx = append(dupIdx, txIndex)
 		}
 
@@ -217,7 +217,7 @@ func (r *relay) processStatusBatch(
 					txID, blockNum, txIndex)
 			}
 
-			blkWithStatus.txStatus[txIndex] = statusMap[txStatus.GetStatus()]
+			blkWithStatus.txStatus[txIndex] = byte(txStatus.GetStatus())
 
 			r.txIDToBlkNum.Delete(txID)
 			blkWithStatus.pendingCount--
