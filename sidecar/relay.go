@@ -60,7 +60,7 @@ func (r *relay) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to coordinator: %w", err)
 	}
 	defer conn.Close() // nolint:errcheck
-	logger.Infof("sidecar connected to coordinator at %s", r.coordConfig.Endpoint.String())
+	logger.Infof("sidecar connected to coordinator at %s", &r.coordConfig.Endpoint)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 

@@ -72,7 +72,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(derivedCtx)
 
 	for i, serverConfig := range c.serversConfig {
-		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, serverConfig.Endpoint.String())
+		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, &serverConfig.Endpoint)
 		vc, err := newValidatorCommitter(derivedCtx, serverConfig, c.metrics)
 		if err != nil {
 			return err
@@ -172,7 +172,7 @@ func newValidatorCommitter(
 	if err != nil {
 		return nil, err
 	}
-	logger.Infof("validator persister manager connected to validator persister at %s", serverConfig.Endpoint.String())
+	logger.Infof("validator persister manager connected to validator persister at %s", &serverConfig.Endpoint)
 
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 

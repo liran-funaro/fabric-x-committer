@@ -103,7 +103,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	})
 
 	for i, serverConfig := range c.serversConfig {
-		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, serverConfig.Endpoint.String())
+		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, &serverConfig.Endpoint)
 		sv, err := newSignatureVerifier(serverConfig)
 		if err != nil {
 			return err
@@ -184,7 +184,7 @@ func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVeri
 	if err != nil {
 		return nil, err
 	}
-	logger.Infof("signature verifier manager connected to signature verifier at %s", serverConfig.Endpoint.String())
+	logger.Infof("signature verifier manager connected to signature verifier at %s", &serverConfig.Endpoint)
 
 	return &signatureVerifier{
 		conn:              conn,
