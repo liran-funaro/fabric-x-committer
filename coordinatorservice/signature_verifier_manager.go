@@ -2,6 +2,7 @@ package coordinatorservice
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -182,7 +183,11 @@ func (svm *signatureVerifierManager) forwardValidatedTransactions(
 func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVerifier, error) {
 	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(
+			"failed to create connection to signature verifier running at %s: %w",
+			&serverConfig.Endpoint,
+			err,
+		)
 	}
 	logger.Infof("signature verifier manager connected to signature verifier at %s", &serverConfig.Endpoint)
 

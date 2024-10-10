@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -35,6 +36,8 @@ func NewDialConfigWithCreds(endpoint Endpoint, creds credentials.TransportCreden
 				grpc.MaxCallRecvMsgSize(maxMsgSize),
 				grpc.MaxCallSendMsgSize(maxMsgSize),
 			),
+			grpc.WithBlock(),
+			grpc.WithReturnConnectionError(),
 		},
 	}
 }
@@ -69,13 +72,16 @@ func CloseConnections(connections []*grpc.ClientConn) error {
 }
 
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(config.Endpoint.Address(), config.DialOpts...)
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+
+	cc, err := grpc.DialContext(ctx, config.Endpoint.Address(), config.DialOpts...)
 	if err != nil {
 		logger.Errorf("Error connecting to %s: %v", &config.Endpoint, err)
 		return nil, err
 	}
-	logger.Debugf("Successfully connected to %s", &config.Endpoint)
-	return conn, nil
+
+	return cc, nil
 }
 
 func IsStreamEnd(rpcErr error) bool {

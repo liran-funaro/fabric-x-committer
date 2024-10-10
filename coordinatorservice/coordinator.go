@@ -222,7 +222,7 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 
 	select {
 	case <-eCtx.Done():
-		return nil
+		return g.Wait()
 	case <-c.validatorCommitterMgr.connectionReady:
 	}
 

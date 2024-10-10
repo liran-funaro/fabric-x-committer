@@ -20,6 +20,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -532,4 +533,34 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.Equal(t, uint64(1), env.coordinator.firstExpectedBlockNumber)
 	require.Equal(t, uint64(2), env.coordinator.postRecoveryStartBlockNumber)
+}
+
+func TestGRPCConnectionFailure(t *testing.T) {
+	logging.SetupWithConfig(&logging.Config{
+		Enabled: true,
+		Level:   logging.Debug,
+	})
+	c := NewCoordinatorService(&CoordinatorConfig{
+		ServerConfig: &connection.ServerConfig{
+			Endpoint: connection.Endpoint{Host: "", Port: 1876},
+		},
+		SignVerifierConfig: &SignVerifierConfig{
+			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
+		},
+		DependencyGraphConfig: &DependencyGraphConfig{},
+		ValidatorCommitterConfig: &ValidatorCommitterConfig{
+			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
+		},
+		Monitoring: &monitoring.Config{
+			Metrics: &metrics.Config{
+				Endpoint: &connection.Endpoint{Host: "", Port: 1877},
+			},
+		},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	err := c.Run(ctx)
+	require.ErrorContains(t, err, "transport: Error while dialing: dial tcp: lookup random")
+	require.ErrorContains(t, err, "no such host")
 }

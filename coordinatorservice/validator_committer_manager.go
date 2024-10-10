@@ -64,7 +64,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 	defer func() { vcm.connectionReady = make(chan any) }()
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
-	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
+	vcm.validatorCommitter = make([]*validatorCommitter, 0, len(c.serversConfig))
 
 	derivedCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -77,7 +77,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		vcm.validatorCommitter[i] = vc
+		vcm.validatorCommitter = append(vcm.validatorCommitter, vc)
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 
 		g.Go(func() error {
@@ -170,7 +170,11 @@ func newValidatorCommitter(
 ) {
 	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(
+			"failed to create connection to validator persister running at %s: %w",
+			&serverConfig.Endpoint,
+			err,
+		)
 	}
 	logger.Infof("validator persister manager connected to validator persister at %s", &serverConfig.Endpoint)
 
