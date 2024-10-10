@@ -191,6 +191,7 @@ build-mock-orderer-image:
 	${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
 		-t ${image_namespace}/mock-ordering-service:${version} \
 		--build-arg SERVICE_NAME=mockorderingservice \
+		--build-arg GO_IMAGE=${golang_image} \
 		--build-arg PORTS=4001 \
 		.
 
