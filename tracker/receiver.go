@@ -26,7 +26,7 @@ func (c *latencyReceiverTracker) registerLatency(duration time.Duration, success
 
 func (c *latencyReceiverTracker) OnReceiveTransaction(txID string, success bool) {
 	if t, ok := c.latencyTracker.LoadAndDelete(txID); ok {
-		logger.Infof("Tracked transaction %s returned", txID)
+		logger.Infof("Tracked transaction %s returned with status: %v", txID, success)
 		start, _ := t.(time.Time)
 		c.registerLatency(time.Since(start), success)
 	}

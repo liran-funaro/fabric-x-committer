@@ -41,16 +41,16 @@ func TestVCServiceCmd(t *testing.T) {
 		},
 		{
 			Name:            "init the " + serviceName,
-			Args:            []string{"init", "--configs", testConfigPath, "--namespaces", "0,1"},
+			Args:            []string{"init", "--configs", testConfigPath},
 			CmdStdOutput:    "Initializing database",
-			CmdLoggerOutput: "Table 'ns_1' is ready",
+			CmdLoggerOutput: "Table 'ns_1024' is ready",
 			Err:             nil,
 		},
 		{
 			Name:            "clear the " + serviceName,
-			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0,1"},
+			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "1024"},
 			CmdStdOutput:    "Clearing database",
-			CmdLoggerOutput: "Table 'ns_1' is cleared",
+			CmdLoggerOutput: "Table 'ns_1024' is cleared",
 			Err:             nil,
 		},
 		{

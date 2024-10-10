@@ -64,9 +64,9 @@ func (e *TxSignerVerifier) GetVerificationKey() []byte {
 	return serializedKey
 }
 
-// NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile.
+// NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile and a seed.
 func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
-	logger.Infof("sig profile: %v", profile)
+	logger.Debugf("sig profile: %v", profile)
 	factory := sigverification_test.GetSignatureFactory(profile.Scheme)
 
 	var signingKey PrivateKey
@@ -77,8 +77,8 @@ func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
 		signingKey, verificationKey, err = loadKeys(*profile.KeyPath)
 		utils.Must(err)
 	} else {
-		logger.Infof("Generating new keys")
-		signingKey, verificationKey = factory.NewKeys()
+		logger.Debugf("Generating new keys")
+		signingKey, verificationKey = factory.NewKeysWithSeed(profile.Seed)
 	}
 	verifier, err := factory.NewVerifier(verificationKey)
 	utils.Must(err)

@@ -18,15 +18,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-//go:embed config_template/sidecar_server.yaml
-var sidecarServerOnlyTemplate string
-
-//go:embed config_template/sidecar_client.yaml
-var sidecarClientOnlyTemplate string
-
 var (
-	sidecarServerTemplate = loggingTemplate + sidecarServerOnlyTemplate + serverTemplate
-	sidecarClientTemplate = loggingTemplate + clientOnlyTemplate + sidecarClientOnlyTemplate
+	//go:embed config_template/sidecar_server.yaml
+	sidecarServerOnlyTemplate string
+
+	//go:embed config_template/sidecar_client.yaml
+	sidecarClientOnlyTemplate string
+
+	sidecarServerTemplate = combineServerTemplates(sidecarServerOnlyTemplate)
+	sidecarClientTemplate = combineClientTemplates(sidecarClientOnlyTemplate)
 )
 
 func TestBlockGenForSidecar(t *testing.T) { // nolint: gocognit

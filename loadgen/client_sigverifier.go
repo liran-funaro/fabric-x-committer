@@ -4,8 +4,10 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,14 +27,19 @@ func newSVClient(config *SVClientConfig, metrics *PerfMetrics) *svClient {
 	}
 }
 
-func (c *svClient) Start(blockGen *BlockStream) error {
+func (c *svClient) startWorkload(blockGen *BlockStream) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
 
 	for _, conn := range connections {
-		stream, err := c.openVSStream(conn, blockGen.Signer.GetVerificationKey(), blockGen.Signer.HashSigner.scheme)
+		stream, err := c.openVSStream(
+			conn,
+			blockGen.Signer.GetVerificationKey(),
+			blockGen.Signer.HashSigner.scheme,
+			blockGen.NsID,
+		)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening connection to %s", conn.Target())
 		}
@@ -42,6 +49,42 @@ func (c *svClient) Start(blockGen *BlockStream) error {
 	}
 
 	return nil
+}
+
+func (c *svClient) startNamespaceGeneration(nsGen *NamespaceGenerator) error {
+	conn, err := connection.Connect(
+		connection.NewDialConfigWithCreds(*c.config.Endpoints[0], insecure.NewCredentials()),
+	)
+	utils.Must(err)
+	stream, err := c.openVSStream(
+		conn,
+		nsGen.getSigner().GetVerificationKey(),
+		nsGen.scheme,
+		uint32(types.MetaNamespaceID),
+	)
+	utils.Must(err)
+
+	blkToSend := nsGen.Next()
+
+	logger.Debugf("Sending block %d", blkToSend.Number)
+	utils.Must(stream.Send(mapVSBatch(blkToSend)))
+	c.tracker.OnSendBlock(blkToSend)
+
+	txStatus, err := stream.Recv()
+	utils.Must(err)
+	if !c.tracker.OnReceiveSVBatch(txStatus) {
+		logger.Infof("could not validate namespace-generation-block transaction")
+	}
+
+	return conn.Close()
+}
+
+func (c *svClient) Start(blockGen *BlockStream, nsGen *NamespaceGenerator) error {
+	if err := c.startNamespaceGeneration(nsGen); err != nil {
+		return errors.Wrap(err, "failed closing namespace generation connection")
+	}
+
+	return c.startWorkload(blockGen)
 }
 
 func (c *svClient) startReceiving(stream sigverification.Verifier_StartStreamClient) {
@@ -80,17 +123,19 @@ func mapVSBatch(b *protoblocktx.Block) *sigverification.RequestBatch {
 }
 
 func (c *svClient) openVSStream( //nolint:ireturn
-	conn *grpc.ClientConn, verificationKey signature.PublicKey, scheme Scheme,
+	conn *grpc.ClientConn, verificationKey signature.PublicKey, scheme Scheme, nsID uint32,
 ) (sigverification.Verifier_StartStreamClient, error) {
 	logger.Infof("Creating client to %s\n", conn.Target())
 	client := sigverification.NewVerifierClient(conn)
 	logger.Infof("Created verifier client")
 
 	k := &sigverification.Key{
-		NsId:            1,
+		NsId:            nsID,
+		NsVersion:       types.VersionNumber(0).Bytes(),
 		SerializedBytes: verificationKey,
 		Scheme:          scheme,
 	}
+
 	_, err := client.SetVerificationKey(c.ctx, k)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed setting verification key")
@@ -109,10 +154,15 @@ func newSVTracker(metrics *PerfMetrics) *svTracker {
 	return &svTracker{ReceiverSender: NewClientTracker(metrics)}
 }
 
-func (t *svTracker) OnReceiveSVBatch(batch *sigverification.ResponseBatch) {
+func (t *svTracker) OnReceiveSVBatch(batch *sigverification.ResponseBatch) bool {
 	logger.Debugf("Received batch with %d responses", len(batch.Responses))
 
+	validResponses := 0
 	for _, response := range batch.Responses {
+		if response.IsValid {
+			validResponses++
+		}
 		t.OnReceiveTransaction(response.TxId, response.IsValid)
 	}
+	return validResponses == len(batch.Responses)
 }

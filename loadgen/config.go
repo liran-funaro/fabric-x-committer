@@ -3,6 +3,7 @@ package loadgen
 import (
 	"fmt"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -88,7 +89,9 @@ type DependencyDescription struct {
 
 // SignatureProfile describes how to sign/verify a TX.
 type SignatureProfile struct {
-	Scheme Scheme `mapstructure:"scheme"`
+	Scheme     Scheme              `mapstructure:"scheme"`
+	Namespaces []types.NamespaceID `mapstructure:"namespaces"`
+	Seed       int64               `mapstructure:"signer-seed"`
 	// KeyPath describes how to find/generate the signature keys.
 	// KeyPath is still not supported.
 	KeyPath *KeyPath `mapstructure:"key-path"`

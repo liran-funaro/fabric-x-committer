@@ -22,6 +22,8 @@ load-profile:
       const: 2
     signature:
       scheme: ECDSA
+      namespaces: 0
+      signer-seed: 10
   conflicts:
     invalid-signatures: 0.1
   seed: 12345

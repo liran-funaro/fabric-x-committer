@@ -14,20 +14,33 @@ import (
 // ErrStoppedByUser is returned if the client terminated by request.
 var ErrStoppedByUser = errors.New("stopped by the user")
 
-// BlockGenClient is the interface for all supported clients.
-type BlockGenClient interface {
-	// Start a workload generator client in the background.
-	Start(*BlockStream) error
-	// Stop the workload generator.
-	Stop()
-	// Context returns the used context.
-	Context() context.Context
-}
+type (
+	// BlockGenClient is the interface for all supported clients.
+	BlockGenClient interface {
+		// Start workload and namespace-initialization generator clients in the background.
+		Start(*BlockStream, *NamespaceGenerator) error
+		// Stop the workload generator.
+		Stop()
+		// Context returns the used context.
+		Context() context.Context
 
-type loadGenClient struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-}
+		startNamespaceGeneration(*NamespaceGenerator) error
+		startWorkload(*BlockStream) error
+	}
+
+	loadGenClient struct {
+		ctx    context.Context
+		cancel context.CancelCauseFunc
+	}
+
+	// LoadBundle contains utilities for the loadgen client.
+	LoadBundle struct {
+		Metrics      *PerfMetrics
+		BlkStream    *BlockStream
+		NamespaceGen *NamespaceGenerator
+		Client       BlockGenClient
+	}
+)
 
 func newLoadGenClient() *loadGenClient {
 	ctx, cancel := context.WithCancelCause(context.Background())
@@ -86,10 +99,10 @@ func (c *loadGenClient) startSending(
 // Starter starts the load generator with the given configuration.
 func Starter( //nolint:revive,ireturn
 	c *ClientConfig,
-) (*PerfMetrics, *BlockStream, BlockGenClient, error) {
+) (LoadBundle, error) {
 	client, perfMetrics, err := createClient(c)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed creating client")
+		return LoadBundle{}, errors.Wrap(err, "failed creating client")
 	}
 
 	go func() {
@@ -99,7 +112,10 @@ func Starter( //nolint:revive,ireturn
 		}
 	}()
 
-	blockGen := StartBlockGenerator(client.Context(), c.LoadProfile, c.Stream)
-
-	return perfMetrics, blockGen, client, nil
+	return LoadBundle{
+		Metrics:      perfMetrics,
+		BlkStream:    StartBlockGenerator(client.Context(), c.LoadProfile, c.Stream),
+		NamespaceGen: NewNamespaceGenerator(c.LoadProfile.Transaction.Signature),
+		Client:       client,
+	}, nil
 }

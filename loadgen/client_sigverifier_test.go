@@ -16,15 +16,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-//go:embed config_template/sig_server.yaml
-var sigVerifierServerOnlyTemplate string
-
-//go:embed config_template/sig_client.yaml
-var sigVerifierClientOnlyTemplate string
-
 var (
-	sigVerifierServerTemplate = loggingTemplate + sigVerifierServerOnlyTemplate + serverTemplate
-	sigVerifierClientTemplate = loggingTemplate + clientOnlyTemplate + sigVerifierClientOnlyTemplate
+	//go:embed config_template/sig_server.yaml
+	sigVerifierServerOnlyTemplate string
+
+	//go:embed config_template/sig_client.yaml
+	sigVerifierClientOnlyTemplate string
+
+	sigVerifierServerTemplate = combineServerTemplates(sigVerifierServerOnlyTemplate)
+	sigVerifierClientTemplate = combineClientTemplates(sigVerifierClientOnlyTemplate)
 )
 
 func TestBlockGenForSigVerifier(t *testing.T) { // nolint: gocognit

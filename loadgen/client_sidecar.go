@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
@@ -66,17 +67,7 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) *sideca
 	}
 }
 
-func (c *sidecarClient) Start(blockGen *BlockStream) error {
-	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
-		c.ctx,
-		&protosigverifierservice.Key{SerializedBytes: blockGen.Signer.GetVerificationKey()},
-	); err != nil {
-		return errors.Wrap(err, "failed connecting to coordinator")
-	}
-	logger.Infof("Set verification key")
-
-	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
-
+func (c *sidecarClient) startWorkload(blockGen *BlockStream) error {
 	for _, stream := range c.broadcasts {
 		go c.startSending(blockGen, stream)
 	}
@@ -88,6 +79,47 @@ func (c *sidecarClient) Start(blockGen *BlockStream) error {
 	go c.receiveCommittedBlock()
 
 	return nil
+}
+
+func (c *sidecarClient) startNamespaceGeneration(nsGen *NamespaceGenerator) error {
+	stream := c.broadcasts[0]
+
+	blkToSend := nsGen.Next()
+	logger.Debugf("Sending namaespace-generation-block %d with %d TXs", blkToSend.Number, len(blkToSend.Txs))
+	for _, tx := range blkToSend.Txs {
+		env, txID, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+		utils.Must(err)
+		utils.Must(stream.Send(env))
+		c.tracker.OnSendTransaction(txID)
+	}
+
+	txStatus, err := stream.Recv()
+	utils.Must(err)
+	if txStatus.Status != common.Status_SUCCESS {
+		c.cancel(errors.New("could not commit namespace generation-block"))
+	}
+
+	// blocks until ensuring the validation of namespace generation-block
+	c.tracker.OnReceiveSidecarBlock(<-c.committedBlock)
+
+	return nil
+}
+
+func (c *sidecarClient) Start(blockGen *BlockStream, nsGen *NamespaceGenerator) error {
+	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
+		c.ctx,
+		&protosigverifierservice.Key{SerializedBytes: nsGen.getSigner().GetVerificationKey()},
+	); err != nil {
+		return errors.Wrap(err, "failed connecting to coordinator")
+	}
+	logger.Infof("Set verification key")
+	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
+
+	if err := c.startNamespaceGeneration(nsGen); err != nil {
+		return errors.Wrap(err, "failed closing namespace generation connection")
+	}
+
+	return c.startWorkload(blockGen)
 }
 
 func (c *sidecarClient) startSending(
@@ -111,11 +143,13 @@ func (c *sidecarClient) startSending(
 
 func (c *sidecarClient) startReceiving(stream ab.AtomicBroadcast_BroadcastClient) {
 	for c.ctx.Err() == nil {
-		if response, err := stream.Recv(); err != nil {
+		response, err := stream.Recv()
+		switch {
+		case err != nil:
 			c.cancel(errors.Wrapf(err, "failed receiving"))
-		} else if response.Status != common.Status_SUCCESS {
+		case response.Status != common.Status_SUCCESS:
 			c.cancel(errors.Errorf("unexpected status: %v - %s", response.Status, response.Info))
-		} else {
+		default:
 			logger.Debugf("Received ack for TX")
 		}
 	}

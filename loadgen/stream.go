@@ -25,6 +25,7 @@ type (
 		Generator[T]
 		Stream Stream[T]
 		Signer *TxSignerVerifier
+		NsID   uint32
 	}
 
 	// Stream makes generators that consume from a stream (BatchQueue).
@@ -95,9 +96,12 @@ func StartBlockGenerator(
 ) *BlockStream {
 	txGen := StartTxGenerator(ctx, profile, options, modifierGenerators...)
 	queue := channel.Make[[]*protoblocktx.Block](ctx, Max(options.BuffersSize, 1))
+	// Due to initialization part, the first load block
+	// number will be 1.
 	blockGen := &BlockGenerator{
 		TxGenerator: txGen,
 		BlockSize:   uint64(profile.Block.Size),
+		blockNum:    1,
 	}
 	go ingestBatchesToQueue(queue, blockGen, 1)
 	stream := Stream[*protoblocktx.Block]{

@@ -100,7 +100,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	}
 
 	dbEnv := vcservice.NewDatabaseTestEnv(t)
-	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf, nil))
+	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf))
 	for i := 0; i < clusterConfig.NumVCService; i++ {
 		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, c.RootDir, dbEnv))
 	}

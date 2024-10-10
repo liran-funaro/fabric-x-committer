@@ -4,6 +4,7 @@ import (
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 // IndependentTxGenerator generates a new valid TX given key generators.
@@ -52,6 +53,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:        0,
+				NsVersion:   types.VersionNumber(0).Bytes(),
 				ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
 				ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),
 				BlindWrites: make([]*protoblocktx.Write, len(blindWriteKey)),

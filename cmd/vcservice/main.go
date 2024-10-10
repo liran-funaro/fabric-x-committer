@@ -75,10 +75,7 @@ func startCmd() *cobra.Command {
 }
 
 func initCmd() *cobra.Command {
-	var (
-		configPath string
-		namespaces []int
-	)
+	var configPath string
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Init the database",
@@ -90,14 +87,13 @@ func initCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 			vcConfig := vcservice.ReadConfig()
 
-			cmd.Printf("Initializing database: %v\n", namespaces)
+			cmd.Printf("Initializing database\n")
 
-			return vcservice.InitDatabase(vcConfig.Database, namespaces)
+			return vcservice.InitDatabase(vcConfig.Database)
 		},
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{}, "set the namespaces to initialize")
 	return cmd
 }
 
@@ -124,6 +120,6 @@ func clearCmd() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{0, 1, 2, 3}, "set the namespaces to clear")
+	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{}, "set the namespaces to clear")
 	return cmd
 }

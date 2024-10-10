@@ -232,14 +232,14 @@ func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
 }
 
 // InitDatabase initialize the DB tables and methods.
-func InitDatabase(config *DatabaseConfig, nsIDs []int) error {
+func InitDatabase(config *DatabaseConfig) error {
 	pool, err := NewDatabasePool(config)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	if err := initDatabaseTables(context.Background(), pool, nsIDs); err != nil {
+	if err := initDatabaseTables(context.Background(), pool, nil); err != nil {
 		// TODO: handle error gracefully
 		logger.Fatalf("Failed initialize database [%s] tables: %s", config.Database, err)
 	}

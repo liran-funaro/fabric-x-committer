@@ -14,12 +14,13 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
@@ -243,7 +244,16 @@ func verToBytes(ver ...int) [][]byte {
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	cs := yuga.PrepareYugaTestEnv(t)
+	c := &logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      true,
+		Development: true,
+	}
+	logging.SetupWithConfig(c)
+
+	cs := loadgen.GenerateNamespacesUnderTest(t, []types.NamespaceID{0, 1, 2})
+
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
 
@@ -278,11 +288,6 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 			},
 		},
 	}
-	ns := []int{0, 1, 2}
-	require.NoError(t, vcservice.InitDatabase(config.Database, ns))
-	t.Cleanup(func() {
-		assert.NoError(t, vcservice.ClearDatabase(config.Database, ns))
-	})
 
 	qs, err := NewQueryService(config)
 	require.NoError(t, err)
@@ -329,7 +334,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		config:     config,
 		ctx:        ctx,
 		qs:         qs,
-		ns:         ns,
+		ns:         []int{0, 1, 2},
 		grpcServer: grpcSrv,
 		clientConn: clientConn,
 		pool:       pool,

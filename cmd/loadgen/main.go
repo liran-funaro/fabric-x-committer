@@ -51,12 +51,13 @@ func startCmd() *cobra.Command {
 			clientConfig := loadgen.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			_, blockGen, client, err := loadgen.Starter(clientConfig)
+			loadBundle, err := loadgen.Starter(clientConfig)
 			if err != nil {
 				return err
 			}
+			blkStream, nsGen, client := loadBundle.BlkStream, loadBundle.NamespaceGen, loadBundle.Client
 
-			if err = client.Start(blockGen); err != nil {
+			if err = client.Start(blkStream, nsGen); err != nil {
 				return err
 			}
 

@@ -18,15 +18,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-//go:embed config_template/coordinator_server.yaml
-var coordinatorServerOnlyTemplate string
-
-//go:embed config_template/coordinator_client.yaml
-var coordinatorClientOnlyTemplate string
-
 var (
-	coordinatorServerTemplate = loggingTemplate + coordinatorServerOnlyTemplate + serverTemplate
-	coordinatorClientTemplate = loggingTemplate + clientOnlyTemplate + coordinatorClientOnlyTemplate
+	//go:embed config_template/coordinator_server.yaml
+	coordinatorServerOnlyTemplate string
+
+	//go:embed config_template/coordinator_client.yaml
+	coordinatorClientOnlyTemplate string
+
+	coordinatorServerTemplate = combineServerTemplates(coordinatorServerOnlyTemplate)
+	coordinatorClientTemplate = combineClientTemplates(coordinatorClientOnlyTemplate)
 )
 
 func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
