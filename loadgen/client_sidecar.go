@@ -8,6 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/tracker"
@@ -67,25 +68,33 @@ func newSidecarClient(config *SidecarClientConfig, metrics *PerfMetrics) *sideca
 	}
 }
 
-func (c *sidecarClient) startWorkload(blockGen *BlockStream) error {
-	for _, stream := range c.broadcasts {
-		go c.startSending(blockGen, stream)
+func (c *sidecarClient) Start(blockGen *BlockStream, nsGen *NamespaceGenerator) error {
+	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
+		c.ctx,
+		&protosigverifierservice.Key{
+			NsId:            uint32(types.MetaNamespaceID),
+			NsVersion:       types.VersionNumber(0).Bytes(),
+			SerializedBytes: nsGen.getSigner().GetVerificationKey(),
+			Scheme:          nsGen.getSigner().HashSigner.scheme,
+		},
+	); err != nil {
+		return errors.Wrap(err, "failed connecting to coordinator")
+	}
+	logger.Infof("Set verification key")
+	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
+
+	if err := c.startNamespaceGeneration(nsGen); err != nil {
+		return errors.Wrap(err, "failed closing namespace generation connection")
 	}
 
-	for _, stream := range c.delivers {
-		go c.startReceiving(stream)
-	}
-
-	go c.receiveCommittedBlock()
-
-	return nil
+	return c.startWorkload(blockGen)
 }
 
 func (c *sidecarClient) startNamespaceGeneration(nsGen *NamespaceGenerator) error {
 	stream := c.broadcasts[0]
 
 	blkToSend := nsGen.Next()
-	logger.Debugf("Sending namaespace-generation-block %d with %d TXs", blkToSend.Number, len(blkToSend.Txs))
+	logger.Infof("Sending namaespace-generation-block %d with %d TXs", blkToSend.Number, len(blkToSend.Txs))
 	for _, tx := range blkToSend.Txs {
 		env, txID, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
 		utils.Must(err)
@@ -100,26 +109,34 @@ func (c *sidecarClient) startNamespaceGeneration(nsGen *NamespaceGenerator) erro
 	}
 
 	// blocks until ensuring the validation of namespace generation-block
-	c.tracker.OnReceiveSidecarBlock(<-c.committedBlock)
+	// block zero can be a config block.
+	block := <-c.committedBlock
+	_, channelHdr, err := serialization.UnwrapEnvelope(block.Data.Data[0])
+	if err != nil {
+		return err
+	}
+	if channelHdr.Type == int32(common.HeaderType_CONFIG) {
+		// we need to read the next block if the first block is a config block
+		logger.Infof("block number %d, type %d", block.Header.Number, channelHdr.Type)
+		block = <-c.committedBlock
+	}
 
+	c.tracker.OnReceiveSidecarBlock(block)
 	return nil
 }
 
-func (c *sidecarClient) Start(blockGen *BlockStream, nsGen *NamespaceGenerator) error {
-	if _, err := c.coordinator.SetMetaNamespaceVerificationKey(
-		c.ctx,
-		&protosigverifierservice.Key{SerializedBytes: nsGen.getSigner().GetVerificationKey()},
-	); err != nil {
-		return errors.Wrap(err, "failed connecting to coordinator")
-	}
-	logger.Infof("Set verification key")
-	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
-
-	if err := c.startNamespaceGeneration(nsGen); err != nil {
-		return errors.Wrap(err, "failed closing namespace generation connection")
+func (c *sidecarClient) startWorkload(blockGen *BlockStream) error {
+	for _, stream := range c.broadcasts {
+		go c.startSending(blockGen, stream)
 	}
 
-	return c.startWorkload(blockGen)
+	for _, stream := range c.delivers {
+		go c.startReceiving(stream)
+	}
+
+	go c.receiveCommittedBlock()
+
+	return nil
 }
 
 func (c *sidecarClient) startSending(

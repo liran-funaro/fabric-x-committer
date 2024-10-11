@@ -1,0 +1,65 @@
+vc-client:
+coordinator-client:
+sidecar-client:
+  endpoint: {{ .SidecarEndpoint }}
+  coordinator:
+    endpoint: {{ .CoordinatorEndpoint }}
+  orderer:
+    broadcast:
+      {{- range .OrdererEndpoints }}
+      - {{ . }}
+      {{- end }}
+    type: BFT
+    channel-id: {{ .ChannelID }}
+    parallelism: 50
+sig-verifier-client:
+monitoring:
+  metrics:
+    enable: true
+    endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+  latency:
+    span-exporter: jaeger
+    sampler:
+      type: blocktx
+      ratio: 10
+      sample-size: 100
+      sample-period: 100000
+    endpoint: {{ .CommonEndpoints.LatencyEndpoint }}
+    max-latency: 5s
+    bucket-count: 1000
+buffer-size: 0
+load-profile:
+  block:
+    size: {{ .BlockSize }}
+  key:
+    size: 32
+  transaction:
+    read-write-value-size:
+    blind-write-value-size:
+    read-only-count:
+    read-write-count:
+      type: constant
+      const: 2
+    signature:
+      scheme: ECDSA
+      namespaces:
+        - 0
+      seed: 10
+  query:
+    query-size:
+    min-invalid-keys-portion:
+    shuffle: false
+  conflicts:
+    invalid-signatures: 0
+    dependencies:
+  seed: 12345
+  workers: 1
+stream:
+  rate-limit:
+    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+    initial-limit: 1000
+  gen-batch: 1
+  buffers-size: 1
+logging:
+  enabled: true
+  level: INFO 

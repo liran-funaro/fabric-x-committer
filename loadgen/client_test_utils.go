@@ -84,7 +84,9 @@ func startLoadGenerator(t *testing.T, c *ClientConfig) *PerfMetrics {
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) > 0 &&
-			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 0
+			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 0 &&
+			test.GetMetricValue(t, metrics.transactionCommittedTotal) > 0 &&
+			test.GetMetricValue(t, metrics.transactionAbortedTotal) == 0
 	}, 20*time.Second, 100*time.Millisecond)
 
 	return metrics

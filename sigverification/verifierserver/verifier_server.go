@@ -77,7 +77,7 @@ func (s *verifierServer) SetVerificationKey(context context.Context, verificatio
 		version:  verificationKey.NsVersion,
 	}
 
-	logger.Info("Set a new verification key.")
+	logger.Infof("Set a new verification key for namespace %d", verificationKey.NsId)
 	return &sigverification.Empty{}, nil
 }
 
@@ -110,7 +110,7 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 	for nsIndex, ns := range request.Tx.Namespaces {
 		v, ok := s.verifier[types.NamespaceID(ns.NsId)]
 		if !ok {
-			logger.Warnf("No verifier set! Returning invalid status.")
+			logger.Warnf("No verifier set for namespace %d. Returning invalid status.", ns.NsId)
 			response.ErrorMessage = "no verifier set"
 			return response, nil
 		}

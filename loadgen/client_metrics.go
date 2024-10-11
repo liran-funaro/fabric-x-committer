@@ -17,6 +17,8 @@ type PerfMetrics struct {
 	blockSentTotal                  *metrics.IntCounter
 	transactionSentTotal            *metrics.IntCounter
 	transactionReceivedTotal        *metrics.IntCounter
+	transactionCommittedTotal       *metrics.IntCounter
+	transactionAbortedTotal         *metrics.IntCounter
 	validTransactionLatencySecond   prometheus.Histogram
 	invalidTransactionLatencySecond prometheus.Histogram
 }
@@ -39,6 +41,16 @@ func newBlockgenServiceMetrics(p metrics.Provider) *PerfMetrics {
 			Namespace: "blockgen",
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
+		}),
+		transactionCommittedTotal: p.NewIntCounter(prometheus.CounterOpts{
+			Namespace: "blockgen",
+			Name:      "transaction_committed_total",
+			Help:      "Total number of transaction commit statuses received by the block generator",
+		}),
+		transactionAbortedTotal: p.NewIntCounter(prometheus.CounterOpts{
+			Namespace: "blockgen",
+			Name:      "transaction_aborted_total",
+			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
 		validTransactionLatencySecond: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "blockgen",
@@ -76,6 +88,11 @@ func NewClientTracker(m *PerfMetrics) *ClientTracker {
 // and calls the latency tracker.
 func (c *ClientTracker) OnReceiveTransaction(txID string, success bool) {
 	c.metrics.transactionReceivedTotal.Inc()
+	if success {
+		c.metrics.transactionCommittedTotal.Inc()
+	} else {
+		c.metrics.transactionAbortedTotal.Inc()
+	}
 	c.latencyTracker.OnReceiveTransaction(txID, success)
 }
 

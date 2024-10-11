@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"path"
 	"sync"
 	"testing"
-	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +26,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
@@ -42,30 +41,33 @@ import (
 type (
 	// Cluster represents a test cluster of Coordinator, SigVerifier, VCService and Query processes.
 	Cluster struct {
-		MockOrdererProcess   *OrdererProcess
-		SidecarProcess       *SidecarProcess
-		CoordinatorProcess   *CoordinatorProcess
-		QueryServiceProcess  *QueryServiceProcess
-		SigVerifierProcesses []*SigVerifierProcess
-		VCServiceProcesses   []*VCServiceProcess
+		mockOrderer  *processWithConfig[*configtempl.OrdererConfig]
+		sidecar      *processWithConfig[*configtempl.SidecarConfig]
+		coordinator  *processWithConfig[*configtempl.CoordinatorConfig]
+		queryService *processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
+		sigVerifier  []*processWithConfig[*configtempl.SigVerifierConfig]
+		vcService    []*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
+		loadGen      *processWithConfig[*configtempl.LoadGenConfig]
 
-		OrdererClient      orderer.AtomicBroadcast_BroadcastClient
-		CoordinatorClient  protocoordinatorservice.CoordinatorClient
+		dbEnv *vcservice.DatabaseTestEnv
+
+		ordererClient      orderer.AtomicBroadcast_BroadcastClient
+		coordinatorClient  protocoordinatorservice.CoordinatorClient
 		QueryServiceClient protoqueryservice.QueryServiceClient
-		SidecarClient      *deliverclient.Receiver
+		sidecarClient      *deliverclient.Receiver
 
-		EnvelopeCreator broadcastclient.EnvelopeCreator
+		envelopeCreator broadcastclient.EnvelopeCreator
 
-		CommittedBlock chan *common.Block
-		RootDir        string
+		committedBlock chan *common.Block
+		rootDir        string
 
-		PubKey   *sync.Map
-		PvtKey   *sync.Map
-		TxSigner *sync.Map
+		pubKey   *sync.Map
+		pvtKey   *sync.Map
+		txSigner *sync.Map
 
-		ClusterConfig *Config
+		clusterConfig *Config
 
-		ChannelID string
+		channelID string
 	}
 
 	// Config represents the configuration of the cluster.
@@ -75,6 +77,7 @@ type (
 		InitializeNamespace []types.NamespaceID
 		BlockSize           uint64
 		BlockTimeout        time.Duration
+		LoadGen             bool
 	}
 )
 
@@ -84,42 +87,89 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	require.NoError(t, err)
 
 	c := &Cluster{
-		SigVerifierProcesses: make([]*SigVerifierProcess, 0, clusterConfig.NumSigVerifiers),
-		VCServiceProcesses:   make([]*VCServiceProcess, 0, clusterConfig.NumSigVerifiers),
-		RootDir:              tempDir,
-		PubKey:               &sync.Map{},
-		PvtKey:               &sync.Map{},
-		TxSigner:             &sync.Map{},
-		ClusterConfig:        clusterConfig,
-		ChannelID:            "channel1",
-		CommittedBlock:       make(chan *common.Block, 100),
+		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], clusterConfig.NumSigVerifiers),
+		vcService: make(
+			[]*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig],
+			clusterConfig.NumSigVerifiers,
+		),
+		dbEnv:          vcservice.NewDatabaseTestEnv(t),
+		rootDir:        tempDir,
+		pubKey:         &sync.Map{},
+		pvtKey:         &sync.Map{},
+		txSigner:       &sync.Map{},
+		clusterConfig:  clusterConfig,
+		channelID:      "channel1",
+		committedBlock: make(chan *common.Block, 100),
 	}
 
-	for i := 0; i < clusterConfig.NumSigVerifiers; i++ {
-		c.SigVerifierProcesses = append(c.SigVerifierProcesses, NewSigVerifierProcess(t, c.RootDir))
+	// Start mock ordering service
+	ordererConfig := &configtempl.OrdererConfig{
+		ServerEndpoint: makeLocalListenAddress(findAvailablePortRange(t, 1)[0]),
+		BlockSize:      clusterConfig.BlockSize,
+		BlockTimeout:   clusterConfig.BlockTimeout,
+	}
+	c.mockOrderer = newProcess(t, mockordererCmd, c.rootDir, ordererConfig)
+
+	// Start signature-verifier
+	for i := range clusterConfig.NumSigVerifiers {
+		c.sigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &configtempl.SigVerifierConfig{
+			CommonEndpoints: newCommonEndpoints(t),
+		})
 	}
 
-	dbEnv := vcservice.NewDatabaseTestEnv(t)
-	require.NoError(t, vcservice.InitDatabase(dbEnv.DBConf))
-	for i := 0; i < clusterConfig.NumVCService; i++ {
-		c.VCServiceProcesses = append(c.VCServiceProcesses, NewVCServiceProcess(t, c.RootDir, dbEnv))
+	// Start validator-persister
+	require.NoError(t, vcservice.InitDatabase(c.dbEnv.DBConf))
+	for i := range clusterConfig.NumVCService {
+		c.vcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 	}
 
-	c.CoordinatorProcess = NewCoordinatorProcess(t, c.SigVerifierProcesses, c.VCServiceProcesses, c.RootDir)
+	// Start coordinator
+	coordConfig := &configtempl.CoordinatorConfig{
+		CommonEndpoints:      newCommonEndpoints(t),
+		SigVerifierEndpoints: make([]string, len(c.sigVerifier)),
+		VCServiceEndpoints:   make([]string, len(c.vcService)),
+	}
+	for i, sv := range c.sigVerifier {
+		coordConfig.SigVerifierEndpoints[i] = sv.config.ServerEndpoint
+	}
+	for i, vc := range c.vcService {
+		coordConfig.VCServiceEndpoints[i] = vc.config.ServerEndpoint
+	}
+	c.coordinator = newProcess(t, coordinatorCmd, c.rootDir, coordConfig)
 
-	c.QueryServiceProcess = NewQueryServiceProcess(t, c.RootDir, dbEnv)
+	// Start query-executor
+	c.queryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 
-	c.MockOrdererProcess = NewOrdererProcess(t, c.RootDir, clusterConfig.BlockSize, clusterConfig.BlockTimeout)
+	// Start sidecar
+	sidecarConfig := &configtempl.SidecarConfig{
+		CommonEndpoints:     newCommonEndpoints(t),
+		OrdererEndpoint:     c.mockOrderer.config.ServerEndpoint,
+		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
+		LedgerPath:          c.rootDir,
+		ChannelID:           c.channelID,
+	}
+	c.sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
 
-	c.SidecarProcess = NewSidecarProcess(t, c.MockOrdererProcess, c.CoordinatorProcess, c.RootDir, c.ChannelID)
+	if clusterConfig.LoadGen {
+		loadgenConfig := &configtempl.LoadGenConfig{
+			CommonEndpoints:     newCommonEndpoints(t),
+			SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
+			CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
+			OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
+			ChannelID:           c.channelID,
+			BlockSize:           clusterConfig.BlockSize,
+		}
+		c.loadGen = newProcess(t, loadgenCmd, c.rootDir, loadgenConfig)
+		return c
+	}
 
 	c.createClients(t)
 	c.setMetaNamespaceVerificationKey(t)
 	c.ensureLastCommittedBlockNumber(t, 0)
 	go func() {
-		require.True(t, connection.IsStreamEnd(c.SidecarClient.Run(context.TODO())))
+		require.True(t, connection.IsStreamEnd(c.sidecarClient.Run(context.TODO())))
 	}()
-	<-c.CommittedBlock
+	<-c.committedBlock
 	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
 
 	return c
@@ -128,28 +178,28 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 // createClients utilize createClientConnection for connection creation
 // and responsible for the creation of the clients.
 func (c *Cluster) createClients(t *testing.T) {
-	coordConn := createClientConnection(t, c.CoordinatorProcess.Config.ServerEndpoint)
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
+	coordConn := createClientConnection(t, c.coordinator.config.ServerEndpoint)
+	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
-	qsConn := createClientConnection(t, c.QueryServiceProcess.Config.ServerEndpoint)
+	qsConn := createClientConnection(t, c.queryService.config.ServerEndpoint)
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
 	ordererClient, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{
-		Broadcast:       []*connection.Endpoint{connection.CreateEndpoint(c.MockOrdererProcess.Config.ServerEndpoint)},
+		Broadcast:       []*connection.Endpoint{connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
 		SignedEnvelopes: false,
-		ChannelID:       c.ChannelID,
+		ChannelID:       c.channelID,
 		Type:            utils.Raft,
 		Parallelism:     1,
 	})
 	require.NoError(t, err)
-	c.OrdererClient = ordererClient[0]
-	c.EnvelopeCreator = envelopeCreator
+	c.ordererClient = ordererClient[0]
+	c.envelopeCreator = envelopeCreator
 
-	c.SidecarClient, err = deliverclient.New(&deliverclient.Config{
-		ChannelID: c.ChannelID,
-		Endpoint:  *connection.CreateEndpoint(c.SidecarProcess.Config.ServerEndpoint),
+	c.sidecarClient, err = deliverclient.New(&deliverclient.Config{
+		ChannelID: c.channelID,
+		Endpoint:  *connection.CreateEndpoint(c.sidecar.config.ServerEndpoint),
 		Reconnect: -1,
-	}, deliverclient.Ledger, c.CommittedBlock)
+	}, deliverclient.Ledger, c.committedBlock)
 	require.NoError(t, err)
 }
 
@@ -157,10 +207,10 @@ func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
 	c.CreateCryptoForNs(t, types.MetaNamespaceID, &signature.Profile{
 		Scheme: signature.Ecdsa,
 	})
-	metaPubKey, ok := c.PubKey.Load(types.MetaNamespaceID)
+	metaPubKey, ok := c.pubKey.Load(types.MetaNamespaceID)
 	require.True(t, ok)
 
-	_, err := c.CoordinatorClient.SetMetaNamespaceVerificationKey(
+	_, err := c.coordinatorClient.SetMetaNamespaceVerificationKey(
 		context.Background(),
 		&protosigverifierservice.Key{
 			NsId:            uint32(types.MetaNamespaceID),
@@ -230,10 +280,10 @@ func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 // SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
 func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
 	for _, tx := range txs {
-		env, _, err := c.EnvelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+		env, _, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
 		require.NoError(t, err)
-		require.NoError(t, c.OrdererClient.Send(env))
-		resp, err := c.OrdererClient.Recv()
+		require.NoError(t, c.ordererClient.Send(env))
+		resp, err := c.ordererClient.Recv()
 		require.NoError(t, err)
 		require.Equal(t, common.Status_SUCCESS, resp.Status)
 	}
@@ -249,14 +299,14 @@ func (c *Cluster) CreateCryptoForNs(
 	pvtKey, pubKey := factory.NewKeys()
 	txSigner, err := factory.NewSigner(pvtKey)
 	require.NoError(t, err)
-	c.PubKey.Store(nsID, pubKey)
-	c.PvtKey.Store(nsID, pvtKey)
-	c.TxSigner.Store(nsID, txSigner)
+	c.pubKey.Store(nsID, pubKey)
+	c.pvtKey.Store(nsID, pvtKey)
+	c.txSigner.Store(nsID, txSigner)
 }
 
 // GetPublicKey returns the public key for a namespace.
 func (c *Cluster) GetPublicKey(t *testing.T, nsID types.NamespaceID) []byte {
-	pubKey, ok := c.PubKey.Load(nsID)
+	pubKey, ok := c.pubKey.Load(nsID)
 	if !ok {
 		return nil
 	}
@@ -267,7 +317,7 @@ func (c *Cluster) GetPublicKey(t *testing.T, nsID types.NamespaceID) []byte {
 
 // GetTxSigner returns the transaction signer for a namespace.
 func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificationtest.NsSigner {
-	tSigner, ok := c.TxSigner.Load(nsID)
+	tSigner, ok := c.txSigner.Load(nsID)
 	if !ok {
 		return nil
 	}
@@ -278,18 +328,18 @@ func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificat
 
 // Stop stops the cluster.
 func (c *Cluster) Stop(t *testing.T) {
-	process := make([]ifrit.Process, 0, len(c.SigVerifierProcesses)+len(c.VCServiceProcesses)+4)
+	process := make([]ifrit.Process, 0, len(c.sigVerifier)+len(c.vcService)+4)
 
-	for _, sigVerifier := range c.SigVerifierProcesses {
-		process = append(process, sigVerifier.Process)
+	for _, sigVerifier := range c.sigVerifier {
+		process = append(process, sigVerifier.process)
 	}
-	for _, vcser := range c.VCServiceProcesses {
-		process = append(process, vcser.Process)
+	for _, vcser := range c.vcService {
+		process = append(process, vcser.process)
 	}
-	process = append(process, c.CoordinatorProcess.Process)
-	process = append(process, c.SidecarProcess.Process)
-	process = append(process, c.QueryServiceProcess.Process)
-	process = append(process, c.MockOrdererProcess.Process)
+	process = append(process, c.coordinator.process)
+	process = append(process, c.sidecar.process)
+	process = append(process, c.queryService.process)
+	process = append(process, c.mockOrderer.process)
 
 	var wg sync.WaitGroup
 	wg.Add(len(process))
@@ -298,7 +348,7 @@ func (c *Cluster) Stop(t *testing.T) {
 	}
 	wg.Wait()
 
-	require.NoError(t, os.RemoveAll(c.RootDir))
+	require.NoError(t, os.RemoveAll(c.rootDir))
 }
 
 // createClientConnection creates a service connection using its given server endpoint.
@@ -331,24 +381,6 @@ func constructConfigFilePath(rootDir, name, endpoint string) string {
 	return path.Join(rootDir, name+"-"+endpoint+"-config.yaml")
 }
 
-func createConfigFile(t *testing.T, config any, templateFilePath, outputFilePath string) {
-	tmpl, err := template.ParseFiles(templateFilePath)
-	require.NoError(t, err)
-
-	var renderedConfig bytes.Buffer
-	err = tmpl.Execute(&renderedConfig, config)
-	require.NoError(t, err)
-
-	outputFile, err := os.Create(outputFilePath)
-	require.NoError(t, err)
-	defer func() {
-		_ = outputFile.Close()
-	}()
-
-	_, err = outputFile.Write(renderedConfig.Bytes())
-	require.NoError(t, err)
-}
-
 // ExpectedStatusInBlock holds pairs of expected txID and the corresponding status in a block. The order of statuses
 // is expected to be the same as in the committed block.
 type ExpectedStatusInBlock struct {
@@ -359,7 +391,7 @@ type ExpectedStatusInBlock struct {
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
 func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expectedResults *ExpectedStatusInBlock) {
 	require.Len(t, expectedResults.Statuses, len(expectedResults.TxIDs))
-	blk, ok := <-c.CommittedBlock
+	blk, ok := <-c.committedBlock
 	if !ok {
 		return
 	}
@@ -382,12 +414,22 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 }
 
+// CountStatus returns the number of transactions with a given tx status.
+func (c *Cluster) CountStatus(t *testing.T, status protoblocktx.Status) int {
+	return c.dbEnv.CountStatus(t, status)
+}
+
+// CountAlternateStatus returns the number of transactions not with a given tx status.
+func (c *Cluster) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+	return c.dbEnv.CountAlternateStatus(t, status)
+}
+
 func (c *Cluster) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
 	require.Eventually(t, func() bool {
-		lastBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+		lastBlock, err := c.coordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
 		if err != nil {
 			return false
 		}

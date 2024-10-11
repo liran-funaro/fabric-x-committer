@@ -1,6 +1,6 @@
 validator-committer-service:
   server:
-    endpoint: {{ .ServerEndpoint }}
+    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
   database:
     host: {{ .DatabaseHost }}
     port: {{ .DatabasePort }}
@@ -20,7 +20,7 @@ validator-committer-service:
   monitoring:
     metrics:
       enable: true
-      endpoint: {{ .MetricsEndpoint }}
+      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 logging:
   development: true
   enabled: true

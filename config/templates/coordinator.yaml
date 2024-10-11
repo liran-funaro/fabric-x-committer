@@ -1,6 +1,6 @@
 coordinator-service:
   server:
-    endpoint: {{.ServerEndpoint}}
+    endpoint: {{ .CommonEndpoints.ServerEndpoint}}
   sign-verifier:
     server: 
       {{- range .SigVerifierEndpoints }}
@@ -8,7 +8,7 @@ coordinator-service:
       {{- end }}
   validator-committer:
     server: 
-      {{- range .VCServiceEndpoints }}
+     {{- range .VCServiceEndpoints }}
       - endpoint: {{ . }}
       {{- end }}
   dependency-graph:
@@ -21,7 +21,7 @@ coordinator-service:
   monitoring:
     metrics:
       enable: true
-      endpoint: {{.MetricsEndpoint}}
+      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
 # For debugging, change the output to "xxx.log" and the level to "DEBUG"
 logging:

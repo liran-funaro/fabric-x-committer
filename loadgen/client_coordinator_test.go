@@ -83,6 +83,8 @@ func TestBlockGenForCoordinator(t *testing.T) { // nolint: gocognit
 	})
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.transactionSentTotal) ==
-			test.GetMetricValue(t, metrics.transactionReceivedTotal)
+			test.GetMetricValue(t, metrics.transactionReceivedTotal) &&
+			test.GetMetricValue(t, metrics.transactionCommittedTotal) > 0 &&
+			test.GetMetricValue(t, metrics.transactionAbortedTotal) > 0
 	}, 20*time.Second, 500*time.Millisecond)
 }

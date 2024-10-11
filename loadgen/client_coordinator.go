@@ -69,6 +69,9 @@ func (c *coordinatorClient) startNamespaceGeneration(nsGen *NamespaceGenerator) 
 		c.cancel(errors.New("could not commit namespace generation-block"))
 	}
 
+	if err := stream.CloseSend(); err != nil {
+		return err
+	}
 	return conn.Close()
 }
 

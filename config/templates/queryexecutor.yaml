@@ -2,7 +2,7 @@ query-service:
   # Configuration for the server
   server:
     # The server's endpoint configuration
-    endpoint: {{ .ServerEndpoint }}
+    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
     # Credentials for the server
   database:
     host: {{ .DatabaseHost }}
@@ -16,7 +16,7 @@ query-service:
   monitoring:
     metrics:
       enable: true
-      endpoint: {{ .MetricsEndpoint }}
+      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 logging:
   development: true
   enabled: true

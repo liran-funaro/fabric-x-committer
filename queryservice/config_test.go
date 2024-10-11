@@ -22,7 +22,7 @@ func TestConfig(t *testing.T) {
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "../config/config-queryservice.yaml",
+			configFilePath: "../config/samples/config-queryservice.yaml",
 			expectedConfig: &Config{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{

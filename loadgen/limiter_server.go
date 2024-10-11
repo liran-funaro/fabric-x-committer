@@ -51,6 +51,7 @@ func NewLimiter(c *LimiterConfig) ratelimit.Limiter {
 
 	// start remote-limiter controller.
 	logger.Infof("Start remote controller listener on %s\n", c.Endpoint.Address())
+	logger.Infof("Serving...")
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	router.POST("/setLimits", func(c *gin.Context) {

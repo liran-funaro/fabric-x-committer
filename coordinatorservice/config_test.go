@@ -19,7 +19,7 @@ func TestReadConfig(t *testing.T) {
 	}{
 		{
 			name:           "config",
-			configFilePath: "../config/config-coordinator.yaml",
+			configFilePath: "../config/samples/config-coordinator.yaml",
 			expectedConfig: &CoordinatorConfig{
 				ServerConfig: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{

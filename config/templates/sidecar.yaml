@@ -1,6 +1,6 @@
 sidecar:
   server:
-    endpoint: {{ .ServerEndpoint }}
+    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
     keep-alive:
       params:
         time: 300s
@@ -22,7 +22,7 @@ sidecar:
   monitoring:
     metrics:
       enable: true
-      endpoint: {{ .MetricsEndpoint }}
+      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
     latency:
       span-exporter: jaeger
       sampler:
@@ -30,7 +30,7 @@ sidecar:
         ratio: 10
         sample-size: 100
         sample-period: 100000
-      endpoint: {{ .LatencyEndpoint }}
+      endpoint: {{ .CommonEndpoints.LatencyEndpoint }}
       max-latency: 5s
       bucket-count: 1000
 

@@ -1,12 +1,16 @@
 package vcservice
 
 import (
+	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/yugabyte/pgx/v4"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -45,4 +49,24 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 		DB:     db,
 		DBConf: config,
 	}
+}
+
+// CountStatus returns the number of transactions with a given tx status.
+func (env *DatabaseTestEnv) CountStatus(t *testing.T, status protoblocktx.Status) int {
+	query := fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status)
+	row := env.DB.pool.QueryRow(context.Background(), query)
+	return readCount(t, row)
+}
+
+// CountAlternateStatus returns the number of transactions not with a given tx status.
+func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+	query := fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status)
+	row := env.DB.pool.QueryRow(context.Background(), query)
+	return readCount(t, row)
+}
+
+func readCount(t *testing.T, r pgx.Row) int {
+	var count int
+	require.NoError(t, r.Scan(&count))
+	return count
 }
