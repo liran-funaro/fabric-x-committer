@@ -277,6 +277,7 @@ func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 	if k.NsId != uint32(types.MetaNamespaceID) {
 		return nil, errors.New("namespace ID is not meta namespace ID")
 	}
+	<-c.signatureVerifierMgr.connectionReady
 	return &protocoordinatorservice.Empty{}, c.signatureVerifierMgr.setVerificationKey(ctx, k)
 }
 

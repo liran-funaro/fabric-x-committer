@@ -22,9 +22,10 @@ type (
 	// 2. Receiving the status of the transactions from the signature verifier servers.
 	// 3. Forwarding the status of the transactions to the coordinator.
 	signatureVerifierManager struct {
-		config       *signVerifierManagerConfig
-		signVerifier []*signatureVerifier
-		metrics      *perfMetrics
+		config          *signVerifierManagerConfig
+		signVerifier    []*signatureVerifier
+		metrics         *perfMetrics
+		connectionReady chan any
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
@@ -68,12 +69,14 @@ const (
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	return &signatureVerifierManager{
-		config:  config,
-		metrics: config.metrics,
+		config:          config,
+		metrics:         config.metrics,
+		connectionReady: make(chan any),
 	}
 }
 
 func (svm *signatureVerifierManager) run(ctx context.Context) error {
+	defer func() { svm.connectionReady = make(chan any) }()
 	c := svm.config
 	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.serversConfig))
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
@@ -118,6 +121,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		})
 	}
 
+	close(svm.connectionReady)
 	return g.Wait()
 }
 

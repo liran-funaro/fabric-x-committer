@@ -58,9 +58,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 	wg.Add(1)
 	go func() { require.NoError(t, svm.run(ctx)); wg.Done() }()
 
-	require.Eventually(t, func() bool {
-		return len(svm.signVerifier) > 0
-	}, 4*time.Second, 250*time.Millisecond)
+	<-svm.connectionReady
 
 	env := &svMgrTestEnv{
 		signVerifierManager:       svm,

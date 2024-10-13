@@ -59,6 +59,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	t.Cleanup(cancel)
 	wg.Add(1)
 	go func() { require.NoError(t, connection.FilterStreamErrors(vcm.run(ctx))); wg.Done() }()
+	<-vcm.connectionReady
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
