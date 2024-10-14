@@ -8,6 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"golang.org/x/sync/errgroup"
@@ -56,8 +57,6 @@ func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
 
 func (c *transactionCommitter) commit(ctx context.Context) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
-	maxRetryAttempt := 3
-	var attempts int
 	var txsStatus *protovcservice.TransactionStatus
 	var err error
 
@@ -71,22 +70,16 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 
 		logger.Debugf("Batch of validated TXs in the committer")
 		start := time.Now()
-		for attempts = 0; attempts < maxRetryAttempt; attempts++ {
+		// There are certain errors for which we need to retry the commit operation.
+		// Refer to YugabyteDB documentation for retryable error.
+		// Rather than distinguishing retryable transaction error, we retry for all errors.
+		// This is for simplicity and we can improve it in future.
+		// TODO: Add test to ensure commit is retried.
+		if retryErr := utils.Retry(func() error {
 			txsStatus, err = c.commitTransactions(vTx)
-			if err == nil {
-				break
-			}
-
-			// There are certain errors for which we need to retry the commit operation.
-			// Refer to YugabyteDB documentation for retryable error.
-			// Rather than distinguishing retryable transaction error, we retry for all errors.
-			// This is for simplicity and we can improve it in future.
-			// TODO: Add test to ensure commit is retried.
-			logger.Errorf("error committing tx: %v", err)
-			logger.Infof("retrying to commit transactions")
-		}
-
-		if attempts == maxRetryAttempt {
+			return err
+		}, retryTimeout, retryInitialInterval); retryErr != nil {
+			logger.Errorf("failed to commit transactions: %w", err)
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
 
@@ -107,8 +100,8 @@ func (c *transactionCommitter) commitTransactions(
 	// Theoretically, we can only retry twice. Once for attempting to insert existing keys, and once for attempting
 	// to reuse transaction IDs.
 	// However, we still limit the number of retries to some arbitrary number to avoid an endless loop due to a bug.
-	maxRetries := 1024
-	for i := 0; i < maxRetries; i++ {
+	maxRetriesToRemoveAllInvalidTxs := 1024
+	for i := 0; i < maxRetriesToRemoveAllInvalidTxs; i++ {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
 			updateWrites:   groupWritesByNamespace(vTx.validTxNonBlindWrites),
@@ -132,8 +125,7 @@ func (c *transactionCommitter) commitTransactions(
 		vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	}
 
-	// TODO: handle this case gracefully.
-	panic(fmt.Errorf("[BUG] commit failed after %d retries", maxRetries))
+	return nil, fmt.Errorf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
 }
 
 // prepareStatusForCommit construct transaction status.

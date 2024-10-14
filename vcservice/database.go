@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
@@ -15,6 +16,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
@@ -34,8 +36,16 @@ const (
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
 
-// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
-var ErrMetadataEmpty = errors.New("metadata value is empty")
+var (
+	// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
+	ErrMetadataEmpty = errors.New("metadata value is empty")
+	// retryTimeout denotes the time duration for which the db operations can be retried.
+	// There are certain errors for which we need to retry the query/commit operation.
+	// Refer to YugabyteDB documentation for retryable error.
+	retryTimeout = 5 * time.Second
+	// retryInitialInterval denotes the initial interval between the retries.
+	retryInitialInterval = backoff.WithInitialInterval(100 * time.Millisecond)
+)
 
 type (
 	// database handles the database operations.
@@ -100,7 +110,7 @@ func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*r
 	start := time.Now()
 	query := fmt.Sprintf(validateReadsSQLTemplate, nsID)
 
-	mismatch, err := db.pool.Query(context.Background(), query, r.keys, r.versions)
+	mismatch, err := db.retryQuery(context.Background(), query, r.keys, r.versions)
 	if err != nil {
 		return nil, fmt.Errorf("failed query: %w", err)
 	}
@@ -122,7 +132,8 @@ func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*r
 func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTemplate, TableName(nsID))
-	keysVers, err := db.pool.Query(context.Background(), query, queryKeys)
+
+	keysVers, err := db.retryQuery(context.Background(), query, queryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -151,10 +162,13 @@ func (db *database) getMaxSeenBlockNumber(ctx context.Context) (*protoblocktx.Bl
 }
 
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
-	r := db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
+	var r pgx.Row
 	var value []byte
-	if err := r.Scan(&value); err != nil {
-		return nil, err
+	if retryErr := utils.Retry(func() error {
+		r = db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
+		return r.Scan(&value)
+	}, retryTimeout, retryInitialInterval); retryErr != nil {
+		return nil, retryErr
 	}
 	if len(value) == 0 {
 		return nil, ErrMetadataEmpty
@@ -167,7 +181,7 @@ func (db *database) queryTransactionsStatus(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (*protovcservice.TransactionStatus, error) {
-	txIDsStatus, err := db.pool.Query(ctx, queryTxIDsStatus, txIDs)
+	txIDsStatus, err := db.retryQuery(context.Background(), queryTxIDsStatus, txIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +217,11 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	if _, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v); err != nil {
-		return fmt.Errorf("failed to set the last committed block number: %w", err)
+	if retryErr := utils.Retry(func() error {
+		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
+		return err
+	}, retryTimeout, retryInitialInterval); retryErr != nil {
+		return fmt.Errorf("failed to set the last committed block number: %w", retryErr)
 	}
 
 	return nil
@@ -470,4 +487,14 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 // TableName returns the table name for the given namespace.
 func TableName(nsID types.NamespaceID) string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
+}
+
+func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
+	var rows pgx.Rows
+	retryErr := utils.Retry(func() error {
+		var err error
+		rows, err = db.pool.Query(ctx, sql, arg...)
+		return err
+	}, retryTimeout, retryInitialInterval)
+	return rows, retryErr
 }
