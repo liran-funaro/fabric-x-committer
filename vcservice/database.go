@@ -88,14 +88,11 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 		return nil, err
 	}
 
-	// TODO: We need to create all system namespaces such as txStatus
-	//       and namespaceLifecycle here. This requires refactoring of dbinit.go.
-
 	return &database{
 		name:    dbType,
 		pool:    pool,
 		metrics: metrics,
-	}, nil
+	}, initDatabaseTables(context.Background(), pool, nil)
 }
 
 // validateNamespaceReads validates the reads for a given namespace.

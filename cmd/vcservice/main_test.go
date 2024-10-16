@@ -40,13 +40,6 @@ func TestVCServiceCmd(t *testing.T) {
 			Endpoint:        "localhost:8000",
 		},
 		{
-			Name:            "init the " + serviceName,
-			Args:            []string{"init", "--configs", testConfigPath},
-			CmdStdOutput:    "Initializing database",
-			CmdLoggerOutput: "Table 'ns_1024' is ready",
-			Err:             nil,
-		},
-		{
 			Name:            "clear the " + serviceName,
 			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "1024"},
 			CmdStdOutput:    "Clearing database",

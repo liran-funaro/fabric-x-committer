@@ -118,7 +118,6 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	}
 
 	// Start validator-persister
-	require.NoError(t, vcservice.InitDatabase(c.dbEnv.DBConf))
 	for i := range clusterConfig.NumVCService {
 		c.vcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 	}

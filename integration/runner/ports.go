@@ -3,6 +3,7 @@ package runner
 import (
 	"math/rand"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func findAvailablePortRange(t *testing.T, numPorts int) []int {
 
 	for len(availablePorts) < numPorts {
 		randomPort := r.Intn(maxPort-minPort+1) + minPort
-		if isPortAvailable(randomPort) {
+		if isPortAvailable(randomPort) && !slices.Contains(availablePorts, randomPort) {
 			availablePorts = append(availablePorts, randomPort)
 		}
 	}

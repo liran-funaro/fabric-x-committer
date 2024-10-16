@@ -122,10 +122,6 @@ func ActivateVcService(t *testing.T, ports, metricPorts []int) *yuga.Connection 
 			metricPorts[i], ports[i])
 		conf := vcservice.ReadConfig()
 
-		if i == 0 {
-			require.NoError(t, vcservice.InitDatabase(conf.Database))
-		}
-
 		service, err := vcservice.NewValidatorCommitterService(conf)
 		require.NoError(t, err)
 		t.Cleanup(func() { service.Close() })

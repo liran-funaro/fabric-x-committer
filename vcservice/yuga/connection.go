@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -20,6 +21,13 @@ const (
 
 	stmtTemplateCreateDb       = "CREATE DATABASE %s;"
 	stmtTemplateDropDbIfExists = "DROP DATABASE IF EXISTS %s;"
+)
+
+var (
+	// RetryTimeout is the duration allocated for the retry mechanism during the database initialization process.
+	RetryTimeout = 3 * time.Minute
+	// RetryInitialInterval is the starting wait time interval that increases every retry attempt.
+	RetryInitialInterval = backoff.WithInitialInterval(50 * time.Millisecond)
 )
 
 // Connection facilities connecting to a YugabyteDB instance.
@@ -157,33 +165,22 @@ func (y *Connection) DropDB(ctx context.Context, dbName string) error {
 	return execDropIfExitsDB(ctx, pool, dbName)
 }
 
-// ExecRetry attempts to execute a statement multiple times until successful.
-// This is a workaround for a known issues:
-//   - Dropping a database with proximity to accessing it.
-//     See: https://support.yugabyte.com/hc/en-us/articles/10552861830541-Unable-to-Drop-Database.
-//   - Creating/dropping tables immediately after creating a database.
-//     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
-func ExecRetry(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) error {
-	var err error
-	for i := 0; i < 60; i++ {
-		if i > 0 {
-			time.Sleep(time.Second)
-		}
-
-		_, err = pool.Exec(ctx, stmt, args...)
-		if err == nil {
-			return nil
-		}
-		logger.Debugf("   > Failed exec attempt %d: %s", i+1, err)
+// PoolExecOperation creates a pool execution operation function.
+func PoolExecOperation(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) func() error {
+	return func() error {
+		_, err := pool.Exec(ctx, stmt, args...)
+		return err
 	}
-	return err
 }
 
 // execCreateDB creates a DB if exists given an existing pool.
 func execCreateDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error {
 	logger.Infof("Creating database: %s", dbName)
-	err := ExecRetry(ctx, pool, fmt.Sprintf(stmtTemplateCreateDb, dbName))
-	if err != nil {
+	if err := utils.Retry(
+		PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateCreateDb, dbName)),
+		RetryTimeout,
+		RetryInitialInterval,
+	); err != nil {
 		return err
 	}
 	logger.Infof("Database created: %s", dbName)
@@ -193,8 +190,11 @@ func execCreateDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error 
 // execDropIfExitsDB drops a DB if exists given an existing pool.
 func execDropIfExitsDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error {
 	logger.Infof("Dropping database if exists: %s", dbName)
-	err := ExecRetry(ctx, pool, fmt.Sprintf(stmtTemplateDropDbIfExists, dbName))
-	if err != nil {
+	if err := utils.Retry(
+		PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateDropDbIfExists, dbName)),
+		RetryTimeout,
+		RetryInitialInterval,
+	); err != nil {
 		return err
 	}
 	logger.Infof("Database dropped: %s", dbName)

@@ -100,6 +100,12 @@ const (
 
 // Retry executes the given operation repeatedly until it succeeds or a timeout occurs.
 // It returns nil on success, or the error returned by the final attempt on timeout.
+//
+// We use Retry as a workaround for a known issues:
+//   - Dropping a database with proximity to accessing it.
+//     See: https://support.yugabyte.com/hc/en-us/articles/10552861830541-Unable-to-Drop-Database.
+//   - Creating/dropping tables immediately after creating a database.
+//     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
 func Retry(o backoff.Operation, timeout time.Duration, opts ...backoff.ExponentialBackOffOpts) error {
 	if timeout.Seconds() == 0 {
 		return errors.New("Invalid timeout value. The timeout must be a positive number to prevent infinite retries.")

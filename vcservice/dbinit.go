@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 `
 
 const initializeMetadataPrepStmt = `
-INSERT INTO metadata VALUES ($1, $2);
+INSERT INTO metadata VALUES ($1, $2) ON CONFLICT DO NOTHING;
 `
 
 const setMetadataPrepStmt = `
@@ -231,22 +232,6 @@ func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// InitDatabase initialize the DB tables and methods.
-func InitDatabase(config *DatabaseConfig) error {
-	pool, err := NewDatabasePool(config)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	if err := initDatabaseTables(context.Background(), pool, nil); err != nil {
-		// TODO: handle error gracefully
-		logger.Fatalf("Failed initialize database [%s] tables: %s", config.Database, err)
-	}
-
-	return nil
-}
-
 // ClearDatabase clears the DB tables and methods.
 func ClearDatabase(config *DatabaseConfig, nsIDs []int) error {
 	pool, err := NewDatabasePool(config)
@@ -296,7 +281,7 @@ func stmtFmt(stmtTemplate, tableName, dbType string) string {
 }
 
 func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
-	logger.Info("Creating tx status table and its methods.")
+	logger.Infof("Starting DB tables initialization. Already performed action will be ignored.")
 	dbType, err := getDbType(ctx, pool)
 	if err != nil {
 		return err
@@ -304,40 +289,42 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range initStatements {
-		err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, "", dbType))
-		if err != nil {
-			return err
+		if retryErr := utils.Retry(
+			yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)),
+			yuga.RetryTimeout,
+			yuga.RetryInitialInterval,
+		); retryErr != nil {
+			return errors.Wrapf(retryErr, "failed creating tx status table")
 		}
 	}
-	logger.Info("Tx status table is ready.")
+	logger.Info("Created tx status table and its methods.")
 
 	for _, key := range []string{lastCommittedBlockNumberKey, maxSeenBlockNumberKey} {
-		if err := yuga.ExecRetry(
-			ctx,
-			pool,
-			stmtFmt(initializeMetadataPrepStmt, "", dbType),
-			[]byte(key),
-			nil,
-		); err != nil {
-			return err
+		if retryErr := utils.Retry(
+			yuga.PoolExecOperation(ctx, pool, stmtFmt(initializeMetadataPrepStmt, "", dbType),
+				[]byte(key), nil),
+			yuga.RetryTimeout,
+			yuga.RetryInitialInterval,
+		); retryErr != nil {
+			return errors.Wrapf(retryErr, "failed creating tx status table")
 		}
 	}
+	logger.Info("Tx status table is initialized.")
 
 	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {
 		tableName := TableName(types.NamespaceID(nsID))
-		logger.Infof("Creating table '%s' and its methods.", tableName)
-
 		for _, stmt := range initStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, tableName, dbType))
-			if err != nil {
-				return err
+			if retryErr := utils.Retry(
+				yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)),
+				yuga.RetryTimeout,
+				yuga.RetryInitialInterval,
+			); retryErr != nil {
+				return errors.Wrapf(retryErr, "failed creating tx status table")
 			}
+			logger.Infof("Created table '%s' and its methods.", tableName)
 		}
-
-		logger.Infof("Table '%s' is ready.", tableName)
 	}
-
 	return nil
 }
 
@@ -350,9 +337,12 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range dropStatements {
-		err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, "", dbType))
-		if err != nil {
-			return err
+		if retryErr := utils.Retry(
+			yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)),
+			yuga.RetryTimeout,
+			yuga.RetryInitialInterval,
+		); retryErr != nil {
+			return errors.Wrapf(retryErr, "failed clearing database tables")
 		}
 	}
 	logger.Info("tx status table is cleared.")
@@ -363,9 +353,12 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			err := yuga.ExecRetry(ctx, pool, stmtFmt(stmt, tableName, dbType))
-			if err != nil {
-				return err
+			if retryErr := utils.Retry(
+				yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)),
+				yuga.RetryTimeout,
+				yuga.RetryInitialInterval,
+			); retryErr != nil {
+				return errors.Wrapf(retryErr, "failed clearing database tables")
 			}
 		}
 

@@ -2,11 +2,14 @@ package vcservice
 
 import (
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 func Test_DbInit(t *testing.T) {
@@ -46,4 +49,34 @@ func TestRetry(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "failed making pool")
 	require.Nil(t, pool)
+}
+
+func TestConcurrentDatabaseTablesInit(t *testing.T) {
+	cs := yuga.PrepareYugaTestEnv(t)
+	port, err := strconv.Atoi(cs.Port)
+	require.NoError(t, err)
+
+	config := &DatabaseConfig{
+		Host:                  cs.Host,
+		Port:                  port,
+		Username:              cs.User,
+		Password:              cs.Password,
+		Database:              cs.Database,
+		MaxConnections:        15,
+		MinConnections:        1,
+		ConnPoolCreateTimeout: 3 * time.Minute,
+	}
+	var wg sync.WaitGroup
+
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			metrics := newVCServiceMetrics()
+			db, dbInitErr := newDatabase(config, metrics)
+			require.NoError(t, dbInitErr)
+			t.Cleanup(db.close)
+		}()
+	}
+	wg.Wait()
 }

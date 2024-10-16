@@ -34,7 +34,6 @@ func vcserviceCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
-	cmd.AddCommand(initCmd())
 	cmd.AddCommand(startCmd())
 	cmd.AddCommand(clearCmd())
 	return cmd
@@ -71,29 +70,6 @@ func startCmd() *cobra.Command {
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
-	return cmd
-}
-
-func initCmd() *cobra.Command {
-	var configPath string
-	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Init the database",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
-			}
-			cmd.SilenceUsage = true
-			vcConfig := vcservice.ReadConfig()
-
-			cmd.Printf("Initializing database\n")
-
-			return vcservice.InitDatabase(vcConfig.Database)
-		},
-	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	return cmd
 }
 
