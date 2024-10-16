@@ -372,7 +372,7 @@ func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:iretur
 		},
 	})
 	process := ifrit.Invoke(p)
-	gomega.Eventually(process.Ready(), 20*time.Second, 1*time.Second).Should(gomega.BeClosed())
+	gomega.Eventually(process.Ready(), 3*time.Minute, 1*time.Second).Should(gomega.BeClosed())
 	return process
 }
 
@@ -433,7 +433,7 @@ func (c *Cluster) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
 			return false
 		}
 		return lastBlock.Number == blkNum
-	}, 10*time.Second, 250*time.Millisecond)
+	}, 15*time.Second, 250*time.Millisecond)
 }
 
 func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn

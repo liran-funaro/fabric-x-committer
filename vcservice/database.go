@@ -42,7 +42,7 @@ var (
 	// retryTimeout denotes the time duration for which the db operations can be retried.
 	// There are certain errors for which we need to retry the query/commit operation.
 	// Refer to YugabyteDB documentation for retryable error.
-	retryTimeout = 5 * time.Second
+	retryTimeout = 30 * time.Second
 	// retryInitialInterval denotes the initial interval between the retries.
 	retryInitialInterval = backoff.WithInitialInterval(100 * time.Millisecond)
 )
