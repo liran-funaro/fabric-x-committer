@@ -135,7 +135,11 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 		return vc.committer.run(eCtx, l.MaxWorkersForCommitter)
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		logger.Error("vcservice processing has been stopped due to err [%v]", err)
+		return err
+	}
+	return nil
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {

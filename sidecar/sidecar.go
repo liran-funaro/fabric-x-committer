@@ -69,7 +69,11 @@ func (s *Service) Run(ctx context.Context) error {
 		return s.ledgerService.Run(eCtx)
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		logger.Error("sidecar processing has been stopped due to err [%v]", err)
+		return err
+	}
+	return nil
 }
 
 // GetLedgerService returns the ledger that implements peer.DeliverServer..

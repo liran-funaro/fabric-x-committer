@@ -20,7 +20,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -91,6 +90,10 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	t.Cleanup(wg.Wait)
 	wg.Add(1)
 	go func() { require.NoError(t, connection.FilterStreamErrors(cs.Run(dCtx))); wg.Done() }()
+
+	ctxConnWait, cancelConnWait := context.WithTimeout(dCtx, 2*time.Minute)
+	defer cancelConnWait()
+	cs.WaitForConnections(ctxConnWait)
 
 	sc := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{
@@ -536,11 +539,26 @@ func TestCoordinatorRecovery(t *testing.T) {
 }
 
 func TestGRPCConnectionFailure(t *testing.T) {
-	logging.SetupWithConfig(&logging.Config{
-		Enabled: true,
-		Level:   logging.Debug,
-	})
-	c := NewCoordinatorService(&CoordinatorConfig{
+	c := NewCoordinatorService(fakeConfigForTest(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	err := c.Run(ctx)
+	require.ErrorContains(t, err, "transport: Error while dialing: dial tcp: lookup random")
+	require.ErrorContains(t, err, "no such host")
+}
+
+func TestConnectionReadyWithTimeout(t *testing.T) {
+	c := NewCoordinatorService(fakeConfigForTest(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.Never(t, func() bool {
+		c.WaitForConnections(ctx)
+		return true
+	}, 5*time.Second, 1*time.Second)
+}
+
+func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {
+	return &CoordinatorConfig{
 		ServerConfig: &connection.ServerConfig{
 			Endpoint: connection.Endpoint{Host: "", Port: 1876},
 		},
@@ -556,11 +574,5 @@ func TestGRPCConnectionFailure(t *testing.T) {
 				Endpoint: &connection.Endpoint{Host: "", Port: 1877},
 			},
 		},
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	err := c.Run(ctx)
-	require.ErrorContains(t, err, "transport: Error while dialing: dial tcp: lookup random")
-	require.ErrorContains(t, err, "no such host")
+	}
 }

@@ -266,7 +266,19 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return c.postProcessTransactions(eCtx)
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		logger.Error("coordinator processing has been stopped due to err [%v]", err)
+		return err
+	}
+	return nil
+}
+
+// WaitForConnections wait for connections to be established with sigverifiers and vcservices.
+func (c *CoordinatorService) WaitForConnections(ctx context.Context) {
+	for _, ch := range []chan any{c.signatureVerifierMgr.connectionReady, c.validatorCommitterMgr.connectionReady} {
+		ready := channel.NewReader(ctx, ch)
+		ready.Read()
+	}
 }
 
 // SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.
@@ -277,7 +289,6 @@ func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
 	if k.NsId != uint32(types.MetaNamespaceID) {
 		return nil, errors.New("namespace ID is not meta namespace ID")
 	}
-	<-c.signatureVerifierMgr.connectionReady
 	return &protocoordinatorservice.Empty{}, c.signatureVerifierMgr.setVerificationKey(ctx, k)
 }
 
