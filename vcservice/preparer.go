@@ -23,7 +23,8 @@ type (
 		metrics *perfMetrics
 	}
 
-	txID string
+	// TxID is the type defining the transaction identifier.
+	TxID string
 
 	// preparedTransactions is a list of transactions that are prepared for validation and commit
 	// preparedTransactions is NOT thread safe.
@@ -34,16 +35,17 @@ type (
 
 		maxBlockNumber uint64
 
-		// write categorization fields:
-		txIDToNsNonBlindWrites transactionToWrites          // Maps txIDs to non-blind writes per namespace.
-		txIDToNsBlindWrites    transactionToWrites          // Maps txIDs to blind writes per namespace.
-		txIDToNsNewWrites      transactionToWrites          // Maps txIDs to new writes per namespace.
-		invalidTxIDStatus      map[txID]protoblocktx.Status // Maps txIDs to the status.
-
 		// nsToReads is used to verify the reads performed by each transaction in each namespace.
 		// If a read is found to be invalid due to version mismatch, transactions which performed
 		// this invalid read would be marked invalid and all writes of these transactions present
 		// in the three categories of writes would be removed as well.
+		// write categorization fields:
+		txIDToNsNonBlindWrites transactionToWrites // Maps txIDs to non-blind writes per namespace.
+		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
+		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
+
+		invalidTxIDStatus   map[TxID]protoblocktx.Status // Maps txIDs to the status.
+		txIDToBlockAndTxNum map[TxID]*types.Height
 	}
 
 	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
@@ -58,7 +60,7 @@ type (
 	// readToTransactions maps a read to the index of the transaction that contains it
 	// used to find the index of invalid transactions when a read is invalid
 	// i.e., the read version is not matching the committed version.
-	readToTransactions map[comparableRead][]txID
+	readToTransactions map[comparableRead][]TxID
 
 	// comparableRead defines a read with fields suitable for use as a map key (for uniqueness).
 	comparableRead struct {
@@ -67,7 +69,7 @@ type (
 		version string
 	}
 
-	transactionToWrites map[txID]namespaceToWrites
+	transactionToWrites map[TxID]namespaceToWrites
 
 	namespaceToWrites map[types.NamespaceID]*namespaceWrites
 
@@ -126,7 +128,8 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			txIDToNsNonBlindWrites: make(transactionToWrites),
 			txIDToNsBlindWrites:    make(transactionToWrites),
 			txIDToNsNewWrites:      make(transactionToWrites),
-			invalidTxIDStatus:      make(map[txID]protoblocktx.Status),
+			invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
+			txIDToBlockAndTxNum:    make(map[TxID]*types.Height),
 		}
 		metaNs := &protoblocktx.TxNamespace{
 			NsId: uint32(types.MetaNamespaceID),
@@ -135,16 +138,17 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 		maxBlkNum := uint64(0)
 		for _, tx := range txBatch.Transactions {
 			maxBlkNum = max(maxBlkNum, tx.BlockNumber)
+			prepTxs.txIDToBlockAndTxNum[TxID(tx.ID)] = &types.Height{BlockNum: tx.BlockNumber, TxNum: tx.TxNum}
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.
 			if tx.PrelimInvalidTxStatus != nil {
-				prepTxs.invalidTxIDStatus[txID(tx.ID)] = tx.PrelimInvalidTxStatus.Code
+				prepTxs.invalidTxIDStatus[TxID(tx.ID)] = tx.PrelimInvalidTxStatus.Code
 				continue
 			}
 
 			for _, nsOperations := range tx.Namespaces {
-				tID := txID(tx.ID)
+				tID := TxID(tx.ID)
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)
@@ -190,7 +194,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 }
 
 // addReadsOnly adds reads-only to the prepared transactions.
-func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadsOnly) == 0 {
 		return
 	}
@@ -215,7 +219,7 @@ func (p *preparedTransactions) addReadsOnly(id txID, ns *protoblocktx.TxNamespac
 }
 
 // addReadWrites adds read-writes to the prepared transactions.
-func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadWrites) == 0 {
 		return
 	}
@@ -247,7 +251,7 @@ func (p *preparedTransactions) addReadWrites(id txID, ns *protoblocktx.TxNamespa
 }
 
 // addBlindWrites adds the blind writes to the prepared transactions.
-func (p *preparedTransactions) addBlindWrites(id txID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.BlindWrites) == 0 {
 		return
 	}
@@ -292,7 +296,7 @@ func (nr namespaceToReads) getOrCreate(nsID types.NamespaceID) *reads {
 	return nsRead
 }
 
-func (tw transactionToWrites) getOrCreate(id txID, nsID types.NamespaceID) *namespaceWrites {
+func (tw transactionToWrites) getOrCreate(id TxID, nsID types.NamespaceID) *namespaceWrites {
 	nsToWrites, ok := tw[id]
 	if !ok {
 		nsToWrites = make(namespaceToWrites)
@@ -309,7 +313,7 @@ func (tw transactionToWrites) getOrCreate(id txID, nsID types.NamespaceID) *name
 }
 
 func (tw transactionToWrites) clearEmpty() {
-	var emptyIDs []txID
+	var emptyIDs []TxID
 	for id, ntw := range tw {
 		if ntw.empty() {
 			emptyIDs = append(emptyIDs, id)

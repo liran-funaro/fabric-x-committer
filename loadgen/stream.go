@@ -98,10 +98,15 @@ func StartBlockGenerator(
 	queue := channel.Make[[]*protoblocktx.Block](ctx, Max(options.BuffersSize, 1))
 	// Due to initialization part, the first load block
 	// number will be 1.
+	txsNum := make([]uint32, profile.Block.Size)
+	for i := range profile.Block.Size {
+		txsNum[i] = uint32(i) //nolint:gosec
+	}
 	blockGen := &BlockGenerator{
 		TxGenerator: txGen,
-		BlockSize:   uint64(profile.Block.Size),
+		BlockSize:   uint64(profile.Block.Size), //nolint:gosec
 		blockNum:    1,
+		txNums:      txsNum,
 	}
 	go ingestBatchesToQueue(queue, blockGen, 1)
 	stream := Stream[*protoblocktx.Block]{

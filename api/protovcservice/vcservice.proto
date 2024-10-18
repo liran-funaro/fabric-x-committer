@@ -24,6 +24,7 @@ message Transaction {
   repeated protoblocktx.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;
   uint64 block_number = 4;
+  uint32 tx_num = 5;
 }
 
 message InvalidTxStatus {

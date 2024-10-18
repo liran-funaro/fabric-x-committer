@@ -193,6 +193,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 				},
 			},
 		},
+		TxsNum: []uint32{0},
 	})
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -251,6 +252,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 					Signatures: [][]byte{[]byte("dummy")},
 				},
 			},
+			TxsNum: []uint32{0},
 		})
 		require.NoError(t, err)
 	}
@@ -277,6 +279,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	env.coordinator.queues.blockWithInvalidSignTxs <- &protoblocktx.Block{
 		Number: 1,
 		Txs:    []*protoblocktx.Tx{{Id: "tx3"}},
+		TxsNum: []uint32{0},
 	}
 
 	numValid := 0
@@ -380,6 +383,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 		},
+		TxsNum: []uint32{0},
 	})
 	require.NoError(t, err)
 
@@ -425,6 +429,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 		},
+		TxsNum: []uint32{0},
 	}
 	require.NoError(t, env.csStream.Send(block1))
 
@@ -504,6 +509,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 		},
+		TxsNum: []uint32{2, 4},
 	}
 
 	require.NoError(t, env.csStream.Send(block1))

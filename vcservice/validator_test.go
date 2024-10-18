@@ -83,6 +83,7 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		nil,
+		nil,
 	)
 
 	tx1NonBlindWrites := namespaceToWrites{
@@ -143,28 +144,28 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []txID{
+					comparableRead{1, string(k1_1), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v1)}: []txID{
+					comparableRead{1, string(k1_2), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), ""}: []txID{
+					comparableRead{1, string(k1_5), ""}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), string(v0)}: []txID{
+					comparableRead{2, string(k2_1), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), string(v0)}: []txID{
+					comparableRead{2, string(k2_2), string(v0)}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []txID{
+					comparableRead{2, string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{
 						"tx1", "tx3",
 					},
 				},
@@ -176,8 +177,13 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
-				maxBlockNumber:    4,
+				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(4, 2),
+					"tx3": types.NewHeight(4, 3),
+				},
+				maxBlockNumber: 4,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -188,8 +194,13 @@ func TestValidate(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxStatus: map[txID]protoblocktx.Status{},
-				maxBlockNumber:  4,
+				invalidTxStatus: map[TxID]protoblocktx.Status{},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(4, 2),
+					"tx3": types.NewHeight(4, 3),
+				},
+				maxBlockNumber: 4,
 			},
 		},
 		{
@@ -210,28 +221,28 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v0)}: []txID{
+					comparableRead{1, string(k1_1), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v0)}: []txID{
+					comparableRead{1, string(k1_2), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), string(v1)}: []txID{
+					comparableRead{1, string(k1_5), string(v1)}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), ""}: []txID{
+					comparableRead{2, string(k2_1), ""}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), ""}: []txID{
+					comparableRead{2, string(k2_2), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []txID{
+					comparableRead{2, string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{
 						"tx1", "tx2",
 					},
 				},
@@ -243,16 +254,26 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[txID]protoblocktx.Status),
-				maxBlockNumber:    5,
+				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(5, 2),
+					"tx3": types.NewHeight(5, 3),
+				},
+				maxBlockNumber: 5,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxStatus: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(5, 2),
+					"tx3": types.NewHeight(5, 3),
 				},
 				maxBlockNumber: 5,
 			},
@@ -277,31 +298,31 @@ func TestValidate(t *testing.T) {
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []txID{
+					comparableRead{1, string(k1_1), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v1)}: []txID{
+					comparableRead{1, string(k1_2), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), ""}: []txID{
+					comparableRead{1, string(k1_5), ""}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), ""}: []txID{
+					comparableRead{2, string(k2_1), ""}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), ""}: []txID{
+					comparableRead{2, string(k2_2), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []txID{
+					comparableRead{2, string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{
 						"tx1", "tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []txID{
+					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{
 						"tx4",
 					},
 				},
@@ -313,9 +334,17 @@ func TestValidate(t *testing.T) {
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: map[txID]protoblocktx.Status{
+				invalidTxIDStatus: map[TxID]protoblocktx.Status{
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(4, 2),
+					"tx3": types.NewHeight(4, 3),
+					"tx4": types.NewHeight(6, 3),
+					"tx5": types.NewHeight(7, 3),
+					"tx6": types.NewHeight(7, 4),
 				},
 				maxBlockNumber: 7,
 			},
@@ -324,12 +353,20 @@ func TestValidate(t *testing.T) {
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxStatus: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1": types.NewHeight(1, 1),
+					"tx2": types.NewHeight(4, 2),
+					"tx3": types.NewHeight(4, 3),
+					"tx4": types.NewHeight(6, 3),
+					"tx5": types.NewHeight(7, 3),
+					"tx6": types.NewHeight(7, 4),
 				},
 				maxBlockNumber: 7,
 			},

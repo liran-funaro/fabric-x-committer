@@ -153,6 +153,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 					Code: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				BlockNumber: 15,
+				TxNum:       0,
 			},
 			{
 				ID: "2",
@@ -160,6 +161,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 					Code: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
 				},
 				BlockNumber: 4,
+				TxNum:       1,
 			},
 		}
 		env.prelimInvalidTxStatus <- txBatch
@@ -200,6 +202,7 @@ func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex, blkNum int) (
 			Tx: &protovcservice.Transaction{
 				ID:          id,
 				BlockNumber: uint64(blkNum),
+				TxNum:       uint32(i), //nolint:gosec
 			},
 		}
 		expectedTxsStatus.Status[id] = protoblocktx.Status_COMMITTED

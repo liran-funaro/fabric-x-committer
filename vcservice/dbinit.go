@@ -16,7 +16,8 @@ import (
 const createTxTableStmt = `
 CREATE TABLE IF NOT EXISTS tx_status (
 	tx_id bytea NOT NULL PRIMARY KEY,
-	status integer
+	status integer,
+  height bytea NOT NULL
 ) %[2]s;
 `
 
@@ -56,29 +57,37 @@ const getMetadataPrepStmt = `
 
 const commitTxStatus = `
 CREATE OR REPLACE FUNCTION commit_tx_status(
-	IN _tx_ids bytea[], IN _statues integer[], OUT result text, OUT violating bytea[]
+    IN _tx_ids bytea[], 
+    IN _statuses integer[], 
+    IN _heights bytea[], 
+    OUT result text, 
+    OUT violating bytea[]
 )
     LANGUAGE plpgsql
 AS $$
 begin
-	result = 'success';
+    result = 'success';
     violating = NULL;
-	INSERT INTO tx_status (tx_id, status)
-	VALUES
-		(unnest(_tx_ids), unnest(_statues));
+
+    INSERT INTO tx_status (tx_id, status, height)
+    VALUES (unnest(_tx_ids), unnest(_statuses), unnest(_heights));
+
 exception
-when unique_violation then
-    violating = (
-        SELECT array_agg(tx_id) FROM tx_status
-        WHERE tx_id = ANY(_tx_ids)
-    );
-    if cardinality(violating) < cardinality(_tx_ids) then
-        result = cardinality(violating) || '-unique-violation';
-    else
-        violating = NULL;
-        result = 'all-unique-violation';
-    end if;
-end;$$;
+    when unique_violation then
+        violating = (
+            SELECT array_agg(tx_id) 
+            FROM tx_status
+            WHERE tx_id = ANY(_tx_ids)
+        );
+
+        if cardinality(violating) < cardinality(_tx_ids) then
+            result = cardinality(violating) || '-unique-violation';
+        else
+            violating = NULL;
+            result = 'all-unique-violation';
+        end if;
+end;
+$$;
 `
 
 const createTableStmtTemplate = `

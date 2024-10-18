@@ -75,6 +75,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 1,
+				TxNum:       1,
 			},
 			{
 				ID: "tx2",
@@ -99,6 +100,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 4,
+				TxNum:       2,
 			},
 		},
 	}
@@ -119,30 +121,34 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}: []txID{
+			comparableRead{1, string(k1), string(v1)}: []TxID{
 				"tx1", "tx2",
 			},
-			comparableRead{1, string(k2), string(v1)}: []txID{"tx1"},
-			comparableRead{1, string(k3), ""}:         []txID{"tx1"},
-			comparableRead{1, string(k4), string(v1)}: []txID{"tx2"},
-			comparableRead{1, string(k5), ""}:         []txID{"tx2"},
-			comparableRead{2, string(k4), string(v0)}: []txID{"tx1"},
-			comparableRead{2, string(k5), ""}:         []txID{"tx1"},
-			comparableRead{2, string(k4), string(v1)}: []txID{"tx2"},
-			comparableRead{2, string(k5), string(v0)}: []txID{"tx2"},
-			comparableRead{2, string(k6), ""}:         []txID{"tx2"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []txID{
+			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
+			comparableRead{2, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{2, string(k5), string(v0)}: []TxID{"tx2"},
+			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []TxID{
 				"tx1", "tx2",
 			},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []txID{
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{
 				"tx1", "tx2",
 			},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites:    transactionToWrites{},
 		txIDToNsNewWrites:      transactionToWrites{},
-		invalidTxIDStatus:      make(map[txID]protoblocktx.Status),
-		maxBlockNumber:         4,
+		invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
+		txIDToBlockAndTxNum: map[TxID]*types.Height{
+			"tx1": types.NewHeight(1, 1),
+			"tx2": types.NewHeight(4, 2),
+		},
+		maxBlockNumber: 4,
 	}
 
 	env.txBatch <- tx
@@ -187,6 +193,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 10,
+				TxNum:       5,
 			},
 			{
 				ID: "tx2",
@@ -201,6 +208,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 6,
+				TxNum:       3,
 			},
 		},
 	}
@@ -215,9 +223,9 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []txID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []txID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []txID{"tx2"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{"tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites: transactionToWrites{
@@ -242,8 +250,12 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 			},
 		},
 		txIDToNsNewWrites: transactionToWrites{},
-		invalidTxIDStatus: make(map[txID]protoblocktx.Status),
-		maxBlockNumber:    10,
+		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+		txIDToBlockAndTxNum: map[TxID]*types.Height{
+			"tx1": types.NewHeight(10, 5),
+			"tx2": types.NewHeight(6, 3),
+		},
+		maxBlockNumber: 10,
 	}
 
 	env.txBatch <- tx
@@ -290,6 +302,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 7,
+				TxNum:       4,
 			},
 			{
 				ID: "tx2",
@@ -312,6 +325,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					},
 				},
 				BlockNumber: 7,
+				TxNum:       5,
 			},
 		},
 	}
@@ -332,19 +346,19 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}: []txID{"tx1"},
-			comparableRead{1, string(k2), string(v1)}: []txID{"tx1"},
-			comparableRead{1, string(k3), ""}:         []txID{"tx1"},
-			comparableRead{1, string(k4), string(v1)}: []txID{"tx2"},
-			comparableRead{1, string(k5), ""}:         []txID{"tx2"},
-			comparableRead{2, string(k4), string(v0)}: []txID{"tx1"},
-			comparableRead{2, string(k5), ""}:         []txID{"tx1"},
-			comparableRead{2, string(k6), ""}:         []txID{"tx2"},
-			comparableRead{2, string(k7), ""}:         []txID{"tx2"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []txID{
+			comparableRead{1, string(k1), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k2), string(v1)}: []TxID{"tx1"},
+			comparableRead{1, string(k3), ""}:         []TxID{"tx1"},
+			comparableRead{1, string(k4), string(v1)}: []TxID{"tx2"},
+			comparableRead{1, string(k5), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k4), string(v0)}: []TxID{"tx1"},
+			comparableRead{2, string(k5), ""}:         []TxID{"tx1"},
+			comparableRead{2, string(k6), ""}:         []TxID{"tx2"},
+			comparableRead{2, string(k7), ""}:         []TxID{"tx2"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{
 				"tx1", "tx2",
 			},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []txID{
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{
 				"tx1", "tx2",
 			},
 		},
@@ -396,8 +410,12 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 		},
-		invalidTxIDStatus: make(map[txID]protoblocktx.Status),
-		maxBlockNumber:    7,
+		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+		txIDToBlockAndTxNum: map[TxID]*types.Height{
+			"tx1": types.NewHeight(7, 4),
+			"tx2": types.NewHeight(7, 5),
+		},
+		maxBlockNumber: 7,
 	}
 
 	env.txBatch <- tx
@@ -462,6 +480,7 @@ func TestPrepareTx(t *testing.T) {
 					},
 				},
 				BlockNumber: 8,
+				TxNum:       0,
 			},
 			{
 				ID: "tx2",
@@ -481,6 +500,7 @@ func TestPrepareTx(t *testing.T) {
 					},
 				},
 				BlockNumber: 9,
+				TxNum:       3,
 			},
 			{
 				ID: "tx3",
@@ -488,6 +508,7 @@ func TestPrepareTx(t *testing.T) {
 					Code: protoblocktx.Status_ABORTED_NO_WRITES,
 				},
 				BlockNumber: 6,
+				TxNum:       2,
 			},
 			{
 				ID: "tx4",
@@ -495,6 +516,7 @@ func TestPrepareTx(t *testing.T) {
 					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 				},
 				BlockNumber: 5,
+				TxNum:       2,
 			},
 		},
 	}
@@ -517,16 +539,16 @@ func TestPrepareTx(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{1, string(k1), string(v1)}:                                               []txID{"tx1"},
-			comparableRead{1, string(k2), string(v2)}:                                               []txID{"tx1"},
-			comparableRead{1, string(k3), string(v3)}:                                               []txID{"tx1"},
-			comparableRead{1, string(k8), string(v8)}:                                               []txID{"tx2"},
-			comparableRead{1, string(k9), string(v9)}:                                               []txID{"tx2"},
-			comparableRead{2, string(k5), ""}:                                                       []txID{"tx1"},
-			comparableRead{2, string(k6), ""}:                                                       []txID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []txID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []txID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v3)}: []txID{"tx2"},
+			comparableRead{1, string(k1), string(v1)}:                                               []TxID{"tx1"},
+			comparableRead{1, string(k2), string(v2)}:                                               []TxID{"tx1"},
+			comparableRead{1, string(k3), string(v3)}:                                               []TxID{"tx1"},
+			comparableRead{1, string(k8), string(v8)}:                                               []TxID{"tx2"},
+			comparableRead{1, string(k9), string(v9)}:                                               []TxID{"tx2"},
+			comparableRead{2, string(k5), ""}:                                                       []TxID{"tx1"},
+			comparableRead{2, string(k6), ""}:                                                       []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v3)}: []TxID{"tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -574,9 +596,15 @@ func TestPrepareTx(t *testing.T) {
 				},
 			},
 		},
-		invalidTxIDStatus: map[txID]protoblocktx.Status{
+		invalidTxIDStatus: map[TxID]protoblocktx.Status{
 			"tx3": protoblocktx.Status_ABORTED_NO_WRITES,
 			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+		},
+		txIDToBlockAndTxNum: map[TxID]*types.Height{
+			"tx1": types.NewHeight(8, 0),
+			"tx2": types.NewHeight(9, 3),
+			"tx3": types.NewHeight(6, 2),
+			"tx4": types.NewHeight(5, 2),
 		},
 		maxBlockNumber: 9,
 	}

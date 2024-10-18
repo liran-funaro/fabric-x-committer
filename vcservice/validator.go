@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
@@ -26,13 +27,14 @@ type transactionValidator struct {
 	metrics *perfMetrics
 }
 
-// validatedTransactions contains the writes of valid transactions and the txIDs of invalid transactions
+// validatedTransactions contains the writes of valid transactions and the txIDs of invalid transactions.
 type validatedTransactions struct {
 	validTxNonBlindWrites    transactionToWrites
 	validTxBlindWrites       transactionToWrites
 	newWrites                transactionToWrites
 	readToTransactionIndices readToTransactions
-	invalidTxStatus          map[txID]protoblocktx.Status
+	invalidTxStatus          map[TxID]protoblocktx.Status
+	txIDToBlockAndTxNum      map[TxID]*types.Height
 	maxBlockNumber           uint64
 }
 
@@ -50,7 +52,7 @@ func (v *validatedTransactions) Debug() {
 		len(v.readToTransactionIndices), len(v.invalidTxStatus))
 }
 
-// NewValidator creates a new validator
+// newValidator creates a new validator.
 func newValidator(
 	db *database,
 	preparedTxs <-chan *preparedTransactions,
@@ -102,7 +104,15 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 
 		// Step 2: we construct validated transactions by removing the writes of invalid transactions
 		// and recording the txIDs of invalid transactions.
-		validatedTxs := prepTx.makeValidated()
+		validatedTxs := &validatedTransactions{
+			validTxNonBlindWrites:    prepTx.txIDToNsNonBlindWrites,
+			validTxBlindWrites:       prepTx.txIDToNsBlindWrites,
+			newWrites:                prepTx.txIDToNsNewWrites,
+			readToTransactionIndices: prepTx.readToTxIDs,
+			invalidTxStatus:          prepTx.invalidTxIDStatus,
+			txIDToBlockAndTxNum:      prepTx.txIDToBlockAndTxNum,
+			maxBlockNumber:           prepTx.maxBlockNumber,
+		}
 		if matchErr := validatedTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
 			return matchErr
 		}
@@ -133,17 +143,6 @@ func (v *transactionValidator) validateReads(
 	}
 
 	return nsToMismatchingReads, nil
-}
-
-func (p *preparedTransactions) makeValidated() *validatedTransactions {
-	return &validatedTransactions{
-		validTxNonBlindWrites:    p.txIDToNsNonBlindWrites,
-		validTxBlindWrites:       p.txIDToNsBlindWrites,
-		newWrites:                p.txIDToNsNewWrites,
-		readToTransactionIndices: p.readToTxIDs,
-		invalidTxStatus:          p.invalidTxIDStatus,
-		maxBlockNumber:           p.maxBlockNumber,
-	}
 }
 
 func (p *preparedTransactions) Debug() {
@@ -182,7 +181,7 @@ func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToR
 	return nil
 }
 
-func (v *validatedTransactions) updateInvalidTxs(txIDs []txID, status protoblocktx.Status) {
+func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status protoblocktx.Status) {
 	for _, tID := range txIDs {
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)

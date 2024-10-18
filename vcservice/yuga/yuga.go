@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 const (
@@ -55,7 +56,10 @@ func PrepareYugaTestEnv(t *testing.T) *Connection {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		assert.NoError(t, conn.DropDB(context.Background(), dbName))
+		assert.NoError(t, utils.Retry(
+			func() error { return conn.DropDB(context.Background(), dbName) },
+			10*time.Second,
+		))
 	})
 	require.NoError(t, conn.CreateDB(ctx, dbName))
 

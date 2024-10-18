@@ -227,18 +227,21 @@ func createBlockForTest(
 
 	for i := 0; i < numTxs; i++ {
 		tx := &protoblocktx.Tx{}
-
+		txNum := uint32(i) //nolint:gosec
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
 			tx.Signatures = [][]byte{[]byte("dummy")}
 			blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
+			blockWithValidTxs.TxsNum = append(blockWithValidTxs.TxsNum, txNum)
 		case 1:
 			// odd number txs are invalid.
 			blockWithInvalidTxs.Txs = append(blockWithInvalidTxs.Txs, tx)
+			blockWithInvalidTxs.TxsNum = append(blockWithInvalidTxs.TxsNum, txNum)
 		}
 
 		block.Txs = append(block.Txs, tx)
+		block.TxsNum = append(block.TxsNum, txNum)
 	}
 
 	return block, blockWithValidTxs, blockWithInvalidTxs

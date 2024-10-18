@@ -26,26 +26,30 @@ func newValidationCodes(expected int) []validationCode {
 func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
 	excluded := make([]int, 0, len(block.Data.Data))
 	txs := make([]*protoblocktx.Tx, 0, len(block.Data.Data))
-	for i, msg := range block.Data.Data {
-		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", block.Header.Number, i)
+	txsNum := make([]uint32, 0, len(block.Data.Data))
+	for txNum, msg := range block.Data.Data {
+		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", block.Header.Number, txNum)
 		if data, channelHdr, err := serialization.UnwrapEnvelope(msg); err != nil {
 			logger.Fatalf("error unwrapping envelope: %v", err)
 		} else if channelHdr.Type != int32(common.HeaderType_MESSAGE) {
 			logger.Debugf("Ignoring TX [%s] of type %d", channelHdr.TxId, channelHdr.Type)
-			excluded = append(excluded, i)
+			excluded = append(excluded, txNum)
 		} else if tx, err := UnmarshalTx(data); err != nil {
 			logger.Fatalf("error unmarshaling MESSAGE tx [%s] tx: %v", channelHdr.TxId, err)
 		} else {
 			logger.Debugf("Appended txID [%s] -> [%s]", channelHdr.TxId, tx.Id)
 			txs = append(txs, tx)
+			txsNum = append(txsNum, uint32(txNum)) //nolint:gosec
 		}
 	}
 	return &protoblocktx.Block{
 		Number: block.Header.Number,
 		Txs:    txs,
+		TxsNum: txsNum,
 	}, excluded
 }
 
+// UnmarshalTx unmarshals data bytes to protoblocktx.Tx.
 func UnmarshalTx(data []byte) (*protoblocktx.Tx, error) {
 	var tx protoblocktx.Tx
 	if err := proto.Unmarshal(data, &tx); err != nil {

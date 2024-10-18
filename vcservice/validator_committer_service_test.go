@@ -131,7 +131,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			keys:     [][]byte{types.NamespaceID(1).Bytes()},
 			versions: [][]byte{v0},
 		},
-	}, nil)
+	}, nil, nil)
 
 	t.Run("all valid txs", func(t *testing.T) {
 		txBatch := &protovcservice.TransactionBatch{
@@ -151,6 +151,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 1,
+					TxNum:       1,
 				},
 				{
 					ID: "Blind write with value",
@@ -167,6 +168,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 1,
+					TxNum:       2,
 				},
 				{
 					ID: "Blind write update existing key",
@@ -183,6 +185,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 2,
+					TxNum:       3,
 				},
 				// The following 2 TXs test the new key path
 				{
@@ -200,6 +203,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 2,
+					TxNum:       4,
 				},
 				{
 					ID: "New key no value",
@@ -215,6 +219,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 3,
+					TxNum:       5,
 				},
 				// The following TX tests the update path
 				{
@@ -233,6 +238,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 2,
+					TxNum:       6,
 				},
 			},
 		}
@@ -250,8 +256,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		expectedTxStatus := &protovcservice.TransactionStatus{
 			Status: map[string]protoblocktx.Status{},
 		}
+		expectedHeight := make(map[TxID]*types.Height)
 		for _, tx := range txBatch.Transactions {
 			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
+			expectedHeight[TxID(tx.ID)] = types.NewHeight(tx.BlockNumber, tx.TxNum)
 		}
 
 		require.Equal(
@@ -261,7 +269,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		)
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
-		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
 		ensureLastSeenMaxBlock(t, env.client, 3)
 
 		txBatch = &protovcservice.TransactionBatch{
@@ -312,6 +320,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						},
 					},
 					BlockNumber: 4,
+					TxNum:       1,
 				},
 				{
 					ID: "prelim invalid tx",
@@ -319,6 +328,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 						Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					},
 					BlockNumber: 5,
+					TxNum:       2,
 				},
 			},
 		}
@@ -333,9 +343,19 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				txBatch.Transactions[1].ID: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 			},
 		}
+		expectedHeight := map[TxID]*types.Height{
+			TxID(txBatch.Transactions[0].ID): types.NewHeight(
+				txBatch.Transactions[0].BlockNumber,
+				txBatch.Transactions[0].TxNum,
+			),
+			TxID(txBatch.Transactions[1].ID): types.NewHeight(
+				txBatch.Transactions[1].BlockNumber,
+				txBatch.Transactions[1].TxNum,
+			),
+		}
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
-		env.dbEnv.statusExists(t, expectedTxStatus.Status)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
 		ensureLastSeenMaxBlock(t, env.client, 5)
 
 		status, err := env.client.GetTransactionsStatus(env.ctx, &protoblocktx.QueryStatus{
@@ -348,7 +368,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 func TestWaitingTxsCount(t *testing.T) {
 	env := newValidatorAndCommitServiceTestEnv(t)
-	env.dbEnv.populateDataWithCleanup(t, nil, nil, nil)
+	env.dbEnv.populateDataWithCleanup(t, nil, nil, nil, nil)
 	// NOTE: We are setting the minTxBatchSize to 10 so that the
 	//       received batch can wait for at most 5 seconds, which
 	//       is the default timeout for minTxBatchSize. This should

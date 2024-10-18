@@ -29,7 +29,7 @@ const (
 	// queryVersionsSQLTemplate template for the querying versions for given keys for each namespace.
 	queryVersionsSQLTemplate = "SELECT key, version FROM %s WHERE key = ANY($1);"
 	// commitTxStatusSQLTemplate template for committing transaction's status for each TX.
-	commitTxStatusSQLTemplate = "SELECT commit_tx_status($1::bytea[], $2::integer[]);"
+	commitTxStatusSQLTemplate = "SELECT commit_tx_status($1::bytea[], $2::integer[], $3::bytea[]);"
 	// commitUpdateWritesSQLTemplate template for the committing updates for each namespace.
 	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
@@ -59,10 +59,11 @@ type (
 	keyToVersion map[string][]byte
 
 	statesToBeCommitted struct {
-		updateWrites   namespaceToWrites
-		newWrites      namespaceToWrites
-		batchStatus    *protovcservice.TransactionStatus
-		maxBlockNumber uint64
+		updateWrites        namespaceToWrites
+		newWrites           namespaceToWrites
+		batchStatus         *protovcservice.TransactionStatus
+		txIDToBlockAndTxNum map[TxID]*types.Height
+		maxBlockNumber      uint64
 	}
 )
 
@@ -225,7 +226,7 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 }
 
 // commit commits the writes to the database.
-func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []txID, error) {
+func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []TxID, error) {
 	start := time.Now()
 	if states.empty() {
 		return nil, nil, nil
@@ -265,7 +266,7 @@ func (db *database) commitStatesByGroup(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
-) (namespaceToReads, []txID, error) {
+) (namespaceToReads, []TxID, error) {
 	mismatched, err := db.commitNewKeys(tx, states.newWrites)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
@@ -276,7 +277,7 @@ func (db *database) commitStatesByGroup(
 		return mismatched, nil, nil
 	}
 
-	duplicated, err := db.commitTxStatus(ctx, tx, states.batchStatus)
+	duplicated, err := db.commitTxStatus(ctx, tx, states)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err)
 	}
@@ -305,25 +306,34 @@ func (db *database) commitStatesByGroup(
 }
 
 func (db *database) commitTxStatus(
-	ctx context.Context, tx pgx.Tx, batchStatus *protovcservice.TransactionStatus,
-) ([]txID /* duplicated */, error) {
+	ctx context.Context,
+	tx pgx.Tx,
+	states *statesToBeCommitted,
+) ([]TxID /* duplicated */, error) {
 	start := time.Now()
-	if batchStatus == nil || len(batchStatus.Status) == 0 {
+	if states.batchStatus == nil || len(states.batchStatus.Status) == 0 {
 		return nil, nil
 	}
 
-	ids := make([][]byte, 0, len(batchStatus.Status))
-	statues := make([]int, 0, len(batchStatus.Status))
-	for txID, status := range batchStatus.Status {
+	numEntries := len(states.batchStatus.Status)
+	ids := make([][]byte, 0, numEntries)
+	statues := make([]int, 0, numEntries)
+	heights := make([][]byte, 0, numEntries)
+	for tID, status := range states.batchStatus.Status {
 		// We cannot commit a "duplicated ID" status since we already have a status entry with this ID.
 		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			continue
 		}
-		ids = append(ids, []byte(txID))
+		ids = append(ids, []byte(tID))
 		statues = append(statues, int(status))
+		blkAndTxNum, ok := states.txIDToBlockAndTxNum[TxID(tID)]
+		if !ok {
+			return nil, fmt.Errorf("block and tx number is not passed for txID %s", tID)
+		}
+		heights = append(heights, blkAndTxNum.ToBytes())
 	}
 
-	ret := tx.QueryRow(ctx, commitTxStatusSQLTemplate, ids, statues)
+	ret := tx.QueryRow(ctx, commitTxStatusSQLTemplate, ids, statues, heights)
 	duplicated, err := readInsertResult(ret, ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed fetching results from query: %w", err)
@@ -333,9 +343,9 @@ func (db *database) commitTxStatus(
 		return nil, nil
 	}
 
-	duplicatedTx := make([]txID, len(duplicated))
+	duplicatedTx := make([]TxID, len(duplicated))
 	for i, v := range duplicated {
-		duplicatedTx[i] = txID(v)
+		duplicatedTx[i] = TxID(v)
 	}
 	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicatedTx, nil

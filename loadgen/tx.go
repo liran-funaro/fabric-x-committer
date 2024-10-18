@@ -109,6 +109,7 @@ type BlockGenerator struct {
 	TxGenerator Generator[*protoblocktx.Tx]
 	BlockSize   uint64
 	blockNum    uint64
+	txNums      []uint32
 }
 
 // Next generate a new block.
@@ -116,6 +117,7 @@ func (g *BlockGenerator) Next() *protoblocktx.Block {
 	block := &protoblocktx.Block{
 		Number: g.blockNum,
 		Txs:    NextN(g.TxGenerator, int(g.BlockSize)),
+		TxsNum: g.txNums,
 	}
 	g.blockNum++
 	return block

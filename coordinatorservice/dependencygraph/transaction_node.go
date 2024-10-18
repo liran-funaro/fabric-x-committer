@@ -54,12 +54,13 @@ type (
 	}
 )
 
-func newTransactionNode(blockNum uint64, tx *protoblocktx.Tx) *TransactionNode {
+func newTransactionNode(blockNum uint64, txNum uint32, tx *protoblocktx.Tx) *TransactionNode {
 	return &TransactionNode{
 		Tx: &protovcservice.Transaction{
 			ID:          tx.Id,
 			Namespaces:  tx.Namespaces,
 			BlockNumber: blockNum,
+			TxNum:       txNum,
 		},
 		dependentTxs: newDependentTxs(),
 		rwKeys:       readAndWriteKeys(tx.Namespaces),

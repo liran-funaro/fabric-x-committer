@@ -87,6 +87,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 					nil,
 				),
 			},
+			TxsNum: []uint32{0, 1, 2, 3, 4},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -113,6 +114,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, [][]byte{keys[4]}, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, [][]byte{keys[5]}, nil),
 			},
+			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -153,6 +155,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
 			},
+			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -183,6 +186,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 					t, uint32(types.MetaNamespaceID), nil, [][]byte{types.NamespaceID(nsID1ForTest).Bytes()}, nil,
 				),
 			},
+			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -221,6 +225,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[7]}, nil),
 			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[8]}, nil),
 		},
+		TxsNum: []uint32{0, 1, 2, 3, 4},
 	}
 	env.inComingTxs <- noDepsTxs
 
@@ -231,6 +236,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[2]}, nil),
 			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[3]}, nil),
 		},
+		TxsNum: []uint32{0, 1, 2},
 	}
 	env.inComingTxs <- noDepsTxs
 
@@ -245,6 +251,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 		Txs: []*protoblocktx.Tx{
 			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[0]}, nil),
 		},
+		TxsNum: []uint32{0},
 	}
 	env.inComingTxs <- noDepsTxs
 

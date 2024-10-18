@@ -2,6 +2,7 @@ package coordinatormock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"sync/atomic"
@@ -86,6 +87,10 @@ func (c *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordin
 				return nil
 			}
 			return err
+		}
+
+		if len(block.Txs) != len(block.TxsNum) {
+			return fmt.Errorf("the block doesn't have the correct number of transactions set")
 		}
 
 		logger.Debugf("Received block %d with %d transactions", block.Number, len(block.Txs))

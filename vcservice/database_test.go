@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
@@ -18,7 +17,6 @@ import (
 
 const (
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
-	queryTxStatusSQLTemplate    = "SELECT tx_id, status FROM tx_status WHERE tx_id = ANY($1)"
 
 	ns1 = types.NamespaceID(1)
 	ns2 = types.NamespaceID(2)
@@ -62,6 +60,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 				versions: [][]byte{v1, v1, v1},
 			},
 		},
+		nil,
 		nil,
 	)
 
@@ -245,6 +244,7 @@ func TestDBCommit(t *testing.T) {
 		[]int{int(ns1), int(ns2)},
 		nil,
 		nil,
+		nil,
 	)
 
 	k1 := []byte("key1")
@@ -315,11 +315,15 @@ func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 }
 
 func (env *DatabaseTestEnv) populateDataWithCleanup(
-	t *testing.T, nsIDs []int, writes namespaceToWrites, batchStatus *protovcservice.TransactionStatus,
+	t *testing.T,
+	nsIDs []int,
+	writes namespaceToWrites,
+	batchStatus *protovcservice.TransactionStatus,
+	txIDToBlkTxNum map[TxID]*types.Height,
 ) {
 	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
 
-	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus})
+	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToBlockAndTxNum: txIDToBlkTxNum})
 	require.NoError(t, err)
 	env.commitState(t, writes)
 
@@ -377,34 +381,5 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, k
 	for key, valVer := range actualRows {
 		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
 			key, string(valVer.value), types.VersionNumberFromBytes(valVer.version))
-	}
-}
-
-func (env *DatabaseTestEnv) statusExists(t *testing.T, expected map[string]protoblocktx.Status) {
-	expectedIds := make([][]byte, 0, len(expected))
-	for id := range expected {
-		expectedIds = append(expectedIds, []byte(id))
-	}
-	kvPairs, err := env.DB.pool.Query(context.Background(), queryTxStatusSQLTemplate, expectedIds)
-	require.NoError(t, err)
-	defer kvPairs.Close()
-
-	actualRows := map[string]int{}
-
-	for kvPairs.Next() {
-		var key []byte
-		var status int
-		require.NoError(t, kvPairs.Scan(&key, &status))
-		actualRows[string(key)] = status
-	}
-
-	require.NoError(t, kvPairs.Err())
-	require.Equal(t, len(expectedIds), len(actualRows))
-	for key, status := range expected {
-		// "duplicated TX ID" status is never committed.
-		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			continue
-		}
-		require.Equal(t, int(status), actualRows[key])
 	}
 }

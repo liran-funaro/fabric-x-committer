@@ -64,13 +64,30 @@ func TestBadlyFormedTxs(t *testing.T) {
 					},
 					Signatures: [][]byte{[]byte("signature")},
 				},
+				{
+					Id: "no writes",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      1,
+							NsVersion: types.NamespaceID(0).Bytes(),
+							ReadsOnly: []*protoblocktx.Read{
+								{
+									Key:     []byte("k3"),
+									Version: nil,
+								},
+							},
+						},
+					},
+					Signatures: [][]byte{[]byte("signature")},
+				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs: []string{"", "missing signature", "missing namespace"},
+				TxIDs: []string{"", "missing signature", "missing namespace", "no writes"},
 				Statuses: []protoblocktx.Status{
 					protoblocktx.Status_ABORTED_MISSING_TXID,
 					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 					protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
+					protoblocktx.Status_ABORTED_NO_WRITES,
 				},
 			},
 		},
@@ -108,22 +125,6 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Signatures: [][]byte{[]byte("signature")},
 				},
 				{
-					Id: "invalid policy in ns lifecycle",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      uint32(types.MetaNamespaceID),
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   types.NamespaceID(1).Bytes(),
-									Value: []byte("policy"),
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
 					Id: "invalid signature",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
@@ -139,24 +140,40 @@ func TestBadlyFormedTxs(t *testing.T) {
 					},
 					Signatures: [][]byte{[]byte("signature")},
 				},
+				{
+					Id: "invalid policy in ns lifecycle",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      uint32(types.MetaNamespaceID),
+							NsVersion: types.VersionNumber(0).Bytes(),
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:   types.NamespaceID(1).Bytes(),
+									Value: []byte("policy"),
+								},
+							},
+						},
+					},
+					Signatures: [][]byte{[]byte("signature")},
+				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
 				TxIDs: []string{
 					"blind writes not allowed in ns lifecycle",
 					"invalid namespace id in ns lifecycle",
-					"invalid policy in ns lifecycle",
 					"invalid signature",
+					"invalid policy in ns lifecycle",
 				},
 				Statuses: []protoblocktx.Status{
 					protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 					protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-					protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
 					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+					protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
 				},
 			},
 		},
 		{
-			name: "duplicate namespace",
+			name: "duplicate namespace and duplicate tx id",
 			txs: []*protoblocktx.Tx{
 				{
 					Id: "duplicate namespace",
@@ -184,13 +201,41 @@ func TestBadlyFormedTxs(t *testing.T) {
 					},
 					Signatures: [][]byte{[]byte("signature"), []byte("signature")},
 				},
+				{
+					Id: "duplicate namespace",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId:      uint32(types.MetaNamespaceID),
+							NsVersion: types.VersionNumber(0).Bytes(),
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:   types.NamespaceID(1).Bytes(),
+									Value: policyBytes,
+								},
+							},
+						},
+					},
+					Signatures: [][]byte{[]byte("signature")},
+				},
+				{
+					Id: "missing signature",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId: 1,
+						},
+					},
+				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
 				TxIDs: []string{
 					"duplicate namespace",
+					"duplicate namespace",
+					"missing signature",
 				},
 				Statuses: []protoblocktx.Status{
 					protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+					protoblocktx.Status_ABORTED_DUPLICATE_TXID,
 				},
 			},
 		},

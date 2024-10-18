@@ -1,0 +1,119 @@
+package test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/onsi/gomega"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
+)
+
+func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
+	gomega.RegisterTestingT(t)
+	c := runner.NewCluster(
+		t,
+		&runner.Config{
+			NumSigVerifiers:     2,
+			NumVCService:        2,
+			InitializeNamespace: []types.NamespaceID{1},
+			BlockSize:           5,
+			BlockTimeout:        2 * time.Second,
+		},
+	)
+	defer c.Stop(t)
+
+	tests := []struct {
+		name            string
+		txs             []*protoblocktx.Tx
+		validSign       []bool
+		expectedResults *runner.ExpectedStatusInBlock
+	}{
+		{
+			name: "txs with valid and invalid signs",
+			txs: []*protoblocktx.Tx{
+				{
+					Id: "valid sign 1",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k2"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "invalid sign 1",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k3"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "valid sign 2",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k4"),
+								},
+							},
+						},
+					},
+				},
+				{
+					Id: "invalid sign 2",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key: []byte("k5"),
+								},
+							},
+						},
+					},
+				},
+			},
+			validSign: []bool{true, false, true, false},
+			expectedResults: &runner.ExpectedStatusInBlock{
+				TxIDs: []string{"valid sign 1", "invalid sign 1", "valid sign 2", "invalid sign 2"},
+				Statuses: []protoblocktx.Status{
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+					protoblocktx.Status_COMMITTED,
+					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+				},
+			},
+		},
+	}
+
+	v0 := types.VersionNumber(0).Bytes()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, tx := range tt.txs {
+				for _, ns := range tx.Namespaces {
+					ns.NsId = 1
+					ns.NsVersion = v0
+				}
+				if tt.validSign[i] {
+					c.AddSignatures(t, tx)
+					continue
+				}
+				for range len(tx.Namespaces) {
+					tx.Signatures = append(tx.Signatures, []byte("dummy"))
+				}
+			}
+
+			c.SendTransactionsToOrderer(t, tt.txs)
+			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
+		})
+	}
+}

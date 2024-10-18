@@ -411,6 +411,37 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 	require.Equal(t, expectedStatuses, blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
+
+	expectedTxIDStatuses := make(map[string]protoblocktx.Status)
+	// For the duplicate txID, neither the status nor the height would match the entry in the
+	// transaction status table. Hence, for duplicate txIDs, we have unexpectedTxIDStatuses.
+	unexpectedTxIDStatuses := make(map[string]protoblocktx.Status)
+	for i, tID := range expectedResults.TxIDs {
+		if expectedResults.Statuses[i] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			expectedTxIDStatuses[tID] = expectedResults.Statuses[i]
+			continue
+		}
+		unexpectedTxIDStatuses[tID] = expectedResults.Statuses[i]
+	}
+
+	expectedHeight := make(map[vcservice.TxID]*types.Height)
+	unexpectedHeight := make(map[vcservice.TxID]*types.Height)
+	for txNum := range len(blk.Data.Data) {
+		txID := expectedResults.TxIDs[txNum]
+		tNum := uint32(txNum) //nolint:gosec
+		if expectedResults.Statuses[txNum] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			expectedHeight[vcservice.TxID(txID)] = types.NewHeight(blk.Header.Number, tNum)
+			continue
+		}
+		unexpectedHeight[vcservice.TxID(txID)] = types.NewHeight(blk.Header.Number, tNum)
+	}
+
+	if len(expectedTxIDStatuses) > 0 {
+		c.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxIDStatuses, expectedHeight)
+	}
+	if len(unexpectedTxIDStatuses) > 0 {
+		c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, unexpectedTxIDStatuses, unexpectedHeight)
+	}
 }
 
 // CountStatus returns the number of transactions with a given tx status.

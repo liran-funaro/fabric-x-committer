@@ -436,6 +436,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ct
 				ID:          txBatchID,
 				BlockNumber: block.Number,
 				Txs:         block.Txs,
+				TxsNum:      block.TxsNum,
 			}); !ctxAlive {
 			return false
 		}
@@ -540,6 +541,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCo
 					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 				},
 				BlockNumber: blkWithInvalidSign.Number,
+				TxNum:       blkWithInvalidSign.TxsNum[i],
 			}
 		}
 		// NOTE: we are not sending the invalid tx status immediately to the client as

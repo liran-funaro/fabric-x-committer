@@ -90,6 +90,10 @@ func TestCommit(t *testing.T) {
 				"tx2": protoblocktx.Status_COMMITTED,
 			},
 		},
+		map[TxID]*types.Height{
+			"tx1": types.NewHeight(1, 1),
+			"tx2": types.NewHeight(1, 2),
+		},
 	)
 
 	// Note: the order of the subtest is important
@@ -122,8 +126,12 @@ func TestCommit(t *testing.T) {
 						state{2, 21, 0},
 					),
 				},
-				invalidTxStatus: map[txID]protoblocktx.Status{},
-				maxBlockNumber:  244,
+				invalidTxStatus: map[TxID]protoblocktx.Status{},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx-new-1": types.NewHeight(1, 1),
+					"tx-new-2": types.NewHeight(244, 2),
+				},
+				maxBlockNumber: 244,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-new-1": protoblocktx.Status_COMMITTED,
@@ -156,8 +164,11 @@ func TestCommit(t *testing.T) {
 				},
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
-				invalidTxStatus:    map[txID]protoblocktx.Status{},
-				maxBlockNumber:     239,
+				invalidTxStatus:    map[TxID]protoblocktx.Status{},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx-non-blind-1": types.NewHeight(239, 1),
+				},
+				maxBlockNumber: 239,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
 			expectedNsRows: writes(
@@ -183,8 +194,11 @@ func TestCommit(t *testing.T) {
 					),
 				},
 				newWrites:       transactionToWrites{},
-				invalidTxStatus: map[txID]protoblocktx.Status{},
-				maxBlockNumber:  1024,
+				invalidTxStatus: map[TxID]protoblocktx.Status{},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx-blind-1": types.NewHeight(1024, 1),
+				},
+				maxBlockNumber: 1024,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-blind-1": protoblocktx.Status_COMMITTED,
@@ -237,10 +251,17 @@ func TestCommit(t *testing.T) {
 						state{2, 31, 0},
 					),
 				},
-				invalidTxStatus: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx-all-1":      types.NewHeight(5, 1),
+					"tx-all-2":      types.NewHeight(200, 2),
+					"tx-conflict-1": types.NewHeight(1, 1),
+					"tx-conflict-2": types.NewHeight(396, 2),
+					"tx-conflict-3": types.NewHeight(396, 3),
 				},
 				maxBlockNumber: 396,
 			},
@@ -302,11 +323,16 @@ func TestCommit(t *testing.T) {
 						state{1, 12, 0}, // not violate
 					),
 				},
-				invalidTxStatus: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
-				readToTransactionIndices: map[comparableRead][]txID{
+				readToTransactionIndices: map[comparableRead][]TxID{
 					{1, "key1.10", ""}: {"tx-violate-1"},
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx-violate-1":     types.NewHeight(1, 1),
+					"tx-not-violate-1": types.NewHeight(4, 2),
+					"tx-conflict-4":    types.NewHeight(1000, 3),
 				},
 				maxBlockNumber: 10000,
 			},
@@ -342,10 +368,16 @@ func TestCommit(t *testing.T) {
 				newWrites: transactionToWrites{
 					"tx1": writes(true, state{1, 40, 0}),
 				},
-				invalidTxStatus: map[txID]protoblocktx.Status{
+				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				},
+				txIDToBlockAndTxNum: map[TxID]*types.Height{
+					"tx1":            types.NewHeight(1, 5),
+					"tx-conflict-10": types.NewHeight(1, 1),
+					"tx-conflict-11": types.NewHeight(4, 2),
+					"tx-conflict-12": types.NewHeight(66000, 3),
 				},
 				maxBlockNumber: 66000,
 			},
@@ -381,7 +413,7 @@ func TestCommit(t *testing.T) {
 			for nsID, expectedRows := range tt.unexpectedNsRows {
 				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
 			}
-			env.dbEnv.statusExists(t, tt.expectedTxStatuses)
+			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses, tt.txs.txIDToBlockAndTxNum)
 			maxSeenBlock, err := env.dbEnv.DB.getMaxSeenBlockNumber(ctx)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedMaxSeenBlocNumber, maxSeenBlock.Number)

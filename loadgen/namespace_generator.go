@@ -104,6 +104,7 @@ func toBlock(tx *protoblocktx.Tx, blkNumber uint64) *protoblocktx.Block {
 	block := &protoblocktx.Block{
 		Number: blkNumber,
 		Txs:    []*protoblocktx.Tx{tx},
+		TxsNum: []uint32{0},
 	}
 
 	return block

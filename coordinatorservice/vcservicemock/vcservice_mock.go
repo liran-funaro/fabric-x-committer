@@ -132,6 +132,13 @@ func (vc *MockVcService) receiveAndProcessTransactions(
 			return err
 		}
 
+		preTxNum := txBatch.Transactions[0].TxNum
+		for _, tx := range txBatch.Transactions[1:] {
+			if preTxNum == tx.TxNum {
+				return errors.New("duplication tx num detected")
+			}
+		}
+
 		vc.numWaitingTransactions.Add(int32(len(txBatch.Transactions))) // nolint:gosec
 		vc.numBatchesReceived.Add(1)
 		vc.txBatchChan <- txBatch

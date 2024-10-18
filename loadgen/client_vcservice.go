@@ -101,12 +101,14 @@ func (c *vcClient) startSending(
 
 func mapVCBatch(block *protoblocktx.Block) *protovcservice.TransactionBatch {
 	txBatch := &protovcservice.TransactionBatch{}
-	for _, tx := range block.Txs {
+	for txNum, tx := range block.Txs {
 		txBatch.Transactions = append(
 			txBatch.Transactions,
 			&protovcservice.Transaction{
-				ID:         tx.Id,
-				Namespaces: tx.Namespaces,
+				ID:          tx.Id,
+				Namespaces:  tx.Namespaces,
+				BlockNumber: block.Number,
+				TxNum:       uint32(txNum), //nolint:gosec
 			},
 		)
 	}

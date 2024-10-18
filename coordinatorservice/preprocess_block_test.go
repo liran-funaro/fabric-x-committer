@@ -223,6 +223,7 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 				Txs: []*protoblocktx.Tx{
 					tt.tx,
 				},
+				TxsNum: []uint32{0},
 			})
 			require.NoError(t, err)
 			require.Eventually(t, func() bool {

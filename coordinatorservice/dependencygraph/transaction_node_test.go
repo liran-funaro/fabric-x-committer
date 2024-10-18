@@ -82,7 +82,7 @@ func TestTransactionNode(t *testing.T) {
 
 func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
 	tx := createTxForTest(t, nsID1ForTest, readOnly, readWrite, blindWrite)
-	txNode := newTransactionNode(0, tx)
+	txNode := newTransactionNode(0, 0, tx)
 
 	expectedReads := make([]string, 0, len(readOnly))
 	expectedWrites := make([]string, 0, len(blindWrite))

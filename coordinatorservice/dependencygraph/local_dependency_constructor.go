@@ -40,6 +40,7 @@ type (
 		ID          uint64
 		BlockNumber uint64
 		Txs         []*protoblocktx.Tx
+		TxsNum      []uint32
 	}
 
 	transactionNodeBatch struct {
@@ -94,7 +95,7 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 		for i, tx := range txs.Txs {
 			// NOTE: we can parallelize newTransactionNode(), and
 			//       addDependenciesAndUpdateDependents() across txs.
-			txNode := newTransactionNode(txs.BlockNumber, tx)
+			txNode := newTransactionNode(txs.BlockNumber, txs.TxsNum[i], tx)
 
 			// using the dependency detector, we find the transactions that
 			// txNode depends on. We then add these transactions as

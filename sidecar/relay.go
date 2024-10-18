@@ -147,6 +147,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 		// Iterate over the indices in reverse order. Note that the dupIdx is sorted by default.
 		for _, index := range slices.Backward(dupIdx) {
 			scBlock.Txs = append(scBlock.Txs[:index], scBlock.Txs[index+1:]...)
+			scBlock.TxsNum = append(scBlock.TxsNum[:index], scBlock.TxsNum[index+1:]...)
 		}
 
 		r.activeBlocksCount.Add(1)

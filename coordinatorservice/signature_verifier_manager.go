@@ -384,11 +384,13 @@ func (b *blockWithResult) prepareOutgoingBlock() (validBlockTxs, invalidBlockTxs
 			Txs:    make([]*protoblocktx.Tx, 0, b.invalidTxCount),
 		}
 
-		for txNum, tx := range b.block.Txs {
-			if b.txStatus[txNum] == txStatusValid {
+		for i, tx := range b.block.Txs {
+			if b.txStatus[i] == txStatusValid {
 				validBlockTxs.Txs = append(validBlockTxs.Txs, tx)
+				validBlockTxs.TxsNum = append(validBlockTxs.TxsNum, b.block.TxsNum[i])
 			} else {
 				invalidBlockTxs.Txs = append(invalidBlockTxs.Txs, tx)
+				invalidBlockTxs.TxsNum = append(invalidBlockTxs.TxsNum, b.block.TxsNum[i])
 			}
 		}
 	}

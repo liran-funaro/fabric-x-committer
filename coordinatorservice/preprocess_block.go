@@ -68,18 +68,19 @@ func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction
 		return nil
 	}
 
-	removeFromBlock(block, badTxIndex)
-
 	malformedTxs := make([]*protovcservice.Transaction, 0, len(badTxStatus))
-	for _, t := range badTxStatus {
+	for i, t := range badTxStatus {
 		malformedTxs = append(malformedTxs, &protovcservice.Transaction{
 			ID: t.TxId,
 			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 				Code: t.Status,
 			},
 			BlockNumber: block.Number,
+			TxNum:       block.TxsNum[badTxIndex[i]],
 		})
 	}
+
+	removeFromBlock(block, badTxIndex)
 	return malformedTxs
 }
 
@@ -172,6 +173,7 @@ func removeFromBlock(block *protoblocktx.Block, idx []int) {
 	for i := len(idx) - 1; i >= 0; i-- {
 		index := idx[i]
 		block.Txs = append(block.Txs[:index], block.Txs[index+1:]...)
+		block.TxsNum = append(block.TxsNum[:index], block.TxsNum[index+1:]...)
 	}
 }
 

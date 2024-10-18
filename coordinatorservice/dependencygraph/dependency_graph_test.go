@@ -54,8 +54,9 @@ func TestDependencyGraph(t *testing.T) {
 		)
 
 		localDepIncomingTxs <- &TransactionBatch{
-			ID:  1,
-			Txs: []*protoblocktx.Tx{t1, t2},
+			ID:     1,
+			Txs:    []*protoblocktx.Tx{t1, t2},
+			TxsNum: []uint32{0, 1},
 		}
 
 		// t3 depends on t2 and t1
@@ -68,8 +69,9 @@ func TestDependencyGraph(t *testing.T) {
 		)
 
 		localDepIncomingTxs <- &TransactionBatch{
-			ID:  2,
-			Txs: []*protoblocktx.Tx{t3, t4},
+			ID:     2,
+			Txs:    []*protoblocktx.Tx{t3, t4},
+			TxsNum: []uint32{0, 1},
 		}
 
 		// only t1 is dependency free
@@ -128,8 +130,9 @@ func TestDependencyGraph(t *testing.T) {
 		)
 
 		localDepIncomingTxs <- &TransactionBatch{
-			ID:  3,
-			Txs: []*protoblocktx.Tx{t1, t2},
+			ID:     3,
+			Txs:    []*protoblocktx.Tx{t1, t2},
+			TxsNum: []uint32{0, 1},
 		}
 
 		// t3 depends on t2 and t1
@@ -142,8 +145,9 @@ func TestDependencyGraph(t *testing.T) {
 		)
 
 		localDepIncomingTxs <- &TransactionBatch{
-			ID:  4,
-			Txs: []*protoblocktx.Tx{t3, t4},
+			ID:     4,
+			Txs:    []*protoblocktx.Tx{t3, t4},
+			TxsNum: []uint32{0, 1},
 		}
 
 		// only t1 is dependency free
