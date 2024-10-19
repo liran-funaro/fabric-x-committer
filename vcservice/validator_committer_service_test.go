@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,10 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
 )
 
 type validatorAndCommitterServiceTestEnv struct {
@@ -24,73 +20,12 @@ type validatorAndCommitterServiceTestEnv struct {
 	stream       protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
 	streamCancel func()
 	dbEnv        *DatabaseTestEnv
-	ctx          context.Context
 }
 
-func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterServiceTestEnv {
-	dbEnv := NewDatabaseTestEnv(t)
+func newValidatorAndCommitServiceTestEnv(ctx context.Context, t *testing.T) *validatorAndCommitterServiceTestEnv {
+	vcs := NewValidatorAndCommitServiceTestEnv(ctx, t)
 
-	config := &ValidatorCommitterServiceConfig{
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		},
-		Database: dbEnv.DBConf,
-		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:             2,
-			MaxWorkersForValidator:            2,
-			MaxWorkersForCommitter:            2,
-			MinTransactionBatchSize:           1,
-			TimeoutForMinTransactionBatchSize: 10 * time.Second, // to avoid flakyness in TestWaitingTxsCount, we are
-			// setting the timeout value to 10 seconds
-		},
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Enable: true,
-				Endpoint: &connection.Endpoint{
-					Host: "localhost",
-					Port: 0,
-				},
-			},
-		},
-	}
-
-	sConfig := connection.ServerConfig{
-		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
-	}
-
-	vcs, err := NewValidatorCommitterService(config)
-	require.NoError(t, err)
-	t.Cleanup(vcs.Close)
-
-	wg := sync.WaitGroup{}
-	t.Cleanup(wg.Wait)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, vcs.Run(ctx)); wg.Done() }()
-
-	var grpcSrv *grpc.Server
-
-	var serviceG sync.WaitGroup
-	serviceG.Add(1)
-
-	go func() {
-		connection.RunServerMain(&sConfig, func(grpcServer *grpc.Server, actualListeningPort int) {
-			grpcSrv = grpcServer
-			sConfig.Endpoint.Port = actualListeningPort
-			protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
-			serviceG.Done()
-		})
-	}()
-
-	serviceG.Wait()
-	t.Cleanup(grpcSrv.Stop)
-
-	clientConn, err := connection.Connect(connection.NewDialConfig(sConfig.Endpoint))
+	clientConn, err := connection.Connect(connection.NewDialConfig(vcs.Config.Server.Endpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, clientConn.Close())
@@ -102,24 +37,24 @@ func newValidatorAndCommitServiceTestEnv(t *testing.T) *validatorAndCommitterSer
 	vcStream, err := client.StartValidateAndCommitStream(sCtx)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		return vcs.isStreamActive.Load()
+		return vcs.VCService.isStreamActive.Load()
 	}, 2*time.Second, 50*time.Millisecond)
 	t.Cleanup(func() {
 		require.NoError(t, vcStream.CloseSend())
 	})
 
 	return &validatorAndCommitterServiceTestEnv{
-		vcs:          vcs,
+		vcs:          vcs.VCService,
 		client:       client,
 		stream:       vcStream,
 		streamCancel: sCancel,
-		dbEnv:        dbEnv,
-		ctx:          ctx,
+		dbEnv:        vcs.DBEnv,
 	}
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {
-	env := newValidatorAndCommitServiceTestEnv(t)
+	ctx := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 
 	env.dbEnv.populateDataWithCleanup(t, []int{1, int(types.MetaNamespaceID)}, namespaceToWrites{
 		1: &namespaceWrites{
@@ -245,7 +180,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
 
-		maxSeenBlk, err := env.client.GetMaxSeenBlockNumber(env.ctx, nil)
+		maxSeenBlk, err := env.client.GetMaxSeenBlockNumber(ctx, nil)
 		require.Error(t, err, ErrMetadataEmpty)
 		require.Nil(t, maxSeenBlk)
 
@@ -358,7 +293,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
 		ensureLastSeenMaxBlock(t, env.client, 5)
 
-		status, err := env.client.GetTransactionsStatus(env.ctx, &protoblocktx.QueryStatus{
+		status, err := env.client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{
 			TxIDs: []string{txBatch.Transactions[0].ID, txBatch.Transactions[1].ID},
 		})
 		require.NoError(t, err)
@@ -367,7 +302,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 }
 
 func TestWaitingTxsCount(t *testing.T) {
-	env := newValidatorAndCommitServiceTestEnv(t)
+	ctx := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 	env.dbEnv.populateDataWithCleanup(t, nil, nil, nil, nil)
 	// NOTE: We are setting the minTxBatchSize to 10 so that the
 	//       received batch can wait for at most 5 seconds, which
@@ -430,29 +366,29 @@ func TestWaitingTxsCount(t *testing.T) {
 }
 
 func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
-	env := newValidatorAndCommitServiceTestEnv(t)
+	ctx := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 	require.NoError(t, initDatabaseTables(context.Background(), env.dbEnv.DB.pool, nil))
-	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(ctx, nil)
 	require.Error(t, err, ErrMetadataEmpty)
 	require.Nil(t, lastCommittedBlock)
 
-	_, err = env.client.SetLastCommittedBlockNumber(env.ctx, &protoblocktx.BlockInfo{Number: 0})
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
-	lastCommittedBlock, err = env.client.GetLastCommittedBlockNumber(env.ctx, nil)
+	lastCommittedBlock, err = env.client.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastCommittedBlock.Number)
 }
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {
-	env := newValidatorAndCommitServiceTestEnv(t)
+	ctx := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 
 	require.Eventually(t, func() bool {
 		return env.vcs.isStreamActive.Load()
 	}, 4*time.Second, 250*time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
 	stream, err := env.client.StartValidateAndCommitStream(ctx)
 	require.NoError(t, err)
 	_, err = stream.Recv()
@@ -460,7 +396,8 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 }
 
 func TestTransactionResubmission(t *testing.T) {
-	env := newValidatorAndCommitServiceTestEnv(t)
+	ctx := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 
 	env.dbEnv.populateDataWithCleanup(t, []int{3, int(types.MetaNamespaceID)}, namespaceToWrites{
 		3: &namespaceWrites{
@@ -608,4 +545,10 @@ func ensureLastSeenMaxBlock(t *testing.T, client protovcservice.ValidationAndCom
 	maxSeenBlk, err := client.GetMaxSeenBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, number, maxSeenBlk.Number)
+}
+
+func createContext(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Cleanup(cancel)
+	return ctx
 }

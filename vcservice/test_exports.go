@@ -4,17 +4,118 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4"
+	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 const queryTxStatusSQLTemplate = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1)"
+
+// ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
+type ValidatorAndCommitterServiceTestEnv struct {
+	VCService *ValidatorCommitterService
+	DBEnv     *DatabaseTestEnv
+	Config    *ValidatorCommitterServiceConfig
+}
+
+// NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
+func NewValidatorAndCommitServiceTestEnv(
+	ctx context.Context,
+	t *testing.T,
+	db ...*DatabaseTestEnv,
+) *ValidatorAndCommitterServiceTestEnv {
+	require.LessOrEqual(t, len(db), 1)
+
+	var dbEnv *DatabaseTestEnv
+	switch len(db) {
+	case 0:
+		dbEnv = NewDatabaseTestEnv(t)
+	case 1:
+		dbEnv = db[0]
+	default:
+		t.Fatalf("At most one db env can be passed as n argument but received %d envs", len(db))
+	}
+
+	config := &ValidatorCommitterServiceConfig{
+		Server: &connection.ServerConfig{
+			Endpoint: connection.Endpoint{
+				Host: "localhost",
+				Port: 0,
+			},
+		},
+		Database: dbEnv.DBConf,
+		ResourceLimits: &ResourceLimitsConfig{
+			MaxWorkersForPreparer:             2,
+			MaxWorkersForValidator:            2,
+			MaxWorkersForCommitter:            2,
+			MinTransactionBatchSize:           1,
+			TimeoutForMinTransactionBatchSize: 20 * time.Second, // to avoid flakyness in TestWaitingTxsCount, we are
+			// setting the timeout value to 20 seconds
+		},
+		Monitoring: &monitoring.Config{
+			Metrics: &metrics.Config{
+				Enable: true,
+				Endpoint: &connection.Endpoint{
+					Host: "localhost",
+					Port: 0,
+				},
+			},
+		},
+	}
+
+	vcs, err := NewValidatorCommitterService(config)
+	require.NoError(t, err)
+	t.Cleanup(vcs.Close)
+
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+
+	sCtx, sCancel := context.WithCancel(ctx)
+	t.Cleanup(sCancel)
+	wg.Add(1)
+	go func() { require.NoError(t, vcs.Run(sCtx)); wg.Done() }()
+
+	var grpcSrv *grpc.Server
+	var serviceG sync.WaitGroup
+	serviceG.Add(1)
+
+	go func() {
+		connection.RunServerMain(config.Server, func(grpcServer *grpc.Server, actualListeningPort int) {
+			grpcSrv = grpcServer
+			config.Server.Endpoint.Port = actualListeningPort
+			protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
+			serviceG.Done()
+		})
+	}()
+
+	serviceG.Wait()
+	t.Cleanup(grpcSrv.Stop)
+
+	return &ValidatorAndCommitterServiceTestEnv{
+		VCService: vcs,
+		DBEnv:     dbEnv,
+		Config:    config,
+	}
+}
+
+// GetDBEnv returns the database test environment.
+func (vcEnv *ValidatorAndCommitterServiceTestEnv) GetDBEnv(_ *testing.T) *DatabaseTestEnv {
+	if vcEnv == nil {
+		return nil
+	}
+	return vcEnv.DBEnv
+}
 
 // DatabaseTestEnv represents a database test environment.
 type DatabaseTestEnv struct {
@@ -39,8 +140,8 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 		ConnPoolCreateTimeout: 15 * time.Second,
 	}
 
-	metrics := newVCServiceMetrics()
-	db, err := newDatabase(config, metrics)
+	m := newVCServiceMetrics()
+	db, err := newDatabase(config, m)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

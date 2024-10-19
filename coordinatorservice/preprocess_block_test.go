@@ -15,10 +15,12 @@ import (
 )
 
 func TestCoordinatorServiceBadTxFormat(t *testing.T) {
-	env := newCoordinatorTestEnv(t, 2, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
+	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	env.start(ctx, t)
+
+	env.createNamespace(t, 0, 1)
 
 	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -27,27 +29,23 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name           string
 		tx             *protoblocktx.Tx
 		expectedStatus protoblocktx.Status
 	}{
 		{
-			name:           "missing tx id",
-			tx:             &protoblocktx.Tx{},
+			tx:             &protoblocktx.Tx{Namespaces: []*protoblocktx.TxNamespace{}},
 			expectedStatus: protoblocktx.Status_ABORTED_MISSING_TXID,
 		},
 		{
-			name: "invalid signature",
 			tx: &protoblocktx.Tx{
-				Id:         "tx1",
+				Id:         "invalid signature",
 				Signatures: [][]byte{[]byte("dummy")},
 			},
 			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
-			name: "missing namespace version",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "missing namespace version",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: 1,
@@ -60,9 +58,8 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
 		},
 		{
-			name: "no writes",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "no writes",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      1,
@@ -81,9 +78,8 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_NO_WRITES,
 		},
 		{
-			name: "namespace id is invalid in metaNs tx",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "namespace id is invalid in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      1,
@@ -112,9 +108,8 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
 		},
 		{
-			name: "namespace policy is invalid in metaNs tx",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "namespace policy is invalid in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      1,
@@ -144,9 +139,8 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
 		},
 		{
-			name: "duplicate namespace",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "duplicate namespace",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      1,
@@ -181,9 +175,8 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 		},
 		{
-			name: "blind writes not allowed in metaNs tx",
 			tx: &protoblocktx.Tx{
-				Id: "tx1",
+				Id: "blind writes not allowed in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      1,
@@ -214,10 +207,11 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 		},
 	}
 
-	blockNumber := uint64(0)
-	receivedTx := 0
+	blockNumber := uint64(1)
+	receivedTxCount := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
+	commitStatusCount := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.tx.GetId(), func(t *testing.T) {
 			err = env.csStream.Send(&protoblocktx.Block{
 				Number: blockNumber,
 				Txs: []*protoblocktx.Tx{
@@ -228,12 +222,12 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			require.NoError(t, err)
 			require.Eventually(t, func() bool {
 				totalReceivedTx := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
-				if receivedTx+1 == int(totalReceivedTx) {
-					receivedTx = int(totalReceivedTx)
+				if receivedTxCount+1 == totalReceivedTx {
+					receivedTxCount = totalReceivedTx
 					return true
 				}
 				return false
-			}, 1*time.Second, 100*time.Millisecond)
+			}, 2*time.Second, 100*time.Millisecond)
 
 			txStatus, err := env.csStream.Recv()
 			require.NoError(t, err)
@@ -248,7 +242,7 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 			require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
 			require.Equal(
 				t,
-				float64(0),
+				commitStatusCount,
 				test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 			)
 			blockNumber++
