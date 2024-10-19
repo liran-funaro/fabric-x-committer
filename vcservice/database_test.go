@@ -314,16 +314,16 @@ func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 	}
 }
 
-func (env *DatabaseTestEnv) populateDataWithCleanup(
+func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
 	t *testing.T,
 	nsIDs []int,
 	writes namespaceToWrites,
 	batchStatus *protovcservice.TransactionStatus,
-	txIDToBlkTxNum map[TxID]*types.Height,
+	txIDToHeight transactionIDToHeight,
 ) {
 	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
 
-	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToBlockAndTxNum: txIDToBlkTxNum})
+	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
 	require.NoError(t, err)
 	env.commitState(t, writes)
 

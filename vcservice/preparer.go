@@ -44,9 +44,11 @@ type (
 		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
 		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
 
-		invalidTxIDStatus   map[TxID]protoblocktx.Status // Maps txIDs to the status.
-		txIDToBlockAndTxNum map[TxID]*types.Height
+		invalidTxIDStatus map[TxID]protoblocktx.Status // Maps txIDs to the status.
+		txIDToHeight      transactionIDToHeight        // Maps txIDs to height in the blockchain.
 	}
+
+	transactionIDToHeight map[TxID]*types.Height
 
 	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
 	namespaceToReads map[types.NamespaceID]*reads
@@ -129,7 +131,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			txIDToNsBlindWrites:    make(transactionToWrites),
 			txIDToNsNewWrites:      make(transactionToWrites),
 			invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
-			txIDToBlockAndTxNum:    make(map[TxID]*types.Height),
+			txIDToHeight:           make(transactionIDToHeight),
 		}
 		metaNs := &protoblocktx.TxNamespace{
 			NsId: uint32(types.MetaNamespaceID),
@@ -138,7 +140,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 		maxBlkNum := uint64(0)
 		for _, tx := range txBatch.Transactions {
 			maxBlkNum = max(maxBlkNum, tx.BlockNumber)
-			prepTxs.txIDToBlockAndTxNum[TxID(tx.ID)] = &types.Height{BlockNum: tx.BlockNumber, TxNum: tx.TxNum}
+			prepTxs.txIDToHeight[TxID(tx.ID)] = &types.Height{BlockNum: tx.BlockNumber, TxNum: tx.TxNum}
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.

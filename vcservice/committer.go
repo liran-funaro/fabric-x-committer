@@ -104,11 +104,11 @@ func (c *transactionCommitter) commitTransactions(
 	for i := 0; i < maxRetriesToRemoveAllInvalidTxs; i++ {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites:        groupWritesByNamespace(vTx.validTxNonBlindWrites),
-			newWrites:           groupWritesByNamespace(vTx.newWrites),
-			batchStatus:         prepareStatusForCommit(vTx),
-			txIDToBlockAndTxNum: vTx.txIDToBlockAndTxNum,
-			maxBlockNumber:      vTx.maxBlockNumber,
+			updateWrites:   groupWritesByNamespace(vTx.validTxNonBlindWrites),
+			newWrites:      groupWritesByNamespace(vTx.newWrites),
+			batchStatus:    prepareStatusForCommit(vTx),
+			txIDToHeight:   vTx.txIDToHeight,
+			maxBlockNumber: vTx.maxBlockNumber,
 		}
 
 		mismatch, duplicated, err := c.db.commit(info)
@@ -117,6 +117,16 @@ func (c *transactionCommitter) commitTransactions(
 		}
 
 		if mismatch.empty() && len(duplicated) == 0 {
+			// NOTE: If a submitted transaction is invalid for multiple reasons, including a duplicate
+			//       transaction ID, the committer prioritizes Status_ABORTED_DUPLICATE_TXID over any other
+			//       invalid status code. Even if a previously committed transaction is resubmitted (regardless
+			//       of its original status), the committer will always return Status_ABORTED_DUPLICATE_TXID.
+			//       The setCorrectStatusForDuplicateTxID function checks whether the transaction is truly a
+			//       duplicate or a resubmission. If it is a resubmission, it retrieves the correct status from
+			//       the tx_status table.
+			if err := c.setCorrectStatusForDuplicateTxID(info.batchStatus, info.txIDToHeight); err != nil {
+				return nil, err
+			}
 			return info.batchStatus, nil
 		}
 
@@ -180,6 +190,39 @@ func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransacti
 
 	// Clear the blind writes map
 	vTx.validTxBlindWrites = make(transactionToWrites)
+
+	return nil
+}
+
+func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
+	txsStatus *protovcservice.TransactionStatus,
+	txIDToHeight transactionIDToHeight,
+) error {
+	var dupTxIDs [][]byte
+	for id, s := range txsStatus.Status {
+		if s == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			dupTxIDs = append(dupTxIDs, []byte(id))
+		}
+	}
+
+	if len(dupTxIDs) == 0 {
+		return nil
+	}
+
+	idStatusHeight, err := c.db.readStatusWithHeight(dupTxIDs)
+	if err != nil {
+		return err
+	}
+
+	if idStatusHeight == nil {
+		return nil
+	}
+
+	for txID, sWithHeight := range idStatusHeight {
+		if types.AreSame(txIDToHeight[txID], sWithHeight.height) {
+			txsStatus.Status[string(txID)] = sWithHeight.status
+		}
+	}
 
 	return nil
 }

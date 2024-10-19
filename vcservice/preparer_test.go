@@ -144,7 +144,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		txIDToNsBlindWrites:    transactionToWrites{},
 		txIDToNsNewWrites:      transactionToWrites{},
 		invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
-		txIDToBlockAndTxNum: map[TxID]*types.Height{
+		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(1, 1),
 			"tx2": types.NewHeight(4, 2),
 		},
@@ -251,7 +251,7 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 		},
 		txIDToNsNewWrites: transactionToWrites{},
 		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
-		txIDToBlockAndTxNum: map[TxID]*types.Height{
+		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(10, 5),
 			"tx2": types.NewHeight(6, 3),
 		},
@@ -411,7 +411,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 		},
 		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
-		txIDToBlockAndTxNum: map[TxID]*types.Height{
+		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(7, 4),
 			"tx2": types.NewHeight(7, 5),
 		},
@@ -600,7 +600,7 @@ func TestPrepareTx(t *testing.T) {
 			"tx3": protoblocktx.Status_ABORTED_NO_WRITES,
 			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 		},
-		txIDToBlockAndTxNum: map[TxID]*types.Height{
+		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(8, 0),
 			"tx2": types.NewHeight(9, 3),
 			"tx3": types.NewHeight(6, 2),

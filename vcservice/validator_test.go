@@ -178,7 +178,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),
@@ -195,7 +195,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),
@@ -255,7 +255,7 @@ func TestValidate(t *testing.T) {
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(5, 2),
 					"tx3": types.NewHeight(5, 3),
@@ -270,7 +270,7 @@ func TestValidate(t *testing.T) {
 					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(5, 2),
 					"tx3": types.NewHeight(5, 3),
@@ -338,7 +338,7 @@ func TestValidate(t *testing.T) {
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),
@@ -360,7 +360,7 @@ func TestValidate(t *testing.T) {
 					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),

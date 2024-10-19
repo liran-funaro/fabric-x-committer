@@ -59,11 +59,11 @@ type (
 	keyToVersion map[string][]byte
 
 	statesToBeCommitted struct {
-		updateWrites        namespaceToWrites
-		newWrites           namespaceToWrites
-		batchStatus         *protovcservice.TransactionStatus
-		txIDToBlockAndTxNum map[TxID]*types.Height
-		maxBlockNumber      uint64
+		updateWrites   namespaceToWrites
+		newWrites      namespaceToWrites
+		batchStatus    *protovcservice.TransactionStatus
+		txIDToHeight   transactionIDToHeight
+		maxBlockNumber uint64
 	}
 )
 
@@ -179,7 +179,7 @@ func (db *database) queryTransactionsStatus(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (*protovcservice.TransactionStatus, error) {
-	txIDsStatus, err := db.retryQuery(context.Background(), queryTxIDsStatus, txIDs)
+	txIDsStatus, err := db.retryQuery(ctx, queryTxIDsStatus, txIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (db *database) commitTxStatus(
 		}
 		ids = append(ids, []byte(tID))
 		statues = append(statues, int(status))
-		blkAndTxNum, ok := states.txIDToBlockAndTxNum[TxID(tID)]
+		blkAndTxNum, ok := states.txIDToHeight[TxID(tID)]
 		if !ok {
 			return nil, fmt.Errorf("block and tx number is not passed for txID %s", tID)
 		}
@@ -349,24 +349,6 @@ func (db *database) commitTxStatus(
 	}
 	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicatedTx, nil
-}
-
-func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
-	start := time.Now()
-	for nsID, writes := range nsToWrites {
-		if writes.empty() {
-			continue
-		}
-
-		query := fmt.Sprintf(commitUpdateWritesSQLTemplate, nsID)
-		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
-		if err != nil {
-			return fmt.Errorf("failed tx exec: %w", err)
-		}
-	}
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
-
-	return nil
 }
 
 func (db *database) commitNewKeys(
@@ -403,26 +385,47 @@ func (db *database) commitNewKeys(
 		return mismatch, nil
 	}
 
-	// for every new namespace, we need to create a table.
-	newNs, ok := nsToWrites[types.MetaNamespaceID]
-	if !ok {
-		return nil, nil
+	return nil, db.createTablesAndFunctionsForNamespace(tx, nsToWrites[types.MetaNamespaceID])
+}
+
+func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+	start := time.Now()
+	for nsID, writes := range nsToWrites {
+		if writes.empty() {
+			continue
+		}
+
+		query := fmt.Sprintf(commitUpdateWritesSQLTemplate, nsID)
+		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
+		if err != nil {
+			return fmt.Errorf("failed tx exec: %w", err)
+		}
+	}
+	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
+
+	return nil
+}
+
+func (db *database) createTablesAndFunctionsForNamespace(tx pgx.Tx, newNs *namespaceWrites) error {
+	if newNs == nil {
+		return nil
 	}
 
 	for _, ns := range newNs.keys {
 		nsID, err := types.NamespaceIDFromBytes(ns)
 		if err != nil {
-			return nil, err
+			return err
 		}
+
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
 			if _, err := tx.Exec(context.Background(), stmtFmt(stmt, tableName, db.name)); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
-	return nil, nil
+	return nil
 }
 
 func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
@@ -504,4 +507,40 @@ func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx
 		return err
 	}, retryTimeout, retryInitialInterval)
 	return rows, retryErr
+}
+
+type statusWithHeight struct {
+	status protoblocktx.Status
+	height *types.Height
+}
+
+func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHeight, error) {
+	var r pgx.Rows
+	if retryErr := utils.Retry(func() error {
+		var err error
+		r, err = db.pool.Query(context.Background(), queryTxStatusSQLTemplate, txIDs)
+		return err
+	}, retryTimeout, retryInitialInterval); retryErr != nil {
+		return nil, fmt.Errorf("error reading status for txIDs: %w", retryErr)
+	}
+	defer r.Close()
+
+	rows := make(map[TxID]*statusWithHeight)
+	for r.Next() {
+		var id []byte
+		var status int32
+		var height []byte
+
+		if err := r.Scan(&id, &status, &height); err != nil {
+			return nil, err
+		}
+
+		ht, _, err := types.NewHeightFromBytes(height)
+		if err != nil {
+			return nil, err
+		}
+
+		rows[TxID(id)] = &statusWithHeight{status: protoblocktx.Status(status), height: ht}
+	}
+	return rows, nil
 }

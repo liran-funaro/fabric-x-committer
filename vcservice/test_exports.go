@@ -11,7 +11,6 @@ import (
 	"github.com/yugabyte/pgx/v4"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -74,29 +73,29 @@ func readCount(t *testing.T, r pgx.Row) int {
 	return count
 }
 
-type statusWithHeight struct {
-	status int
-	height []byte
-}
-
 // StatusExistsForNonDuplicateTxID ensures that the given statuses and height
 // exist for the corresponding txIDs in the tx_status table, excluding any
 // duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	t *testing.T,
 	expectedStatuses map[string]protoblocktx.Status,
-	expectedHeight map[TxID]*types.Height,
+	expectedHeight transactionIDToHeight,
 ) {
-	actualRows := env.queryStatus(t, expectedStatuses)
-
-	require.Equal(t, len(expectedStatuses), len(actualRows))
-	for tID, status := range expectedStatuses {
-		// "duplicated TX ID" status is never committed.
-		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			continue
+	var nonDupTxIDs [][]byte
+	for id, s := range expectedStatuses {
+		if s != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			nonDupTxIDs = append(nonDupTxIDs, []byte(id))
 		}
-		require.Equal(t, int(status), actualRows[TxID(tID)].status)
-		require.Equal(t, expectedHeight[TxID(tID)].ToBytes(), actualRows[TxID(tID)].height)
+	}
+
+	actualRows, err := env.DB.readStatusWithHeight(nonDupTxIDs)
+	require.NoError(t, err)
+
+	require.Equal(t, len(nonDupTxIDs), len(actualRows))
+	for _, tID := range nonDupTxIDs {
+		txID := TxID(tID)
+		require.Equal(t, expectedStatuses[string(txID)], actualRows[txID].status)
+		require.Equal(t, expectedHeight[txID], actualRows[txID].height)
 	}
 }
 
@@ -106,41 +105,23 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t *testing.T,
 	expectedStatuses map[string]protoblocktx.Status,
-	unexpectedHeight map[TxID]*types.Height,
+	unexpectedHeight transactionIDToHeight,
 ) {
-	actualRows := env.queryStatus(t, expectedStatuses)
+	var dupTxIDs [][]byte
+	for id, s := range expectedStatuses {
+		if s == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+			dupTxIDs = append(dupTxIDs, []byte(id))
+		}
+	}
+	actualRows, err := env.DB.readStatusWithHeight(dupTxIDs)
+	require.NoError(t, err)
 
-	require.Equal(t, len(expectedStatuses), len(actualRows))
-	for tID, status := range expectedStatuses {
+	require.Equal(t, len(dupTxIDs), len(actualRows))
+	for _, tID := range dupTxIDs {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
-		require.NotEqual(t, int(status), actualRows[TxID(tID)].status)
-		require.NotEqual(t, unexpectedHeight[TxID(tID)].ToBytes(), actualRows[TxID(tID)].height)
+		txID := TxID(tID)
+		require.NotEqual(t, expectedStatuses[string(txID)], actualRows[txID].status)
+		require.NotEqual(t, unexpectedHeight[txID], actualRows[txID].height)
 	}
-}
-
-func (env *DatabaseTestEnv) queryStatus(
-	t *testing.T,
-	expectedStatuses map[string]protoblocktx.Status,
-) map[TxID]*statusWithHeight {
-	expectedIDs := make([][]byte, 0, len(expectedStatuses))
-	for id := range expectedStatuses {
-		expectedIDs = append(expectedIDs, []byte(id))
-	}
-	idStatusHeight, err := env.DB.pool.Query(context.Background(), queryTxStatusSQLTemplate, expectedIDs)
-	require.NoError(t, err)
-	defer idStatusHeight.Close()
-
-	actualRows := map[TxID]*statusWithHeight{}
-
-	for idStatusHeight.Next() {
-		var key []byte
-		var status int
-		var height []byte
-		require.NoError(t, idStatusHeight.Scan(&key, &status, &height))
-		actualRows[TxID(key)] = &statusWithHeight{status: status, height: height}
-	}
-	require.NoError(t, idStatusHeight.Err())
-
-	return actualRows
 }

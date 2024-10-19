@@ -256,7 +256,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		expectedTxStatus := &protovcservice.TransactionStatus{
 			Status: map[string]protoblocktx.Status{},
 		}
-		expectedHeight := make(map[TxID]*types.Height)
+		expectedHeight := make(transactionIDToHeight)
 		for _, tx := range txBatch.Transactions {
 			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
 			expectedHeight[TxID(tx.ID)] = types.NewHeight(tx.BlockNumber, tx.TxNum)
@@ -343,7 +343,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				txBatch.Transactions[1].ID: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 			},
 		}
-		expectedHeight := map[TxID]*types.Height{
+		expectedHeight := transactionIDToHeight{
 			TxID(txBatch.Transactions[0].ID): types.NewHeight(
 				txBatch.Transactions[0].BlockNumber,
 				txBatch.Transactions[0].TxNum,
@@ -457,6 +457,149 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 	require.NoError(t, err)
 	_, err = stream.Recv()
 	require.ErrorContains(t, err, utils.ErrActiveStream.Error())
+}
+
+func TestTransactionResubmission(t *testing.T) {
+	env := newValidatorAndCommitServiceTestEnv(t)
+
+	env.dbEnv.populateDataWithCleanup(t, []int{3, int(types.MetaNamespaceID)}, namespaceToWrites{
+		3: &namespaceWrites{
+			keys:     [][]byte{[]byte("Existing key")},
+			values:   [][]byte{[]byte("value")},
+			versions: [][]byte{v0},
+		},
+		types.MetaNamespaceID: &namespaceWrites{
+			keys:     [][]byte{types.NamespaceID(3).Bytes()},
+			versions: [][]byte{v0},
+		},
+	}, nil, nil)
+
+	txs := []struct {
+		tx             *protovcservice.Transaction
+		expectedStatus protoblocktx.Status
+	}{
+		{
+			tx: &protovcservice.Transaction{
+				ID: "Blind write with value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      3,
+						NsVersion: v0,
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key:   []byte("Blind write with value"),
+								Value: []byte("value2"),
+							},
+						},
+					},
+				},
+				BlockNumber: 1,
+				TxNum:       2,
+			},
+			expectedStatus: protoblocktx.Status_COMMITTED,
+		},
+		{
+			tx: &protovcservice.Transaction{
+				ID: "New key with value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      3,
+						NsVersion: v0,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   []byte("New key with value"),
+								Value: []byte("value3"),
+							},
+						},
+					},
+				},
+				BlockNumber: 2,
+				TxNum:       4,
+			},
+			expectedStatus: protoblocktx.Status_COMMITTED,
+		},
+		{
+			tx: &protovcservice.Transaction{
+				ID: "New key no value",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      3,
+						NsVersion: v0,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("New key no value"),
+							},
+						},
+					},
+				},
+				BlockNumber: 3,
+				TxNum:       5,
+			},
+			expectedStatus: protoblocktx.Status_COMMITTED,
+		},
+		{
+			tx: &protovcservice.Transaction{
+				ID: "invalid sign",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+				},
+				BlockNumber: 3,
+				TxNum:       6,
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		},
+		{
+			tx: &protovcservice.Transaction{
+				ID: "duplicate namespace",
+				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+				},
+				BlockNumber: 3,
+				TxNum:       7,
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+		},
+		{
+			tx: &protovcservice.Transaction{
+				ID: "conflict",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      3,
+						NsVersion: v0,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("Existing key"),
+							},
+						},
+					},
+				},
+				BlockNumber: 3,
+				TxNum:       8,
+			},
+			expectedStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		},
+	}
+
+	txBatch := &protovcservice.TransactionBatch{}
+	expectedTxStatus := &protovcservice.TransactionStatus{
+		Status: map[string]protoblocktx.Status{},
+	}
+	expectedHeight := make(transactionIDToHeight)
+	for _, t := range txs {
+		txBatch.Transactions = append(txBatch.Transactions, t.tx)
+		expectedTxStatus.Status[t.tx.ID] = t.expectedStatus
+		expectedHeight[TxID(t.tx.ID)] = types.NewHeight(t.tx.BlockNumber, t.tx.TxNum)
+	}
+
+	// we are submitting the same three transactions thrice. We should consistently see the same status.
+	for range 3 {
+		require.NoError(t, env.stream.Send(txBatch))
+		txStatus, err := env.stream.Recv()
+		require.NoError(t, err)
+
+		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
+	}
 }
 
 func ensureLastSeenMaxBlock(t *testing.T, client protovcservice.ValidationAndCommitServiceClient, number uint64) {

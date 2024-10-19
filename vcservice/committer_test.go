@@ -90,7 +90,7 @@ func TestCommit(t *testing.T) {
 				"tx2": protoblocktx.Status_COMMITTED,
 			},
 		},
-		map[TxID]*types.Height{
+		transactionIDToHeight{
 			"tx1": types.NewHeight(1, 1),
 			"tx2": types.NewHeight(1, 2),
 		},
@@ -127,7 +127,7 @@ func TestCommit(t *testing.T) {
 					),
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx-new-1": types.NewHeight(1, 1),
 					"tx-new-2": types.NewHeight(244, 2),
 				},
@@ -165,7 +165,7 @@ func TestCommit(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
 				invalidTxStatus:    map[TxID]protoblocktx.Status{},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx-non-blind-1": types.NewHeight(239, 1),
 				},
 				maxBlockNumber: 239,
@@ -195,7 +195,7 @@ func TestCommit(t *testing.T) {
 				},
 				newWrites:       transactionToWrites{},
 				invalidTxStatus: map[TxID]protoblocktx.Status{},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx-blind-1": types.NewHeight(1024, 1),
 				},
 				maxBlockNumber: 1024,
@@ -256,7 +256,7 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx-all-1":      types.NewHeight(5, 1),
 					"tx-all-2":      types.NewHeight(200, 2),
 					"tx-conflict-1": types.NewHeight(1, 1),
@@ -329,7 +329,7 @@ func TestCommit(t *testing.T) {
 				readToTransactionIndices: map[comparableRead][]TxID{
 					{1, "key1.10", ""}: {"tx-violate-1"},
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx-violate-1":     types.NewHeight(1, 1),
 					"tx-not-violate-1": types.NewHeight(4, 2),
 					"tx-conflict-4":    types.NewHeight(1000, 3),
@@ -373,7 +373,7 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
-				txIDToBlockAndTxNum: map[TxID]*types.Height{
+				txIDToHeight: transactionIDToHeight{
 					"tx1":            types.NewHeight(1, 5),
 					"tx-conflict-10": types.NewHeight(1, 1),
 					"tx-conflict-11": types.NewHeight(4, 2),
@@ -413,7 +413,7 @@ func TestCommit(t *testing.T) {
 			for nsID, expectedRows := range tt.unexpectedNsRows {
 				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
 			}
-			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses, tt.txs.txIDToBlockAndTxNum)
+			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses, tt.txs.txIDToHeight)
 			maxSeenBlock, err := env.dbEnv.DB.getMaxSeenBlockNumber(ctx)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedMaxSeenBlocNumber, maxSeenBlock.Number)

@@ -9,19 +9,18 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
-// transactionValidator validates the reads of transactions against the committed states
+// transactionValidator validates the reads of transactions against the committed states.
 type transactionValidator struct {
 	// db is the state database holding all the committed states.
 	db *database
-	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions
+	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions.
 	incomingPreparedTransactions <-chan *preparedTransactions
 	// outgoingValidatedTransactions is the channel to which the validator sends validated transactions so that
-	// the committer can commit them
+	// the committer can commit them.
 	outgoingValidatedTransactions chan<- *validatedTransactions
 
 	metrics *perfMetrics
@@ -34,7 +33,7 @@ type validatedTransactions struct {
 	newWrites                transactionToWrites
 	readToTransactionIndices readToTransactions
 	invalidTxStatus          map[TxID]protoblocktx.Status
-	txIDToBlockAndTxNum      map[TxID]*types.Height
+	txIDToHeight             transactionIDToHeight
 	maxBlockNumber           uint64
 }
 
@@ -68,7 +67,7 @@ func newValidator(
 	}
 }
 
-// start starts the validator with the given number of workers
+// start starts the validator with the given number of workers.
 func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
 	g, eCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
@@ -110,7 +109,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 			newWrites:                prepTx.txIDToNsNewWrites,
 			readToTransactionIndices: prepTx.readToTxIDs,
 			invalidTxStatus:          prepTx.invalidTxIDStatus,
-			txIDToBlockAndTxNum:      prepTx.txIDToBlockAndTxNum,
+			txIDToHeight:             prepTx.txIDToHeight,
 			maxBlockNumber:           prepTx.maxBlockNumber,
 		}
 		if matchErr := validatedTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
