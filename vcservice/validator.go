@@ -34,7 +34,6 @@ type validatedTransactions struct {
 	readToTransactionIndices readToTransactions
 	invalidTxStatus          map[TxID]protoblocktx.Status
 	txIDToHeight             transactionIDToHeight
-	maxBlockNumber           uint64
 }
 
 func (v *validatedTransactions) Debug() {
@@ -110,7 +109,6 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 			readToTransactionIndices: prepTx.readToTxIDs,
 			invalidTxStatus:          prepTx.invalidTxIDStatus,
 			txIDToHeight:             prepTx.txIDToHeight,
-			maxBlockNumber:           prepTx.maxBlockNumber,
 		}
 		if matchErr := validatedTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
 			return matchErr

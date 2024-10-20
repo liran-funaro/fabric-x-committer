@@ -63,7 +63,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			})
 			ctxTimeout, cancel := context.WithTimeout(ctx, 5*time.Minute) // TODO: make this configurable.
 			defer cancel()
-			coordService.WaitForConnections(ctxTimeout)
+			coordService.WaitForReady(ctxTimeout)
 
 			var wg sync.WaitGroup
 			wg.Add(1)

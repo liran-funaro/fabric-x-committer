@@ -136,7 +136,7 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.Error("vcservice processing has been stopped due to err [%v]", err)
+		logger.Errorf("vcservice processing has been stopped due to err [%v]", err)
 		return err
 	}
 	return nil
@@ -180,14 +180,6 @@ func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
 	return vc.db.getLastCommittedBlockNumber(ctx)
-}
-
-// GetMaxSeenBlockNumber get the last committed block number in the database/ledger.
-func (vc *ValidatorCommitterService) GetMaxSeenBlockNumber(
-	ctx context.Context,
-	_ *protovcservice.Empty,
-) (*protoblocktx.BlockInfo, error) {
-	return vc.db.getMaxSeenBlockNumber(ctx)
 }
 
 // GetTransactionsStatus gets the status of a given set of transaction IDs.

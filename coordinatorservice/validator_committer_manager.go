@@ -130,21 +130,6 @@ func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
 	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
 }
 
-func (vcm *validatorCommitterManager) getMaxSeenBlockNumber(
-	ctx context.Context,
-) (*protoblocktx.BlockInfo, error) {
-	var err error
-	var lastBlock *protoblocktx.BlockInfo
-	for _, vc := range vcm.validatorCommitter {
-		lastBlock, err = vc.client.GetMaxSeenBlockNumber(ctx, nil)
-		if err == nil {
-			return lastBlock, nil
-		}
-	}
-
-	return nil, fmt.Errorf("failed to get the max seen block number: %w", err)
-}
-
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
 	txIDs []string,

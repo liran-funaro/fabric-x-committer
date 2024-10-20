@@ -25,7 +25,6 @@ const (
 	Coordinator_BlockProcessing_FullMethodName                 = "/protocoordinatorservice.Coordinator/BlockProcessing"
 	Coordinator_SetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
 	Coordinator_GetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
-	Coordinator_GetMaxSeenBlockNumber_FullMethodName           = "/protocoordinatorservice.Coordinator/GetMaxSeenBlockNumber"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -36,7 +35,6 @@ type CoordinatorClient interface {
 	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
-	GetMaxSeenBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 }
 
 type coordinatorClient struct {
@@ -105,15 +103,6 @@ func (c *coordinatorClient) GetLastCommittedBlockNumber(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *coordinatorClient) GetMaxSeenBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error) {
-	out := new(protoblocktx.BlockInfo)
-	err := c.cc.Invoke(ctx, Coordinator_GetMaxSeenBlockNumber_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility
@@ -122,7 +111,6 @@ type CoordinatorServer interface {
 	BlockProcessing(Coordinator_BlockProcessingServer) error
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
-	GetMaxSeenBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -141,9 +129,6 @@ func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Contex
 }
 func (UnimplementedCoordinatorServer) GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
-}
-func (UnimplementedCoordinatorServer) GetMaxSeenBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetMaxSeenBlockNumber not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 
@@ -238,24 +223,6 @@ func _Coordinator_GetLastCommittedBlockNumber_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Coordinator_GetMaxSeenBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CoordinatorServer).GetMaxSeenBlockNumber(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Coordinator_GetMaxSeenBlockNumber_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).GetMaxSeenBlockNumber(ctx, req.(*Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -274,10 +241,6 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLastCommittedBlockNumber",
 			Handler:    _Coordinator_GetLastCommittedBlockNumber_Handler,
-		},
-		{
-			MethodName: "GetMaxSeenBlockNumber",
-			Handler:    _Coordinator_GetMaxSeenBlockNumber_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

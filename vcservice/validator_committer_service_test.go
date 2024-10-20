@@ -180,10 +180,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		require.Zero(t, test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal))
 
-		maxSeenBlk, err := env.client.GetMaxSeenBlockNumber(ctx, nil)
-		require.Error(t, err, ErrMetadataEmpty)
-		require.Nil(t, maxSeenBlk)
-
 		require.NoError(t, env.stream.Send(txBatch))
 		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
@@ -205,7 +201,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
-		ensureLastSeenMaxBlock(t, env.client, 3)
 
 		txBatch = &protovcservice.TransactionBatch{
 			Transactions: []*protovcservice.Transaction{
@@ -235,7 +230,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"])
 			return true
 		}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
-		ensureLastSeenMaxBlock(t, env.client, 3)
 	})
 
 	t.Run("invalid tx", func(t *testing.T) {
@@ -291,7 +285,6 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
-		ensureLastSeenMaxBlock(t, env.client, 5)
 
 		status, err := env.client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{
 			TxIDs: []string{txBatch.Transactions[0].ID, txBatch.Transactions[1].ID},
@@ -537,14 +530,6 @@ func TestTransactionResubmission(t *testing.T) {
 		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
 	}
-}
-
-func ensureLastSeenMaxBlock(t *testing.T, client protovcservice.ValidationAndCommitServiceClient, number uint64) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-	defer cancel()
-	maxSeenBlk, err := client.GetMaxSeenBlockNumber(ctx, nil)
-	require.NoError(t, err)
-	require.Equal(t, number, maxSeenBlk.Number)
 }
 
 func createContext(t *testing.T) context.Context {

@@ -104,11 +104,10 @@ func (c *transactionCommitter) commitTransactions(
 	for i := 0; i < maxRetriesToRemoveAllInvalidTxs; i++ {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites:   groupWritesByNamespace(vTx.validTxNonBlindWrites),
-			newWrites:      groupWritesByNamespace(vTx.newWrites),
-			batchStatus:    prepareStatusForCommit(vTx),
-			txIDToHeight:   vTx.txIDToHeight,
-			maxBlockNumber: vTx.maxBlockNumber,
+			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
+			newWrites:    groupWritesByNamespace(vTx.newWrites),
+			batchStatus:  prepareStatusForCommit(vTx),
+			txIDToHeight: vTx.txIDToHeight,
 		}
 
 		mismatch, duplicated, err := c.db.commit(info)

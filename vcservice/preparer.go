@@ -33,8 +33,6 @@ type (
 		nsToReads   namespaceToReads   // Maps namespaces to reads performed within them.
 		readToTxIDs readToTransactions // Maps reads to transaction IDs that executed them.
 
-		maxBlockNumber uint64
-
 		// nsToReads is used to verify the reads performed by each transaction in each namespace.
 		// If a read is found to be invalid due to version mismatch, transactions which performed
 		// this invalid read would be marked invalid and all writes of these transactions present
@@ -173,8 +171,6 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				prepTxs.addReadsOnly(tID, metaNs)
 			}
 		}
-
-		prepTxs.maxBlockNumber = maxBlkNum
 
 		for ns, read := range prepTxs.nsToReads {
 			if len(read.keys) == 0 {

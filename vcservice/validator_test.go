@@ -183,7 +183,6 @@ func TestValidate(t *testing.T) {
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),
 				},
-				maxBlockNumber: 4,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -200,7 +199,6 @@ func TestValidate(t *testing.T) {
 					"tx2": types.NewHeight(4, 2),
 					"tx3": types.NewHeight(4, 3),
 				},
-				maxBlockNumber: 4,
 			},
 		},
 		{
@@ -260,7 +258,6 @@ func TestValidate(t *testing.T) {
 					"tx2": types.NewHeight(5, 2),
 					"tx3": types.NewHeight(5, 3),
 				},
-				maxBlockNumber: 5,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
@@ -275,7 +272,6 @@ func TestValidate(t *testing.T) {
 					"tx2": types.NewHeight(5, 2),
 					"tx3": types.NewHeight(5, 3),
 				},
-				maxBlockNumber: 5,
 			},
 		},
 		{
@@ -346,7 +342,6 @@ func TestValidate(t *testing.T) {
 					"tx5": types.NewHeight(7, 3),
 					"tx6": types.NewHeight(7, 4),
 				},
-				maxBlockNumber: 7,
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
@@ -368,7 +363,6 @@ func TestValidate(t *testing.T) {
 					"tx5": types.NewHeight(7, 3),
 					"tx6": types.NewHeight(7, 4),
 				},
-				maxBlockNumber: 7,
 			},
 		},
 	}

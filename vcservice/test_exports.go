@@ -100,7 +100,8 @@ func NewValidatorAndCommitServiceTestEnv(
 	}()
 
 	serviceG.Wait()
-	t.Cleanup(grpcSrv.Stop)
+	stop := context.AfterFunc(ctx, grpcSrv.Stop)
+	t.Cleanup(func() { stop() })
 
 	return &ValidatorAndCommitterServiceTestEnv{
 		VCService: vcs,

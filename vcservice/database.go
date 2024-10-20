@@ -59,11 +59,10 @@ type (
 	keyToVersion map[string][]byte
 
 	statesToBeCommitted struct {
-		updateWrites   namespaceToWrites
-		newWrites      namespaceToWrites
-		batchStatus    *protovcservice.TransactionStatus
-		txIDToHeight   transactionIDToHeight
-		maxBlockNumber uint64
+		updateWrites namespaceToWrites
+		newWrites    namespaceToWrites
+		batchStatus  *protovcservice.TransactionStatus
+		txIDToHeight transactionIDToHeight
 	}
 )
 
@@ -153,10 +152,6 @@ func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][
 
 func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
 	return db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
-}
-
-func (db *database) getMaxSeenBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
-	return db.getBlockInfoMetadata(ctx, maxSeenBlockNumberKey)
 }
 
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
@@ -290,16 +285,6 @@ func (db *database) commitStatesByGroup(
 	// Updates cannot have a mismatch because their versions are validated beforehand.
 	if err = db.commitUpdates(ctx, tx, states.updateWrites); err != nil {
 		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err)
-	}
-
-	// NOTE: As we store an integer and allow comparisons, we must ensure consistent byte representation.
-	//       This means using the same length value and big-endian byte ordering for all stored integers.
-	//       Both PostgreSQL and YugabyteDB support comparison of big-endian bytes through the BYTEA data type
-	//       and standard comparison operators.
-	v := make([]byte, 8)
-	binary.BigEndian.PutUint64(v, states.maxBlockNumber)
-	if _, err := tx.Exec(ctx, setMetadataIfGreaterPrepStmt, []byte(maxSeenBlockNumberKey), v); err != nil {
-		return nil, nil, fmt.Errorf("failed to set the last seen max block number: %w", err)
 	}
 
 	return nil, nil, nil

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -131,7 +130,6 @@ func TestCommit(t *testing.T) {
 					"tx-new-1": types.NewHeight(1, 1),
 					"tx-new-2": types.NewHeight(244, 2),
 				},
-				maxBlockNumber: 244,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-new-1": protoblocktx.Status_COMMITTED,
@@ -168,7 +166,6 @@ func TestCommit(t *testing.T) {
 				txIDToHeight: transactionIDToHeight{
 					"tx-non-blind-1": types.NewHeight(239, 1),
 				},
-				maxBlockNumber: 239,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
 			expectedNsRows: writes(
@@ -198,7 +195,6 @@ func TestCommit(t *testing.T) {
 				txIDToHeight: transactionIDToHeight{
 					"tx-blind-1": types.NewHeight(1024, 1),
 				},
-				maxBlockNumber: 1024,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-blind-1": protoblocktx.Status_COMMITTED,
@@ -263,7 +259,6 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-2": types.NewHeight(396, 2),
 					"tx-conflict-3": types.NewHeight(396, 3),
 				},
-				maxBlockNumber: 396,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-all-1":      protoblocktx.Status_COMMITTED,
@@ -334,7 +329,6 @@ func TestCommit(t *testing.T) {
 					"tx-not-violate-1": types.NewHeight(4, 2),
 					"tx-conflict-4":    types.NewHeight(1000, 3),
 				},
-				maxBlockNumber: 10000,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx-violate-1":     protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -379,7 +373,6 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-11": types.NewHeight(4, 2),
 					"tx-conflict-12": types.NewHeight(66000, 3),
 				},
-				maxBlockNumber: 66000,
 			},
 			expectedTxStatuses: map[string]protoblocktx.Status{
 				"tx1":            protoblocktx.Status_ABORTED_DUPLICATE_TXID,
@@ -400,8 +393,6 @@ func TestCommit(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env.validatedTxs <- tt.txs
@@ -414,9 +405,6 @@ func TestCommit(t *testing.T) {
 				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
 			}
 			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses, tt.txs.txIDToHeight)
-			maxSeenBlock, err := env.dbEnv.DB.getMaxSeenBlockNumber(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedMaxSeenBlocNumber, maxSeenBlock.Number)
 		})
 	}
 }

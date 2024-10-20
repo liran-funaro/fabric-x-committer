@@ -70,7 +70,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.Error("sidecar processing has been stopped due to err [%v]", err)
+		logger.Errorf("sidecar processing has been stopped due to err [%v]", err)
 		return err
 	}
 	return nil

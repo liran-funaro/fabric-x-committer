@@ -29,7 +29,6 @@ WHERE tx_id = ANY($1)
 
 const (
 	lastCommittedBlockNumberKey = "last committed block number"
-	maxSeenBlockNumberKey       = "max seen block number"
 )
 
 const createMetadataTableStmt = `
@@ -306,19 +305,16 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 			return errors.Wrapf(retryErr, "failed creating tx status table")
 		}
 	}
-	logger.Info("Created tx status table and its methods.")
+	logger.Info("Created tx status table, metadata table, and its methods.")
 
-	for _, key := range []string{lastCommittedBlockNumberKey, maxSeenBlockNumberKey} {
-		if retryErr := utils.Retry(
-			yuga.PoolExecOperation(ctx, pool, stmtFmt(initializeMetadataPrepStmt, "", dbType),
-				[]byte(key), nil),
-			yuga.RetryTimeout,
-			yuga.RetryInitialInterval,
-		); retryErr != nil {
-			return errors.Wrapf(retryErr, "failed creating tx status table")
-		}
+	if retryErr := utils.Retry(
+		yuga.PoolExecOperation(ctx, pool, stmtFmt(initializeMetadataPrepStmt, "", dbType),
+			[]byte(lastCommittedBlockNumberKey), nil),
+		yuga.RetryTimeout,
+		yuga.RetryInitialInterval,
+	); retryErr != nil {
+		return errors.Wrapf(retryErr, "failed creating tx status table")
 	}
-	logger.Info("Tx status table is initialized.")
 
 	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {

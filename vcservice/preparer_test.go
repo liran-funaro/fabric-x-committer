@@ -148,7 +148,6 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			"tx1": types.NewHeight(1, 1),
 			"tx2": types.NewHeight(4, 2),
 		},
-		maxBlockNumber: 4,
 	}
 
 	env.txBatch <- tx
@@ -255,7 +254,6 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 			"tx1": types.NewHeight(10, 5),
 			"tx2": types.NewHeight(6, 3),
 		},
-		maxBlockNumber: 10,
 	}
 
 	env.txBatch <- tx
@@ -415,7 +413,6 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			"tx1": types.NewHeight(7, 4),
 			"tx2": types.NewHeight(7, 5),
 		},
-		maxBlockNumber: 7,
 	}
 
 	env.txBatch <- tx
@@ -606,7 +603,6 @@ func TestPrepareTx(t *testing.T) {
 			"tx3": types.NewHeight(6, 2),
 			"tx4": types.NewHeight(5, 2),
 		},
-		maxBlockNumber: 9,
 	}
 
 	env.txBatch <- tx
@@ -621,5 +617,4 @@ func ensurePreparedTx(t *testing.T, expectedPreparedTxs, actualPreparedTxs *prep
 	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, actualPreparedTxs.txIDToNsBlindWrites)
 	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, actualPreparedTxs.txIDToNsNewWrites)
 	require.Equal(t, expectedPreparedTxs.invalidTxIDStatus, actualPreparedTxs.invalidTxIDStatus)
-	require.Equal(t, expectedPreparedTxs.maxBlockNumber, actualPreparedTxs.maxBlockNumber)
 }

@@ -3,6 +3,7 @@ package coordinatorservice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,12 +48,15 @@ type (
 		// that process status from validator.
 		sendTxStreamMu sync.Mutex
 
-		// postRecoveryStartBlockNumber denotes the block number at which the coordinator would stop running in
-		// the recovery state after a failure.
-		postRecoveryStartBlockNumber uint64
+		// nextExpectedBlockNumberToBeReceived denotes the next block number that the coordinator
+		// expects to receive from the sidecar. This value is determined based on the last committed
+		// block number in the ledger. The sidecar queries the coordinator for this value before
+		// starting to pull blocks from the ordering service.
+		nextExpectedBlockNumberToBeReceived uint64
 
-		// firstExpectedBlockNumber denotes the first block number to be received by the coordinator.
-		firstExpectedBlockNumber uint64
+		// initializationDone channel is used to find out whether the coordinator service has
+		// been initialized or not.
+		initializationDone chan any
 
 		// isStreamActive indicates whether a stream from the client (i.e., sidecar) to the coordinator
 		// is currently active. We permit a maximum of one active stream at a time. If multiple
@@ -188,12 +192,15 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		orderEnforcer:                    sync.NewCond(&sync.Mutex{}),
 		metrics:                          metrics,
 		uncommittedMetaNsTx:              &sync.Map{},
+		initializationDone:               make(chan any),
 	}
 }
 
 // Run starts each manager in the coordinator service.
 func (c *CoordinatorService) Run(ctx context.Context) error {
-	g, eCtx := errgroup.WithContext(ctx)
+	canCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
 		_ = c.metrics.provider.StartPrometheusServer(
@@ -206,7 +213,11 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		logger.Info("Starting signature verifier manager")
-		return c.signatureVerifierMgr.run(eCtx)
+		if err := c.signatureVerifierMgr.run(eCtx); err != nil {
+			logger.Errorf("coordinator service stops due to an error returned by signature verifier manager: %v", err)
+			return err
+		}
+		return nil
 	})
 
 	g.Go(func() error {
@@ -217,7 +228,11 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		logger.Info("Starting validator committer manager")
-		return c.validatorCommitterMgr.run(eCtx)
+		if err := c.validatorCommitterMgr.run(eCtx); err != nil {
+			logger.Errorf("coordinator service stopds due to an error returned by validator committer manager: %v", err)
+			return err
+		}
+		return nil
 	})
 
 	select {
@@ -232,26 +247,22 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 			return err
 		}
 		// no block has been committed.
-		c.firstExpectedBlockNumber = 0
+		c.nextExpectedBlockNumberToBeReceived = 0
 	} else {
-		c.firstExpectedBlockNumber = lastCommittedBlock.Number + 1
+		c.nextExpectedBlockNumberToBeReceived = lastCommittedBlock.Number + 1
 	}
 
-	lastSeenBlock, err := c.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
-	if err != nil {
-		if !hasErrMetadataEmpty(err) {
-			return err
-		}
-		// no transaction has been committed.
-		c.postRecoveryStartBlockNumber = 0
-	} else if lastSeenBlock.Number >= c.firstExpectedBlockNumber {
-		c.postRecoveryStartBlockNumber = lastSeenBlock.Number + 1
-	}
-
+	// NOTE: as there is a remote chance for c.nextExpectedBlockNumberToBeReceived to change
+	//       before we start the next goroutine, we take backup of the value. The remote chance is when a
+	//       client starts a stream, send a block, coordinator receive the block, and increment
+	//       the c.nextExpectedBlockNumberToBeReceived before this goroutine gets started. Remember
+	//       that only after returning from this Run(), coordinator cmd starts the gRPC as cmd would
+	//       wait for c.initializationDone channel to be closed.
+	nextBlockNumberForDepGraph := c.nextExpectedBlockNumberToBeReceived
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive block with valid transactions and" +
 			" forward it to the dependency graph manager")
-		c.receiveFromSignatureVerifierAndForwardToDepGraph(eCtx)
+		c.receiveFromSigVerifierAndForwardToDepGraph(eCtx, nextBlockNumberForDepGraph)
 		return nil
 	})
 
@@ -263,22 +274,29 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return c.postProcessTransactions(eCtx)
+		if err := c.postProcessTransactions(eCtx); err != nil {
+			logger.Errorf("coordinator service stops due an error in post processing: %v", err)
+			return err
+		}
+		return nil
 	})
 
+	close(c.initializationDone)
+
 	if err := g.Wait(); err != nil {
-		logger.Error("coordinator processing has been stopped due to err [%v]", err)
+		logger.Errorf("coordinator processing has been stopped due to err [%v]", err)
 		return err
 	}
 	return nil
 }
 
-// WaitForConnections wait for connections to be established with sigverifiers and vcservices.
-func (c *CoordinatorService) WaitForConnections(ctx context.Context) {
+// WaitForReady wait for coordinator to be ready to be exposed as gRPC service.
+func (c *CoordinatorService) WaitForReady(ctx context.Context) {
 	for _, ch := range []chan any{c.signatureVerifierMgr.connectionReady, c.validatorCommitterMgr.connectionReady} {
-		ready := channel.NewReader(ctx, ch)
-		ready.Read()
+		channel.NewReader(ctx, ch).Read()
 	}
+
+	channel.NewReader(ctx, c.initializationDone).Read()
 }
 
 // SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.
@@ -308,14 +326,6 @@ func (c *CoordinatorService) GetLastCommittedBlockNumber(
 	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
 }
 
-// GetMaxSeenBlockNumber get the last committed block number in the database/ledger.
-func (c *CoordinatorService) GetMaxSeenBlockNumber(
-	ctx context.Context,
-	_ *protocoordinatorservice.Empty,
-) (*protoblocktx.BlockInfo, error) {
-	return c.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
-}
-
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
@@ -336,13 +346,20 @@ func (c *CoordinatorService) BlockProcessing(
 
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive block and forward it to the signature verifier manager")
-		return c.receiveAndProcessBlock(eCtx, stream)
+		if err := c.receiveAndProcessBlock(eCtx, stream); err != nil {
+			logger.Errorf("stream to the coordinator is ending with an error: %v", err)
+			return err
+		}
+		return nil
 	})
 
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive transaction status from validator committer manager and" +
 			" forward the status to client")
-		return c.sendTxStatus(eCtx, stream)
+		if err := c.sendTxStatus(eCtx, stream); err != nil {
+			logger.Errorf("stream to the coordinator is ending with an error: %v", err)
+		}
+		return nil
 	})
 
 	return g.Wait()
@@ -362,33 +379,18 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 		// Even if the stream terminates unexpectedly, any received blocks will
 		// still be forwarded to downstream components for complete processing.
 
-		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
-
-		if blk.Number < c.postRecoveryStartBlockNumber {
-			// 1. Fetch status of transactions if already processed.
-			txIDs := make([]string, 0, len(blk.Txs))
-			for _, tx := range blk.Txs {
-				txIDs = append(txIDs, tx.Id)
-			}
-			status, err := c.validatorCommitterMgr.getTransactionsStatus(ctx, txIDs)
-			if err != nil {
-				return err
-			}
-
-			// 2. Forward the status to the client
-			if len(status.Status) > 0 {
-				c.queues.txsStatus <- status
-			}
-
-			// 3. Make the block to contain only unvalidated transactions.
-			idx := make([]int, 0, len(blk.Txs))
-			for i, tx := range blk.Txs {
-				if _, ok := status.Status[tx.Id]; ok {
-					idx = append(idx, i)
-				}
-			}
-			removeFromBlock(blk, idx)
+		if blk.Number != c.nextExpectedBlockNumberToBeReceived {
+			errMsg := fmt.Sprintf(
+				"coordinator expects block [%d] but received block [%d]",
+				c.nextExpectedBlockNumberToBeReceived,
+				blk.Number,
+			)
+			logger.Error(errMsg)
+			return errors.New(errMsg)
 		}
+		c.nextExpectedBlockNumberToBeReceived++
+
+		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
 		c.metrics.transactionReceived(len(blk.Txs))
 
@@ -415,12 +417,14 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 	return nil
 }
 
-func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ctx context.Context) { // nolint:gocognit
+func (c *CoordinatorService) receiveFromSigVerifierAndForwardToDepGraph( // nolint:gocognit
+	ctx context.Context,
+	nextBlockNumberForDepGraph uint64,
+) {
 	// Signature verifier can send blocks out of order. Hence, we need to keep track of the next block number
 	// that we are expecting. If we receive a block with a different block number, we store it in a map.
 	// If the map size reaches a limit, we stop sending blocks to the signature verifier manager till we
 	// receive the block that we are expecting.
-	nextBlockNumber := c.firstExpectedBlockNumber
 	txBatchID := uint64(1)
 	outOfOrderBlock := make(map[uint64]*protoblocktx.Block)
 	outOfOrderBlockLimit := 500 // TODO: make it configurable
@@ -445,7 +449,7 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ct
 	}
 
 	sendBlockFromOutOfOrderMap := func() (contextAlive bool) {
-		block, ok := outOfOrderBlock[nextBlockNumber]
+		block, ok := outOfOrderBlock[nextBlockNumberForDepGraph]
 		for ok {
 			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. "+
 				"It can now be released and deleted from the map with waiting blocks.", block.Number)
@@ -460,13 +464,13 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ct
 				c.orderEnforcer.Signal()
 				c.orderEnforcer.L.Unlock()
 			}
-			delete(outOfOrderBlock, nextBlockNumber)
+			delete(outOfOrderBlock, nextBlockNumberForDepGraph)
 
-			nextBlockNumber++
-			block, ok = outOfOrderBlock[nextBlockNumber]
+			nextBlockNumberForDepGraph++
+			block, ok = outOfOrderBlock[nextBlockNumberForDepGraph]
 		}
-		logger.Debugf("Block [%d] was not out of order (and hence not in the map with waiting blocks). "+
-			"Continuing execution...", nextBlockNumber)
+		logger.Debugf("Block [%d] is in order (and hence not in the map with waiting blocks). "+
+			"Continuing execution...", nextBlockNumberForDepGraph)
 		return true
 	}
 
@@ -479,10 +483,10 @@ func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToDepGraph(ct
 
 		logger.Debugf("Block [%d] with %d valid TXs reached the dependency graph", block.Number, len(block.Txs))
 		switch block.Number {
-		case nextBlockNumber:
+		case nextBlockNumberForDepGraph:
 			logger.Debugf("Block [%d] is in order", block.Number)
 			sendBlock(block)
-			nextBlockNumber++
+			nextBlockNumberForDepGraph++
 			sendBlockFromOutOfOrderMap()
 		default:
 			logger.Debugf("Block [%d] is out of order. Will be stored in a map with waiting blocks.", block.Number)

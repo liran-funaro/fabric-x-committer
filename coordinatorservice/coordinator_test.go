@@ -121,7 +121,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 
 	ctxConnWait, cancelConnWait := context.WithTimeout(dCtx, 2*time.Minute)
 	defer cancelConnWait()
-	cs.WaitForConnections(ctxConnWait)
+	cs.WaitForReady(ctxConnWait)
 
 	sc := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{
@@ -307,7 +307,14 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	t.Cleanup(cancel)
 	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	env.start(ctx, t)
+
+	require.Never(t, func() bool {
+		return env.coordinator.nextExpectedBlockNumberToBeReceived > 0
+	}, 3*time.Second, 1*time.Second)
+	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived)
+
 	// next expected block is 0, but sending 2 to 500
+	env.coordinator.nextExpectedBlockNumberToBeReceived = 2
 	lastBlockNum := 500
 	for i := 2; i <= lastBlockNum; i++ {
 		err := env.csStream.Send(&protoblocktx.Block{
@@ -334,20 +341,25 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	// as the nextBlockNumberForDepGraph is 0, none of the transactions would get committed.
 	require.Never(t, func() bool {
 		return test.GetMetricValue(
 			t,
 			env.coordinator.metrics.transactionCommittedStatusSentTotal,
 		) > 10
-	}, 2*time.Second, 100*time.Millisecond)
+	}, 4*time.Second, 100*time.Millisecond)
 
-	// send block 0 which is the next expected block but an empty block
+	// send block 0 which is the original next expected block.
+	env.coordinator.nextExpectedBlockNumberToBeReceived = 0
 	err := env.csStream.Send(&protoblocktx.Block{
 		Number: uint64(0),
 		Txs:    []*protoblocktx.Tx{},
 	})
 	require.NoError(t, err)
 
+	require.Eventually(t, func() bool {
+		return env.coordinator.nextExpectedBlockNumberToBeReceived == 1
+	}, 3*time.Second, 250*time.Millisecond)
 	// send block 1 which is the next expected block
 	env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
 		Number: 1,
@@ -373,16 +385,10 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	require.Equal(t, lastBlockNum-1, numValid)
 	require.Equal(t, 1, numInvalid)
 
-	require.Equal(
-		t,
-		float64(lastBlockNum-1), // block 2 to block 600 + old 1 blocks as block 2 is empty
-		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
-	)
-	require.Equal(
-		t,
-		float64(1),
-		test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal),
-	)
+	actualCommittedTxCount := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	require.Equal(t, float64(lastBlockNum-1), actualCommittedTxCount)
+	actualInvSignTxCount := test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal)
+	require.Equal(t, float64(1), actualInvSignTxCount)
 }
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit
@@ -431,14 +437,15 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 func TestCoordinatorRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
+	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	env.start(ctx, t)
 
-	require.Equal(t, uint64(0), env.coordinator.firstExpectedBlockNumber)
-	require.Equal(t, uint64(0), env.coordinator.postRecoveryStartBlockNumber)
+	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	env.createNamespace(t, 0, 1)
+	require.Equal(t, uint64(1), env.coordinator.nextExpectedBlockNumberToBeReceived)
 
 	err := env.csStream.Send(&protoblocktx.Block{
-		Number: 0,
+		Number: 1,
 		Txs: []*protoblocktx.Tx{
 			{
 				Id: "tx1",
@@ -474,18 +481,23 @@ func TestCoordinatorRecovery(t *testing.T) {
 		},
 	}
 	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
 	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), lastCommittedBlock.Number)
+	require.Equal(t, uint64(1), lastCommittedBlock.Number)
 
-	// To simulate a failure scenario in which a block is partially committed, we first create block 1
-	// with single transaction but actual block 1 is supposed to have 2 transactions. Once the partial block 1
-	// is committed, we will restart the service and send a full block 1 with 2 transactions.
-	block1 := &protoblocktx.Block{
-		Number: 1,
+	// To simulate a failure scenario in which a block is partially committed, we first create block 2
+	// with two transaction but actual block 2 is supposed to have four transactions. Once the partial block 2
+	// is committed, we will restart the service and send a full block 2 with all four transactions.
+	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
+		Scheme:    "ECDSA",
+		PublicKey: []byte("publicKey"),
+	})
+	require.NoError(t, err)
+	block2 := &protoblocktx.Block{
+		Number: 2,
 		Txs: []*protoblocktx.Tx{
 			{
 				Id: "tx2",
@@ -504,10 +516,45 @@ func TestCoordinatorRecovery(t *testing.T) {
 					[]byte("dummy"),
 				},
 			},
+			{
+				Id: "mvcc conflict",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      2,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key3"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+			{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   []byte("key1"),
+								Value: []byte("value1"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
 		},
-		TxsNum: []uint32{0},
+		TxsNum: []uint32{0, 2, 5},
 	}
-	require.NoError(t, env.csStream.Send(block1))
+	require.NoError(t, env.csStream.Send(block2))
 
 	txStatus, err = env.csStream.Recv()
 	require.NoError(t, err)
@@ -517,38 +564,46 @@ func TestCoordinatorRecovery(t *testing.T) {
 				TxId:   "tx2",
 				Status: protoblocktx.Status_COMMITTED,
 			},
+			{
+				TxId:   "mvcc conflict",
+				Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+			{
+				TxId:   "tx1",
+				Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+			},
 		},
 	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-
-	require.Eventually(t, func() bool {
-		lastSeenBlock, lastSeenErr := env.coordinator.validatorCommitterMgr.getMaxSeenBlockNumber(ctx)
-		if lastSeenErr != nil {
-			return false
-		}
-		return uint64(1) == lastSeenBlock.Number
-	}, 2*time.Second, 250*time.Millisecond)
-
-	require.Equal(t, uint64(0), env.coordinator.firstExpectedBlockNumber)
-	require.Equal(t, uint64(0), env.coordinator.postRecoveryStartBlockNumber)
+	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived)
 
 	cancel()
 	env.grpcServer.Stop()
 
 	ctx, cancel = context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(ctx, t, env.dbEnv)
+	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Config.Server}
 	env.coordinator = NewCoordinatorService(env.config)
 	env.start(ctx, t)
 
 	require.Eventually(t, func() bool {
-		return uint64(1) == env.coordinator.firstExpectedBlockNumber
+		return uint64(2) == env.coordinator.nextExpectedBlockNumberToBeReceived
 	}, 4*time.Second, 250*time.Millisecond)
-	require.Equal(t, uint64(2), env.coordinator.postRecoveryStartBlockNumber)
 
-	// Now, we are sending the full block 1. As tx2 is already committed, we get the status of
-	// tx2 first. Then, tx3 will be validated and committed.
-	block1 = &protoblocktx.Block{
-		Number: 1,
+	env.dbEnv.StatusExistsForNonDuplicateTxID(t, map[string]protoblocktx.Status{
+		"tx2":           protoblocktx.Status_COMMITTED,
+		"mvcc conflict": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+		"tx1":           protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+	}, map[vcservice.TxID]*types.Height{
+		"tx2":           types.NewHeight(2, 0),
+		"mvcc conflict": types.NewHeight(2, 2),
+		"tx1":           types.NewHeight(2, 5),
+	})
+
+	// Now, we are sending the full block 2.
+	block2 = &protoblocktx.Block{
+		Number: 2,
 		Txs: []*protoblocktx.Tx{
 			{
 				Id: "tx2",
@@ -584,40 +639,114 @@ func TestCoordinatorRecovery(t *testing.T) {
 					[]byte("dummy"),
 				},
 			},
+			{
+				Id: "mvcc conflict",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      2,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key3"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+			{
+				Id: "duplicate namespace",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key: []byte("key"),
+							},
+						},
+					},
+					{
+						NsId:      uint32(types.MetaNamespaceID),
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   types.NamespaceID(2).Bytes(),
+								Value: nsPolicy,
+							},
+						},
+					},
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+					[]byte("dummy"),
+					[]byte("dummy"),
+				},
+			},
+			{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      1,
+						NsVersion: types.VersionNumber(0).Bytes(),
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{
+								Key:   []byte("key1"),
+								Value: []byte("value1"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
 		},
-		TxsNum: []uint32{2, 4},
+		TxsNum: []uint32{0, 1, 2, 4, 5},
 	}
 
-	require.NoError(t, env.csStream.Send(block1))
+	require.NoError(t, env.csStream.Send(block2))
 
-	tx2Status, err := env.csStream.Recv()
-	require.NoError(t, err)
+	var actualTxsStatus []*protocoordinatorservice.TxValidationStatus
+	for len(actualTxsStatus) < 4 {
+		statusBatch, err := env.csStream.Recv()
+		require.NoError(t, err)
+		actualTxsStatus = append(actualTxsStatus, statusBatch.TxsValidationStatus...)
+	}
 	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
 		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
 			{
 				TxId:   "tx2",
 				Status: protoblocktx.Status_COMMITTED,
 			},
-		},
-	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, tx2Status.TxsValidationStatus)
-	tx3Status, err := env.csStream.Recv()
-	require.NoError(t, err)
-	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
 			{
 				TxId:   "tx3",
 				Status: protoblocktx.Status_COMMITTED,
 			},
+			{
+				TxId:   "mvcc conflict",
+				Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			},
+			{
+				TxId:   "duplicate namespace",
+				Status: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			},
+			{
+				TxId:   "tx1",
+				Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+			},
 		},
 	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, tx3Status.TxsValidationStatus)
 
-	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
-	require.NoError(t, err)
-
-	require.Equal(t, uint64(1), env.coordinator.firstExpectedBlockNumber)
-	require.Equal(t, uint64(2), env.coordinator.postRecoveryStartBlockNumber)
+	require.Len(t, actualTxsStatus, len(expectedTxStatus.TxsValidationStatus))
+	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, actualTxsStatus)
+	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived)
 }
 
 func TestGRPCConnectionFailure(t *testing.T) {
@@ -634,7 +763,7 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	require.Never(t, func() bool {
-		c.WaitForConnections(ctx)
+		c.WaitForReady(ctx)
 		return true
 	}, 5*time.Second, 1*time.Second)
 }
