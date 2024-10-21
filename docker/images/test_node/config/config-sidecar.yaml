@@ -44,4 +44,4 @@ sidecar:
 logging:
   enabled: true
   level: DEBUG
-  development: false
+  development: true

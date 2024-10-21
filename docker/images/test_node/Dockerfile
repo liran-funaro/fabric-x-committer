@@ -1,12 +1,13 @@
-ARG GO_IMAGE
-FROM ${GO_IMAGE} as sc_builder
+ARG GO_IMAGE=golang:latest
+ARG DB_IMAGE=yugabytedb/yugabyte:latest
 
-ADD . scalable-commiter
-RUN cd scalable-commiter && \
-  CGO_ENABLED=0 make build output_dir=/root/build
+FROM ${GO_IMAGE} AS sc_builder
 
-FROM ${DB_IMAGE} as node
-ARG DB_IMAGE
+WORKDIR /scalable-committer
+COPY . .
+RUN CGO_ENABLED=0 make build output_dir=/root/build
+
+FROM ${DB_IMAGE} AS node
 
 ENV CONFIGS_PATH=/root/config
 ENV BINS_PATH=/root/bin
@@ -16,8 +17,8 @@ ENV METANS_SIG_SCHEME=ECDSA
 ENV METANS_SIG_VERIFICATION_KEY_PATH=$PUBKEY_PATH/sc_pubkey.pem
 
 COPY --from=sc_builder /root/build $BINS_PATH
-ADD ./docker/images/test_node/config $CONFIGS_PATH
-ADD ./docker/images/test_node/scripts/run-services.sh /root/
+COPY ./docker/images/test_node/config $CONFIGS_PATH
+COPY ./docker/images/test_node/scripts/run-services.sh /root/
 RUN chmod a+x /root/run-services.sh
 
 EXPOSE 5050

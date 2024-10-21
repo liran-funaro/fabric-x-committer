@@ -43,12 +43,25 @@ docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 image_namespace=icr.io/cbdc
 
 # Set these parameters to compile to a specific os/arch
-# Eg.g, make build-local os=linux arch=amd64
+# E.g., make build-local os=linux arch=amd64
 os             ?= $(shell go env GOOS)
 arch           ?= $(shell go env GOARCH)
 multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 go_build       ?= $(env) go build -buildvcs=false -o
+
+# Set additional parameter to build the test-node for different platforms and push
+# E.g., make multiplatform=true docker_push=true build-test-node-image
+docker_build_flags=
+ifeq "$(multiplatform)" "true"
+	docker_build_flags+=--platform linux/amd64,linux/arm64
+endif
+
+docker_push ?= false
+docker_push_arg = 
+ifeq "$(docker_push)" "true"
+	docker_push_arg=--push
+endif
 
 
 .PHONY: test clean
@@ -176,12 +189,16 @@ build-docker: $(cache_dir) $(mod_cache_dir)
     make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
+
 build-test-node-image:
-	${docker_cmd} build -f $(dockerfile_test_node_dir)/Dockerfile \
+	${docker_cmd} build \
+		$(docker_build_flags) \
+		-f $(dockerfile_test_node_dir)/Dockerfile \
 	  -t ${image_namespace}/committer-test-node:${version} \
 		--build-arg GO_IMAGE=${golang_image} \
 		--build-arg DB_IMAGE=${db_image} \
-	  .
+	  . \
+		$(docker_push_arg)
 
 build-release-images:
 	./scripts/build-release-images.sh \

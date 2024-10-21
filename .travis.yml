@@ -53,3 +53,7 @@ jobs:
       name: Integration Tests (yugabyte)
       env: DB_INSTANCE=local VCSERVICE_DB=yuga
       script: make integration-test
+    - stage: test
+      name: Build container images
+      env: DB_INSTANCE=local VCSERVICE_DB=yuga
+      script: make build-test-node-image
