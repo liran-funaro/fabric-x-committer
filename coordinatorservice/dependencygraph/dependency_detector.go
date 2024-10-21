@@ -1,5 +1,11 @@
 package dependencygraph
 
+import (
+	"sync"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
+)
+
 type (
 	dependencyDetector struct {
 		// readOnlyKeyToWaitingTxs holds a map of key to transaction that have only read the key.
@@ -13,10 +19,14 @@ type (
 		// readWriteKeyToWaitingTxs holds a map of key to transaction that have read and written the key.
 		// readWriteKeyToWaitingTxs is used to establish write-read, write-write and read-write dependencies.
 		readWriteKeyToWaitingTxs keyToTransactions
+
+		workers *workerpool.WorkerPool
 	}
 
 	// keyToTransactions holds a map of key to transactions that have read or written the key.
-	keyToTransactions map[string]transactionList
+	keyToTransactions map[string]transactionMap
+
+	transactionMap map[*TransactionNode]any
 )
 
 func newDependencyDetector() *dependencyDetector {
@@ -24,6 +34,7 @@ func newDependencyDetector() *dependencyDetector {
 		readOnlyKeyToWaitingTxs:  make(keyToTransactions),
 		writeOnlyKeyToWaitingTxs: make(keyToTransactions),
 		readWriteKeyToWaitingTxs: make(keyToTransactions),
+		workers:                  workerpool.New(&workerpool.Config{Parallelism: 3, ChannelCapacity: 3}),
 	}
 }
 
@@ -35,10 +46,10 @@ func newDependencyDetector() *dependencyDetector {
 // and mergeWaitingTx() are not called concurrently with this method. We can use a read-write lock but
 // we are avoiding it for performance reasons and leave the synchronization to the caller.
 func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transactionList /* dependsOn */ {
-	dependsOnTxs := make(map[*TransactionNode]any)
+	dependsOnTxs := make(transactionMap)
 
-	copyTxs := func(dest map[*TransactionNode]any, src transactionList) {
-		for _, t := range src {
+	copyTxs := func(dest, src transactionMap) {
+		for t := range src {
 			dest[t] = nil
 		}
 	}
@@ -87,45 +98,61 @@ func (d *dependencyDetector) addWaitingTx(txNode *TransactionNode) {
 func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 	// NOTE: The given depDetector is not modified ever after we reach here.
 	//       Hence, we don't need to copy the map and can safely assign them instead.
-	d.readOnlyKeyToWaitingTxs.merge(depDetector.readOnlyKeyToWaitingTxs)
-	d.writeOnlyKeyToWaitingTxs.merge(depDetector.writeOnlyKeyToWaitingTxs)
-	d.readWriteKeyToWaitingTxs.merge(depDetector.readWriteKeyToWaitingTxs)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	d.workers.Run(func() { d.readOnlyKeyToWaitingTxs.merge(depDetector.readOnlyKeyToWaitingTxs); wg.Done() })
+	d.workers.Run(func() { d.writeOnlyKeyToWaitingTxs.merge(depDetector.writeOnlyKeyToWaitingTxs); wg.Done() })
+	d.workers.Run(func() { d.readWriteKeyToWaitingTxs.merge(depDetector.readWriteKeyToWaitingTxs); wg.Done() })
+	wg.Wait()
 }
 
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
 // so that getDependenciesOf() does not consider them when calculating dependencies.
 // This method is not thread-safe.
 func (d *dependencyDetector) removeWaitingTx(txsNode []*TransactionNode) {
+	var wg sync.WaitGroup
 	for _, txNode := range txsNode {
-		d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode)
-		d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode)
-		d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode)
+		wg.Add(3)
+		d.workers.Run(func() { d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode); wg.Done() })
+		d.workers.Run(func() { d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode); wg.Done() })
+		d.workers.Run(func() { d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode); wg.Done() })
+		wg.Wait()
 	}
 }
 
 func (keyToTx keyToTransactions) add(keys []string, tx *TransactionNode) {
 	for _, key := range keys {
-		keyToTx[key] = append(keyToTx[key], tx)
+		txList, ok := keyToTx[key]
+		if !ok {
+			txList = make(map[*TransactionNode]any)
+			keyToTx[key] = txList
+		}
+		txList[tx] = nil
 	}
 }
 
 func (keyToTx keyToTransactions) remove(keys []string, tx *TransactionNode) {
 	for _, k := range keys {
-		if len(keyToTx[k]) == 1 {
+		switch len(keyToTx[k]) {
+		case 1:
 			delete(keyToTx, k)
-		} else {
-			for i, t := range keyToTx[k] {
-				if t == tx {
-					keyToTx[k] = append(keyToTx[k][:i], keyToTx[k][i+1:]...)
-					break
-				}
-			}
+		case 0:
+			continue
+		default:
+			delete(keyToTx[k], tx)
 		}
 	}
 }
 
 func (keyToTx keyToTransactions) merge(inputKeyToTx keyToTransactions) {
-	for key, txList := range inputKeyToTx {
-		keyToTx[key] = append(keyToTx[key], txList...)
+	for key, srcTxList := range inputKeyToTx {
+		destTxList, ok := keyToTx[key]
+		if !ok {
+			keyToTx[key] = srcTxList
+			continue
+		}
+		for tx := range srcTxList {
+			destTxList[tx] = nil
+		}
 	}
 }
