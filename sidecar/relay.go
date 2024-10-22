@@ -45,7 +45,7 @@ func newRelay(
 		coordConfig:                   config,
 		incomingBlockToBeCommitted:    uncommittedBlock,
 		outgoingCommittedBlock:        committedBlock,
-		lastCommittedBlockSetInterval: 2 * time.Second, // TODO: make it configurable.
+		lastCommittedBlockSetInterval: 5 * time.Second, // TODO: make it configurable.
 	}
 }
 

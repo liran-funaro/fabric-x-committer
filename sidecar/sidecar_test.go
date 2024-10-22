@@ -127,5 +127,5 @@ func checkLastCommittedBlock(
 			return false
 		}
 		return expectedBlockNumber == lastBlock.Number
-	}, 4*time.Second, 1*time.Second)
+	}, 8*time.Second, 1*time.Second)
 }
