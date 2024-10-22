@@ -318,7 +318,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	lastBlockNum := 500
 	for i := 2; i <= lastBlockNum; i++ {
 		err := env.csStream.Send(&protoblocktx.Block{
-			Number: uint64(i),
+			Number: uint64(i), // nolint:gosec
 			Txs: []*protoblocktx.Tx{
 				{
 					Id: "tx" + strconv.Itoa(i),
@@ -766,6 +766,63 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 		c.WaitForReady(ctx)
 		return true
 	}, 5*time.Second, 1*time.Second)
+}
+
+func TestChunkSizeSentForDepGraph(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
+	env.start(ctx, t)
+
+	txPerBlock := 1990
+	txs := make([]*protoblocktx.Tx, txPerBlock)
+	txsNum := make([]uint32, txPerBlock)
+	expectedTxsStatus := make([]*protocoordinatorservice.TxValidationStatus, txPerBlock)
+	for i := 0; i < txPerBlock; i++ {
+		txs[i] = &protoblocktx.Tx{
+			Id: "tx" + strconv.Itoa(i),
+			Namespaces: []*protoblocktx.TxNamespace{
+				{
+					NsId:      1,
+					NsVersion: types.VersionNumber(0).Bytes(),
+					BlindWrites: []*protoblocktx.Write{
+						{
+							Key: []byte("key" + strconv.Itoa(i)),
+						},
+					},
+				},
+			},
+			Signatures: [][]byte{
+				[]byte("dummy"),
+			},
+		}
+		txsNum[i] = uint32(i) // nolint:gosec
+		expectedTxsStatus[i] = &protocoordinatorservice.TxValidationStatus{
+			TxId:   "tx" + strconv.Itoa(i),
+			Status: protoblocktx.Status_COMMITTED,
+		}
+	}
+
+	err := env.csStream.Send(&protoblocktx.Block{
+		Number: 0,
+		Txs:    txs,
+		TxsNum: txsNum,
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == float64(txPerBlock)
+	}, 4*time.Second, 100*time.Millisecond)
+
+	var actualTxsStatus []*protocoordinatorservice.TxValidationStatus
+	for len(actualTxsStatus) < txPerBlock {
+		txStatus, err := env.csStream.Recv()
+		require.NoError(t, err)
+		actualTxsStatus = append(actualTxsStatus, txStatus.TxsValidationStatus...)
+	}
+
+	require.ElementsMatch(t, expectedTxsStatus, actualTxsStatus)
+	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	require.Equal(t, float64(txPerBlock), statusSentTotal)
 }
 
 func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {

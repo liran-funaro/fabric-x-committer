@@ -435,16 +435,21 @@ func (c *CoordinatorService) receiveFromSigVerifierAndForwardToDepGraph( // noli
 			return true
 		}
 
-		if ctxAlive := txsBatchForDependencyGraph.Write(
-			&dependencygraph.TransactionBatch{
-				ID:          txBatchID,
-				BlockNumber: block.Number,
-				Txs:         block.Txs,
-				TxsNum:      block.TxsNum,
-			}); !ctxAlive {
-			return false
+		chunkSizeForDepGraph := 500 // TODO: make it configurable.
+		for i := 0; i < len(block.Txs); i += chunkSizeForDepGraph {
+			end := min(i+chunkSizeForDepGraph, len(block.Txs))
+			if ctxAlive := txsBatchForDependencyGraph.Write(
+				&dependencygraph.TransactionBatch{
+					ID:          txBatchID,
+					BlockNumber: block.Number,
+					Txs:         block.Txs[i:end],
+					TxsNum:      block.TxsNum[i:end],
+				}); !ctxAlive {
+				return false
+			}
+			txBatchID++
 		}
-		txBatchID++
+
 		return true
 	}
 
