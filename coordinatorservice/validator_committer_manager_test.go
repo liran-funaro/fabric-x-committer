@@ -186,6 +186,15 @@ func TestValidatorCommitterManager(t *testing.T) {
 		}
 		require.Equal(t, uint64(15), maxNum)
 	})
+
+	for _, vc := range env.validatorCommitterManager.validatorCommitter {
+		count := 0
+		vc.txBeingValidated.Range(func(_, _ any) bool {
+			count++
+			return true
+		})
+		require.Zero(t, count)
+	}
 }
 
 func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex, blkNum int) (

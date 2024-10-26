@@ -166,6 +166,15 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 		require.Greater(t, sv.GetNumBlocksReceived(), uint32(0.1*float32(numBlocks)))
 	}
 	require.Equal(t, uint32(numBlocks), totalBlocksReceived)
+
+	for _, sv := range env.signVerifierManager.signVerifier {
+		count := 0
+		sv.resultAccumulator.Range(func(_, _ any) bool {
+			count++
+			return true
+		})
+		require.Zero(t, count)
+	}
 }
 
 func TestSignatureVerifierManagerKey(t *testing.T) {

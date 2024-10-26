@@ -90,6 +90,7 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 		logger.Debugf("Constructing dependencies for txs with id %d", txs.ID)
 
 		depDetector := newDependencyDetector()
+		depDetector.workers.Close()
 		txsNode := make([]*TransactionNode, len(txs.Txs))
 
 		for i, tx := range txs.Txs {

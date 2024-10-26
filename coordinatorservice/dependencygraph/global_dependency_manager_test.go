@@ -272,6 +272,7 @@ func ensureProcessedAndValidatedMetrics(t *testing.T, metrics *perfMetrics, proc
 
 func ensureEmptyDetector(t *testing.T, d *dependencyDetector) {
 	require.Eventually(t, func() bool {
-		return len(d.readOnlyKeyToWaitingTxs) == 0 && len(d.writeOnlyKeyToWaitingTxs) == 0
+		return len(d.readOnlyKeyToWaitingTxs) == 0 && len(d.writeOnlyKeyToWaitingTxs) == 0 &&
+			len(d.readWriteKeyToWaitingTxs) == 0
 	}, 2*time.Second, 100*time.Millisecond)
 }

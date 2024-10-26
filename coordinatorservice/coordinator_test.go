@@ -300,6 +300,13 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), lastBlock.Number)
+
+	count := 0
+	env.coordinator.uncommittedMetaNsTx.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	require.Zero(t, count)
 }
 
 func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
