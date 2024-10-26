@@ -12,9 +12,9 @@ validator-committer-service:
     min-connections: 5
 
   resource-limits:
-    max-workers-for-preparer: 2
-    max-workers-for-validator: 2
-    max-workers-for-committer: 2
+    max-workers-for-preparer: 1
+    max-workers-for-validator: 1
+    max-workers-for-committer: 20
     min-transaction-batch-size: 1
 
   monitoring:

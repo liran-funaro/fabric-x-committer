@@ -60,11 +60,11 @@ func TestReadConfig(t *testing.T) {
 					},
 				},
 				DependencyGraphConfig: &DependencyGraphConfig{
-					NumOfLocalDepConstructors:       20,
+					NumOfLocalDepConstructors:       1,
 					WaitingTxsLimit:                 10000,
-					NumOfWorkersForGlobalDepManager: 20,
+					NumOfWorkersForGlobalDepManager: 1,
 				},
-				ChannelBufferSizePerGoroutine: 300,
+				ChannelBufferSizePerGoroutine: 10,
 				Monitoring: &monitoring.Config{
 					Metrics: &metrics.Config{
 						Enable: true,
@@ -119,11 +119,11 @@ func TestReadConfig(t *testing.T) {
 					},
 				},
 				DependencyGraphConfig: &DependencyGraphConfig{
-					NumOfLocalDepConstructors:       5,
-					WaitingTxsLimit:                 20000,
-					NumOfWorkersForGlobalDepManager: 10,
+					NumOfLocalDepConstructors:       1,
+					WaitingTxsLimit:                 10000,
+					NumOfWorkersForGlobalDepManager: 1,
 				},
-				ChannelBufferSizePerGoroutine: 100,
+				ChannelBufferSizePerGoroutine: 10,
 			},
 		},
 	}

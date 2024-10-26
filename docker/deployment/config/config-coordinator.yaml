@@ -16,10 +16,10 @@ coordinator-service:
           host: "validator-persister"
           port: 6001
   dependency-graph:
-    num-of-local-dep-constructors: 20
+    num-of-local-dep-constructors: 1
     waiting-txs-limit: 10000
-    num-of-workers-for-global-dep-manager: 20
-    per-channel-buffer-size-per-goroutine: 300
+    num-of-workers-for-global-dep-manager: 1
+    per-channel-buffer-size-per-goroutine: 10
   monitoring:
     metrics:
       enable: true

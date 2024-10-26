@@ -40,10 +40,10 @@ func TestConfig(t *testing.T) {
 					ConnPoolCreateTimeout: 15 * time.Second,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:             2,
-					MaxWorkersForValidator:            2,
-					MaxWorkersForCommitter:            2,
-					MinTransactionBatchSize:           2,
+					MaxWorkersForPreparer:             1,
+					MaxWorkersForValidator:            1,
+					MaxWorkersForCommitter:            20,
+					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 2 * time.Second,
 				},
 				Monitoring: &monitoring.Config{
@@ -80,10 +80,10 @@ func TestConfig(t *testing.T) {
 					ConnPoolCreateTimeout: 20 * time.Second,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:             10,
-					MaxWorkersForValidator:            10,
-					MaxWorkersForCommitter:            10,
-					MinTransactionBatchSize:           100,
+					MaxWorkersForPreparer:             1,
+					MaxWorkersForValidator:            1,
+					MaxWorkersForCommitter:            20,
+					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
 				Monitoring: &monitoring.Config{
@@ -119,10 +119,10 @@ func TestConfig(t *testing.T) {
 					ConnPoolCreateTimeout: 20 * time.Second,
 				},
 				ResourceLimits: &ResourceLimitsConfig{
-					MaxWorkersForPreparer:             10,
-					MaxWorkersForValidator:            10,
-					MaxWorkersForCommitter:            10,
-					MinTransactionBatchSize:           100,
+					MaxWorkersForPreparer:             1,
+					MaxWorkersForValidator:            1,
+					MaxWorkersForCommitter:            20,
+					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
 				Monitoring: &monitoring.Config{

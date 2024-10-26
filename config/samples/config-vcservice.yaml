@@ -22,10 +22,10 @@ validator-committer-service:
     conn-pool-create-timeout: 15s
   # Resource limit configurations
   resource-limits:
-    max-workers-for-preparer: 2 # Maximum number of workers for the preparer
-    max-workers-for-validator: 2 # Maximum number of workers for the validator
-    max-workers-for-committer: 2 # Maximum number of workers for the committer
-    min-transaction-batch-size: 2
+    max-workers-for-preparer: 1 # Maximum number of workers for the preparer
+    max-workers-for-validator: 1 # Maximum number of workers for the validator
+    max-workers-for-committer: 20 # Maximum number of workers for the committer
+    min-transaction-batch-size: 1
     timeout-for-min-transaction-batch-size: 2s
   monitoring:
     metrics:

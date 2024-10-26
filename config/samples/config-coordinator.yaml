@@ -8,27 +8,27 @@ coordinator-service:
       - # server 1 configuration
         endpoint:
           host: "localhost" # The host of the server
-          port: 4001        # The port of the server
+          port: 4001 # The port of the server
       - # server 2 configuration
         endpoint:
           host: "localhost" # The host of the server
-          port: 4002        # The port of the server
+          port: 4002 # The port of the server
   validator-committer:
     server:
       - # server 1 configuration
         endpoint:
           host: "localhost" # The host of the server
-          port: 5001        # The port of the server
+          port: 5001 # The port of the server
       - # server 2 configuration
         endpoint:
           host: "localhost" # The host of the server
-          port: 5002        # The port of the server
+          port: 5002 # The port of the server
   dependency-graph:
-    num-of-local-dep-constructors: 20
+    num-of-local-dep-constructors: 1
     waiting-txs-limit: 10000
-    num-of-workers-for-global-dep-manager: 20
+    num-of-workers-for-global-dep-manager: 1
     # Add monitoring configuration here if applicable
-  per-channel-buffer-size-per-goroutine: 300
+  per-channel-buffer-size-per-goroutine: 10
 
   monitoring:
     metrics:

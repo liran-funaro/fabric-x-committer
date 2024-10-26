@@ -85,10 +85,10 @@ func setDefaults() {
 
 	// defaults for ResourceLimitsConfig
 	prefix = "validator-committer-service.resource-limits."
-	viper.SetDefault(prefix+"max-workers-for-preparer", 10)
-	viper.SetDefault(prefix+"max-workers-for-validator", 10)
-	viper.SetDefault(prefix+"max-workers-for-committer", 10)
-	viper.SetDefault(prefix+"min-transaction-batch-size", 100)
+	viper.SetDefault(prefix+"max-workers-for-preparer", 1)
+	viper.SetDefault(prefix+"max-workers-for-validator", 1)
+	viper.SetDefault(prefix+"max-workers-for-committer", 20)
+	viper.SetDefault(prefix+"min-transaction-batch-size", 1)
 	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
 
 	// defaults for monitoring.config

@@ -54,8 +54,8 @@ func ReadConfig() *CoordinatorConfig {
 func setDefaults() {
 	viper.SetDefault("coordinator-service.server.endpoint.host", "localhost")
 	viper.SetDefault("coordinator-service.server.endpoint.port", 3001)
-	viper.SetDefault("coordinator-service.dependency-graph.num-of-local-dep-constructors", 5)
-	viper.SetDefault("coordinator-service.dependency-graph.waiting-txs-limit", 20000)
-	viper.SetDefault("coordinator-service.dependency-graph.num-of-workers-for-global-dep-manager", 10)
-	viper.SetDefault("coordinator-service.per-channel-buffer-size-per-goroutine", 100)
+	viper.SetDefault("coordinator-service.dependency-graph.num-of-local-dep-constructors", 1)
+	viper.SetDefault("coordinator-service.dependency-graph.waiting-txs-limit", 10000)
+	viper.SetDefault("coordinator-service.dependency-graph.num-of-workers-for-global-dep-manager", 1)
+	viper.SetDefault("coordinator-service.per-channel-buffer-size-per-goroutine", 10)
 }
