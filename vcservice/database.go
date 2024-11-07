@@ -527,5 +527,5 @@ func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHe
 
 		rows[TxID(id)] = &statusWithHeight{status: protoblocktx.Status(status), height: ht}
 	}
-	return rows, nil
+	return rows, r.Err()
 }
