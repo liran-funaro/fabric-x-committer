@@ -12,6 +12,7 @@ service Coordinator {
     rpc BlockProcessing(stream protoblocktx.Block) returns (stream TxValidationStatusBatch);
     rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
     rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
+    rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
 }
 
 message Empty {

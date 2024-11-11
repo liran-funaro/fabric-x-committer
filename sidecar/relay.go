@@ -34,6 +34,11 @@ type (
 		txIDToTxIndex map[string]int
 		pendingCount  int
 	}
+
+	relayRunConfig struct {
+		coordClient                    protocoordinatorservice.CoordinatorClient
+		nextExpectedBlockByCoordinator uint64
+	}
 )
 
 func newRelay(
@@ -50,21 +55,13 @@ func newRelay(
 }
 
 // Run starts the relay service. The call to Run blocks until an error occurs or the context is canceled.
-func (r *relay) Run(ctx context.Context) error {
+func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
+	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
+
 	rCtx, rCancel := context.WithCancel(ctx)
 	defer rCancel()
 
-	logger.Infof("Create coordinator client and connect to %v\n", r.coordConfig.Endpoint)
-	conn, err := connection.Connect(connection.NewDialConfig(r.coordConfig.Endpoint))
-	if err != nil {
-		return fmt.Errorf("failed to connect to coordinator: %w", err)
-	}
-	defer conn.Close() // nolint:errcheck
-	logger.Infof("sidecar connected to coordinator at %s", &r.coordConfig.Endpoint)
-
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-
-	stream, err := client.BlockProcessing(rCtx)
+	stream, err := config.coordClient.BlockProcessing(rCtx)
 	if err != nil {
 		return fmt.Errorf("failed to open stream for block processing: %w", err)
 	}
@@ -88,7 +85,7 @@ func (r *relay) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return r.setLastCommittedBlockNumber(gCtx, client, expectedNextBlockToBeCommitted)
+		return r.setLastCommittedBlockNumber(gCtx, config.coordClient, expectedNextBlockToBeCommitted)
 	})
 
 	return g.Wait()

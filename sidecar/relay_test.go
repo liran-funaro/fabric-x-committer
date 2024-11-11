@@ -10,6 +10,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -36,6 +37,14 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		committedBlock,
 	)
 
+	conn, err := connection.Connect(connection.NewDialConfig(coordinatorServerConfig.Endpoint))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	logger.Infof("sidecar connected to coordinator at %s", &coordinatorServerConfig.Endpoint)
+
+	client := protocoordinatorservice.NewCoordinatorClient(conn)
+
 	wg := &sync.WaitGroup{}
 	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
 	//       order of cleanup matters, which is last added first called.
@@ -44,7 +53,10 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	wg.Add(1)
-	go func() { require.NoError(t, connection.FilterStreamErrors(relay.Run(ctx))); wg.Done() }()
+	go func() {
+		require.NoError(t, connection.FilterStreamErrors(relay.Run(ctx, &relayRunConfig{client, 0})))
+		wg.Done()
+	}()
 	return &relayTestEnv{
 		relay:            relay,
 		uncommittedBlock: uncommittedBlock,

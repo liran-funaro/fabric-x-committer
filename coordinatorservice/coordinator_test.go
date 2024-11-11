@@ -19,7 +19,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -161,6 +160,16 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	t.Cleanup(cancel)
 }
 
+func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
+	require.Eventually(t, func() bool {
+		if !e.coordinator.streamActive.TryLock() {
+			return true
+		}
+		defer e.coordinator.streamActive.Unlock()
+		return false
+	}, 4*time.Second, 250*time.Millisecond)
+}
+
 func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum, nsID int) {
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -214,14 +223,25 @@ func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
 	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	env.start(ctx, t)
 
-	require.Eventually(t, func() bool {
-		return env.coordinator.isStreamActive.Load()
-	}, 4*time.Second, 250*time.Millisecond)
+	env.ensureStreamActive(t)
 
 	stream, err := env.client.BlockProcessing(ctx)
 	require.NoError(t, err)
 	_, err = stream.Recv()
-	require.ErrorContains(t, err, utils.ErrActiveStream.Error())
+	require.ErrorContains(t, err, ErrExistingStreamOrConflictingOp.Error())
+}
+
+func TestGetNextBlockNumWithActiveStream(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
+	env.start(ctx, t)
+
+	env.ensureStreamActive(t)
+
+	blkInfo, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
+	require.ErrorContains(t, err, ErrActiveStreamBlockNumber.Error())
+	require.Nil(t, blkInfo)
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
@@ -316,12 +336,12 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	env.start(ctx, t)
 
 	require.Never(t, func() bool {
-		return env.coordinator.nextExpectedBlockNumberToBeReceived > 0
+		return env.coordinator.nextExpectedBlockNumberToBeReceived.Load() > 0
 	}, 3*time.Second, 1*time.Second)
-	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 
 	// next expected block is 0, but sending 2 to 500
-	env.coordinator.nextExpectedBlockNumberToBeReceived = 2
+	env.coordinator.nextExpectedBlockNumberToBeReceived.Store(2)
 	lastBlockNum := 500
 	for i := 2; i <= lastBlockNum; i++ {
 		err := env.csStream.Send(&protoblocktx.Block{
@@ -357,7 +377,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	}, 4*time.Second, 100*time.Millisecond)
 
 	// send block 0 which is the original next expected block.
-	env.coordinator.nextExpectedBlockNumberToBeReceived = 0
+	env.coordinator.nextExpectedBlockNumberToBeReceived.Store(0)
 	err := env.csStream.Send(&protoblocktx.Block{
 		Number: uint64(0),
 		Txs:    []*protoblocktx.Tx{},
@@ -365,7 +385,7 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return env.coordinator.nextExpectedBlockNumberToBeReceived == 1
+		return env.coordinator.nextExpectedBlockNumberToBeReceived.Load() == 1
 	}, 3*time.Second, 250*time.Millisecond)
 	// send block 1 which is the next expected block
 	env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
@@ -447,9 +467,9 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	env.start(ctx, t)
 
-	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 	env.createNamespace(t, 0, 1)
-	require.Equal(t, uint64(1), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	require.Equal(t, uint64(1), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 
 	err := env.csStream.Send(&protoblocktx.Block{
 		Number: 1,
@@ -582,7 +602,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		},
 	}
 	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
-	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 
 	cancel()
 	env.grpcServer.Stop()
@@ -595,7 +615,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.start(ctx, t)
 
 	require.Eventually(t, func() bool {
-		return uint64(2) == env.coordinator.nextExpectedBlockNumberToBeReceived
+		return uint64(2) == env.coordinator.nextExpectedBlockNumberToBeReceived.Load()
 	}, 4*time.Second, 250*time.Millisecond)
 
 	env.dbEnv.StatusExistsForNonDuplicateTxID(t, map[string]protoblocktx.Status{
@@ -753,7 +773,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.Len(t, actualTxsStatus, len(expectedTxStatus.TxsValidationStatus))
 	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, actualTxsStatus)
-	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived)
+	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 }
 
 func TestGRPCConnectionFailure(t *testing.T) {

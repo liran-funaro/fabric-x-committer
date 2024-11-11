@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -26,7 +27,8 @@ func TestLedgerService(t *testing.T) {
 	config := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost"},
 	}
-	StartGrpcServer(t, config, ledgerService)
+	s := StartGrpcServer(t, config, ledgerService)
+	t.Cleanup(s.Stop)
 
 	// NOTE: if we start the deliver client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the
@@ -39,9 +41,11 @@ func TestLedgerService(t *testing.T) {
 	blk0.Metadata = metadata
 	inputBlock <- blk0
 
-	EnsureHeight(t, ledgerService, 1)
+	EnsureAtLeastHeight(t, ledgerService, 1)
 
-	receivedBlocksFromLedgerService := StartDeliverClient(ctx, t, channelID, config.Endpoint)
+	receivedBlocksFromLedgerService := StartDeliverClient(ctx, t, &deliverclient.Config{
+		ChannelID: channelID, Endpoint: config.Endpoint,
+	}, 0)
 
 	blk1 := test.CreateBlockForTest(nil, 1, protoutil.BlockHeaderHash(blk0.Header), [3]string{"3", "4", "5"})
 	blk1.Metadata = metadata

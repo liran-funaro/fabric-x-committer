@@ -18,7 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
@@ -52,18 +51,19 @@ type (
 		// expects to receive from the sidecar. This value is determined based on the last committed
 		// block number in the ledger. The sidecar queries the coordinator for this value before
 		// starting to pull blocks from the ordering service.
-		nextExpectedBlockNumberToBeReceived uint64
+		nextExpectedBlockNumberToBeReceived atomic.Uint64
 
 		// initializationDone channel is used to find out whether the coordinator service has
 		// been initialized or not.
 		initializationDone chan any
 
-		// isStreamActive indicates whether a stream from the client (i.e., sidecar) to the coordinator
-		// is currently active. We permit a maximum of one active stream at a time. If multiple
-		// streams were allowed concurrently, transaction status might not reach the client
-		// reliably, as we are not currently associating requests and their corresponding responses
-		// (i.e., status updates) with specific streams.
-		isStreamActive atomic.Bool
+		// streamActive guards against concurrent streams from the client (sidecar)
+		// to the coordinator and prevents conflicting operations while a stream is
+		// active. Only one active stream is allowed at a time to ensure reliable
+		// delivery of transaction status updates. Currently, requests and their
+		// corresponding responses are not associated with specific streams, so
+		// multiple concurrent streams could lead to unreliable status delivery.
+		streamActive sync.RWMutex
 	}
 
 	channels struct {
@@ -115,6 +115,16 @@ type (
 		// receiver: coordinator receives and forwards them to the sidecar.
 		postProcessedTxStatus chan *protovcservice.TransactionStatus
 	}
+)
+
+var (
+	// ErrActiveStreamBlockNumber is returned when GetNextExpectedBlockNumber is called while a stream is active.
+	// The next expected block number cannot be reliably determined in this state.
+	ErrActiveStreamBlockNumber = errors.New("cannot determine next expected block number while stream is active")
+
+	// ErrExistingStreamOrConflictingOp indicates that a stream cannot be created because a stream already exists
+	// or a conflicting gRPC API call is being made concurrently.
+	ErrExistingStreamOrConflictingOp = errors.New("stream already exists or conflicting operation in progress")
 )
 
 // NewCoordinatorService creates a new coordinator service.
@@ -247,9 +257,9 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 			return err
 		}
 		// no block has been committed.
-		c.nextExpectedBlockNumberToBeReceived = 0
+		c.nextExpectedBlockNumberToBeReceived.Store(0)
 	} else {
-		c.nextExpectedBlockNumberToBeReceived = lastCommittedBlock.Number + 1
+		c.nextExpectedBlockNumberToBeReceived.Store(lastCommittedBlock.Number + 1)
 	}
 
 	// NOTE: as there is a remote chance for c.nextExpectedBlockNumberToBeReceived to change
@@ -258,7 +268,7 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 	//       the c.nextExpectedBlockNumberToBeReceived before this goroutine gets started. Remember
 	//       that only after returning from this Run(), coordinator cmd starts the gRPC as cmd would
 	//       wait for c.initializationDone channel to be closed.
-	nextBlockNumberForDepGraph := c.nextExpectedBlockNumberToBeReceived
+	nextBlockNumberForDepGraph := c.nextExpectedBlockNumberToBeReceived.Load()
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive block with valid transactions and" +
 			" forward it to the dependency graph manager")
@@ -326,14 +336,29 @@ func (c *CoordinatorService) GetLastCommittedBlockNumber(
 	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
 }
 
+// GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
+func (c *CoordinatorService) GetNextExpectedBlockNumber(
+	_ context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protoblocktx.BlockInfo, error) {
+	if !c.streamActive.TryRLock() {
+		return nil, ErrActiveStreamBlockNumber
+	}
+	defer c.streamActive.RUnlock()
+
+	return &protoblocktx.BlockInfo{
+		Number: c.nextExpectedBlockNumberToBeReceived.Load(),
+	}, nil
+}
+
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	if !c.isStreamActive.CompareAndSwap(false, true) {
-		return utils.ErrActiveStream
+	if !c.streamActive.TryLock() {
+		return ErrExistingStreamOrConflictingOp
 	}
-	defer c.isStreamActive.Store(false)
+	defer c.streamActive.Unlock()
 
 	logger.Info("Start validate and commit stream")
 
@@ -379,16 +404,16 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 		// Even if the stream terminates unexpectedly, any received blocks will
 		// still be forwarded to downstream components for complete processing.
 
-		if blk.Number != c.nextExpectedBlockNumberToBeReceived {
+		if blk.Number != c.nextExpectedBlockNumberToBeReceived.Load() {
 			errMsg := fmt.Sprintf(
 				"coordinator expects block [%d] but received block [%d]",
-				c.nextExpectedBlockNumberToBeReceived,
+				c.nextExpectedBlockNumberToBeReceived.Load(),
 				blk.Number,
 			)
 			logger.Error(errMsg)
 			return errors.New(errMsg)
 		}
-		c.nextExpectedBlockNumberToBeReceived++
+		c.nextExpectedBlockNumberToBeReceived.Add(1)
 
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 

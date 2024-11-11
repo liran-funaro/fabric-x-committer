@@ -24,6 +24,7 @@ var logger = logging.New("mock-coordinator")
 type MockCoordinator struct {
 	protocoordinatorservice.CoordinatorServer
 	lastCommittedBlockNumber atomic.Int64
+	nextExpectedBlockNumber  atomic.Uint64
 	stop                     chan any
 }
 
@@ -65,6 +66,14 @@ func (c *MockCoordinator) GetLastCommittedBlockNumber(
 	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil
 }
 
+// GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
+func (c *MockCoordinator) GetNextExpectedBlockNumber(
+	_ context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protoblocktx.BlockInfo, error) {
+	return &protoblocktx.BlockInfo{Number: c.nextExpectedBlockNumber.Load()}, nil
+}
+
 // BlockProcessing processes a block.
 func (c *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
 	input := make(chan *protoblocktx.Block, 1000)
@@ -88,6 +97,15 @@ func (c *MockCoordinator) BlockProcessing(stream protocoordinatorservice.Coordin
 			}
 			return err
 		}
+
+		if block.Number != c.nextExpectedBlockNumber.Load() {
+			return fmt.Errorf(
+				"the received block [%d] is different from the expected block [%d]",
+				block.Number,
+				c.nextExpectedBlockNumber.Load(),
+			)
+		}
+		c.nextExpectedBlockNumber.Add(1)
 
 		if len(block.Txs) != len(block.TxsNum) {
 			return fmt.Errorf("the block doesn't have the correct number of transactions set")

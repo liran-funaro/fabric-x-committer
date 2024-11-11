@@ -115,7 +115,7 @@ func cutBlocks( //nolint:gocognit
 					if len(block.Data.Data) != int(blockSize) { // nolint:gosec
 						continue
 					}
-					logger.Debug(
+					logger.Debugf(
 						"block [%d] has been cut as it reached the required block size [%d]",
 						blockNum,
 						blockSize,
@@ -159,7 +159,8 @@ func (o *MockOrderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error
 
 // Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *MockOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	addr := util.ExtractRemoteAddress(stream.Context())
+	ctx := stream.Context()
+	addr := util.ExtractRemoteAddress(ctx)
 	logger.Infof("Starting delivery with %s", addr)
 
 	seekInfo, channelID, err := readSeekEnvelope(stream)
@@ -171,6 +172,9 @@ func (o *MockOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 
 	for {
 		select {
+		case <-ctx.Done():
+			logger.Info("Stream context has been cancelled")
+			return nil
 		case <-o.stop:
 			logger.Infof("Stopping delivery to %s", addr)
 			return nil

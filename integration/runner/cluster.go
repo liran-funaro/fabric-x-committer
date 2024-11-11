@@ -166,7 +166,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	c.setMetaNamespaceVerificationKey(t)
 	c.ensureLastCommittedBlockNumber(t, 0)
 	go func() {
-		require.True(t, connection.IsStreamEnd(c.sidecarClient.Run(context.TODO())))
+		require.True(t, connection.IsStreamEnd(c.sidecarClient.Run(context.TODO(), &deliverclient.ReceiverRunConfig{})))
 	}()
 	<-c.committedBlock
 	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)

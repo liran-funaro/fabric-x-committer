@@ -51,6 +51,11 @@ type (
 		OrdererConnectionProfile *connection.OrdererConnectionProfile `mapstructure:"orderer-connection-profile"`
 		Reconnect                time.Duration                        `mapstructure:"reconnect"`
 	}
+
+	// ReceiverRunConfig holds the configuration needed for the receiver to run.
+	ReceiverRunConfig struct {
+		StartBlkNum int64
+	}
 )
 
 // New creates a deliver client receiver.
@@ -63,14 +68,14 @@ func New(config *Config, sender Sender, outputBlock chan<- *common.Block) (*Rece
 		sender:      sender,
 		channelID:   config.ChannelID,
 		reconnect:   config.Reconnect,
-		startBlock:  0,
 		outputBlock: outputBlock,
 		config:      config,
 	}, nil
 }
 
 // Run starts the block receiver. The call to Run blocks until an error occurs or the context is canceled.
-func (l *Receiver) Run(ctx context.Context) error {
+func (l *Receiver) Run(ctx context.Context, config *ReceiverRunConfig) error {
+	l.startBlock = config.StartBlkNum
 	rCtx, rCancel := context.WithCancel(ctx)
 	defer rCancel()
 

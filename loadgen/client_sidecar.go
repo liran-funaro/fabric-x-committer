@@ -81,7 +81,7 @@ func (c *sidecarClient) Start(blockGen *BlockStream, nsGen *NamespaceGenerator) 
 		return errors.Wrap(err, "failed connecting to coordinator")
 	}
 	logger.Infof("Set verification key")
-	go func() { _ = c.ledgerReceiver.Run(c.ctx) }()
+	go func() { _ = c.ledgerReceiver.Run(c.ctx, &deliverclient.ReceiverRunConfig{}) }()
 
 	if err := c.startNamespaceGeneration(nsGen); err != nil {
 		return errors.Wrap(err, "failed closing namespace generation connection")

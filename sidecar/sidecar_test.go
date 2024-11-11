@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -18,10 +20,21 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
-func TestSidecar(t *testing.T) {
+type sidecarTestEnv struct {
+	sidecar         *Service
+	coordinator     *coordinatormock.MockCoordinator
+	gServer         *grpc.Server
+	config          *SidecarConfig
+	broadcastClient orderer.AtomicBroadcast_BroadcastClient
+	envelopeCreator broadcastclient.EnvelopeCreator
+	committedBlock  chan *common.Block
+}
+
+func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 	orderersServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil, 100, 0)
 	t.Cleanup(func() {
 		for _, o := range orderers {
@@ -62,46 +75,75 @@ func TestSidecar(t *testing.T) {
 	sidecar, err := New(config)
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, connection.FilterStreamErrors(sidecar.Run(ctx))); wg.Done() }()
-	ledger.StartGrpcServer(t, config.Server, sidecar.GetLedgerService())
-
 	broadcastClients, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{
-		Broadcast:       []*connection.Endpoint{&orderersServerConfig[0].Endpoint},
+		Broadcast:       []*connection.Endpoint{&config.Orderer.Endpoint},
 		SignedEnvelopes: false,
-		ChannelID:       channelID,
+		ChannelID:       config.Orderer.ChannelID,
 		Type:            utils.Raft,
 		Parallelism:     1,
 	})
 	require.NoError(t, err)
-	// when we start the broadcastclient, it would pull the config block
-	// from the orderer and commit it.
-	ledger.EnsureHeight(t, sidecar.GetLedgerService(), 1)
-	checkLastCommittedBlock(ctx, t, coordinator, 0)
+
+	return &sidecarTestEnv{
+		sidecar:         sidecar,
+		coordinator:     coordinator,
+		config:          config,
+		broadcastClient: broadcastClients[0],
+		envelopeCreator: envelopeCreator,
+	}
+}
+
+func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	dCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() { require.NoError(t, connection.FilterStreamErrors(env.sidecar.Run(dCtx))); wg.Done() }()
+	env.gServer = ledger.StartGrpcServer(t, env.config.Server, env.sidecar.GetLedgerService())
+	t.Cleanup(env.gServer.Stop)
+
+	// we need to wait for the sidecar to connect to ordering service and fetch the
+	// config block, i.e., block 0. EnsureAtLeastHeight waits for the block 0 to be committed.
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
+	env.committedBlock = ledger.StartDeliverClient(ctx, t, &deliverclient.Config{
+		ChannelID: env.config.Orderer.ChannelID,
+		Endpoint:  env.config.Server.Endpoint,
+		Reconnect: -1,
+	}, startBlkNum)
+}
+
+func TestSidecar(t *testing.T) {
+	env := newSidecarTestEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 0)
 
 	// orderermock expects 100 txs to create the next block
 	txs := make([]*protoblocktx.Tx, 100)
-	for i := range 100 {
-		txs[i] = &protoblocktx.Tx{
-			Id:         "tx" + strconv.Itoa(i),
-			Namespaces: []*protoblocktx.TxNamespace{{NsId: uint32(i)}},
+	sendTxs := func(txIDPrefix string) {
+		for i := range 100 {
+			txs[i] = &protoblocktx.Tx{
+				Id:         txIDPrefix + strconv.Itoa(i),
+				Namespaces: []*protoblocktx.TxNamespace{{NsId: uint32(i)}}, // nolint:gosec
+			}
+			ev, _, err := env.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(txs[i]))
+			require.NoError(t, err)
+			require.NoError(t, env.broadcastClient.Send(ev))
 		}
-		env, _, err := envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(txs[i]))
-		require.NoError(t, err)
-		require.NoError(t, broadcastClients[0].Send(env))
 	}
-	ledger.EnsureHeight(t, sidecar.GetLedgerService(), 2)
-	checkLastCommittedBlock(ctx, t, coordinator, 1)
 
-	committedBlock := ledger.StartDeliverClient(ctx, t, channelID, config.Server.Endpoint)
-	configBlock := <-committedBlock
+	checkLastCommittedBlock(ctx, t, env.coordinator, 0)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
+
+	sendTxs("tx")
+	checkLastCommittedBlock(ctx, t, env.coordinator, 1)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
+
+	configBlock := <-env.committedBlock
 	require.Equal(t, uint64(0), configBlock.Header.Number)
 
-	block := <-committedBlock
+	block := <-env.committedBlock
 	require.Equal(t, uint64(1), block.Header.Number)
 
 	for i := range 100 {
@@ -113,6 +155,20 @@ func TestSidecar(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i], tx))
 	}
+
+	// restart and ensures it sends the next expected block by the coordinator.
+	cancel()
+	env.gServer.Stop()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel2)
+	env.start(ctx2, t, 2)
+
+	checkLastCommittedBlock(ctx2, t, env.coordinator, 1)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
+	sendTxs("newTx")
+	checkLastCommittedBlock(ctx2, t, env.coordinator, 2)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 3)
+	cancel2()
 }
 
 func checkLastCommittedBlock(
@@ -127,5 +183,5 @@ func checkLastCommittedBlock(
 			return false
 		}
 		return expectedBlockNumber == lastBlock.Number
-	}, 8*time.Second, 1*time.Second)
+	}, 15*time.Second, 1*time.Second)
 }
