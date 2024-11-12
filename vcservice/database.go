@@ -76,15 +76,26 @@ func (s *statesToBeCommitted) Debug() {
 }
 
 // newDatabase creates a new database.
-func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
-	pool, err := NewDatabasePool(config)
+func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
+	pool, err := NewDatabasePool(ctx, config)
 	if err != nil {
 		return nil, err
 	}
+
 	logger.Infof("validator persister connected to database at %s:%d", config.Host, config.Port)
 
-	dbType, err := getDbType(context.Background(), pool)
+	defer func() {
+		if err != nil {
+			pool.Close()
+		}
+	}()
+
+	dbType, err := getDbType(ctx, pool)
 	if err != nil {
+		return nil, err
+	}
+
+	if err = initDatabaseTables(ctx, pool, nil); err != nil {
 		return nil, err
 	}
 
@@ -92,7 +103,12 @@ func newDatabase(config *DatabaseConfig, metrics *perfMetrics) (*database, error
 		name:    dbType,
 		pool:    pool,
 		metrics: metrics,
-	}, initDatabaseTables(context.Background(), pool, nil)
+	}, nil
+}
+
+func (db *database) close() {
+	logger.Infof("closing database connection %s", db.name)
+	db.pool.Close()
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
@@ -157,10 +173,10 @@ func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protobloc
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
 	var r pgx.Row
 	var value []byte
-	if retryErr := utils.Retry(func() error {
+	if retryErr := retryOperation(ctx, func() error {
 		r = db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
 		return r.Scan(&value)
-	}, retryTimeout, retryInitialInterval); retryErr != nil {
+	}); retryErr != nil {
 		return nil, retryErr
 	}
 	if len(value) == 0 {
@@ -210,10 +226,10 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	if retryErr := utils.Retry(func() error {
+	if retryErr := retryOperation(ctx, func() error {
 		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
 		return err
-	}, retryTimeout, retryInitialInterval); retryErr != nil {
+	}); retryErr != nil {
 		return fmt.Errorf("failed to set the last committed block number: %w", retryErr)
 	}
 
@@ -431,10 +447,6 @@ func (s *statesToBeCommitted) empty() bool {
 	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
 }
 
-func (db *database) close() {
-	db.pool.Close()
-}
-
 // readKeysAndValues reads the keys and values from the given rows.
 func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
 	var keys []K
@@ -486,11 +498,11 @@ func TableName(nsID types.NamespaceID) string {
 
 func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
 	var rows pgx.Rows
-	retryErr := utils.Retry(func() error {
+	retryErr := retryOperation(ctx, func() error {
 		var err error
 		rows, err = db.pool.Query(ctx, sql, arg...)
 		return err
-	}, retryTimeout, retryInitialInterval)
+	})
 	return rows, retryErr
 }
 
@@ -501,11 +513,12 @@ type statusWithHeight struct {
 
 func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHeight, error) {
 	var r pgx.Rows
-	if retryErr := utils.Retry(func() error {
+	ctx := context.Background()
+	if retryErr := retryOperation(ctx, func() error {
 		var err error
-		r, err = db.pool.Query(context.Background(), queryTxStatusSQLTemplate, txIDs)
+		r, err = db.pool.Query(ctx, queryTxStatusSQLTemplate, txIDs)
 		return err
-	}, retryTimeout, retryInitialInterval); retryErr != nil {
+	}); retryErr != nil {
 		return nil, fmt.Errorf("error reading status for txIDs: %w", retryErr)
 	}
 	defer r.Close()
@@ -528,4 +541,8 @@ func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHe
 		rows[TxID(id)] = &statusWithHeight{status: protoblocktx.Status(status), height: ht}
 	}
 	return rows, r.Err()
+}
+
+func retryOperation(ctx context.Context, op func() error) error {
+	return utils.Retry(ctx, op, retryTimeout, retryInitialInterval)
 }

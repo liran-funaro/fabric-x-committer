@@ -8,7 +8,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"golang.org/x/sync/errgroup"
@@ -75,10 +74,10 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// Rather than distinguishing retryable transaction error, we retry for all errors.
 		// This is for simplicity and we can improve it in future.
 		// TODO: Add test to ensure commit is retried.
-		if retryErr := utils.Retry(func() error {
+		if retryErr := retryOperation(ctx, func() error {
 			txsStatus, err = c.commitTransactions(vTx)
 			return err
-		}, retryTimeout, retryInitialInterval); retryErr != nil {
+		}); retryErr != nil {
 			logger.Errorf("failed to commit transactions: %w", err)
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}

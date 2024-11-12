@@ -65,7 +65,10 @@ type Limits struct {
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*ValidatorCommitterService, error) {
+func NewValidatorCommitterService(
+	ctx context.Context,
+	config *ValidatorCommitterServiceConfig,
+) (*ValidatorCommitterService, error) {
 	l := config.ResourceLimits
 
 	// TODO: make queueMultiplier configurable
@@ -77,7 +80,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
-	db, err := newDatabase(config.Database, metrics)
+	db, err := newDatabase(ctx, config.Database, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +106,7 @@ func NewValidatorCommitterService(config *ValidatorCommitterServiceConfig) (*Val
 
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
+	defer vc.db.close()
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -330,10 +334,4 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		prometheusmetrics.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
 		prometheusmetrics.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
-}
-
-// Close stops the VC service.
-func (vc *ValidatorCommitterService) Close() {
-	logger.Info("Closing the database connection")
-	vc.db.close()
 }

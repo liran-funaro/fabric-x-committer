@@ -210,7 +210,7 @@ var dropStatementsWithTemplate = []string{
 var defaultConnPoolCreateTimeout = 15 * time.Second
 
 // NewDatabasePool creates a new pool from a database config.
-func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
+func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool, error) {
 	logger.Infof("DB source: %s", config.DataSourceName())
 	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
 	if err != nil {
@@ -228,8 +228,8 @@ func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
 	}
 
 	var pool *pgxpool.Pool
-	if retryErr := utils.Retry(func() error {
-		pool, err = pgxpool.ConnectConfig(context.Background(), poolConfig)
+	if retryErr := utils.Retry(ctx, func() error {
+		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
 		return err
 	}, config.ConnPoolCreateTimeout); retryErr != nil {
 		logger.Errorf("Failed making pool: %s", retryErr)
@@ -241,14 +241,14 @@ func NewDatabasePool(config *DatabaseConfig) (*pgxpool.Pool, error) {
 }
 
 // ClearDatabase clears the DB tables and methods.
-func ClearDatabase(config *DatabaseConfig, nsIDs []int) error {
-	pool, err := NewDatabasePool(config)
+func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []int) error {
+	pool, err := NewDatabasePool(ctx, config)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	if err := clearDatabaseTables(context.Background(), pool, nsIDs); err != nil {
+	if err = clearDatabaseTables(ctx, pool, nsIDs); err != nil {
 		// TODO: handle error gracefully
 		logger.Fatalf("Failed clearing database [%s] tables: %s", config.Database, err)
 	}
@@ -297,35 +297,26 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range initStatements {
-		if retryErr := utils.Retry(
-			yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)),
-			yuga.RetryTimeout,
-			yuga.RetryInitialInterval,
-		); retryErr != nil {
-			return errors.Wrapf(retryErr, "failed creating tx status table")
+		if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)); execErr != nil {
+			return errors.Wrapf(execErr, "failed initializing tables")
 		}
 	}
 	logger.Info("Created tx status table, metadata table, and its methods.")
-
-	if retryErr := utils.Retry(
-		yuga.PoolExecOperation(ctx, pool, stmtFmt(initializeMetadataPrepStmt, "", dbType),
-			[]byte(lastCommittedBlockNumberKey), nil),
-		yuga.RetryTimeout,
-		yuga.RetryInitialInterval,
-	); retryErr != nil {
-		return errors.Wrapf(retryErr, "failed creating tx status table")
+	if execErr := yuga.PoolExecOperation(ctx,
+		pool,
+		stmtFmt(initializeMetadataPrepStmt, "", dbType),
+		[]byte(lastCommittedBlockNumberKey),
+		nil,
+	); execErr != nil {
+		return errors.Wrapf(execErr, "failed initialization metadata table")
 	}
 
 	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
 	for _, nsID := range nsIDs {
 		tableName := TableName(types.NamespaceID(nsID))
 		for _, stmt := range initStatementsWithTemplate {
-			if retryErr := utils.Retry(
-				yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)),
-				yuga.RetryTimeout,
-				yuga.RetryInitialInterval,
-			); retryErr != nil {
-				return errors.Wrapf(retryErr, "failed creating tx status table")
+			if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+				return errors.Wrapf(execErr, "failed creating meta-namespace")
 			}
 			logger.Infof("Created table '%s' and its methods.", tableName)
 		}
@@ -342,12 +333,11 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range dropStatements {
-		if retryErr := utils.Retry(
-			yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)),
-			yuga.RetryTimeout,
-			yuga.RetryInitialInterval,
-		); retryErr != nil {
-			return errors.Wrapf(retryErr, "failed clearing database tables")
+		if execErr := yuga.PoolExecOperation(ctx,
+			pool,
+			stmtFmt(stmt, "", dbType),
+		); execErr != nil {
+			return errors.Wrapf(execErr, "failed clearing database tables")
 		}
 	}
 	logger.Info("tx status table is cleared.")
@@ -358,12 +348,8 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			if retryErr := utils.Retry(
-				yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)),
-				yuga.RetryTimeout,
-				yuga.RetryInitialInterval,
-			); retryErr != nil {
-				return errors.Wrapf(retryErr, "failed clearing database tables")
+			if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+				return errors.Wrapf(execErr, "failed clearing database tables")
 			}
 		}
 

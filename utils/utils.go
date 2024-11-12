@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -106,13 +107,13 @@ const (
 //     See: https://support.yugabyte.com/hc/en-us/articles/10552861830541-Unable-to-Drop-Database.
 //   - Creating/dropping tables immediately after creating a database.
 //     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
-func Retry(o backoff.Operation, timeout time.Duration, opts ...backoff.ExponentialBackOffOpts) error {
+func Retry(ctx context.Context, o backoff.Operation, timeout time.Duration, opts ...backoff.ExponentialBackOffOpts) error {
 	if timeout.Seconds() == 0 {
 		return errors.New("Invalid timeout value. The timeout must be a positive number to prevent infinite retries.")
 	}
 	expBackoff := backoff.NewExponentialBackOff(opts...)
 	expBackoff.MaxElapsedTime = timeout
-	return backoff.Retry(o, expBackoff)
+	return backoff.Retry(o, backoff.WithContext(expBackoff, ctx))
 }
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.

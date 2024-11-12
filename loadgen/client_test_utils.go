@@ -122,9 +122,11 @@ func ActivateVcService(t *testing.T, ports, metricPorts []int) *yuga.Connection 
 			metricPorts[i], ports[i])
 		conf := vcservice.ReadConfig()
 
-		service, err := vcservice.NewValidatorCommitterService(conf)
+		initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		t.Cleanup(initCancel)
+
+		service, err := vcservice.NewValidatorCommitterService(initCtx, conf)
 		require.NoError(t, err)
-		t.Cleanup(func() { service.Close() })
 
 		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
@@ -134,11 +136,11 @@ func ActivateVcService(t *testing.T, ports, metricPorts []int) *yuga.Connection 
 		wg := sync.WaitGroup{}
 		t.Cleanup(wg.Wait)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		t.Cleanup(cancel)
+		sCtx, sCancel := context.WithCancel(context.Background())
+		t.Cleanup(sCancel)
 
 		wg.Add(1)
-		go func() { require.NoError(t, service.Run(ctx)); wg.Done() }()
+		go func() { require.NoError(t, service.Run(sCtx)); wg.Done() }()
 	}
 	return conn
 }

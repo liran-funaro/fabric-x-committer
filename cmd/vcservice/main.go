@@ -52,12 +52,11 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 			vcConfig := vcservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-
-			vc, err := vcservice.NewValidatorCommitterService(vcConfig)
+			ctx := cmd.Context()
+			vc, err := vcservice.NewValidatorCommitterService(ctx, vcConfig)
 			if err != nil {
 				return err
 			}
-			defer vc.Close()
 
 			go connection.RunServerMain(vcConfig.Server, func(server *grpc.Server, port int) {
 				if vcConfig.Server.Endpoint.Port == 0 {
@@ -66,7 +65,7 @@ func startCmd() *cobra.Command {
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
 
-			return vc.Run(cmd.Context())
+			return vc.Run(ctx)
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
@@ -91,7 +90,7 @@ func clearCmd() *cobra.Command {
 
 			cmd.Printf("Clearing database: %v\n", namespaces)
 
-			return vcservice.ClearDatabase(vcConfig.Database, namespaces)
+			return vcservice.ClearDatabase(cmd.Context(), vcConfig.Database, namespaces)
 		},
 	}
 

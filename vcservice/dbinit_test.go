@@ -39,14 +39,18 @@ func Test_DbInit(t *testing.T) {
 }
 
 func TestRetry(t *testing.T) {
-	pool, err := NewDatabasePool(&DatabaseConfig{
-		Host:                  "",
-		Port:                  1234,
-		Username:              "name",
-		Password:              "pwd",
-		MaxConnections:        5,
-		ConnPoolCreateTimeout: 15 * time.Second,
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	pool, err := NewDatabasePool(
+		ctx,
+		&DatabaseConfig{
+			Host:                  "",
+			Port:                  1234,
+			Username:              "name",
+			Password:              "pwd",
+			MaxConnections:        5,
+			ConnPoolCreateTimeout: 15 * time.Second,
+		})
 	require.ErrorContains(t, err, "failed making pool")
 	require.Nil(t, pool)
 }
@@ -67,13 +71,15 @@ func TestConcurrentDatabaseTablesInit(t *testing.T) {
 		ConnPoolCreateTimeout: 3 * time.Minute,
 	}
 	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Cleanup(cancel)
 
 	for range 4 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			metrics := newVCServiceMetrics()
-			db, dbInitErr := newDatabase(config, metrics)
+			db, dbInitErr := newDatabase(ctx, config, metrics)
 			require.NoError(t, dbInitErr)
 			t.Cleanup(db.close)
 		}()

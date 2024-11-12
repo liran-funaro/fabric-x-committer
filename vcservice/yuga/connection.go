@@ -72,8 +72,8 @@ func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MinConns = 1
 
 	var pool *pgxpool.Pool
-	if retryErr := utils.Retry(func() error {
-		pool, err = pgxpool.ConnectConfig(context.Background(), poolConfig)
+	if retryErr := utils.Retry(ctx, func() error {
+		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
 		return err
 	}, 15*time.Second); retryErr != nil {
 		return nil, fmt.Errorf("[%s] error making pool: %w", y.AddressString(), retryErr)
@@ -165,23 +165,11 @@ func (y *Connection) DropDB(ctx context.Context, dbName string) error {
 	return execDropIfExitsDB(ctx, pool, dbName)
 }
 
-// PoolExecOperation creates a pool execution operation function.
-func PoolExecOperation(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) func() error {
-	return func() error {
-		_, err := pool.Exec(ctx, stmt, args...)
-		return err
-	}
-}
-
 // execCreateDB creates a DB if exists given an existing pool.
 func execCreateDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error {
 	logger.Infof("Creating database: %s", dbName)
-	if err := utils.Retry(
-		PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateCreateDb, dbName)),
-		RetryTimeout,
-		RetryInitialInterval,
-	); err != nil {
-		return err
+	if execErr := PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateCreateDb, dbName)); execErr != nil {
+		return execErr
 	}
 	logger.Infof("Database created: %s", dbName)
 	return nil
@@ -190,13 +178,17 @@ func execCreateDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error 
 // execDropIfExitsDB drops a DB if exists given an existing pool.
 func execDropIfExitsDB(ctx context.Context, pool *pgxpool.Pool, dbName string) error {
 	logger.Infof("Dropping database if exists: %s", dbName)
-	if err := utils.Retry(
-		PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateDropDbIfExists, dbName)),
-		RetryTimeout,
-		RetryInitialInterval,
-	); err != nil {
-		return err
+	if execErr := PoolExecOperation(ctx, pool, fmt.Sprintf(stmtTemplateDropDbIfExists, dbName)); execErr != nil {
+		return execErr
 	}
 	logger.Infof("Database dropped: %s", dbName)
 	return nil
+}
+
+// PoolExecOperation activating pool execution operation utilizing the retry mechanism.
+func PoolExecOperation(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) error {
+	return utils.Retry(ctx, func() error {
+		_, err := pool.Exec(ctx, stmt, args...)
+		return err
+	}, RetryTimeout, RetryInitialInterval)
 }

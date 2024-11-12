@@ -74,15 +74,18 @@ func NewValidatorAndCommitServiceTestEnv(
 		},
 	}
 
-	vcs, err := NewValidatorCommitterService(config)
+	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(initCancel)
+
+	vcs, err := NewValidatorCommitterService(initCtx, config)
 	require.NoError(t, err)
-	t.Cleanup(vcs.Close)
 
 	wg := sync.WaitGroup{}
 	t.Cleanup(wg.Wait)
 
 	sCtx, sCancel := context.WithCancel(ctx)
 	t.Cleanup(sCancel)
+
 	wg.Add(1)
 	go func() { require.NoError(t, vcs.Run(sCtx)); wg.Done() }()
 
@@ -142,12 +145,11 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	}
 
 	m := newVCServiceMetrics()
-	db, err := newDatabase(config, m)
+	sCtx, sCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(sCancel)
+	db, err := newDatabase(sCtx, config, m)
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		db.close()
-	})
+	t.Cleanup(db.close)
 
 	return &DatabaseTestEnv{
 		DB:     db,

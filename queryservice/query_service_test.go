@@ -326,7 +326,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		assert.NoError(t, clientConn.Close())
 	})
 
-	pool, err := vcservice.NewDatabasePool(config.Database)
+	pool, err := vcservice.NewDatabasePool(ctx, config.Database)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 

@@ -56,8 +56,11 @@ func PrepareYugaTestEnv(t *testing.T) *Connection {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		assert.NoError(t, utils.Retry(
-			func() error { return conn.DropDB(context.Background(), dbName) },
+		cleanUpCtx, cleanUpCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cleanUpCancel()
+		assert.NoError(t, utils.Retry(cleanUpCtx, func() error {
+			return conn.DropDB(cleanUpCtx, dbName)
+		},
 			10*time.Second,
 		))
 	})
@@ -92,6 +95,5 @@ func StartAndConnect(ctx context.Context) (*Connection, error) {
 	default:
 		return nil, fmt.Errorf("unknown yuga instance type: %s", yugaInstance)
 	}
-
 	return WaitFirstReady(ctx, connOptions)
 }

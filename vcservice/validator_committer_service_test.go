@@ -361,7 +361,6 @@ func TestWaitingTxsCount(t *testing.T) {
 func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
 	ctx := createContext(t)
 	env := newValidatorAndCommitServiceTestEnv(ctx, t)
-	require.NoError(t, initDatabaseTables(context.Background(), env.dbEnv.DB.pool, nil))
 	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(ctx, nil)
 	require.Error(t, err, ErrMetadataEmpty)
 	require.Nil(t, lastCommittedBlock)

@@ -35,7 +35,7 @@ func NewQueryService(config *Config) (*QueryService, error) {
 
 // Run starts the Prometheus server.
 func (q *QueryService) Run(ctx context.Context) error {
-	pool, poolErr := vcservice.NewDatabasePool(q.config.Database)
+	pool, poolErr := vcservice.NewDatabasePool(ctx, q.config.Database)
 	if poolErr != nil {
 		return poolErr
 	}
