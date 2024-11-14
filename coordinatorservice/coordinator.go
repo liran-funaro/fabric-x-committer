@@ -301,12 +301,18 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 }
 
 // WaitForReady wait for coordinator to be ready to be exposed as gRPC service.
-func (c *CoordinatorService) WaitForReady(ctx context.Context) {
-	for _, ch := range []chan any{c.signatureVerifierMgr.connectionReady, c.validatorCommitterMgr.connectionReady} {
-		channel.NewReader(ctx, ch).Read()
+// If the context ended before the service is ready, returns false.
+func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
+	for _, ch := range []chan any{
+		c.signatureVerifierMgr.connectionReady, c.validatorCommitterMgr.connectionReady, c.initializationDone,
+	} {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ch:
+		}
 	}
-
-	channel.NewReader(ctx, c.initializationDone).Read()
+	return true
 }
 
 // SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.

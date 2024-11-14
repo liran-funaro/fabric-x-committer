@@ -1,18 +1,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
@@ -57,32 +52,21 @@ func startCmd() *cobra.Command { //nolint:gocognit
 
 			coordService := coordinatorservice.NewCoordinatorService(coordConfig)
 
-			g, ctx := errgroup.WithContext(cmd.Context())
-			g.Go(func() error {
-				return coordService.Run(ctx)
-			})
-			ctxTimeout, cancel := context.WithTimeout(ctx, 5*time.Minute) // TODO: make this configurable.
-			defer cancel()
-			coordService.WaitForReady(ctxTimeout)
-
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				connection.RunServerMain(coordConfig.ServerConfig, func(server *grpc.Server, port int) {
-					if coordConfig.ServerConfig.Endpoint.Port == 0 {
-						coordConfig.ServerConfig.Endpoint.Port = port
-					}
-					protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
-					wg.Done()
-				})
-			}()
-			wg.Wait()
-
 			// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
 			// coordinator service if any of them fails. In the future, we can add recovery mechanism
 			// to restart the failed service and stop the coordinator service only if all the services
 			// in vcservice fail or all the services in sigverifier fail.
-			return g.Wait()
+			return cobracmd.StartService(
+				cmd.Context(),
+				coordService,
+				coordConfig.ServerConfig,
+				func(server *grpc.Server, port int) {
+					if coordConfig.ServerConfig.Endpoint.Port == 0 {
+						coordConfig.ServerConfig.Endpoint.Port = port
+					}
+					protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
+				},
+			)
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

@@ -17,7 +17,10 @@ import (
 
 // Service describes the method that are required for a service to run.
 type Service interface {
+	// Run executes the service until the context is done.
 	Run(ctx context.Context) error
+	// WaitForReady waits for the service resources to initialize.
+	// If the context ended before the service is ready, returns false.
 	WaitForReady(ctx context.Context) bool
 }
 
