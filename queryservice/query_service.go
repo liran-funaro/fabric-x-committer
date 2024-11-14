@@ -27,12 +27,12 @@ type (
 )
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) (*QueryService, error) {
+func NewQueryService(config *Config) *QueryService {
 	return &QueryService{
 		config:  config,
 		metrics: newQueryServiceMetrics(),
 		ready:   make(chan any),
-	}, nil
+	}
 }
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.

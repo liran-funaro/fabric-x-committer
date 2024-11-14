@@ -50,10 +50,7 @@ func startCmd() *cobra.Command {
 			serviceConfig := queryservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			qs, err := queryservice.NewQueryService(serviceConfig)
-			if err != nil {
-				return err
-			}
+			qs := queryservice.NewQueryService(serviceConfig)
 			return cobracmd.StartService(cmd.Context(), qs, serviceConfig.Server, func(server *grpc.Server, port int) {
 				if serviceConfig.Server.Endpoint.Port == 0 {
 					serviceConfig.Server.Endpoint.Port = port

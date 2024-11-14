@@ -289,8 +289,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		},
 	}
 
-	qs, err := NewQueryService(config)
-	require.NoError(t, err)
+	qs := NewQueryService(config)
 
 	var serviceWg sync.WaitGroup
 	t.Cleanup(serviceWg.Wait)
