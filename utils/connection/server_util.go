@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"context"
 	"crypto/tls"
 	"log"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -84,22 +86,37 @@ func (c *ServerCredsConfig) serverOption() grpc.ServerOption {
 	return creds
 }
 
+// RunServerMain runs a server and panic if failed.
 func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
-	logger.Infof("Running server at: %s://%s", grpcProtocol, serverConfig.Endpoint.Address())
+	err := RunServerMainWithError(context.Background(), serverConfig, register)
+	if err != nil {
+		log.Fatalf("failed to run server: %v", err)
+	}
+}
 
+// RunServerMainWithError runs a server and returns error if failed.
+func RunServerMainWithError(
+	ctx context.Context,
+	serverConfig *ServerConfig,
+	register func(server *grpc.Server, port int),
+) error {
+	logger.Infof("Running server at: %s://%s", grpcProtocol, serverConfig.Endpoint.Address())
 	listener, err := net.Listen(grpcProtocol, serverConfig.Endpoint.Address())
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		return err
 	}
 
 	grpcServer := grpc.NewServer(serverConfig.Opts()...)
 	register(grpcServer, listener.Addr().(*net.TCPAddr).Port)
-
 	logger.Infof("Serving...")
-	err = grpcServer.Serve(listener)
-	if err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return grpcServer.Serve(listener)
+	})
+	<-gCtx.Done()
+	grpcServer.Stop()
+	return g.Wait()
 }
 
 func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {

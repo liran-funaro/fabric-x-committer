@@ -22,6 +22,7 @@ type (
 		batcher viewsBatcher
 		config  *Config
 		metrics *perfMetrics
+		ready   chan any
 	}
 )
 
@@ -30,7 +31,19 @@ func NewQueryService(config *Config) (*QueryService, error) {
 	return &QueryService{
 		config:  config,
 		metrics: newQueryServiceMetrics(),
+		ready:   make(chan any),
 	}, nil
+}
+
+// WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
+// If the context ended before the service is ready, returns false.
+func (q *QueryService) WaitForReady(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-q.ready:
+		return true
+	}
 }
 
 // Run starts the Prometheus server.
@@ -55,6 +68,7 @@ func (q *QueryService) Run(ctx context.Context) error {
 			queryObj: &sharedPool{pool: pool},
 		},
 	}
+	close(q.ready)
 
 	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring.Metrics.Endpoint)
 	// We don't use the error here as we avoid stopping the service due to monitoring error.

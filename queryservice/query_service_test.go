@@ -302,6 +302,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		defer serviceWg.Done()
 		assert.NoError(t, qs.Run(ctx))
 	}()
+	qs.WaitForReady(ctx)
 
 	var grpcSrv *grpc.Server
 	var wg sync.WaitGroup

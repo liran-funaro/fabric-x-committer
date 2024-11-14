@@ -4,12 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 )
+
+// Service describes the method that are required for a service to run.
+type Service interface {
+	Run(ctx context.Context) error
+	WaitForReady(ctx context.Context) bool
+}
 
 // CobraInt creates a flag of type integer for the cmd parameter.
 func CobraInt(cmd *cobra.Command, flagName, flagUsage, configKey string) {
@@ -71,22 +81,6 @@ func WaitUntilServiceDone(ctx context.Context) error {
 	return err
 }
 
-// WaitUntilServiceDoneWithChan blocks until the service done and classifying the cause of
-// termination with respect to the errors received by the error channel.
-func WaitUntilServiceDoneWithChan(ctx context.Context, errChan <-chan error) error {
-	var err error
-	select {
-	case err = <-errChan:
-		// the error variable is now set to the value received by the error channel.
-	case <-ctx.Done():
-		err = context.Cause(ctx)
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil
-	}
-	return err
-}
-
 // VersionCmd creates a version command.
 func VersionCmd(serviceName, serviceVersion string) *cobra.Command {
 	return &cobra.Command{
@@ -107,4 +101,32 @@ func ReadYaml(configPath string) error {
 		return errors.New("--configs flag must be set to the path of the configuration file")
 	}
 	return config.ReadYamlConfigs([]string{configPath})
+}
+
+// StartService runs a service, waits until it is ready, and register the gRPC server.
+func StartService(
+	ctx context.Context,
+	service Service,
+	serverConfig *connection.ServerConfig,
+	register func(server *grpc.Server, port int),
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return service.Run(gCtx)
+	})
+
+	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
+	defer cancelTimeout()
+	if !service.WaitForReady(ctxTimeout) {
+		cancel()
+		return fmt.Errorf("service is not ready: %w", g.Wait())
+	}
+
+	g.Go(func() error {
+		return connection.RunServerMainWithError(gCtx, serverConfig, register)
+	})
+	return g.Wait()
 }
