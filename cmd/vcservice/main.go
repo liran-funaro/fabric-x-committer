@@ -64,7 +64,6 @@ func startCmd() *cobra.Command {
 				}
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
-
 			return vc.Run(ctx)
 		},
 	}

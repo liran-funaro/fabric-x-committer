@@ -107,7 +107,7 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 }
 
 func (db *database) close() {
-	logger.Infof("closing database connection %s", db.name)
+	logger.Infof("closing %s database connection", db.name)
 	db.pool.Close()
 }
 

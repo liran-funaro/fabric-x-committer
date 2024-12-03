@@ -106,7 +106,7 @@ func NewValidatorCommitterService(
 
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
-	defer vc.db.close()
+	defer vc.Close()
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -334,4 +334,9 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		prometheusmetrics.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
 		prometheusmetrics.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
+}
+
+// Close is closing the db connection.
+func (vc *ValidatorCommitterService) Close() {
+	vc.db.close()
 }

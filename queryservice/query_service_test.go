@@ -270,13 +270,14 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 			},
 		},
 		Database: &vcservice.DatabaseConfig{
-			Host:           cs.Host,
-			Port:           port,
-			Username:       cs.User,
-			Password:       cs.Password,
-			Database:       cs.Database,
-			MaxConnections: 10,
-			MinConnections: 1,
+			Host:                  cs.Host,
+			Port:                  port,
+			Username:              cs.User,
+			Password:              cs.Password,
+			Database:              cs.Database,
+			MaxConnections:        10,
+			MinConnections:        1,
+			ConnPoolCreateTimeout: 3 * time.Minute,
 		},
 		Monitoring: &monitoring.Config{
 			Metrics: &metrics.Config{

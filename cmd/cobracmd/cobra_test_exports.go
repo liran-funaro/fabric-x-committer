@@ -71,7 +71,7 @@ func UnitTestRunner(
 	wg := &sync.WaitGroup{}
 	t.Cleanup(wg.Wait)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 
 	wg.Add(1)

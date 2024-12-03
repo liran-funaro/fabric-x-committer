@@ -79,6 +79,7 @@ func NewValidatorAndCommitServiceTestEnv(
 
 	vcs, err := NewValidatorCommitterService(initCtx, config)
 	require.NoError(t, err)
+	t.Cleanup(vcs.Close)
 
 	wg := sync.WaitGroup{}
 	t.Cleanup(wg.Wait)
