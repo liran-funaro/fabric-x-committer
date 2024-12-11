@@ -2,17 +2,14 @@ package coordinatorservice
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
 )
 
 type svMgrTestEnv struct {
@@ -20,22 +17,12 @@ type svMgrTestEnv struct {
 	inputBlock                chan *protoblocktx.Block
 	outputBlockWithValidTxs   chan *protoblocktx.Block
 	outputBlockWithInvalidTxs chan *protoblocktx.Block
-	mockSvService             []*sigverifiermock.MockSigVerifier
-	grpcServers               []*grpc.Server
-	serversConfig             []*connection.ServerConfig
+	mockSvService             []*mock.SigVerifier
+	grpcServers               *test.GrpcServers
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
-	sc, svs, grpcServers := sigverifiermock.StartMockSVService(numSvService)
-	t.Cleanup(func() {
-		for _, s := range grpcServers {
-			s.GracefulStop()
-		}
-
-		for _, mockSv := range svs {
-			mockSv.Close()
-		}
-	})
+	svs, sc := mock.StartMockSVService(t, numSvService)
 
 	inputBlock := make(chan *protoblocktx.Block, 10)
 	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
@@ -43,7 +30,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			serversConfig:                         sc,
+			serversConfig:                         sc.Configs,
 			incomingBlockForSignatureVerification: inputBlock,
 			outgoingBlockWithValidTxs:             outputBlockWithValidTxs,
 			outgoingBlockWithInvalidTxs:           outputBlockWithInvalidTxs,
@@ -51,14 +38,14 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		},
 	)
 
-	wg := sync.WaitGroup{}
-	t.Cleanup(wg.Wait)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, svm.run(ctx)); wg.Done() }()
-
-	<-svm.connectionReady
+	test.RunServiceForTest(t, svm.run, func(ctx context.Context) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-svm.connectionReady:
+			return true
+		}
+	})
 
 	env := &svMgrTestEnv{
 		signVerifierManager:       svm,
@@ -66,8 +53,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		outputBlockWithValidTxs:   outputBlockWithValidTxs,
 		outputBlockWithInvalidTxs: outputBlockWithInvalidTxs,
 		mockSvService:             svs,
-		grpcServers:               grpcServers,
-		serversConfig:             sc,
+		grpcServers:               sc,
 	}
 
 	return env
@@ -92,7 +78,7 @@ func (e *svMgrTestEnv) requireBlock(
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
-	// MockSigVerifier marks valid and invalid flag as follows:
+	// SigVerifier marks valid and invalid flag as follows:
 	// - when the block number is even, the even numbered txs are valid and the odd numbered txs are invalid
 	// - when the block number is odd, the even numbered txs are invalid and the odd numbered txs are valid
 	env := newSvMgrTestEnv(t, 1)
@@ -280,7 +266,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	require.Empty(t, env.outputBlockWithValidTxs)
 	require.Empty(t, env.outputBlockWithInvalidTxs)
 
-	for _, s := range env.grpcServers {
+	for _, s := range env.grpcServers.Servers {
 		s.Stop()
 	}
 	time.Sleep(time.Second)
@@ -288,8 +274,8 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	for _, sv := range env.mockSvService {
 		sv.MockFaultyNodeDropSize = 0
 	}
-	env.grpcServers = sigverifiermock.StartMockSVServiceFromListWithConfig(
-		env.mockSvService, env.serversConfig,
+	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
+		t, env.mockSvService, env.grpcServers.Configs,
 	)
 
 	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalidTxs)

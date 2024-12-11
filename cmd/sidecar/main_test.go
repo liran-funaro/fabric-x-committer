@@ -11,36 +11,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 )
 
 //go:embed sidecar-cmd-test-config.yaml
 var serverTemplate string
 
 func TestSidecarCmd(t *testing.T) {
-	ordererServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil, 100, 0)
-	t.Cleanup(func() {
-		for _, o := range orderers {
-			o.Close()
-		}
-		for _, oGrpc := range orderersGrpcServer {
-			oGrpc.Stop()
-		}
-	})
-
-	coordinatorServerConfig, coordinator, coordGrpcServer := coordinatormock.StartMockCoordinatorService()
-	t.Cleanup(func() {
-		coordinator.Close()
-		coordGrpcServer.Stop()
-	})
+	_, ordererServer := mock.StartMockOrderingServices(
+		t, 1, mock.OrdererConfig{BlockSize: 100},
+	)
+	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	ledgerPath := filepath.Clean(path.Join(t.TempDir(), "ledger"))
 	config := fmt.Sprintf(
 		serverTemplate,
-		ordererServerConfig[0].Endpoint.Port,
-		coordinatorServerConfig.Endpoint.Port,
+		ordererServer.Configs[0].Endpoint.Port,
+		coordinatorServer.Configs[0].Endpoint.Port,
 		ledgerPath,
 		3111,
 		9111,

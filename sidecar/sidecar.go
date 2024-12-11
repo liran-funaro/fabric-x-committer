@@ -57,6 +57,12 @@ func New(c *SidecarConfig) (*Service, error) {
 	}, nil
 }
 
+// WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
+// If the context ended before the service is ready, returns false.
+func (*Service) WaitForReady(context.Context) bool {
+	return true
+}
+
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
 func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
@@ -98,13 +104,22 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.Errorf("sidecar processing has been stopped due to err [%v]", err)
+		if !connection.IsStreamContextEnd(err) {
+			logger.Errorf("sidecar processing has been stopped due to err [%v]", err)
+		} else {
+			logger.Info("sidecar processing has been stopped due to context end")
+		}
 		return err
 	}
 	return nil
 }
 
-// GetLedgerService returns the ledger that implements peer.DeliverServer..
+// Close closes the ledger.
+func (s *Service) Close() {
+	s.ledgerService.Close()
+}
+
+// GetLedgerService returns the ledger that implements peer.DeliverServer.
 func (s *Service) GetLedgerService() *ledger.Service {
 	return s.ledgerService
 }

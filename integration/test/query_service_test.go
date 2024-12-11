@@ -37,10 +37,9 @@ func TestQueryService(t *testing.T) {
 			BlockTimeout:        2 * time.Second,
 		},
 	)
-	defer c.Stop(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
-	defer t.Cleanup(cancel)
+	t.Cleanup(cancel)
 
 	insertions := []struct {
 		txs             []*protoblocktx.Tx

@@ -6,30 +6,14 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
-
-// StartGrpcServer starts a grpc server for the ledger service.
-func StartGrpcServer(_ *testing.T, config *connection.ServerConfig, ledgerService *Service) *grpc.Server {
-	var s *grpc.Server
-	connection.RunServerMainAndWait(config, func(server *grpc.Server, port int) {
-		if config.Endpoint.Port == 0 {
-			config.Endpoint.Port = port
-		}
-		s = server
-		peer.RegisterDeliverServer(server, ledgerService)
-	})
-
-	return s
-}
 
 // StartDeliverClient starts a deliver client to fetch committed blocks from the ledger service.
 func StartDeliverClient(
-	ctx context.Context,
 	t *testing.T,
 	config *deliverclient.Config,
 	startBlkNum int64,
@@ -37,12 +21,11 @@ func StartDeliverClient(
 	receivedBlocksFromLedgerService := make(chan *common.Block, 10)
 	deliverClient, err := deliverclient.New(config, deliverclient.Ledger, receivedBlocksFromLedgerService)
 	require.NoError(t, err)
-
-	go func() {
-		require.NoError(t, connection.FilterStreamErrors(deliverClient.Run(ctx,
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return connection.WrapStreamRpcError(deliverClient.Run(ctx,
 			&deliverclient.ReceiverRunConfig{StartBlkNum: startBlkNum},
-		)))
-	}()
+		))
+	}, nil)
 	return receivedBlocksFromLedgerService
 }
 

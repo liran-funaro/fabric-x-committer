@@ -27,7 +27,7 @@ var baseConfig = benchmarkConfig{
 }
 
 func BenchmarkStreamHandler(b *testing.B) {
-	var output = test.Open("stream", &test.ResultOptions{Columns: []*test.ColumnConfig{
+	output := test.Open("stream", &test.ResultOptions{Columns: []*test.ColumnConfig{
 		{Header: "Batch size", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Server delay", Formatter: test.ConstantDistributionFormatter},
 		{Header: "Throughput", Formatter: test.NoFormatting},
@@ -41,7 +41,7 @@ func BenchmarkStreamHandler(b *testing.B) {
 			config.InputGeneratorParams.ServerDelay = test.Constant(serverDelay)
 			b.Run(fmt.Sprintf("%s-b%d-d%v", config.Name, batchSize, time.Duration(serverDelay)), func(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
-				s := sigverification_test.NewTestState(g.VerifierServer())
+				s := sigverification_test.NewTestState(b, g.VerifierServer())
 				t := connection.NewRequestTracker()
 				defer s.TearDown()
 				stream, _ := s.Client.StartStream(context.Background())

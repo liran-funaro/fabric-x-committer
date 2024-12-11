@@ -2,8 +2,7 @@ package config
 
 import (
 	"bytes"
-	"regexp"
-	"sort"
+	"io"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -66,29 +65,23 @@ func initializeConfig() error {
 	return nil
 }
 
-func defaultConfigFiles() []string {
-	configFiles, err := FilePaths(".", regexp.MustCompile(`^config.*\.yaml`))
-	if err != nil {
-		panic(err)
-	}
-
-	// We start reading config files with smaller length (more general, e.g. config.yaml) to the ones that are more specific (e.g. config-sigverification-host1.yaml)
-	sort.Slice(configFiles, func(i, j int) bool {
-		return len(configFiles[i]) < len(configFiles[j])
-	})
-	return configFiles
-}
-
 func ReadYamlConfigs(configFiles []string) error {
 	mergedConfigs, err := MergeYamlConfigs(configFiles...)
 	if err != nil {
 		return err
 	}
+	return ReadYamlConfigsFromIO(bytes.NewReader(mergedConfigs))
+}
+
+func LoadYamlConfigs(config string) error {
+	return ReadYamlConfigsFromIO(bytes.NewBufferString(config))
+}
+
+func ReadYamlConfigsFromIO(in io.Reader) error {
 	viper.SetConfigType("yaml")
-	err = viper.ReadConfig(bytes.NewReader(mergedConfigs))
+	err := viper.ReadConfig(in)
 	if err != nil {
 		return err
 	}
-
 	return configUpdated()
 }

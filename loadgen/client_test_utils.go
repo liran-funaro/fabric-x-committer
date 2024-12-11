@@ -4,16 +4,17 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"os"
+	"net/http"
 	"path"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -32,15 +33,12 @@ var (
 
 	//go:embed config_template/server.yaml
 	serverTemplate string
-)
 
-// vcServer and vcClient config templates.
-var (
 	//go:embed config_template/vc_server.yaml
 	vcServerConfig string
 
-	//go:embed config_template/vc_client.yaml
-	vcClientConfig string
+	//go:embed config_template/single_vc_client.yaml
+	vcSingleClientConfig string
 )
 
 func combineServerTemplates(additionalTemplate string) string {
@@ -51,72 +49,65 @@ func combineClientTemplates(additionalTemplate string) string {
 	return loggingTemplate + clientOnlyTemplate + additionalTemplate
 }
 
-func loadConfig(t *testing.T, fileName, template string, params ...any) {
+func loadConfigString(t *testing.T, template string, params ...any) {
 	conf := fmt.Sprintf(template, params...)
-	testConfigPath := tempFile(t, fileName)
-	require.NoError(t, os.WriteFile(testConfigPath, []byte(conf), 0o600))
-	require.NoError(t, config.ReadYamlConfigs([]string{testConfigPath}))
+	require.NoError(t, config.LoadYamlConfigs(conf))
 }
 
 func tempFile(t *testing.T, filename string) string {
-	output := filepath.Clean(path.Join(t.TempDir(), filename))
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(output))
-	})
-	return output
+	return filepath.Clean(path.Join(t.TempDir(), filename))
 }
 
-func startLoadGenerator(t *testing.T, c *ClientConfig) *PerfMetrics {
-	logger.Debugf("Starting load generator with config: %v", c)
-	loadBundle, err := Starter(c)
+func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
+	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
-	metrics, blockGen, namespaceGen, client := loadBundle.Metrics,
-		loadBundle.BlkStream,
-		loadBundle.NamespaceGen,
-		loadBundle.Client
 
-	require.NoError(t, client.Start(blockGen, namespaceGen))
-	go func() {
-		<-client.Context().Done()
-		require.ErrorIs(t, context.Cause(client.Context()), ErrStoppedByUser)
-	}()
-	t.Cleanup(client.Stop)
-
-	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, metrics.transactionSentTotal) > 0 &&
-			test.GetMetricValue(t, metrics.transactionReceivedTotal) > 0 &&
-			test.GetMetricValue(t, metrics.transactionCommittedTotal) > 0 &&
-			test.GetMetricValue(t, metrics.transactionAbortedTotal) == 0
-	}, 20*time.Second, 100*time.Millisecond)
-
-	return metrics
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return connection.WrapStreamRpcError(client.Run(ctx))
+	}, nil)
+	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
+		return m.TransactionSentTotal > 0 &&
+			m.TransactionReceivedTotal > 0 &&
+			m.TransactionCommittedTotal > 0 &&
+			m.TransactionAbortedTotal == 0
+	})
+	return client
 }
 
-func startServer(conf connection.ServerConfig, register func(server *grpc.Server)) (*grpc.Server, connection.Endpoint) {
-	var grpcServer *grpc.Server
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		connection.RunServerMain(&conf, func(server *grpc.Server, port int) {
-			if conf.Endpoint.Port == 0 {
-				conf.Endpoint.Port = port
-			}
-			register(server)
-			grpcServer = server
-			wg.Done()
-		})
-	}()
-	wg.Wait()
+func testLoadGenerator(
+	t *testing.T, c *ClientConfig, condition func(m metrics.Values) bool,
+) {
+	client := runLoadGenerator(t, c)
 
-	return grpcServer, conf.Endpoint
+	test.CheckMetrics(t, &http.Client{}, metrics.GetMetricsForTests(t, client.resources.Metrics).URL, []string{
+		"blockgen_block_sent_total",
+		"blockgen_transaction_sent_total",
+		"blockgen_transaction_received_total",
+		"blockgen_valid_transaction_latency_seconds",
+		"blockgen_invalid_transaction_latency_seconds",
+	})
+
+	eventuallyMetrics(t, client.resources.Metrics, condition)
 }
 
-// ActivateVcService activating the vc-service with the given ports for test purpose.
-func ActivateVcService(t *testing.T, ports, metricPorts []int) *yuga.Connection {
+func eventuallyMetrics(
+	t *testing.T,
+	m *metrics.PerfMetrics,
+	condition func(m metrics.Values) bool,
+) {
+	if !assert.Eventually(t, func() bool {
+		return condition(metrics.GetMetricsForTests(t, m))
+	}, 2*time.Minute, time.Second) {
+		t.Fatalf("Metrics target was not achieved: %+v", metrics.GetMetricsForTests(t, m))
+	}
+}
+
+// activateVcServiceForTest activating the vc-service with the given ports for test purpose.
+func activateVcServiceForTest(t *testing.T, ports, metricPorts []int) *yuga.Connection {
 	conn := yuga.PrepareYugaTestEnv(t)
 
 	for i := range ports {
-		loadConfig(t, "server-config.yaml", combineServerTemplates(vcServerConfig),
+		loadConfigString(t, combineServerTemplates(vcServerConfig),
 			tempFile(t, "server-log.txt"),
 			conn.Host, conn.Port, conn.User, conn.Password, conn.Database,
 			metricPorts[i], ports[i])
@@ -124,53 +115,30 @@ func ActivateVcService(t *testing.T, ports, metricPorts []int) *yuga.Connection 
 
 		initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		t.Cleanup(initCancel)
-
 		service, err := vcservice.NewValidatorCommitterService(initCtx, conf)
 		require.NoError(t, err)
 		t.Cleanup(service.Close)
-
-		server, _ := startServer(*conf.Server, func(server *grpc.Server) {
+		test.RunServiceAndGrpcForTest(t, service, conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
-		t.Cleanup(server.Stop)
-
-		wg := sync.WaitGroup{}
-		t.Cleanup(wg.Wait)
-
-		sCtx, sCancel := context.WithCancel(context.Background())
-		t.Cleanup(sCancel)
-
-		wg.Add(1)
-		go func() { defer wg.Done(); require.NoError(t, service.Run(sCtx)) }()
 	}
 	return conn
 }
 
 // GenerateNamespacesUnderTest is an export function that creates namespaces using the vc-service.
 func GenerateNamespacesUnderTest(t *testing.T, namespaces []types.NamespaceID) *yuga.Connection {
-	conn := ActivateVcService(t, []int{9123}, []int{10010})
+	conn := activateVcServiceForTest(t, []int{9123}, []int{10010})
 
-	loadConfig(
+	loadConfigString(
 		t,
-		"client-config.yaml",
-		combineClientTemplates(vcClientConfig),
+		combineClientTemplates(vcSingleClientConfig),
 		tempFile(t, "client-log.txt"),
 		2225,
 		9123,
-		9123,
 	)
-
 	vcConfig := ReadConfig()
 	vcConfig.LoadProfile.Transaction.Signature.Namespaces = namespaces
-
-	loadBundle, err := Starter(vcConfig)
-	require.NotNil(t, loadBundle.Client)
-	t.Cleanup(loadBundle.Client.Stop)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		loadBundle.Client.startNamespaceGeneration(loadBundle.NamespaceGen),
-	)
-
+	vcConfig.OnlyNamespaceGeneration = true
+	runLoadGenerator(t, vcConfig)
 	return conn
 }

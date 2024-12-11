@@ -9,44 +9,22 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 )
 
 //go:embed coordinator-cmd-test-config.yaml
 var configTemplate string
 
 func TestCoordinatorServiceCmd(t *testing.T) {
-	sigVerServerConfig, mockSigVer, sigVerGrpc := sigverifiermock.StartMockSVService(1)
-
-	t.Cleanup(func() {
-		for _, svGrpc := range sigVerGrpc {
-			svGrpc.Stop()
-		}
-
-		for _, sv := range mockSigVer {
-			sv.Close()
-		}
-	})
-
-	vcServerConfig, mockVC, vcGrpc := vcservicemock.StartMockVCService(1)
-
-	t.Cleanup(func() {
-		for _, svGrpc := range vcGrpc {
-			svGrpc.Stop()
-		}
-
-		for _, sv := range mockVC {
-			sv.Close()
-		}
-	})
+	_, sigVerServers := mock.StartMockSVService(t, 1)
+	_, vcServers := mock.StartMockVCService(t, 1)
 
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(
 		configTemplate,
 		loggerOutputPath,
-		sigVerServerConfig[0].Endpoint.Port,
-		vcServerConfig[0].Endpoint.Port,
+		sigVerServers.Configs[0].Endpoint.Port,
+		vcServers.Configs[0].Endpoint.Port,
 	)
 	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
 

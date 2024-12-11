@@ -2,13 +2,10 @@ package vcservice
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
@@ -16,8 +13,6 @@ import (
 //	     chaincode deployment model.
 
 const (
-	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
-
 	ns1 = types.NamespaceID(1)
 	ns2 = types.NamespaceID(2)
 )
@@ -26,11 +21,6 @@ var (
 	v0 = types.VersionNumber(0).Bytes()
 	v1 = types.VersionNumber(1).Bytes()
 )
-
-type valueVersion struct {
-	value   []byte
-	version []byte
-}
 
 func TestValidateNamespaceReads(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
@@ -299,87 +289,4 @@ func TestDBCommit(t *testing.T) {
 	require.NoError(t, err)
 	dbEnv.rowExists(t, 3, *nsToWrites[3])
 	dbEnv.rowExists(t, 4, *nsToWrites[4])
-}
-
-func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
-	for nsID, writes := range nsToWrites {
-		_, err := env.DB.pool.Exec(context.Background(), fmt.Sprintf(`
-			INSERT INTO %s (key, value, version)
-			SELECT _key, _value, _version
-			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
-			TableName(nsID)),
-			writes.keys, writes.values, writes.versions,
-		)
-		require.NoError(t, err)
-	}
-}
-
-func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
-	t *testing.T,
-	nsIDs []int,
-	writes namespaceToWrites,
-	batchStatus *protovcservice.TransactionStatus,
-	txIDToHeight transactionIDToHeight,
-) {
-	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
-
-	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
-	require.NoError(t, err)
-	env.commitState(t, writes)
-
-	t.Cleanup(func() {
-		require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, nsIDs))
-	})
-}
-
-func (env *DatabaseTestEnv) fetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*valueVersion {
-	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
-
-	kvPairs, err := env.DB.pool.Query(context.Background(), query, keys)
-	require.NoError(t, err)
-	defer kvPairs.Close()
-
-	actualRows := map[string]*valueVersion{}
-
-	for kvPairs.Next() {
-		var key []byte
-		vv := &valueVersion{}
-
-		require.NoError(t, kvPairs.Scan(&key, &vv.value, &vv.version))
-		actualRows[string(key)] = vv
-	}
-
-	require.NoError(t, kvPairs.Err())
-
-	return actualRows
-}
-
-func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
-	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
-	names, err := env.DB.pool.Query(context.Background(), query)
-	require.NoError(t, err)
-	defer names.Close()
-	require.True(t, names.Next())
-}
-
-func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
-	actualRows := env.fetchKeys(t, nsID, expectedRows.keys)
-
-	assert.Len(t, actualRows, len(expectedRows.keys))
-	for i, key := range expectedRows.keys {
-		if assert.NotNil(t, actualRows[string(key)], "key: %s", string(key)) {
-			assert.Equal(t, expectedRows.values[i], actualRows[string(key)].value, "key: %s", string(key))
-			assert.Equal(t, expectedRows.versions[i], actualRows[string(key)].version, "key: %s", string(key))
-		}
-	}
-}
-
-func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
-	actualRows := env.fetchKeys(t, nsID, keys)
-
-	assert.Len(t, actualRows, 0)
-	for key, valVer := range actualRows {
-		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
-			key, string(valVer.value), types.VersionNumberFromBytes(valVer.version))
-	}
 }

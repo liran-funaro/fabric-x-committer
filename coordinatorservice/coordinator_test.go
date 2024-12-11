@@ -3,12 +3,12 @@ package coordinatorservice
 import (
 	"context"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -17,8 +17,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -43,45 +41,28 @@ type (
 	}
 )
 
-func newCoordinatorTestEnv(ctx context.Context, t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
-	svServerConfigs, svServices, svGrpcServers := sigverifiermock.StartMockSVService(tConfig.numSigService)
-	t.Cleanup(func() {
-		for _, mockSV := range svServices {
-			mockSV.Close()
-		}
-		for _, s := range svGrpcServers {
-			s.Stop()
-		}
-	})
+func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
+	_, svServers := mock.StartMockSVService(t, tConfig.numSigService)
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
 	var vcsTestEnv *vcservice.ValidatorAndCommitterServiceTestEnv
 
 	if !tConfig.mockVcService {
-		vcsTestEnv = vcservice.NewValidatorAndCommitServiceTestEnv(ctx, t)
+		vcsTestEnv = vcservice.NewValidatorAndCommitServiceTestEnv(t)
 		vcServerConfigs = append(vcServerConfigs, vcsTestEnv.Config.Server)
 
 		for range tConfig.numVcService - 1 {
-			vcs := vcservice.NewValidatorAndCommitServiceTestEnv(ctx, t, vcsTestEnv.GetDBEnv(t))
+			vcs := vcservice.NewValidatorAndCommitServiceTestEnv(t, vcsTestEnv.GetDBEnv(t))
 			vcServerConfigs = append(vcServerConfigs, vcs.Config.Server)
 		}
 	} else {
-		serverConfig, vcServices, vcGrpcServers := vcservicemock.StartMockVCService(tConfig.numVcService)
-		t.Cleanup(func() {
-			for _, mockVC := range vcServices {
-				mockVC.Close()
-			}
-			for _, s := range vcGrpcServers {
-				s.Stop()
-			}
-		})
-
-		vcServerConfigs = serverConfig
+		_, vcServers := mock.StartMockVCService(t, tConfig.numVcService)
+		vcServerConfigs = vcServers.Configs
 	}
 
 	c := &CoordinatorConfig{
 		SignVerifierConfig: &SignVerifierConfig{
-			ServerConfig: svServerConfigs,
+			ServerConfig: svServers.Configs,
 		},
 		DependencyGraphConfig: &DependencyGraphConfig{
 			NumOfLocalDepConstructors:       3,
@@ -111,39 +92,17 @@ func newCoordinatorTestEnv(ctx context.Context, t *testing.T, tConfig *testConfi
 }
 
 func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
-	dCtx, cancel := context.WithCancel(ctx)
 	cs := e.coordinator
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	wg.Add(1)
-	go func() { require.NoError(t, connection.FilterStreamErrors(cs.Run(dCtx))); wg.Done() }()
-
-	ctxConnWait, cancelConnWait := context.WithTimeout(dCtx, 2*time.Minute)
-	defer cancelConnWait()
-	cs.WaitForReady(ctxConnWait)
-
 	sc := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: 0,
 		},
 	}
-	var grpcSrv *grpc.Server
+	e.grpcServer = test.RunServiceAndGrpcForTest(t, cs, sc, func(server *grpc.Server) {
+		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
+	})
 
-	var grpcSrvG sync.WaitGroup
-	grpcSrvG.Add(1)
-	go func() {
-		connection.RunServerMain(sc, func(grpcServer *grpc.Server, actualListeningPort int) {
-			grpcSrv = grpcServer
-			sc.Endpoint.Port = actualListeningPort
-			protocoordinatorservice.RegisterCoordinatorServer(grpcServer, cs)
-			grpcSrvG.Done()
-		})
-	}()
-	grpcSrvG.Wait()
-	t.Cleanup(grpcSrv.Stop)
-
-	e.grpcServer = grpcSrv
 	conn, err := connection.Connect(connection.NewDialConfig(sc.Endpoint))
 	require.NoError(t, err)
 
@@ -156,8 +115,6 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	require.NoError(t, err)
 
 	e.csStream = csStream
-
-	t.Cleanup(cancel)
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -218,9 +175,9 @@ func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum, nsID int) {
 }
 
 func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	env.start(ctx, t)
 
 	env.ensureStreamActive(t)
@@ -232,9 +189,9 @@ func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
 }
 
 func TestGetNextBlockNumWithActiveStream(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	env.start(ctx, t)
 
 	env.ensureStreamActive(t)
@@ -245,9 +202,9 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	env.start(ctx, t)
 
 	env.createNamespace(t, 0, 1)
@@ -329,10 +286,148 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	require.Zero(t, count)
 }
 
-func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
+func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
+	env.start(ctx, t)
+
+	utNsID := types.NamespaceID(1)
+	utNsVersion := types.VersionNumber(0).Bytes()
+	mainKey := []byte("main-key")
+	subKey := []byte("sub-key")
+	p := &protoblocktx.NamespacePolicy{
+		Scheme:    "ECDSA",
+		PublicKey: []byte("public-key"),
+	}
+	pBytes, err := proto.Marshal(p)
+	require.NoError(t, err)
+
+	// We send a block with a series of TXs with apparent conflicts, but all should be committed successfully if
+	// executed serially.
+	b1 := &protoblocktx.Block{
+		Number: 0,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "create namespace 1",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(types.MetaNamespaceID),
+					NsVersion: types.VersionNumber(0).Bytes(),
+					ReadWrites: []*protoblocktx.ReadWrite{
+						{
+							Key:   utNsID.Bytes(),
+							Value: pBytes,
+						},
+					},
+				}},
+			},
+			{
+				Id: "create main key (read-write version 0)",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(utNsID),
+					NsVersion: utNsVersion,
+					ReadWrites: []*protoblocktx.ReadWrite{{
+						Key:   mainKey,
+						Value: []byte("value of version 0"),
+					}},
+				}},
+			},
+			{
+				Id: "update main key (read-write version 1)",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(utNsID),
+					NsVersion: utNsVersion,
+					ReadWrites: []*protoblocktx.ReadWrite{{
+						Key:     mainKey,
+						Value:   []byte("value of version 1"),
+						Version: types.VersionNumber(0).Bytes(),
+					}},
+				}},
+			},
+			{
+				Id: "update main key (blind-write version 2)",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(utNsID),
+					NsVersion: utNsVersion,
+					BlindWrites: []*protoblocktx.Write{{
+						Key:   mainKey,
+						Value: []byte("Value of version 2"),
+					}},
+				}},
+			},
+			{
+				Id: "read main key, create sub key (read version 2, read-write version 0)",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(utNsID),
+					NsVersion: utNsVersion,
+					ReadsOnly: []*protoblocktx.Read{{
+						Key:     mainKey,
+						Version: types.VersionNumber(2).Bytes(),
+					}},
+					ReadWrites: []*protoblocktx.ReadWrite{{
+						Key:   subKey,
+						Value: []byte("Sub value of version 0"),
+					}},
+				}},
+			},
+			{
+				Id: "update main key (read-write version 3)",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:      uint32(utNsID),
+					NsVersion: utNsVersion,
+					ReadWrites: []*protoblocktx.ReadWrite{{
+						Key:     mainKey,
+						Version: types.VersionNumber(2).Bytes(),
+						Value:   []byte("Value of version 3"),
+					}},
+				}},
+			},
+		},
+	}
+	for i, tx := range b1.Txs {
+		tx.Signatures = [][]byte{
+			[]byte("dummy"),
+		}
+		b1.TxsNum = append(b1.TxsNum, uint32(i)) // nolint:gosec // integer overflow conversion int -> uint32
+	}
+
+	expectedReceived := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) + float64(len(b1.Txs))
+
+	require.NoError(t, env.csStream.Send(b1))
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= expectedReceived
+	}, 5*time.Second, 500*time.Millisecond)
+
+	var status []*protocoordinatorservice.TxValidationStatus
+	require.Eventually(t, func() bool {
+		txStatus, err := env.csStream.Recv()
+		require.NoError(t, err)
+		status = append(status, txStatus.TxsValidationStatus...)
+		return len(status) == len(b1.Txs)
+	}, 20*time.Second, 500*time.Millisecond)
+	for _, txStatus := range status {
+		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status, txStatus.TxId)
+	}
+	require.Equal(
+		t,
+		expectedReceived,
+		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+	)
+
+	res := env.dbEnv.FetchKeys(t, utNsID, [][]byte{mainKey, subKey})
+	mainValue, ok := res[string(mainKey)]
+	require.True(t, ok)
+	require.Equal(t, types.VersionNumber(3).Bytes(), mainValue.Version)
+
+	subValue, ok := res[string(subKey)]
+	require.True(t, ok)
+	require.Equal(t, types.VersionNumber(0).Bytes(), subValue.Version)
+}
+
+func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 	env.start(ctx, t)
 
 	require.Never(t, func() bool {
@@ -419,9 +514,9 @@ func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
 }
 
 func TestQueueSize(t *testing.T) { // nolint:gocognit
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	go env.coordinator.monitorQueues(ctx)
 
 	q := env.coordinator.queues
@@ -462,9 +557,9 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 }
 
 func TestCoordinatorRecovery(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	env.start(ctx, t)
 
 	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
@@ -607,11 +702,11 @@ func TestCoordinatorRecovery(t *testing.T) {
 	cancel()
 	env.grpcServer.Stop()
 
-	ctx, cancel = context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(ctx, t, env.dbEnv)
+	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(t, env.dbEnv)
 	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Config.Server}
 	env.coordinator = NewCoordinatorService(env.config)
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 	env.start(ctx, t)
 
 	require.Eventually(t, func() bool {
@@ -796,9 +891,9 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 }
 
 func TestChunkSizeSentForDepGraph(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	env.start(ctx, t)
 
 	txPerBlock := 1990

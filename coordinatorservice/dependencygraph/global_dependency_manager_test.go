@@ -2,7 +2,6 @@ package dependencygraph
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -39,12 +38,10 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	)
 
 	env.dm = dm
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go func() { dm.run(ctx); wg.Done() }()
-	t.Cleanup(cancel)
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		dm.run(ctx)
+		return nil
+	}, nil)
 	return env
 }
 

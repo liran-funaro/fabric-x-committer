@@ -3,13 +3,13 @@ package vcservice
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type committerTestEnv struct {
@@ -26,15 +26,9 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
-
-	wg := sync.WaitGroup{}
-	t.Cleanup(wg.Wait)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, c.run(ctx, 1)); wg.Done() }()
-
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return c.run(ctx, 1)
+	}, nil)
 	return &committerTestEnv{
 		c:            c,
 		validatedTxs: validatedTxs,

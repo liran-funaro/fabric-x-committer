@@ -2,11 +2,11 @@ package dependencygraph
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -33,14 +33,14 @@ func TestDependencyGraph(t *testing.T) {
 			metrics:                metrics,
 		},
 	)
-
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	wg.Add(2)
-	go func() { ldc.run(ctx, 2); wg.Done() }()
-	go func() { dm.run(ctx); wg.Done() }()
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		ldc.run(ctx, 2)
+		return nil
+	}, nil)
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		dm.run(ctx)
+		return nil
+	}, nil)
 
 	t.Run("check reads and writes dependency tracking", func(t *testing.T) {
 		keys := makeTestKeys(t, 10)

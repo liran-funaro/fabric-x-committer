@@ -2,20 +2,23 @@ package streamhandler
 
 import (
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 var logger = logging.New("streamhandler")
 
-type Input = *sigverification.RequestBatch
-type Output = *sigverification.ResponseBatch
-type Stream = sigverification.Verifier_StartStreamServer
+type (
+	Input  = *sigverification.RequestBatch
+	Output = *sigverification.ResponseBatch
+	Stream = sigverification.Verifier_StartStreamServer
+)
 
 // StreamHandler is an adapter between streams and a pair of pub/sub methods
 type StreamHandler struct {
-	//InputSubscriber determines what to do with the incoming requests from the client
+	// InputSubscriber determines what to do with the incoming requests from the client
 	InputSubscriber func(Input)
-	//OutputPublisher produces outgoing responses to send to the client
+	// OutputPublisher produces outgoing responses to send to the client
 	OutputPublisher func() Output
 }
 
@@ -36,10 +39,12 @@ func (s *StreamHandler) HandleStream(stream Stream) {
 
 func (s *StreamHandler) handleInputs(stream Stream) {
 	for {
-		//TODO: Add cancel
-		input, err := stream.Recv()
-		if err != nil {
-			logger.Infof("failed to serve request: %v", err)
+		// TODO: Add cancel
+		input, rpcErr := stream.Recv()
+		if rpcErr != nil {
+			if err := connection.WrapStreamRpcError(rpcErr); err != nil {
+				logger.Errorf("failed to serve request: %v", err)
+			}
 			return
 		}
 		logger.Debugf("Received input from client with %v requests", len(input.Requests))
@@ -55,7 +60,7 @@ func (s *StreamHandler) handleOutputs(stream Stream) {
 		err := stream.Send(output)
 		if err != nil {
 			logger.Infof("Failed to send output to client: %v", err)
-			//TODO: Replace panics with error handling
+			// TODO: Replace panics with error handling
 			return
 		}
 		logger.Debugf("Forwarded output to client.")

@@ -14,7 +14,7 @@ import (
 	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	loadgenworkload "github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -34,7 +34,9 @@ type CoordinatorAdapter struct {
 	rateLimiter      ratelimit.Limiter
 }
 
-func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *loadgen.LimiterConfig) *CoordinatorAdapter {
+func OpenCoordinatorAdapter(
+	endpoint connection.Endpoint, rateLimiterConfig *loadgenworkload.LimiterConfig,
+) *CoordinatorAdapter {
 	clientConfig := connection.NewDialConfig(endpoint)
 
 	logger.Infof("Connect to coordinator on %v.\n", &endpoint)
@@ -47,7 +49,7 @@ func OpenCoordinatorAdapter(endpoint connection.Endpoint, rateLimiterConfig *loa
 	return &CoordinatorAdapter{
 		client:      client,
 		ctx:         ctx,
-		rateLimiter: loadgen.NewLimiter(rateLimiterConfig),
+		rateLimiter: loadgenworkload.NewLimiter(rateLimiterConfig),
 		ctxCancel:   streamCancel,
 	}
 }

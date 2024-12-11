@@ -3,30 +3,30 @@ package sidecar
 import (
 	"context"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/coordinatormock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
 type sidecarTestEnv struct {
 	sidecar         *Service
-	coordinator     *coordinatormock.MockCoordinator
+	coordinator     *mock.Coordinator
 	gServer         *grpc.Server
 	config          *SidecarConfig
 	broadcastClient orderer.AtomicBroadcast_BroadcastClient
@@ -35,21 +35,10 @@ type sidecarTestEnv struct {
 }
 
 func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
-	orderersServerConfig, orderers, orderersGrpcServer := orderermock.StartMockOrderingServices(1, nil, 100, 0)
-	t.Cleanup(func() {
-		for _, o := range orderers {
-			o.Close()
-		}
-		for _, oGrpc := range orderersGrpcServer {
-			oGrpc.Stop()
-		}
-	})
-
-	coordinatorServerConfig, coordinator, coordGrpcServer := coordinatormock.StartMockCoordinatorService()
-	t.Cleanup(func() {
-		coordinator.Close()
-		coordGrpcServer.Stop()
-	})
+	_, orderersServer := mock.StartMockOrderingServices(
+		t, 1, mock.OrdererConfig{BlockSize: 100},
+	)
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 
 	channelID := "ch1"
 	config := &SidecarConfig{
@@ -61,11 +50,11 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 		},
 		Orderer: &deliverclient.Config{
 			ChannelID: channelID,
-			Endpoint:  orderersServerConfig[0].Endpoint,
+			Endpoint:  orderersServer.Configs[0].Endpoint,
 			Reconnect: -1,
 		},
 		Committer: &CoordinatorConfig{
-			Endpoint: coordinatorServerConfig.Endpoint,
+			Endpoint: coordinatorServer.Configs[0].Endpoint,
 		},
 		Ledger: &LedgerConfig{
 			Path: t.TempDir(),
@@ -74,8 +63,9 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 
 	sidecar, err := New(config)
 	require.NoError(t, err)
+	t.Cleanup(sidecar.Close)
 
-	broadcastClients, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{
+	broadcastSubmitter, err := broadcastclient.New(context.TODO(), broadcastclient.Config{
 		Broadcast:       []*connection.Endpoint{&config.Orderer.Endpoint},
 		SignedEnvelopes: false,
 		ChannelID:       config.Orderer.ChannelID,
@@ -88,25 +78,20 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 		sidecar:         sidecar,
 		coordinator:     coordinator,
 		config:          config,
-		broadcastClient: broadcastClients[0],
-		envelopeCreator: envelopeCreator,
+		broadcastClient: broadcastSubmitter.Streams[0],
+		envelopeCreator: broadcastSubmitter.EnvelopeCreator,
 	}
 }
 
-func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	dCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, connection.FilterStreamErrors(env.sidecar.Run(dCtx))); wg.Done() }()
-	env.gServer = ledger.StartGrpcServer(t, env.config.Server, env.sidecar.GetLedgerService())
-	t.Cleanup(env.gServer.Stop)
+func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
+	env.gServer = test.RunServiceAndGrpcForTest(t, env.sidecar, env.config.Server, func(server *grpc.Server) {
+		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
+	})
 
 	// we need to wait for the sidecar to connect to ordering service and fetch the
 	// config block, i.e., block 0. EnsureAtLeastHeight waits for the block 0 to be committed.
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
-	env.committedBlock = ledger.StartDeliverClient(ctx, t, &deliverclient.Config{
+	env.committedBlock = ledger.StartDeliverClient(t, &deliverclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  env.config.Server.Endpoint,
 		Reconnect: -1,
@@ -115,11 +100,9 @@ func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum 
 
 func TestSidecar(t *testing.T) {
 	env := newSidecarTestEnv(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	env.start(ctx, t, 0)
+	env.start(t, 0)
 
-	// orderermock expects 100 txs to create the next block
+	// mockorderer expects 100 txs to create the next block
 	txs := make([]*protoblocktx.Tx, 100)
 	sendTxs := func(txIDPrefix string) {
 		for i := range 100 {
@@ -132,6 +115,9 @@ func TestSidecar(t *testing.T) {
 			require.NoError(t, env.broadcastClient.Send(ev))
 		}
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 
 	checkLastCommittedBlock(ctx, t, env.coordinator, 0)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
@@ -159,9 +145,10 @@ func TestSidecar(t *testing.T) {
 	// restart and ensures it sends the next expected block by the coordinator.
 	cancel()
 	env.gServer.Stop()
+	env.start(t, 2)
+
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel2)
-	env.start(ctx2, t, 2)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 1)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
@@ -174,7 +161,7 @@ func TestSidecar(t *testing.T) {
 func checkLastCommittedBlock(
 	ctx context.Context,
 	t *testing.T,
-	coordinator *coordinatormock.MockCoordinator,
+	coordinator *mock.Coordinator,
 	expectedBlockNumber uint64,
 ) {
 	require.Eventually(t, func() bool {

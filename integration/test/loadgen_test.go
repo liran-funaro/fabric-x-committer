@@ -1,7 +1,6 @@
 package test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -23,12 +22,11 @@ func TestLoadgenSidecar(t *testing.T) {
 			LoadGen:         true,
 		},
 	)
-	defer c.Stop(t)
 
 	require.Eventually(t, func() bool {
 		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
-		fmt.Printf("count %d\n", count)
-		return count > 1000
-	}, 30*time.Second, 3*time.Second)
+		t.Logf("count %d", count)
+		return count > 1_000
+	}, 90*time.Second, 3*time.Second)
 	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
 }

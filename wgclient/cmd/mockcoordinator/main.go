@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -91,10 +92,10 @@ func main() {
 	c := coordinatorservice.ReadConfig()
 
 	bQueue := make(chan *token.Block, 1000)
-	connection.RunServerMain(c.ServerConfig, func(server *grpc.Server, port int) {
-		if c.ServerConfig.Endpoint.Port == 0 {
-			c.ServerConfig.Endpoint.Port = port
-		}
+	err := connection.RunGrpcServerMainWithError(context.Background(), c.ServerConfig, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, &mockService{bQueue: bQueue})
 	})
+	if err != nil {
+		log.Fatalf("failed to run server: %v", err)
+	}
 }

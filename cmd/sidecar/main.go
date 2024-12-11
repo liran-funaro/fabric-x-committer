@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -52,23 +51,23 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			c := sidecar.ReadConfig()
+			conf := sidecar.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			service, err := sidecar.New(&c)
-			utils.Must(err)
+			service, err := sidecar.New(&conf)
+			if err != nil {
+				return err
+			}
+			defer service.Close()
 
 			// enable health check server
 			healthcheck := health.NewServer()
 			healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 
-			go func() {
-				connection.RunServerMain(c.Server, func(server *grpc.Server, _ int) {
-					peer.RegisterDeliverServer(server, service.GetLedgerService())
-					healthgrpc.RegisterHealthServer(server, healthcheck)
-				})
-			}()
-			return service.Run(cmd.Context())
+			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
+				peer.RegisterDeliverServer(server, service.GetLedgerService())
+				healthgrpc.RegisterHealthServer(server, healthcheck)
+			})
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

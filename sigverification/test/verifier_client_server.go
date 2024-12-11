@@ -2,7 +2,6 @@ package sigverification_test
 
 import (
 	"log"
-	"sync"
 	"time"
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -43,24 +42,16 @@ type State struct {
 	StopServer func()
 }
 
-func NewTestState(server sigverification.VerifierServer) *State {
+func NewTestState(t test.TestingT, server sigverification.VerifierServer) *State {
 	serverConnectionConfig := connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost", Port: 0}}
 	s := &State{}
 
-	var port int
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		connection.RunServerMain(&serverConnectionConfig, func(grpcServer *grpc.Server, actualListeningPort int) {
-			s.StopServer = grpcServer.GracefulStop
-			port = actualListeningPort
-			sigverification.RegisterVerifierServer(grpcServer, server)
-			wg.Done()
-		})
-	}()
-	wg.Wait()
+	test.RunGrpcServerForTest(t, &serverConnectionConfig, func(grpcServer *grpc.Server) {
+		s.StopServer = grpcServer.GracefulStop
+		sigverification.RegisterVerifierServer(grpcServer, server)
+	})
 
-	clientConnectionConfig := connection.NewDialConfig(connection.Endpoint{Host: "localhost", Port: port})
+	clientConnectionConfig := connection.NewDialConfig(serverConnectionConfig.Endpoint)
 	clientConnection, _ := connection.Connect(clientConnectionConfig)
 	s.Client = sigverification.NewVerifierClient(clientConnection)
 	s.StopClient = clientConnection.Close

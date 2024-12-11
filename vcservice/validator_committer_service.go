@@ -146,6 +146,12 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	return nil
 }
 
+// WaitForReady wait for the service to be ready to be exposed as gRPC service.
+// If the context ended before the service is ready, returns false.
+func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
+	return true
+}
+
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 	// TODO: make sampling time configurable
 	ticker := time.NewTicker(250 * time.Millisecond)

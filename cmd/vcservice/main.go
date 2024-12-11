@@ -50,21 +50,16 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			vcConfig := vcservice.ReadConfig()
+			conf := vcservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-			ctx := cmd.Context()
-			vc, err := vcservice.NewValidatorCommitterService(ctx, vcConfig)
+			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), conf)
 			if err != nil {
 				return err
 			}
-
-			go connection.RunServerMain(vcConfig.Server, func(server *grpc.Server, port int) {
-				if vcConfig.Server.Endpoint.Port == 0 {
-					vcConfig.Server.Endpoint.Port = port
-				}
+			defer vc.Close()
+			return connection.StartService(cmd.Context(), vc, conf.Server, func(server *grpc.Server) {
 				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
 			})
-			return vc.Run(ctx)
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

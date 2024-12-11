@@ -8,6 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -47,14 +48,11 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			serviceConfig := queryservice.ReadConfig()
+			conf := queryservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			qs := queryservice.NewQueryService(serviceConfig)
-			return cobracmd.StartService(cmd.Context(), qs, serviceConfig.Server, func(server *grpc.Server, port int) {
-				if serviceConfig.Server.Endpoint.Port == 0 {
-					serviceConfig.Server.Endpoint.Port = port
-				}
+			qs := queryservice.NewQueryService(conf)
+			return connection.StartService(cmd.Context(), qs, conf.Server, func(server *grpc.Server) {
 				protoqueryservice.RegisterQueryServiceServer(server, qs)
 			})
 		},

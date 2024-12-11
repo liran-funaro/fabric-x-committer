@@ -1,25 +1,38 @@
 package test
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 )
 
-func FailHandler(t *testing.T) {
-	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Fatalf(message)
-	})
-}
+type (
+	// GrpcServers holds the server instances and their respective configurations.
+	GrpcServers struct {
+		Servers []*grpc.Server
+		Configs []*connection.ServerConfig
+	}
+
+	// TestingT allows supporting both Testing and Benchmarking.
+	TestingT interface {
+		Errorf(format string, args ...interface{})
+		FailNow()
+		Cleanup(f func())
+	}
+)
 
 var (
 	TxSize           = 1
@@ -31,8 +44,14 @@ var (
 	}
 )
 
+func FailHandler(t *testing.T) {
+	gomega.RegisterFailHandler(func(message string, _ ...int) {
+		t.Fatalf(message)
+	})
+}
+
 // CheckMetrics checks the metrics endpoint for the expected metrics.
-func CheckMetrics(t *testing.T, client *http.Client, url string, expectedMetrics []string) {
+func CheckMetrics(t TestingT, client *http.Client, url string, expectedMetrics []string) {
 	resp, err := client.Get(url)
 	require.NoError(t, err)
 
@@ -53,7 +72,7 @@ func CheckMetrics(t *testing.T, client *http.Client, url string, expectedMetrics
 }
 
 // GetMetricValue returns the value of a prometheus metric.
-func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
+func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 	gm := promgo.Metric{}
 	require.NoError(t, m.Write(&gm))
 
@@ -73,29 +92,93 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 	return 0
 }
 
-func StartMockServers(numService int, register func(*grpc.Server, int)) ([]*connection.ServerConfig, []*grpc.Server) {
+// RunGrpcServerForTest starts a GRPC server using a register method.
+// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
+// only when the GRPC server is down.
+// It also updates the server config endpoint port to the actual port if the configuration
+// did not specify a port.
+// The method asserts that the GRPC server did not end with failure.
+func RunGrpcServerForTest(
+	t TestingT, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+) *grpc.Server {
+	server, listener, err := connection.NewGrpcServer(serverConfig)
+	require.NoError(t, err)
+
+	serverConfig.Endpoint.Port = listener.Addr().(*net.TCPAddr).Port
+	register(server)
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	t.Cleanup(server.Stop)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// We use assert to prevent panicking for cleanup errors.
+		assert.NoError(t, server.Serve(listener))
+	}()
+	return server
+}
+
+// StartGrpcServersForTest starts multiple GRPC servers with a default configuration.
+func StartGrpcServersForTest(t TestingT, numService int, register func(*grpc.Server, int)) *GrpcServers {
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
 		sc[i] = &connection.ServerConfig{Endpoint: defaultEndPoint}
 	}
-	return sc, StartMockServersWithConfig(sc, register)
+	return StartGrpcServersWithConfigForTest(t, sc, register)
 }
 
-func StartMockServersWithConfig(sc []*connection.ServerConfig, register func(*grpc.Server, int)) []*grpc.Server {
+// StartGrpcServersWithConfigForTest starts multiple GRPC servers with given configurations.
+func StartGrpcServersWithConfigForTest(
+	t TestingT, sc []*connection.ServerConfig, register func(*grpc.Server, int),
+) *GrpcServers {
 	grpcServers := make([]*grpc.Server, len(sc))
 	for i, s := range sc {
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func(index int, config *connection.ServerConfig) {
-			connection.RunServerMain(config, func(grpcServer *grpc.Server, actualListeningPort int) {
-				grpcServers[index] = grpcServer
-				config.Endpoint.Port = actualListeningPort
-				register(grpcServer, index)
-				wg.Done()
-			})
-		}(i, s)
-		wg.Wait()
+		grpcServers[i] = RunGrpcServerForTest(t, s, func(server *grpc.Server) {
+			register(server, i)
+		})
 	}
-	return grpcServers
+	return &GrpcServers{
+		Servers: grpcServers,
+		Configs: sc,
+	}
+}
+
+// RunServiceForTest runs a service using the given service method, and waits for it to be ready
+// given the waitFunc method.
+// It handles the cleanup of the service at the end of a test, and ensure the test is ended
+// only when the service return.
+// The method asserts that the service did not end with failure.
+func RunServiceForTest(t TestingT, service func(ctx context.Context) error, waitFunc func(ctx context.Context) bool) {
+	var wg sync.WaitGroup
+	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
+	//       order of cleanup matters, which is last added first called.
+	t.Cleanup(wg.Wait)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// We use assert to prevent panicking for cleanup errors.
+		assert.NoError(t, service(ctx))
+	}()
+
+	if waitFunc == nil {
+		return
+	}
+
+	initCtx, initCancel := context.WithTimeout(ctx, 2*time.Minute)
+	t.Cleanup(initCancel)
+	require.True(t, waitFunc(initCtx))
+}
+
+// RunServiceAndGrpcForTest combines running a service and its GRPC server.
+// It is intended for services that implements the Service API (i.e., command line services).
+func RunServiceAndGrpcForTest(
+	t TestingT, service connection.Service, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+) *grpc.Server {
+	RunServiceForTest(t, func(ctx context.Context) error {
+		return connection.WrapStreamRpcError(service.Run(ctx))
+	}, service.WaitForReady)
+	return RunGrpcServerForTest(t, serverConfig, register)
 }

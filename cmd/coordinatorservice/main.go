@@ -8,6 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
@@ -47,26 +48,18 @@ func startCmd() *cobra.Command { //nolint:gocognit
 				return err
 			}
 			cmd.SilenceUsage = true
-			coordConfig := coordinatorservice.ReadConfig()
+			conf := coordinatorservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			coordService := coordinatorservice.NewCoordinatorService(coordConfig)
+			service := coordinatorservice.NewCoordinatorService(conf)
 
 			// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
 			// coordinator service if any of them fails. In the future, we can add recovery mechanism
 			// to restart the failed service and stop the coordinator service only if all the services
 			// in vcservice fail or all the services in sigverifier fail.
-			return cobracmd.StartService(
-				cmd.Context(),
-				coordService,
-				coordConfig.ServerConfig,
-				func(server *grpc.Server, port int) {
-					if coordConfig.ServerConfig.Endpoint.Port == 0 {
-						coordConfig.ServerConfig.Endpoint.Port = port
-					}
-					protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
-				},
-			)
+			return connection.StartService(cmd.Context(), service, conf.ServerConfig, func(s *grpc.Server) {
+				protocoordinatorservice.RegisterCoordinatorServer(s, service)
+			})
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

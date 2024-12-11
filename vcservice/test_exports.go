@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -20,7 +22,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
-const queryTxStatusSQLTemplate = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1)"
+const (
+	queryTxStatusSQLTemplate    = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1)"
+	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
+)
 
 // ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
 type ValidatorAndCommitterServiceTestEnv struct {
@@ -29,9 +34,14 @@ type ValidatorAndCommitterServiceTestEnv struct {
 	Config    *ValidatorCommitterServiceConfig
 }
 
+// ValueVersion contains a list of values and their matching versions.
+type ValueVersion struct {
+	Value   []byte
+	Version []byte
+}
+
 // NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
 func NewValidatorAndCommitServiceTestEnv(
-	ctx context.Context,
 	t *testing.T,
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
@@ -76,36 +86,12 @@ func NewValidatorAndCommitServiceTestEnv(
 
 	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(initCancel)
-
 	vcs, err := NewValidatorCommitterService(initCtx, config)
 	require.NoError(t, err)
 	t.Cleanup(vcs.Close)
-
-	wg := sync.WaitGroup{}
-	t.Cleanup(wg.Wait)
-
-	sCtx, sCancel := context.WithCancel(ctx)
-	t.Cleanup(sCancel)
-
-	wg.Add(1)
-	go func() { require.NoError(t, vcs.Run(sCtx)); wg.Done() }()
-
-	var grpcSrv *grpc.Server
-	var serviceG sync.WaitGroup
-	serviceG.Add(1)
-
-	go func() {
-		connection.RunServerMain(config.Server, func(grpcServer *grpc.Server, actualListeningPort int) {
-			grpcSrv = grpcServer
-			config.Server.Endpoint.Port = actualListeningPort
-			protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
-			serviceG.Done()
-		})
-	}()
-
-	serviceG.Wait()
-	stop := context.AfterFunc(ctx, grpcSrv.Stop)
-	t.Cleanup(func() { stop() })
+	test.RunServiceAndGrpcForTest(t, vcs, config.Server, func(server *grpc.Server) {
+		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
+	})
 
 	return &ValidatorAndCommitterServiceTestEnv{
 		VCService: vcs,
@@ -228,5 +214,89 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 		txID := TxID(tID)
 		require.NotEqual(t, expectedStatuses[string(txID)], actualRows[txID].status)
 		require.NotEqual(t, unexpectedHeight[txID], actualRows[txID].height)
+	}
+}
+
+func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
+	for nsID, writes := range nsToWrites {
+		_, err := env.DB.pool.Exec(context.Background(), fmt.Sprintf(`
+			INSERT INTO %s (key, value, version)
+			SELECT _key, _value, _version
+			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
+			TableName(nsID)),
+			writes.keys, writes.values, writes.versions,
+		)
+		require.NoError(t, err)
+	}
+}
+
+func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
+	t *testing.T,
+	nsIDs []int,
+	writes namespaceToWrites,
+	batchStatus *protovcservice.TransactionStatus,
+	txIDToHeight transactionIDToHeight,
+) {
+	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
+
+	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
+	require.NoError(t, err)
+	env.commitState(t, writes)
+
+	t.Cleanup(func() {
+		require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, nsIDs))
+	})
+}
+
+// FetchKeys fetches a list of keys.
+func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*ValueVersion {
+	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
+
+	kvPairs, err := env.DB.pool.Query(context.Background(), query, keys)
+	require.NoError(t, err)
+	defer kvPairs.Close()
+
+	actualRows := map[string]*ValueVersion{}
+
+	for kvPairs.Next() {
+		var key []byte
+		vv := &ValueVersion{}
+
+		require.NoError(t, kvPairs.Scan(&key, &vv.Value, &vv.Version))
+		actualRows[string(key)] = vv
+	}
+
+	require.NoError(t, kvPairs.Err())
+
+	return actualRows
+}
+
+func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
+	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
+	names, err := env.DB.pool.Query(context.Background(), query)
+	require.NoError(t, err)
+	defer names.Close()
+	require.True(t, names.Next())
+}
+
+func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
+	actualRows := env.FetchKeys(t, nsID, expectedRows.keys)
+
+	assert.Len(t, actualRows, len(expectedRows.keys))
+	for i, key := range expectedRows.keys {
+		if assert.NotNil(t, actualRows[string(key)], "key: %s", string(key)) {
+			assert.Equal(t, expectedRows.values[i], actualRows[string(key)].Value, "key: %s", string(key))
+			assert.Equal(t, expectedRows.versions[i], actualRows[string(key)].Version, "key: %s", string(key))
+		}
+	}
+}
+
+func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
+	actualRows := env.FetchKeys(t, nsID, keys)
+
+	assert.Len(t, actualRows, 0)
+	for key, valVer := range actualRows {
+		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
+			key, string(valVer.Value), types.VersionNumberFromBytes(valVer.Version))
 	}
 }

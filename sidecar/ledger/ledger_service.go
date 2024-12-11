@@ -58,11 +58,22 @@ func (s *Service) Run(ctx context.Context) error {
 			return nil
 		}
 		logger.Debugf("Appending block %d to ledger.\n", block.Header.Number)
-		if err := (s.ledger.Append(block)); err != nil {
+		if err := s.ledger.Append(block); err != nil {
 			return err
 		}
 		logger.Debugf("Appended block %d to ledger.\n", block.Header.Number)
 	}
+}
+
+// WaitForReady wait for service to be ready to be exposed as gRPC service.
+// If the context ended before the service is ready, returns false.
+func (*Service) WaitForReady(context.Context) bool {
+	return true
+}
+
+// Close releases the ledger directory.
+func (s *Service) Close() {
+	s.ledgerProvider.Close()
 }
 
 // Deliver delivers the requested blocks.

@@ -2,10 +2,10 @@ package vcservice
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -23,14 +23,9 @@ func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
 	p := newPreparer(txBatch, preparedTxs, metrics)
-
-	wg := sync.WaitGroup{}
-	t.Cleanup(wg.Wait)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, p.run(ctx, 1)); wg.Done() }()
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return p.run(ctx, 1)
+	}, nil)
 
 	return &prepareTestEnv{
 		preparer:    p,

@@ -24,12 +24,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 			BlockTimeout:    2 * time.Second,
 		},
 	)
-	defer c.Stop(t)
 
-	c.CreateCryptoForNs(t, types.NamespaceID(1), &signature.Profile{Scheme: signature.Ecdsa})
+	pubKey, _ := c.CreateCryptoForNs(types.NamespaceID(1), signature.Ecdsa)
 	ns1Policy := &protoblocktx.NamespacePolicy{
 		Scheme:    signature.Ecdsa,
-		PublicKey: c.GetPublicKey(t, types.NamespaceID(1)),
+		PublicKey: pubKey,
 	}
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)

@@ -1,23 +1,21 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 )
 
 const (
-	serviceName    = "blockgen"
+	serviceName    = "loadgen"
 	serviceVersion = "0.0.2"
 )
 
 func main() {
-	cmd := blockgenCmd()
+	cmd := loadgenCmd()
 
 	// On failure, Cobra prints the usage message and error string, so we only
 	// need to exit with a non-0 status
@@ -26,10 +24,10 @@ func main() {
 	}
 }
 
-func blockgenCmd() *cobra.Command {
+func loadgenCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   serviceName,
-		Short: fmt.Sprintf("%v is a block generator for coordinator service.", serviceName),
+		Short: fmt.Sprintf("%v is a load generator for FabricX committer services.", serviceName),
 	}
 
 	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
@@ -39,6 +37,8 @@ func blockgenCmd() *cobra.Command {
 
 func startCmd() *cobra.Command {
 	var configPath string
+	var onlyNamespace bool
+	var onlyWorkload bool
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: fmt.Sprintf("Starts a %v", serviceName),
@@ -48,30 +48,26 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			clientConfig := loadgen.ReadConfig()
+			conf := loadgen.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			loadBundle, err := loadgen.Starter(clientConfig)
+			if onlyNamespace {
+				conf.OnlyNamespaceGeneration = true
+			}
+			if onlyWorkload {
+				conf.OnlyLoadGeneration = true
+			}
+
+			client, err := loadgen.NewLoadGenClient(conf)
 			if err != nil {
 				return err
 			}
-			blkStream, nsGen, client := loadBundle.BlkStream, loadBundle.NamespaceGen, loadBundle.Client
-
-			if err = client.Start(blkStream, nsGen); err != nil {
-				return err
-			}
-
-			<-client.Context().Done()
-			if errors.Is(client.Context().Err(), context.DeadlineExceeded) {
-				return nil
-			}
-			if err = context.Cause(client.Context()); !errors.Is(err, loadgen.ErrStoppedByUser) {
-				return err
-			}
-			return nil
+			return client.Run(cmd.Context())
 		},
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
+	cmd.PersistentFlags().BoolVar(&onlyNamespace, "only-namespace", false, "only run namespace generation")
+	cmd.PersistentFlags().BoolVar(&onlyWorkload, "only-workload", false, "only run workload generation")
 	return cmd
 }

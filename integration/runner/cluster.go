@@ -14,10 +14,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
-	"github.com/tedsuo/ifrit"
-	"github.com/tedsuo/ifrit/ginkgomon"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -27,7 +26,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -61,9 +60,8 @@ type (
 		committedBlock chan *common.Block
 		rootDir        string
 
-		pubKey   *sync.Map
-		pvtKey   *sync.Map
-		txSigner *sync.Map
+		nsToCrypto     map[types.NamespaceID]*workload.HashSignerVerifier
+		nsToCryptoLock sync.Mutex
 
 		clusterConfig *Config
 
@@ -83,8 +81,18 @@ type (
 
 // NewCluster creates a new test cluster.
 func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
-	tempDir, err := os.MkdirTemp("", "cluster")
+	dir, err := os.Getwd()
 	require.NoError(t, err)
+	t.Logf("Working dir: %s", dir)
+	buildCmd := exec.Command("make", "build")
+	buildCmd.Dir = path.Join(dir, "../..")
+	makeRun := run(buildCmd, "make", "")
+	select {
+	case <-makeRun.Wait():
+	case <-time.After(3 * time.Minute):
+		makeRun.Signal(os.Kill)
+		t.Fatalf("Failed to build binaries")
+	}
 
 	c := &Cluster{
 		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], clusterConfig.NumSigVerifiers),
@@ -93,10 +101,8 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 			clusterConfig.NumSigVerifiers,
 		),
 		dbEnv:          vcservice.NewDatabaseTestEnv(t),
-		rootDir:        tempDir,
-		pubKey:         &sync.Map{},
-		pvtKey:         &sync.Map{},
-		txSigner:       &sync.Map{},
+		rootDir:        t.TempDir(),
+		nsToCrypto:     map[types.NamespaceID]*workload.HashSignerVerifier{},
 		clusterConfig:  clusterConfig,
 		channelID:      "channel1",
 		committedBlock: make(chan *common.Block, 100),
@@ -149,6 +155,28 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	}
 	c.sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	t.Cleanup(cancel)
+
+	c.createClients(ctx, t)
+	c.setMetaNamespaceVerificationKey(t)
+	c.ensureLastCommittedBlockNumber(t, 0)
+
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return c.sidecarClient.Run(ctx, &deliverclient.ReceiverRunConfig{})
+	}, func(ctx context.Context) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case b := <-c.committedBlock:
+			require.NotNil(t, b)
+			return true
+		}
+	})
+
+	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
+
+	// We need to run the load gen after initializing because it will re-initialize.
 	if clusterConfig.LoadGen {
 		loadgenConfig := &configtempl.LoadGenConfig{
 			CommonEndpoints:     newCommonEndpoints(t),
@@ -162,28 +190,19 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		return c
 	}
 
-	c.createClients(t)
-	c.setMetaNamespaceVerificationKey(t)
-	c.ensureLastCommittedBlockNumber(t, 0)
-	go func() {
-		require.True(t, connection.IsStreamEnd(c.sidecarClient.Run(context.TODO(), &deliverclient.ReceiverRunConfig{})))
-	}()
-	<-c.committedBlock
-	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
-
 	return c
 }
 
 // createClients utilize createClientConnection for connection creation
 // and responsible for the creation of the clients.
-func (c *Cluster) createClients(t *testing.T) {
+func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 	coordConn := createClientConnection(t, c.coordinator.config.ServerEndpoint)
 	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
 	qsConn := createClientConnection(t, c.queryService.config.ServerEndpoint)
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
-	ordererClient, envelopeCreator, err := broadcastclient.New(broadcastclient.Config{
+	ordererSubmitter, err := broadcastclient.New(ctx, broadcastclient.Config{
 		Broadcast:       []*connection.Endpoint{connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
 		SignedEnvelopes: false,
 		ChannelID:       c.channelID,
@@ -191,8 +210,8 @@ func (c *Cluster) createClients(t *testing.T) {
 		Parallelism:     1,
 	})
 	require.NoError(t, err)
-	c.ordererClient = ordererClient[0]
-	c.envelopeCreator = envelopeCreator
+	c.ordererClient = ordererSubmitter.Streams[0]
+	c.envelopeCreator = ordererSubmitter.EnvelopeCreator
 
 	c.sidecarClient, err = deliverclient.New(&deliverclient.Config{
 		ChannelID: c.channelID,
@@ -203,18 +222,13 @@ func (c *Cluster) createClients(t *testing.T) {
 }
 
 func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
-	c.CreateCryptoForNs(t, types.MetaNamespaceID, &signature.Profile{
-		Scheme: signature.Ecdsa,
-	})
-	metaPubKey, ok := c.pubKey.Load(types.MetaNamespaceID)
-	require.True(t, ok)
-
+	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
 	_, err := c.coordinatorClient.SetMetaNamespaceVerificationKey(
 		context.Background(),
 		&protosigverifierservice.Key{
 			NsId:            uint32(types.MetaNamespaceID),
 			NsVersion:       types.VersionNumber(0).Bytes(),
-			SerializedBytes: metaPubKey.([]byte),
+			SerializedBytes: metaPubKey,
 			Scheme:          signature.Ecdsa,
 		},
 	)
@@ -234,11 +248,10 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 	}
 
 	for _, nsID := range namespaces {
-		c.CreateCryptoForNs(t, nsID, &signature.Profile{Scheme: signature.Ecdsa})
-
+		pubKey, _ := c.CreateCryptoForNs(nsID, signature.Ecdsa)
 		nsPolicy := &protoblocktx.NamespacePolicy{
 			Scheme:    signature.Ecdsa,
-			PublicKey: c.GetPublicKey(t, nsID),
+			PublicKey: pubKey,
 		}
 		policyBytes, err := proto.Marshal(nsPolicy)
 		require.NoError(t, err)
@@ -269,7 +282,7 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 // AddSignatures adds signature for each namespace in a given transaction.
 func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 	for idx, ns := range tx.Namespaces {
-		tSigner := c.getTxSigner(t, types.NamespaceID(ns.NsId))
+		_, tSigner := c.GetCryptoForNs(t, types.NamespaceID(ns.NsId))
 		sig, err := tSigner.SignNs(tx, idx)
 		require.NoError(t, err)
 		tx.Signatures = append(tx.Signatures, sig)
@@ -288,66 +301,30 @@ func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx
 	}
 }
 
-// CreateCryptoForNs creates required crypto materials for a given namespace using the signature profile.
-func (c *Cluster) CreateCryptoForNs(
-	t *testing.T,
-	nsID types.NamespaceID,
-	sigProfile *signature.Profile,
+// CreateCryptoForNs creates the crypto materials for a namespace using the signature profile.
+func (c *Cluster) CreateCryptoForNs(nsID types.NamespaceID, schema signature.Scheme) (
+	[]byte, sigverificationtest.NsSigner,
 ) {
-	factory := sigverificationtest.GetSignatureFactory(sigProfile.Scheme)
-	pvtKey, pubKey := factory.NewKeys()
-	txSigner, err := factory.NewSigner(pvtKey)
-	require.NoError(t, err)
-	c.pubKey.Store(nsID, pubKey)
-	c.pvtKey.Store(nsID, pvtKey)
-	c.txSigner.Store(nsID, txSigner)
+	hashSigner := workload.NewHashSignerVerifier(&workload.SignatureProfile{
+		Scheme: schema,
+		Seed:   10,
+	})
+	c.nsToCryptoLock.Lock()
+	defer c.nsToCryptoLock.Unlock()
+	c.nsToCrypto[nsID] = hashSigner
+
+	return hashSigner.GetVerificationKeyAndSigner()
 }
 
-// GetPublicKey returns the public key for a namespace.
-func (c *Cluster) GetPublicKey(t *testing.T, nsID types.NamespaceID) []byte {
-	pubKey, ok := c.pubKey.Load(nsID)
-	if !ok {
-		return nil
-	}
-	k, ok := pubKey.([]byte)
+// GetCryptoForNs returns the crypto material a namespace.
+func (c *Cluster) GetCryptoForNs(t *testing.T, nsID types.NamespaceID) ([]byte, sigverificationtest.NsSigner) {
+	c.nsToCryptoLock.Lock()
+	defer c.nsToCryptoLock.Unlock()
+
+	hashSigner, ok := c.nsToCrypto[nsID]
 	require.True(t, ok)
-	return k
-}
 
-// GetTxSigner returns the transaction signer for a namespace.
-func (c *Cluster) getTxSigner(t *testing.T, nsID types.NamespaceID) sigverificationtest.NsSigner {
-	tSigner, ok := c.txSigner.Load(nsID)
-	if !ok {
-		return nil
-	}
-	k, ok := tSigner.(sigverificationtest.NsSigner)
-	require.True(t, ok)
-	return k
-}
-
-// Stop stops the cluster.
-func (c *Cluster) Stop(t *testing.T) {
-	process := make([]ifrit.Process, 0, len(c.sigVerifier)+len(c.vcService)+4)
-
-	for _, sigVerifier := range c.sigVerifier {
-		process = append(process, sigVerifier.process)
-	}
-	for _, vcser := range c.vcService {
-		process = append(process, vcser.process)
-	}
-	process = append(process, c.coordinator.process)
-	process = append(process, c.sidecar.process)
-	process = append(process, c.queryService.process)
-	process = append(process, c.mockOrderer.process)
-
-	var wg sync.WaitGroup
-	wg.Add(len(process))
-	for _, p := range process {
-		go killAndWait(&wg, p)
-	}
-	wg.Wait()
-
-	require.NoError(t, os.RemoveAll(c.rootDir))
+	return hashSigner.GetVerificationKeyAndSigner()
 }
 
 // createClientConnection creates a service connection using its given server endpoint.
@@ -359,21 +336,6 @@ func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientCon
 	require.NoError(t, err)
 
 	return serviceConnection
-}
-
-func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn
-	p := ginkgomon.New(ginkgomon.Config{
-		Command:           cmd,
-		Name:              name,
-		AnsiColorCode:     "",
-		StartCheck:        startCheck,
-		StartCheckTimeout: 0,
-		Cleanup: func() {
-		},
-	})
-	process := ifrit.Invoke(p)
-	gomega.Eventually(process.Ready(), 3*time.Minute, 1*time.Second).Should(gomega.BeClosed())
-	return process
 }
 
 func constructConfigFilePath(rootDir, name, endpoint string) string {
@@ -465,20 +427,6 @@ func (c *Cluster) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
 		}
 		return lastBlock.Number == blkNum
 	}, 15*time.Second, 250*time.Millisecond)
-}
-
-func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
-	c := exec.Command(cmd, "start", "--configs", configFilePath)
-	return run(c, name, "Serving")
-}
-
-func killAndWait(wg *sync.WaitGroup, p ifrit.Process) {
-	defer wg.Done()
-	if p == nil {
-		return
-	}
-	p.Signal(os.Kill)
-	<-p.Wait()
 }
 
 // makeLocalListenAddress returning the endpoint's address together with the port chosen.

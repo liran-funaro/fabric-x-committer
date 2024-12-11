@@ -64,7 +64,7 @@ ifeq "$(docker_push)" "true"
 endif
 
 
-.PHONY: test clean
+.PHONY: test clean lint build coordinator signatureverifier validatorpersister sidecar queryexecutor loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
 
 #########################
 # Quickstart
@@ -212,7 +212,6 @@ build-mock-orderer-image:
 		--build-arg PORTS=4001 \
 		.
 
-.PHONY: lint
 lint:
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --sort-results --new-from-rev=main --timeout=4m

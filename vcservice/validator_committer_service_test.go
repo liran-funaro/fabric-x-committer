@@ -23,7 +23,7 @@ type validatorAndCommitterServiceTestEnv struct {
 }
 
 func newValidatorAndCommitServiceTestEnv(ctx context.Context, t *testing.T) *validatorAndCommitterServiceTestEnv {
-	vcs := NewValidatorAndCommitServiceTestEnv(ctx, t)
+	vcs := NewValidatorAndCommitServiceTestEnv(t)
 
 	clientConn, err := connection.Connect(connection.NewDialConfig(vcs.Config.Server.Endpoint))
 	require.NoError(t, err)

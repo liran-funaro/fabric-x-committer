@@ -22,7 +22,6 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 			BlockTimeout:        2 * time.Second,
 		},
 	)
-	defer c.Stop(t)
 
 	tests := []struct {
 		name            string

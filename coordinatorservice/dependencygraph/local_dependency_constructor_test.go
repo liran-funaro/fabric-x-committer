@@ -2,7 +2,6 @@ package dependencygraph
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,13 +24,10 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 
 	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
-
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { ldc.run(ctx, 5); wg.Done() }()
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		ldc.run(ctx, 5)
+		return nil
+	}, nil)
 
 	return &localDependencyConstructorTestEnv{
 		inComingTxs: inComingTxs,

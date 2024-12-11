@@ -5,11 +5,13 @@ import (
 	"os"
 	"time"
 
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/orderermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -61,16 +63,18 @@ func startCmd() *cobra.Command {
 				Config MockOrderingServiceConfig `mapstructure:"mock-ordering-service"`
 			})
 			config.Unmarshal(wrapper)
-			mockConfig := &wrapper.Config
+			conf := &wrapper.Config
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			orderermock.StartMockOrderingServices(
-				1,
-				[]*connection.ServerConfig{mockConfig.Server},
-				mockConfig.BlockSize,
-				mockConfig.BlockTimeout,
-			)
-			return cobracmd.WaitUntilServiceDone(cmd.Context())
+			services := mock.NewMockOrderingServices(1, conf.BlockSize, conf.BlockTimeout)
+			defer func() {
+				for _, service := range services {
+					service.Close()
+				}
+			}()
+			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
+				ab.RegisterAtomicBroadcastServer(server, services[0])
+			})
 		},
 	}
 

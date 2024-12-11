@@ -49,7 +49,7 @@ func OpenConnections(endpoints []*Endpoint, transportCredentials credentials.Tra
 		conn, err := Connect(NewDialConfigWithCreds(*endpoint, transportCredentials))
 		if err != nil {
 			logger.Errorf("Error connecting: %v", err)
-			closeErrs := CloseConnections(connections[:i])
+			closeErrs := CloseConnections(connections[:i]...)
 			if closeErrs != nil {
 				logger.Error(closeErrs)
 			}
@@ -62,13 +62,20 @@ func OpenConnections(endpoints []*Endpoint, transportCredentials credentials.Tra
 	return connections, nil
 }
 
-func CloseConnections(connections []*grpc.ClientConn) error {
+func CloseConnections(connections ...*grpc.ClientConn) error {
 	logger.Infof("Closing %d connections.\n", len(connections))
-	errs := make([]error, 0, len(connections))
+	errs := make([]error, len(connections))
 	for i, closer := range connections {
 		errs[i] = closer.Close()
 	}
 	return errors.Join(errs...)
+}
+
+func CloseConnectionsLog(connections ...*grpc.ClientConn) {
+	closeErr := CloseConnections(connections...)
+	if closeErr != nil {
+		logger.Errorf("failed closing connections: %v", closeErr)
+	}
 }
 
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
@@ -85,16 +92,20 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 }
 
 func IsStreamEnd(rpcErr error) bool {
-	errStatus, ok := status.FromError(rpcErr)
-	if !ok {
-		return errors.Is(rpcErr, io.EOF) || errors.Is(rpcErr, context.Canceled) || errors.Is(rpcErr, context.DeadlineExceeded)
+	if rpcErr == nil {
+		return false
 	}
 
-	rpcErrCode := errStatus.Code()
-	if rpcErrCode == codes.Canceled || rpcErrCode == codes.DeadlineExceeded {
+	if IsStreamContextEnd(rpcErr) {
 		return true
 	}
 
+	errStatus, ok := status.FromError(rpcErr)
+	if !ok {
+		return errors.Is(rpcErr, io.EOF)
+	}
+
+	rpcErrCode := errStatus.Code()
 	if rpcErrCode == codes.Unavailable && knownConnectionIssues.MatchString(errStatus.Message()) {
 		return true
 	}
@@ -102,7 +113,29 @@ func IsStreamEnd(rpcErr error) bool {
 	return false
 }
 
+func IsStreamContextEnd(rpcErr error) bool {
+	if rpcErr == nil {
+		return false
+	}
+
+	errStatus, ok := status.FromError(rpcErr)
+	if !ok {
+		return errors.Is(rpcErr, context.Canceled) || errors.Is(rpcErr, context.DeadlineExceeded)
+	}
+
+	rpcErrCode := errStatus.Code()
+	if rpcErrCode == codes.Canceled || rpcErrCode == codes.DeadlineExceeded {
+		return true
+	}
+
+	return false
+}
+
 func FilterStreamErrors(err error) error {
+	if err == nil {
+		return nil
+	}
+
 	code := status.Code(err)
 	if errors.Is(err, io.EOF) || code == codes.Canceled || code == codes.DeadlineExceeded {
 		return nil
@@ -111,6 +144,10 @@ func FilterStreamErrors(err error) error {
 }
 
 func WrapStreamRpcError(rpcErr error) error {
+	if rpcErr == nil {
+		return nil
+	}
+
 	if IsStreamEnd(rpcErr) {
 		return nil
 	}

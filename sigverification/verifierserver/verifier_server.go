@@ -63,7 +63,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *
 	return s
 }
 
-func (s *verifierServer) SetVerificationKey(context context.Context, verificationKey *sigverification.Key) (*sigverification.Empty, error) {
+func (s *verifierServer) SetVerificationKey(_ context.Context, verificationKey *sigverification.Key) (*sigverification.Empty, error) {
 	if verificationKey == nil {
 		logger.Info("Attempted to set an empty verification key.")
 		return nil, errors.New("invalid public key")

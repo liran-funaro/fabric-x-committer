@@ -3,9 +3,8 @@ package connection
 import (
 	"context"
 	"crypto/tls"
-	"log"
+	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -17,11 +16,23 @@ import (
 
 const grpcProtocol = "tcp"
 
-type ServerConfig struct {
-	Endpoint  Endpoint               `mapstructure:"endpoint"`
-	Creds     *ServerCredsConfig     `mapstructure:"creds"`
-	KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
-}
+type (
+	// ServerConfig describes the connection parameter for a server.
+	ServerConfig struct {
+		Endpoint  Endpoint               `mapstructure:"endpoint"`
+		Creds     *ServerCredsConfig     `mapstructure:"creds"`
+		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+	}
+
+	// Service describes the method that are required for a service to run.
+	Service interface {
+		// Run executes the service until the context is done.
+		Run(ctx context.Context) error
+		// WaitForReady waits for the service resources to initialize.
+		// If the context ended before the service is ready, returns false.
+		WaitForReady(ctx context.Context) bool
+	}
+)
 
 func (c *ServerConfig) Opts() []grpc.ServerOption {
 	opts := make([]grpc.ServerOption, 0)
@@ -86,47 +97,72 @@ func (c *ServerCredsConfig) serverOption() grpc.ServerOption {
 	return creds
 }
 
-// RunServerMain runs a server and panic if failed.
-func RunServerMain(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
-	err := RunServerMainWithError(context.Background(), serverConfig, register)
+func NewGrpcServer(config *ServerConfig) (*grpc.Server, net.Listener, error) {
+	logger.Infof("Running server at: %s://%s", grpcProtocol, config.Endpoint.Address())
+	listener, err := net.Listen(grpcProtocol, config.Endpoint.Address())
 	if err != nil {
-		log.Fatalf("failed to run server: %v", err)
+		return nil, nil, err
 	}
+
+	server := grpc.NewServer(config.Opts()...)
+	return server, listener, nil
 }
 
-// RunServerMainWithError runs a server and returns error if failed.
-func RunServerMainWithError(
+// RunGrpcServerMainWithError runs a server and returns error if failed.
+func RunGrpcServerMainWithError(
 	ctx context.Context,
 	serverConfig *ServerConfig,
-	register func(server *grpc.Server, port int),
+	register func(server *grpc.Server),
 ) error {
-	logger.Infof("Running server at: %s://%s", grpcProtocol, serverConfig.Endpoint.Address())
-	listener, err := net.Listen(grpcProtocol, serverConfig.Endpoint.Address())
+	server, listener, err := NewGrpcServer(serverConfig)
 	if err != nil {
 		return err
 	}
-
-	grpcServer := grpc.NewServer(serverConfig.Opts()...)
-	register(grpcServer, listener.Addr().(*net.TCPAddr).Port)
-	logger.Infof("Serving...")
+	port := listener.Addr().(*net.TCPAddr).Port
+	serverConfig.Endpoint.Port = port
+	register(server)
 
 	g, gCtx := errgroup.WithContext(ctx)
+	logger.Infof("Serving...")
 	g.Go(func() error {
-		return grpcServer.Serve(listener)
+		return server.Serve(listener)
 	})
 	<-gCtx.Done()
-	grpcServer.Stop()
+	server.Stop()
 	return g.Wait()
 }
 
-func RunServerMainAndWait(serverConfig *ServerConfig, register func(server *grpc.Server, port int)) {
-	serverStarted := sync.WaitGroup{}
-	serverStarted.Add(1)
+// StartService runs a service, waits until it is ready, and register the gRPC server.
+// It will stop if either the service ended or its respective gRPC server.
+func StartService(
+	ctx context.Context,
+	service Service,
+	serverConfig *ServerConfig,
+	register func(server *grpc.Server),
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	go RunServerMain(serverConfig, func(server *grpc.Server, port int) {
-		register(server, port)
-		serverStarted.Done()
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		// If the service stops, there is no reason to continue the GRPC server.
+		defer cancel()
+		return service.Run(gCtx)
 	})
 
-	serverStarted.Wait() // Avoid trying to connect before the server starts
+	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
+	defer cancelTimeout()
+	if !service.WaitForReady(ctxTimeout) {
+		cancel()
+		return fmt.Errorf("service is not ready: %w", g.Wait())
+	}
+
+	g.Go(func() error {
+		// If the GRPC server stops, there is no reason to continue the service.
+		defer cancel()
+		return RunGrpcServerMainWithError(gCtx, serverConfig, func(server *grpc.Server) {
+			register(server)
+		})
+	})
+	return g.Wait()
 }

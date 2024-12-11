@@ -16,7 +16,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -244,14 +243,6 @@ func verToBytes(ver ...int) [][]byte {
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	c := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	}
-	logging.SetupWithConfig(c)
-
 	cs := loadgen.GenerateNamespacesUnderTest(t, []types.NamespaceID{0, 1, 2})
 
 	port, err := strconv.Atoi(cs.Port)
@@ -291,41 +282,22 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	}
 
 	qs := NewQueryService(config)
-
-	var serviceWg sync.WaitGroup
-	t.Cleanup(serviceWg.Wait)
-	// We set a default context with timeout to make sure the test never halts progress.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
-	t.Cleanup(cancel)
-	serviceWg.Add(1)
-	go func() {
-		defer serviceWg.Done()
-		assert.NoError(t, qs.Run(ctx))
-	}()
-	qs.WaitForReady(ctx)
-
-	var grpcSrv *grpc.Server
-	var wg sync.WaitGroup
-	wg.Add(1)
-	sConfig := connection.ServerConfig{
+	sConfig := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
-	go func() {
-		connection.RunServerMain(&sConfig, func(grpcServer *grpc.Server, actualListeningPort int) {
-			grpcSrv = grpcServer
-			sConfig.Endpoint.Port = actualListeningPort
-			protoqueryservice.RegisterQueryServiceServer(grpcServer, qs)
-			wg.Done()
-		})
-	}()
-	wg.Wait()
-	t.Cleanup(grpcSrv.Stop)
+	grpcSrv := test.RunServiceAndGrpcForTest(t, qs, sConfig, func(server *grpc.Server) {
+		protoqueryservice.RegisterQueryServiceServer(server, qs)
+	})
 
 	clientConn, err := connection.Connect(connection.NewDialConfig(sConfig.Endpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())
 	})
+
+	// We set a default context with timeout to make sure the test never halts progress.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	t.Cleanup(cancel)
 
 	pool, err := vcservice.NewDatabasePool(ctx, config.Database)
 	require.NoError(t, err)

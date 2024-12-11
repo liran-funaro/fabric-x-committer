@@ -1,0 +1,95 @@
+package mock
+
+import (
+	"testing"
+	"time"
+
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/grpc"
+)
+
+// OrdererConfig configuration for the mock orderer.
+type OrdererConfig struct {
+	ServerConfigs []*connection.ServerConfig
+	BlockSize     uint64
+	BlockTimeout  time.Duration
+}
+
+// StartMockSVService starts a specified number of mock verifier service and register cancellation.
+func StartMockSVService(t *testing.T, numService int) (
+	[]*SigVerifier, *test.GrpcServers,
+) {
+	mockSigVer := make([]*SigVerifier, numService)
+	for i := 0; i < numService; i++ {
+		mockSigVer[i] = NewMockSigVerifier()
+	}
+
+	sigVerServers := test.StartGrpcServersForTest(t, len(mockSigVer), func(server *grpc.Server, index int) {
+		protosigverifierservice.RegisterVerifierServer(server, mockSigVer[index])
+	})
+	return mockSigVer, sigVerServers
+}
+
+// StartMockSVServiceFromListWithConfig starts a specified number of mock verifier service.
+func StartMockSVServiceFromListWithConfig(
+	t *testing.T, svs []*SigVerifier, sc []*connection.ServerConfig,
+) *test.GrpcServers {
+	return test.StartGrpcServersWithConfigForTest(t, sc, func(server *grpc.Server, index int) {
+		protosigverifierservice.RegisterVerifierServer(server, svs[index])
+	})
+}
+
+// StartMockVCService starts a specified number of mock VC service and register cancellation.
+func StartMockVCService(t *testing.T, numService int) (
+	[]*VcService, *test.GrpcServers,
+) {
+	vcServices := make([]*VcService, numService)
+	for i := 0; i < numService; i++ {
+		vcServices[i] = NewMockVcService()
+	}
+
+	vcGrpc := test.StartGrpcServersForTest(t, numService, func(server *grpc.Server, index int) {
+		protovcservice.RegisterValidationAndCommitServiceServer(server, vcServices[index])
+	})
+	return vcServices, vcGrpc
+}
+
+// StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
+func StartMockCoordinatorService(t *testing.T) (
+	*Coordinator, *test.GrpcServers,
+) {
+	mockCoordinator := NewMockCoordinator()
+	t.Cleanup(mockCoordinator.Close)
+	coordinatorGrpc := test.StartGrpcServersForTest(t, 1, func(server *grpc.Server, _ int) {
+		protocoordinatorservice.RegisterCoordinatorServer(server, mockCoordinator)
+	})
+	return mockCoordinator, coordinatorGrpc
+}
+
+// StartMockOrderingServices starts a specified number of mock ordering service and register cancellation.
+func StartMockOrderingServices(t *testing.T, numService int, conf OrdererConfig) (
+	[]*Orderer, *test.GrpcServers,
+) {
+	mocks := NewMockOrderingServices(numService, conf.BlockSize, conf.BlockTimeout)
+	for _, o := range mocks {
+		t.Cleanup(o.Close)
+	}
+
+	if len(conf.ServerConfigs) == numService {
+		return mocks, test.StartGrpcServersWithConfigForTest(
+			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
+				ab.RegisterAtomicBroadcastServer(server, mocks[index])
+			},
+		)
+	}
+
+	servers := test.StartGrpcServersForTest(t, numService, func(server *grpc.Server, index int) {
+		ab.RegisterAtomicBroadcastServer(server, mocks[index])
+	})
+	return mocks, servers
+}

@@ -129,7 +129,6 @@ func (l *Receiver) receiveFromBlockDeliverer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer stream.CloseSend() // nolint:errcheck
 
 	logger.Infof("Sending seek request starting from block %d on channel %s.", l.startBlock, l.channelID)
 	if err := stream.Send(seekSince(l.startBlock, l.channelID, signer)); err != nil {

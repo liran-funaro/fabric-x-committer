@@ -53,20 +53,15 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			sigverifierConfig := serverconfig.ReadConfig()
+			conf := serverconfig.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-			fmt.Println(sigverifierConfig)
+			fmt.Println(conf)
 
-			m := monitoring.LaunchMonitoring(sigverifierConfig.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
-			vServer := verifierserver.New(&sigverifierConfig.ParallelExecutor, m)
-			go connection.RunServerMain(sigverifierConfig.Server, func(server *grpc.Server, port int) {
-				if sigverifierConfig.Server.Endpoint.Port == 0 {
-					sigverifierConfig.Server.Endpoint.Port = port
-				}
-				sigverification.RegisterVerifierServer(server, vServer)
+			m := monitoring.LaunchMonitoring(conf.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
+			service := verifierserver.New(&conf.ParallelExecutor, m)
+			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
+				sigverification.RegisterVerifierServer(server, service)
 			})
-
-			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)

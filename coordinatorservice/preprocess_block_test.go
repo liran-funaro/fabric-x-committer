@@ -15,9 +15,9 @@ import (
 )
 
 func TestCoordinatorServiceBadTxFormat(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newCoordinatorTestEnv(ctx, t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	env.start(ctx, t)
 
 	env.createNamespace(t, 0, 1)

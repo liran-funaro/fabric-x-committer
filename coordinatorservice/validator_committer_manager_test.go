@@ -3,7 +3,6 @@ package coordinatorservice
 import (
 	"context"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -22,19 +21,11 @@ type vcMgrTestEnv struct {
 	outputTxs                 chan []*dependencygraph.TransactionNode
 	outputTxsStatus           chan *protovcservice.TransactionStatus
 	prelimInvalidTxStatus     chan []*protovcservice.Transaction
-	mockVcServices            []*vcservicemock.MockVcService
+	mockVcServices            []*mock.VcService
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
-	sc, vcs, grpcSrvs := vcservicemock.StartMockVCService(numVCService)
-	t.Cleanup(func() {
-		for _, mockVC := range vcs {
-			mockVC.Close()
-		}
-		for _, s := range grpcSrvs {
-			s.Stop()
-		}
-	})
+	vcs, servers := mock.StartMockVCService(t, numVCService)
 
 	inputTxs := make(chan []*dependencygraph.TransactionNode, 10)
 	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
@@ -43,7 +34,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			serversConfig:                           sc,
+			serversConfig:                           servers.Configs,
 			incomingTxsForValidationCommit:          inputTxs,
 			outgoingValidatedTxsNode:                outputTxs,
 			outgoingTxsStatus:                       outputTxsStatus,
@@ -52,14 +43,16 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		},
 	)
 
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	wg.Add(1)
-	go func() { require.NoError(t, connection.FilterStreamErrors(vcm.run(ctx))); wg.Done() }()
-	<-vcm.connectionReady
+	test.RunServiceForTest(t, func(ctx context.Context) error {
+		return connection.FilterStreamErrors(vcm.run(ctx))
+	}, func(ctx context.Context) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-vcm.connectionReady:
+			return true
+		}
+	})
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,

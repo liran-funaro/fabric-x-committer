@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/sigverifiermock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -50,15 +50,13 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			sigConfig := serverconfig.ReadConfig()
+			conf := serverconfig.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			sv := sigverifiermock.NewMockSigVerifier()
-			go connection.RunServerMain(sigConfig.Server, func(grpcServer *grpc.Server, _ int) {
-				protosigverifierservice.RegisterVerifierServer(grpcServer, sv)
+			sv := mock.NewMockSigVerifier()
+			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
+				protosigverifierservice.RegisterVerifierServer(server, sv)
 			})
-
-			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
 

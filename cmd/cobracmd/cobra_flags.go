@@ -4,25 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 )
-
-// Service describes the method that are required for a service to run.
-type Service interface {
-	// Run executes the service until the context is done.
-	Run(ctx context.Context) error
-	// WaitForReady waits for the service resources to initialize.
-	// If the context ended before the service is ready, returns false.
-	WaitForReady(ctx context.Context) bool
-}
 
 // CobraInt creates a flag of type integer for the cmd parameter.
 func CobraInt(cmd *cobra.Command, flagName, flagUsage, configKey string) {
@@ -104,32 +91,4 @@ func ReadYaml(configPath string) error {
 		return errors.New("--configs flag must be set to the path of the configuration file")
 	}
 	return config.ReadYamlConfigs([]string{configPath})
-}
-
-// StartService runs a service, waits until it is ready, and register the gRPC server.
-func StartService(
-	ctx context.Context,
-	service Service,
-	serverConfig *connection.ServerConfig,
-	register func(server *grpc.Server, port int),
-) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return service.Run(gCtx)
-	})
-
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
-	defer cancelTimeout()
-	if !service.WaitForReady(ctxTimeout) {
-		cancel()
-		return fmt.Errorf("service is not ready: %w", g.Wait())
-	}
-
-	g.Go(func() error {
-		return connection.RunServerMainWithError(gCtx, serverConfig, register)
-	})
-	return g.Wait()
 }

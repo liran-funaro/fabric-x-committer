@@ -8,7 +8,7 @@ import (
 
 	token "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	coordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	loadgenworkload "github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -84,7 +84,7 @@ func PumpToCoordinator(
 	eventQueue chan *workload.Event,
 	pp *workload.Profile,
 	endpoint string,
-	rateLimiterConfig *loadgen.LimiterConfig,
+	rateLimiterConfig *loadgenworkload.LimiterConfig,
 ) {
 	cl := OpenCoordinatorAdapter(*connection.CreateEndpoint(endpoint), rateLimiterConfig)
 

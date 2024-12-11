@@ -1,12 +1,17 @@
 package runner
 
 import (
+	"os"
+	"os/exec"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
+	"github.com/tedsuo/ifrit/ginkgomon"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
@@ -36,10 +41,39 @@ func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *process
 	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
 	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
 	require.NoError(t, configtempl.CreateConfigFile(config, inputConfigTemplateFilePath, outputConfigFilePath))
+	p := start(path.Join(executableRootPath, cmdName), outputConfigFilePath, cmdName)
+	t.Cleanup(func() {
+		p.Signal(os.Kill)
+		select {
+		case <-p.Wait():
+		case <-time.After(30 * time.Second):
+			t.Errorf("Process [%s] did not terminate after 30 seconds", cmdName)
+		}
+	})
 	return &processWithConfig[T]{
-		process: start(path.Join(executableRootPath, cmdName), outputConfigFilePath, cmdName),
+		process: p,
 		config:  config,
 	}
+}
+
+func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn
+	p := ginkgomon.New(ginkgomon.Config{
+		Command:           cmd,
+		Name:              name,
+		AnsiColorCode:     "",
+		StartCheck:        startCheck,
+		StartCheckTimeout: 0,
+		Cleanup: func() {
+		},
+	})
+	process := ifrit.Invoke(p)
+	gomega.Eventually(process.Ready(), 3*time.Minute, 1*time.Second).Should(gomega.BeClosed())
+	return process
+}
+
+func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
+	c := exec.Command(cmd, "start", "--configs", configFilePath)
+	return run(c, name, "Serving")
 }
 
 func newQueryServiceOrVCServiceConfig(

@@ -67,7 +67,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 				g := sigverification_test.NewInputGenerator(config.InputGeneratorParams)
 				m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
 				server := verifierserver.New(config.ParallelExecutionConfig, m)
-				c := sigverification_test.NewTestState(server)
+				c := sigverification_test.NewTestState(b, server)
 				t := connection.NewRequestTracker()
 				defer c.TearDown()
 				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{

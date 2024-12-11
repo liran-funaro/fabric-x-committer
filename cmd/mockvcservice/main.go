@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/vcservicemock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"google.golang.org/grpc"
@@ -50,15 +50,13 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			vcConfig := vcservice.ReadConfig()
+			conf := vcservice.ReadConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			vcs := vcservicemock.NewMockVcService()
-			go connection.RunServerMain(vcConfig.Server, func(grpcServer *grpc.Server, _ int) {
-				protovcservice.RegisterValidationAndCommitServiceServer(grpcServer, vcs)
+			vcs := mock.NewMockVcService()
+			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
+				protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
 			})
-
-			return cobracmd.WaitUntilServiceDone(cmd.Context())
 		},
 	}
 

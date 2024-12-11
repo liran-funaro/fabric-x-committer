@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"context"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -9,31 +8,32 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
+	sidecartest "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/grpc"
 )
 
 func TestLedgerService(t *testing.T) {
 	ledgerPath := t.TempDir()
 	inputBlock := make(chan *common.Block, 10)
 	channelID := "ch1"
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+
 	ledgerService, err := New(channelID, ledgerPath, inputBlock)
 	require.NoError(t, err)
-
-	go func() { require.NoError(t, ledgerService.Run(ctx)) }()
+	t.Cleanup(ledgerService.Close)
 
 	config := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost"},
 	}
-	s := StartGrpcServer(t, config, ledgerService)
-	t.Cleanup(s.Stop)
+	test.RunServiceAndGrpcForTest(t, ledgerService, config, func(server *grpc.Server) {
+		peer.RegisterDeliverServer(server, ledgerService)
+	})
 
 	// NOTE: if we start the deliver client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the
 	//       fabric ledger.
-	blk0 := test.CreateBlockForTest(nil, 0, nil, [3]string{"0", "1", "2"})
+	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"0", "1", "2"})
 	valid := byte(peer.TxValidationCode_VALID)
 	metadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
@@ -43,13 +43,13 @@ func TestLedgerService(t *testing.T) {
 
 	EnsureAtLeastHeight(t, ledgerService, 1)
 
-	receivedBlocksFromLedgerService := StartDeliverClient(ctx, t, &deliverclient.Config{
+	receivedBlocksFromLedgerService := StartDeliverClient(t, &deliverclient.Config{
 		ChannelID: channelID, Endpoint: config.Endpoint,
 	}, 0)
 
-	blk1 := test.CreateBlockForTest(nil, 1, protoutil.BlockHeaderHash(blk0.Header), [3]string{"3", "4", "5"})
+	blk1 := sidecartest.CreateBlockForTest(nil, 1, protoutil.BlockHeaderHash(blk0.Header), [3]string{"3", "4", "5"})
 	blk1.Metadata = metadata
-	blk2 := test.CreateBlockForTest(nil, 2, protoutil.BlockHeaderHash(blk1.Header), [3]string{"6", "7", "8"})
+	blk2 := sidecartest.CreateBlockForTest(nil, 2, protoutil.BlockHeaderHash(blk1.Header), [3]string{"6", "7", "8"})
 	blk2.Metadata = metadata
 	inputBlock <- blk1
 	inputBlock <- blk2

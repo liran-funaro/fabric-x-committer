@@ -31,7 +31,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 	t.Skip("Temporarily skipping. Related to commented-out error in StartStream.")
 	test.FailHandler(t)
 	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, m))
+	c := sigverification_test.NewTestState(t, verifierserver.New(parallelExecutionConfig, m))
 
 	stream, err := c.Client.StartStream(context.Background())
 	Expect(err).To(BeNil())
@@ -48,7 +48,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
 	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, m))
+	c := sigverification_test.NewTestState(t, verifierserver.New(parallelExecutionConfig, m))
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
@@ -75,7 +75,7 @@ func TestNoInput(t *testing.T) {
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
 	m := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
-	c := sigverification_test.NewTestState(verifierserver.New(parallelExecutionConfig, m))
+	c := sigverification_test.NewTestState(t, verifierserver.New(parallelExecutionConfig, m))
 	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, _ := factory.NewSigner(signingKey)
