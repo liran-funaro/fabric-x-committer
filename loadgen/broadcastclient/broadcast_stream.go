@@ -4,8 +4,8 @@ import (
 	"context"
 	errors2 "errors"
 
-	"github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -84,6 +84,7 @@ func (s *broadcastStream) Send(m *common.Envelope) error {
 		return stream.Send(m)
 	})
 }
+
 func (s *broadcastStream) Recv() (*ab.BroadcastResponse, error) {
 	rcv := <-s.rcv
 	return rcv.BroadcastResponse, rcv.error

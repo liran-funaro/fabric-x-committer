@@ -1,7 +1,7 @@
 package broadcastclient
 
 import (
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/identity"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -31,7 +31,8 @@ func newEnvelopeCreator(channelID string, signer identity.SignerSerializer, sign
 	}
 	logger.Infof("Creating envelope creator for channel %s", channelID)
 	return &envelopeCreator{
-		txType:      common.HeaderType_MESSAGE, //TODO: If we set it to ENDORSER_MESSAGE, the FSC nodes crash when they try to read the TXs
+		// TODO: If we set it to ENDORSER_MESSAGE, the FSC nodes crash when they try to read the TXs
+		txType:      common.HeaderType_MESSAGE,
 		channelID:   channelID,
 		signer:      signer,
 		msgVersion:  0,

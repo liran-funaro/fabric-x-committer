@@ -1,7 +1,7 @@
 package serialization
 
 import (
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
 
@@ -11,6 +11,7 @@ func WrapEnvelope(data []byte, header *common.Header) []byte {
 		Data:   data,
 	})
 }
+
 func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 	envelope, err := protoutil.GetEnvelopeFromBlock(message)
 	if err != nil {

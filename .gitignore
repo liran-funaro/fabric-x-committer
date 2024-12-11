@@ -27,3 +27,6 @@ docker/runner/out
 
 # Log files produced by the tests
 test/**/*.log
+
+.DS_Store
+

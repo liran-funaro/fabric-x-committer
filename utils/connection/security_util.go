@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/tls"
@@ -66,7 +66,7 @@ func SecureClient(rootCAPaths ...string) *http.Client {
 }
 
 type OrdererConnectionProfile struct {
-	//RootCAPaths The path to the root CAs for the orderers
+	// RootCAPaths The path to the root CAs for the orderers
 	RootCAPaths []string             `mapstructure:"root-ca-paths"`
 	MSPDir      string               `mapstructure:"msp-dir"`
 	MSPID       string               `mapstructure:"msp-id"`
