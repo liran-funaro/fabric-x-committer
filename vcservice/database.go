@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
@@ -53,6 +53,7 @@ type (
 		name    string
 		pool    *pgxpool.Pool
 		metrics *perfMetrics
+		retry   *connection.RetryProfile
 	}
 
 	// keyToVersion is a map from key to version.
@@ -173,7 +174,7 @@ func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protobloc
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
 	var r pgx.Row
 	var value []byte
-	if retryErr := retryOperation(ctx, func() error {
+	if retryErr := db.retry.Execute(ctx, func() error {
 		r = db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
 		return r.Scan(&value)
 	}); retryErr != nil {
@@ -226,7 +227,7 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	if retryErr := retryOperation(ctx, func() error {
+	if retryErr := db.retry.Execute(ctx, func() error {
 		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
 		return err
 	}); retryErr != nil {
@@ -498,7 +499,7 @@ func TableName(nsID types.NamespaceID) string {
 
 func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
 	var rows pgx.Rows
-	retryErr := retryOperation(ctx, func() error {
+	retryErr := db.retry.Execute(ctx, func() error {
 		var err error
 		rows, err = db.pool.Query(ctx, sql, arg...)
 		return err
@@ -514,7 +515,7 @@ type statusWithHeight struct {
 func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHeight, error) {
 	var r pgx.Rows
 	ctx := context.Background()
-	if retryErr := retryOperation(ctx, func() error {
+	if retryErr := db.retry.Execute(ctx, func() error {
 		var err error
 		r, err = db.pool.Query(ctx, queryTxStatusSQLTemplate, txIDs)
 		return err
@@ -541,8 +542,4 @@ func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHe
 		rows[TxID(id)] = &statusWithHeight{status: protoblocktx.Status(status), height: ht}
 	}
 	return rows, r.Err()
-}
-
-func retryOperation(ctx context.Context, op func() error) error {
-	return utils.Retry(ctx, op, retryTimeout, retryInitialInterval)
 }

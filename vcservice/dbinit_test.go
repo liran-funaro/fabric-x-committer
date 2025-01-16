@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -44,12 +45,11 @@ func TestRetry(t *testing.T) {
 	pool, err := NewDatabasePool(
 		ctx,
 		&DatabaseConfig{
-			Host:                  "",
-			Port:                  1234,
-			Username:              "name",
-			Password:              "pwd",
-			MaxConnections:        5,
-			ConnPoolCreateTimeout: 15 * time.Second,
+			Host:           "",
+			Port:           1234,
+			Username:       "name",
+			Password:       "pwd",
+			MaxConnections: 5,
 		})
 	require.ErrorContains(t, err, "failed making pool")
 	require.Nil(t, pool)
@@ -61,14 +61,16 @@ func TestConcurrentDatabaseTablesInit(t *testing.T) {
 	require.NoError(t, err)
 
 	config := &DatabaseConfig{
-		Host:                  cs.Host,
-		Port:                  port,
-		Username:              cs.User,
-		Password:              cs.Password,
-		Database:              cs.Database,
-		MaxConnections:        15,
-		MinConnections:        1,
-		ConnPoolCreateTimeout: 3 * time.Minute,
+		Host:           cs.Host,
+		Port:           port,
+		Username:       cs.User,
+		Password:       cs.Password,
+		Database:       cs.Database,
+		MaxConnections: 15,
+		MinConnections: 1,
+		Retry: &connection.RetryProfile{
+			MaxElapsedTime: 3 * time.Minute,
+		},
 	}
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)

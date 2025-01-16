@@ -15,11 +15,6 @@ validator-committer-service:
     database: "yugabyte" # The database name
     max-connections: 10 # The maximum size of the connection pool
     min-connections: 5 # The minimum size of the connection pool.
-    # conn-pool-create-timeout denotes the maximum time allowed for the connection pool to be created.
-    # Creation attempts will be retried in case of errors, but will ultimately be abandoned if the pool
-    # cannot be established within this timeout period. A value of 0 indicates no timeout, but
-    # a default timeout is enforced to prevent forever execution.
-    conn-pool-create-timeout: 15s
   # Resource limit configurations
   resource-limits:
     max-workers-for-preparer: 1 # Maximum number of workers for the preparer

@@ -6,10 +6,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
@@ -23,12 +22,13 @@ const (
 	stmtTemplateDropDbIfExists = "DROP DATABASE IF EXISTS %s;"
 )
 
-var (
-	// RetryTimeout is the duration allocated for the retry mechanism during the database initialization process.
-	RetryTimeout = 3 * time.Minute
-	// RetryInitialInterval is the starting wait time interval that increases every retry attempt.
-	RetryInitialInterval = backoff.WithInitialInterval(50 * time.Millisecond)
-)
+// DefaultRetry is used for tests.
+var DefaultRetry = &connection.RetryProfile{
+	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
+	MaxElapsedTime: 3 * time.Minute,
+	// InitialInterval is the starting wait time interval that increases every retry attempt.
+	InitialInterval: 100 * time.Millisecond,
+}
 
 // Connection facilities connecting to a YugabyteDB instance.
 type Connection struct {
@@ -72,10 +72,10 @@ func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MinConns = 1
 
 	var pool *pgxpool.Pool
-	if retryErr := utils.Retry(ctx, func() error {
+	if retryErr := DefaultRetry.Execute(ctx, func() error {
 		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
 		return err
-	}, 15*time.Second); retryErr != nil {
+	}); retryErr != nil {
 		return nil, fmt.Errorf("[%s] error making pool: %w", y.AddressString(), retryErr)
 	}
 	return pool, nil
@@ -187,8 +187,8 @@ func execDropIfExitsDB(ctx context.Context, pool *pgxpool.Pool, dbName string) e
 
 // PoolExecOperation activating pool execution operation utilizing the retry mechanism.
 func PoolExecOperation(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) error {
-	return utils.Retry(ctx, func() error {
+	return DefaultRetry.Execute(ctx, func() error {
 		_, err := pool.Exec(ctx, stmt, args...)
 		return err
-	}, RetryTimeout, RetryInitialInterval)
+	})
 }

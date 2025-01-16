@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -207,8 +205,6 @@ var dropStatementsWithTemplate = []string{
 	dropCommitNewFuncStmtTemplate,
 }
 
-var defaultConnPoolCreateTimeout = 15 * time.Second
-
 // NewDatabasePool creates a new pool from a database config.
 func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool, error) {
 	logger.Infof("DB source: %s", config.DataSourceName())
@@ -220,18 +216,11 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	poolConfig.MaxConns = config.MaxConnections
 	poolConfig.MinConns = config.MinConnections
 
-	// ConnPoolCreateTimeout specifies the timeout for creating a connection pool.
-	// A value of 0 means no timeout, but to prevent indefinite blocking,
-	// a default timeout of [value of defaultConnPoolCreateTimeout] will be used in this case.
-	if config.ConnPoolCreateTimeout == 0 {
-		config.ConnPoolCreateTimeout = defaultConnPoolCreateTimeout
-	}
-
 	var pool *pgxpool.Pool
-	if retryErr := utils.Retry(ctx, func() error {
+	if retryErr := config.Retry.Execute(ctx, func() error {
 		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
 		return err
-	}, config.ConnPoolCreateTimeout); retryErr != nil {
+	}); retryErr != nil {
 		logger.Errorf("Failed making pool: %s", retryErr)
 		return nil, fmt.Errorf("failed making pool: %w", retryErr)
 	}

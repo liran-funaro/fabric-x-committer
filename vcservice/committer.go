@@ -74,11 +74,11 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// Rather than distinguishing retryable transaction error, we retry for all errors.
 		// This is for simplicity and we can improve it in future.
 		// TODO: Add test to ensure commit is retried.
-		if retryErr := retryOperation(ctx, func() error {
+		if retryErr := c.db.retry.Execute(ctx, func() error {
 			txsStatus, err = c.commitTransactions(vTx)
 			return err
 		}); retryErr != nil {
-			logger.Errorf("failed to commit transactions: %w", err)
+			logger.Errorf("failed to commit transactions: %s", err)
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
 
