@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 
 	"github.com/spf13/pflag"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/wgclient/workload/client"
 )
 
 func main() {
@@ -38,8 +41,30 @@ func main() {
 	utils.Must(err)
 
 	fmt.Println("Successfully retrieved public key from path.")
-	cl := client.OpenCoordinatorAdapter(coordinatorEndpoint, nil)
-	fmt.Println("Successfully connected to coordinator.")
-	utils.Must(cl.SetVerificationKey(pubBytes, scheme))
+	// NOTE: No unit test has been added for this setup_helper. This command
+	//       is used to set the verification key in all-in-one test image.
+	//       Once we have the code in place to process config block, we can
+	//       remove this setup helper.
+	utils.Must(setVerificationKey(coordinatorEndpoint, pubBytes, scheme))
 	fmt.Println("Successfully set public key to coordinator.")
+}
+
+func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme string) error {
+	clientConfig := connection.NewDialConfig(&endpoint)
+	conn, err := connection.Connect(clientConfig)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := protocoordinatorservice.NewCoordinatorClient(conn)
+
+	_, err = client.SetMetaNamespaceVerificationKey(ctx, &protosigverifierservice.Key{
+		NsId:            uint32(types.MetaNamespaceID),
+		NsVersion:       types.VersionNumber(0).Bytes(),
+		SerializedBytes: publicKey,
+		Scheme:          scheme,
+	})
+	return err
 }

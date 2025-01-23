@@ -146,7 +146,6 @@ issues:
   # but default dirs are skipped independently of this option's value (see skip-dirs-use-default).
   # "/" will be replaced by current OS file path separator to properly work on Windows.
   exclude-dirs:
-    - wgclient # may not be a priority
     - sigverification # may not be a priority
 
   # Enables skipping of directories:
