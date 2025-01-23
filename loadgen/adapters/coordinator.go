@@ -27,7 +27,7 @@ func NewCoordinatorAdapter(config *CoordinatorClientConfig, res *ClientResources
 
 // RunWorkload applies load on the coordinator.
 func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	conn, err := connection.Connect(connection.NewDialConfig(*c.config.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(c.config.Endpoint))
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint.String())
 	}

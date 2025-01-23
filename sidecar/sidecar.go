@@ -6,7 +6,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -19,26 +19,26 @@ var logger = logging.New("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 type Service struct {
-	ordererClient      *deliverclient.Receiver
+	ordererClient      *broadcastdeliver.Client
 	relay              *relay
 	ledgerService      *ledger.Service
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
-	config             *SidecarConfig
+	config             *Config
 }
 
 // New creates a sidecar service.
-func New(c *SidecarConfig) (*Service, error) {
+func New(c *Config) (*Service, error) {
 	// 1. Fetch blocks from the ordering service.
-	blockToBeCommitted := make(chan *common.Block, 100)
-	ordererClient, err := deliverclient.New(c.Orderer, deliverclient.Orderer, blockToBeCommitted)
+	ordererClient, err := broadcastdeliver.New(&c.Orderer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to orderer:%v: %w", c.Orderer.Endpoint, err)
+		return nil, fmt.Errorf("failed to create orderer client: %w", err)
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
+	blockToBeCommitted := make(chan *common.Block, 100)
 	committedBlock := make(chan *common.Block, 100)
-	relay := newRelay(c.Committer, blockToBeCommitted, committedBlock)
+	relayService := newRelay(&c.Committer, blockToBeCommitted, committedBlock)
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create ledger service at %v for channel %s\n", c.Server.Endpoint.Address(), c.Orderer.ChannelID)
@@ -46,10 +46,9 @@ func New(c *SidecarConfig) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ledger: %w", err)
 	}
-
 	return &Service{
 		ordererClient:      ordererClient,
-		relay:              relay,
+		relay:              relayService,
 		ledgerService:      ledgerService,
 		blockToBeCommitted: blockToBeCommitted,
 		committedBlock:     committedBlock,
@@ -59,14 +58,14 @@ func New(c *SidecarConfig) (*Service, error) {
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
 // If the context ended before the service is ready, returns false.
-func (*Service) WaitForReady(context.Context) bool {
-	return true
+func (s *Service) WaitForReady(ctx context.Context) bool {
+	return s.ledgerService.WaitForReady(ctx)
 }
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
 func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
-	conn, err := connection.Connect(connection.NewDialConfig(s.config.Committer.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint))
 	if err != nil {
 		return fmt.Errorf("failed to connect to coordinator: %w", err)
 	}
@@ -83,8 +82,9 @@ func (s *Service) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return s.ordererClient.Run(eCtx, &deliverclient.ReceiverRunConfig{
+		return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
 			StartBlkNum: int64(blkInfo.GetNumber()), // nolint:gosec
+			OutputBlock: s.blockToBeCommitted,
 		})
 	})
 

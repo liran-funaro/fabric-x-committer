@@ -48,7 +48,7 @@ func main() {
 
 	clientConfig.Connections = make([]*connection.DialConfig, len(endpoints))
 	for i, endpoint := range endpoints {
-		clientConfig.Connections[i] = connection.NewDialConfig(*endpoint)
+		clientConfig.Connections[i] = connection.NewDialConfig(endpoint)
 	}
 
 	signatureProfile := signature.Profile{

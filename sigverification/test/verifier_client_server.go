@@ -51,7 +51,7 @@ func NewTestState(t test.TestingT, server sigverification.VerifierServer) *State
 		sigverification.RegisterVerifierServer(grpcServer, server)
 	})
 
-	clientConnectionConfig := connection.NewDialConfig(serverConnectionConfig.Endpoint)
+	clientConnectionConfig := connection.NewDialConfig(&serverConnectionConfig.Endpoint)
 	clientConnection, _ := connection.Connect(clientConnectionConfig)
 	s.Client = sigverification.NewVerifierClient(clientConnection)
 	s.StopClient = clientConnection.Close

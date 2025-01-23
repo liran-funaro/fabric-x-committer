@@ -10,6 +10,8 @@ import (
 
 type DecoderFunc = func(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error)
 
+var decoders = []DecoderFunc{durationDecoder, endpointDecoder, ordererEndpointDecoder}
+
 // decoderHook contains custom unmarshalling for types not supported by default by mapstructure, e.g. time.Duration, connection.Endpoint
 func decoderHook(hooks ...DecoderFunc) viper.DecoderConfigOption {
 	return viper.DecodeHook(func(dataType, targetType reflect.Type, rawData interface{}) (interface{}, error) {
@@ -44,6 +46,20 @@ func endpointDecoder(dataType, targetType reflect.Type, rawData interface{}) (in
 		return rawData, false, nil
 	}
 	endpoint, err := connection.NewEndpoint(rawData.(string))
+	if err != nil {
+		return nil, true, err
+	}
+	return endpoint, true, nil
+}
+
+func ordererEndpointDecoder(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error) {
+	if targetType != reflect.TypeOf(connection.OrdererEndpoint{}) {
+		return rawData, false, nil
+	}
+	if dataType.Kind() != reflect.String {
+		return rawData, false, nil
+	}
+	endpoint, err := connection.ParseOrdererEndpoint(rawData.(string))
 	if err != nil {
 		return nil, true, err
 	}

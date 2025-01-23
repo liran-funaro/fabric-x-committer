@@ -7,30 +7,35 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
+func init() {
+	logging.NoGrpcLog()
+}
+
 type sidecarTestEnv struct {
+	config      *Config
+	coordinator *mock.Coordinator
+
 	sidecar         *Service
-	coordinator     *mock.Coordinator
 	gServer         *grpc.Server
-	config          *SidecarConfig
-	broadcastClient orderer.AtomicBroadcast_BroadcastClient
-	envelopeCreator broadcastclient.EnvelopeCreator
+	broadcastClient *broadcastdeliver.EnvelopedStream
 	committedBlock  chan *common.Block
 }
 
@@ -40,47 +45,59 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 	)
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	channelID := "ch1"
-	config := &SidecarConfig{
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 3101,
+	env := &sidecarTestEnv{
+		coordinator: coordinator,
+		config: &Config{
+			Server: &connection.ServerConfig{
+				Endpoint: connection.Endpoint{
+					Host: "localhost",
+					Port: 3101,
+				},
 			},
-		},
-		Orderer: &deliverclient.Config{
-			ChannelID: channelID,
-			Endpoint:  orderersServer.Configs[0].Endpoint,
-			Reconnect: -1,
-		},
-		Committer: &CoordinatorConfig{
-			Endpoint: coordinatorServer.Configs[0].Endpoint,
-		},
-		Ledger: &LedgerConfig{
-			Path: t.TempDir(),
+			Orderer: broadcastdeliver.Config{
+				ChannelID: "ch1",
+				Endpoints: []*connection.OrdererEndpoint{{
+					MspID:    "org",
+					Endpoint: orderersServer.Configs[0].Endpoint,
+				}},
+			},
+			Committer: CoordinatorConfig{
+				Endpoint: coordinatorServer.Configs[0].Endpoint,
+			},
+			Ledger: LedgerConfig{
+				Path: t.TempDir(),
+			},
+			Monitoring: &monitoring.Config{
+				Metrics: &metrics.Config{
+					Enable: true,
+					Endpoint: &connection.Endpoint{
+						Host: "localhost",
+						Port: 3111,
+					},
+				},
+			},
 		},
 	}
 
-	sidecar, err := New(config)
+	sidecar, err := New(env.config)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
+	env.sidecar = sidecar
 
-	broadcastSubmitter, err := broadcastclient.New(context.TODO(), broadcastclient.Config{
-		Broadcast:       []*connection.Endpoint{&config.Orderer.Endpoint},
+	broadcastSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
+		Endpoints:       env.config.Orderer.Endpoints,
 		SignedEnvelopes: false,
-		ChannelID:       config.Orderer.ChannelID,
-		Type:            utils.Raft,
-		Parallelism:     1,
+		ChannelID:       env.config.Orderer.ChannelID,
+		ConsensusType:   broadcastdeliver.Bft,
 	})
 	require.NoError(t, err)
 
-	return &sidecarTestEnv{
-		sidecar:         sidecar,
-		coordinator:     coordinator,
-		config:          config,
-		broadcastClient: broadcastSubmitter.Streams[0],
-		envelopeCreator: broadcastSubmitter.EnvelopeCreator,
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
+	env.broadcastClient, err = broadcastSubmitter.Broadcast(ctx)
+	require.NoError(t, err)
+
+	return env
 }
 
 func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
@@ -91,10 +108,9 @@ func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
 	// we need to wait for the sidecar to connect to ordering service and fetch the
 	// config block, i.e., block 0. EnsureAtLeastHeight waits for the block 0 to be committed.
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
-	env.committedBlock = ledger.StartDeliverClient(t, &deliverclient.Config{
+	env.committedBlock = sidecarclient.StartSidecarClient(t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
-		Endpoint:  env.config.Server.Endpoint,
-		Reconnect: -1,
+		Endpoint:  &env.config.Server.Endpoint,
 	}, startBlkNum)
 }
 
@@ -110,9 +126,9 @@ func TestSidecar(t *testing.T) {
 				Id:         txIDPrefix + strconv.Itoa(i),
 				Namespaces: []*protoblocktx.TxNamespace{{NsId: uint32(i)}}, // nolint:gosec
 			}
-			ev, _, err := env.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(txs[i]))
+			_, resp, err := env.broadcastClient.SubmitWithEnv(protoutil.MarshalOrPanic(txs[i]))
 			require.NoError(t, err)
-			require.NoError(t, env.broadcastClient.Send(ev))
+			t.Logf("Response: %s", resp.Info)
 		}
 	}
 

@@ -4,13 +4,12 @@ import (
 	"context"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -21,8 +20,7 @@ type (
 	// SidecarAdapter applies load on the sidecar.
 	SidecarAdapter struct {
 		commonAdapter
-		config          *SidecarClientConfig
-		envelopeCreator broadcastclient.EnvelopeCreator
+		config *SidecarClientConfig
 	}
 )
 
@@ -36,7 +34,7 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) *Sidec
 
 // RunWorkload applies load on the sidecar.
 func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	coordinatorConn, err := connection.Connect(connection.NewDialConfig(*c.config.Coordinator.Endpoint))
+	coordinatorConn, err := connection.Connect(connection.NewDialConfig(c.config.Coordinator.Endpoint))
 	if err != nil {
 		return errors.Wrapf(
 			err, "failed to connect to coordinator on %s", c.config.Coordinator.Endpoint.String(),
@@ -48,53 +46,56 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 		return err
 	}
 
-	committedBlock := make(chan *common.Block, 100)
-	ledgerReceiver, err := deliverclient.New(&deliverclient.Config{
+	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
 		ChannelID: c.config.Orderer.ChannelID,
-		Endpoint:  *c.config.Endpoint,
-		Reconnect: -1,
-	}, deliverclient.Ledger, committedBlock)
+		Endpoint:  c.config.Endpoint,
+	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create listener")
 	}
 	logger.Info("Listener created")
 
-	g, gCtx := errgroup.WithContext(ctx)
-
-	broadcastSubmitter, err := broadcastclient.New(gCtx, c.config.Orderer)
+	broadcastSubmitter, err := broadcastdeliver.New(&c.config.Orderer)
 	if err != nil {
 		return errors.Wrap(err, "failed to create orderer clients")
 	}
 	defer broadcastSubmitter.Close()
-	c.envelopeCreator = broadcastSubmitter.EnvelopeCreator
 
-	deliverSubmitter, err := broadcastclient.New(gCtx, c.config.Orderer)
-	if err != nil {
-		return errors.Wrap(err, "failed to create orderer clients")
-	}
-	defer deliverSubmitter.Close()
+	g, gCtx := errgroup.WithContext(ctx)
 
+	committedBlock := make(chan *common.Block, 100)
 	g.Go(func() error {
-		return ledgerReceiver.Run(gCtx, &deliverclient.ReceiverRunConfig{})
+		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
+			OutputBlock: committedBlock,
+		})
 	})
-	for _, stream := range broadcastSubmitter.Streams {
+	g.Go(func() error {
+		c.receiveCommittedBlock(gCtx, committedBlock)
+		return nil
+	})
+
+	for range c.config.BroadcastParallelism {
 		g.Go(func() error {
-			return c.sendTransactions(gCtx, txStream, stream)
+			stream, err := broadcastSubmitter.Broadcast(gCtx)
+			if err != nil {
+				return err
+			}
+			g.Go(func() error {
+				err := c.sendTransactions(gCtx, txStream, stream)
+				// Insufficient quorum may happen when the context ends due to unavailable servers.
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return err
+			})
+			return nil
 		})
 	}
-	for _, stream := range deliverSubmitter.Streams {
-		g.Go(func() error {
-			return receiveResponses(gCtx, stream)
-		})
-	}
-	g.Go(func() error {
-		return c.receiveCommittedBlock(gCtx, committedBlock)
-	})
 	return g.Wait()
 }
 
 func (c *SidecarAdapter) sendTransactions(
-	ctx context.Context, txStream TxStream, stream ab.AtomicBroadcast_BroadcastClient,
+	ctx context.Context, txStream TxStream, stream *broadcastdeliver.EnvelopedStream,
 ) error {
 	txGen := txStream.MakeTxGenerator()
 	for ctx.Err() == nil {
@@ -103,40 +104,26 @@ func (c *SidecarAdapter) sendTransactions(
 			// If the context ended, the generator returns nil.
 			break
 		}
-		env, txID, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
+		txBytes, err := protoutil.Marshal(tx)
 		if err != nil {
-			return errors.Wrapf(err, "failed enveloping tx %s", txID)
+			return err
 		}
-		logger.Debugf("Sending TX %s", txID)
-		if err := stream.Send(env); err != nil {
-			return connection.WrapStreamRpcError(err)
+		txID, resp, err := stream.SubmitWithEnv(txBytes)
+		if err != nil {
+			return err
 		}
+		logger.Debugf("Sent TX %s, got ack: %s", txID, resp.Info)
 		c.res.Metrics.OnSendTransaction(txID)
 	}
 	return nil
 }
 
-func receiveResponses(ctx context.Context, stream ab.AtomicBroadcast_BroadcastClient) error {
-	for ctx.Err() == nil {
-		response, err := stream.Recv()
-		switch {
-		case err != nil:
-			return connection.WrapStreamRpcError(err)
-		case response.Status != common.Status_SUCCESS:
-			return errors.Errorf("unexpected status: %v - %s", response.Status, response.Info)
-		default:
-			logger.Debugf("Received ack for TX")
-		}
-	}
-	return nil
-}
-
-func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue chan *common.Block) error {
+func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue chan *common.Block) {
 	committedBlock := channel.NewReader(ctx, blockQueue)
 	for ctx.Err() == nil {
 		block, ok := committedBlock.Read()
 		if !ok {
-			return nil
+			return
 		}
 
 		statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
@@ -158,5 +145,4 @@ func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue c
 			)
 		}
 	}
-	return nil
 }

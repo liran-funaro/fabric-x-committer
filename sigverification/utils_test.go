@@ -1,0 +1,116 @@
+package sigverification
+
+import (
+	"encoding/pem"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+)
+
+func TestEndToEnd(t *testing.T) {
+	for _, schema := range []signature.Scheme{signature.Ecdsa, signature.Bls, signature.Eddsa} {
+		t.Run(schema, func(t *testing.T) {
+			f := sigverificationtest.GetSignatureFactory(schema)
+			priv, pub := f.NewKeys()
+			v, err := f.NewVerifier(pub)
+			require.NoError(t, err)
+			s, err := f.NewSigner(priv)
+			require.NoError(t, err)
+			tx := protoblocktx.Tx{
+				Id: "test",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:       0,
+						NsVersion:  make([]byte, 0),
+						ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+					},
+				},
+			}
+			sig, err := s.SignNs(&tx, 0)
+			tx.Signatures = [][]byte{sig}
+			require.NoError(t, err)
+			require.NoError(t, v.VerifyNs(&tx, 0))
+		})
+	}
+}
+
+func TestEcdsaPem(t *testing.T) {
+	// Currently, only ECDSA is encoded to PEM, so we only test it.
+	f := sigverificationtest.GetSignatureFactory(signature.Ecdsa)
+	dir := t.TempDir()
+	pemPath := filepath.Join(dir, fmt.Sprintf("%s.pem", signature.Ecdsa))
+	priv, pub := f.NewKeys()
+	require.NoError(t, os.WriteFile(pemPath, append(priv, pub...), 0o600))
+
+	v, err := f.NewVerifier(pub)
+	require.NoError(t, err)
+	s, err := f.NewSigner(priv)
+	require.NoError(t, err)
+
+	m, err := readPem(pemPath)
+	require.NoError(t, err)
+
+	var pemV signature.NsVerifier
+	var pemS sigverificationtest.NsSigner
+
+	for key, value := range m {
+		t.Log(key)
+		if strings.Contains(strings.ToLower(key), "public") {
+			pemV, err = f.NewVerifier(value)
+			require.NoError(t, err)
+		}
+		if strings.Contains(strings.ToLower(key), "private") {
+			pemS, err = f.NewSigner(value)
+			require.NoError(t, err)
+		}
+	}
+
+	require.NotNil(t, pemV, "missing public key in PEM")
+	require.NotNil(t, pemS, "missing private key in PEM")
+
+	tx := protoblocktx.Tx{
+		Id: "test",
+		Namespaces: []*protoblocktx.TxNamespace{
+			{
+				NsId:       0,
+				NsVersion:  make([]byte, 0),
+				ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+			},
+		},
+	}
+
+	sig, err := s.SignNs(&tx, 0)
+	tx.Signatures = [][]byte{sig}
+	require.NoError(t, err)
+	require.NoError(t, pemV.VerifyNs(&tx, 0))
+
+	sig, err = pemS.SignNs(&tx, 0)
+	tx.Signatures = [][]byte{sig}
+	require.NoError(t, err)
+	require.NoError(t, v.VerifyNs(&tx, 0))
+}
+
+func readPem(certPath string) (map[string][]byte, error) {
+	pemContent, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make(map[string][]byte)
+	for {
+		block, rest := pem.Decode(pemContent)
+		if block == nil {
+			break
+		}
+		pemContent = rest
+		ret[block.Type] = pem.EncodeToMemory(block)
+	}
+	return ret, nil
+}

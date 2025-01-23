@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/onsi/gomega"
-	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
@@ -40,7 +39,7 @@ const (
 func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *processWithConfig[T] {
 	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
 	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
-	require.NoError(t, configtempl.CreateConfigFile(config, inputConfigTemplateFilePath, outputConfigFilePath))
+	configtempl.CreateConfigFile(t, config, inputConfigTemplateFilePath, outputConfigFilePath)
 	p := start(path.Join(executableRootPath, cmdName), outputConfigFilePath, cmdName)
 	t.Cleanup(func() {
 		p.Signal(os.Kill)

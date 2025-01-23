@@ -11,18 +11,16 @@ import (
 type Host = string
 
 type Endpoint struct {
-	Host Host `mapstructure:"host"`
-	Port int  `mapstructure:"port"`
+	Host Host `mapstructure:"host" json:"host,omitempty" yaml:"host,omitempty"`
+	Port int  `mapstructure:"port" json:"port,omitempty" yaml:"port,omitempty"`
 }
-
-const endpointSplitter = ":"
 
 func (e *Endpoint) Empty() bool {
 	return e.Port == 0
 }
 
 func (e *Endpoint) Address() string {
-	return fmt.Sprintf("%s%s%d", e.Host, endpointSplitter, e.Port)
+	return fmt.Sprintf("%s:%d", e.Host, e.Port)
 }
 
 func (e *Endpoint) String() string {

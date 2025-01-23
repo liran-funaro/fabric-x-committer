@@ -4,7 +4,7 @@ virt: vm
 os: linux
 dist: focal
 go:
-  - 1.23.2
+  - 1.23.4
 
 cache:
   directories:

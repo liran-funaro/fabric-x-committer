@@ -94,5 +94,5 @@ func UnitTestRunner(
 			return false
 		}
 		return strings.Contains(string(logOut), test.CmdLoggerOutput) && strings.Contains(string(logOut), test.Endpoint)
-	}, 30*time.Second, 500*time.Millisecond)
+	}, time.Minute, 500*time.Millisecond)
 }

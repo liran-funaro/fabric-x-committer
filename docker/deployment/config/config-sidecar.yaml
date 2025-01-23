@@ -25,9 +25,8 @@ sidecar:
       bucket-count: 1000
 
   orderer:
-    endpoint:
-      host: "mock-ordering-service"
-      port: 4001
+    endpoints:
+      - mock-ordering-service:4001
     channel-id: mychannel
     # orderer-connection-profile:
     #   root-ca-paths:
@@ -39,7 +38,6 @@ sidecar:
     #     SW:
     #       Security: 256
     #       Hash: SHA2
-    reconnect: 10s
   committer:
     endpoint:
       host: "coordinator"

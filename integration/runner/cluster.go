@@ -12,10 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -26,12 +27,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
@@ -50,12 +48,10 @@ type (
 
 		dbEnv *vcservice.DatabaseTestEnv
 
-		ordererClient      orderer.AtomicBroadcast_BroadcastClient
+		ordererClient      *broadcastdeliver.EnvelopedStream
 		coordinatorClient  protocoordinatorservice.CoordinatorClient
 		QueryServiceClient protoqueryservice.QueryServiceClient
-		sidecarClient      *deliverclient.Receiver
-
-		envelopeCreator broadcastclient.EnvelopeCreator
+		sidecarClient      *sidecarclient.Client
 
 		committedBlock chan *common.Block
 		rootDir        string
@@ -85,10 +81,11 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	require.NoError(t, err)
 	t.Logf("Working dir: %s", dir)
 	buildCmd := exec.Command("make", "build")
-	buildCmd.Dir = path.Join(dir, "../..")
+	buildCmd.Dir = path.Clean(path.Join(dir, "../.."))
 	makeRun := run(buildCmd, "make", "")
 	select {
-	case <-makeRun.Wait():
+	case err = <-makeRun.Wait():
+		require.NoError(t, err)
 	case <-time.After(3 * time.Minute):
 		makeRun.Signal(os.Kill)
 		t.Fatalf("Failed to build binaries")
@@ -148,7 +145,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	// Start sidecar
 	sidecarConfig := &configtempl.SidecarConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
-		OrdererEndpoint:     c.mockOrderer.config.ServerEndpoint,
+		OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
 		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
 		LedgerPath:          c.rootDir,
 		ChannelID:           c.channelID,
@@ -163,7 +160,9 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	c.ensureLastCommittedBlockNumber(t, 0)
 
 	test.RunServiceForTest(t, func(ctx context.Context) error {
-		return c.sidecarClient.Run(ctx, &deliverclient.ReceiverRunConfig{})
+		return c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
+			OutputBlock: c.committedBlock,
+		})
 	}, func(ctx context.Context) bool {
 		select {
 		case <-ctx.Done():
@@ -202,22 +201,22 @@ func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 	qsConn := createClientConnection(t, c.queryService.config.ServerEndpoint)
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
-	ordererSubmitter, err := broadcastclient.New(ctx, broadcastclient.Config{
-		Broadcast:       []*connection.Endpoint{connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
+	ordererSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
+		Endpoints: []*connection.OrdererEndpoint{
+			{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
+		},
 		SignedEnvelopes: false,
 		ChannelID:       c.channelID,
-		Type:            utils.Raft,
-		Parallelism:     1,
+		ConsensusType:   broadcastdeliver.Bft,
 	})
 	require.NoError(t, err)
-	c.ordererClient = ordererSubmitter.Streams[0]
-	c.envelopeCreator = ordererSubmitter.EnvelopeCreator
+	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
+	require.NoError(t, err)
 
-	c.sidecarClient, err = deliverclient.New(&deliverclient.Config{
+	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: c.channelID,
-		Endpoint:  *connection.CreateEndpoint(c.sidecar.config.ServerEndpoint),
-		Reconnect: -1,
-	}, deliverclient.Ledger, c.committedBlock)
+		Endpoint:  connection.CreateEndpoint(c.sidecar.config.ServerEndpoint),
+	})
 	require.NoError(t, err)
 }
 
@@ -292,10 +291,7 @@ func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 // SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
 func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
 	for _, tx := range txs {
-		env, _, err := c.envelopeCreator.CreateEnvelope(protoutil.MarshalOrPanic(tx))
-		require.NoError(t, err)
-		require.NoError(t, c.ordererClient.Send(env))
-		resp, err := c.ordererClient.Recv()
+		_, resp, err := c.ordererClient.SubmitWithEnv(protoutil.MarshalOrPanic(tx))
 		require.NoError(t, err)
 		require.Equal(t, common.Status_SUCCESS, resp.Status)
 	}
@@ -331,8 +327,7 @@ func (c *Cluster) GetCryptoForNs(t *testing.T, nsID types.NamespaceID) ([]byte, 
 func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientConn {
 	serviceEndpoint, err := connection.NewEndpoint(serverEndPoint)
 	require.NoError(t, err)
-	serviceDialConfig := connection.NewDialConfig(*serviceEndpoint)
-	serviceConnection, err := connection.Connect(serviceDialConfig)
+	serviceConnection, err := connection.Connect(connection.NewDialConfig(serviceEndpoint))
 	require.NoError(t, err)
 
 	return serviceConnection

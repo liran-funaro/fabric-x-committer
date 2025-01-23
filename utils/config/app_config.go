@@ -21,7 +21,7 @@ func OnConfigUpdated(listener func()) {
 }
 
 func Unmarshal(c interface{}, decoderFuncs ...DecoderFunc) {
-	utils.Must(viper.Unmarshal(c, decoderHook(append(decoderFuncs, durationDecoder, endpointDecoder)...)))
+	utils.Must(viper.Unmarshal(c, decoderHook(append(decoderFuncs, decoders...)...)))
 	logger.Debugf("Decoded config: %v", c)
 }
 

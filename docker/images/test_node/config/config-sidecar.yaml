@@ -35,7 +35,6 @@ sidecar:
         SW:
           Security: 256
           Hash: SHA2
-    reconnect: 10s
   committer:
     endpoint: localhost:5002
     ledger-path: /root/sc/ledger

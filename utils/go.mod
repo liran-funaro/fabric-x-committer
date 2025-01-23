@@ -1,13 +1,12 @@
 module github.ibm.com/decentralized-trust-research/scalable-committer/utils
 
-go 1.23.2
+go 1.23.4
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/consensys/gnark-crypto v0.14.0
 	github.com/golang/protobuf v1.5.4
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240918034325-94590aa4332b
-	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3
 	github.com/onsi/gomega v1.34.2
 	github.com/pkg/errors v0.9.1
@@ -29,11 +28,6 @@ require (
 )
 
 require (
-	github.com/IBM/idemix v0.0.2-0.20240913182345-72941a5f41cd // indirect
-	github.com/IBM/idemix/bccsp/schemes/aries v0.0.0-20240913182345-72941a5f41cd // indirect
-	github.com/IBM/idemix/bccsp/schemes/weak-bb v0.0.0-20240913182345-72941a5f41cd // indirect
-	github.com/IBM/idemix/bccsp/types v0.0.0-20240913182345-72941a5f41cd // indirect
-	github.com/IBM/mathlib v0.0.3-0.20231011094432-44ee0eb539da // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.14.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -45,9 +39,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.0.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc // indirect
-	github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 // indirect
-	github.com/kilic/bls12-381 v0.1.0 // indirect
+	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5 // indirect
 	github.com/klauspost/compress v1.17.10 // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -71,6 +63,5 @@ require (
 	golang.org/x/tools v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240930140551-af27646dc61f // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )

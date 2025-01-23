@@ -34,7 +34,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		committedBlock,
 	)
 
-	conn, err := connection.Connect(connection.NewDialConfig(coordinatorEndpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&coordinatorEndpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
 

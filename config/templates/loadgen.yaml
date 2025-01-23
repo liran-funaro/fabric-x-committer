@@ -5,13 +5,13 @@ sidecar-client:
   coordinator:
     endpoint: {{ .CoordinatorEndpoint }}
   orderer:
-    broadcast:
+    endpoints:
       {{- range .OrdererEndpoints }}
       - {{ . }}
       {{- end }}
-    type: BFT
+    consensus-type: BFT
     channel-id: {{ .ChannelID }}
-    parallelism: 50
+  broadcast-parallelism: 50
 sig-verifier-client:
 monitoring:
   metrics:

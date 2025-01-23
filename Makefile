@@ -23,7 +23,7 @@ project_dir    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 output_dir     ?= $(project_dir)/bin
 cache_dir      ?= $(shell go env GOCACHE)
 mod_cache_dir  ?= $(shell go env GOMODCACHE)
-go_version     ?= 1.23.2
+go_version     ?= 1.23.4
 golang_image   ?= golang:$(go_version)-bookworm
 db_image       ?= yugabytedb/yugabyte:2.20.7.0-b58
 

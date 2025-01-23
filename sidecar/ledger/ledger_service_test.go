@@ -7,7 +7,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	sidecartest "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -43,8 +43,9 @@ func TestLedgerService(t *testing.T) {
 
 	EnsureAtLeastHeight(t, ledgerService, 1)
 
-	receivedBlocksFromLedgerService := StartDeliverClient(t, &deliverclient.Config{
-		ChannelID: channelID, Endpoint: config.Endpoint,
+	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t, &sidecarclient.Config{
+		ChannelID: channelID,
+		Endpoint:  &config.Endpoint,
 	}, 0)
 
 	blk1 := sidecartest.CreateBlockForTest(nil, 1, protoutil.BlockHeaderHash(blk0.Header), [3]string{"3", "4", "5"})

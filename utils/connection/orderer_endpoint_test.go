@@ -1,0 +1,52 @@
+package connection
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+)
+
+func TestReadWrite(t *testing.T) {
+	valSchema := "id=5,msp-id=org,broadcast,deliver,localhost:5050"
+	valJSON := `{"id":5,"msp-id":"org","api":["broadcast","deliver"],"host":"localhost","port":5050}`
+	valYAML := `id: 5
+msp-id: org
+api:
+    - broadcast
+    - deliver
+host: localhost
+port: 5050
+`
+	expected := &OrdererEndpoint{
+		ID:    5,
+		MspID: "org",
+		API:   []string{"broadcast", "deliver"},
+		Endpoint: Endpoint{
+			Host: "localhost",
+			Port: 5050,
+		},
+	}
+	require.Equal(t, valSchema, expected.String())
+
+	valJsonRaw, err := json.Marshal(expected)
+	require.NoError(t, err)
+	require.Equal(t, valJSON, string(valJsonRaw))
+
+	valYamlRaw, err := yaml.Marshal(expected)
+	require.NoError(t, err)
+	require.Equal(t, valYAML, string(valYamlRaw))
+
+	e, err := ParseOrdererEndpoint(valSchema)
+	require.NoError(t, err)
+	require.Equal(t, expected, e)
+
+	e, err = ParseOrdererEndpoint(valJSON)
+	require.NoError(t, err)
+	require.Equal(t, expected, e)
+
+	e, err = ParseOrdererEndpoint(valYAML)
+	require.NoError(t, err)
+	require.Equal(t, expected, e)
+}

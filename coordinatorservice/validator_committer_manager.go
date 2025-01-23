@@ -153,7 +153,7 @@ func newValidatorCommitter(
 ) (
 	*validatorCommitter, error,
 ) {
-	conn, err := connection.Connect(connection.NewDialConfig(serverConfig.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&serverConfig.Endpoint))
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create connection to validator persister running at %s: %w",

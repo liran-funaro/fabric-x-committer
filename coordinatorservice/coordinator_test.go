@@ -103,7 +103,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
 	})
 
-	conn, err := connection.Connect(connection.NewDialConfig(sc.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&sc.Endpoint))
 	require.NoError(t, err)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)

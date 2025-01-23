@@ -10,9 +10,12 @@ sidecar:
         permit-without-stream: false
 
   orderer:
-    endpoint: {{ .OrdererEndpoint }}
+    endpoints:
+      {{- range .OrdererEndpoints }}
+      - {{ . }}
+      {{- end }}
     channel-id: {{ .ChannelID }}
-    reconnect: 10s
+    consensus-type: BFT
   committer:
     endpoint: {{ .CoordinatorEndpoint }}
 

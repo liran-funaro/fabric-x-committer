@@ -2,10 +2,12 @@ package configtempl
 
 import (
 	"bytes"
-	"fmt"
 	"html/template"
 	"os"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type (
@@ -46,7 +48,7 @@ type (
 	// SidecarConfig represents the configuration of the sidecar process.
 	SidecarConfig struct {
 		CommonEndpoints
-		OrdererEndpoint     string
+		OrdererEndpoints    []string
 		CoordinatorEndpoint string
 		ChannelID           string
 		LedgerPath          string
@@ -64,26 +66,19 @@ type (
 )
 
 // CreateConfigFile creates a configuration file by applying the given config on a template.
-func CreateConfigFile(config any, templateFilePath, outputFilePath string) error {
+func CreateConfigFile(t *testing.T, config any, templateFilePath, outputFilePath string) {
 	tmpl, err := template.ParseFiles(templateFilePath)
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
 	var renderedConfig bytes.Buffer
-	if err = tmpl.Execute(&renderedConfig, config); err != nil {
-		return err
-	}
+	require.NoError(t, tmpl.Execute(&renderedConfig, config))
 
 	outputFile, err := os.Create(outputFilePath) // nolint:gosec
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = outputFile.Close()
 	}()
 
-	fmt.Println(renderedConfig.String())
 	_, err = outputFile.Write(renderedConfig.Bytes())
-	return err
+	require.NoError(t, err)
 }

@@ -37,7 +37,7 @@ type CoordinatorAdapter struct {
 func OpenCoordinatorAdapter(
 	endpoint connection.Endpoint, rateLimiterConfig *loadgenworkload.LimiterConfig,
 ) *CoordinatorAdapter {
-	clientConfig := connection.NewDialConfig(endpoint)
+	clientConfig := connection.NewDialConfig(&endpoint)
 
 	logger.Infof("Connect to coordinator on %v.\n", &endpoint)
 	conn, err := connection.Connect(clientConfig)

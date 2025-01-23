@@ -16,53 +16,47 @@ import (
 
 const maxMsgSize = 100 * 1024 * 1024
 
-type DialConfig struct {
-	Endpoint
-	DialOpts []grpc.DialOption
-}
+type (
+	DialConfig struct {
+		WithAddress
+		DialOpts []grpc.DialOption
+	}
+
+	WithAddress interface {
+		Address() string
+	}
+)
 
 var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
-func NewDialConfig(endpoint Endpoint) *DialConfig {
+func NewDialConfig(endpoint WithAddress) *DialConfig {
 	return NewDialConfigWithCreds(endpoint, insecure.NewCredentials())
 }
 
-func NewDialConfigWithCreds(endpoint Endpoint, creds credentials.TransportCredentials) *DialConfig {
+func NewDialConfigWithCreds(endpoint WithAddress, creds credentials.TransportCredentials) *DialConfig {
 	return &DialConfig{
-		Endpoint: endpoint,
-		DialOpts: []grpc.DialOption{
-			grpc.WithTransportCredentials(creds),
-			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(maxMsgSize),
-				grpc.MaxCallSendMsgSize(maxMsgSize),
-			),
-			grpc.WithBlock(),
-			grpc.WithReturnConnectionError(),
-		},
+		WithAddress: endpoint,
+		DialOpts:    NewDialOptionWithCreds(creds),
 	}
 }
 
-func OpenConnections(endpoints []*Endpoint, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
-	logger.Infof("Opening connections to %d endpoints: %v.\n", len(endpoints), endpoints)
-	connections := make([]*grpc.ClientConn, len(endpoints))
-	for i, endpoint := range endpoints {
-		conn, err := Connect(NewDialConfigWithCreds(*endpoint, transportCredentials))
-		if err != nil {
-			logger.Errorf("Error connecting: %v", err)
-			closeErrs := CloseConnections(connections[:i]...)
-			if closeErrs != nil {
-				logger.Error(closeErrs)
-			}
-			return nil, err
-		}
-
-		connections[i] = conn
+func NewDialOptionWithCreds(creds credentials.TransportCredentials) []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+		grpc.WithBlock(),
+		grpc.WithReturnConnectionError(),
 	}
-	logger.Infof("Opened %d connections", len(connections))
-	return connections, nil
 }
 
-func CloseConnections(connections ...*grpc.ClientConn) error {
+func OpenConnections[T WithAddress](endpoints []T, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
+	return openConnections(endpoints, transportCredentials, Connect)
+}
+
+func CloseConnections[T io.Closer](connections ...T) error {
 	logger.Infof("Closing %d connections.\n", len(connections))
 	errs := make([]error, len(connections))
 	for i, closer := range connections {
@@ -71,7 +65,7 @@ func CloseConnections(connections ...*grpc.ClientConn) error {
 	return errors.Join(errs...)
 }
 
-func CloseConnectionsLog(connections ...*grpc.ClientConn) {
+func CloseConnectionsLog[T io.Closer](connections ...T) {
 	closeErr := CloseConnections(connections...)
 	if closeErr != nil {
 		logger.Errorf("failed closing connections: %v", closeErr)
@@ -82,13 +76,52 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
 	defer cancel()
 
-	cc, err := grpc.DialContext(ctx, config.Endpoint.Address(), config.DialOpts...)
+	address := config.WithAddress.Address()
+	cc, err := grpc.DialContext(ctx, address, config.DialOpts...)
 	if err != nil {
-		logger.Errorf("Error connecting to %s: %v", &config.Endpoint, err)
+		logger.Errorf("Error connecting to %s: %v", address, err)
 		return nil, err
 	}
 
 	return cc, nil
+}
+
+func LazyConnect(config *DialConfig) (*grpc.ClientConn, error) {
+	address := config.WithAddress.Address()
+	cc, err := grpc.NewClient(address, config.DialOpts...)
+	if err != nil {
+		logger.Errorf("Error connecting to %s: %v", address, err)
+		return nil, err
+	}
+	return cc, nil
+}
+
+func OpenLazyConnections[T WithAddress](
+	endpoints []T,
+	transportCredentials credentials.TransportCredentials,
+) ([]*grpc.ClientConn, error) {
+	return openConnections(endpoints, transportCredentials, LazyConnect)
+}
+
+func openConnections[T WithAddress](
+	endpoints []T,
+	transportCredentials credentials.TransportCredentials,
+	connect func(*DialConfig) (*grpc.ClientConn, error),
+) ([]*grpc.ClientConn, error) {
+	logger.Infof("Opening connections to %d endpoints: %v.\n", len(endpoints), endpoints)
+	connections := make([]*grpc.ClientConn, len(endpoints))
+	for i, endpoint := range endpoints {
+		conn, err := connect(NewDialConfigWithCreds(endpoint, transportCredentials))
+		if err != nil {
+			logger.Errorf("Error connecting: %v", err)
+			CloseConnectionsLog(connections[:i]...)
+			return nil, err
+		}
+
+		connections[i] = conn
+	}
+	logger.Infof("Opened %d connections", len(connections))
+	return connections, nil
 }
 
 func IsStreamEnd(rpcErr error) bool {

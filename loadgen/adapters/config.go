@@ -1,7 +1,7 @@
 package adapters
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters/broadcastclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -16,9 +16,10 @@ type (
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		Endpoint    *connection.Endpoint     `mapstructure:"endpoint"`
-		Coordinator *CoordinatorClientConfig `mapstructure:"coordinator"`
-		Orderer     broadcastclient.Config   `mapstructure:"orderer"`
+		Endpoint             *connection.Endpoint     `mapstructure:"endpoint"`
+		Coordinator          *CoordinatorClientConfig `mapstructure:"coordinator"`
+		Orderer              broadcastdeliver.Config  `mapstructure:"orderer"`
+		BroadcastParallelism int                      `mapstructure:"broadcast-parallelism"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.

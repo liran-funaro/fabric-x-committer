@@ -89,13 +89,6 @@ func UniformBuckets(count int, from, to float64) []float64 {
 	return append(result, to)
 }
 
-type ConsensusType = string
-
-const (
-	Raft ConsensusType = "etcdraft"
-	Bft                = "BFT"
-)
-
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.
 // The system only allows a single active stream at any given time.
 var ErrActiveStream = errors.New("a stream is already active. Only one active stream is allowed at a time")

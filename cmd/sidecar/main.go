@@ -79,13 +79,6 @@ func startCmd() *cobra.Command {
 func setFlags(cmd *cobra.Command) {
 	cobracmd.CobraInt(
 		cmd,
-		"orderer-endpoint",
-		"sets the endpoint of the orderer in the config file",
-		fmt.Sprintf("%v.orderer.endpoint", serviceName),
-	)
-
-	cobracmd.CobraInt(
-		cmd,
 		"committer-endpoint",
 		"sets the endpoint of the committer in the config file",
 		fmt.Sprintf("%v.committer.endpoint", serviceName),

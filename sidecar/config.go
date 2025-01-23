@@ -1,25 +1,23 @@
 package sidecar
 
 import (
-	"time"
-
 	"github.com/spf13/viper"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/deliverclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
-// SidecarConfig holds the configuration of the sidecar service. This includes
+// Config holds the configuration of the sidecar service. This includes
 // sidecar endpoint, orderer endpoint from which the sidecar pulls the block,
 // committer endpoint to which the sidecar pushes the block and pulls statuses,
 // and the config of ledger service.
-type SidecarConfig struct {
+type Config struct {
 	Monitoring *monitoring.Config       `mapstructure:"monitoring"`
 	Server     *connection.ServerConfig `mapstructure:"server"`
-	Orderer    *deliverclient.Config    `mapstructure:"orderer"`
-	Committer  *CoordinatorConfig       `mapstructure:"committer"`
-	Ledger     *LedgerConfig            `mapstructure:"ledger"`
+	Orderer    broadcastdeliver.Config  `mapstructure:"orderer"`
+	Committer  CoordinatorConfig        `mapstructure:"committer"`
+	Ledger     LedgerConfig             `mapstructure:"ledger"`
 }
 
 // CoordinatorConfig holds the endpoint of the coordinator component in the
@@ -33,9 +31,9 @@ type LedgerConfig struct {
 }
 
 // ReadConfig reads the config.
-func ReadConfig() SidecarConfig {
+func ReadConfig() Config {
 	wrapper := new(struct {
-		Config SidecarConfig `mapstructure:"sidecar"`
+		Config Config `mapstructure:"sidecar"`
 	})
 	config.Unmarshal(wrapper)
 	return wrapper.Config
@@ -47,7 +45,6 @@ func init() {
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
 	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
-	viper.SetDefault("sidecar.orderer.reconnect", 10*time.Second)
 
 	viper.SetDefault("sidecar.committer.endpoint", ":5002")
 	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
