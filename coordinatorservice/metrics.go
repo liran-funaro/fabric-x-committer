@@ -17,12 +17,10 @@ type perfMetrics struct {
 	transactionDuplicateTxStatusSentTotal      prometheus.Counter
 
 	// queue sizes
-	sigverifierInputBlockQueueSize           prometheus.Gauge
-	sigverifierOutputValidBlockQueueSize     prometheus.Gauge
-	sigverifierOutputInvalidBlockQueueSize   prometheus.Gauge
-	vcserviceInputTxBatchQueueSize           prometheus.Gauge
-	vcserviceOutputTxStatusBatchQueueSize    prometheus.Gauge
-	vcserviceOutputValidatedTxBatchQueueSize prometheus.Gauge
+	sigverifierInputTxBatchQueueSize           prometheus.Gauge
+	sigverifierOutputValidatedTxBatchQueueSize prometheus.Gauge
+	vcserviceOutputTxStatusBatchQueueSize      prometheus.Gauge
+	vcserviceOutputValidatedTxBatchQueueSize   prometheus.Gauge
 
 	// processed transactions by each manager
 	sigverifierTransactionProcessedTotal prometheus.Counter
@@ -65,29 +63,17 @@ func newPerformanceMetrics(enabled bool) *perfMetrics {
 			Name:      "sent_transaction_duplicate_tx_status_total",
 			Help:      "Number of transactions duplicate tx status sent by the coordinator service to the client",
 		}),
-		sigverifierInputBlockQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		sigverifierInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "sigverifier",
-			Name:      "input_block_queue_size",
-			Help:      "Size of the input block queue of the signature verifier manager",
-		}),
-		sigverifierOutputValidBlockQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "sigverifier",
-			Name:      "output_valid_block_queue_size",
-			Help:      "Size of the output valid block queue of the signature verifier manager",
-		}),
-		sigverifierOutputInvalidBlockQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "sigverifier",
-			Name:      "output_invalid_block_queue_size",
-			Help:      "Size of the output invalid block queue of the signature verifier manager",
-		}),
-		vcserviceInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
 			Name:      "input_tx_batch_queue_size",
-			Help:      "Size of the input transaction batch queue of the validation and consensus service manager",
+			Help:      "Size of the input transaction batch queue of the signature verifier manager",
+		}),
+		sigverifierOutputValidatedTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "coordinator",
+			Subsystem: "sigverifier",
+			Name:      "output_validated_tx_batch_queue_size",
+			Help:      "Size of the output validated transaction batch queue of the signature verifier manager",
 		}),
 		vcserviceOutputTxStatusBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",

@@ -1,10 +1,10 @@
 package verifierserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -23,17 +23,12 @@ var logger = logging.New("verifierserver")
 type verifierServer struct {
 	sigverification.UnimplementedVerifierServer
 	streamHandler *streamhandler.StreamHandler
-	verifier      map[types.NamespaceID]*nsVerifierWithVersion
+	verifier      *sync.Map
 	metrics       *metrics.Metrics
 }
 
-type nsVerifierWithVersion struct {
-	verifier signature.NsVerifier
-	version  []byte
-}
-
 func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *verifierServer {
-	s := &verifierServer{verifier: make(map[types.NamespaceID]*nsVerifierWithVersion), metrics: m}
+	s := &verifierServer{verifier: &sync.Map{}, metrics: m}
 
 	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, m)
 	s.streamHandler = streamhandler.New(
@@ -72,10 +67,7 @@ func (s *verifierServer) SetVerificationKey(_ context.Context, verificationKey *
 	if err != nil {
 		return nil, err
 	}
-	s.verifier[types.NamespaceID(verificationKey.NsId)] = &nsVerifierWithVersion{
-		verifier: verifier,
-		version:  verificationKey.NsVersion,
-	}
+	s.verifier.Store(types.NamespaceID(verificationKey.NsId), verifier)
 
 	logger.Infof("Set a new verification key for namespace %d", verificationKey.NsId)
 	return &sigverification.Empty{}, nil
@@ -108,23 +100,22 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 	}
 
 	for nsIndex, ns := range request.Tx.Namespaces {
-		v, ok := s.verifier[types.NamespaceID(ns.NsId)]
+		v, ok := s.verifier.Load(types.NamespaceID(ns.NsId))
 		if !ok {
 			logger.Warnf("No verifier set for namespace %d. Returning invalid status.", ns.NsId)
 			response.ErrorMessage = "no verifier set"
 			return response, nil
 		}
 
-		if !bytes.Equal(v.version, ns.NsVersion) {
-			// TODO: Make the coordinator aware of the version mismatch
-			//       and reject the transaction early.
-			logger.Debugf(
-				"Version of verifier [%d] mismatches with the namespace's version [%d]",
-				v.version,
-				ns.NsVersion,
-			)
-			return response, nil
-		}
+		// NOTE: We do not compare the namespace version in the transaction
+		//       against the namespace version in the verifier. This is because if
+		//       the versions mismatch and we reject the transaction, the coordinator
+		//       would mark the transaction as invalid due to a bad signature. However,
+		//       this may not be true if the policy was not actually updated with the
+		//       new version. Hence, we should proceed to validate the signatures. If
+		//       the signatures are valid, the validator-committer service would
+		//       still mark the transaction as invalid due to an MVCC conflict on the
+		//       namespace version, which would reflect the correct validation status.
 
 		if logger.Level() <= zapcore.DebugLevel {
 			if data, err := json.Marshal(request.Tx); err != nil {
@@ -134,7 +125,11 @@ func (s *verifierServer) verifyRequest(request *sigverification.Request) (*sigve
 			}
 		}
 
-		if err := v.verifier.VerifyNs(request.Tx, nsIndex); err != nil {
+		verifier, ok := v.(signature.NsVerifier)
+		if !ok {
+			return nil, errors.New("verifier does not cast to signature.NsVerifier")
+		}
+		if err := verifier.VerifyNs(request.Tx, nsIndex); err != nil {
 			logger.Debugf("Invalid signature found: %v", request.GetTx().GetId())
 			response.ErrorMessage = err.Error()
 			return response, nil

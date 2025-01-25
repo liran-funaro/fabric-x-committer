@@ -54,7 +54,6 @@ func TestNoInput(t *testing.T) {
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{
 		NsId:            1,
-		NsVersion:       types.VersionNumber(0).Bytes(),
 		SerializedBytes: verificationKey,
 		Scheme:          signature.Ecdsa,
 	})
@@ -82,7 +81,6 @@ func TestMinimalInput(t *testing.T) {
 
 	_, err := c.Client.SetVerificationKey(context.Background(), &sigverification.Key{
 		NsId:            1,
-		NsVersion:       types.VersionNumber(0).Bytes(),
 		SerializedBytes: verificationKey,
 		Scheme:          signature.Ecdsa,
 	})

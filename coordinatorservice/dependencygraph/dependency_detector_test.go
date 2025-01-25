@@ -24,7 +24,7 @@ func TestDependencyDetector(t *testing.T) {
 	// tx2Node depends on tx1Node as tx2 writes k1 while tx1 reads k1 -- rw dependency.
 	tx2Node := createTxNode(t, nil, [][]byte{keys[0]}, nil)
 	dependsOnTx = dd.getDependenciesOf(tx2Node)
-	expectedDependsOnTx := transactionList{tx1Node}
+	expectedDependsOnTx := TxNodeBatch{tx1Node}
 	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx2Node)
@@ -57,7 +57,7 @@ func TestDependencyDetector(t *testing.T) {
 	// Further, it has a rw dependency on tx2 due to k1 and a rw dependency on tx5 due to k4.
 	tx6Node := createTxNode(t, [][]byte{keys[0], keys[3]}, nil, nil)
 	dependsOnTx = dd.getDependenciesOf(tx6Node)
-	expectedDependsOnTx = transactionList{tx5Node, tx2Node, tx1Node}
+	expectedDependsOnTx = TxNodeBatch{tx5Node, tx2Node, tx1Node}
 	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx6Node)
@@ -66,7 +66,7 @@ func TestDependencyDetector(t *testing.T) {
 	// Further, it has a wr dependency on tx6 due to k4 and a rw dependency on tx5 due to k4.
 	tx7Node := createTxNode(t, nil, [][]byte{keys[3]}, nil)
 	dependsOnTx = dd.getDependenciesOf(tx7Node)
-	expectedDependsOnTx = transactionList{tx6Node, tx5Node, tx1Node}
+	expectedDependsOnTx = TxNodeBatch{tx6Node, tx5Node, tx1Node}
 	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	depDetect = newDependencyDetector()
@@ -77,7 +77,7 @@ func TestDependencyDetector(t *testing.T) {
 	tx8Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx8Node)
 
-	expectedDependsOnTx = transactionList{
+	expectedDependsOnTx = TxNodeBatch{
 		tx7Node,
 		tx6Node,
 		tx5Node,
@@ -91,26 +91,26 @@ func TestDependencyDetector(t *testing.T) {
 	dd.addWaitingTx(tx8Node)
 
 	// remove 4 transactions from the dependency detector.
-	dd.removeWaitingTx([]*TransactionNode{tx1Node})
-	dd.removeWaitingTx([]*TransactionNode{tx2Node})
-	dd.removeWaitingTx([]*TransactionNode{tx3Node})
-	dd.removeWaitingTx([]*TransactionNode{tx4Node})
+	dd.removeWaitingTx(TxNodeBatch{tx1Node})
+	dd.removeWaitingTx(TxNodeBatch{tx2Node})
+	dd.removeWaitingTx(TxNodeBatch{tx3Node})
+	dd.removeWaitingTx(TxNodeBatch{tx4Node})
 
 	// tx9Node would have been dependent on all previous transactions if they were not removed.
 	// As we have removed tx1 to tx4, tx9Node should only be dependent on tx5, tx6, tx7, and tx8.
 	tx9Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx9Node)
-	expectedDependsOnTx = transactionList{tx8Node, tx7Node, tx6Node, tx5Node}
+	expectedDependsOnTx = TxNodeBatch{tx8Node, tx7Node, tx6Node, tx5Node}
 	require.ElementsMatch(t, expectedDependsOnTx, dependsOnTx)
 
 	dd.addWaitingTx(tx9Node)
 
 	// remove all remaining transactions from the dependency detector.
-	dd.removeWaitingTx([]*TransactionNode{tx5Node})
-	dd.removeWaitingTx([]*TransactionNode{tx6Node})
-	dd.removeWaitingTx([]*TransactionNode{tx7Node})
-	dd.removeWaitingTx([]*TransactionNode{tx8Node})
-	dd.removeWaitingTx([]*TransactionNode{tx9Node})
+	dd.removeWaitingTx(TxNodeBatch{tx5Node})
+	dd.removeWaitingTx(TxNodeBatch{tx6Node})
+	dd.removeWaitingTx(TxNodeBatch{tx7Node})
+	dd.removeWaitingTx(TxNodeBatch{tx8Node})
+	dd.removeWaitingTx(TxNodeBatch{tx9Node})
 
 	// tx10Node would have been dependent on all previous transactions if they were not removed.
 	// As we have removed tx1 to tx9, tx9Node should not be dependent on any transaction.

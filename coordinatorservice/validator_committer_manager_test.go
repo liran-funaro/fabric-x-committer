@@ -9,37 +9,42 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/protobuf/proto"
 )
 
 type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
-	inputTxs                  chan []*dependencygraph.TransactionNode
-	outputTxs                 chan []*dependencygraph.TransactionNode
+	inputTxs                  chan dependencygraph.TxNodeBatch
+	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           chan *protovcservice.TransactionStatus
 	prelimInvalidTxStatus     chan []*protovcservice.Transaction
 	mockVcServices            []*mock.VcService
+	sigVerTestEnv             *svMgrTestEnv
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	vcs, servers := mock.StartMockVCService(t, numVCService)
+	svEnv := newSvMgrTestEnv(t, 2)
 
-	inputTxs := make(chan []*dependencygraph.TransactionNode, 10)
-	outputTxs := make(chan []*dependencygraph.TransactionNode, 10)
+	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
+	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxsStatus := make(chan *protovcservice.TransactionStatus, 10)
 	prelimInvalidTxStatus := make(chan []*protovcservice.Transaction, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			serversConfig:                           servers.Configs,
-			incomingTxsForValidationCommit:          inputTxs,
-			outgoingValidatedTxsNode:                outputTxs,
-			outgoingTxsStatus:                       outputTxsStatus,
-			incomingPrelimInvalidTxsStatusForCommit: prelimInvalidTxStatus,
-			metrics:                                 newPerformanceMetrics(true),
+			serversConfig:                         servers.Configs,
+			incomingTxsForValidationCommit:        inputTxs,
+			outgoingValidatedTxsNode:              outputTxs,
+			outgoingTxsStatus:                     outputTxsStatus,
+			incomingBadlyFormedTxsStatusForCommit: prelimInvalidTxStatus,
+			metrics:                               newPerformanceMetrics(true),
+			signVerifierMgr:                       svEnv.signVerifierManager,
 		},
 	)
 
@@ -61,6 +66,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		outputTxsStatus:           outputTxsStatus,
 		prelimInvalidTxStatus:     prelimInvalidTxStatus,
 		mockVcServices:            vcs,
+		sigVerTestEnv:             svEnv,
 	}
 }
 
@@ -178,6 +184,52 @@ func TestValidatorCommitterManager(t *testing.T) {
 			maxNum = max(maxNum, blk.Number)
 		}
 		require.Equal(t, uint64(15), maxNum)
+	})
+
+	t.Run("namespace transaction should update signature verifier", func(t *testing.T) {
+		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
+			require.Nil(t, mockSvService.GetVerificationKey())
+		}
+
+		p := &protoblocktx.NamespacePolicy{
+			Scheme:    "ECDSA",
+			PublicKey: []byte("publicKey"),
+		}
+		pBytes, err := proto.Marshal(p)
+		require.NoError(t, err)
+
+		txBatch := dependencygraph.TxNodeBatch{
+			{
+				Tx: &protovcservice.Transaction{
+					ID: "create ns 1",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId: uint32(types.MetaNamespaceID),
+							ReadWrites: []*protoblocktx.ReadWrite{
+								{
+									Key:   types.NamespaceID(1).Bytes(),
+									Value: pBytes,
+								},
+							},
+						},
+					},
+					BlockNumber: uint64(100),
+					TxNum:       uint32(64),
+				},
+			},
+		}
+		env.inputTxs <- txBatch
+
+		outTxsStatus := <-env.outputTxsStatus
+
+		require.Equal(t, map[string]protoblocktx.Status{"create ns 1": protoblocktx.Status_COMMITTED},
+			outTxsStatus.Status)
+
+		require.Equal(t, txBatch, <-env.outputTxs)
+
+		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
+			require.Equal(t, []byte("publicKey"), mockSvService.GetVerificationKey())
+		}
 	})
 
 	for _, vc := range env.validatorCommitterManager.validatorCommitter {

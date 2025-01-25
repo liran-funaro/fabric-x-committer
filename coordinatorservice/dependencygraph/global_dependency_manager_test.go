@@ -13,8 +13,8 @@ import (
 
 type globalDependencyTestEnv struct {
 	incomingTxs  chan *transactionNodeBatch
-	outgoingTxs  chan []*TransactionNode
-	validatedTxs chan []*TransactionNode
+	outgoingTxs  chan TxNodeBatch
+	validatedTxs chan TxNodeBatch
 	metrics      *perfMetrics
 	dm           *globalDependencyManager
 }
@@ -22,8 +22,8 @@ type globalDependencyTestEnv struct {
 func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	env := &globalDependencyTestEnv{
 		incomingTxs:  make(chan *transactionNodeBatch, 10),
-		outgoingTxs:  make(chan []*TransactionNode, 10),
-		validatedTxs: make(chan []*TransactionNode, 10),
+		outgoingTxs:  make(chan TxNodeBatch, 10),
+		validatedTxs: make(chan TxNodeBatch, 10),
 		metrics:      newPerformanceMetrics(true, prometheusmetrics.NewProvider()),
 	}
 
@@ -51,7 +51,7 @@ func TestGlobalDependencyManagerDependencyFreeTxs(t *testing.T) {
 	keys := makeTestKeys(t, 10)
 
 	t.Run("dependency free txs", func(t *testing.T) {
-		noDepsTxs := []*TransactionNode{
+		noDepsTxs := TxNodeBatch{
 			createTxNode(t, [][]byte{keys[0]}, [][]byte{keys[1]}, [][]byte{keys[2]}),
 			createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[4]}, [][]byte{keys[5]}),
 			createTxNode(t, [][]byte{keys[6]}, [][]byte{keys[7]}, [][]byte{keys[8]}),
@@ -87,14 +87,14 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 		t3.dependsOnTxs = append(t3.dependsOnTxs, t2)
 		t2.dependentTxs.Store(t3, struct{}{})
 
-		env.incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t1, t2, t3})
+		env.incomingTxs <- createTxsNodeBatch(t, TxNodeBatch{t1, t2, t3})
 		depFreeTxs := <-env.outgoingTxs
 		// only dependency free tx is t1
-		require.Equal(t, []*TransactionNode{t1}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t1}, depFreeTxs)
 
 		require.Equal(t, float64(3), test.GetMetricValue(t, env.metrics.gdgWaitingTxQueueSize))
 
-		env.validatedTxs <- []*TransactionNode{t1}
+		env.validatedTxs <- TxNodeBatch{t1}
 
 		require.Eventually(t, func() bool {
 			return test.GetMetricValue(t, env.metrics.gdgWaitingTxQueueSize) == 2
@@ -102,16 +102,16 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t1, t2 becomes dependency free
-		require.Equal(t, []*TransactionNode{t2}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t2}, depFreeTxs)
 		require.Len(t, t2.dependsOnTxs, 0)
 
-		env.validatedTxs <- []*TransactionNode{t2}
+		env.validatedTxs <- TxNodeBatch{t2}
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t2, t3 becomes dependency free
-		require.Equal(t, []*TransactionNode{t3}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t3}, depFreeTxs)
 		require.Len(t, t3.dependsOnTxs, 0)
 
-		env.validatedTxs <- []*TransactionNode{t3}
+		env.validatedTxs <- TxNodeBatch{t3}
 
 		ensureProcessedAndValidatedMetrics(t, env.metrics, 3, 3)
 		// after validating t3, there is no more txs
@@ -136,18 +136,18 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
 		t1.dependentTxs.Store(t2, struct{}{})
 
-		env.incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t1, t2})
+		env.incomingTxs <- createTxsNodeBatch(t, TxNodeBatch{t1, t2})
 
 		// t3 depends on t2 and t1
 		t3 := createTxNode(t, [][]byte{keys[7], keys[3]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[8], keys[5]})
 		// t4 depends on t2 and t1
 		t4 := createTxNode(t, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]})
 
-		env.incomingTxs <- createTxsNodeBatch(t, []*TransactionNode{t3, t4})
+		env.incomingTxs <- createTxsNodeBatch(t, TxNodeBatch{t3, t4})
 
 		// only t1 is dependency free
 		depFreeTxs := <-env.outgoingTxs
-		require.Equal(t, []*TransactionNode{t1}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t1}, depFreeTxs)
 
 		// t1 has three dependents: t2, t3, and t4
 		require.Eventually(t, func() bool {
@@ -158,11 +158,11 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 			require.True(t, exist)
 		}
 
-		env.validatedTxs <- []*TransactionNode{t1}
+		env.validatedTxs <- TxNodeBatch{t1}
 
 		// after validating t1, t2 becomes dependency free
 		depFreeTxs = <-env.outgoingTxs
-		require.Equal(t, []*TransactionNode{t2}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t2}, depFreeTxs)
 
 		// t2 has two dependents: t3 and t4
 		require.Equal(t, 2, getLengthOfDependentTx(t, t2.dependentTxs))
@@ -171,14 +171,14 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 			require.True(t, exist)
 		}
 
-		env.validatedTxs <- []*TransactionNode{t2}
+		env.validatedTxs <- TxNodeBatch{t2}
 
 		// after validating t2, both t3 and t4 become dependency free
 		depFreeTxs = <-env.outgoingTxs
 		require.Len(t, depFreeTxs, 2)
-		require.ElementsMatch(t, []*TransactionNode{t3, t4}, depFreeTxs)
+		require.ElementsMatch(t, TxNodeBatch{t3, t4}, depFreeTxs)
 
-		env.validatedTxs <- []*TransactionNode{t3, t4}
+		env.validatedTxs <- TxNodeBatch{t3, t4}
 
 		ensureProcessedAndValidatedMetrics(t, env.metrics, 4, 4)
 		// after validating t3 and t4, there is no more txs
@@ -209,7 +209,7 @@ func TestGlobalDependencyManagerWithLimit(t *testing.T) {
 
 		// only t1 is dependency free
 		depFreeTxs := <-env.outgoingTxs
-		require.Equal(t, []*TransactionNode{t1}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t1}, depFreeTxs)
 
 		// t1 has two dependents: t2, and t3 but t2 is waiting due to the limit and not processed yet.
 		// Hence, t1 should have only one dependent which is t2.
@@ -223,7 +223,7 @@ func TestGlobalDependencyManagerWithLimit(t *testing.T) {
 
 		// after validating t1, t2 becomes dependency free
 		depFreeTxs = <-env.outgoingTxs
-		require.Equal(t, []*TransactionNode{t2}, depFreeTxs)
+		require.Equal(t, TxNodeBatch{t2}, depFreeTxs)
 
 		// t2 has one dependent: t3. As t3 was waiting due to the limit, it might not have been added to
 		// the dependency graph yet. However, now, t3 should not be waiting given t1 is removed. Hence,
@@ -248,7 +248,7 @@ func TestGlobalDependencyManagerWithLimit(t *testing.T) {
 	})
 }
 
-func createTxsNodeBatch(_ *testing.T, txsNode []*TransactionNode) *transactionNodeBatch {
+func createTxsNodeBatch(_ *testing.T, txsNode TxNodeBatch) *transactionNodeBatch {
 	localDepDetect := newDependencyDetector()
 	for _, tx := range txsNode {
 		localDepDetect.addWaitingTx(tx)

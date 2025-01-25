@@ -16,7 +16,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -24,10 +23,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
-
-func init() {
-	logging.NoGrpcLog()
-}
 
 type sidecarTestEnv struct {
 	config      *Config

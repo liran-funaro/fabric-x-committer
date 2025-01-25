@@ -28,10 +28,10 @@ type (
 		IncomingTxs <-chan *TransactionBatch
 		// OutgoingDepFreeTxsNode is the channel dependency manager to send
 		// dependency free transactions for validation and commit.
-		OutgoingDepFreeTxsNode chan<- []*TransactionNode
+		OutgoingDepFreeTxsNode chan<- TxNodeBatch
 		// IncomingValidatedTxsNode is the channel for dependency manager
 		// to receive validated transactions.
-		IncomingValidatedTxsNode <-chan []*TransactionNode
+		IncomingValidatedTxsNode <-chan TxNodeBatch
 		// NumOfLocalDepConstructors defines the number of local
 		// dependency constructors.
 		NumOfLocalDepConstructors int

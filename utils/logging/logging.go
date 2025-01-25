@@ -1,10 +1,13 @@
 package logging
 
 import (
+	"io"
+	"os"
 	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/grpclog"
 )
 
 var (
@@ -30,6 +33,7 @@ func SetupWithConfig(config *Config) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
 	loggerInstance.SugaredLogger = createLogger(config).Sugar()
 }
 

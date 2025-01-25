@@ -22,8 +22,8 @@ func TestDependencyGraph(t *testing.T) {
 	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs, metrics)
 
-	globalDepOutgoingTxs := make(chan []*TransactionNode, 10)
-	validatedTxs := make(chan []*TransactionNode, 10)
+	globalDepOutgoingTxs := make(chan TxNodeBatch, 10)
+	validatedTxs := make(chan TxNodeBatch, 10)
 	dm := newGlobalDependencyManager(
 		&globalDepConfig{
 			incomingTxsNode:        localDepOutgoingTxs,
@@ -85,7 +85,7 @@ func TestDependencyGraph(t *testing.T) {
 			return getLengthOfDependentTx(t, actualT1.dependentTxs) == 3
 		}, 2*time.Second, 200*time.Millisecond)
 
-		validatedTxs <- []*TransactionNode{actualT1}
+		validatedTxs <- TxNodeBatch{actualT1}
 
 		// after t1 is validated, t2 is dependency free
 		depFreeTxs = <-globalDepOutgoingTxs
@@ -96,7 +96,7 @@ func TestDependencyGraph(t *testing.T) {
 		// t2 has 2 dependent transactions, t3 and t4
 		require.Equal(t, 2, getLengthOfDependentTx(t, actualT2.dependentTxs))
 
-		validatedTxs <- []*TransactionNode{actualT2}
+		validatedTxs <- TxNodeBatch{actualT2}
 
 		// after t2 is validated, both t3 and t4 are dependency free
 		depFreeTxs = <-globalDepOutgoingTxs
@@ -112,7 +112,7 @@ func TestDependencyGraph(t *testing.T) {
 		require.Equal(t, t3.Id, actualT3.Tx.ID)
 		require.Equal(t, t4.Id, actualT4.Tx.ID)
 
-		validatedTxs <- []*TransactionNode{actualT3, actualT4}
+		validatedTxs <- TxNodeBatch{actualT3, actualT4}
 
 		ensureProcessedAndValidatedMetrics(t, metrics, 4, 4)
 		// after validating all txs, the dependency detector should be empty
@@ -161,7 +161,7 @@ func TestDependencyGraph(t *testing.T) {
 			return getLengthOfDependentTx(t, actualT1.dependentTxs) == 3
 		}, 2*time.Second, 200*time.Millisecond)
 
-		validatedTxs <- []*TransactionNode{actualT1}
+		validatedTxs <- TxNodeBatch{actualT1}
 
 		// after t1 is validated, t2 is dependency free
 		depFreeTxs = <-globalDepOutgoingTxs
@@ -172,7 +172,7 @@ func TestDependencyGraph(t *testing.T) {
 		// t2 has 2 dependent transactions, t3 and t4
 		require.Equal(t, 2, getLengthOfDependentTx(t, actualT2.dependentTxs))
 
-		validatedTxs <- []*TransactionNode{actualT2}
+		validatedTxs <- TxNodeBatch{actualT2}
 
 		// after t2 is validated, t3 becomes dependency free
 		depFreeTxs = <-globalDepOutgoingTxs
@@ -180,7 +180,7 @@ func TestDependencyGraph(t *testing.T) {
 		actualT3 := depFreeTxs[0]
 		require.Equal(t, t3.Id, actualT3.Tx.ID)
 
-		validatedTxs <- []*TransactionNode{actualT3}
+		validatedTxs <- TxNodeBatch{actualT3}
 
 		// after t3 is validated, t4 becomes dependency free
 		depFreeTxs = <-globalDepOutgoingTxs
@@ -188,7 +188,7 @@ func TestDependencyGraph(t *testing.T) {
 		actualT4 := depFreeTxs[0]
 		require.Equal(t, t4.Id, actualT4.Tx.ID)
 
-		validatedTxs <- []*TransactionNode{actualT4}
+		validatedTxs <- TxNodeBatch{actualT4}
 
 		ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
 		// after validating all txs, the dependency detector should be empty

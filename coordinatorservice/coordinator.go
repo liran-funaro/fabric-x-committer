@@ -31,16 +31,12 @@ type (
 	// validation and commit of each transaction.
 	CoordinatorService struct {
 		protocoordinatorservice.UnimplementedCoordinatorServer
-		signatureVerifierMgr             *signatureVerifierManager
-		dependencyMgr                    *dependencygraph.Manager
-		validatorCommitterMgr            *validatorCommitterManager
-		queues                           *channels
-		config                           *CoordinatorConfig
-		stopSendingBlockToSigVerifierMgr *atomic.Bool
-		orderEnforcer                    *sync.Cond
-		metrics                          *perfMetrics
-
-		uncommittedMetaNsTx *sync.Map
+		dependencyMgr         *dependencygraph.Manager
+		signatureVerifierMgr  *signatureVerifierManager
+		validatorCommitterMgr *validatorCommitterManager
+		queues                *channels
+		config                *CoordinatorConfig
+		metrics               *perfMetrics
 
 		// sendStreamMu is used to synchronize sending transaction status over grpc stream
 		// to the client between the goroutine that process status from sigverifier and the goroutine
@@ -67,53 +63,36 @@ type (
 	}
 
 	channels struct {
-		// sender: coordinator sends blocks to this channel.
-		// receiver: signature verifier manager receives blocks from this channel and validate signatures.
-		//           For each signature verifier server, there is a goroutine that receives blocks from this channel.
-		blockForSignatureVerification chan *protoblocktx.Block
-
-		// sender: signature verifier manager sends blocks with valid transactions to this channel. For each signature
-		// 	       verifier server, there is a goroutine that sends blocks to this channel.
-		// receiver: coordinator receives blocks with valid transactions from this channel.
-		blockWithValidSignTxs chan *protoblocktx.Block
-
-		// sender: signature verifier manager sends blocks with invalid transactions to this channel. For each signature
-		// 	       verifier server, there is a goroutine that sends blocks to this channel.
-		// receiver: coordinator receives blocks with invalid transactions from this channel, processes them, and
-		//           send those transactions to sidecar.
-		blockWithInvalidSignTxs chan *protoblocktx.Block
-
-		// sender: coordinator sends valid transactions received from signature verifier manager to this channel.
+		// sender: coordinator sends received transactions to this channel.
 		// receiver: dependency graph manager receives transactions batch from this channel and construct dependency
-		//           graph. For each local dependency constructor, there is a goroutine that receives transactions batch
-		//           from this channel.
-		txsBatchForDependencyGraph chan *dependencygraph.TransactionBatch
+		//           graph.
+		coordinatorToDepGraphTxs chan *dependencygraph.TransactionBatch
 
 		// sender: dependency graph manager sends dependency free transactions nodes to this channel.
-		// receiver: validator committer manager receives dependency free transactions nodes from this channel and
-		//           validate and commit them using vcservice. For each validator committer server, there is a goroutine
-		// 		     that receives dependency free transactions nodes from this channel.
-		dependencyFreeTxsNode chan []*dependencygraph.TransactionNode
+		// receiver: signature verifier manager receives dependency free transactions nodes from this channel.
+		depGraphToSigVerifierFreeTxs chan dependencygraph.TxNodeBatch
+
+		// sender: signature verifier manager sends valid transactions to this channel.
+		// receiver: validator-committer manager receives valid transactions from this channel.
+		sigVerifierToVCServiceValidatedTxs chan dependencygraph.TxNodeBatch
 
 		// sender: coordinator sends invalid transactions (due to incorrect formation) to this channel.
 		// receiver: validator committer manager receives these invalid transactions from this channel
 		//           and forwards them to vcservice for the commit of the invalid status code.
-		preliminaryInvalidTxsStatus chan []*protovcservice.Transaction
+		coordinatorToVCServiceInvalidTxs chan []*protovcservice.Transaction
 
 		// sender: validator committer manager sends validated transactions nodes to this channel. For each validator
 		// 	       committer server, there is a goroutine that sends validated transactions nodes to this channel.
 		// receiver: dependency graph manager receives validated transactions nodes from this channel and update
 		//           the dependency graph.
-		validatedTxsNode chan []*dependencygraph.TransactionNode
+		// TODO: As signValidatedTxsNode and vcServiceToDepGraphValidatedTxs can cause confusion, it would be better to
+		//       rename vcServiceToDepGraphValidatedTxs to committedOrAbortedTxsNode.
+		vcServiceToDepGraphValidatedTxs chan dependencygraph.TxNodeBatch
 
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
-		// receiver: coordinator receives transaction status from this channel and post process them.
-		txsStatus chan *protovcservice.TransactionStatus
-
-		// sender: coordinator forwards all post processed txsStatus to this channel.
-		// receiver: coordinator receives and forwards them to the sidecar.
-		postProcessedTxStatus chan *protovcservice.TransactionStatus
+		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
+		vcServiceToCoordinatorTxStatus chan *protovcservice.TransactionStatus
 	}
 )
 
@@ -141,34 +120,21 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 	bufSzPerChanForLocalDepMgr := c.ChannelBufferSizePerGoroutine * c.DependencyGraphConfig.NumOfLocalDepConstructors
 
 	queues := &channels{
-		blockForSignatureVerification: make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
-		blockWithValidSignTxs:         make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
-		blockWithInvalidSignTxs:       make(chan *protoblocktx.Block, bufSzPerChanForSignVerifierMgr),
-		txsBatchForDependencyGraph:    make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
-		dependencyFreeTxsNode:         make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
-		preliminaryInvalidTxsStatus:   make(chan []*protovcservice.Transaction, bufSzPerChanForValCommitMgr),
-		validatedTxsNode:              make(chan []*dependencygraph.TransactionNode, bufSzPerChanForValCommitMgr),
-		txsStatus:                     make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
-		postProcessedTxStatus:         make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
+		coordinatorToDepGraphTxs:           make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
+		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
+		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
+		coordinatorToVCServiceInvalidTxs:   make(chan []*protovcservice.Transaction, bufSzPerChanForValCommitMgr),
+		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics(c.Monitoring.Metrics.Enable)
 
-	svMgr := newSignatureVerifierManager(
-		&signVerifierManagerConfig{
-			serversConfig:                         c.SignVerifierConfig.ServerConfig,
-			incomingBlockForSignatureVerification: queues.blockForSignatureVerification,
-			outgoingBlockWithValidTxs:             queues.blockWithValidSignTxs,
-			outgoingBlockWithInvalidTxs:           queues.blockWithInvalidSignTxs,
-			metrics:                               metrics,
-		},
-	)
-
 	depMgr := dependencygraph.NewManager(
 		&dependencygraph.Config{
-			IncomingTxs:               queues.txsBatchForDependencyGraph,
-			OutgoingDepFreeTxsNode:    queues.dependencyFreeTxsNode,
-			IncomingValidatedTxsNode:  queues.validatedTxsNode,
+			IncomingTxs:               queues.coordinatorToDepGraphTxs,
+			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
+			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 			NumOfLocalDepConstructors: c.DependencyGraphConfig.NumOfLocalDepConstructors,
 			WorkerPoolConfigForGlobalDepManager: &workerpool.Config{
 				Parallelism:     c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager,
@@ -180,29 +146,36 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		},
 	)
 
+	svMgr := newSignatureVerifierManager(
+		&signVerifierManagerConfig{
+			serversConfig:            c.SignVerifierConfig.ServerConfig,
+			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
+			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
+			metrics:                  metrics,
+		},
+	)
+
 	vcMgr := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			serversConfig:                           c.ValidatorCommitterConfig.ServerConfig,
-			incomingTxsForValidationCommit:          queues.dependencyFreeTxsNode,
-			incomingPrelimInvalidTxsStatusForCommit: queues.preliminaryInvalidTxsStatus,
-			outgoingValidatedTxsNode:                queues.validatedTxsNode,
-			outgoingTxsStatus:                       queues.txsStatus,
-			metrics:                                 metrics,
+			serversConfig:                         c.ValidatorCommitterConfig.ServerConfig,
+			incomingTxsForValidationCommit:        queues.sigVerifierToVCServiceValidatedTxs,
+			incomingBadlyFormedTxsStatusForCommit: queues.coordinatorToVCServiceInvalidTxs,
+			outgoingValidatedTxsNode:              queues.vcServiceToDepGraphValidatedTxs,
+			outgoingTxsStatus:                     queues.vcServiceToCoordinatorTxStatus,
+			metrics:                               metrics,
+			signVerifierMgr:                       svMgr,
 		},
 	)
 
 	return &CoordinatorService{
-		UnimplementedCoordinatorServer:   protocoordinatorservice.UnimplementedCoordinatorServer{},
-		signatureVerifierMgr:             svMgr,
-		dependencyMgr:                    depMgr,
-		validatorCommitterMgr:            vcMgr,
-		queues:                           queues,
-		config:                           c,
-		stopSendingBlockToSigVerifierMgr: &atomic.Bool{},
-		orderEnforcer:                    sync.NewCond(&sync.Mutex{}),
-		metrics:                          metrics,
-		uncommittedMetaNsTx:              &sync.Map{},
-		initializationDone:               make(chan any),
+		UnimplementedCoordinatorServer: protocoordinatorservice.UnimplementedCoordinatorServer{},
+		dependencyMgr:                  depMgr,
+		signatureVerifierMgr:           svMgr,
+		validatorCommitterMgr:          vcMgr,
+		queues:                         queues,
+		config:                         c,
+		metrics:                        metrics,
+		initializationDone:             make(chan any),
 	}
 }
 
@@ -222,17 +195,17 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
+		logger.Info("Starting dependency graph manager")
+		c.dependencyMgr.Run(eCtx)
+		return nil
+	})
+
+	g.Go(func() error {
 		logger.Info("Starting signature verifier manager")
 		if err := c.signatureVerifierMgr.run(eCtx); err != nil {
 			logger.Errorf("coordinator service stops due to an error returned by signature verifier manager: %v", err)
 			return err
 		}
-		return nil
-	})
-
-	g.Go(func() error {
-		logger.Info("Starting dependency graph manager")
-		c.dependencyMgr.Run(eCtx)
 		return nil
 	})
 
@@ -261,35 +234,6 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 	} else {
 		c.nextExpectedBlockNumberToBeReceived.Store(lastCommittedBlock.Number + 1)
 	}
-
-	// NOTE: as there is a remote chance for c.nextExpectedBlockNumberToBeReceived to change
-	//       before we start the next goroutine, we take backup of the value. The remote chance is when a
-	//       client starts a stream, send a block, coordinator receive the block, and increment
-	//       the c.nextExpectedBlockNumberToBeReceived before this goroutine gets started. Remember
-	//       that only after returning from this Run(), coordinator cmd starts the gRPC as cmd would
-	//       wait for c.initializationDone channel to be closed.
-	nextBlockNumberForDepGraph := c.nextExpectedBlockNumberToBeReceived.Load()
-	g.Go(func() error {
-		logger.Info("Started a goroutine to receive block with valid transactions and" +
-			" forward it to the dependency graph manager")
-		c.receiveFromSigVerifierAndForwardToDepGraph(eCtx, nextBlockNumberForDepGraph)
-		return nil
-	})
-
-	g.Go(func() error {
-		logger.Info("Started a goroutine to receive block with invalid transactions from signature verifier and" +
-			" forward the status to validator-committer manager")
-		c.receiveFromSignatureVerifierAndForwardToValidatorCommitter(eCtx)
-		return nil
-	})
-
-	g.Go(func() error {
-		if err := c.postProcessTransactions(eCtx); err != nil {
-			logger.Errorf("coordinator service stops due an error in post processing: %v", err)
-			return err
-		}
-		return nil
-	})
 
 	close(c.initializationDone)
 
@@ -376,7 +320,7 @@ func (c *CoordinatorService) BlockProcessing(
 	//       transaction statuses, even after the stream concludes.
 
 	g.Go(func() error {
-		logger.Info("Started a goroutine to receive block and forward it to the signature verifier manager")
+		logger.Info("Started a goroutine to receive block and forward it to the dependency graph manager")
 		if err := c.receiveAndProcessBlock(eCtx, stream); err != nil {
 			logger.Errorf("stream to the coordinator is ending with an error: %v", err)
 			return err
@@ -400,6 +344,9 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
+	txBatchID := uint64(1)
+	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
+
 	for ctx.Err() == nil {
 		blk, err := stream.Recv()
 		if err != nil {
@@ -427,123 +374,37 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 
 		malformedTxs := c.preProcessBlock(blk)
 		if len(malformedTxs) != 0 {
-			c.queues.preliminaryInvalidTxsStatus <- malformedTxs
+			c.queues.coordinatorToVCServiceInvalidTxs <- malformedTxs
 		}
 
 		if len(blk.Txs) == 0 {
-			c.queues.blockWithValidSignTxs <- blk
-		} else {
-			c.orderEnforcer.L.Lock()
-			for c.stopSendingBlockToSigVerifierMgr.Load() {
-				logger.Warn("Stop sending block to signature verifier manager due to out of order blocks")
-				c.orderEnforcer.Wait()
-			}
-			c.orderEnforcer.L.Unlock()
+			continue
+		}
 
-			c.queues.blockForSignatureVerification <- blk
-			logger.Debugf("Block [%d] was pushed to the sv manager for processing", blk.Number)
+		chunkSizeForDepGraph := 500 // TODO: make it configurable.
+		for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
+			end := min(i+chunkSizeForDepGraph, len(blk.Txs))
+			txsBatchForDependencyGraph.Write(
+				&dependencygraph.TransactionBatch{
+					ID:          txBatchID,
+					BlockNumber: blk.Number,
+					Txs:         blk.Txs[i:end],
+					TxsNum:      blk.TxsNum[i:end],
+				})
+			txBatchID++
 		}
 	}
 
 	return nil
 }
 
-func (c *CoordinatorService) receiveFromSigVerifierAndForwardToDepGraph( // nolint:gocognit
-	ctx context.Context,
-	nextBlockNumberForDepGraph uint64,
-) {
-	// Signature verifier can send blocks out of order. Hence, we need to keep track of the next block number
-	// that we are expecting. If we receive a block with a different block number, we store it in a map.
-	// If the map size reaches a limit, we stop sending blocks to the signature verifier manager till we
-	// receive the block that we are expecting.
-	txBatchID := uint64(1)
-	outOfOrderBlock := make(map[uint64]*protoblocktx.Block)
-	outOfOrderBlockLimit := 500 // TODO: make it configurable
-
-	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.txsBatchForDependencyGraph)
-	sendBlock := func(block *protoblocktx.Block) (contextAlive bool) {
-		if len(block.Txs) == 0 {
-			return true
-		}
-
-		chunkSizeForDepGraph := 500 // TODO: make it configurable.
-		for i := 0; i < len(block.Txs); i += chunkSizeForDepGraph {
-			end := min(i+chunkSizeForDepGraph, len(block.Txs))
-			if ctxAlive := txsBatchForDependencyGraph.Write(
-				&dependencygraph.TransactionBatch{
-					ID:          txBatchID,
-					BlockNumber: block.Number,
-					Txs:         block.Txs[i:end],
-					TxsNum:      block.TxsNum[i:end],
-				}); !ctxAlive {
-				return false
-			}
-			txBatchID++
-		}
-
-		return true
-	}
-
-	sendBlockFromOutOfOrderMap := func() (contextAlive bool) {
-		block, ok := outOfOrderBlock[nextBlockNumberForDepGraph]
-		for ok {
-			logger.Debugf("Block [%d] was out of order and was waiting for previous blocks to arrive. "+
-				"It can now be released and deleted from the map with waiting blocks.", block.Number)
-			if ctxAlive := sendBlock(block); !ctxAlive {
-				return false
-			}
-
-			if len(outOfOrderBlock) == outOfOrderBlockLimit {
-				logger.Info("Received the block that we were expecting. Resuming sending blocks to signature verifier")
-				c.orderEnforcer.L.Lock()
-				c.stopSendingBlockToSigVerifierMgr.Store(false)
-				c.orderEnforcer.Signal()
-				c.orderEnforcer.L.Unlock()
-			}
-			delete(outOfOrderBlock, nextBlockNumberForDepGraph)
-
-			nextBlockNumberForDepGraph++
-			block, ok = outOfOrderBlock[nextBlockNumberForDepGraph]
-		}
-		logger.Debugf("Block [%d] is in order (and hence not in the map with waiting blocks). "+
-			"Continuing execution...", nextBlockNumberForDepGraph)
-		return true
-	}
-
-	blockWithValidSignTxs := channel.NewReader(ctx, c.queues.blockWithValidSignTxs)
-	for {
-		block, ctxAlive := blockWithValidSignTxs.Read()
-		if !ctxAlive {
-			return
-		}
-
-		logger.Debugf("Block [%d] with %d valid TXs reached the dependency graph", block.Number, len(block.Txs))
-		switch block.Number {
-		case nextBlockNumberForDepGraph:
-			logger.Debugf("Block [%d] is in order", block.Number)
-			sendBlock(block)
-			nextBlockNumberForDepGraph++
-			sendBlockFromOutOfOrderMap()
-		default:
-			logger.Debugf("Block [%d] is out of order. Will be stored in a map with waiting blocks.", block.Number)
-			outOfOrderBlock[block.Number] = block
-			if len(outOfOrderBlock) == outOfOrderBlockLimit {
-				logger.Info("Reached the limit of out of order blocks. Stopping sending blocks to signature verifier")
-				c.orderEnforcer.L.Lock()
-				c.stopSendingBlockToSigVerifierMgr.Store(true)
-				c.orderEnforcer.L.Unlock()
-			}
-		}
-	}
-}
-
 func (c *CoordinatorService) sendTxStatus(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	postProcessedTxsStatus := channel.NewReader(ctx, c.queues.postProcessedTxStatus)
+	txsStatus := channel.NewReader(ctx, c.queues.vcServiceToCoordinatorTxStatus)
 	for {
-		txStatus, ctxAlive := postProcessedTxsStatus.Read()
+		txStatus, ctxAlive := txsStatus.Read()
 		if !ctxAlive {
 			return nil
 		}
@@ -558,36 +419,10 @@ func (c *CoordinatorService) sendTxStatus(
 			})
 		}
 
+		// TODO: merge sendTxStatus with this method and remove mutex on the stream. Issue #631
 		if err := c.sendTxsStatus(stream, valStatus); err != nil {
 			return err
 		}
-	}
-}
-
-func (c *CoordinatorService) receiveFromSignatureVerifierAndForwardToValidatorCommitter(ctx context.Context) {
-	blockWithInvalidSignTxs := channel.NewReader(ctx, c.queues.blockWithInvalidSignTxs)
-	preliminaryInvalidTxsStatus := channel.NewWriter(ctx, c.queues.preliminaryInvalidTxsStatus)
-	for {
-		blkWithInvalidSign, ctxAlive := blockWithInvalidSignTxs.Read()
-		if !ctxAlive {
-			return
-		}
-
-		invalidTxsStatus := make([]*protovcservice.Transaction, len(blkWithInvalidSign.Txs))
-		for i, tx := range blkWithInvalidSign.Txs {
-			invalidTxsStatus[i] = &protovcservice.Transaction{
-				ID: tx.Id,
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-				},
-				BlockNumber: blkWithInvalidSign.Number,
-				TxNum:       blkWithInvalidSign.TxsNum[i],
-			}
-		}
-		// NOTE: we are not sending the invalid tx status immediately to the client as
-		// this status code can change if the txID is found to be duplicate by the
-		// vcservice.
-		preliminaryInvalidTxsStatus.Write(invalidTxsStatus)
 	}
 }
 
@@ -625,42 +460,9 @@ func (c *CoordinatorService) sendTxsStatus(
 	return nil
 }
 
-func (c *CoordinatorService) postProcessTransactions(ctx context.Context) error {
-	txsStatus := channel.NewReader(ctx, c.queues.txsStatus)
-	postProcessedTxsStatus := channel.NewWriter(ctx, c.queues.postProcessedTxStatus)
-	for {
-		txs, ok := txsStatus.Read()
-		if !ok {
-			return nil
-		}
-
-		for txID, status := range txs.Status {
-			txNs, loaded := c.uncommittedMetaNsTx.LoadAndDelete(txID)
-			if !loaded {
-				continue
-			}
-			if status != protoblocktx.Status_COMMITTED {
-				continue
-			}
-
-			ns, _ := txNs.(*protoblocktx.TxNamespace) //nolint:revive
-			if err := c.postProcessMetaNsTx(ctx, ns); err != nil {
-				return err
-			}
-		}
-		postProcessedTxsStatus.Write(txs)
-	}
-}
-
 func (c *CoordinatorService) postProcessMetaNsTx(ctx context.Context, ns *protoblocktx.TxNamespace) error {
 	for _, rw := range ns.ReadWrites {
 		nsID, _ := types.NamespaceIDFromBytes(rw.Key)
-		nsVersion := types.VersionNumber(0).Bytes()
-
-		if rw.Version != nil {
-			preVerNo := types.VersionNumberFromBytes(rw.Version)
-			nsVersion = (preVerNo + 1).Bytes()
-		}
 
 		p := &protoblocktx.NamespacePolicy{}
 		_ = proto.Unmarshal(rw.Value, p)
@@ -669,7 +471,6 @@ func (c *CoordinatorService) postProcessMetaNsTx(ctx context.Context, ns *protob
 			ctx,
 			&protosigverifierservice.Key{
 				NsId:            uint32(nsID),
-				NsVersion:       nsVersion,
 				SerializedBytes: p.PublicKey,
 				Scheme:          p.Scheme,
 			},
@@ -693,12 +494,10 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 
 		m := c.metrics
 		q := c.queues
-		m.setQueueSize(m.sigverifierInputBlockQueueSize, len(q.blockForSignatureVerification))
-		m.setQueueSize(m.sigverifierOutputValidBlockQueueSize, len(q.blockWithValidSignTxs))
-		m.setQueueSize(m.sigverifierOutputInvalidBlockQueueSize, len(q.blockWithInvalidSignTxs))
-		m.setQueueSize(m.vcserviceInputTxBatchQueueSize, len(q.dependencyFreeTxsNode))
-		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.validatedTxsNode))
-		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.txsStatus))
+		m.setQueueSize(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
+		m.setQueueSize(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
+		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
+		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
 	}
 }
 

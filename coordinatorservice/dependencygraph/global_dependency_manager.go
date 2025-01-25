@@ -19,12 +19,12 @@ type (
 
 		// outgoingDepFreeTransactionsNode is the output of the globalDependencyManager.
 		// These transactions are ready to be validated as they are dependency free.
-		outgoingDepFreeTransactionsNode chan<- []*TransactionNode
+		outgoingDepFreeTransactionsNode chan<- TxNodeBatch
 
 		// validatedTransactionsNode is the second input to the dependencyManagement.
 		// These transactions are removed from the dependency graph as they are
 		// validated and either committed or aborted.
-		validatedTransactionsNode <-chan []*TransactionNode
+		validatedTransactionsNode <-chan TxNodeBatch
 
 		// TODO: add a text figure explaining how the input and output channels
 		//       are being used.
@@ -53,7 +53,7 @@ type (
 	}
 
 	dependencyFreedTransactions struct {
-		txsNode  []*TransactionNode
+		txsNode  TxNodeBatch
 		mu       sync.Mutex
 		nonEmpty *atomic.Bool
 		cond     *sync.Cond
@@ -66,8 +66,8 @@ type (
 
 	globalDepConfig struct {
 		incomingTxsNode        <-chan *transactionNodeBatch
-		outgoingDepFreeTxsNode chan<- []*TransactionNode
-		validatedTxsNode       <-chan []*TransactionNode
+		outgoingDepFreeTxsNode chan<- TxNodeBatch
+		validatedTxsNode       <-chan TxNodeBatch
 		waitingTxsLimit        int
 		metrics                *perfMetrics
 	}
@@ -84,7 +84,7 @@ func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
 		dependencyDetector:              newDependencyDetector(),
 		mu:                              sync.Mutex{},
 		freedTransactionsSet: &dependencyFreedTransactions{
-			txsNode:  []*TransactionNode{},
+			txsNode:  TxNodeBatch{},
 			mu:       sync.Mutex{},
 			nonEmpty: &atomic.Bool{},
 			cond:     sync.NewCond(&sync.Mutex{}),
@@ -121,7 +121,7 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 
 func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context) {
 	m := dm.metrics
-	var txsNode []*TransactionNode
+	var txsNode TxNodeBatch
 	incomingTransactionsNode := channel.NewReader(ctx, dm.incomingTransactionsNode)
 	for {
 		txsNodeBatch, ok := incomingTransactionsNode.Read()
@@ -139,7 +139,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
 		)
 
-		depFreeTxs := make([]*TransactionNode, 0, len(txsNode))
+		depFreeTxs := make(TxNodeBatch, 0, len(txsNode))
 
 		start := time.Now()
 		dm.mu.Lock()
@@ -184,7 +184,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 
 func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Context) {
 	m := dm.metrics
-	var fullyFreedDependents []*TransactionNode
+	var fullyFreedDependents TxNodeBatch
 	validatedTransactionsNode := channel.NewReader(ctx, dm.validatedTransactionsNode)
 	for {
 		txsNode, ok := validatedTransactionsNode.Read()
@@ -245,7 +245,7 @@ func (dm *globalDependencyManager) outputFreedExistingTransactions(ctx context.C
 	}
 }
 
-func (f *dependencyFreedTransactions) add(txsNode []*TransactionNode) {
+func (f *dependencyFreedTransactions) add(txsNode TxNodeBatch) {
 	f.mu.Lock()
 	f.txsNode = append(
 		f.txsNode,
@@ -257,7 +257,7 @@ func (f *dependencyFreedTransactions) add(txsNode []*TransactionNode) {
 	f.cond.Signal()
 }
 
-func (f *dependencyFreedTransactions) waitAndRemove() []*TransactionNode {
+func (f *dependencyFreedTransactions) waitAndRemove() TxNodeBatch {
 	f.cond.L.Lock()
 	for !f.nonEmpty.CompareAndSwap(true, false) {
 		f.cond.Wait()

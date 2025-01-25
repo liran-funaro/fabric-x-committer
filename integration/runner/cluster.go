@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
@@ -61,7 +62,8 @@ type (
 
 		clusterConfig *Config
 
-		channelID string
+		channelID        string
+		seedForCryptoGen *rand.Rand
 	}
 
 	// Config represents the configuration of the cluster.
@@ -97,12 +99,13 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 			[]*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig],
 			clusterConfig.NumSigVerifiers,
 		),
-		dbEnv:          vcservice.NewDatabaseTestEnv(t),
-		rootDir:        t.TempDir(),
-		nsToCrypto:     map[types.NamespaceID]*workload.HashSignerVerifier{},
-		clusterConfig:  clusterConfig,
-		channelID:      "channel1",
-		committedBlock: make(chan *common.Block, 100),
+		dbEnv:            vcservice.NewDatabaseTestEnv(t),
+		rootDir:          t.TempDir(),
+		nsToCrypto:       map[types.NamespaceID]*workload.HashSignerVerifier{},
+		clusterConfig:    clusterConfig,
+		channelID:        "channel1",
+		committedBlock:   make(chan *common.Block, 100),
+		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
 
 	// Start mock ordering service
@@ -226,7 +229,6 @@ func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
 		context.Background(),
 		&protosigverifierservice.Key{
 			NsId:            uint32(types.MetaNamespaceID),
-			NsVersion:       types.VersionNumber(0).Bytes(),
 			SerializedBytes: metaPubKey,
 			Scheme:          signature.Ecdsa,
 		},
@@ -303,7 +305,7 @@ func (c *Cluster) CreateCryptoForNs(nsID types.NamespaceID, schema signature.Sch
 ) {
 	hashSigner := workload.NewHashSignerVerifier(&workload.SignatureProfile{
 		Scheme: schema,
-		Seed:   10,
+		Seed:   c.seedForCryptoGen.Int63(),
 	})
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()

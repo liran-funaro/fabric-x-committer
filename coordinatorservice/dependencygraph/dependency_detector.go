@@ -45,7 +45,7 @@ func newDependencyDetector() *dependencyDetector {
 // This method can be called from multiple goroutines concurrently provided that addWaitingTx(), removeWaitingTx(),
 // and mergeWaitingTx() are not called concurrently with this method. We can use a read-write lock but
 // we are avoiding it for performance reasons and leave the synchronization to the caller.
-func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transactionList /* dependsOn */ {
+func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) TxNodeBatch /* dependsOn */ {
 	dependsOnTxs := make(transactionMap)
 
 	copyTxs := func(dest, src transactionMap) {
@@ -77,7 +77,7 @@ func (d *dependencyDetector) getDependenciesOf(txNode *TransactionNode) transact
 		}
 	}
 
-	depOns := make(transactionList, 0, len(dependsOnTxs))
+	depOns := make(TxNodeBatch, 0, len(dependsOnTxs))
 	for depOnTx := range dependsOnTxs {
 		depOns = append(depOns, depOnTx)
 	}
@@ -109,7 +109,7 @@ func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
 // so that getDependenciesOf() does not consider them when calculating dependencies.
 // This method is not thread-safe.
-func (d *dependencyDetector) removeWaitingTx(txsNode []*TransactionNode) {
+func (d *dependencyDetector) removeWaitingTx(txsNode TxNodeBatch) {
 	var wg sync.WaitGroup
 	for _, txNode := range txsNode {
 		wg.Add(3)

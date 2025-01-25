@@ -2,11 +2,14 @@ package test
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"testing"
 	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -14,6 +17,11 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 )
+
+func TestMain(m *testing.M) {
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+	os.Exit(m.Run())
+}
 
 func TestBadlyFormedTxs(t *testing.T) {
 	RegisterTestingT(t)

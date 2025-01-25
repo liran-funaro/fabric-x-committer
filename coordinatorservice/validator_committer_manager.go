@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/proto"
 )
 
 type (
@@ -32,10 +35,11 @@ type (
 	// validatorCommitter is responsible for managing the communication with a single
 	// vcserver.
 	validatorCommitter struct {
-		client         protovcservice.ValidationAndCommitServiceClient
-		stream         protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
-		sendOnStreamMu sync.Mutex
-		metrics        *perfMetrics
+		client          protovcservice.ValidationAndCommitServiceClient
+		stream          protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
+		sendOnStreamMu  sync.Mutex
+		metrics         *perfMetrics
+		signVerifierMgr *signatureVerifierManager
 
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
@@ -43,12 +47,13 @@ type (
 	}
 
 	validatorCommitterManagerConfig struct {
-		serversConfig                           []*connection.ServerConfig
-		incomingTxsForValidationCommit          <-chan []*dependencygraph.TransactionNode
-		incomingPrelimInvalidTxsStatusForCommit <-chan []*protovcservice.Transaction
-		outgoingValidatedTxsNode                chan<- []*dependencygraph.TransactionNode
-		outgoingTxsStatus                       chan<- *protovcservice.TransactionStatus
-		metrics                                 *perfMetrics
+		serversConfig                         []*connection.ServerConfig
+		incomingTxsForValidationCommit        <-chan dependencygraph.TxNodeBatch
+		incomingBadlyFormedTxsStatusForCommit <-chan []*protovcservice.Transaction
+		outgoingValidatedTxsNode              chan<- dependencygraph.TxNodeBatch
+		outgoingTxsStatus                     chan<- *protovcservice.TransactionStatus
+		metrics                               *perfMetrics
+		signVerifierMgr                       *signatureVerifierManager
 	}
 )
 
@@ -73,7 +78,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, &serverConfig.Endpoint)
-		vc, err := newValidatorCommitter(derivedCtx, serverConfig, c.metrics)
+		vc, err := newValidatorCommitter(derivedCtx, serverConfig, c.metrics, c.signVerifierMgr)
 		if err != nil {
 			return err
 		}
@@ -86,7 +91,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 		g.Go(func() error {
 			return vc.sendPrelimInvalidTxsStatusToVCService(
-				channel.NewReader(eCtx, c.incomingPrelimInvalidTxsStatusForCommit))
+				channel.NewReader(eCtx, c.incomingBadlyFormedTxsStatusForCommit))
 		})
 
 		g.Go(func() error {
@@ -150,6 +155,7 @@ func newValidatorCommitter(
 	ctx context.Context,
 	serverConfig *connection.ServerConfig,
 	metrics *perfMetrics,
+	signVerifierMgr *signatureVerifierManager,
 ) (
 	*validatorCommitter, error,
 ) {
@@ -189,13 +195,14 @@ func newValidatorCommitter(
 	return &validatorCommitter{
 		client:           client,
 		stream:           vcStream,
-		txBeingValidated: &sync.Map{},
 		metrics:          metrics,
+		signVerifierMgr:  signVerifierMgr,
+		txBeingValidated: &sync.Map{},
 	}, nil
 }
 
 func (vc *validatorCommitter) sendTransactionsToVCService(
-	inputTxsNode channel.Reader[[]*dependencygraph.TransactionNode],
+	inputTxsNode channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
 	for {
 		txsNode, ok := inputTxsNode.Read()
@@ -243,10 +250,13 @@ func (vc *validatorCommitter) sendTxs(txs []*protovcservice.Transaction) error {
 	)
 }
 
-func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
-	outputTxsNode channel.Writer[[]*dependencygraph.TransactionNode],
+func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:gocognit
+	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
 	outputTxsStatus channel.Writer[*protovcservice.TransactionStatus],
 ) error {
+	dCtx, cancel := context.WithCancel(outputTxsStatus.Context())
+	defer cancel()
+
 	for {
 		txsStatus, err := vc.stream.Recv()
 		if err != nil {
@@ -274,7 +284,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 		vc.metrics.addToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
-		for txID := range txsStatus.Status {
+		for txID, status := range txsStatus.Status {
 			v, ok := vc.txBeingValidated.LoadAndDelete(txID)
 			if !ok {
 				// Transactions sent with a preliminary invalid status will not be
@@ -288,11 +298,54 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode(
 				return errors.New("failed to cast txNode stored in the txBeingValidated map")
 			}
 			txsNode = append(txsNode, txNode)
+
+			if status != protoblocktx.Status_COMMITTED {
+				continue
+			}
+
+			for _, ns := range txNode.Tx.Namespaces {
+				if types.NamespaceID(ns.NsId) != types.MetaNamespaceID {
+					continue
+				}
+
+				// NOTE: Update signature verifiers before sending transaction nodes to the dependency
+				//       graph manager to free dependent transactions. Otherwise, dependent transactions
+				//       might be validated against a stale verification policy.
+				if err := vc.setVerificationKeyInSignatureVerifier(dCtx, ns); err != nil {
+					return fmt.Errorf("failed to set verification key in signature verifier after"+
+						" processing a namespace transaction: %v", err)
+				}
+			}
 		}
 
-		if ok := outputTxsNode.Write(txsNode); !ok {
+		if len(txsNode) > 0 && !outputTxsNode.Write(txsNode) {
 			return nil
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
 	}
+}
+
+func (vc *validatorCommitter) setVerificationKeyInSignatureVerifier(
+	ctx context.Context,
+	ns *protoblocktx.TxNamespace,
+) error {
+	for _, rw := range ns.ReadWrites {
+		nsID, _ := types.NamespaceIDFromBytes(rw.Key)
+
+		p := &protoblocktx.NamespacePolicy{}
+		_ = proto.Unmarshal(rw.Value, p)
+
+		if err := vc.signVerifierMgr.setVerificationKey(
+			ctx,
+			&protosigverifierservice.Key{
+				NsId:            uint32(nsID),
+				SerializedBytes: p.PublicKey,
+				Scheme:          p.Scheme,
+			},
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

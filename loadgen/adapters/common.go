@@ -79,7 +79,6 @@ func (c *commonAdapter) sendBlocks(
 func verificationKey(res *ClientResources, ns types.NamespaceID) *protosigverifierservice.Key {
 	return &protosigverifierservice.Key{
 		NsId:            uint32(ns),
-		NsVersion:       types.VersionNumber(0).Bytes(),
 		SerializedBytes: res.PublicKey,
 		Scheme:          res.KeyScheme,
 	}

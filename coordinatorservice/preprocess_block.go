@@ -14,9 +14,7 @@ import (
 func (c *CoordinatorService) preProcessBlock(
 	block *protoblocktx.Block,
 ) []*protovcservice.Transaction {
-	malformedTxs := filterMalformedTxs(block)
-	c.recordMetaNsTxs(block)
-	return malformedTxs
+	return filterMalformedTxs(block)
 }
 
 func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction {
@@ -82,18 +80,6 @@ func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction
 
 	removeFromBlock(block, badTxIndex)
 	return malformedTxs
-}
-
-func (c *CoordinatorService) recordMetaNsTxs(block *protoblocktx.Block) {
-	for _, tx := range block.Txs {
-		for _, ns := range tx.Namespaces {
-			if types.NamespaceID(ns.NsId) != types.MetaNamespaceID {
-				continue
-			}
-			c.uncommittedMetaNsTx.Store(tx.Id, ns)
-			break
-		}
-	}
 }
 
 func checkNamespaceFormation(txID string, ns *protoblocktx.TxNamespace) *protocoordinatorservice.TxValidationStatus {

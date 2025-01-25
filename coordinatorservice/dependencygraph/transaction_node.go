@@ -36,15 +36,17 @@ type (
 		// Note that a transaction T2 can depend on another transaction T1 only if T1
 		// has arrived before T2 or T1 precedes T2 in transaction order in the block.
 		// Hence, we will not have cyclic dependencies.
-		dependsOnTxs transactionList
+		dependsOnTxs TxNodeBatch
 		// dependentTxs is a set of transactions that depend on this transaction.
 		// After validating this transaction, dependentTxs is used to remove dependencies
 		// from each dependent transaction.
 		dependentTxs *sync.Map
 		rwKeys       *readWriteKeys
+		Signatures   [][]byte
 	}
 
-	transactionList []*TransactionNode
+	// TxNodeBatch is a batch of transaction nodes.
+	TxNodeBatch []*TransactionNode
 
 	// readWriteKeys holds the read and write keys of a transaction.
 	readWriteKeys struct {
@@ -64,6 +66,7 @@ func newTransactionNode(blockNum uint64, txNum uint32, tx *protoblocktx.Tx) *Tra
 		},
 		dependentTxs: newDependentTxs(),
 		rwKeys:       readAndWriteKeys(tx.Namespaces),
+		Signatures:   tx.Signatures,
 	}
 }
 
@@ -81,7 +84,7 @@ func newDependentTxs() *sync.Map {
 // This method can be called concurrently on different transaction nodes.
 // Though the dependsOnTx can be common among different transactions/goroutines,
 // it is not a problem because dependentTxs is a concurrent map.
-func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transactionList) {
+func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs TxNodeBatch) {
 	if len(dependsOnTxs) == 0 {
 		return
 	}
@@ -104,8 +107,8 @@ func (n *TransactionNode) addDependenciesAndUpdateDependents(dependsOnTxs transa
 // This is because the concurrent execution of this method on different
 // transaction nodes can modify the same dependsOnTxs set which is not protected
 // by a lock.
-func (n *TransactionNode) freeDependents() []*TransactionNode /* fully freed transactions */ {
-	var freedTxs []*TransactionNode
+func (n *TransactionNode) freeDependents() TxNodeBatch /* fully freed transactions */ {
+	var freedTxs TxNodeBatch
 
 	n.dependentTxs.Range(func(k, _ any) bool {
 		dependentTx, _ := k.(*TransactionNode)

@@ -277,16 +277,10 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), lastBlock.Number)
-
-	count := 0
-	env.coordinator.uncommittedMetaNsTx.Range(func(_, _ any) bool {
-		count++
-		return true
-	})
-	require.Zero(t, count)
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
+	// TODO: Use real signature verifier instead of mocks.
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -424,95 +418,6 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	require.Equal(t, types.VersionNumber(0).Bytes(), subValue.Version)
 }
 
-func TestCoordinatorServiceOutofOrderBlock(t *testing.T) {
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	env.start(ctx, t)
-
-	require.Never(t, func() bool {
-		return env.coordinator.nextExpectedBlockNumberToBeReceived.Load() > 0
-	}, 3*time.Second, 1*time.Second)
-	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
-
-	// next expected block is 0, but sending 2 to 500
-	env.coordinator.nextExpectedBlockNumberToBeReceived.Store(2)
-	lastBlockNum := 500
-	for i := 2; i <= lastBlockNum; i++ {
-		err := env.csStream.Send(&protoblocktx.Block{
-			Number: uint64(i), // nolint:gosec
-			Txs: []*protoblocktx.Tx{
-				{
-					Id: "tx" + strconv.Itoa(i),
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      1,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key: []byte("key"),
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("dummy")},
-				},
-			},
-			TxsNum: []uint32{0},
-		})
-		require.NoError(t, err)
-	}
-
-	// as the nextBlockNumberForDepGraph is 0, none of the transactions would get committed.
-	require.Never(t, func() bool {
-		return test.GetMetricValue(
-			t,
-			env.coordinator.metrics.transactionCommittedStatusSentTotal,
-		) > 10
-	}, 4*time.Second, 100*time.Millisecond)
-
-	// send block 0 which is the original next expected block.
-	env.coordinator.nextExpectedBlockNumberToBeReceived.Store(0)
-	err := env.csStream.Send(&protoblocktx.Block{
-		Number: uint64(0),
-		Txs:    []*protoblocktx.Tx{},
-	})
-	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		return env.coordinator.nextExpectedBlockNumberToBeReceived.Load() == 1
-	}, 3*time.Second, 250*time.Millisecond)
-	// send block 1 which is the next expected block
-	env.coordinator.queues.blockWithValidSignTxs <- &protoblocktx.Block{
-		Number: 1,
-		Txs:    []*protoblocktx.Tx{},
-	}
-	env.coordinator.queues.blockWithInvalidSignTxs <- &protoblocktx.Block{
-		Number: 1,
-		Txs:    []*protoblocktx.Tx{{Id: "tx3"}},
-		TxsNum: []uint32{0},
-	}
-
-	numValid := 0
-	numInvalid := 0
-	for i := 1; i <= lastBlockNum; i++ {
-		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		if txStatus.TxsValidationStatus[0].Status != protoblocktx.Status_COMMITTED {
-			numInvalid++
-		} else {
-			numValid++
-		}
-	}
-	require.Equal(t, lastBlockNum-1, numValid)
-	require.Equal(t, 1, numInvalid)
-
-	actualCommittedTxCount := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
-	require.Equal(t, float64(lastBlockNum-1), actualCommittedTxCount)
-	actualInvSignTxCount := test.GetMetricValue(t, env.coordinator.metrics.transactionInvalidSignatureStatusSentTotal)
-	require.Equal(t, float64(1), actualInvSignTxCount)
-}
-
 func TestQueueSize(t *testing.T) { // nolint:gocognit
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -521,36 +426,26 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 
 	q := env.coordinator.queues
 	m := env.coordinator.metrics
-	q.blockForSignatureVerification <- &protoblocktx.Block{}
-	q.blockWithValidSignTxs <- &protoblocktx.Block{}
-	q.blockWithInvalidSignTxs <- &protoblocktx.Block{}
-	q.txsBatchForDependencyGraph <- &dependencygraph.TransactionBatch{}
-	q.dependencyFreeTxsNode <- []*dependencygraph.TransactionNode{}
-	q.validatedTxsNode <- []*dependencygraph.TransactionNode{}
-	q.txsStatus <- &protovcservice.TransactionStatus{}
+	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
+	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
+	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
+	q.vcServiceToCoordinatorTxStatus <- &protovcservice.TransactionStatus{}
 
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 1 &&
-			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 1 &&
-			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 1 &&
-			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 1 &&
+		return test.GetMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
+			test.GetMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 1 &&
 			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
 			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
 	}, 3*time.Second, 500*time.Millisecond)
 
-	<-q.blockForSignatureVerification
-	<-q.blockWithValidSignTxs
-	<-q.blockWithInvalidSignTxs
-	<-q.txsBatchForDependencyGraph
-	<-q.dependencyFreeTxsNode
-	<-q.validatedTxsNode
-	<-q.txsStatus
+	<-q.depGraphToSigVerifierFreeTxs
+	<-q.sigVerifierToVCServiceValidatedTxs
+	<-q.vcServiceToDepGraphValidatedTxs
+	<-q.vcServiceToCoordinatorTxStatus
 
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, m.sigverifierInputBlockQueueSize) == 0 &&
-			test.GetMetricValue(t, m.sigverifierOutputValidBlockQueueSize) == 0 &&
-			test.GetMetricValue(t, m.sigverifierOutputInvalidBlockQueueSize) == 0 &&
-			test.GetMetricValue(t, m.vcserviceInputTxBatchQueueSize) == 0 &&
+		return test.GetMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 0 &&
+			test.GetMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
 			test.GetMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
 	}, 3*time.Second, 500*time.Millisecond)

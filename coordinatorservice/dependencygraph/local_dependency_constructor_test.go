@@ -125,7 +125,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			default:
 				// other transactions should be dependent on the previous transaction
 				require.Len(t, txNode.dependsOnTxs, 1)
-				require.Equal(t, transactionList{txsNode[i-1]}, txNode.dependsOnTxs)
+				require.Equal(t, TxNodeBatch{txsNode[i-1]}, txNode.dependsOnTxs)
 			}
 
 			if i == len(txsNode)-1 {
@@ -166,7 +166,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			default:
 				// other transactions should be dependent on the first transaction
 				require.Len(t, txNode.dependsOnTxs, 1)
-				require.Equal(t, transactionList{txsNode[0]}, txNode.dependsOnTxs)
+				require.Equal(t, TxNodeBatch{txsNode[0]}, txNode.dependsOnTxs)
 			}
 		}
 	})
@@ -195,7 +195,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			case lastElementIndex:
 				// last transaction, i.e., metaNamespace tx should be dependent on all other transactions.
 				require.Len(t, txNode.dependsOnTxs, lastElementIndex)
-				require.ElementsMatch(t, transactionList(txsNode[0:lastElementIndex]), txNode.dependsOnTxs)
+				require.ElementsMatch(t, txsNode[0:lastElementIndex], txNode.dependsOnTxs)
 			default:
 				// other transactions should not have any dependencies
 				require.Len(t, txNode.dependsOnTxs, 0)

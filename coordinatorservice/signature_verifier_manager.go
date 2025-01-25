@@ -8,6 +8,9 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
@@ -31,41 +34,29 @@ type (
 	// signatureVerifier is responsible for managing the communication with a single
 	// signature verifier server.
 	signatureVerifier struct {
-		conn   *grpc.ClientConn
-		client protosigverifierservice.VerifierClient
+		conn    *grpc.ClientConn
+		client  protosigverifierservice.VerifierClient
+		metrics *perfMetrics
 
-		// resultAccumulator is used to accumulate the result of the transactions
-		// at block level from the signature verifier server.
-		// The key is the block number and the value is the blockWithResult.
-		// This accumulator is needed because the signature verifier server
-		// does not guarantee the order of the responses.
-		resultAccumulator *sync.Map
-	}
-
-	txValidityStatus int
-	blockWithResult  struct {
-		block *protoblocktx.Block
-		// txStatus maps tx-index to txValidityStatus.
-		txStatus           []txValidityStatus
-		pendingResultCount int
-		validTxCount       int
-		invalidTxCount     int
+		// txBeingValidated stores transactions currently being validated by the signature verifier.
+		// The key is the Height (block number, transaction index), and the value is the
+		// dependencygraph.TransactionNode. If signature verifier service fails, these transactions are
+		// requeued to the input queue for processing by other signature verifiers.
+		txBeingValidated map[types.Height]*dependencygraph.TransactionNode
+		txMu             *sync.Mutex
 	}
 
 	signVerifierManagerConfig struct {
-		serversConfig                         []*connection.ServerConfig
-		incomingBlockForSignatureVerification <-chan *protoblocktx.Block
-		outgoingBlockWithValidTxs             chan<- *protoblocktx.Block
-		outgoingBlockWithInvalidTxs           chan<- *protoblocktx.Block
-		metrics                               *perfMetrics
+		serversConfig            []*connection.ServerConfig
+		incomingTxsForValidation <-chan dependencygraph.TxNodeBatch
+		outgoingValidatedTxs     chan<- dependencygraph.TxNodeBatch
+		metrics                  *perfMetrics
 	}
 )
 
-const (
-	txStatusUnknown txValidityStatus = iota
-	txStatusValid
-	txStatusInvalid
-)
+var sigInvalidTxStatus = &protovcservice.InvalidTxStatus{
+	Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+}
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	return &signatureVerifierManager{
@@ -86,29 +77,15 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 
 	g, eCtx := errgroup.WithContext(derivedCtx)
 
-	internalQueueSize := cap(c.outgoingBlockWithValidTxs) + cap(c.outgoingBlockWithInvalidTxs)
-	blocksQueue := channel.NewReaderWriter(eCtx, make(chan *blockWithResult, internalQueueSize))
+	txBatchQueue := channel.NewReaderWriter(eCtx, make(chan dependencygraph.TxNodeBatch, cap(c.outgoingValidatedTxs)))
 	g.Go(func() error {
-		ingestBlocks(
-			channel.NewReader(eCtx, c.incomingBlockForSignatureVerification),
-			blocksQueue,
-		)
-		return nil
-	})
-
-	validateBlocksQueue := channel.NewReaderWriter(eCtx, make(chan *blockWithResult, internalQueueSize))
-	g.Go(func() error {
-		svm.forwardValidatedTransactions(
-			validateBlocksQueue,
-			channel.NewWriter(eCtx, c.outgoingBlockWithValidTxs),
-			channel.NewWriter(eCtx, c.outgoingBlockWithInvalidTxs),
-		)
+		ingestIncomingTxsToInternalQueue(channel.NewReader(eCtx, c.incomingTxsForValidation), txBatchQueue)
 		return nil
 	})
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, &serverConfig.Endpoint)
-		sv, err := newSignatureVerifier(serverConfig)
+		sv, err := newSignatureVerifier(serverConfig, svm.metrics)
 		if err != nil {
 			return err
 		}
@@ -116,7 +93,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
 		g.Go(func() error {
-			sv.sendTransactionsAndReceiveStatus(eCtx, blocksQueue, validateBlocksQueue)
+			sv.sendTransactionsAndForwardStatus(eCtx, txBatchQueue, channel.NewWriter(eCtx, c.outgoingValidatedTxs))
 			return nil
 		})
 	}
@@ -138,53 +115,24 @@ func (svm *signatureVerifierManager) setVerificationKey(ctx context.Context, key
 	return nil
 }
 
-func ingestBlocks(
-	incomingBlocks channel.Reader[*protoblocktx.Block],
-	blocksQueue channel.Writer[*blockWithResult],
+func ingestIncomingTxsToInternalQueue(
+	incomingTxBatch channel.Reader[dependencygraph.TxNodeBatch],
+	txsQueue channel.Writer[dependencygraph.TxNodeBatch],
 ) {
 	for {
-		block, ctxAlive := incomingBlocks.Read()
+		txs, ctxAlive := incomingTxBatch.Read()
 		if !ctxAlive {
 			return
 		}
 
-		blockSize := len(block.Txs)
-		logger.Debugf("New block (size: %d) came from coordinator to sv manager", blockSize)
-		blocksQueue.Write(&blockWithResult{
-			block:              block,
-			pendingResultCount: blockSize,
-			txStatus:           make([]txValidityStatus, blockSize),
-		})
+		batchSize := len(txs)
+		logger.Debugf("New transaction batch (size: %d) came from dependency graph manager to sv manager", batchSize)
+
+		txsQueue.Write(txs)
 	}
 }
 
-func (svm *signatureVerifierManager) forwardValidatedTransactions(
-	validated channel.Reader[*blockWithResult],
-	outgoingBlockWithValidTxs, outgoingBlockWithInvalidTxs channel.Writer[*protoblocktx.Block],
-) {
-	for {
-		blkWithResult, ctxAlive := validated.Read()
-		if !ctxAlive {
-			return
-		}
-		logger.Debugf("Validated block [%d] contains %d valid and %d invalid TXs",
-			blkWithResult.block.Number, blkWithResult.validTxCount, blkWithResult.invalidTxCount)
-		svm.metrics.addToCounter(
-			svm.metrics.sigverifierTransactionProcessedTotal,
-			len(blkWithResult.block.Txs),
-		)
-
-		validBlockTxs, invalidBlockTxs := blkWithResult.prepareOutgoingBlock()
-		outgoingBlockWithValidTxs.Write(validBlockTxs)
-		if invalidBlockTxs != nil {
-			outgoingBlockWithInvalidTxs.Write(invalidBlockTxs)
-		}
-		logger.Debugf("Forwarded valid and invalid TXs of block [%d] back to coordinator",
-			blkWithResult.block.Number)
-	}
-}
-
-func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVerifier, error) {
+func newSignatureVerifier(serverConfig *connection.ServerConfig, metrics *perfMetrics) (*signatureVerifier, error) {
 	conn, err := connection.Connect(connection.NewDialConfig(&serverConfig.Endpoint))
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -196,9 +144,11 @@ func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVeri
 	logger.Infof("signature verifier manager connected to signature verifier at %s", &serverConfig.Endpoint)
 
 	return &signatureVerifier{
-		conn:              conn,
-		client:            protosigverifierservice.NewVerifierClient(conn),
-		resultAccumulator: &sync.Map{},
+		conn:             conn,
+		client:           protosigverifierservice.NewVerifierClient(conn),
+		metrics:          metrics,
+		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
+		txMu:             &sync.Mutex{},
 	}, nil
 }
 
@@ -206,19 +156,25 @@ func newSignatureVerifier(serverConfig *connection.ServerConfig) (*signatureVeri
 // and use it to send transactions, and receive the results.
 // It reconnects the stream in case of failure.
 // It stops only when the context was cancelled, i.e., the SVM have closed.
-func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
+func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	ctx context.Context,
-	inputBlocks channel.ReaderWriter[*blockWithResult],
-	validatedBlocks channel.Writer[*blockWithResult],
+	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
+	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) {
 	for ctx.Err() == nil {
-		// Re-enter previous blocks to the queue so other workers can fetch them.
-		sv.resultAccumulator.Range(func(key, value any) bool {
-			blkWithResult, _ := value.(*blockWithResult) // nolint:revive
-			logger.Debugf("Recovering block: %v", key)
-			return inputBlocks.Write(blkWithResult)
-		})
-		sv.resultAccumulator = &sync.Map{}
+		// Re-enter pending transactions to the queue so other workers can fetch them.
+		pendingTxs := dependencygraph.TxNodeBatch{}
+		sv.txMu.Lock()
+		for txHeight, txNode := range sv.txBeingValidated {
+			logger.Debugf("Recovering tx: %v", txHeight)
+			pendingTxs = append(pendingTxs, txNode)
+		}
+		sv.txBeingValidated = make(map[types.Height]*dependencygraph.TransactionNode)
+		sv.txMu.Unlock()
+
+		if len(pendingTxs) > 0 {
+			inputTxBatch.Write(pendingTxs)
+		}
 
 		sv.waitForConnection(ctx)
 		stream, err := sv.client.StartStream(ctx)
@@ -232,11 +188,11 @@ func (sv *signatureVerifier) sendTransactionsAndReceiveStatus(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// NOTE: validatedBlocks should not use the stream context. Otherwise, these is a
-			// possibility of losing a validated block.
-			sv.receiveTransactionsStatusFromSVService(stream, validatedBlocks)
+			// NOTE: outputValidatedTxs should not use the stream context.
+			// Otherwise, there is a possibility of losing validation results forever.
+			sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs)
 		}()
-		sv.sendTransactionsToSVService(stream, inputBlocks.WithContext(stream.Context()))
+		sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(stream.Context()))
 		wg.Wait()
 		logger.Debug("Stream ended")
 	}
@@ -267,29 +223,36 @@ func (sv *signatureVerifier) waitForConnection(ctx context.Context) {
 
 func (sv *signatureVerifier) sendTransactionsToSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	inputBlocks channel.Reader[*blockWithResult],
+	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) {
 	for {
-		blkWithResult, ctxAlive := inputBlocks.Read()
+		txBatch, ctxAlive := inputTxBatch.Read()
 		if !ctxAlive {
 			return
 		}
 
-		blockSize := len(blkWithResult.block.Txs)
-		sv.resultAccumulator.Store(blkWithResult.block.Number, blkWithResult)
-		logger.Debugf("Block contains %d TXs was stored in the accumulator", blockSize)
+		// TODO: introduce metrics to measure the lock wait/holding duration.
+		sv.txMu.Lock()
+		for _, txNode := range txBatch {
+			sv.txBeingValidated[types.Height{BlockNum: txNode.Tx.BlockNumber, TxNum: txNode.Tx.TxNum}] = txNode
+		}
+		sv.txMu.Unlock()
+
+		batchSize := len(txBatch)
+		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
 
 		request := &protosigverifierservice.RequestBatch{
-			Requests: make([]*protosigverifierservice.Request, len(blkWithResult.block.Txs)),
+			Requests: make([]*protosigverifierservice.Request, batchSize),
 		}
-		for txNum, tx := range blkWithResult.block.Txs {
-			if blkWithResult.txStatus[txNum] != txStatusUnknown {
-				continue
-			}
-			request.Requests[txNum] = &protosigverifierservice.Request{
-				BlockNum: blkWithResult.block.Number,
-				TxNum:    uint64(txNum),
-				Tx:       tx,
+		for idx, txNode := range txBatch {
+			request.Requests[idx] = &protosigverifierservice.Request{
+				BlockNum: txNode.Tx.BlockNumber,
+				TxNum:    uint64(txNode.Tx.TxNum),
+				Tx: &protoblocktx.Tx{
+					Id:         txNode.Tx.ID,
+					Namespaces: txNode.Tx.Namespaces,
+					Signatures: txNode.Signatures,
+				},
 			}
 		}
 
@@ -297,13 +260,13 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 			logger.Warnf("Send to stream ended with error: %s. Reconnecting.", err)
 			return
 		}
-		logger.Debugf("Block contains %d TXs, and was stored in the accumulator and sent to a sv", blockSize)
+		logger.Debugf("Batch contains %d TXs, and was stored in the accumulator and sent to a sv", batchSize)
 	}
 }
 
-func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
+func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	validatedBlocks channel.Writer[*blockWithResult],
+	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) {
 	for {
 		response, err := stream.Recv()
@@ -314,85 +277,31 @@ func (sv *signatureVerifier) receiveTransactionsStatusFromSVService(
 		}
 
 		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Responses))
-		var blkWithResult *blockWithResult
+		validatedTxs := dependencygraph.TxNodeBatch{}
+		// TODO: introduce metrics to measure the lock wait/holding duration.
+		sv.txMu.Lock()
 		for _, resp := range response.Responses {
-			blkWithResult = sv.updateBlockWithResult(resp, blkWithResult)
-			if blkWithResult.pendingResultCount == 0 {
-				logger.Debugf("Block [%d] is now fully validated", blkWithResult.block.Number)
-				sv.resultAccumulator.Delete(blkWithResult.block.Number)
-				if ctxAlive := validatedBlocks.Write(blkWithResult); !ctxAlive {
-					return
-				}
+			// Since transactions are loaded and deleted before validation results are added to the output queues,
+			// a signature verifier failure after processing a response should not cause this function to return.
+			// As a result, the caller must ensure that outputValidatedTxs does not use the
+			// signatureVerifier's stream context.
+			k := types.Height{BlockNum: resp.BlockNum, TxNum: uint32(resp.TxNum)} //nolint:gosec
+			txNode, ok := sv.txBeingValidated[k]
+			if !ok {
+				continue
 			}
-		}
-	}
-}
-
-// updateBlockWithResult the appropriate block from the result accumulator according to the received response.
-// If the received blkWithResult matches the current block, it will use it instead of loading it
-// from the accumulator.
-// Returns the relevant block.
-func (sv *signatureVerifier) updateBlockWithResult(
-	resp *protosigverifierservice.Response, blkWithResult *blockWithResult,
-) *blockWithResult {
-	if blkWithResult == nil || blkWithResult.block.Number != resp.BlockNum {
-		v, ok := sv.resultAccumulator.Load(resp.BlockNum)
-		if !ok {
-			// This should not happen if the verifier dismisses all jobs when the stream is closed, as it should.
-			logger.Debugf("Received results for unexpected block number [%d]", blkWithResult.block.Number)
-			return blkWithResult
-		}
-		blkWithResult, _ = v.(*blockWithResult) // nolint:revive
-	}
-
-	txIndex := int(resp.TxNum)
-	// Due to resubmit, we might receive the same TX twice. We can ignore it.
-	if blkWithResult.txStatus[txIndex] != txStatusUnknown {
-		return blkWithResult
-	}
-
-	if resp.GetIsValid() {
-		blkWithResult.validTxCount++
-		blkWithResult.txStatus[txIndex] = txStatusValid
-	} else {
-		blkWithResult.invalidTxCount++
-		blkWithResult.txStatus[txIndex] = txStatusInvalid
-	}
-	blkWithResult.pendingResultCount--
-	return blkWithResult
-}
-
-func (b *blockWithResult) prepareOutgoingBlock() (validBlockTxs, invalidBlockTxs *protoblocktx.Block) {
-	blockNum := b.block.Number
-	switch {
-	// No invalid TXs.
-	case b.invalidTxCount == 0:
-		validBlockTxs = b.block
-		invalidBlockTxs = nil
-	// No valid TXs.
-	case b.validTxCount == 0:
-		validBlockTxs = &protoblocktx.Block{Number: blockNum}
-		invalidBlockTxs = b.block
-	// Both valid and invalid TXs.
-	default:
-		validBlockTxs = &protoblocktx.Block{
-			Number: blockNum,
-			Txs:    make([]*protoblocktx.Tx, 0, b.validTxCount),
-		}
-		invalidBlockTxs = &protoblocktx.Block{
-			Number: blockNum,
-			Txs:    make([]*protoblocktx.Tx, 0, b.invalidTxCount),
-		}
-
-		for i, tx := range b.block.Txs {
-			if b.txStatus[i] == txStatusValid {
-				validBlockTxs.Txs = append(validBlockTxs.Txs, tx)
-				validBlockTxs.TxsNum = append(validBlockTxs.TxsNum, b.block.TxsNum[i])
-			} else {
-				invalidBlockTxs.Txs = append(invalidBlockTxs.Txs, tx)
-				invalidBlockTxs.TxsNum = append(invalidBlockTxs.TxsNum, b.block.TxsNum[i])
+			delete(sv.txBeingValidated, k)
+			if !resp.IsValid {
+				txNode.Tx.PrelimInvalidTxStatus = sigInvalidTxStatus
 			}
+			validatedTxs = append(validatedTxs, txNode)
 		}
+		sv.txMu.Unlock()
+
+		if !outputValidatedTxs.Write(validatedTxs) {
+			return
+		}
+
+		sv.metrics.addToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
 	}
-	return validBlockTxs, invalidBlockTxs
 }

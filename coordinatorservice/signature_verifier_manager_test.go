@@ -6,35 +6,33 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type svMgrTestEnv struct {
-	signVerifierManager       *signatureVerifierManager
-	inputBlock                chan *protoblocktx.Block
-	outputBlockWithValidTxs   chan *protoblocktx.Block
-	outputBlockWithInvalidTxs chan *protoblocktx.Block
-	mockSvService             []*mock.SigVerifier
-	grpcServers               *test.GrpcServers
+	signVerifierManager *signatureVerifierManager
+	inputTxBatch        chan dependencygraph.TxNodeBatch
+	outputValidatedTxs  chan dependencygraph.TxNodeBatch
+	mockSvService       []*mock.SigVerifier
+	grpcServers         *test.GrpcServers
 }
 
 func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 	svs, sc := mock.StartMockSVService(t, numSvService)
 
-	inputBlock := make(chan *protoblocktx.Block, 10)
-	outputBlockWithValidTxs := make(chan *protoblocktx.Block, 10)
-	outputBlockWithInvalidTxs := make(chan *protoblocktx.Block, 10)
+	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
+	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
 
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			serversConfig:                         sc.Configs,
-			incomingBlockForSignatureVerification: inputBlock,
-			outgoingBlockWithValidTxs:             outputBlockWithValidTxs,
-			outgoingBlockWithInvalidTxs:           outputBlockWithInvalidTxs,
-			metrics:                               newPerformanceMetrics(true),
+			serversConfig:            sc.Configs,
+			incomingTxsForValidation: inputTxBatch,
+			outgoingValidatedTxs:     outputValidatedTxs,
+			metrics:                  newPerformanceMetrics(true),
 		},
 	)
 
@@ -48,33 +46,23 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 	})
 
 	env := &svMgrTestEnv{
-		signVerifierManager:       svm,
-		inputBlock:                inputBlock,
-		outputBlockWithValidTxs:   outputBlockWithValidTxs,
-		outputBlockWithInvalidTxs: outputBlockWithInvalidTxs,
-		mockSvService:             svs,
-		grpcServers:               sc,
+		signVerifierManager: svm,
+		inputTxBatch:        inputTxBatch,
+		outputValidatedTxs:  outputValidatedTxs,
+		mockSvService:       svs,
+		grpcServers:         sc,
 	}
 
 	return env
 }
 
-func requireBlockFromQueue(
-	t *testing.T, expectedBlk *protoblocktx.Block, blkOutputChan chan *protoblocktx.Block,
-) {
+func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs dependencygraph.TxNodeBatch) {
 	select {
-	case actualBlk := <-blkOutputChan:
-		require.Equal(t, expectedBlk, actualBlk)
+	case actualTxBatch := <-e.outputValidatedTxs:
+		require.ElementsMatch(t, expectedValidatedTxs, actualTxBatch)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive block from output after timeout")
 	}
-}
-
-func (e *svMgrTestEnv) requireBlock(
-	t *testing.T, expectedBlkWithValTxs, expectedBlkWithInvalidTxs *protoblocktx.Block,
-) {
-	requireBlockFromQueue(t, expectedBlkWithValTxs, e.outputBlockWithValidTxs)
-	requireBlockFromQueue(t, expectedBlkWithInvalidTxs, e.outputBlockWithInvalidTxs)
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
@@ -85,29 +73,24 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 
 	blkNum := 0
 	numTxs := 10
-	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs := createBlockForTest(t, blkNum, numTxs)
-	env.inputBlock <- blk
+	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs)
+	env.inputTxBatch <- txBatch
 
-	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalTxs)
+	env.requireTxBatch(t, expectedValidatedTxs)
 
 	blkNum = 1
 	numTxs = 1
-	blk, expectedBlkWithValTxs, _ = createBlockForTest(t, blkNum, numTxs)
-	env.inputBlock <- blk
+	txBatch, expectedValidatedTxs = createTxNodeBatchForTest(t, blkNum, numTxs)
+	env.inputTxBatch <- txBatch
 
-	require.Equal(t, expectedBlkWithValTxs, <-env.outputBlockWithValidTxs)
-	select {
-	case b := <-env.outputBlockWithInvalidTxs:
-		t.Fatal("should not have invalid txs", b)
-	case <-time.After(500 * time.Millisecond):
-	}
+	env.requireTxBatch(t, expectedValidatedTxs)
 
 	blkNum = 2
 	numTxs = 4
-	blk, expectedBlkWithValTxs, expectedBlkWithInvalTxs = createBlockForTest(t, blkNum, numTxs)
-	env.inputBlock <- blk
+	txBatch, expectedValidatedTxs = createTxNodeBatchForTest(t, blkNum, numTxs)
+	env.inputTxBatch <- txBatch
 
-	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalTxs)
+	env.requireTxBatch(t, expectedValidatedTxs)
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(
@@ -122,24 +105,21 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 
 	numTxs := 10
 	numBlocks := 1000
-	blocks := make([]*protoblocktx.Block, numBlocks)
-	expectedValid := make([]*protoblocktx.Block, numBlocks)
-	expectedInvalid := make([]*protoblocktx.Block, numBlocks)
+	txBatches := make([]dependencygraph.TxNodeBatch, numBlocks)
+	expectedValidatedTxs := make([]dependencygraph.TxNodeBatch, numBlocks)
 	for i := 0; i < numBlocks; i++ {
-		blocks[i], expectedValid[i], expectedInvalid[i] = createBlockForTest(t, i, numTxs)
+		txBatches[i], expectedValidatedTxs[i] = createTxNodeBatchForTest(t, i, numTxs)
 	}
 	for i := 0; i < numBlocks; i++ {
-		env.inputBlock <- blocks[i]
+		env.inputTxBatch <- txBatches[i]
 	}
 
 	deadline := time.After(10 * time.Second)
-	// For each block in the input, we expect a block in each of the two outputs.
-	for i := 0; i < numBlocks*2; i++ {
+	// For each input batch in the input, we expect a batch in each of the two outputs.
+	for i := 0; i < numBlocks; i++ {
 		select {
-		case blk := <-env.outputBlockWithValidTxs:
-			require.Equal(t, expectedValid[blk.Number], blk)
-		case blk := <-env.outputBlockWithInvalidTxs:
-			require.Equal(t, expectedInvalid[blk.Number], blk)
+		case txBatch := <-env.outputValidatedTxs:
+			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].Tx.BlockNumber], txBatch)
 		case <-deadline:
 			t.Fatal("Did not receive all blocks from output after timeout")
 		}
@@ -154,12 +134,9 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	require.Equal(t, uint32(numBlocks), totalBlocksReceived)
 
 	for _, sv := range env.signVerifierManager.signVerifier {
-		count := 0
-		sv.resultAccumulator.Range(func(_, _ any) bool {
-			count++
-			return true
-		})
-		require.Zero(t, count)
+		sv.txMu.Lock()
+		require.Len(t, sv.txBeingValidated, 0)
+		sv.txMu.Unlock()
 	}
 }
 
@@ -189,82 +166,85 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 }
 
 func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
-	env := newSvMgrTestEnv(t, 1)
-
-	blk := &protoblocktx.Block{
-		Number: 1,
-		Txs: []*protoblocktx.Tx{
-			{
-				Id: "tx1",
+	txBatch := dependencygraph.TxNodeBatch{}
+	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
+	for i := range 3 {
+		txNode := &dependencygraph.TransactionNode{
+			Tx: &protovcservice.Transaction{
+				BlockNumber: uint64(i), // nolint:gosec
+				TxNum:       uint32(i), // nolint:gosec
 			},
-		},
-	}
-	env.inputBlock <- blk
+		}
+		txBatch = append(txBatch, txNode)
 
-	env.requireBlock(t, &protoblocktx.Block{Number: 1}, blk)
+		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
+			Tx: &protovcservice.Transaction{
+				BlockNumber:           txNode.Tx.BlockNumber,
+				TxNum:                 txNode.Tx.TxNum,
+				PrelimInvalidTxStatus: sigInvalidTxStatus,
+			},
+		})
+	}
+
+	env := newSvMgrTestEnv(t, 1)
+	env.inputTxBatch <- txBatch
+	env.requireTxBatch(t, expectedValidatedTxs)
 }
 
-func createBlockForTest(
+func createTxNodeBatchForTest(
 	_ *testing.T,
 	blkNum, numTxs int,
-) (*protoblocktx.Block, *protoblocktx.Block, *protoblocktx.Block) {
-	block := &protoblocktx.Block{
-		Number: uint64(blkNum),
-	}
-
-	blockWithValidTxs := &protoblocktx.Block{
-		Number: uint64(blkNum),
-	}
-
-	blockWithInvalidTxs := &protoblocktx.Block{
-		Number: uint64(blkNum),
-	}
-
+) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
 	for i := 0; i < numTxs; i++ {
-		tx := &protoblocktx.Tx{}
-		txNum := uint32(i) //nolint:gosec
+		txNode := &dependencygraph.TransactionNode{
+			Tx: &protovcservice.Transaction{
+				BlockNumber: uint64(blkNum), //nolint:gosec
+				TxNum:       uint32(i),      //nolint:gosec
+			},
+		}
+
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			tx.Signatures = [][]byte{[]byte("dummy")}
-			blockWithValidTxs.Txs = append(blockWithValidTxs.Txs, tx)
-			blockWithValidTxs.TxsNum = append(blockWithValidTxs.TxsNum, txNum)
+			txNode.Signatures = [][]byte{[]byte("dummy")}
+			expectedValidatedTxs = append(expectedValidatedTxs, txNode)
 		case 1:
-			// odd number txs are invalid.
-			blockWithInvalidTxs.Txs = append(blockWithInvalidTxs.Txs, tx)
-			blockWithInvalidTxs.TxsNum = append(blockWithInvalidTxs.TxsNum, txNum)
+			// odd number txs are invalid. No signature means invalid transaction.
+			// we need to create a copy of txNode to add expected status.
+			txNodeWithStatus := &dependencygraph.TransactionNode{
+				Tx: &protovcservice.Transaction{
+					BlockNumber:           txNode.Tx.BlockNumber,
+					TxNum:                 txNode.Tx.TxNum,
+					PrelimInvalidTxStatus: sigInvalidTxStatus,
+				},
+			}
+			expectedValidatedTxs = append(expectedValidatedTxs, txNodeWithStatus)
 		}
 
-		block.Txs = append(block.Txs, tx)
-		block.TxsNum = append(block.TxsNum, txNum)
+		inputTxBatch = append(inputTxBatch, txNode)
 	}
 
-	return block, blockWithValidTxs, blockWithInvalidTxs
+	return inputTxBatch, expectedValidatedTxs
 }
 
 func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	env := newSvMgrTestEnv(t, 1)
 	for _, sv := range env.mockSvService {
-		sv.MockFaultyNodeDropSize = 1
+		sv.MockFaultyNodeDropSize = 4
 	}
 
 	blkNum := 0
 	numTxs := 10
-	blk, expectedBlkWithValTxs, expectedBlkWithInvalidTxs := createBlockForTest(t, blkNum, numTxs)
-	env.inputBlock <- blk
+	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs)
+	env.inputTxBatch <- txBatch
 
 	// Validate the full block have not been reported
 	firstSv := env.signVerifierManager.signVerifier[0]
 	require.Eventually(t, func() bool {
-		v, ok := firstSv.resultAccumulator.Load(uint64(blkNum))
-		if !ok {
-			return false
-		}
-		blkWithResult, _ := v.(*blockWithResult) // nolint:revive
-		return blkWithResult.pendingResultCount < len(blkWithResult.block.Txs)
+		firstSv.txMu.Lock()
+		defer firstSv.txMu.Unlock()
+		return len(firstSv.txBeingValidated) == numTxs-6 // first 4 transactions would be pending
 	}, 4*time.Second, 100*time.Millisecond)
-	require.Empty(t, env.outputBlockWithValidTxs)
-	require.Empty(t, env.outputBlockWithInvalidTxs)
 
 	for _, s := range env.grpcServers.Servers {
 		s.Stop()
@@ -278,5 +258,6 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		t, env.mockSvService, env.grpcServers.Configs,
 	)
 
-	env.requireBlock(t, expectedBlkWithValTxs, expectedBlkWithInvalidTxs)
+	env.requireTxBatch(t, expectedValidatedTxs[4:])
+	env.requireTxBatch(t, expectedValidatedTxs[:4])
 }

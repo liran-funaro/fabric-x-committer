@@ -31,7 +31,7 @@ func TestTransactionNode(t *testing.T) {
 		[][]byte{keys[4], keys[6]}, // blindWrites
 	)
 
-	tx2DependsOnTx := transactionList{
+	tx2DependsOnTx := TxNodeBatch{
 		tx1Node,
 	}
 	tx2Node.addDependenciesAndUpdateDependents(tx2DependsOnTx)
@@ -39,7 +39,7 @@ func TestTransactionNode(t *testing.T) {
 	require.Equal(t, tx2DependsOnTx, tx2Node.dependsOnTxs)
 	checkDependentTxs(
 		t,
-		transactionList{ // expectedDependentTxs
+		TxNodeBatch{ // expectedDependentTxs
 			tx2Node,
 		},
 		tx1Node.dependentTxs, // actualDependentTxs
@@ -52,7 +52,7 @@ func TestTransactionNode(t *testing.T) {
 		[][]byte{keys[6]}, // blindWrites
 	)
 
-	tx3DependsOnTx := transactionList{
+	tx3DependsOnTx := TxNodeBatch{
 		tx1Node,
 		tx2Node,
 	}
@@ -61,7 +61,7 @@ func TestTransactionNode(t *testing.T) {
 	require.Equal(t, tx3DependsOnTx, tx3Node.dependsOnTxs)
 	checkDependentTxs(
 		t,
-		transactionList{ // expectedDependentTxs
+		TxNodeBatch{ // expectedDependentTxs
 			tx2Node,
 			tx3Node,
 		},
@@ -69,14 +69,14 @@ func TestTransactionNode(t *testing.T) {
 	)
 	checkDependentTxs(
 		t,
-		transactionList{ // expectedDependentTxs
+		TxNodeBatch{ // expectedDependentTxs
 			tx3Node,
 		},
 		tx2Node.dependentTxs, // actualDependentTxs
 	)
 
 	freedTxs := tx1Node.freeDependents()
-	require.Equal(t, []*TransactionNode{tx2Node}, freedTxs)
+	require.Equal(t, TxNodeBatch{tx2Node}, freedTxs)
 	require.Len(t, tx2Node.dependsOnTxs, 0)
 }
 
@@ -165,11 +165,11 @@ func checkNewTxNode(
 	require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 }
 
-func checkDependentTxs(t *testing.T, expectedTransactionList transactionList, dependentTxs *sync.Map) {
+func checkDependentTxs(t *testing.T, expectedTransactionList TxNodeBatch, dependentTxs *sync.Map) {
 	actualLen := getLengthOfDependentTx(t, dependentTxs)
 	require.Len(t, expectedTransactionList, actualLen)
 
-	actualTransactionList := make(transactionList, 0, actualLen)
+	actualTransactionList := make(TxNodeBatch, 0, actualLen)
 	dependentTxs.Range(func(k, _ any) bool {
 		txNode, _ := k.(*TransactionNode)
 		actualTransactionList = append(actualTransactionList, txNode)

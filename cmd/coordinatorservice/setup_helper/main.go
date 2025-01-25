@@ -62,7 +62,6 @@ func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme s
 
 	_, err = client.SetMetaNamespaceVerificationKey(ctx, &protosigverifierservice.Key{
 		NsId:            uint32(types.MetaNamespaceID),
-		NsVersion:       types.VersionNumber(0).Bytes(),
 		SerializedBytes: publicKey,
 		Scheme:          scheme,
 	})

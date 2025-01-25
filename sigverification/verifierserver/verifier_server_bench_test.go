@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
 	sigverification_test "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
@@ -72,7 +71,6 @@ func BenchmarkVerifierServer(b *testing.B) {
 				defer c.TearDown()
 				c.Client.SetVerificationKey(context.Background(), &sigverification.Key{
 					NsId:            1,
-					NsVersion:       types.VersionNumber(0).Bytes(),
 					SerializedBytes: publicKey,
 					Scheme:          config.InputGeneratorParams.RequestBatch.Tx.Scheme,
 				})
