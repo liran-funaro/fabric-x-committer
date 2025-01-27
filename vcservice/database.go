@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
@@ -36,16 +35,8 @@ const (
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
 
-var (
-	// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
-	ErrMetadataEmpty = errors.New("metadata value is empty")
-	// retryTimeout denotes the time duration for which the db operations can be retried.
-	// There are certain errors for which we need to retry the query/commit operation.
-	// Refer to YugabyteDB documentation for retryable error.
-	retryTimeout = 30 * time.Second
-	// retryInitialInterval denotes the initial interval between the retries.
-	retryInitialInterval = backoff.WithInitialInterval(100 * time.Millisecond)
-)
+// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
+var ErrMetadataEmpty = errors.New("metadata value is empty")
 
 type (
 	// database handles the database operations.
