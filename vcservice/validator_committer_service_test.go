@@ -184,13 +184,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
 
-		expectedTxStatus := &protovcservice.TransactionStatus{
-			Status: map[string]protoblocktx.Status{},
-		}
-		expectedHeight := make(transactionIDToHeight)
-		for _, tx := range txBatch.Transactions {
-			expectedTxStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
-			expectedHeight[TxID(tx.ID)] = types.NewHeight(tx.BlockNumber, tx.TxNum)
+		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+		txIDs := make([]string, len(txBatch.Transactions))
+		for i, tx := range txBatch.Transactions {
+			expectedTxStatus[tx.ID] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, tx.BlockNumber,
+				int(tx.TxNum))
+			txIDs[i] = tx.ID
 		}
 
 		require.Equal(
@@ -198,9 +197,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			float64(len(txBatch.Transactions)),
 			test.GetMetricValue(t, env.vcs.metrics.transactionReceivedTotal),
 		)
-		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+		require.Equal(t, expectedTxStatus, txStatus.Status)
 
-		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
+
+		test.EnsurePersistedTxStatus(ctx, t, env.client, txIDs, expectedTxStatus)
 
 		txBatch = &protovcservice.TransactionBatch{
 			Transactions: []*protovcservice.Transaction{
@@ -227,7 +228,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Eventually(t, func() bool {
 			txStatus, err = env.stream.Recv()
 			require.NoError(t, err)
-			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"])
+			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"].Code)
 			return true
 		}, env.vcs.timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
@@ -266,31 +267,23 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
 
-		expectedTxStatus := &protovcservice.TransactionStatus{
-			Status: map[string]protoblocktx.Status{
-				txBatch.Transactions[0].ID: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				txBatch.Transactions[1].ID: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-			},
+		tx0 := txBatch.Transactions[0]
+		tx1 := txBatch.Transactions[1]
+		expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+			tx0.ID: types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, tx0.BlockNumber,
+				int(tx0.TxNum)),
+			tx1.ID: types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE, tx1.BlockNumber,
+				int(tx1.TxNum)),
 		}
-		expectedHeight := transactionIDToHeight{
-			TxID(txBatch.Transactions[0].ID): types.NewHeight(
-				txBatch.Transactions[0].BlockNumber,
-				txBatch.Transactions[0].TxNum,
-			),
-			TxID(txBatch.Transactions[1].ID): types.NewHeight(
-				txBatch.Transactions[1].BlockNumber,
-				txBatch.Transactions[1].TxNum,
-			),
-		}
-		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
+		require.Equal(t, expectedTxStatus, txStatus.Status)
 
-		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 		status, err := env.client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{
-			TxIDs: []string{txBatch.Transactions[0].ID, txBatch.Transactions[1].ID},
+			TxIDs: []string{tx0.ID, tx1.ID},
 		})
 		require.NoError(t, err)
-		require.Equal(t, expectedTxStatus.Status, status.Status)
+		require.Equal(t, expectedTxStatus, status.Status)
 	})
 }
 
@@ -510,14 +503,13 @@ func TestTransactionResubmission(t *testing.T) {
 	}
 
 	txBatch := &protovcservice.TransactionBatch{}
-	expectedTxStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protoblocktx.Status{},
-	}
-	expectedHeight := make(transactionIDToHeight)
-	for _, t := range txs {
+	expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	txIDs := make([]string, len(txs))
+	for i, t := range txs {
 		txBatch.Transactions = append(txBatch.Transactions, t.tx)
-		expectedTxStatus.Status[t.tx.ID] = t.expectedStatus
-		expectedHeight[TxID(t.tx.ID)] = types.NewHeight(t.tx.BlockNumber, t.tx.TxNum)
+		expectedTxStatus[t.tx.ID] = types.CreateStatusWithHeight(t.expectedStatus, t.tx.BlockNumber,
+			int(t.tx.TxNum))
+		txIDs[i] = t.tx.ID
 	}
 
 	// we are submitting the same three transactions thrice. We should consistently see the same status.
@@ -526,9 +518,11 @@ func TestTransactionResubmission(t *testing.T) {
 		txStatus, err := env.stream.Recv()
 		require.NoError(t, err)
 
-		require.Equal(t, expectedTxStatus.Status, txStatus.Status)
-		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus.Status, expectedHeight)
+		require.Equal(t, expectedTxStatus, txStatus.Status)
+		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 	}
+
+	test.EnsurePersistedTxStatus(ctx, t, env.client, txIDs, expectedTxStatus)
 }
 
 func createContext(t *testing.T) context.Context {

@@ -14,6 +14,7 @@ import (
 	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
@@ -181,4 +182,25 @@ func RunServiceAndGrpcForTest(
 		return connection.WrapStreamRpcError(service.Run(ctx))
 	}, service.WaitForReady)
 	return RunGrpcServerForTest(t, serverConfig, register)
+}
+
+// StatusRetriever provides implementation retrieve status of given transaction identifiers.
+type StatusRetriever interface {
+	GetTransactionsStatus(
+		context.Context,
+		*protoblocktx.QueryStatus,
+		...grpc.CallOption,
+	) (*protoblocktx.TransactionsStatus, error)
+}
+
+func EnsurePersistedTxStatus( // nolint:revive
+	ctx context.Context,
+	t *testing.T,
+	r StatusRetriever,
+	txIDs []string,
+	expected map[string]*protoblocktx.StatusWithHeight,
+) {
+	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+	require.NoError(t, err)
+	require.Equal(t, expected, actualStatus.Status)
 }

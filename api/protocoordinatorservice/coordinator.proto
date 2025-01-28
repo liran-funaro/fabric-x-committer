@@ -9,20 +9,12 @@ import "api/protosigverifierservice/verifier.proto";
 
 service Coordinator {
     rpc SetMetaNamespaceVerificationKey(protosigverifierservice.Key) returns (Empty);
-    rpc BlockProcessing(stream protoblocktx.Block) returns (stream TxValidationStatusBatch);
+    rpc BlockProcessing(stream protoblocktx.Block) returns (stream protoblocktx.TransactionsStatus);
     rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
     rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
+    rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
 }
 
 message Empty {
-}
-
-message TxValidationStatusBatch {
-    repeated TxValidationStatus txs_validation_status = 1;
-}
-
-message TxValidationStatus {
-    string tx_id = 1;
-    protoblocktx.Status status = 2;
 }

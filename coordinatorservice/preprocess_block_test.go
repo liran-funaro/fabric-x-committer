@@ -9,7 +9,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -231,15 +230,10 @@ func TestCoordinatorServiceBadTxFormat(t *testing.T) {
 
 			txStatus, err := env.csStream.Recv()
 			require.NoError(t, err)
-			expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-				TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-					{
-						TxId:   tt.tx.Id,
-						Status: tt.expectedStatus,
-					},
-				},
+			expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+				tt.tx.Id: types.CreateStatusWithHeight(tt.expectedStatus, blockNumber, 0),
 			}
-			require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+			require.Equal(t, expectedTxStatus, txStatus.Status)
 			require.Equal(
 				t,
 				commitStatusCount,

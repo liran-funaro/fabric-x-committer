@@ -9,6 +9,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
@@ -81,12 +82,12 @@ func (vc *VcService) GetMaxSeenBlockNumber(
 func (vc *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *protoblocktx.QueryStatus,
-) (*protovcservice.TransactionStatus, error) {
-	s := &protovcservice.TransactionStatus{Status: make(map[string]protoblocktx.Status)}
+) (*protoblocktx.TransactionsStatus, error) {
+	s := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
 	for _, id := range query.TxIDs {
 		v, ok := vc.txsStatus.Load(id)
 		if ok {
-			s.Status[id] = v.(protoblocktx.Status) //nolint
+			s.Status[id] = &protoblocktx.StatusWithHeight{Code: v.(protoblocktx.Status)} //nolint
 		}
 	}
 
@@ -155,19 +156,18 @@ func (vc *VcService) sendTransactionStatus(
 		if !ok {
 			return nil
 		}
-		txsStatus := &protovcservice.TransactionStatus{
-			Status: make(map[string]protoblocktx.Status),
+		txsStatus := &protoblocktx.TransactionsStatus{
+			Status: make(map[string]*protoblocktx.StatusWithHeight),
 		}
 
 		maxNum := vc.lastCommittedBlock.Load()
 		for _, tx := range txBatch.Transactions {
+			code := protoblocktx.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
-				txsStatus.Status[tx.ID] = tx.PrelimInvalidTxStatus.Code
-				vc.txsStatus.Store(tx.ID, tx.PrelimInvalidTxStatus.Code)
-			} else {
-				txsStatus.Status[tx.ID] = protoblocktx.Status_COMMITTED
-				vc.txsStatus.Store(tx.ID, protoblocktx.Status_COMMITTED)
+				code = tx.PrelimInvalidTxStatus.Code
 			}
+			txsStatus.Status[tx.ID] = types.CreateStatusWithHeight(code, tx.BlockNumber, int(tx.TxNum))
+			vc.txsStatus.Store(tx.ID, code)
 			maxNum = max(maxNum, int64(tx.BlockNumber)) // nolint:gosec
 		}
 		vc.maxBlockNumber.Store(maxNum)

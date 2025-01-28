@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
@@ -53,7 +52,7 @@ type (
 	statesToBeCommitted struct {
 		updateWrites namespaceToWrites
 		newWrites    namespaceToWrites
-		batchStatus  *protovcservice.TransactionStatus
+		batchStatus  *protoblocktx.TransactionsStatus
 		txIDToHeight transactionIDToHeight
 	}
 )
@@ -178,32 +177,6 @@ func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*prot
 	return &protoblocktx.BlockInfo{Number: binary.BigEndian.Uint64(value)}, nil
 }
 
-func (db *database) queryTransactionsStatus(
-	ctx context.Context,
-	txIDs [][]byte,
-) (*protovcservice.TransactionStatus, error) {
-	txIDsStatus, err := db.retryQuery(ctx, queryTxIDsStatus, txIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer txIDsStatus.Close()
-
-	txIDs, status, err := readKeysAndValues[[]byte, int32](txIDsStatus)
-	if err != nil {
-		return nil, err
-	}
-
-	s := &protovcservice.TransactionStatus{
-		Status: make(map[string]protoblocktx.Status),
-	}
-
-	for i, txID := range txIDs {
-		s.Status[string(txID)] = protoblocktx.Status(status[i])
-	}
-
-	return s, nil
-}
-
 func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *protoblocktx.BlockInfo) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
@@ -314,11 +287,11 @@ func (db *database) commitTxStatus(
 	heights := make([][]byte, 0, numEntries)
 	for tID, status := range states.batchStatus.Status {
 		// We cannot commit a "duplicated ID" status since we already have a status entry with this ID.
-		if status == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if status.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			continue
 		}
 		ids = append(ids, []byte(tID))
-		statues = append(statues, int(status))
+		statues = append(statues, int(status.Code))
 		blkAndTxNum, ok := states.txIDToHeight[TxID(tID)]
 		if !ok {
 			return nil, fmt.Errorf("block and tx number is not passed for txID %s", tID)
@@ -488,34 +461,17 @@ func TableName(nsID types.NamespaceID) string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
 }
 
-func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
-	var rows pgx.Rows
-	retryErr := db.retry.Execute(ctx, func() error {
-		var err error
-		rows, err = db.pool.Query(ctx, sql, arg...)
-		return err
-	})
-	return rows, retryErr
-}
-
-type statusWithHeight struct {
-	status protoblocktx.Status
-	height *types.Height
-}
-
-func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHeight, error) {
-	var r pgx.Rows
-	ctx := context.Background()
-	if retryErr := db.retry.Execute(ctx, func() error {
-		var err error
-		r, err = db.pool.Query(ctx, queryTxStatusSQLTemplate, txIDs)
-		return err
-	}); retryErr != nil {
+func (db *database) readStatusWithHeight( // nolint:ireturn
+	ctx context.Context,
+	txIDs [][]byte,
+) (map[string]*protoblocktx.StatusWithHeight, error) {
+	r, retryErr := db.retryQuery(ctx, queryTxIDsStatus, txIDs)
+	if retryErr != nil {
 		return nil, fmt.Errorf("error reading status for txIDs: %w", retryErr)
 	}
 	defer r.Close()
 
-	rows := make(map[TxID]*statusWithHeight)
+	rows := make(map[string]*protoblocktx.StatusWithHeight)
 	for r.Next() {
 		var id []byte
 		var status int32
@@ -530,7 +486,17 @@ func (db *database) readStatusWithHeight(txIDs [][]byte) (map[TxID]*statusWithHe
 			return nil, err
 		}
 
-		rows[TxID(id)] = &statusWithHeight{status: protoblocktx.Status(status), height: ht}
+		rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
 	}
 	return rows, r.Err()
+}
+
+func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
+	var rows pgx.Rows
+	retryErr := db.retry.Execute(ctx, func() error {
+		var err error
+		rows, err = db.pool.Query(ctx, sql, arg...)
+		return err
+	})
+	return rows, retryErr
 }

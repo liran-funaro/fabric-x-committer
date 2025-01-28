@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -15,13 +14,13 @@ import (
 type committerTestEnv struct {
 	c            *transactionCommitter
 	validatedTxs chan *validatedTransactions
-	txStatus     chan *protovcservice.TransactionStatus
+	txStatus     chan *protoblocktx.TransactionsStatus
 	dbEnv        *DatabaseTestEnv
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
-	txStatus := make(chan *protovcservice.TransactionStatus, 10)
+	txStatus := make(chan *protoblocktx.TransactionsStatus, 10)
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
@@ -77,10 +76,10 @@ func TestCommit(t *testing.T) {
 			state{2, 3, 1},
 			state{2, 4, 1},
 		),
-		&protovcservice.TransactionStatus{
-			Status: map[string]protoblocktx.Status{
-				"tx1": protoblocktx.Status_COMMITTED,
-				"tx2": protoblocktx.Status_COMMITTED,
+		&protoblocktx.TransactionsStatus{
+			Status: map[string]*protoblocktx.StatusWithHeight{
+				"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
+				"tx2": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 2),
 			},
 		},
 		transactionIDToHeight{
@@ -93,7 +92,7 @@ func TestCommit(t *testing.T) {
 	tests := []struct {
 		name                      string
 		txs                       *validatedTransactions
-		expectedTxStatuses        map[string]protoblocktx.Status
+		expectedTxStatuses        map[string]*protoblocktx.StatusWithHeight
 		expectedNsRows            namespaceToWrites
 		unexpectedNsRows          namespaceToWrites
 		expectedMaxSeenBlocNumber uint64
@@ -125,9 +124,9 @@ func TestCommit(t *testing.T) {
 					"tx-new-2": types.NewHeight(244, 2),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{
-				"tx-new-1": protoblocktx.Status_COMMITTED,
-				"tx-new-2": protoblocktx.Status_COMMITTED,
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx-new-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
+				"tx-new-2": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 244, 2),
 			},
 			expectedNsRows: writes(
 				false,
@@ -161,7 +160,9 @@ func TestCommit(t *testing.T) {
 					"tx-non-blind-1": types.NewHeight(239, 1),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{"tx-non-blind-1": protoblocktx.Status_COMMITTED},
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx-non-blind-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 239, 1),
+			},
 			expectedNsRows: writes(
 				false,
 				state{1, 1, 2},
@@ -190,8 +191,8 @@ func TestCommit(t *testing.T) {
 					"tx-blind-1": types.NewHeight(1024, 1),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{
-				"tx-blind-1": protoblocktx.Status_COMMITTED,
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx-blind-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1024, 1),
 			},
 			expectedNsRows: writes(
 				false,
@@ -254,12 +255,12 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-3": types.NewHeight(396, 3),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{
-				"tx-all-1":      protoblocktx.Status_COMMITTED,
-				"tx-all-2":      protoblocktx.Status_COMMITTED,
-				"tx-conflict-1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"tx-conflict-2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"tx-conflict-3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx-all-1":      types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 5, 1),
+				"tx-all-2":      types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 200, 2),
+				"tx-conflict-1": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-2": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 2),
+				"tx-conflict-3": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -324,10 +325,10 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-4":    types.NewHeight(1000, 3),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{
-				"tx-violate-1":     protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"tx-not-violate-1": protoblocktx.Status_COMMITTED,
-				"tx-conflict-4":    protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx-violate-1":     types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-not-violate-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 4, 2),
+				"tx-conflict-4":    types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1000, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -368,11 +369,11 @@ func TestCommit(t *testing.T) {
 					"tx-conflict-12": types.NewHeight(66000, 3),
 				},
 			},
-			expectedTxStatuses: map[string]protoblocktx.Status{
-				"tx1":            protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-				"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"tx-conflict-11": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				"tx-conflict-12": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
+				"tx1":            types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 1, 5),
+				"tx-conflict-10": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-11": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 4, 2),
+				"tx-conflict-12": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 66000, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -391,14 +392,14 @@ func TestCommit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env.validatedTxs <- tt.txs
 			txStatus := <-env.txStatus
-			require.Equal(t, &protovcservice.TransactionStatus{Status: tt.expectedTxStatuses}, txStatus)
+			require.Equal(t, &protoblocktx.TransactionsStatus{Status: tt.expectedTxStatuses}, txStatus)
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}
 			for nsID, expectedRows := range tt.unexpectedNsRows {
 				env.dbEnv.rowNotExists(t, nsID, expectedRows.keys)
 			}
-			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses, tt.txs.txIDToHeight)
+			env.dbEnv.StatusExistsForNonDuplicateTxID(t, tt.expectedTxStatuses)
 		})
 	}
 }

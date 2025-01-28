@@ -371,36 +371,27 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
-	expectedTxIDStatuses := make(map[string]protoblocktx.Status)
-	// For the duplicate txID, neither the status nor the height would match the entry in the
-	// transaction status table. Hence, for duplicate txIDs, we have unexpectedTxIDStatuses.
-	unexpectedTxIDStatuses := make(map[string]protoblocktx.Status)
+	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	var nonDupTxIDs []string
+	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for i, tID := range expectedResults.TxIDs {
+		s := types.CreateStatusWithHeight(expectedResults.Statuses[i], blk.Header.Number, i)
 		if expectedResults.Statuses[i] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			expectedTxIDStatuses[tID] = expectedResults.Statuses[i]
+			nonDuplicateTxIDsStatus[tID] = s
+			nonDupTxIDs = append(nonDupTxIDs, tID)
 			continue
 		}
-		unexpectedTxIDStatuses[tID] = expectedResults.Statuses[i]
+		duplicateTxIDsStatus[tID] = s
 	}
 
-	expectedHeight := make(map[vcservice.TxID]*types.Height)
-	unexpectedHeight := make(map[vcservice.TxID]*types.Height)
-	for txNum := range len(blk.Data.Data) {
-		txID := expectedResults.TxIDs[txNum]
-		tNum := uint32(txNum) //nolint:gosec
-		if expectedResults.Statuses[txNum] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			expectedHeight[vcservice.TxID(txID)] = types.NewHeight(blk.Header.Number, tNum)
-			continue
-		}
-		unexpectedHeight[vcservice.TxID(txID)] = types.NewHeight(blk.Header.Number, tNum)
-	}
+	c.dbEnv.StatusExistsForNonDuplicateTxID(t, nonDuplicateTxIDsStatus)
+	// For the duplicate txID, neither the status nor the height would match the entry in the
+	// transaction status table.
+	c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
 
-	if len(expectedTxIDStatuses) > 0 {
-		c.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxIDStatuses, expectedHeight)
-	}
-	if len(unexpectedTxIDStatuses) > 0 {
-		c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, unexpectedTxIDStatuses, unexpectedHeight)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+	test.EnsurePersistedTxStatus(ctx, t, c.coordinatorClient, nonDupTxIDs, nonDuplicateTxIDsStatus)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

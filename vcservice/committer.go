@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
@@ -22,7 +21,7 @@ type transactionCommitter struct {
 	incomingValidatedTransactions <-chan *validatedTransactions
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
-	outgoingTransactionsStatus chan<- *protovcservice.TransactionStatus
+	outgoingTransactionsStatus chan<- *protoblocktx.TransactionsStatus
 
 	metrics *perfMetrics
 }
@@ -31,7 +30,7 @@ type transactionCommitter struct {
 func newCommitter(
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
-	txsStatus chan<- *protovcservice.TransactionStatus,
+	txsStatus chan<- *protoblocktx.TransactionsStatus,
 	metrics *perfMetrics,
 ) *transactionCommitter {
 	logger.Debugf("Creating committer")
@@ -56,7 +55,7 @@ func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
 
 func (c *transactionCommitter) commit(ctx context.Context) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
-	var txsStatus *protovcservice.TransactionStatus
+	var txsStatus *protoblocktx.TransactionsStatus
 	var err error
 
 	incomingValidatedTransactions := channel.NewReader(ctx, c.incomingValidatedTransactions)
@@ -75,7 +74,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// This is for simplicity and we can improve it in future.
 		// TODO: Add test to ensure commit is retried.
 		if retryErr := c.db.retry.Execute(ctx, func() error {
-			txsStatus, err = c.commitTransactions(vTx)
+			txsStatus, err = c.commitTransactions(ctx, vTx)
 			return err
 		}); retryErr != nil {
 			logger.Errorf("failed to commit transactions: %s", err)
@@ -89,8 +88,9 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 }
 
 func (c *transactionCommitter) commitTransactions(
+	ctx context.Context,
 	vTx *validatedTransactions,
-) (*protovcservice.TransactionStatus, error) {
+) (*protoblocktx.TransactionsStatus, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
 	if err := c.fillVersionForBlindWrites(vTx); err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (c *transactionCommitter) commitTransactions(
 			//       The setCorrectStatusForDuplicateTxID function checks whether the transaction is truly a
 			//       duplicate or a resubmission. If it is a resubmission, it retrieves the correct status from
 			//       the tx_status table.
-			if err := c.setCorrectStatusForDuplicateTxID(info.batchStatus, info.txIDToHeight); err != nil {
+			if err := c.setCorrectStatusForDuplicateTxID(ctx, info.batchStatus, info.txIDToHeight); err != nil {
 				return nil, err
 			}
 			return info.batchStatus, nil
@@ -138,19 +138,25 @@ func (c *transactionCommitter) commitTransactions(
 }
 
 // prepareStatusForCommit construct transaction status.
-func prepareStatusForCommit(vTx *validatedTransactions) *protovcservice.TransactionStatus {
-	txCommitStatus := &protovcservice.TransactionStatus{
-		Status: map[string]protoblocktx.Status{},
+func prepareStatusForCommit(vTx *validatedTransactions) *protoblocktx.TransactionsStatus {
+	txCommitStatus := &protoblocktx.TransactionsStatus{
+		Status: map[string]*protoblocktx.StatusWithHeight{},
+	}
+
+	setStatus := func(txID TxID, status protoblocktx.Status) {
+		h := vTx.txIDToHeight[txID]
+		txCommitStatus.Status[string(txID)] = types.CreateStatusWithHeight(status, h.BlockNum, int(h.TxNum))
 	}
 
 	for txID, status := range vTx.invalidTxStatus {
-		txCommitStatus.Status[string(txID)] = status
+		setStatus(txID, status)
 	}
+
 	for _, lst := range []transactionToWrites{
 		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWrites,
 	} {
 		for txID := range lst {
-			txCommitStatus.Status[string(txID)] = protoblocktx.Status_COMMITTED
+			setStatus(txID, protoblocktx.Status_COMMITTED)
 		}
 	}
 
@@ -193,12 +199,13 @@ func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransacti
 }
 
 func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
-	txsStatus *protovcservice.TransactionStatus,
+	ctx context.Context,
+	txsStatus *protoblocktx.TransactionsStatus,
 	txIDToHeight transactionIDToHeight,
 ) error {
 	var dupTxIDs [][]byte
 	for id, s := range txsStatus.Status {
-		if s == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			dupTxIDs = append(dupTxIDs, []byte(id))
 		}
 	}
@@ -207,7 +214,7 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 		return nil
 	}
 
-	idStatusHeight, err := c.db.readStatusWithHeight(dupTxIDs)
+	idStatusHeight, err := c.db.readStatusWithHeight(ctx, dupTxIDs)
 	if err != nil {
 		return err
 	}
@@ -217,8 +224,8 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	}
 
 	for txID, sWithHeight := range idStatusHeight {
-		if types.AreSame(txIDToHeight[txID], sWithHeight.height) {
-			txsStatus.Status[string(txID)] = sWithHeight.status
+		if types.AreSame(txIDToHeight[TxID(txID)], types.NewHeight(sWithHeight.BlockNumber, sWithHeight.TxNumber)) {
+			txsStatus.Status[txID] = sWithHeight
 		}
 	}
 

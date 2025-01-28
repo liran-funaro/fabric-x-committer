@@ -21,7 +21,7 @@ type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
-	outputTxsStatus           chan *protovcservice.TransactionStatus
+	outputTxsStatus           chan *protoblocktx.TransactionsStatus
 	prelimInvalidTxStatus     chan []*protovcservice.Transaction
 	mockVcServices            []*mock.VcService
 	sigVerTestEnv             *svMgrTestEnv
@@ -33,7 +33,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
-	outputTxsStatus := make(chan *protovcservice.TransactionStatus, 10)
+	outputTxsStatus := make(chan *protoblocktx.TransactionsStatus, 10)
 	prelimInvalidTxStatus := make(chan []*protovcservice.Transaction, 10)
 
 	vcm := newValidatorCommitterManager(
@@ -114,16 +114,15 @@ func TestValidatorCommitterManager(t *testing.T) {
 
 			mergeTxsStatus := func(
 				txsStatus1,
-				txsStatus2 *protovcservice.TransactionStatus,
-			) *protovcservice.TransactionStatus {
-				txsStatus := &protovcservice.TransactionStatus{
-					Status: make(map[string]protoblocktx.Status),
-				}
+				txsStatus2 *protoblocktx.TransactionsStatus,
+			) map[string]*protoblocktx.StatusWithHeight {
+				txsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+
 				for id, status := range txsStatus1.Status {
-					txsStatus.Status[id] = status
+					txsStatus[id] = status
 				}
 				for id, status := range txsStatus2.Status {
-					txsStatus.Status[id] = status
+					txsStatus[id] = status
 				}
 
 				return txsStatus
@@ -131,8 +130,8 @@ func TestValidatorCommitterManager(t *testing.T) {
 
 			require.Equal(
 				t,
-				mergeTxsStatus(expectedTxsStatus1, expectedTxsStatus2).Status,
-				mergeTxsStatus(outTxsStatus1, outTxsStatus2).Status,
+				mergeTxsStatus(expectedTxsStatus1, expectedTxsStatus2),
+				mergeTxsStatus(outTxsStatus1, outTxsStatus2),
 			)
 
 			for _, vc := range env.mockVcServices {
@@ -167,9 +166,9 @@ func TestValidatorCommitterManager(t *testing.T) {
 
 		outTxsStatus := <-env.outputTxsStatus
 
-		require.Equal(t, map[string]protoblocktx.Status{
-			"1": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-			"2": protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
+		require.Equal(t, map[string]*protoblocktx.StatusWithHeight{
+			"1": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED, 15, 0),
+			"2": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID, 4, 1),
 		}, outTxsStatus.Status)
 
 		maxNum := uint64(0)
@@ -222,8 +221,9 @@ func TestValidatorCommitterManager(t *testing.T) {
 
 		outTxsStatus := <-env.outputTxsStatus
 
-		require.Equal(t, map[string]protoblocktx.Status{"create ns 1": protoblocktx.Status_COMMITTED},
-			outTxsStatus.Status)
+		require.Len(t, outTxsStatus.Status, 1)
+		require.Equal(t, types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
+			outTxsStatus.Status["create ns 1"])
 
 		require.Equal(t, txBatch, <-env.outputTxs)
 
@@ -242,12 +242,12 @@ func TestValidatorCommitterManager(t *testing.T) {
 	}
 }
 
-func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex, blkNum int) (
-	[]*dependencygraph.TransactionNode, *protovcservice.TransactionStatus,
+func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int, blkNum uint64) (
+	[]*dependencygraph.TransactionNode, *protoblocktx.TransactionsStatus,
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
-	expectedTxsStatus := &protovcservice.TransactionStatus{
-		Status: make(map[string]protoblocktx.Status),
+	expectedTxsStatus := &protoblocktx.TransactionsStatus{
+		Status: make(map[string]*protoblocktx.StatusWithHeight),
 	}
 
 	for i := 0; i < numTxs; i++ {
@@ -255,11 +255,11 @@ func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex, blkNum int) (
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
 				ID:          id,
-				BlockNumber: uint64(blkNum),
+				BlockNumber: blkNum,
 				TxNum:       uint32(i), //nolint:gosec
 			},
 		}
-		expectedTxsStatus.Status[id] = protoblocktx.Status_COMMITTED
+		expectedTxsStatus.Status[id] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, blkNum, i)
 	}
 
 	return txsNode, expectedTxsStatus

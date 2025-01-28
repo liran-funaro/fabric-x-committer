@@ -51,7 +51,7 @@ type (
 		incomingTxsForValidationCommit        <-chan dependencygraph.TxNodeBatch
 		incomingBadlyFormedTxsStatusForCommit <-chan []*protovcservice.Transaction
 		outgoingValidatedTxsNode              chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus                     chan<- *protovcservice.TransactionStatus
+		outgoingTxsStatus                     chan<- *protoblocktx.TransactionsStatus
 		metrics                               *perfMetrics
 		signVerifierMgr                       *signatureVerifierManager
 	}
@@ -137,12 +137,12 @@ func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	txIDs []string,
-) (*protovcservice.TransactionStatus, error) {
+	query *protoblocktx.QueryStatus,
+) (*protoblocktx.TransactionsStatus, error) {
 	var err error
-	var status *protovcservice.TransactionStatus
+	var status *protoblocktx.TransactionsStatus
 	for _, vc := range vcm.validatorCommitter {
-		status, err = vc.client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+		status, err = vc.client.GetTransactionsStatus(ctx, query)
 		if err == nil {
 			return status, nil
 		}
@@ -252,7 +252,7 @@ func (vc *validatorCommitter) sendTxs(txs []*protovcservice.Transaction) error {
 
 func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:gocognit
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*protovcservice.TransactionStatus],
+	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
 ) error {
 	dCtx, cancel := context.WithCancel(outputTxsStatus.Context())
 	defer cancel()
@@ -299,7 +299,7 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:goc
 			}
 			txsNode = append(txsNode, txNode)
 
-			if status != protoblocktx.Status_COMMITTED {
+			if status.Code != protoblocktx.Status_COMMITTED {
 				continue
 			}
 

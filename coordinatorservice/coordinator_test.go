@@ -14,7 +14,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -163,15 +162,10 @@ func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum, nsID int) {
 	require.NoError(t, err)
 	txStatus, err := e.csStream.Recv()
 	require.NoError(t, err)
-	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-			{
-				TxId:   txID,
-				Status: protoblocktx.Status_COMMITTED,
-			},
-		},
+	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+		txID: {Code: protoblocktx.Status_COMMITTED},
 	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	require.Equal(t, expectedTxStatus, txStatus.Status)
 }
 
 func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
@@ -256,15 +250,13 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 	txStatus, err := env.csStream.Recv()
 	require.NoError(t, err)
-	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-			{
-				TxId:   "tx1",
-				Status: protoblocktx.Status_COMMITTED,
-			},
-		},
+	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
 	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+
+	require.Equal(t, expectedTxStatus, txStatus.Status)
+	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx1"}, expectedTxStatus)
+
 	require.Equal(
 		t,
 		float64(2),
@@ -392,15 +384,17 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= expectedReceived
 	}, 5*time.Second, 500*time.Millisecond)
 
-	var status []*protocoordinatorservice.TxValidationStatus
+	status := make(map[string]*protoblocktx.StatusWithHeight)
 	require.Eventually(t, func() bool {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
-		status = append(status, txStatus.TxsValidationStatus...)
+		for id, s := range txStatus.Status {
+			status[id] = s
+		}
 		return len(status) == len(b1.Txs)
 	}, 20*time.Second, 500*time.Millisecond)
-	for _, txStatus := range status {
-		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status, txStatus.TxId)
+	for txID, txStatus := range status {
+		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}
 	require.Equal(
 		t,
@@ -429,7 +423,7 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToCoordinatorTxStatus <- &protovcservice.TransactionStatus{}
+	q.vcServiceToCoordinatorTxStatus <- &protoblocktx.TransactionsStatus{}
 
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
@@ -489,15 +483,12 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	txStatus, err := env.csStream.Recv()
 	require.NoError(t, err)
-	expectedTxStatus := &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-			{
-				TxId:   "tx1",
-				Status: protoblocktx.Status_COMMITTED,
-			},
-		},
+	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
 	}
-	require.Equal(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	require.Equal(t, expectedTxStatus, txStatus.Status)
+	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx1"}, expectedTxStatus)
+
 	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
@@ -575,24 +566,16 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	txStatus, err = env.csStream.Recv()
 	require.NoError(t, err)
-	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-			{
-				TxId:   "tx2",
-				Status: protoblocktx.Status_COMMITTED,
-			},
-			{
-				TxId:   "mvcc conflict",
-				Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			},
-			{
-				TxId:   "tx1",
-				Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-			},
-		},
+	expectedTxStatus = map[string]*protoblocktx.StatusWithHeight{
+		"tx2":           types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
+		"mvcc conflict": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
 	}
-	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, txStatus.TxsValidationStatus)
+	require.Equal(t, expectedTxStatus, txStatus.Status)
 	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
+
+	expectedTxStatus["tx1"] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0)
+	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx2", "mvcc conflict", "tx1"}, expectedTxStatus)
 
 	cancel()
 	env.grpcServer.Stop()
@@ -608,15 +591,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		return uint64(2) == env.coordinator.nextExpectedBlockNumberToBeReceived.Load()
 	}, 4*time.Second, 250*time.Millisecond)
 
-	env.dbEnv.StatusExistsForNonDuplicateTxID(t, map[string]protoblocktx.Status{
-		"tx2":           protoblocktx.Status_COMMITTED,
-		"mvcc conflict": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-		"tx1":           protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-	}, map[vcservice.TxID]*types.Height{
-		"tx2":           types.NewHeight(2, 0),
-		"mvcc conflict": types.NewHeight(2, 2),
-		"tx1":           types.NewHeight(2, 5),
-	})
+	env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 	// Now, we are sending the full block 2.
 	block2 = &protoblocktx.Block{
@@ -730,40 +705,29 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.NoError(t, env.csStream.Send(block2))
 
-	var actualTxsStatus []*protocoordinatorservice.TxValidationStatus
+	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for len(actualTxsStatus) < 4 {
 		statusBatch, err := env.csStream.Recv()
 		require.NoError(t, err)
-		actualTxsStatus = append(actualTxsStatus, statusBatch.TxsValidationStatus...)
+		for id, s := range statusBatch.Status {
+			actualTxsStatus[id] = s
+		}
 	}
-	expectedTxStatus = &protocoordinatorservice.TxValidationStatusBatch{
-		TxsValidationStatus: []*protocoordinatorservice.TxValidationStatus{
-			{
-				TxId:   "tx2",
-				Status: protoblocktx.Status_COMMITTED,
-			},
-			{
-				TxId:   "tx3",
-				Status: protoblocktx.Status_COMMITTED,
-			},
-			{
-				TxId:   "mvcc conflict",
-				Status: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			},
-			{
-				TxId:   "duplicate namespace",
-				Status: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-			},
-			{
-				TxId:   "tx1",
-				Status: protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-			},
-		},
+	expectedTxStatus = map[string]*protoblocktx.StatusWithHeight{
+		"tx2":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
+		"tx3":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
+		"mvcc conflict":       types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE, 2, 4),
+		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
 	}
 
-	require.Len(t, actualTxsStatus, len(expectedTxStatus.TxsValidationStatus))
-	require.ElementsMatch(t, expectedTxStatus.TxsValidationStatus, actualTxsStatus)
+	require.Len(t, actualTxsStatus, len(expectedTxStatus))
+	require.Equal(t, expectedTxStatus, actualTxsStatus)
 	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
+
+	expectedTxStatus["tx1"] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0)
+	test.EnsurePersistedTxStatus(ctx, t,
+		env.client, []string{"tx2", "tx3", "mvcc conflict", "duplicate namespace", "tx1"}, expectedTxStatus)
 }
 
 func TestGRPCConnectionFailure(t *testing.T) {
@@ -794,7 +758,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	txPerBlock := 1990
 	txs := make([]*protoblocktx.Tx, txPerBlock)
 	txsNum := make([]uint32, txPerBlock)
-	expectedTxsStatus := make([]*protocoordinatorservice.TxValidationStatus, txPerBlock)
+	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for i := 0; i < txPerBlock; i++ {
 		txs[i] = &protoblocktx.Tx{
 			Id: "tx" + strconv.Itoa(i),
@@ -814,10 +778,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 			},
 		}
 		txsNum[i] = uint32(i) // nolint:gosec
-		expectedTxsStatus[i] = &protocoordinatorservice.TxValidationStatus{
-			TxId:   "tx" + strconv.Itoa(i),
-			Status: protoblocktx.Status_COMMITTED,
-		}
+		expectedTxsStatus["tx"+strconv.Itoa(i)] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, i)
 	}
 
 	err := env.csStream.Send(&protoblocktx.Block{
@@ -830,14 +791,16 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == float64(txPerBlock)
 	}, 4*time.Second, 100*time.Millisecond)
 
-	var actualTxsStatus []*protocoordinatorservice.TxValidationStatus
+	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for len(actualTxsStatus) < txPerBlock {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
-		actualTxsStatus = append(actualTxsStatus, txStatus.TxsValidationStatus...)
+		for id, s := range txStatus.Status {
+			actualTxsStatus[id] = s
+		}
 	}
 
-	require.ElementsMatch(t, expectedTxsStatus, actualTxsStatus)
+	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
 	require.Equal(t, float64(txPerBlock), statusSentTotal)
 }

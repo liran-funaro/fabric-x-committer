@@ -11,6 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -123,30 +124,25 @@ func sendTxsValidationStatus(
 	input chan *protoblocktx.Block,
 ) {
 	for scBlock := range input {
-		batch := &protocoordinatorservice.TxValidationStatusBatch{
-			TxsValidationStatus: make([]*protocoordinatorservice.TxValidationStatus, len(scBlock.GetTxs())),
-		}
-
-		for i, tx := range scBlock.GetTxs() {
-			batch.TxsValidationStatus[i] = &protocoordinatorservice.TxValidationStatus{
-				TxId:   tx.GetId(),
-				Status: protoblocktx.Status_COMMITTED,
+		txs := scBlock.Txs
+		txCount := 0
+		for len(txs) > 0 {
+			chunkSize := rand.Intn(len(txs)) + 1
+			b := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
+			for _, tx := range txs[:chunkSize] {
+				b.Status[tx.GetId()] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, scBlock.Number,
+					int(scBlock.TxsNum[txCount]))
+				txCount++
 			}
-		}
 
-		// coordinator sends responses in multiple chunks (parts)
-		for len(batch.TxsValidationStatus) > 0 {
-			chunkSize := rand.Intn(len(batch.TxsValidationStatus)) + 1
-			chunk := batch.TxsValidationStatus[:chunkSize]
-			batch.TxsValidationStatus = batch.TxsValidationStatus[chunkSize:]
-
-			rpcErr := stream.Send(&protocoordinatorservice.TxValidationStatusBatch{TxsValidationStatus: chunk})
-			if connection.IsStreamEnd(rpcErr) {
+			if rpcErr := stream.Send(b); connection.IsStreamEnd(rpcErr) {
 				logger.Debugf("stream ended")
 			} else {
 				utils.Must(connection.WrapStreamRpcError(rpcErr))
 			}
-			logger.Debugf("Sent back batch with %d TXs", len(chunk))
+			logger.Debugf("Sent back batch with %d TXs", len(b.Status))
+
+			txs = txs[chunkSize:]
 		}
 	}
 }

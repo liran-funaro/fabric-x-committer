@@ -26,6 +26,7 @@ const (
 	Coordinator_SetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
 	Coordinator_GetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
 	Coordinator_GetNextExpectedBlockNumber_FullMethodName      = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
+	Coordinator_GetTransactionsStatus_FullMethodName           = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -37,6 +38,7 @@ type CoordinatorClient interface {
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
+	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 }
 
 type coordinatorClient struct {
@@ -67,7 +69,7 @@ func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.Ca
 
 type Coordinator_BlockProcessingClient interface {
 	Send(*protoblocktx.Block) error
-	Recv() (*TxValidationStatusBatch, error)
+	Recv() (*protoblocktx.TransactionsStatus, error)
 	grpc.ClientStream
 }
 
@@ -79,8 +81,8 @@ func (x *coordinatorBlockProcessingClient) Send(m *protoblocktx.Block) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *coordinatorBlockProcessingClient) Recv() (*TxValidationStatusBatch, error) {
-	m := new(TxValidationStatusBatch)
+func (x *coordinatorBlockProcessingClient) Recv() (*protoblocktx.TransactionsStatus, error) {
+	m := new(protoblocktx.TransactionsStatus)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -114,6 +116,15 @@ func (c *coordinatorClient) GetNextExpectedBlockNumber(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error) {
+	out := new(protoblocktx.TransactionsStatus)
+	err := c.cc.Invoke(ctx, Coordinator_GetTransactionsStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility
@@ -123,6 +134,7 @@ type CoordinatorServer interface {
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
+	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -144,6 +156,9 @@ func (UnimplementedCoordinatorServer) GetLastCommittedBlockNumber(context.Contex
 }
 func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextExpectedBlockNumber not implemented")
+}
+func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 
@@ -181,7 +196,7 @@ func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStr
 }
 
 type Coordinator_BlockProcessingServer interface {
-	Send(*TxValidationStatusBatch) error
+	Send(*protoblocktx.TransactionsStatus) error
 	Recv() (*protoblocktx.Block, error)
 	grpc.ServerStream
 }
@@ -190,7 +205,7 @@ type coordinatorBlockProcessingServer struct {
 	grpc.ServerStream
 }
 
-func (x *coordinatorBlockProcessingServer) Send(m *TxValidationStatusBatch) error {
+func (x *coordinatorBlockProcessingServer) Send(m *protoblocktx.TransactionsStatus) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -256,6 +271,24 @@ func _Coordinator_GetNextExpectedBlockNumber_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(protoblocktx.QueryStatus)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).GetTransactionsStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_GetTransactionsStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).GetTransactionsStatus(ctx, req.(*protoblocktx.QueryStatus))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +311,10 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNextExpectedBlockNumber",
 			Handler:    _Coordinator_GetNextExpectedBlockNumber_Handler,
+		},
+		{
+			MethodName: "GetTransactionsStatus",
+			Handler:    _Coordinator_GetTransactionsStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -52,20 +52,6 @@ message Write {
     bytes value = 2; // The value associated with the key being written.
 }
 
-enum Status {
-    COMMITTED = 0;
-    ABORTED_MVCC_CONFLICT = 1;
-    ABORTED_DUPLICATE_TXID = 2;
-    ABORTED_SIGNATURE_INVALID = 3;
-    ABORTED_MISSING_TXID = 4;
-    ABORTED_DUPLICATE_NAMESPACE = 5;
-    ABORTED_NAMESPACE_POLICY_INVALID = 6;
-    ABORTED_NAMESPACE_ID_INVALID = 7;
-    ABORTED_MISSING_NAMESPACE_VERSION = 8;
-	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
-    ABORTED_NO_WRITES = 10;
-}
-
 // Represents a namespace policy.
 message NamespacePolicy {
     string scheme = 1; // The scheme for signature verification.
@@ -78,4 +64,28 @@ message BlockInfo {
 
 message QueryStatus {
     repeated string txIDs = 1;
+}
+
+message TransactionsStatus {
+    map<string, StatusWithHeight> status = 1;
+}
+
+message StatusWithHeight {
+    Status code = 1;
+    uint64 block_number = 2;
+    uint32 tx_number = 3;
+}
+
+enum Status {
+    COMMITTED = 0;
+    ABORTED_MVCC_CONFLICT = 1;
+    ABORTED_DUPLICATE_TXID = 2;
+    ABORTED_SIGNATURE_INVALID = 3;
+    ABORTED_MISSING_TXID = 4;
+    ABORTED_DUPLICATE_NAMESPACE = 5;
+    ABORTED_NAMESPACE_POLICY_INVALID = 6;
+    ABORTED_NAMESPACE_ID_INVALID = 7;
+    ABORTED_MISSING_NAMESPACE_VERSION = 8;
+	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
+    ABORTED_NO_WRITES = 10;
 }

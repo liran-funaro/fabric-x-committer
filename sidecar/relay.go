@@ -75,7 +75,7 @@ func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
 		return r.preProcessBlockAndSendToCoordinator(gCtx, stream)
 	})
 
-	statusBatch := make(chan *protocoordinatorservice.TxValidationStatusBatch, 1000)
+	statusBatch := make(chan *protoblocktx.TransactionsStatus, 1000)
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(gCtx, stream, statusBatch)
 	})
@@ -169,7 +169,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 func receiveStatusFromCoordinator(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *protocoordinatorservice.TxValidationStatusBatch,
+	statusBatch chan<- *protoblocktx.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -177,7 +177,7 @@ func receiveStatusFromCoordinator(
 		if err != nil {
 			return err
 		}
-		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetTxsValidationStatus()))
+		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetStatus()))
 
 		txsStatus.Write(response)
 	}
@@ -185,7 +185,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *protocoordinatorservice.TxValidationStatusBatch,
+	statusBatch <-chan *protoblocktx.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -195,8 +195,7 @@ func (r *relay) processStatusBatch(
 			return nil
 		}
 
-		for _, txStatus := range tStatus.GetTxsValidationStatus() {
-			txID := txStatus.GetTxId()
+		for txID, txStatus := range tStatus.GetStatus() {
 			blockNum, ok := r.txIDToBlkNum.Load(txID)
 			if !ok {
 				return fmt.Errorf("TxID = %v is not associated with a block", txID)
@@ -215,7 +214,7 @@ func (r *relay) processStatusBatch(
 					txID, blockNum, txIndex)
 			}
 
-			blkWithStatus.txStatus[txIndex] = byte(txStatus.GetStatus())
+			blkWithStatus.txStatus[txIndex] = byte(txStatus.GetCode())
 
 			r.txIDToBlkNum.Delete(txID)
 			blkWithStatus.pendingCount--

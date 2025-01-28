@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tx_status (
 `
 
 const queryTxIDsStatus = `
-SELECT tx_id, status
+SELECT tx_id, status, height
 FROM tx_status
 WHERE tx_id = ANY($1)
 `

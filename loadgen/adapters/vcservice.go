@@ -80,7 +80,7 @@ func (c *VcAdapter) receiveStatus(
 
 		logger.Debugf("Received VC batch with %d items", len(responseBatch.Status))
 		for id, status := range responseBatch.Status {
-			c.res.Metrics.OnReceiveTransaction(id, status)
+			c.res.Metrics.OnReceiveTransaction(id, status.Code)
 		}
 	}
 	return nil

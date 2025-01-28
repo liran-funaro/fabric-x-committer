@@ -35,7 +35,7 @@ type ValidatorCommitterService struct {
 	toPrepareTxs             chan *protovcservice.TransactionBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *protovcservice.TransactionStatus
+	txsStatus                chan *protoblocktx.TransactionsStatus
 	db                       *database
 	metrics                  *perfMetrics
 	promErrChan              <-chan error
@@ -77,7 +77,7 @@ func NewValidatorCommitterService(
 	toPrepareTxs := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *protovcservice.TransactionStatus, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *protoblocktx.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
@@ -196,12 +196,20 @@ func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
 	query *protoblocktx.QueryStatus,
-) (*protovcservice.TransactionStatus, error) {
+) (*protoblocktx.TransactionsStatus, error) {
 	txIDs := make([][]byte, len(query.GetTxIDs()))
 	for i, txID := range query.GetTxIDs() {
 		txIDs[i] = []byte(txID)
 	}
-	return vc.db.queryTransactionsStatus(ctx, txIDs)
+
+	txIDsStatus, err := vc.db.readStatusWithHeight(ctx, txIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &protoblocktx.TransactionsStatus{
+		Status: txIDsStatus,
+	}, nil
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
@@ -325,7 +333,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		mvcc := 0
 		dup := 0
 		for _, status := range txStatus.Status {
-			switch status {
+			switch status.Code {
 			case protoblocktx.Status_COMMITTED:
 				committed++
 			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:

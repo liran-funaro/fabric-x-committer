@@ -35,7 +35,7 @@ type ValidationAndCommitServiceClient interface {
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
-	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*TransactionStatus, error)
+	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -57,7 +57,7 @@ func (c *validationAndCommitServiceClient) StartValidateAndCommitStream(ctx cont
 
 type ValidationAndCommitService_StartValidateAndCommitStreamClient interface {
 	Send(*TransactionBatch) error
-	Recv() (*TransactionStatus, error)
+	Recv() (*protoblocktx.TransactionsStatus, error)
 	grpc.ClientStream
 }
 
@@ -69,8 +69,8 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Send(m *T
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*TransactionStatus, error) {
-	m := new(TransactionStatus)
+func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*protoblocktx.TransactionsStatus, error) {
+	m := new(protoblocktx.TransactionsStatus)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -104,8 +104,8 @@ func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx conte
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*TransactionStatus, error) {
-	out := new(TransactionStatus)
+func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error) {
+	out := new(protoblocktx.TransactionsStatus)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetTransactionsStatus_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ type ValidationAndCommitServiceServer interface {
 	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
-	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*TransactionStatus, error)
+	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -141,7 +141,7 @@ func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber
 func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*TransactionStatus, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
@@ -163,7 +163,7 @@ func _ValidationAndCommitService_StartValidateAndCommitStream_Handler(srv interf
 }
 
 type ValidationAndCommitService_StartValidateAndCommitStreamServer interface {
-	Send(*TransactionStatus) error
+	Send(*protoblocktx.TransactionsStatus) error
 	Recv() (*TransactionBatch, error)
 	grpc.ServerStream
 }
@@ -172,7 +172,7 @@ type validationAndCommitServiceStartValidateAndCommitStreamServer struct {
 	grpc.ServerStream
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Send(m *TransactionStatus) error {
+func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Send(m *protoblocktx.TransactionsStatus) error {
 	return x.ServerStream.SendMsg(m)
 }
 

@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	queryTxStatusSQLTemplate    = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1)"
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
 )
 
@@ -168,24 +167,23 @@ func readCount(t *testing.T, r pgx.Row) int {
 // duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	t *testing.T,
-	expectedStatuses map[string]protoblocktx.Status,
-	expectedHeight transactionIDToHeight,
+	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
 	var nonDupTxIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			nonDupTxIDs = append(nonDupTxIDs, []byte(id))
 		}
 	}
 
-	actualRows, err := env.DB.readStatusWithHeight(nonDupTxIDs)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	actualRows, err := env.DB.readStatusWithHeight(ctx, nonDupTxIDs)
 	require.NoError(t, err)
 
 	require.Equal(t, len(nonDupTxIDs), len(actualRows))
 	for _, tID := range nonDupTxIDs {
-		txID := TxID(tID)
-		require.Equal(t, expectedStatuses[string(txID)], actualRows[txID].status)
-		require.Equal(t, expectedHeight[txID], actualRows[txID].height)
+		require.Equal(t, expectedStatuses[string(tID)], actualRows[string(tID)])
 	}
 }
 
@@ -194,25 +192,29 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 // table for duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t *testing.T,
-	expectedStatuses map[string]protoblocktx.Status,
-	unexpectedHeight transactionIDToHeight,
+	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
 	var dupTxIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			dupTxIDs = append(dupTxIDs, []byte(id))
 		}
 	}
-	actualRows, err := env.DB.readStatusWithHeight(dupTxIDs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	actualRows, err := env.DB.readStatusWithHeight(ctx, dupTxIDs)
 	require.NoError(t, err)
 
 	require.Equal(t, len(dupTxIDs), len(actualRows))
 	for _, tID := range dupTxIDs {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
-		txID := TxID(tID)
-		require.NotEqual(t, expectedStatuses[string(txID)], actualRows[txID].status)
-		require.NotEqual(t, unexpectedHeight[txID], actualRows[txID].height)
+		txID := string(tID) // nolint:staticcheck
+		require.NotEqual(t, expectedStatuses[txID].Code, actualRows[txID].Code)
+		expHeight := types.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
+		actualHeight := types.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
+		require.NotEqual(t, expHeight, actualHeight)
 	}
 }
 
@@ -233,7 +235,7 @@ func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
 	t *testing.T,
 	nsIDs []int,
 	writes namespaceToWrites,
-	batchStatus *protovcservice.TransactionStatus,
+	batchStatus *protoblocktx.TransactionsStatus,
 	txIDToHeight transactionIDToHeight,
 ) {
 	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))

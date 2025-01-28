@@ -6,10 +6,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
+
+var valid = protoblocktx.Status_COMMITTED
 
 func (c *CoordinatorService) preProcessBlock(
 	block *protoblocktx.Block,
@@ -18,96 +19,70 @@ func (c *CoordinatorService) preProcessBlock(
 }
 
 func filterMalformedTxs(block *protoblocktx.Block) []*protovcservice.Transaction {
-	badTxStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(block.Txs))
+	malformedTxs := make([]*protovcservice.Transaction, 0, len(block.Txs))
 	badTxIndex := make([]int, 0, len(block.Txs))
+	recordInvalidTx := func(txID string, txNum uint32, status protoblocktx.Status, idx int) {
+		badTxIndex = append(badTxIndex, idx)
+		malformedTxs = append(malformedTxs, &protovcservice.Transaction{
+			ID: txID,
+			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+				Code: status,
+			},
+			BlockNumber: block.Number,
+			TxNum:       txNum,
+		})
+	}
 
 	for idx, tx := range block.Txs {
+		txNum := block.TxsNum[idx]
 		if tx.Id == "" {
-			badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
-				TxId:   tx.Id,
-				Status: protoblocktx.Status_ABORTED_MISSING_TXID,
-			})
-			badTxIndex = append(badTxIndex, idx)
+			recordInvalidTx(tx.Id, txNum, protoblocktx.Status_ABORTED_MISSING_TXID, idx)
 			continue
 		}
 
 		if len(tx.Namespaces) != len(tx.Signatures) {
-			badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
-				TxId:   tx.Id,
-				Status: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-			})
-			badTxIndex = append(badTxIndex, idx)
+			recordInvalidTx(tx.Id, txNum, protoblocktx.Status_ABORTED_SIGNATURE_INVALID, idx)
 			continue
 		}
 
 		nsIDs := make(map[uint32]any)
 		for _, ns := range tx.Namespaces {
 			if _, ok := nsIDs[ns.NsId]; ok {
-				badTxStatus = append(badTxStatus, &protocoordinatorservice.TxValidationStatus{
-					TxId:   tx.Id,
-					Status: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-				})
-				badTxIndex = append(badTxIndex, idx)
+				recordInvalidTx(tx.Id, txNum, protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE, idx)
 				break
 			}
 
 			nsIDs[ns.NsId] = nil
 
-			badStatus := checkNamespaceFormation(tx.Id, ns)
-			if badStatus != nil {
-				badTxStatus = append(badTxStatus, badStatus)
-				badTxIndex = append(badTxIndex, idx)
+			status := checkNamespaceFormation(ns)
+			if status != valid {
+				recordInvalidTx(tx.Id, txNum, status, idx)
 				break
 			}
 		}
-	}
-
-	if len(badTxStatus) == 0 {
-		return nil
-	}
-
-	malformedTxs := make([]*protovcservice.Transaction, 0, len(badTxStatus))
-	for i, t := range badTxStatus {
-		malformedTxs = append(malformedTxs, &protovcservice.Transaction{
-			ID: t.TxId,
-			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-				Code: t.Status,
-			},
-			BlockNumber: block.Number,
-			TxNum:       block.TxsNum[badTxIndex[i]],
-		})
 	}
 
 	removeFromBlock(block, badTxIndex)
 	return malformedTxs
 }
 
-func checkNamespaceFormation(txID string, ns *protoblocktx.TxNamespace) *protocoordinatorservice.TxValidationStatus {
+func checkNamespaceFormation(ns *protoblocktx.TxNamespace) protoblocktx.Status {
 	if ns.NsVersion == nil {
-		return &protocoordinatorservice.TxValidationStatus{
-			TxId:   txID,
-			Status: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
-		}
+		return protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION
 	}
 
 	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
-		return &protocoordinatorservice.TxValidationStatus{
-			TxId:   txID,
-			Status: protoblocktx.Status_ABORTED_NO_WRITES,
-		}
+		return protoblocktx.Status_ABORTED_NO_WRITES
 	}
 
 	// TODO: need to decide whether we can allow other namespaces
 	//       in the transaction when the MetaNamespaceID is present.
 	if types.NamespaceID(ns.NsId) != types.MetaNamespaceID {
-		return nil
+		return valid
 	}
 
 	if len(ns.BlindWrites) > 0 {
-		return &protocoordinatorservice.TxValidationStatus{
-			TxId:   txID,
-			Status: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-		}
+		return protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED
 	}
 
 	nsKeys := make([][]byte, 0, len(ns.ReadWrites))
@@ -119,36 +94,26 @@ func checkNamespaceFormation(txID string, ns *protoblocktx.TxNamespace) *protoco
 	}
 
 	for i, key := range nsKeys {
-		badStatus := isValidNamespaceEntry(txID, key, nsPolicy[i])
-		if badStatus != nil {
-			return badStatus
+		status := isValidNamespaceEntry(key, nsPolicy[i])
+		if status != valid {
+			return status
 		}
 	}
 
-	return nil
+	return valid
 }
 
-func isValidNamespaceEntry(
-	txID string,
-	nsID []byte,
-	nsPolicy []byte,
-) *protocoordinatorservice.TxValidationStatus {
+func isValidNamespaceEntry(nsID, nsPolicy []byte) protoblocktx.Status {
 	if _, err := types.NamespaceIDFromBytes(nsID); err != nil {
-		return &protocoordinatorservice.TxValidationStatus{
-			TxId:   txID,
-			Status: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-		}
+		return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
 	}
 
 	p := &protoblocktx.NamespacePolicy{}
 	if err := proto.Unmarshal(nsPolicy, p); err != nil {
-		return &protocoordinatorservice.TxValidationStatus{
-			TxId:   txID,
-			Status: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
-		}
+		return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
 	}
 
-	return nil
+	return valid
 }
 
 func removeFromBlock(block *protoblocktx.Block, idx []int) {

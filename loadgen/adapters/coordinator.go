@@ -73,9 +73,9 @@ func (c *CoordinatorAdapter) receiveStatus(
 			return connection.WrapStreamRpcError(err)
 		}
 
-		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.TxsValidationStatus))
-		for _, tx := range txStatus.TxsValidationStatus {
-			c.res.Metrics.OnReceiveTransaction(tx.TxId, tx.Status)
+		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))
+		for txID, status := range txStatus.Status {
+			c.res.Metrics.OnReceiveTransaction(txID, status.Code)
 		}
 	}
 	return nil

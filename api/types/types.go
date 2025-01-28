@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -39,4 +40,13 @@ func (v VersionNumber) Bytes() []byte {
 func VersionNumberFromBytes(version []byte) VersionNumber {
 	v, _ := protowire.ConsumeVarint(version)
 	return VersionNumber(v)
+}
+
+// CreateStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
+func CreateStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum int) *protoblocktx.StatusWithHeight {
+	return &protoblocktx.StatusWithHeight{
+		Code:        s,
+		BlockNumber: blkNum,
+		TxNumber:    uint32(txNum), //nolint:gosec
+	}
 }

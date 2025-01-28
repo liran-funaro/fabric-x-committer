@@ -92,7 +92,7 @@ type (
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
 		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *protovcservice.TransactionStatus
+		vcServiceToCoordinatorTxStatus chan *protoblocktx.TransactionsStatus
 	}
 )
 
@@ -125,7 +125,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		coordinatorToVCServiceInvalidTxs:   make(chan []*protovcservice.Transaction, bufSzPerChanForValCommitMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *protovcservice.TransactionStatus, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *protoblocktx.TransactionsStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics(c.Monitoring.Metrics.Enable)
@@ -301,6 +301,14 @@ func (c *CoordinatorService) GetNextExpectedBlockNumber(
 	}, nil
 }
 
+// GetTransactionsStatus returns the status of given transactions identifiers.
+func (c *CoordinatorService) GetTransactionsStatus(
+	ctx context.Context,
+	q *protoblocktx.QueryStatus,
+) (*protoblocktx.TransactionsStatus, error) {
+	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
+}
+
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
@@ -410,17 +418,8 @@ func (c *CoordinatorService) sendTxStatus(
 		}
 
 		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
-		valStatus := make([]*protocoordinatorservice.TxValidationStatus, 0, len(txStatus.Status))
-
-		for id, status := range txStatus.Status {
-			valStatus = append(valStatus, &protocoordinatorservice.TxValidationStatus{
-				TxId:   id,
-				Status: status,
-			})
-		}
-
 		// TODO: merge sendTxStatus with this method and remove mutex on the stream. Issue #631
-		if err := c.sendTxsStatus(stream, valStatus); err != nil {
+		if err := c.sendTxsStatus(stream, txStatus); err != nil {
 			return err
 		}
 	}
@@ -428,24 +427,20 @@ func (c *CoordinatorService) sendTxStatus(
 
 func (c *CoordinatorService) sendTxsStatus(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	txsStatus []*protocoordinatorservice.TxValidationStatus,
+	txsStatus *protoblocktx.TransactionsStatus,
 ) error {
 	c.sendTxStreamMu.Lock()
 	defer c.sendTxStreamMu.Unlock()
-	if err := stream.Send(
-		&protocoordinatorservice.TxValidationStatusBatch{
-			TxsValidationStatus: txsStatus,
-		},
-	); err != nil {
+	if err := stream.Send(txsStatus); err != nil {
 		return err
 	}
 
-	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus))
+	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus.Status))
 
 	// TODO: introduce metrics to record all sent statuses. Issue #436.
 	m := c.metrics
-	for _, tx := range txsStatus {
-		switch tx.Status {
+	for _, status := range txsStatus.Status {
+		switch status.Code {
 		case protoblocktx.Status_COMMITTED:
 			m.addToCounter(m.transactionCommittedStatusSentTotal, 1)
 		case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
