@@ -25,7 +25,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
@@ -146,12 +145,21 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	c.queryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 
 	// Start sidecar
+	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
+	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+		ChannelID: c.channelID,
+		OrdererEndpoints: []*connection.OrdererEndpoint{
+			{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
+		},
+		MetaNamespaceVerificationKey: metaPubKey,
+	})
+	// The meta namespace key and the orderer endpoints are passed via the config block.
 	sidecarConfig := &configtempl.SidecarConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
-		OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
 		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
 		LedgerPath:          c.rootDir,
 		ChannelID:           c.channelID,
+		ConfigBlockPath:     configBlockPath,
 	}
 	c.sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
 
@@ -159,7 +167,6 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	t.Cleanup(cancel)
 
 	c.createClients(ctx, t)
-	c.setMetaNamespaceVerificationKey(t)
 	c.ensureLastCommittedBlockNumber(t, 0)
 
 	test.RunServiceForTest(t, func(ctx context.Context) error {
@@ -220,19 +227,6 @@ func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 		ChannelID: c.channelID,
 		Endpoint:  connection.CreateEndpoint(c.sidecar.config.ServerEndpoint),
 	})
-	require.NoError(t, err)
-}
-
-func (c *Cluster) setMetaNamespaceVerificationKey(t *testing.T) {
-	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
-	_, err := c.coordinatorClient.SetMetaNamespaceVerificationKey(
-		context.Background(),
-		&protosigverifierservice.Key{
-			NsId:            uint32(types.MetaNamespaceID),
-			SerializedBytes: metaPubKey,
-			Scheme:          signature.Ecdsa,
-		},
-	)
 	require.NoError(t, err)
 }
 

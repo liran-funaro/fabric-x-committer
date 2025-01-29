@@ -1,8 +1,18 @@
 package sidecar
 
 import (
+	"errors"
+
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/spf13/viper"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -18,6 +28,10 @@ type Config struct {
 	Orderer    broadcastdeliver.Config  `mapstructure:"orderer"`
 	Committer  CoordinatorConfig        `mapstructure:"committer"`
 	Ledger     LedgerConfig             `mapstructure:"ledger"`
+	// ConfigBlockPath if set, it will overwrite the above configurations with the ones from the config block.
+	ConfigBlockPath string `mapstructure:"config-block-path"`
+	// MetaNamespaceVerificationKey is used internally, but cannot be passed via the yaml file.
+	MetaNamespaceVerificationKey *protosigverifierservice.Key
 }
 
 // CoordinatorConfig holds the endpoint of the coordinator component in the
@@ -36,7 +50,82 @@ func ReadConfig() Config {
 		Config Config `mapstructure:"sidecar"`
 	})
 	config.Unmarshal(wrapper)
+	if len(wrapper.Config.ConfigBlockPath) > 0 {
+		configBlock, err := configtxgen.ReadBlock(wrapper.Config.ConfigBlockPath)
+		utils.Must(err)
+		err = OverwriteConfigFromBlock(&wrapper.Config, configBlock)
+		utils.Must(err)
+	}
 	return wrapper.Config
+}
+
+// OverwriteConfigFromBlock overwrites the sidecar configuration with relevant fields from the config block.
+// For now, it fetches the following:
+// - MetaNamespaceVerificationKey.
+// - Orderer endpoints.
+func OverwriteConfigFromBlock(conf *Config, configBlock *cb.Block) error {
+	bundle, err := bundleFromConfigBlock(configBlock)
+	if err != nil {
+		return err
+	}
+	conf.MetaNamespaceVerificationKey, err = keyFromConfigBlock(bundle)
+	if err != nil {
+		return err
+	}
+	conf.Orderer.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func bundleFromConfigBlock(configBlock *cb.Block) (*channelconfig.Bundle, error) {
+	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
+	if err != nil {
+		return nil, err
+	}
+	return channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+}
+
+func keyFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierservice.Key, error) {
+	ac, ok := bundle.ApplicationConfig()
+	if !ok {
+		return nil, errors.New("application configuration is missing")
+	}
+	acx, ok := ac.(*channelconfig.ApplicationConfig)
+	if !ok {
+		return nil, errors.New("application configuration of incorrect type")
+	}
+	key := acx.MetaNamespaceVerificationKey()
+	return &protosigverifierservice.Key{
+		NsId:            uint32(types.MetaNamespaceID),
+		SerializedBytes: key.KeyMaterial,
+		// We use existing proto here to avoid introducing new once.
+		// So we encode the key schema as the identifier.
+		// This will be replaced in the future with a generic policy mechanism.
+		Scheme: key.KeyIdentifier,
+	}, nil
+}
+
+func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*connection.OrdererEndpoint, error) {
+	oc, ok := bundle.OrdererConfig()
+	if !ok {
+		return nil, errors.New("could not find orderer config")
+	}
+
+	var endpoints []*connection.OrdererEndpoint
+	for orgID, org := range oc.Organizations() {
+		endpointsStr := org.Endpoints()
+		for _, eStr := range endpointsStr {
+			e, err := connection.ParseOrdererEndpoint(eStr)
+			if err != nil {
+				return nil, err
+			}
+			e.MspID = orgID
+			endpoints = append(endpoints, e)
+		}
+	}
+	return endpoints, nil
 }
 
 func init() {

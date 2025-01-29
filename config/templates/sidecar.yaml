@@ -37,6 +37,8 @@ sidecar:
       max-latency: 5s
       bucket-count: 1000
 
+  config-block-path: {{ .ConfigBlockPath }}
+
 logging:
   development: true
   enabled: true

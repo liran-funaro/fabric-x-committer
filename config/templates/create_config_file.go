@@ -3,11 +3,19 @@ package configtempl
 import (
 	"bytes"
 	"html/template"
+	"math/rand/v2"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/core/config/configtest"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/genesisconfig"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 type (
@@ -52,6 +60,7 @@ type (
 		CoordinatorEndpoint string
 		ChannelID           string
 		LedgerPath          string
+		ConfigBlockPath     string
 	}
 
 	// LoadGenConfig represents the configuration of the load generator.
@@ -62,6 +71,13 @@ type (
 		SidecarEndpoint     string
 		ChannelID           string
 		BlockSize           uint64
+	}
+
+	// ConfigBlock represents the configuration of the config block.
+	ConfigBlock struct {
+		ChannelID                    string
+		OrdererEndpoints             []*connection.OrdererEndpoint
+		MetaNamespaceVerificationKey []byte
 	}
 )
 
@@ -81,4 +97,55 @@ func CreateConfigFile(t *testing.T, config any, templateFilePath, outputFilePath
 
 	_, err = outputFile.Write(renderedConfig.Bytes())
 	require.NoError(t, err)
+}
+
+// CreateConfigBlock writes a config block to file.
+func CreateConfigBlock(t *testing.T, conf *ConfigBlock) string {
+	blockDir := t.TempDir()
+
+	configBlock := genesisconfig.Load(genesisconfig.SampleFabricX, configtest.GetDevConfigDir())
+	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
+	for _, consenter := range configBlock.Orderer.ConsenterMapping {
+		consenter.Identity = tlsCertPath
+		consenter.ClientTLSCert = tlsCertPath
+		consenter.ServerTLSCert = tlsCertPath
+	}
+
+	metaPubKeyPath := filepath.Join(blockDir, "meta.pem")
+	if conf.MetaNamespaceVerificationKey == nil {
+		conf.MetaNamespaceVerificationKey, _ = workload.NewHashSignerVerifier(&workload.SignatureProfile{
+			Scheme: signature.Ecdsa,
+			Seed:   rand.Int64(),
+		}).GetVerificationKeyAndSigner()
+	}
+	require.NoError(t, os.WriteFile(metaPubKeyPath, conf.MetaNamespaceVerificationKey, 0o600))
+	configBlock.Application.MetaNamespaceVerificationKeyPath = metaPubKeyPath
+
+	require.GreaterOrEqual(t, len(configBlock.Orderer.Organizations), 1)
+	sourceOrg := *configBlock.Orderer.Organizations[0]
+	configBlock.Orderer.Organizations = nil
+
+	orgMap := make(map[string]*[]string)
+	for _, e := range conf.OrdererEndpoints {
+		orgEndpoints, ok := orgMap[e.MspID]
+		if !ok {
+			org := sourceOrg
+			org.ID = e.MspID
+			org.Name = e.MspID
+			org.OrdererEndpoints = nil
+			configBlock.Orderer.Organizations = append(configBlock.Orderer.Organizations, &org)
+			orgMap[e.MspID] = &org.OrdererEndpoints
+			orgEndpoints = &org.OrdererEndpoints
+		}
+		*orgEndpoints = append(*orgEndpoints, e.String())
+	}
+
+	channelID := conf.ChannelID
+	if channelID == "" {
+		channelID = "chan"
+	}
+
+	configBlockPath := filepath.Join(blockDir, "config.block")
+	require.NoError(t, configtxgen.DoOutputBlock(configBlock, channelID, configBlockPath))
+	return configBlockPath
 }

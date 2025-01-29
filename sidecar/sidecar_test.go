@@ -2,6 +2,8 @@ package sidecar
 
 import (
 	"context"
+	_ "embed"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -11,16 +13,22 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -40,7 +48,7 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 	)
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	env := &sidecarTestEnv{
+	return &sidecarTestEnv{
 		coordinator: coordinator,
 		config: &Config{
 			Server: &connection.ServerConfig{
@@ -73,7 +81,9 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 			},
 		},
 	}
+}
 
+func (env *sidecarTestEnv) init(t *testing.T) {
 	sidecar, err := New(env.config)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
@@ -91,8 +101,6 @@ func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 	t.Cleanup(cancel)
 	env.broadcastClient, err = broadcastSubmitter.Broadcast(ctx)
 	require.NoError(t, err)
-
-	return env
 }
 
 func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
@@ -110,7 +118,11 @@ func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
 }
 
 func TestSidecar(t *testing.T) {
-	env := newSidecarTestEnv(t)
+	commonTest(t, newSidecarTestEnv(t))
+}
+
+func commonTest(t *testing.T, env *sidecarTestEnv) {
+	env.init(t)
 	env.start(t, 0)
 
 	// mockorderer expects 100 txs to create the next block
@@ -167,6 +179,76 @@ func TestSidecar(t *testing.T) {
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 2)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 3)
 	cancel2()
+}
+
+func makeBlock(t *testing.T, env *sidecarTestEnv) {
+	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+		ChannelID:        env.config.Orderer.ChannelID,
+		OrdererEndpoints: env.config.Orderer.Endpoints,
+	})
+	cfg := configtempl.SidecarConfig{
+		CommonEndpoints: configtempl.CommonEndpoints{
+			ServerEndpoint:  env.config.Server.Endpoint.String(),
+			MetricsEndpoint: env.config.Monitoring.Metrics.Endpoint.String(),
+		},
+		ChannelID:           env.config.Orderer.ChannelID,
+		CoordinatorEndpoint: env.config.Committer.Endpoint.String(),
+		LedgerPath:          env.config.Ledger.Path,
+		ConfigBlockPath:     configBlockPath,
+	}
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	configtempl.CreateConfigFile(t, cfg, "../config/templates/sidecar.yaml", configPath)
+	require.NoError(t, config.ReadYamlConfigs([]string{configPath}))
+
+	conf := ReadConfig()
+	env.config = &conf
+}
+
+func TestSidecarWithBlock(t *testing.T) {
+	env := newSidecarTestEnv(t)
+	makeBlock(t, env)
+	commonTest(t, env)
+}
+
+func TestSidecarWithBlockMultipleWrongOrderers(t *testing.T) {
+	env := newSidecarTestEnv(t)
+
+	var id uint32
+	var msp string
+	for _, e := range env.config.Orderer.Endpoints {
+		id = e.ID
+		msp = e.MspID
+	}
+
+	for range 3 {
+		fakeServer := &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
+		healthcheck := health.NewServer()
+		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+		test.RunGrpcServerForTest(t, fakeServer, func(server *grpc.Server) {
+			healthgrpc.RegisterHealthServer(server, healthcheck)
+		})
+		env.config.Orderer.Endpoints = append(env.config.Orderer.Endpoints, &connection.OrdererEndpoint{
+			ID:       id,
+			MspID:    msp,
+			API:      []string{connection.Broadcast, connection.Deliver},
+			Endpoint: fakeServer.Endpoint,
+		})
+	}
+	t.Log(env.config.Orderer.Endpoints)
+	makeBlock(t, env)
+	t.Log(env.config.Orderer.Endpoints)
+	commonTest(t, env)
+}
+
+func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
+	env := newSidecarTestEnv(t)
+	makeBlock(t, env)
+	k := env.config.MetaNamespaceVerificationKey
+	require.NotNil(t, k)
+	require.Equal(t, uint32(types.MetaNamespaceID), k.NsId)
+	verifier, err := signature.NewNsVerifier(k.Scheme, k.SerializedBytes)
+	require.NoError(t, err)
+	require.NotNil(t, verifier)
 }
 
 func checkLastCommittedBlock(

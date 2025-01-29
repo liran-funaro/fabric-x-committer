@@ -6,7 +6,7 @@ version=$2
 namespace=$3
 dockerfile_release_dir=$4
 multiplatform=$5
-go_image_name=$6
+arch_bin_dir=$6
 image_prefix=committer-
 
 function build_image() {
@@ -14,26 +14,22 @@ function build_image() {
   local image_name=$2
   local service_ports=$3
   local manifest_name=${namespace}/${image_prefix}${image_name}:${version}
+  local cmd=(
+    "${docker_cmd}" build
+    -f "${dockerfile_release_dir}/Dockerfile"
+    --build-arg SERVICE_NAME="${service_name}"
+    --build-arg PORTS="${service_ports}"
+    --build-arg ARCHBIN_PATH="${arch_bin_dir}"
+  )
 
   if [ "${multiplatform}" = true ]; then
     # Multi-platform build
-    ${docker_cmd} images ${manifest_name} -q -a | xargs ${docker_cmd} rmi
-    ${docker_cmd} manifest create ${manifest_name}
-    ${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
-      --jobs=4 \
-      --platform linux/amd64,linux/arm64,linux/s390x --manifest ${manifest_name} \
-      --build-arg SERVICE_NAME="${service_name}" \
-      --build-arg PORTS="${service_ports}" \
-      --build-arg GO_IMAGE="${go_image_name}" \
-      .
+    ${docker_cmd} images "${manifest_name}" -q -a | xargs "${docker_cmd}" rmi
+    ${docker_cmd} manifest create "${manifest_name}"
+    "${cmd[@]}" --jobs=4 --platform linux/amd64,linux/arm64,linux/s390x --manifest "${manifest_name}" .
   else
     # Current platform build
-    ${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
-      -t ${manifest_name} \
-      --build-arg SERVICE_NAME="${service_name}" \
-      --build-arg PORTS="${service_ports}" \
-      --build-arg GO_IMAGE="${go_image_name}" \
-      .
+    "${cmd[@]}" -t "${manifest_name}" .
   fi
 }
 

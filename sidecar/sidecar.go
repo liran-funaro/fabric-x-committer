@@ -73,6 +73,13 @@ func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("sidecar connected to coordinator at %s", &s.config.Committer.Endpoint)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
+	if s.config.MetaNamespaceVerificationKey != nil {
+		_, err = client.SetMetaNamespaceVerificationKey(ctx, s.config.MetaNamespaceVerificationKey)
+		if err != nil {
+			return err
+		}
+	}
+
 	blkInfo, err := client.GetNextExpectedBlockNumber(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch the next expected block number from coordinator: %w", err)

@@ -18,14 +18,15 @@
 # Constants
 #########################
 
-version        := 0.0.2
-project_dir    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-output_dir     ?= $(project_dir)/bin
-cache_dir      ?= $(shell go env GOCACHE)
-mod_cache_dir  ?= $(shell go env GOMODCACHE)
-go_version     ?= 1.23.4
-golang_image   ?= golang:$(go_version)-bookworm
-db_image       ?= yugabytedb/yugabyte:2.20.7.0-b58
+version         := 0.0.2
+project_dir     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+output_dir      ?= $(project_dir)/bin
+arch_output_dir ?= $(project_dir)/archbin
+cache_dir       ?= $(shell go env GOCACHE)
+mod_cache_dir   ?= $(shell go env GOMODCACHE)
+go_version      ?= 1.23.4
+golang_image    ?= golang:$(go_version)-bookworm
+db_image        ?= yugabytedb/yugabyte:2.20.7.0-b58
 
 dockerfile_base_dir       ?= $(project_dir)/docker/images
 dockerfile_test_node_dir  ?= $(dockerfile_base_dir)/test_node
@@ -50,6 +51,8 @@ multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 go_build       ?= $(env) go build -buildvcs=false -o
 
+arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
+
 # Set additional parameter to build the test-node for different platforms and push
 # E.g., make multiplatform=true docker_push=true build-test-node-image
 docker_build_flags=
@@ -63,6 +66,7 @@ ifeq "$(docker_push)" "true"
 	docker_push_arg=--push
 endif
 
+MAKEFLAGS += --jobs=16
 
 .PHONY: test clean lint build coordinator signatureverifier validatorpersister sidecar queryexecutor loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
 
@@ -147,6 +151,15 @@ BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexec
 
 build: $(output_dir) $(BUILD_TARGETS)
 
+build-arch: build-arch-linux-$(arch) build-arch-linux-amd64 build-arch-linux-arm64 build-arch-linux-s390x
+
+build-arch-%:
+	@CGO_ENABLED=0 make \
+		os=$(word 1, $(subst -, ,$*)) \
+		arch=$(word 2, $(subst -, ,$*)) \
+		output_dir=$(arch_output_dir)/$* \
+		build
+
 coordinator: $(output_dir)
 	$(go_build) "$(output_dir)/coordinator" ./cmd/coordinatorservice
 
@@ -190,26 +203,26 @@ build-docker: $(cache_dir) $(mod_cache_dir)
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
 
-build-test-node-image:
+build-test-node-image: build-arch
 	${docker_cmd} build \
 		$(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
 	  -t ${image_namespace}/committer-test-node:${version} \
-		--build-arg GO_IMAGE=${golang_image} \
 		--build-arg DB_IMAGE=${db_image} \
+		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 	  . \
 		$(docker_push_arg)
 
-build-release-images:
+build-release-images: build-arch
 	./scripts/build-release-images.sh \
-		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(golang_image)
+		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(arch_output_dir_rel)
 
-build-mock-orderer-image:
+build-mock-orderer-image: build-arch
 	${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
 		-t ${image_namespace}/mock-ordering-service:${version} \
 		--build-arg SERVICE_NAME=mockorderingservice \
-		--build-arg GO_IMAGE=${golang_image} \
 		--build-arg PORTS=4001 \
+		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		.
 
 lint:
