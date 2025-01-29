@@ -197,7 +197,7 @@ func (s *broadcastNode) connect() bool {
 		s.err = s.parentCtx.Err()
 		return false
 	}
-	if s.err == nil && s.stream != nil && s.ctx != nil && s.ctx.Err() != nil {
+	if s.err == nil && s.stream != nil && s.ctx != nil && s.ctx.Err() == nil {
 		return true
 	}
 	if s.cancel != nil {
