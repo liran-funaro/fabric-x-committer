@@ -1,6 +1,7 @@
 package loadgen
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"testing"
@@ -87,7 +88,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 		conf := serverconfig.ReadConfig()
 
 		service := verifierserver.New(&conf.ParallelExecutor, &metrics.Metrics{Enabled: false})
-		test.RunGrpcServerForTest(t, conf.Server, func(server *grpc.Server) {
+		test.RunGrpcServerForTest(context.Background(), t, conf.Server, func(server *grpc.Server) {
 			protosigverifierservice.RegisterVerifierServer(server, service)
 		})
 	}
@@ -113,7 +114,7 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 	conf := coordinatorservice.ReadConfig()
 
 	service := coordinatorservice.NewCoordinatorService(conf)
-	test.RunServiceAndGrpcForTest(t, service, conf.ServerConfig, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(context.Background(), t, service, conf.ServerConfig, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, service)
 	})
 
@@ -150,7 +151,7 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	service, err := sidecar.New(&sidecarConf)
 	require.NoError(t, err)
 	t.Cleanup(service.Close)
-	test.RunServiceAndGrpcForTest(t, service, sidecarConf.Server, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(context.Background(), t, service, sidecarConf.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, service.GetLedgerService())
 	})
 

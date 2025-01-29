@@ -1,6 +1,7 @@
 package sigverification_test
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -46,7 +47,7 @@ func NewTestState(t test.TestingT, server sigverification.VerifierServer) *State
 	serverConnectionConfig := connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost", Port: 0}}
 	s := &State{}
 
-	test.RunGrpcServerForTest(t, &serverConnectionConfig, func(grpcServer *grpc.Server) {
+	test.RunGrpcServerForTest(context.Background(), t, &serverConnectionConfig, func(grpcServer *grpc.Server) {
 		s.StopServer = grpcServer.GracefulStop
 		sigverification.RegisterVerifierServer(grpcServer, server)
 	})

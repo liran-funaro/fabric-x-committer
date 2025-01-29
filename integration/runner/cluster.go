@@ -169,7 +169,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	c.createClients(ctx, t)
 	c.ensureLastCommittedBlockNumber(t, 0)
 
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
 			OutputBlock: c.committedBlock,
 		})

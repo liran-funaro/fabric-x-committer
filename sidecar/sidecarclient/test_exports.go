@@ -12,6 +12,7 @@ import (
 
 // StartSidecarClient starts a deliver client to fetch committed blocks from the sidecar/ledger service.
 func StartSidecarClient(
+	ctx context.Context,
 	t *testing.T,
 	config *Config,
 	startBlkNum int64,
@@ -19,7 +20,7 @@ func StartSidecarClient(
 	receivedBlocksFromLedgerService := make(chan *common.Block, 10)
 	deliverClient, err := New(config)
 	require.NoError(t, err)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.WrapStreamRpcError(deliverClient.Deliver(ctx,
 			&DeliverConfig{
 				StartBlkNum: startBlkNum,

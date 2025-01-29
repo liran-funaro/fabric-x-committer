@@ -33,11 +33,11 @@ func TestDependencyGraph(t *testing.T) {
 			metrics:                metrics,
 		},
 	)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 2)
 		return nil
 	}, nil)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		dm.run(ctx)
 		return nil
 	}, nil)

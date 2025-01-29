@@ -88,7 +88,7 @@ func NewValidatorAndCommitServiceTestEnv(
 	vcs, err := NewValidatorCommitterService(initCtx, config)
 	require.NoError(t, err)
 	t.Cleanup(vcs.Close)
-	test.RunServiceAndGrpcForTest(t, vcs, config.Server, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(context.Background(), t, vcs, config.Server, func(server *grpc.Server) {
 		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
 	})
 

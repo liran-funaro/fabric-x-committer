@@ -1,6 +1,7 @@
 package workload
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -76,7 +77,7 @@ func genericBlockBench(b *testing.B, p *Profile) {
 	t := NewTxStream(p, defaultBenchStreamOptions())
 
 	b.ResetTimer()
-	test.RunServiceForTest(b, t.Run, t.WaitForReady)
+	test.RunServiceForTest(context.Background(), b, t.Run, t.WaitForReady)
 	g := &BlockGenerator{
 		TxGenerator: t.MakeGenerator(),
 		BlockSize:   p.Block.Size,
@@ -97,7 +98,7 @@ func genericTxBench(b *testing.B, p *Profile) {
 	c := NewTxStream(p, defaultBenchStreamOptions())
 
 	b.ResetTimer()
-	test.RunServiceForTest(b, c.Run, c.WaitForReady)
+	test.RunServiceForTest(context.Background(), b, c.Run, c.WaitForReady)
 	g := c.MakeGenerator()
 
 	var sum float64
@@ -115,7 +116,7 @@ func genericQueryBench(b *testing.B, p *Profile) {
 	c := NewQueryGenerator(p, defaultBenchStreamOptions())
 
 	b.ResetTimer()
-	test.RunServiceForTest(b, c.Run, c.WaitForReady)
+	test.RunServiceForTest(context.Background(), b, c.Run, c.WaitForReady)
 	g := c.MakeGenerator()
 
 	var sum float64
@@ -238,7 +239,7 @@ func startTxGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	g := NewTxStream(profile, options, modifierGenerators...)
-	test.RunServiceForTest(t, g.Run, g.WaitForReady)
+	test.RunServiceForTest(context.Background(), t, g.Run, g.WaitForReady)
 	return g
 }
 
@@ -246,7 +247,7 @@ func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
 ) Generator[*protoqueryservice.Query] {
 	g := NewQueryGenerator(profile, options)
-	test.RunServiceForTest(t, g.Run, g.WaitForReady)
+	test.RunServiceForTest(context.Background(), t, g.Run, g.WaitForReady)
 	return g.MakeGenerator()
 }
 

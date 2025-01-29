@@ -27,7 +27,6 @@ type (
 	coordinatorTestEnv struct {
 		coordinator *CoordinatorService
 		config      *CoordinatorConfig
-		grpcServer  *grpc.Server
 		client      protocoordinatorservice.CoordinatorClient
 		csStream    protocoordinatorservice.Coordinator_BlockProcessingClient
 		dbEnv       *vcservice.DatabaseTestEnv
@@ -98,7 +97,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 			Port: 0,
 		},
 	}
-	e.grpcServer = test.RunServiceAndGrpcForTest(t, cs, sc, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(ctx, t, cs, sc, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
 	})
 
@@ -578,7 +577,6 @@ func TestCoordinatorRecovery(t *testing.T) {
 	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx2", "mvcc conflict", "tx1"}, expectedTxStatus)
 
 	cancel()
-	env.grpcServer.Stop()
 
 	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(t, env.dbEnv)
 	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Config.Server}

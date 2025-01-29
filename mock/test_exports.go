@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -29,9 +30,10 @@ func StartMockSVService(t *testing.T, numService int) (
 		mockSigVer[i] = NewMockSigVerifier()
 	}
 
-	sigVerServers := test.StartGrpcServersForTest(t, len(mockSigVer), func(server *grpc.Server, index int) {
-		protosigverifierservice.RegisterVerifierServer(server, mockSigVer[index])
-	})
+	sigVerServers := test.StartGrpcServersForTest(context.Background(), t, len(mockSigVer),
+		func(server *grpc.Server, index int) {
+			protosigverifierservice.RegisterVerifierServer(server, mockSigVer[index])
+		})
 	return mockSigVer, sigVerServers
 }
 
@@ -39,7 +41,7 @@ func StartMockSVService(t *testing.T, numService int) (
 func StartMockSVServiceFromListWithConfig(
 	t *testing.T, svs []*SigVerifier, sc []*connection.ServerConfig,
 ) *test.GrpcServers {
-	return test.StartGrpcServersWithConfigForTest(t, sc, func(server *grpc.Server, index int) {
+	return test.StartGrpcServersWithConfigForTest(context.Background(), t, sc, func(server *grpc.Server, index int) {
 		protosigverifierservice.RegisterVerifierServer(server, svs[index])
 	})
 }
@@ -53,7 +55,7 @@ func StartMockVCService(t *testing.T, numService int) (
 		vcServices[i] = NewMockVcService()
 	}
 
-	vcGrpc := test.StartGrpcServersForTest(t, numService, func(server *grpc.Server, index int) {
+	vcGrpc := test.StartGrpcServersForTest(context.Background(), t, numService, func(server *grpc.Server, index int) {
 		protovcservice.RegisterValidationAndCommitServiceServer(server, vcServices[index])
 	})
 	return vcServices, vcGrpc
@@ -65,7 +67,7 @@ func StartMockCoordinatorService(t *testing.T) (
 ) {
 	mockCoordinator := NewMockCoordinator()
 	t.Cleanup(mockCoordinator.Close)
-	coordinatorGrpc := test.StartGrpcServersForTest(t, 1, func(server *grpc.Server, _ int) {
+	coordinatorGrpc := test.StartGrpcServersForTest(context.Background(), t, 1, func(server *grpc.Server, _ int) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, mockCoordinator)
 	})
 	return mockCoordinator, coordinatorGrpc
@@ -82,13 +84,14 @@ func StartMockOrderingServices(t *testing.T, numService int, conf OrdererConfig)
 
 	if len(conf.ServerConfigs) == numService {
 		return mocks, test.StartGrpcServersWithConfigForTest(
+			context.Background(),
 			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
 				ab.RegisterAtomicBroadcastServer(server, mocks[index])
 			},
 		)
 	}
 
-	servers := test.StartGrpcServersForTest(t, numService, func(server *grpc.Server, index int) {
+	servers := test.StartGrpcServersForTest(context.Background(), t, numService, func(server *grpc.Server, index int) {
 		ab.RegisterAtomicBroadcastServer(server, mocks[index])
 	})
 	return mocks, servers

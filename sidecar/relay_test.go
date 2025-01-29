@@ -41,7 +41,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	logger.Infof("sidecar connected to coordinator at %s", &coordinatorEndpoint)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		return connection.WrapStreamRpcError(relayService.Run(ctx, &relayRunConfig{
 			client, 0,
 		}))

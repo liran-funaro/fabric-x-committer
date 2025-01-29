@@ -62,7 +62,7 @@ func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
 
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		return connection.WrapStreamRpcError(client.Run(ctx))
 	}, nil)
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
@@ -118,7 +118,7 @@ func activateVcServiceForTest(t *testing.T, ports, metricPorts []int) *yuga.Conn
 		service, err := vcservice.NewValidatorCommitterService(initCtx, conf)
 		require.NoError(t, err)
 		t.Cleanup(service.Close)
-		test.RunServiceAndGrpcForTest(t, service, conf.Server, func(server *grpc.Server) {
+		test.RunServiceAndGrpcForTest(context.Background(), t, service, conf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
 	}

@@ -23,7 +23,7 @@ func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
 	p := newPreparer(txBatch, preparedTxs, metrics)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		return p.run(ctx, 1)
 	}, nil)
 

@@ -38,7 +38,7 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	)
 
 	env.dm = dm
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		dm.run(ctx)
 		return nil
 	}, nil)

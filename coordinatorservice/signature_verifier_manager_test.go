@@ -36,7 +36,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		},
 	)
 
-	test.RunServiceForTest(t, svm.run, func(ctx context.Context) bool {
+	test.RunServiceForTest(context.Background(), t, svm.run, func(ctx context.Context) bool {
 		select {
 		case <-ctx.Done():
 			return false

@@ -24,7 +24,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 
 	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 5)
 		return nil
 	}, nil)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -21,13 +22,15 @@ type Coordinator struct {
 	protocoordinatorservice.CoordinatorServer
 	lastCommittedBlockNumber atomic.Int64
 	nextExpectedBlockNumber  atomic.Uint64
+	streamActive             *sync.Mutex
 	stop                     chan any
 }
 
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	c := &Coordinator{
-		stop: make(chan any),
+		streamActive: &sync.Mutex{},
+		stop:         make(chan any),
 	}
 	c.lastCommittedBlockNumber.Store(-1)
 	return c
@@ -72,6 +75,11 @@ func (c *Coordinator) GetNextExpectedBlockNumber(
 
 // BlockProcessing processes a block.
 func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+	if !c.streamActive.TryLock() {
+		return errors.New("stream is already active. Only one stream is allowed")
+	}
+	defer c.streamActive.Unlock()
+
 	input := make(chan *protoblocktx.Block, 1000)
 	defer close(input)
 	defer logger.Infof("Closed mock coordinator")
@@ -117,6 +125,15 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 		case input <- block:
 		}
 	}
+}
+
+// IsStreamActive returns true if the stream from the sidecar is active.
+func (c *Coordinator) IsStreamActive() bool {
+	if c.streamActive.TryLock() {
+		defer c.streamActive.Unlock()
+		return false
+	}
+	return true
 }
 
 func sendTxsValidationStatus(

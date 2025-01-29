@@ -48,7 +48,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		},
 	)
 
-	test.RunServiceForTest(t, func(ctx context.Context) error {
+	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		return connection.FilterStreamErrors(vcm.run(ctx))
 	}, func(ctx context.Context) bool {
 		select {

@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -26,7 +27,7 @@ func TestLedgerService(t *testing.T) {
 	config := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost"},
 	}
-	test.RunServiceAndGrpcForTest(t, ledgerService, config, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(context.Background(), t, ledgerService, config, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, ledgerService)
 	})
 
@@ -43,7 +44,7 @@ func TestLedgerService(t *testing.T) {
 
 	EnsureAtLeastHeight(t, ledgerService, 1)
 
-	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t, &sidecarclient.Config{
+	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(context.Background(), t, &sidecarclient.Config{
 		ChannelID: channelID,
 		Endpoint:  &config.Endpoint,
 	}, 0)

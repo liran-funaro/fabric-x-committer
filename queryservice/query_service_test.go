@@ -30,7 +30,6 @@ type queryServiceTestEnv struct {
 	ctx           context.Context
 	qs            *QueryService
 	ns            []int
-	grpcServer    *grpc.Server
 	clientConn    *grpc.ClientConn
 	pool          *pgxpool.Pool
 	disabledViews []string
@@ -284,7 +283,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	sConfig := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
-	grpcSrv := test.RunServiceAndGrpcForTest(t, qs, sConfig, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(context.Background(), t, qs, sConfig, func(server *grpc.Server) {
 		protoqueryservice.RegisterQueryServiceServer(server, qs)
 	})
 
@@ -307,7 +306,6 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		ctx:        ctx,
 		qs:         qs,
 		ns:         []int{0, 1, 2},
-		grpcServer: grpcSrv,
 		clientConn: clientConn,
 		pool:       pool,
 	}

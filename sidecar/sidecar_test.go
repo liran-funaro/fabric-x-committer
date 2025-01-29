@@ -3,6 +3,7 @@ package sidecar
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
@@ -103,15 +105,15 @@ func (env *sidecarTestEnv) init(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func (env *sidecarTestEnv) start(t *testing.T, startBlkNum int64) {
-	env.gServer = test.RunServiceAndGrpcForTest(t, env.sidecar, env.config.Server, func(server *grpc.Server) {
+func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
+	env.gServer = test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
 	})
 
 	// we need to wait for the sidecar to connect to ordering service and fetch the
 	// config block, i.e., block 0. EnsureAtLeastHeight waits for the block 0 to be committed.
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
-	env.committedBlock = sidecarclient.StartSidecarClient(t, &sidecarclient.Config{
+	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  &env.config.Server.Endpoint,
 	}, startBlkNum)
@@ -123,7 +125,9 @@ func TestSidecar(t *testing.T) {
 
 func commonTest(t *testing.T, env *sidecarTestEnv) {
 	env.init(t)
-	env.start(t, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 0)
 
 	// mockorderer expects 100 txs to create the next block
 	txs := make([]*protoblocktx.Tx, 100)
@@ -138,9 +142,6 @@ func commonTest(t *testing.T, env *sidecarTestEnv) {
 			t.Logf("Response: %s", resp.Info)
 		}
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
 
 	checkLastCommittedBlock(ctx, t, env.coordinator, 0)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
@@ -167,15 +168,24 @@ func commonTest(t *testing.T, env *sidecarTestEnv) {
 
 	// restart and ensures it sends the next expected block by the coordinator.
 	cancel()
-	env.gServer.Stop()
-	env.start(t, 2)
+	require.Eventually(t, func() bool {
+		return checkServerStopped(t, env.config.Server.Endpoint.Address())
+	}, 4*time.Second, 500*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return !env.coordinator.IsStreamActive()
+	}, 2*time.Second, 250*time.Millisecond)
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel2)
+	env.start(ctx2, t, 2)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 1)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
 	sendTxs("newTx")
+
+	block = <-env.committedBlock
+	require.Equal(t, uint64(2), block.Header.Number)
+
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 2)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 3)
 	cancel2()
@@ -224,7 +234,7 @@ func TestSidecarWithBlockMultipleWrongOrderers(t *testing.T) {
 		fakeServer := &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
 		healthcheck := health.NewServer()
 		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-		test.RunGrpcServerForTest(t, fakeServer, func(server *grpc.Server) {
+		test.RunGrpcServerForTest(context.Background(), t, fakeServer, func(server *grpc.Server) {
 			healthgrpc.RegisterHealthServer(server, healthcheck)
 		})
 		env.config.Orderer.Endpoints = append(env.config.Orderer.Endpoints, &connection.OrdererEndpoint{
@@ -264,4 +274,25 @@ func checkLastCommittedBlock(
 		}
 		return expectedBlockNumber == lastBlock.Number
 	}, 15*time.Second, 1*time.Second)
+}
+
+func checkServerStopped(_ *testing.T, addr string) bool {
+	// Try a short timeout so we don't block too long
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext( // nolint:staticcheck
+		ctx,
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(), // nolint:staticcheck
+	)
+	if err != nil {
+		// If we cannot connect at all, the server is likely stopped.
+		fmt.Println("Connection failed as expected:", err)
+		return true
+	}
+	// If we get a connection object, it means something is listening on that port.
+	_ = conn.Close()
+	return false
 }

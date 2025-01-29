@@ -52,6 +52,7 @@ func TestServers(t *testing.T) {
 	healthcheck := health.NewServer()
 	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 	fakeServer := test.RunGrpcServerForTest(
+		ctx,
 		t, &connection.ServerConfig{
 			Endpoint: orderers.Configs[2].Endpoint,
 		}, func(server *grpc.Server) {
@@ -67,7 +68,7 @@ func TestServers(t *testing.T) {
 
 	// All good again.
 	fakeServer.Stop()
-	orderers.Servers[2] = test.RunGrpcServerForTest(t, orderers.Configs[2], func(server *grpc.Server) {
+	orderers.Servers[2] = test.RunGrpcServerForTest(ctx, t, orderers.Configs[2], func(server *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(server, mocks[2])
 	})
 	time.Sleep(3 * time.Second)
