@@ -132,7 +132,7 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	// Start dependencies
 	_, ordererServer := mock.StartMockOrderingServices(
-		t, 3, mock.OrdererConfig{BlockSize: 100},
+		t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
 	)
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 

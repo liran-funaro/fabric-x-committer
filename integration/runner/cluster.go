@@ -108,10 +108,20 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	}
 
 	// Start mock ordering service
+	ordererEndpoint := makeLocalListenAddress(findAvailablePortRange(t, 1)[0])
+	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
+	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+		ChannelID: c.channelID,
+		OrdererEndpoints: []*connection.OrdererEndpoint{
+			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},
+		},
+		MetaNamespaceVerificationKey: metaPubKey,
+	})
 	ordererConfig := &configtempl.OrdererConfig{
-		ServerEndpoint: makeLocalListenAddress(findAvailablePortRange(t, 1)[0]),
-		BlockSize:      clusterConfig.BlockSize,
-		BlockTimeout:   clusterConfig.BlockTimeout,
+		ServerEndpoint:  ordererEndpoint,
+		BlockSize:       clusterConfig.BlockSize,
+		BlockTimeout:    clusterConfig.BlockTimeout,
+		ConfigBlockPath: configBlockPath,
 	}
 	c.mockOrderer = newProcess(t, mockordererCmd, c.rootDir, ordererConfig)
 
@@ -144,16 +154,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	// Start query-executor
 	c.queryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 
-	// Start sidecar
-	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
-	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
-		ChannelID: c.channelID,
-		OrdererEndpoints: []*connection.OrdererEndpoint{
-			{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
-		},
-		MetaNamespaceVerificationKey: metaPubKey,
-	})
-	// The meta namespace key and the orderer endpoints are passed via the config block.
+	// Start sidecar. The meta namespace key and the orderer endpoints are passed via the config block.
 	sidecarConfig := &configtempl.SidecarConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
 		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,

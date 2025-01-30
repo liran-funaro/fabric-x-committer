@@ -21,9 +21,10 @@ import (
 type (
 	// OrdererConfig represents the configuration of the orderer process.
 	OrdererConfig struct {
-		ServerEndpoint string
-		BlockSize      uint64
-		BlockTimeout   time.Duration
+		ServerEndpoint  string
+		BlockSize       uint64
+		BlockTimeout    time.Duration
+		ConfigBlockPath string
 	}
 
 	// CommonEndpoints holds commonly used endpoints across services.

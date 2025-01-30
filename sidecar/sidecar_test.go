@@ -46,7 +46,7 @@ type sidecarTestEnv struct {
 
 func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
 	_, orderersServer := mock.StartMockOrderingServices(
-		t, 1, mock.OrdererConfig{BlockSize: 100},
+		t, &mock.OrdererConfig{NumService: 1, BlockSize: 100, BlockTimeout: time.Minute},
 	)
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 

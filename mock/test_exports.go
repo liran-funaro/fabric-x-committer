@@ -3,9 +3,9 @@ package mock
 import (
 	"context"
 	"testing"
-	"time"
 
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -13,13 +13,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 )
-
-// OrdererConfig configuration for the mock orderer.
-type OrdererConfig struct {
-	ServerConfigs []*connection.ServerConfig
-	BlockSize     uint64
-	BlockTimeout  time.Duration
-}
 
 // StartMockSVService starts a specified number of mock verifier service and register cancellation.
 func StartMockSVService(t *testing.T, numService int) (
@@ -74,16 +67,16 @@ func StartMockCoordinatorService(t *testing.T) (
 }
 
 // StartMockOrderingServices starts a specified number of mock ordering service and register cancellation.
-func StartMockOrderingServices(t *testing.T, numService int, conf OrdererConfig) (
-	[]*Orderer, *test.GrpcServers,
+func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
+	*MultiOrderer, *test.GrpcServers,
 ) {
-	mocks := NewMockOrderingServices(numService, conf.BlockSize, conf.BlockTimeout)
-	for _, o := range mocks {
-		t.Cleanup(o.Close)
-	}
+	service, err := NewMultiOrderer(conf)
+	require.NoError(t, err)
+	test.RunServiceForTest(context.Background(), t, service.Run, service.WaitForReady)
+	mocks := service.Instances()
 
-	if len(conf.ServerConfigs) == numService {
-		return mocks, test.StartGrpcServersWithConfigForTest(
+	if len(conf.ServerConfigs) == conf.NumService {
+		return service, test.StartGrpcServersWithConfigForTest(
 			context.Background(),
 			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
 				ab.RegisterAtomicBroadcastServer(server, mocks[index])
@@ -91,8 +84,10 @@ func StartMockOrderingServices(t *testing.T, numService int, conf OrdererConfig)
 		)
 	}
 
-	servers := test.StartGrpcServersForTest(context.Background(), t, numService, func(server *grpc.Server, index int) {
-		ab.RegisterAtomicBroadcastServer(server, mocks[index])
-	})
-	return mocks, servers
+	servers := test.StartGrpcServersForTest(
+		context.Background(), t, conf.NumService, func(server *grpc.Server, index int) {
+			ab.RegisterAtomicBroadcastServer(server, mocks[index])
+		},
+	)
+	return service, servers
 }

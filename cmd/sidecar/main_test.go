@@ -19,7 +19,7 @@ var serverTemplate string
 
 func TestSidecarCmd(t *testing.T) {
 	_, ordererServer := mock.StartMockOrderingServices(
-		t, 1, mock.OrdererConfig{BlockSize: 100},
+		t, &mock.OrdererConfig{NumService: 1, BlockSize: 100},
 	)
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 

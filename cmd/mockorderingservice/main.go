@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/spf13/cobra"
@@ -11,6 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
@@ -18,14 +18,6 @@ const (
 	serviceName    = "mockorderingservice"
 	serviceVersion = "0.0.2"
 )
-
-// MockOrderingServiceConfig holds the server configuration of
-// the mock ordering service.
-type MockOrderingServiceConfig struct {
-	Server       *connection.ServerConfig `mapstructure:"server"`
-	BlockSize    uint64                   `mapstructure:"block-size"`
-	BlockTimeout time.Duration            `mapstructure:"block-timeout"`
-}
 
 func main() {
 	cmd := mockorderingserviceCmd()
@@ -60,21 +52,31 @@ func startCmd() *cobra.Command {
 			}
 			cmd.SilenceUsage = true
 			wrapper := new(struct {
-				Config MockOrderingServiceConfig `mapstructure:"mock-ordering-service"`
+				Config mock.OrdererConfig `mapstructure:"mock-ordering-service"`
 			})
 			config.Unmarshal(wrapper)
 			conf := &wrapper.Config
-			cmd.Printf("Starting %v service\n", serviceName)
 
-			services := mock.NewMockOrderingServices(1, conf.BlockSize, conf.BlockTimeout)
-			defer func() {
-				for _, service := range services {
-					service.Close()
-				}
-			}()
-			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
-				ab.RegisterAtomicBroadcastServer(server, services[0])
-			})
+			service, err := mock.NewMultiOrderer(conf)
+			if err != nil {
+				return err
+			}
+			if conf.NumService != len(conf.ServerConfigs) {
+				return fmt.Errorf("number of service does not match number of server configs")
+			}
+
+			cmd.Printf("Starting %v service\n", serviceName)
+			g, gCtx := errgroup.WithContext(cmd.Context())
+			for i, inst := range service.Instances() {
+				c := conf.ServerConfigs[i]
+				inst := inst
+				g.Go(func() error {
+					return connection.StartService(gCtx, service, c, func(s *grpc.Server) {
+						ab.RegisterAtomicBroadcastServer(s, inst)
+					})
+				})
+			}
+			return g.Wait()
 		},
 	}
 

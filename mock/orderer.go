@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"time"
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
@@ -9,153 +10,137 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
 )
 
-const outBlockCapacity = 111
-
-// Orderer is a mock orderer.
-type Orderer struct {
-	inEnvs    chan<- *common.Envelope
-	outBlocks <-chan *common.Block
-	stop      chan any
-}
-
-// NewSharedMockOrderer creates a new shared mock orderer.
-func NewSharedMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *common.Block) *Orderer {
-	return &Orderer{
-		inEnvs:    inEnvs,
-		outBlocks: outBlocks,
-		stop:      make(chan any),
-	}
-}
-
-// Close closes the mock orderer.
-func (o *Orderer) Close() {
-	logger.Infof("Closing channels on mock orderer")
-	close(o.stop)
-}
-
-func marshal(m proto.Message) []byte {
-	bytes, err := proto.Marshal(m)
-	utils.Must(err)
-	return bytes
-}
-
-var configTx = marshal(&common.Envelope{
-	Payload: marshal(&common.Payload{
-		Header: &common.Header{
-			ChannelHeader: marshal(&common.ChannelHeader{
-				Type: int32(common.HeaderType_CONFIG),
-			}),
-		},
-	}),
-})
-
-func cutBlocks( //nolint:gocognit
-	inEnvs <-chan *common.Envelope,
-	blockSize uint64,
-	timeout time.Duration,
-) <-chan *common.Block {
-	logger.Debugf("Start cutting blocks")
-	var prevBlock *common.Block
-	tick := time.NewTicker(timeout)
-	outBlocks := make(chan *common.Block, outBlockCapacity)
-
-	sendBlock := func(b *common.Block) {
-		outBlocks <- b
-		prevBlock = b
-		tick.Reset(timeout)
+type (
+	// OrdererConfig configuration for the mock orderer.
+	OrdererConfig struct {
+		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
+		NumService       int                        `mapstructure:"num-services"`
+		BlockSize        uint32                     `mapstructure:"block-size"`
+		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
+		OutBlockCapacity uint32                     `mapstructure:"out-block-capacity"`
+		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 	}
 
-	sendBlock(&common.Block{
+	// Orderer is a mock of a single ordering GRPC service.
+	Orderer struct {
+		inEnvs    chan<- *common.Envelope
+		outBlocks <-chan *common.Block
+	}
+
+	// MultiOrderer supports running multiple mock order services which mock a consortium.
+	MultiOrderer struct {
+		config              *OrdererConfig
+		mocks               []*Orderer
+		configBlock         *common.Block
+		inEnvsPerOrderer    []<-chan *common.Envelope
+		outBlocksPerOrderer []chan<- *common.Block
+	}
+)
+
+var (
+	defaultConfig = OrdererConfig{
+		NumService:       1,
+		BlockSize:        100,
+		BlockTimeout:     100 * time.Millisecond,
+		OutBlockCapacity: 128,
+	}
+	defaultConfigBlock = &common.Block{
 		Header: &common.BlockHeader{
 			Number: 0,
 		},
-		Data: &common.BlockData{Data: [][]byte{configTx}},
-	})
+		Data: &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(&common.Envelope{
+			Payload: protoutil.MarshalOrPanic(&common.Payload{
+				Header: &common.Header{
+					ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
+						Type: int32(common.HeaderType_CONFIG),
+					}),
+				},
+			}),
+		})}},
+	}
+)
 
-	var env *common.Envelope
-	var ok bool
-	go func() {
-		for blockNum := uint64(1); true; blockNum++ {
-			block := &common.Block{
-				Header: &common.BlockHeader{
-					Number:       blockNum,
-					PreviousHash: protoutil.BlockHeaderHash(prevBlock.Header),
-				},
-				Data: &common.BlockData{
-					Data: make([][]byte, 0, blockSize),
-				},
-			}
-			for {
-				select {
-				case <-tick.C:
-					if len(block.Data.Data) == 0 {
-						continue
-					}
-					logger.Debugf(
-						"block [%d] with [%d] txs has been cut due to timeout",
-						blockNum,
-						len(block.Data.Data),
-					)
-				case env, ok = <-inEnvs:
-					if !ok {
-						logger.Infof("Closing block cutter")
-						return
-					}
-					envB, _ := proto.Marshal(env)
-					block.Data.Data = append(block.Data.Data, envB)
-					if len(block.Data.Data) != int(blockSize) { // nolint:gosec
-						continue
-					}
-					logger.Debugf(
-						"block [%d] has been cut as it reached the required block size [%d]",
-						blockNum,
-						blockSize,
-					)
-				}
-				sendBlock(block)
-				break
-			}
+// NewMultiOrderer creates multiple orderer instances.
+func NewMultiOrderer(config *OrdererConfig) (*MultiOrderer, error) {
+	if config.BlockSize == 0 {
+		config.BlockSize = defaultConfig.BlockSize
+	}
+	if config.BlockTimeout.Abs() == 0 {
+		config.BlockTimeout = defaultConfig.BlockTimeout
+	}
+	if config.NumService == 0 {
+		config.NumService = defaultConfig.NumService
+	}
+	if config.OutBlockCapacity == 0 {
+		config.OutBlockCapacity = defaultConfig.OutBlockCapacity
+	}
+	configBlock := defaultConfigBlock
+	if config.ConfigBlockPath != "" {
+		var err error
+		configBlock, err = configtxgen.ReadBlock(config.ConfigBlockPath)
+		if err != nil {
+			return nil, err
 		}
-	}()
-	return outBlocks
+	}
+
+	mocks := make([]*Orderer, config.NumService)
+	inEnvsPerOrderer := make([]<-chan *common.Envelope, config.NumService)
+	outBlocksPerOrderer := make([]chan<- *common.Block, config.NumService)
+	for i := range config.NumService {
+		outBlocks := make(chan *common.Block, config.OutBlockCapacity)
+		inEnvs := make(chan *common.Envelope, config.BlockSize*config.OutBlockCapacity)
+		outBlocksPerOrderer[i] = outBlocks
+		inEnvsPerOrderer[i] = inEnvs
+		mocks[i] = newMockOrderer(inEnvs, outBlocks)
+	}
+	return &MultiOrderer{
+		config:              config,
+		mocks:               mocks,
+		configBlock:         configBlock,
+		inEnvsPerOrderer:    inEnvsPerOrderer,
+		outBlocksPerOrderer: outBlocksPerOrderer,
+	}, nil
+}
+
+// newMockOrderer creates a new mock ordering GRPC service.
+func newMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *common.Block) *Orderer {
+	return &Orderer{
+		inEnvs:    inEnvs,
+		outBlocks: outBlocks,
+	}
 }
 
 // Broadcast receives TXs and returns ACKs.
 func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting broadcast with %s", addr)
+	defer logger.Infof("Finished broadcast with %s", addr)
 
+	inEnvs := channel.NewWriter(stream.Context(), o.inEnvs)
 	for {
-		select {
-		case <-o.stop:
-			logger.Infof("Stopping broadcast to %s", addr)
-			return nil
-		default:
-		}
-
 		env, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamErrors(err)
+			return err
 		}
-		o.inEnvs <- env
-
+		inEnvs.Write(env)
 		err = stream.Send(&ab.BroadcastResponse{
 			Status: common.Status_SUCCESS,
 		})
 		if err != nil {
-			return errors.Wrap(err, "error sending ack")
+			return err
 		}
 	}
 }
 
 // Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	ctx := stream.Context()
-	addr := util.ExtractRemoteAddress(ctx)
+	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting delivery with %s", addr)
 
 	seekInfo, channelID, err := readSeekEnvelope(stream)
@@ -163,22 +148,19 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		return errors.Wrap(err, "failed reading seek request")
 	}
 	logger.Infof("Received listening request for channel '%s': %v\n "+
-		"We will ignore the request and send a stream anyway.", channelID, *seekInfo)
+		"We ignore the request and send a stream anyway.", channelID, seekInfo)
 
+	outBlocks := channel.NewReader(stream.Context(), o.outBlocks)
 	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("Stream context has been cancelled")
-			return nil
-		case <-o.stop:
-			logger.Infof("Stopping delivery to %s", addr)
-			return nil
-		case block := <-o.outBlocks:
-			if err := stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}); err != nil {
-				return errors.Wrap(err, "failed sending block")
-			}
-			logger.Debugf("Emitted block %d", block.Header.Number)
+		block, ok := outBlocks.Read()
+		if !ok {
+			return stream.Context().Err()
 		}
+		err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}})
+		if err != nil {
+			return err
+		}
+		logger.Debugf("Emitted block %d", block.Header.Number)
 	}
 }
 
@@ -203,63 +185,138 @@ func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, st
 	return seekInfo, chdr.ChannelId, nil
 }
 
-// NewMockOrderingServices creates a specified number of mock ordering service.
-func NewMockOrderingServices(
-	numService int,
-	blockSize uint64,
-	blockTimeout time.Duration,
-) []*Orderer {
-	if blockSize == 0 {
-		blockSize = 100
-	}
+// Run creates a specified number of mock ordering service and runs them.
+func (o *MultiOrderer) Run(ctx context.Context) error {
+	allInEnvs := make(chan *common.Envelope, o.config.OutBlockCapacity)
+	allOutBlocks := make(chan *common.Block, o.config.OutBlockCapacity)
 
-	if blockTimeout.Abs() == 0 {
-		blockTimeout = 5 * time.Second
-	}
-	mocks := make([]*Orderer, numService)
-
-	inEnvsPerOrderer := make([]<-chan *common.Envelope, numService)
-	outBlocksPerOrderer := make([]chan<- *common.Block, numService)
-	for i := 0; i < numService; i++ {
-		outBlocks := make(chan *common.Block, outBlockCapacity)
-		inEnvs := make(chan *common.Envelope, outBlockCapacity)
-		outBlocksPerOrderer[i] = outBlocks
-		inEnvsPerOrderer[i] = inEnvs
-		mocks[i] = NewSharedMockOrderer(inEnvs, outBlocks)
-	}
-
-	allInEnvs := fanIn(inEnvsPerOrderer)
-	allOutBlocks := cutBlocks(allInEnvs, blockSize, blockTimeout)
-	fanOut(allOutBlocks, outBlocksPerOrderer)
-	return mocks
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return fanIn(gCtx, o.inEnvsPerOrderer, allInEnvs)
+	})
+	g.Go(func() error {
+		return o.cutBlocks(gCtx, allInEnvs, allOutBlocks)
+	})
+	g.Go(func() error {
+		return fanOut(gCtx, allOutBlocks, o.outBlocksPerOrderer)
+	})
+	return connection.WrapStreamRpcError(g.Wait())
 }
 
-func fanOut(blocks <-chan *common.Block, chans []chan<- *common.Block) {
-	go func() {
-		for block := range blocks {
-			logger.Debugf(
-				"Block %d, prev: [%x], current: [%x]",
-				block.Header.Number,
-				block.Header.PreviousHash,
-				block.Header.DataHash,
-			)
-			for _, ch := range chans {
-				ch <- block
+// WaitForReady returns true when we are ready to process GRPC requests.
+func (*MultiOrderer) WaitForReady(context.Context) bool {
+	return true
+}
+
+// Instances returns the ordering GRPC services.
+func (o *MultiOrderer) Instances() []*Orderer {
+	return o.mocks
+}
+
+// fanIn reads the envelopes from all in channels to ensure the channels do not fill up.
+// However, we only forward the envelopes from the first channel to avoid having to merge the data.
+func fanIn(ctx context.Context, in []<-chan *common.Envelope, out chan<- *common.Envelope) error {
+	g, gCtx := errgroup.WithContext(ctx)
+	for i := range in {
+		i := i
+		g.Go(func() error {
+			cIn := channel.NewReader(gCtx, in[i])
+			cOut := channel.NewWriter(gCtx, out)
+			for {
+				env, ok := cIn.Read()
+				if !ok {
+					return gCtx.Err()
+				}
+				if i == 0 {
+					cOut.Write(env)
+				}
 			}
-		}
-	}()
+		})
+	}
+	return g.Wait()
 }
 
-func fanIn(chans []<-chan *common.Envelope) <-chan *common.Envelope {
-	return chans[0]
-	// TODO: AF
-	// result := make(chan *common.Envelope, 100)
-	// for _, ch := range chans {
-	// 	go func(ch <-chan *common.Envelope) {
-	// 		for env := range ch {
-	// 			result <- env
-	// 		}
-	// 	}(ch)
-	// }
-	// return result
+func fanOut(ctx context.Context, in <-chan *common.Block, out []chan<- *common.Block) error {
+	cIn := channel.NewReader(ctx, in)
+	cOut := make([]channel.Writer[*common.Block], len(out))
+	for i, o := range out {
+		cOut[i] = channel.NewWriter(ctx, o)
+	}
+	for {
+		block, ok := cIn.Read()
+		if !ok {
+			return ctx.Err()
+		}
+		logger.Debugf(
+			"Block %d, prev: [%x], current: [%x]",
+			block.Header.Number,
+			block.Header.PreviousHash,
+			block.Header.DataHash,
+		)
+		for _, ch := range cOut {
+			ch.Write(block)
+		}
+	}
+}
+
+func (o *MultiOrderer) cutBlocks(
+	ctx context.Context,
+	inEnvs <-chan *common.Envelope,
+	outBlocks chan<- *common.Block,
+) error {
+	logger.Debugf("Start cutting blocks")
+
+	tick := time.NewTicker(o.config.BlockTimeout)
+	cOutBlocks := channel.NewWriter(ctx, outBlocks)
+
+	block := o.configBlock
+	blockNum := block.Header.Number
+	sendBlock := func() {
+		cOutBlocks.Write(block)
+		tick.Reset(o.config.BlockTimeout)
+		blockNum++
+		block = &common.Block{
+			Header: &common.BlockHeader{
+				Number:       blockNum,
+				PreviousHash: protoutil.BlockHeaderHash(block.Header),
+			},
+			Data: &common.BlockData{
+				Data: make([][]byte, 0, o.config.BlockSize),
+			},
+		}
+	}
+
+	// Submit the config block.
+	sendBlock()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+			if len(block.Data.Data) == 0 {
+				continue
+			}
+			logger.Debugf(
+				"block [%d] with [%d] txs has been cut due to timeout",
+				blockNum,
+				len(block.Data.Data),
+			)
+		case env, ok := <-inEnvs:
+			if !ok {
+				logger.Infof("Closing block cutter")
+				return nil
+			}
+			block.Data.Data = append(block.Data.Data, protoutil.MarshalOrPanic(env))
+			if len(block.Data.Data) < int(o.config.BlockSize) {
+				continue
+			}
+			logger.Debugf(
+				"block [%d] has been cut as it reached the required block size [%d]",
+				blockNum,
+				o.config.BlockSize,
+			)
+		}
+		sendBlock()
+	}
 }

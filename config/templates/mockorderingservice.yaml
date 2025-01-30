@@ -1,8 +1,9 @@
 mock-ordering-service:
-  server:
-    endpoint: {{ .ServerEndpoint }}
+  servers:
+    - endpoint: {{ .ServerEndpoint }}
   block-size: {{ .BlockSize }}
   block-timeout: {{ .BlockTimeout }}
+  config-block-path: {{ .ConfigBlockPath }}
 logging:
   Development: true
   enabled: true

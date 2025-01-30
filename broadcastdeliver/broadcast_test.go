@@ -69,7 +69,7 @@ func TestServers(t *testing.T) {
 	// All good again.
 	fakeServer.Stop()
 	orderers.Servers[2] = test.RunGrpcServerForTest(ctx, t, orderers.Configs[2], func(server *grpc.Server) {
-		ab.RegisterAtomicBroadcastServer(server, mocks[2])
+		ab.RegisterAtomicBroadcastServer(server, mocks.Instances()[2])
 	})
 	time.Sleep(3 * time.Second)
 	recv, err = sendRecv(t, stream)
@@ -102,7 +102,7 @@ func sendRecv(t *testing.T, stream *EnvelopedStream) (string, error) {
 	return resp.Info, err
 }
 
-func makeConfig(t *testing.T) ([]*mock.Orderer, *test.GrpcServers, Config) {
+func makeConfig(t *testing.T) (*mock.MultiOrderer, *test.GrpcServers, Config) {
 	logging.SetupWithConfig(&logging.Config{
 		Enabled:     true,
 		Level:       logging.Info,
@@ -112,7 +112,7 @@ func makeConfig(t *testing.T) ([]*mock.Orderer, *test.GrpcServers, Config) {
 
 	orgCount := 3
 	ordererService, ordererServer := mock.StartMockOrderingServices(
-		t, orgCount, mock.OrdererConfig{BlockSize: 100},
+		t, &mock.OrdererConfig{NumService: orgCount, BlockSize: 100},
 	)
 	require.Len(t, ordererServer.Servers, orgCount)
 

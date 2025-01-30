@@ -5,7 +5,7 @@ logging:
   Development: true
   Output: %s
 mock-ordering-service:
-  server:
-    endpoint: localhost:4001
+  servers:
+    - endpoint: localhost:4001
   block-size: 100
   block-timeout: 1s
