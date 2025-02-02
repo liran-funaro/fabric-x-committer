@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -37,11 +36,6 @@ type (
 		queues                *channels
 		config                *CoordinatorConfig
 		metrics               *perfMetrics
-
-		// sendStreamMu is used to synchronize sending transaction status over grpc stream
-		// to the client between the goroutine that process status from sigverifier and the goroutine
-		// that process status from validator.
-		sendTxStreamMu sync.Mutex
 
 		// nextExpectedBlockNumberToBeReceived denotes the next block number that the coordinator
 		// expects to receive from the sidecar. This value is determined based on the last committed
@@ -417,64 +411,27 @@ func (c *CoordinatorService) sendTxStatus(
 			return nil
 		}
 
-		logger.Debugf("New batch with %d TX statuses reached the coordinator", len(txStatus.Status))
-		// TODO: merge sendTxStatus with this method and remove mutex on the stream. Issue #631
-		if err := c.sendTxsStatus(stream, txStatus); err != nil {
+		if err := stream.Send(txStatus); err != nil {
 			return err
 		}
-	}
-}
 
-func (c *CoordinatorService) sendTxsStatus(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	txsStatus *protoblocktx.TransactionsStatus,
-) error {
-	c.sendTxStreamMu.Lock()
-	defer c.sendTxStreamMu.Unlock()
-	if err := stream.Send(txsStatus); err != nil {
-		return err
-	}
+		logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txStatus.Status))
 
-	logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txsStatus.Status))
-
-	// TODO: introduce metrics to record all sent statuses. Issue #436.
-	m := c.metrics
-	for _, status := range txsStatus.Status {
-		switch status.Code {
-		case protoblocktx.Status_COMMITTED:
-			m.addToCounter(m.transactionCommittedStatusSentTotal, 1)
-		case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
-			m.addToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
-		case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
-			m.addToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
-		case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
-			m.addToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
+		// TODO: introduce metrics to record all sent statuses. Issue #436.
+		m := c.metrics
+		for _, status := range txStatus.Status {
+			switch status.Code {
+			case protoblocktx.Status_COMMITTED:
+				m.addToCounter(m.transactionCommittedStatusSentTotal, 1)
+			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+				m.addToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
+			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+				m.addToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
+			case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
+				m.addToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
+			}
 		}
 	}
-
-	return nil
-}
-
-func (c *CoordinatorService) postProcessMetaNsTx(ctx context.Context, ns *protoblocktx.TxNamespace) error {
-	for _, rw := range ns.ReadWrites {
-		nsID, _ := types.NamespaceIDFromBytes(rw.Key)
-
-		p := &protoblocktx.NamespacePolicy{}
-		_ = proto.Unmarshal(rw.Value, p)
-
-		if err := c.signatureVerifierMgr.setVerificationKey(
-			ctx,
-			&protosigverifierservice.Key{
-				NsId:            uint32(nsID),
-				SerializedBytes: p.PublicKey,
-				Scheme:          p.Scheme,
-			},
-		); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (c *CoordinatorService) monitorQueues(ctx context.Context) {
