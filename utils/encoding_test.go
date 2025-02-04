@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto" //nolint:staticcheck // proto.EncodeVarint does not exist in the new version
 	"github.com/stretchr/testify/require"
 )
 

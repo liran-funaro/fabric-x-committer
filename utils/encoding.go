@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto" //nolint:staticcheck // proto.EncodeVarint does not exist in the new version
 )
 
 // EncodeOrderPreservingVarUint64 returns a byte-representation for a uint64 number such that
