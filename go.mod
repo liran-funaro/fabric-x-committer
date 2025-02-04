@@ -25,7 +25,6 @@ require (
 	github.com/tedsuo/ifrit v0.0.0-20230516164442-7862c310ad26
 	github.com/yugabyte/pgx/v4 v4.14.8
 	github.ibm.com/decentralized-trust-research/fabricx-config v0.0.0-20250127131704-372c87953e71
-	github.ibm.com/decentralized-trust-research/scalable-committer/protos/token v0.0.0-20230816145809-db87808f9e04
 	go.opentelemetry.io/otel v1.30.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.17.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.30.0
@@ -40,8 +39,6 @@ require (
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-replace github.ibm.com/decentralized-trust-research/scalable-committer/protos/token => ./protos/token
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
