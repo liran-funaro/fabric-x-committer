@@ -4,11 +4,9 @@
 
 # test: Builds binaries and runs both unit and integration tests
 # clean: Removes all binaries
-# protos-coordinator: Generates coordinator protobufs
-# protos-token: Generates token protobufs
-# protos-blocktx: Generates block and transaction protobufs
-# protos-wgclient: Generates wgclient protobufs
+# proto: Generates all committer's API protobufs
 # build: Builds all binaries
+# build-arch: Builds all binaries for linux/(<cur-arch> amd64 arm64 s390x)
 # build-docker: Builds all binaries in a docker container
 # docker-builder-run: Executes a command from within a golang docker image.
 # docker-runner-image: Builds the scalable-committer docker image containing all binaries
@@ -68,7 +66,7 @@ endif
 
 MAKEFLAGS += --jobs=16
 
-.PHONY: test clean lint build coordinator signatureverifier validatorpersister sidecar queryexecutor loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
+.PHONY: $(MAKECMDGOALS)
 
 #########################
 # Quickstart
@@ -106,34 +104,19 @@ kill-test-docker:
 # Generate protos
 #########################
 
-protos-coordinator:
-	protoc \
-		--go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		--proto_path=. \
-		--proto_path=./token \
-		--proto_path=./coordinatorservice \
-		./coordinatorservice/coordinator_service.proto
+PROTO_TARGETS ?= $(shell find ./api \
+	 -name '*.proto' -print0 | \
+	 xargs -0 -n 1 dirname | xargs -n 1 basename | \
+	 sort -u | grep -v testdata \
+)
 
-protos-token:
-	protoc \
-		--go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		--proto_path=. \
-		--proto_path=./token \
-		./token/token.proto
+proto: $(PROTO_TARGETS)
 
-protos-blocktx:
-	@./scripts/compile_proto.sh
-
-protos-wgclient:
-	protoc \
-		--go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		--proto_path=. \
-		--proto_path=./token \
-		--proto_path=./coordinatorservice \
-		./wgclient/workload/expected_results.proto
+proto%:
+	@echo "Compiling: $*"
+	@protoc --proto_path="${PWD}" \
+          --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+          --go_out=paths=source_relative:. ${PWD}/api/proto$*/*.proto
 
 #########################
 # Binaries

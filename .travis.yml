@@ -42,7 +42,7 @@ jobs:
         # Apply formatting
         - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
         - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
-        - PATH="$HOME/bin:$PATH" make protos-blocktx
+        - PATH="$HOME/bin:$PATH" make proto
       script:
         # Check if original code changed due to formatting
         - git diff | tee /dev/stderr | [ $(wc -c) -eq 0 ]
