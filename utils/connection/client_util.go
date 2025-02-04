@@ -147,6 +147,19 @@ func openConnections[T WithAddress](
 	return connections, nil
 }
 
+// FilterStreamRPCError filters RPC errors that caused due to ending stream.
+func FilterStreamRPCError(rpcErr error) error {
+	if rpcErr == nil {
+		return nil
+	}
+
+	if IsStreamEnd(rpcErr) {
+		return nil
+	}
+	return rpcErr
+}
+
+// IsStreamEnd returns true if an RPC error indicates stream end.
 func IsStreamEnd(rpcErr error) bool {
 	if rpcErr == nil {
 		return false
@@ -169,6 +182,7 @@ func IsStreamEnd(rpcErr error) bool {
 	return false
 }
 
+// IsStreamContextEnd returns true if an RPC error indicates stream context end.
 func IsStreamContextEnd(rpcErr error) bool {
 	if rpcErr == nil {
 		return false
@@ -185,27 +199,4 @@ func IsStreamContextEnd(rpcErr error) bool {
 	}
 
 	return false
-}
-
-func FilterStreamErrors(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	code := status.Code(err)
-	if errors.Is(err, io.EOF) || code == codes.Canceled || code == codes.DeadlineExceeded {
-		return nil
-	}
-	return err
-}
-
-func WrapStreamRpcError(rpcErr error) error {
-	if rpcErr == nil {
-		return nil
-	}
-
-	if IsStreamEnd(rpcErr) {
-		return nil
-	}
-	return rpcErr
 }

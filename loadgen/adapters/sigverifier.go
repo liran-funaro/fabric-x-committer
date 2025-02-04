@@ -76,7 +76,7 @@ func (c *SvAdapter) receiveStatus(
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()
 		if err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 
 		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))

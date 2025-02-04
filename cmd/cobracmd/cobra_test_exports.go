@@ -78,7 +78,7 @@ func UnitTestRunner(
 	go func() {
 		defer wg.Done()
 		_, err := cmd.ExecuteContextC(ctx)
-		err = connection.WrapStreamRpcError(err)
+		err = connection.FilterStreamRPCError(err)
 		require.Equal(t, test.Err, err)
 	}()
 

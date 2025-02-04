@@ -42,7 +42,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
-		return connection.WrapStreamRpcError(relayService.Run(ctx, &relayRunConfig{
+		return connection.FilterStreamRPCError(relayService.Run(ctx, &relayRunConfig{
 			client, 0,
 		}))
 	}, nil)

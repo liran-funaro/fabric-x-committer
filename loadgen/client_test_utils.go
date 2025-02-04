@@ -63,7 +63,7 @@ func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 	require.NoError(t, err)
 
 	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
-		return connection.WrapStreamRpcError(client.Run(ctx))
+		return connection.FilterStreamRPCError(client.Run(ctx))
 	}, nil)
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
 		return m.TransactionSentTotal > 0 &&

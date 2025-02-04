@@ -200,7 +200,7 @@ func (o *MultiOrderer) Run(ctx context.Context) error {
 	g.Go(func() error {
 		return fanOut(gCtx, allOutBlocks, o.outBlocksPerOrderer)
 	})
-	return connection.WrapStreamRpcError(g.Wait())
+	return connection.FilterStreamRPCError(g.Wait())
 }
 
 // WaitForReady returns true when we are ready to process GRPC requests.

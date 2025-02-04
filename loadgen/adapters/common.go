@@ -69,7 +69,7 @@ func (c *commonAdapter) sendBlocks(
 		block.Number = c.nextBlockNum.Add(1) - 1
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		if err := send(block); err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 		c.res.Metrics.OnSendBlock(block)
 	}

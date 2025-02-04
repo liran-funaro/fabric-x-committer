@@ -21,7 +21,7 @@ func StartSidecarClient(
 	deliverClient, err := New(config)
 	require.NoError(t, err)
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.WrapStreamRpcError(deliverClient.Deliver(ctx,
+		return connection.FilterStreamRPCError(deliverClient.Deliver(ctx,
 			&DeliverConfig{
 				StartBlkNum: startBlkNum,
 				OutputBlock: receivedBlocksFromLedgerService,

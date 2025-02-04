@@ -49,7 +49,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	)
 
 	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
-		return connection.FilterStreamErrors(vcm.run(ctx))
+		return connection.FilterStreamRPCError(vcm.run(ctx))
 	}, func(ctx context.Context) bool {
 		select {
 		case <-ctx.Done():

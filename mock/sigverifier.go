@@ -69,7 +69,7 @@ func (m *SigVerifier) receiveRequestBatch(
 		reqBatch, err := stream.Recv()
 		if err != nil {
 			close(requestBatch)
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 
 		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
@@ -100,7 +100,7 @@ func (m *SigVerifier) sendResponseBatch(
 		}
 
 		if err := stream.Send(respBatch); err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 	}
 

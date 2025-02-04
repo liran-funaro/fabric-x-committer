@@ -160,7 +160,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 		}
 
 		if err := stream.Send(scBlock); err != nil {
-			return connection.FilterStreamErrors(err)
+			return connection.FilterStreamRPCError(err)
 		}
 		logger.Debugf("Sent scBlock %d with %d transactions to Coordinator", scBlock.Number, len(scBlock.Txs))
 	}

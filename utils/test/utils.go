@@ -197,7 +197,7 @@ func RunServiceAndGrpcForTest(
 	register func(server *grpc.Server),
 ) *grpc.Server {
 	RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.WrapStreamRpcError(service.Run(ctx))
+		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
 	return RunGrpcServerForTest(ctx, t, serverConfig, register)
 }

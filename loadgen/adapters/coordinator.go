@@ -70,7 +70,7 @@ func (c *CoordinatorAdapter) receiveStatus(
 	for ctx.Err() == nil {
 		txStatus, err := stream.Recv()
 		if err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 
 		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))

@@ -42,7 +42,7 @@ func (s *StreamHandler) handleInputs(stream Stream) {
 		// TODO: Add cancel
 		input, rpcErr := stream.Recv()
 		if rpcErr != nil {
-			if err := connection.WrapStreamRpcError(rpcErr); err != nil {
+			if err := connection.FilterStreamRPCError(rpcErr); err != nil {
 				logger.Errorf("failed to serve request: %v", err)
 			}
 			return

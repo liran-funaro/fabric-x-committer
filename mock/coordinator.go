@@ -155,7 +155,7 @@ func sendTxsValidationStatus(
 			if rpcErr := stream.Send(b); connection.IsStreamEnd(rpcErr) {
 				logger.Debugf("stream ended")
 			} else {
-				utils.Must(connection.WrapStreamRpcError(rpcErr))
+				utils.Must(connection.FilterStreamRPCError(rpcErr))
 			}
 			logger.Debugf("Sent back batch with %d TXs", len(b.Status))
 

@@ -260,7 +260,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
 		if err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 		txCount := len(b.Transactions)
 		vc.numWaitingTxsForStatus.Add(int32(txCount))
@@ -326,7 +326,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		vc.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status)))
 
 		if err := stream.Send(txStatus); err != nil {
-			return connection.WrapStreamRpcError(err)
+			return connection.FilterStreamRPCError(err)
 		}
 
 		committed := 0
