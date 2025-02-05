@@ -35,11 +35,8 @@ func TestBadlyFormedTxs(t *testing.T) {
 		},
 	)
 
-	pubKey, _ := c.CreateCryptoForNs(types.NamespaceID(1), signature.Ecdsa)
-	ns1Policy := &protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: pubKey,
-	}
+	cr := c.CreateCryptoForNs(t, types.NamespaceID(1), signature.Ecdsa)
+	ns1Policy := cr.HashSigner.GetVerificationPolicy()
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)
 

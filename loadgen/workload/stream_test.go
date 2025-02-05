@@ -34,8 +34,11 @@ func defaultProfile(workers uint32) *Profile {
 		},
 		Transaction: TransactionProfile{
 			ReadWriteCount: NewConstantDistribution(2),
-			Signature: SignatureProfile{
-				Scheme: signature.Ecdsa,
+			Policy: &PolicyProfile{
+				NamespacePolicies: map[types.NamespaceID]*Policy{
+					0:                     {Scheme: signature.Ecdsa},
+					types.MetaNamespaceID: {Scheme: signature.Ecdsa},
+				},
 			},
 		},
 		Query: QueryProfile{
@@ -141,7 +144,7 @@ func benchTxProfiles() (profiles []*Profile) {
 	for _, sign := range []bool{true, false} {
 		for _, p := range benchWorkersProfiles() {
 			if !sign {
-				p.Transaction.Signature.Scheme = signature.NoScheme
+				p.Transaction.Policy.NamespacePolicies[0].Scheme = signature.NoScheme
 			}
 			profiles = append(profiles, p)
 		}
@@ -151,7 +154,7 @@ func benchTxProfiles() (profiles []*Profile) {
 
 func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 	for _, p := range benchTxProfiles() {
-		name := fmt.Sprintf("workers-%d-sign-%s", p.Workers, p.Transaction.Signature.Scheme)
+		name := fmt.Sprintf("workers-%d-sign-%s", p.Workers, p.Transaction.Policy.NamespacePolicies[0].Scheme)
 		b.Run(name, func(b *testing.B) {
 			benchFunc(b, p)
 		})
@@ -262,9 +265,10 @@ func TestGenValidTx(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
+			signer := NewTxSignerVerifier(p.Transaction.Policy)
 
 			for i := 0; i < 100; i++ {
-				requireValidTx(t, g.Next(), p, c.Signer)
+				requireValidTx(t, g.Next(), p, signer)
 			}
 		})
 	}
@@ -284,11 +288,12 @@ func TestGenValidBlock(t *testing.T) {
 				TxGenerator: c.MakeGenerator(),
 				BlockSize:   p.Block.Size,
 			}
+			signer := NewTxSignerVerifier(p.Transaction.Policy)
 
 			for i := 0; i < 5; i++ {
 				block := g.Next()
 				for _, tx := range block.Txs {
-					requireValidTx(t, tx, p, c.Signer)
+					requireValidTx(t, tx, p, signer)
 				}
 			}
 		})
@@ -303,8 +308,9 @@ func TestGenInvalidSigTx(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	txs := NextN(g, 1e4)
+	signer := NewTxSignerVerifier(p.Transaction.Policy)
 	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
-		if !c.Signer.Verify(g.Next()) {
+		if !signer.Verify(g.Next()) {
 			return 1
 		}
 		return 0
@@ -315,7 +321,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := defaultProfile(1)
-	p.Transaction.Signature.Scheme = signature.NoScheme
+	p.Transaction.Policy.NamespacePolicies[0].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
 			Gap:         NewConstantDistribution(1),

@@ -40,11 +40,13 @@ load-profile:
     read-write-count:
       type: constant
       const: 2
-    signature:
-      scheme: ECDSA
-      namespaces:
-        - 0
-      seed: 10
+    policy:
+      namespace-policies:
+        {{ range $nsID, $element := .Policy.NamespacePolicies }}
+        {{ $nsID }}:
+          scheme: {{ $element.Scheme }}
+          seed: {{ $element.Seed }}
+        {{ end }}
   query:
     query-size:
     min-invalid-keys-portion:
@@ -60,6 +62,9 @@ stream:
     initial-limit: 1000
   gen-batch: 1
   buffers-size: 1
+generate:
+  namespaces: true
+  load: true
 logging:
   enabled: true
   level: INFO 

@@ -52,10 +52,10 @@ func startCmd() *cobra.Command {
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			if onlyNamespace {
-				conf.OnlyNamespaceGeneration = true
+				conf.Generate = &loadgen.Generate{Namespaces: true}
 			}
 			if onlyWorkload {
-				conf.OnlyLoadGeneration = true
+				conf.Generate = &loadgen.Generate{Load: true}
 			}
 
 			client, err := loadgen.NewLoadGenClient(conf)

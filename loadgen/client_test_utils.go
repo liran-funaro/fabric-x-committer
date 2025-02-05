@@ -15,6 +15,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -137,8 +139,17 @@ func GenerateNamespacesUnderTest(t *testing.T, namespaces []types.NamespaceID) *
 		9123,
 	)
 	vcConfig := ReadConfig()
-	vcConfig.LoadProfile.Transaction.Signature.Namespaces = namespaces
-	vcConfig.OnlyNamespaceGeneration = true
+	policy := &workload.PolicyProfile{
+		NamespacePolicies: make(map[types.NamespaceID]*workload.Policy, len(namespaces)),
+	}
+	for i, ns := range namespaces {
+		policy.NamespacePolicies[ns] = &workload.Policy{
+			Scheme: signature.Ecdsa,
+			Seed:   int64(i),
+		}
+	}
+	vcConfig.LoadProfile.Transaction.Policy = policy
+	vcConfig.Generate = &Generate{Namespaces: true}
 	runLoadGenerator(t, vcConfig)
 	return conn
 }

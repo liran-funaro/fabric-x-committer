@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -25,21 +26,42 @@ type (
 
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
 	TxSignerVerifier struct {
-		HashSigner *HashSignerVerifier
+		HashSigners map[types.NamespaceID]*HashSignerVerifier
+	}
+
+	// HashSignerVerifier supports signing and verifying a hash value.
+	HashSignerVerifier struct {
+		signer   sigverificationtest.NsSigner
+		verifier signature.NsVerifier
+		pubKey   PublicKey
+		scheme   Scheme
 	}
 )
 
+var defaultPolicy = Policy{
+	Scheme: signature.NoScheme,
+}
+
 // NewTxSignerVerifier creates a new TxSignerVerifier given a workload profile.
-func NewTxSignerVerifier(profile *SignatureProfile) *TxSignerVerifier {
+func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
+	signers := make(map[types.NamespaceID]*HashSignerVerifier)
+	// We set default policy to ensure smooth operation even if the user did not specify anything.
+	signers[0] = NewHashSignerVerifier(&defaultPolicy)
+	signers[types.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
+
+	for nsID, p := range policy.NamespacePolicies {
+		signers[nsID] = NewHashSignerVerifier(p)
+	}
 	return &TxSignerVerifier{
-		HashSigner: NewHashSignerVerifier(profile),
+		HashSigners: signers,
 	}
 }
 
 // Sign signs a TX.
 func (e *TxSignerVerifier) Sign(tx *protoblocktx.Tx) {
-	for nsIndex := range tx.GetNamespaces() {
-		tx.Signatures = append(tx.Signatures, e.HashSigner.Sign(tx, nsIndex))
+	for nsIndex, ns := range tx.GetNamespaces() {
+		signer := e.HashSigners[types.NamespaceID(ns.NsId)]
+		tx.Signatures = append(tx.Signatures, signer.Sign(tx, nsIndex))
 	}
 }
 
@@ -49,8 +71,9 @@ func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 		return false
 	}
 
-	for nsIndex := range tx.GetNamespaces() {
-		if !e.HashSigner.Verify(tx, nsIndex) {
+	for nsIndex, ns := range tx.GetNamespaces() {
+		signer := e.HashSigners[types.NamespaceID(ns.NsId)]
+		if !signer.Verify(tx, nsIndex) {
 			return false
 		}
 	}
@@ -58,14 +81,8 @@ func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 	return true
 }
 
-// GetVerificationKey returns the verification key.
-func (e *TxSignerVerifier) GetVerificationKey() []byte {
-	serializedKey, _ := e.HashSigner.GetVerificationKey()
-	return serializedKey
-}
-
 // NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile and a seed.
-func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
+func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 	logger.Debugf("sig profile: %v", profile)
 	factory := sigverificationtest.GetSignatureFactory(profile.Scheme)
 
@@ -91,6 +108,34 @@ func NewHashSignerVerifier(profile *SignatureProfile) *HashSignerVerifier {
 		pubKey:   verificationKey,
 		scheme:   profile.Scheme,
 	}
+}
+
+// Sign signs a hash.
+func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) Signature {
+	sign, err := e.signer.SignNs(tx, nsIndex)
+	Must(err)
+	return sign
+}
+
+// Verify verifies a Signature.
+func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx, nsIndex int) bool {
+	if err := e.verifier.VerifyNs(tx, nsIndex); err != nil {
+		return false
+	}
+	return true
+}
+
+// GetVerificationPolicy returns the verification policy.
+func (e *HashSignerVerifier) GetVerificationPolicy() *protoblocktx.NamespacePolicy {
+	return &protoblocktx.NamespacePolicy{
+		Scheme:    e.scheme,
+		PublicKey: e.pubKey,
+	}
+}
+
+// GetVerificationKeyAndSigner returns the verification key and the signer.
+func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (PublicKey, sigverificationtest.NsSigner) {
+	return e.pubKey, e.signer
 }
 
 func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
@@ -123,37 +168,4 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 	}
 
 	return nil, nil, errors.New("could not find verification key or sign certificate")
-}
-
-// HashSignerVerifier supports signing and verifying a hash value.
-type HashSignerVerifier struct {
-	signer   sigverificationtest.NsSigner
-	verifier signature.NsVerifier
-	pubKey   PublicKey
-	scheme   Scheme
-}
-
-// Sign signs a hash.
-func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) Signature {
-	sign, err := e.signer.SignNs(tx, nsIndex)
-	Must(err)
-	return sign
-}
-
-// Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx, nsIndex int) bool {
-	if err := e.verifier.VerifyNs(tx, nsIndex); err != nil {
-		return false
-	}
-	return true
-}
-
-// GetVerificationKey returns the verification key.
-func (e *HashSignerVerifier) GetVerificationKey() (PublicKey, Scheme) {
-	return e.pubKey, e.scheme
-}
-
-// GetVerificationKeyAndSigner returns the verification key and the signer.
-func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (PublicKey, sigverificationtest.NsSigner) {
-	return e.pubKey, e.signer
 }

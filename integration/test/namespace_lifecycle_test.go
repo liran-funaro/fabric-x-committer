@@ -25,19 +25,13 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		},
 	)
 
-	pubKey, _ := c.CreateCryptoForNs(types.NamespaceID(1), signature.Ecdsa)
-	ns1Policy := &protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: pubKey,
-	}
+	cr1 := c.CreateCryptoForNs(t, types.NamespaceID(1), signature.Ecdsa)
+	ns1Policy := cr1.HashSigner.GetVerificationPolicy()
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)
 
-	newPubKey, _ := c.CreateCryptoForNs(types.NamespaceID(2), signature.Ecdsa)
-	ns2Policy := &protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: newPubKey,
-	}
+	cr2 := c.CreateCryptoForNs(t, types.NamespaceID(2), signature.Ecdsa)
+	ns2Policy := cr2.HashSigner.GetVerificationPolicy()
 	policyBytesNs2, err := proto.Marshal(ns2Policy)
 	require.NoError(t, err)
 

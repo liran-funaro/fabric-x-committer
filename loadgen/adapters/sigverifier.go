@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials/insecure"
@@ -40,9 +40,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	for _, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
 
-		logger.Infof("Set verification verificationKey")
-		for _, ns := range append(c.res.Profile.Transaction.Signature.Namespaces, types.MetaNamespaceID) {
-			_, err = client.SetVerificationKey(ctx, verificationKey(c.res, ns))
+		logger.Infof("Set verification verification keys")
+		for _, key := range getKeys(c.res) {
+			_, err = client.SetVerificationKey(ctx, key)
 			if err != nil {
 				return errors.Wrap(err, "failed setting verification key")
 			}
@@ -68,6 +68,20 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		})
 	}
 	return g.Wait()
+}
+
+func getKeys(res *ClientResources) []*protosigverifierservice.Key {
+	e := workload.NewTxSignerVerifier(res.Profile.Transaction.Policy)
+	keys := make([]*protosigverifierservice.Key, 0, len(e.HashSigners))
+	for nsID, s := range e.HashSigners {
+		p := s.GetVerificationPolicy()
+		keys = append(keys, &protosigverifierservice.Key{
+			NsId:            uint32(nsID),
+			SerializedBytes: p.PublicKey,
+			Scheme:          p.Scheme,
+		})
+	}
+	return keys
 }
 
 func (c *SvAdapter) receiveStatus(

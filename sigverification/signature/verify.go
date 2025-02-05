@@ -46,7 +46,7 @@ func GetVerifierFactory(scheme signature.Scheme) (VerifierFactory, error) {
 	if factory, ok := verifierFactories[strings.ToUpper(scheme)]; ok {
 		return factory, nil
 	}
-	return nil, fmt.Errorf("scheme %v not supported for verifier", strings.ToUpper(scheme))
+	return nil, fmt.Errorf("scheme '%v' not supported for verifier", strings.ToUpper(scheme))
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme

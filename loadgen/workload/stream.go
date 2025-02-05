@@ -15,7 +15,6 @@ type (
 	// TxStream yields transactions from the  stream.
 	TxStream struct {
 		Stream[*protoblocktx.Tx]
-		Signer  *TxSignerVerifier
 		gens    []*txModifierDecorator
 		txQueue chan []*protoblocktx.Tx
 		options *StreamOptions
@@ -52,9 +51,8 @@ func NewTxStream(
 	options *StreamOptions,
 	modifierGenerators ...Generator[Modifier],
 ) *TxStream {
-	signer := NewTxSignerVerifier(&profile.Transaction.Signature)
+	signer := NewTxSignerVerifier(profile.Transaction.Policy)
 	txStream := &TxStream{
-		Signer:  signer,
 		ready:   make(chan any),
 		txQueue: make(chan []*protoblocktx.Tx, max(options.BuffersSize, 1)),
 		options: options,

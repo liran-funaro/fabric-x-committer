@@ -72,6 +72,7 @@ type (
 		SidecarEndpoint     string
 		ChannelID           string
 		BlockSize           uint64
+		Policy              *workload.PolicyProfile
 	}
 
 	// ConfigBlock represents the configuration of the config block.
@@ -114,7 +115,7 @@ func CreateConfigBlock(t *testing.T, conf *ConfigBlock) string {
 
 	metaPubKeyPath := filepath.Join(blockDir, "meta.pem")
 	if conf.MetaNamespaceVerificationKey == nil {
-		conf.MetaNamespaceVerificationKey, _ = workload.NewHashSignerVerifier(&workload.SignatureProfile{
+		conf.MetaNamespaceVerificationKey, _ = workload.NewHashSignerVerifier(&workload.Policy{
 			Scheme: signature.Ecdsa,
 			Seed:   rand.Int64(),
 		}).GetVerificationKeyAndSigner()

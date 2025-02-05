@@ -11,7 +11,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
@@ -19,10 +18,8 @@ import (
 type (
 	// ClientResources holds client's pre-generated resources to be used by the adapters.
 	ClientResources struct {
-		Metrics   *metrics.PerfMetrics
-		PublicKey signature.PublicKey
-		KeyScheme signature.Scheme
-		Profile   *workload.Profile
+		Metrics *metrics.PerfMetrics
+		Profile *workload.Profile
 	}
 
 	// TxStream makes generators such that all can be used in parallel.
@@ -76,16 +73,19 @@ func (c *commonAdapter) sendBlocks(
 	return nil
 }
 
-func verificationKey(res *ClientResources, ns types.NamespaceID) *protosigverifierservice.Key {
-	return &protosigverifierservice.Key{
-		NsId:            uint32(ns),
-		SerializedBytes: res.PublicKey,
-		Scheme:          res.KeyScheme,
-	}
-}
-
+// setupCoordinator this will be removed once the coordinator will process config TXs.
 func (c *commonAdapter) setupCoordinator(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {
-	_, err := client.SetMetaNamespaceVerificationKey(ctx, verificationKey(c.res, types.MetaNamespaceID))
+	txSigner := workload.NewTxSignerVerifier(c.res.Profile.Transaction.Policy)
+	signer, ok := txSigner.HashSigners[types.MetaNamespaceID]
+	if !ok {
+		return errors.New("no meta namespace signer found")
+	}
+	p := signer.GetVerificationPolicy()
+	_, err := client.SetMetaNamespaceVerificationKey(ctx, &protosigverifierservice.Key{
+		NsId:            uint32(types.MetaNamespaceID),
+		SerializedBytes: p.PublicKey,
+		Scheme:          p.Scheme,
+	})
 	if err != nil {
 		return err
 	}

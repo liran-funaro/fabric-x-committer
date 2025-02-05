@@ -20,10 +20,14 @@ load-profile:
     read-write-count:
       type: constant
       const: 2
-    signature:
-      scheme: ECDSA
-      namespaces: 0
-      signer-seed: 10
+    policy:
+      namespace-policies:
+        0:
+          scheme: ECDSA
+          seed: 10
+        1024:
+          scheme: ECDSA
+          seed: 11
   conflicts:
     invalid-signatures: 0.1
   seed: 12345
@@ -35,3 +39,6 @@ stream:
   # We set low values for the buffer and batch to reduce the CPU load during tests.
   buffers-size: 1
   gen-batch: 1
+generate:
+  namespaces: true
+  load: true

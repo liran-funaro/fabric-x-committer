@@ -21,7 +21,6 @@ type (
 	Client struct {
 		conf           *ClientConfig
 		txStream       *workload.TxStream
-		namespaceGen   *workload.NamespaceGenerator
 		metricProvider monitoringmetrics.Provider
 		resources      adapters.ClientResources
 		adapter        ServiceAdapter
@@ -37,47 +36,52 @@ type (
 
 	// clientStream implements the TxStream interface.
 	clientStream struct {
-		namespaceChan channel.Reader[*protoblocktx.Tx]
-		txStream      *workload.TxStream
-		blockSize     uint64
+		metaChan  channel.Reader[*protoblocktx.Tx]
+		txStream  *workload.TxStream
+		blockSize uint64
 	}
 
-	// clientBlockGenerator is a block generator that first submit a block with the namespace TX,
+	// clientBlockGenerator is a block generator that first submit blocks from the metaChan,
 	// and blocks until indicated that it was committed.
 	// Then, it submits blocks from the tx stream.
 	clientBlockGenerator struct {
-		namespaceChan channel.Reader[*protoblocktx.Tx]
-		blockGen      workload.Generator[*protoblocktx.Block]
+		metaChan channel.Reader[*protoblocktx.Tx]
+		blockGen workload.Generator[*protoblocktx.Block]
 	}
 
-	// clientTxGenerator is a TX generator that first submit the namespace TX,
+	// clientTxGenerator is a TX generator that first submit TXs from the metaChan,
 	// and blocks until indicated that it was committed.
 	// Then, it submits transactions from the tx stream.
 	clientTxGenerator struct {
-		namespaceChan channel.Reader[*protoblocktx.Tx]
-		txGen         workload.Generator[*protoblocktx.Tx]
+		metaChan channel.Reader[*protoblocktx.Tx]
+		txGen    workload.Generator[*protoblocktx.Tx]
 	}
 )
 
-var logger = logging.New("load-gen-client")
+var (
+	logger          = logging.New("load-gen-client")
+	defaultGenerate = Generate{
+		Namespaces: true,
+		Load:       true,
+	}
+)
 
 // NewLoadGenClient creates a new client instance.
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	logger.Infof("Config passed: %s", utils.LazyJson(conf))
-	if conf.OnlyNamespaceGeneration && conf.OnlyLoadGeneration {
-		return nil, errors.New("only one of OnlyNamespaceGeneration and OnlyLoadGeneration must be specified")
+	if conf.Generate == nil || !(conf.Generate.Load || conf.Generate.Namespaces) {
+		conf.Generate = &defaultGenerate
 	}
+
 	c := &Client{
 		conf:           conf,
 		txStream:       workload.NewTxStream(conf.LoadProfile, conf.Stream),
-		namespaceGen:   workload.NewNamespaceGenerator(conf.LoadProfile.Transaction.Signature),
 		metricProvider: metrics.CreateProvider(conf.Monitoring.Metrics),
 		resources: adapters.ClientResources{
 			Profile: conf.LoadProfile,
 		},
 	}
 	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(c.metricProvider)
-	c.resources.PublicKey, c.resources.KeyScheme = c.txStream.Signer.HashSigner.GetVerificationKey()
 
 	adapter, err := getAdapter(&conf.Adapter, &c.resources)
 	if err != nil {
@@ -119,67 +123,68 @@ func (c *Client) Run(ctx context.Context) error {
 	})
 	c.txStream.WaitForReady(gCtx)
 
+	metaChan := make(chan *protoblocktx.Tx, 1)
 	cs := &clientStream{
 		blockSize: c.conf.LoadProfile.Block.Size,
+		metaChan:  channel.NewReader(gCtx, metaChan),
 	}
-	var namespaceChan chan *protoblocktx.Tx
-	if !c.conf.OnlyLoadGeneration {
-		namespaceChan = make(chan *protoblocktx.Tx, 1)
-		cs.namespaceChan = channel.NewReader(gCtx, namespaceChan)
-	}
-	if !c.conf.OnlyNamespaceGeneration {
+	if c.conf.Generate.Load {
 		cs.txStream = c.txStream
 	}
 	g.Go(func() error {
 		return c.adapter.RunWorkload(gCtx, cs)
 	})
 
-	if !c.conf.OnlyLoadGeneration {
-		err := c.submitNamespaceTx(ctx, namespaceChan)
-		if err != nil {
-			cancel()
-			if gErr := g.Wait(); gErr != nil {
-				return errors.Wrapf(gErr, "failed to submit namespace TX")
-			}
-			return err
+	if err := c.submitMetaTXs(ctx, metaChan); err != nil {
+		logger.Errorf("Failed to process meta tx: %v", err)
+		cancel()
+		if gErr := g.Wait(); gErr != nil {
+			return errors.Wrapf(gErr, "failed to process meta TX")
 		}
+		return err
 	}
 
-	if c.conf.OnlyNamespaceGeneration {
+	if !c.conf.Generate.Load {
 		cancel()
 	}
 	return g.Wait()
 }
 
-// submitNamespaceTx writes the namespace TX to the channel, and waits for it to be committed.
-func (c *Client) submitNamespaceTx(ctx context.Context, namespaceChan chan *protoblocktx.Tx) error {
-	namespaceTx, err := c.namespaceGen.CreateNamespaces()
-	if err != nil {
-		return errors.Wrap(err, "failed to create namespace tx")
-	}
-	logger.Infof("Submitting namespace TX")
-	lastProgress := c.adapter.Progress()
-	if !channel.NewWriter(ctx, namespaceChan).Write(namespaceTx) {
-		return errors.New("context ended before submitting namespace TX")
+// submitMetaTXs writes the meta TXs to the channel, and waits for them to be committed.
+func (c *Client) submitMetaTXs(ctx context.Context, metaChanIn chan *protoblocktx.Tx) error {
+	defer close(metaChanIn)
+	if !c.conf.Generate.Namespaces {
+		return nil
 	}
 
-	for c.adapter.Progress() == lastProgress {
+	metaChan := channel.NewWriter(ctx, metaChanIn)
+	curProgress := c.adapter.Progress()
+
+	meta, err := workload.CreateNamespaces(c.conf.LoadProfile.Transaction.Policy)
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("Submitting meta TX. Progress: %d", curProgress)
+	if !metaChan.Write(meta) {
+		return errors.New("context ended before submitting meta TX")
+	}
+
+	for lastProgress := curProgress; curProgress == lastProgress; curProgress = c.adapter.Progress() {
 		select {
 		case <-ctx.Done():
-			return errors.New("context ended before acknowledging namespace TX")
+			return errors.New("context ended before acknowledging meta TX")
 		case <-time.Tick(time.Second):
 		}
 	}
-
-	logger.Infof("Namespace TX submitted")
-	close(namespaceChan)
+	logger.Infof("Meta TX submitted. Progress: %d", curProgress)
 	return nil
 }
 
 // MakeBlocksGenerator instantiate clientBlockGenerator.
 func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protoblocktx.Block] {
 	cg := &clientBlockGenerator{
-		namespaceChan: c.namespaceChan,
+		metaChan: c.metaChan,
 	}
 	if c.txStream != nil {
 		cg.blockGen = &workload.BlockGenerator{
@@ -193,7 +198,7 @@ func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protoblocktx.Bl
 // MakeTxGenerator instantiate clientTxGenerator.
 func (c *clientStream) MakeTxGenerator() workload.Generator[*protoblocktx.Tx] {
 	cg := &clientTxGenerator{
-		namespaceChan: c.namespaceChan,
+		metaChan: c.metaChan,
 	}
 	if c.txStream != nil {
 		cg.txGen = c.txStream.MakeGenerator()
@@ -203,14 +208,14 @@ func (c *clientStream) MakeTxGenerator() workload.Generator[*protoblocktx.Tx] {
 
 // Next generate the next block.
 func (g *clientBlockGenerator) Next() *protoblocktx.Block {
-	if g.namespaceChan != nil {
-		if namespaceTx, ok := g.namespaceChan.Read(); ok {
+	if g.metaChan != nil {
+		if metaTX, ok := g.metaChan.Read(); ok {
 			return &protoblocktx.Block{
-				Txs:    []*protoblocktx.Tx{namespaceTx},
+				Txs:    []*protoblocktx.Tx{metaTX},
 				TxsNum: []uint32{0},
 			}
 		}
-		g.namespaceChan = nil
+		g.metaChan = nil
 	}
 	if g.blockGen != nil {
 		return g.blockGen.Next()
@@ -220,11 +225,11 @@ func (g *clientBlockGenerator) Next() *protoblocktx.Block {
 
 // Next generate the next TX.
 func (g *clientTxGenerator) Next() *protoblocktx.Tx {
-	if g.namespaceChan != nil {
-		if namespaceTx, ok := g.namespaceChan.Read(); ok {
-			return namespaceTx
+	if g.metaChan != nil {
+		if metaTx, ok := g.metaChan.Read(); ok {
+			return metaTx
 		}
-		g.namespaceChan = nil
+		g.metaChan = nil
 	}
 	if g.txGen != nil {
 		return g.txGen.Next()

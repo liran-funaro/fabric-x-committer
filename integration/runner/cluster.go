@@ -56,13 +56,23 @@ type (
 		committedBlock chan *common.Block
 		rootDir        string
 
-		nsToCrypto     map[types.NamespaceID]*workload.HashSignerVerifier
+		nsToCrypto     map[types.NamespaceID]*Crypto
 		nsToCryptoLock sync.Mutex
 
 		clusterConfig *Config
 
 		channelID        string
 		seedForCryptoGen *rand.Rand
+	}
+
+	// Crypto holds crypto material for a namespace.
+	Crypto struct {
+		Namespace  types.NamespaceID
+		Profile    *workload.Policy
+		HashSigner *workload.HashSignerVerifier
+		NsSigner   sigverificationtest.NsSigner
+		PubKey     []byte
+		PubKeyPath string
 	}
 
 	// Config represents the configuration of the cluster.
@@ -100,7 +110,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		),
 		dbEnv:            vcservice.NewDatabaseTestEnv(t),
 		rootDir:          t.TempDir(),
-		nsToCrypto:       map[types.NamespaceID]*workload.HashSignerVerifier{},
+		nsToCrypto:       make(map[types.NamespaceID]*Crypto),
 		clusterConfig:    clusterConfig,
 		channelID:        "channel1",
 		committedBlock:   make(chan *common.Block, 100),
@@ -109,13 +119,13 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 
 	// Start mock ordering service
 	ordererEndpoint := makeLocalListenAddress(findAvailablePortRange(t, 1)[0])
-	metaPubKey, _ := c.CreateCryptoForNs(types.MetaNamespaceID, signature.Ecdsa)
+	metaCrypto := c.CreateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
 	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
 		ChannelID: c.channelID,
 		OrdererEndpoints: []*connection.OrdererEndpoint{
 			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},
 		},
-		MetaNamespaceVerificationKey: metaPubKey,
+		MetaNamespaceVerificationKey: metaCrypto.PubKey,
 	})
 	ordererConfig := &configtempl.OrdererConfig{
 		ServerEndpoint:  ordererEndpoint,
@@ -195,6 +205,12 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 			OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
 			ChannelID:           c.channelID,
 			BlockSize:           clusterConfig.BlockSize,
+			Policy: &workload.PolicyProfile{
+				NamespacePolicies: make(map[types.NamespaceID]*workload.Policy),
+			},
+		}
+		for _, cr := range c.GetAllCrypto() {
+			loadgenConfig.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
 		}
 		c.loadGen = newProcess(t, loadgenCmd, c.rootDir, loadgenConfig)
 		return c
@@ -244,10 +260,10 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 	}
 
 	for _, nsID := range namespaces {
-		pubKey, _ := c.CreateCryptoForNs(nsID, signature.Ecdsa)
+		nsCr := c.CreateCryptoForNs(t, nsID, signature.Ecdsa)
 		nsPolicy := &protoblocktx.NamespacePolicy{
 			Scheme:    signature.Ecdsa,
-			PublicKey: pubKey,
+			PublicKey: nsCr.PubKey,
 		}
 		policyBytes, err := proto.Marshal(nsPolicy)
 		require.NoError(t, err)
@@ -278,8 +294,8 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 // AddSignatures adds signature for each namespace in a given transaction.
 func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 	for idx, ns := range tx.Namespaces {
-		_, tSigner := c.GetCryptoForNs(t, types.NamespaceID(ns.NsId))
-		sig, err := tSigner.SignNs(tx, idx)
+		nsCr := c.GetCryptoForNs(t, types.NamespaceID(ns.NsId))
+		sig, err := nsCr.NsSigner.SignNs(tx, idx)
 		require.NoError(t, err)
 		tx.Signatures = append(tx.Signatures, sig)
 	}
@@ -294,30 +310,48 @@ func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx
 	}
 }
 
-// CreateCryptoForNs creates the crypto materials for a namespace using the signature profile.
-func (c *Cluster) CreateCryptoForNs(nsID types.NamespaceID, schema signature.Scheme) (
-	[]byte, sigverificationtest.NsSigner,
-) {
-	hashSigner := workload.NewHashSignerVerifier(&workload.SignatureProfile{
+// CreateCryptoForNs creates the Crypto materials for a namespace using the signature profile.
+func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID types.NamespaceID, schema signature.Scheme) *Crypto {
+	policyMsg := &workload.Policy{
 		Scheme: schema,
 		Seed:   c.seedForCryptoGen.Int63(),
-	})
+	}
+	hashSigner := workload.NewHashSignerVerifier(policyMsg)
+	pubKey, signer := hashSigner.GetVerificationKeyAndSigner()
+	cr := &Crypto{
+		Namespace:  nsID,
+		Profile:    policyMsg,
+		HashSigner: hashSigner,
+		NsSigner:   signer,
+		PubKey:     pubKey,
+	}
+
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()
-	c.nsToCrypto[nsID] = hashSigner
-
-	return hashSigner.GetVerificationKeyAndSigner()
+	require.Nil(t, c.nsToCrypto[nsID])
+	c.nsToCrypto[nsID] = cr
+	return cr
 }
 
-// GetCryptoForNs returns the crypto material a namespace.
-func (c *Cluster) GetCryptoForNs(t *testing.T, nsID types.NamespaceID) ([]byte, sigverificationtest.NsSigner) {
+// GetCryptoForNs returns the Crypto material a namespace.
+func (c *Cluster) GetCryptoForNs(t *testing.T, nsID types.NamespaceID) *Crypto {
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()
 
-	hashSigner, ok := c.nsToCrypto[nsID]
+	cr, ok := c.nsToCrypto[nsID]
 	require.True(t, ok)
+	return cr
+}
 
-	return hashSigner.GetVerificationKeyAndSigner()
+// GetAllCrypto returns all the Crypto material.
+func (c *Cluster) GetAllCrypto() []*Crypto {
+	c.nsToCryptoLock.Lock()
+	defer c.nsToCryptoLock.Unlock()
+	ret := make([]*Crypto, 0, len(c.nsToCrypto))
+	for _, cr := range c.nsToCrypto {
+		ret = append(ret, cr)
+	}
+	return ret
 }
 
 // createClientConnection creates a service connection using its given server endpoint.
