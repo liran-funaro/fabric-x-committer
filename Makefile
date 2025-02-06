@@ -73,11 +73,17 @@ MAKEFLAGS += --jobs=16
 #########################
 
 test: build
-	#excludes integration test. For integration test, use `make integration-test`.
-	go list ./... | grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/integration" | xargs go test -v
+	# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
+	go list ./... \
+		| grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/integration" \
+		| grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/docker" \
+		| xargs go test -v
 
 integration-test: build
 	go test -v ./integration/...
+
+container-test: build-test-node-image build-mock-orderer-image
+	go test -v ./docker/...
 
 test-package-%: build
 	go test -v ./$*/...

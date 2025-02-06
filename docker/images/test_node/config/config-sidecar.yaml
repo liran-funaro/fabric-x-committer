@@ -23,12 +23,21 @@ sidecar:
       bucket-count: 1000
 
   orderer:
-    endpoint: :7050
+    # SC_SIDECAR_ORDERER_ENDPOINTS="localhost:7777 localhost:8888"
+    endpoints:
+      - :7050
+    # SC_SIDECAR_ORDERER_CHANNEL_ID=someChannel
     channel-id: mychannel
-    orderer-connection-profile:
+    # SC_SIDECAR_ORDERER_SIGNED_ENVELOPES=true or false
+    signed-envelopes: false
+
+    connection-profile:
+      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_ROOT_CA_PATHS=/some/path/to/ca-certs.pem
       root-ca-paths:
-      - /root/config/crypto/ca-certs.pem
+        - /root/config/crypto/ca-certs.pem
+      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_MSP_DIR=/some/path/to/msp
       msp-dir: /root/config/crypto/peerOrganizations/defaultpeerorg.example.com/peers/peerservice-machine1.defaultpeerorg.example.com/msp
+      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_MSP_ID=SomeOrgMSP
       msp-id: DefaultPeerOrgMSP
       bccsp:
         Default: SW

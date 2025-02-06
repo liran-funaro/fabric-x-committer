@@ -61,6 +61,6 @@ jobs:
       env: VCSERVICE_DB=yuga
       script: make integration-test
     - stage: test
-      name: Build container images
+      name: Build and test container images
       install: skip
-      script: make build-test-node-image -j16
+      script: make container-test -j16
