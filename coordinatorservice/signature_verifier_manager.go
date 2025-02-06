@@ -102,16 +102,18 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (svm *signatureVerifierManager) setVerificationKey(ctx context.Context, key *protosigverifierservice.Key) error {
+func (svm *signatureVerifierManager) updatePolicies(
+	ctx context.Context,
+	policies *protosigverifierservice.Policies,
+) error {
 	for i, sv := range svm.signVerifier {
-		logger.Debugf("Setting verification key to sv [%d]", i)
-		_, err := sv.client.SetVerificationKey(ctx, key)
-		logger.Debugf("Verification key successfully set")
+		logger.Infof("Updating policy for sv [%d]", i)
+		_, err := sv.client.UpdatePolicies(ctx, policies)
 		if err != nil {
 			return err
 		}
+		logger.Infof("Policies update successfully for sv [%d]", i)
 	}
-
 	return nil
 }
 
@@ -291,8 +293,8 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 				continue
 			}
 			delete(sv.txBeingValidated, k)
-			if !resp.IsValid {
-				txNode.Tx.PrelimInvalidTxStatus = sigInvalidTxStatus
+			if resp.Status != protoblocktx.Status_COMMITTED {
+				txNode.Tx.PrelimInvalidTxStatus = &protovcservice.InvalidTxStatus{Code: resp.Status}
 			}
 			validatedTxs = append(validatedTxs, txNode)
 		}

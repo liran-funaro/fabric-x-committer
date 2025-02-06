@@ -17,6 +17,9 @@ type (
 // MetaNamespaceID is an ID of a system namespace which holds information about user's namespaces.
 const MetaNamespaceID = NamespaceID(1024)
 
+// ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
+var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
+
 // Bytes converts a NamespaceID to bytes representation.
 func (nsID NamespaceID) Bytes() []byte {
 	return protowire.AppendVarint(nil, uint64(nsID))
@@ -26,7 +29,7 @@ func (nsID NamespaceID) Bytes() []byte {
 func NamespaceIDFromBytes(ns []byte) (NamespaceID, error) {
 	v, l := protowire.ConsumeVarint(ns)
 	if l < 0 || l != len(ns) {
-		return 0, errors.New("invalid namespace id")
+		return 0, ErrInvalidNamespaceID
 	}
 	return NamespaceID(v), nil
 }

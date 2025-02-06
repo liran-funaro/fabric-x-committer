@@ -6,11 +6,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/protobuf/proto"
 )
 
 type svMgrTestEnv struct {
@@ -143,25 +148,30 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 func TestSignatureVerifierManagerKey(t *testing.T) {
 	env := newSvMgrTestEnv(t, 3)
 
-	// verify that all mock sigverifiers have empty verification key
+	// verify that all mock policy verifiers have empty verification key.
 	for _, mockSv := range env.mockSvService {
-		require.Empty(t, mockSv.GetVerificationKey())
+		require.Empty(t, mockSv.GetPolicies().Policies)
 	}
 
 	// set verification key
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	err := env.signVerifierManager.setVerificationKey(
-		ctx,
-		&protosigverifierservice.Key{
-			SerializedBytes: []byte("dummy"),
+	ns := uint32(0)
+	nsID := types.NamespaceID(ns)
+	expectedPolicy := &protosigverifierservice.Policies{
+		Policies: []*protosigverifierservice.PolicyItem{
+			policy.MakePolicy(t, nsID, &protoblocktx.NamespacePolicy{
+				Scheme:    signature.Ecdsa,
+				PublicKey: []byte("dummy"),
+			}),
 		},
-	)
+	}
+	err := env.signVerifierManager.updatePolicies(ctx, expectedPolicy)
 	require.NoError(t, err)
 
-	// verify that all mock sigverifiers have the same verification key
+	// verify that all mock policy verifiers have the same verification key.
 	for _, mockSv := range env.mockSvService {
-		require.Equal(t, []byte("dummy"), mockSv.GetVerificationKey())
+		require.True(t, proto.Equal(expectedPolicy, mockSv.GetPolicies()))
 	}
 }
 

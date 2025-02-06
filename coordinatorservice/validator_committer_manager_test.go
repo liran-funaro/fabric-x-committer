@@ -8,11 +8,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/protobuf/proto"
 )
@@ -22,7 +25,6 @@ type vcMgrTestEnv struct {
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           chan *protoblocktx.TransactionsStatus
-	prelimInvalidTxStatus     chan []*protovcservice.Transaction
 	mockVcServices            []*mock.VcService
 	sigVerTestEnv             *svMgrTestEnv
 }
@@ -34,17 +36,15 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxsStatus := make(chan *protoblocktx.TransactionsStatus, 10)
-	prelimInvalidTxStatus := make(chan []*protovcservice.Transaction, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			serversConfig:                         servers.Configs,
-			incomingTxsForValidationCommit:        inputTxs,
-			outgoingValidatedTxsNode:              outputTxs,
-			outgoingTxsStatus:                     outputTxsStatus,
-			incomingBadlyFormedTxsStatusForCommit: prelimInvalidTxStatus,
-			metrics:                               newPerformanceMetrics(true),
-			signVerifierMgr:                       svEnv.signVerifierManager,
+			serversConfig:                  servers.Configs,
+			incomingTxsForValidationCommit: inputTxs,
+			outgoingValidatedTxsNode:       outputTxs,
+			outgoingTxsStatus:              outputTxsStatus,
+			metrics:                        newPerformanceMetrics(true),
+			policyMgr:                      &policyManager{signVerifierMgr: svEnv.signVerifierManager},
 		},
 	)
 
@@ -64,7 +64,6 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		inputTxs:                  inputTxs,
 		outputTxs:                 outputTxs,
 		outputTxsStatus:           outputTxsStatus,
-		prelimInvalidTxStatus:     prelimInvalidTxStatus,
 		mockVcServices:            vcs,
 		sigVerTestEnv:             svEnv,
 	}
@@ -143,56 +142,18 @@ func TestValidatorCommitterManager(t *testing.T) {
 		}, 4*time.Second, 100*time.Millisecond)
 	})
 
-	t.Run("send transactions with preliminary invalid status", func(t *testing.T) {
-		txBatch := []*protovcservice.Transaction{
-			{
-				ID: "1",
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-				},
-				BlockNumber: 15,
-				TxNum:       0,
-			},
-			{
-				ID: "2",
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-				},
-				BlockNumber: 4,
-				TxNum:       1,
-			},
-		}
-		env.prelimInvalidTxStatus <- txBatch
-
-		outTxsStatus := <-env.outputTxsStatus
-
-		require.Equal(t, map[string]*protoblocktx.StatusWithHeight{
-			"1": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED, 15, 0),
-			"2": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID, 4, 1),
-		}, outTxsStatus.Status)
-
-		maxNum := uint64(0)
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-		t.Cleanup(cancel)
-		for _, vc := range env.mockVcServices {
-			// NOTE: As we are using mock service, the ledger data is not shared. Hence,
-			//       we have to query each mock vcservice to find the last seen maximum
-			//       block number.
-			blk, err := vc.GetMaxSeenBlockNumber(ctx, nil)
-			require.NoError(t, err)
-			maxNum = max(maxNum, blk.Number)
-		}
-		require.Equal(t, uint64(15), maxNum)
-	})
-
 	t.Run("namespace transaction should update signature verifier", func(t *testing.T) {
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			require.Nil(t, mockSvService.GetVerificationKey())
+			require.Empty(t, mockSvService.GetPolicies().Policies)
 		}
 
+		verificationKey, _ := workload.NewHashSignerVerifier(&workload.Policy{
+			Scheme: signature.Ecdsa,
+			Seed:   10,
+		}).GetVerificationKeyAndSigner()
 		p := &protoblocktx.NamespacePolicy{
-			Scheme:    "ECDSA",
-			PublicKey: []byte("publicKey"),
+			Scheme:    signature.Ecdsa,
+			PublicKey: verificationKey,
 		}
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
@@ -228,7 +189,12 @@ func TestValidatorCommitterManager(t *testing.T) {
 		require.Equal(t, txBatch, <-env.outputTxs)
 
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			require.Equal(t, []byte("publicKey"), mockSvService.GetVerificationKey())
+			require.ElementsMatch(t, []*protosigverifierservice.PolicyItem{
+				{
+					Namespace: types.NamespaceID(1).Bytes(),
+					Policy:    pBytes,
+				},
+			}, mockSvService.GetPolicies().Policies)
 		}
 	})
 

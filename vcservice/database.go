@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"go.uber.org/zap/zapcore"
 
@@ -33,6 +34,8 @@ const (
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
 )
+
+var queryPolicies = fmt.Sprintf("SELECT key, value from ns_%d;", types.MetaNamespaceID)
 
 // ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
 var ErrMetadataEmpty = errors.New("metadata value is empty")
@@ -489,6 +492,28 @@ func (db *database) readStatusWithHeight( // nolint:ireturn
 		rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
 	}
 	return rows, r.Err()
+}
+
+func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.Policies, error) {
+	rows, err := db.retryQuery(ctx, queryPolicies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys, values, err := readKeysAndValues[[]byte, []byte](rows)
+	if err != nil {
+		return nil, err
+	}
+	policy := &protosigverifierservice.Policies{
+		Policies: make([]*protosigverifierservice.PolicyItem, len(keys)),
+	}
+	for i, key := range keys {
+		policy.Policies[i] = &protosigverifierservice.PolicyItem{
+			Namespace: key,
+			Policy:    values[i],
+		}
+	}
+	return policy, nil
 }
 
 func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn

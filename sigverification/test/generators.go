@@ -1,7 +1,6 @@
 package sigverification_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"sync/atomic"
@@ -316,10 +315,6 @@ func NewDummyVerifierServer(executorDelay test.Distribution) sigverification.Ver
 			return &sigverification.ResponseBatch{Responses: <-executor.Outputs()}
 		})
 	return &dummyVerifierServer{streamHandler: streamHandler}
-}
-
-func (s *dummyVerifierServer) SetVerificationKey(context.Context, *sigverification.Key) (*sigverification.Empty, error) {
-	return nil, nil
 }
 
 func (s *dummyVerifierServer) StartStream(stream sigverification.Verifier_StartStreamServer) error {

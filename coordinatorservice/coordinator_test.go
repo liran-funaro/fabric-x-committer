@@ -704,7 +704,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	require.NoError(t, env.csStream.Send(block2))
 
 	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for len(actualTxsStatus) < 4 {
+	for len(actualTxsStatus) < 5 {
 		statusBatch, err := env.csStream.Recv()
 		require.NoError(t, err)
 		for id, s := range statusBatch.Status {
@@ -715,7 +715,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		"tx2":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
 		"tx3":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
 		"mvcc conflict":       types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE, 2, 4),
+		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 4),
 		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -14,7 +15,7 @@ import (
 // - when the tx has non-empty signature, it is valid.
 type SigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	verificationKey   []byte
+	policies          *protosigverifierservice.Policies
 	numBlocksReceived *atomic.Uint32
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
@@ -25,16 +26,16 @@ func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
 		UnimplementedVerifierServer: protosigverifierservice.UnimplementedVerifierServer{},
 		numBlocksReceived:           &atomic.Uint32{},
+		policies:                    &protosigverifierservice.Policies{},
 	}
 }
 
-// SetVerificationKey is a mock implementation of the protosignverifierservice.VerifierServer.
-func (m *SigVerifier) SetVerificationKey(
-	_ context.Context,
-	k *protosigverifierservice.Key,
-) (*protosigverifierservice.Empty, error) {
-	logger.Info("Verification key has been set")
-	m.verificationKey = k.SerializedBytes
+// UpdatePolicies is a mock implementation of the protosignverifierservice.UpdatePolicies.
+func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protosigverifierservice.Policies) (
+	*protosigverifierservice.Empty, error,
+) {
+	m.policies.Policies = append(m.policies.Policies, policies.Policies...)
+	logger.Info("policy has been updated")
 	return &protosigverifierservice.Empty{}, nil
 }
 
@@ -92,10 +93,14 @@ func (m *SigVerifier) sendResponseBatch(
 			if i < m.MockFaultyNodeDropSize {
 				continue
 			}
+			status := protoblocktx.Status_COMMITTED
+			if len(req.GetTx().GetSignatures()) == 0 {
+				status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+			}
 			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.Response{
 				BlockNum: req.BlockNum,
 				TxNum:    req.TxNum,
-				IsValid:  len(req.GetTx().GetSignatures()) > 0,
+				Status:   status,
 			})
 		}
 
@@ -112,7 +117,7 @@ func (m *SigVerifier) GetNumBlocksReceived() uint32 {
 	return m.numBlocksReceived.Load()
 }
 
-// GetVerificationKey returns the verification key of the mock verifier.
-func (m *SigVerifier) GetVerificationKey() []byte {
-	return m.verificationKey
+// GetPolicies returns the verification key of the mock verifier.
+func (m *SigVerifier) GetPolicies() *protosigverifierservice.Policies {
+	return m.policies
 }

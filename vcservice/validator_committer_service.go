@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -210,6 +211,14 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	return &protoblocktx.TransactionsStatus{
 		Status: txIDsStatus,
 	}, nil
+}
+
+// GetPolicies retrieves the policy data from the database.
+func (vc *ValidatorCommitterService) GetPolicies(
+	ctx context.Context,
+	_ *protovcservice.Empty,
+) (*protosigverifierservice.Policies, error) {
+	return vc.db.readPolicies(ctx)
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.

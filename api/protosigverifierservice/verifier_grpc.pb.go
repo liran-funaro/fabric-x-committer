@@ -19,15 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Verifier_SetVerificationKey_FullMethodName = "/protosigverifierservice.Verifier/SetVerificationKey"
-	Verifier_StartStream_FullMethodName        = "/protosigverifierservice.Verifier/StartStream"
+	Verifier_UpdatePolicies_FullMethodName = "/protosigverifierservice.Verifier/UpdatePolicies"
+	Verifier_StartStream_FullMethodName    = "/protosigverifierservice.Verifier/StartStream"
 )
 
 // VerifierClient is the client API for Verifier service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VerifierClient interface {
-	SetVerificationKey(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Empty, error)
+	UpdatePolicies(ctx context.Context, in *Policies, opts ...grpc.CallOption) (*Empty, error)
 	StartStream(ctx context.Context, opts ...grpc.CallOption) (Verifier_StartStreamClient, error)
 }
 
@@ -39,9 +39,9 @@ func NewVerifierClient(cc grpc.ClientConnInterface) VerifierClient {
 	return &verifierClient{cc}
 }
 
-func (c *verifierClient) SetVerificationKey(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Empty, error) {
+func (c *verifierClient) UpdatePolicies(ctx context.Context, in *Policies, opts ...grpc.CallOption) (*Empty, error) {
 	out := new(Empty)
-	err := c.cc.Invoke(ctx, Verifier_SetVerificationKey_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Verifier_UpdatePolicies_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (x *verifierStartStreamClient) Recv() (*ResponseBatch, error) {
 // All implementations must embed UnimplementedVerifierServer
 // for forward compatibility
 type VerifierServer interface {
-	SetVerificationKey(context.Context, *Key) (*Empty, error)
+	UpdatePolicies(context.Context, *Policies) (*Empty, error)
 	StartStream(Verifier_StartStreamServer) error
 	mustEmbedUnimplementedVerifierServer()
 }
@@ -92,8 +92,8 @@ type VerifierServer interface {
 type UnimplementedVerifierServer struct {
 }
 
-func (UnimplementedVerifierServer) SetVerificationKey(context.Context, *Key) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetVerificationKey not implemented")
+func (UnimplementedVerifierServer) UpdatePolicies(context.Context, *Policies) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
 }
 func (UnimplementedVerifierServer) StartStream(Verifier_StartStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartStream not implemented")
@@ -111,20 +111,20 @@ func RegisterVerifierServer(s grpc.ServiceRegistrar, srv VerifierServer) {
 	s.RegisterService(&Verifier_ServiceDesc, srv)
 }
 
-func _Verifier_SetVerificationKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Key)
+func _Verifier_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Policies)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VerifierServer).SetVerificationKey(ctx, in)
+		return srv.(VerifierServer).UpdatePolicies(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Verifier_SetVerificationKey_FullMethodName,
+		FullMethod: Verifier_UpdatePolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VerifierServer).SetVerificationKey(ctx, req.(*Key))
+		return srv.(VerifierServer).UpdatePolicies(ctx, req.(*Policies))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -163,8 +163,8 @@ var Verifier_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*VerifierServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "SetVerificationKey",
-			Handler:    _Verifier_SetVerificationKey_Handler,
+			MethodName: "UpdatePolicies",
+			Handler:    _Verifier_UpdatePolicies_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

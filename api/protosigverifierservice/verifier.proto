@@ -8,14 +8,17 @@ import "api/protoblocktx/block_tx.proto";
 
 
 service Verifier {
-    rpc SetVerificationKey(Key) returns (Empty);
+    rpc UpdatePolicies(Policies) returns (Empty);
     rpc StartStream(stream RequestBatch) returns (stream ResponseBatch);
 }
 
-message Key {
-    uint32 ns_id = 1;
-    bytes serialized_bytes = 2;
-    string scheme = 3;
+message Policies {
+    repeated PolicyItem policies = 1;
+}
+
+message PolicyItem {
+    bytes namespace = 1;
+    bytes policy = 2;
 }
 
 message Empty {
@@ -35,8 +38,7 @@ message Response {
     uint64 block_num  = 1;
     uint64 tx_num = 2;
     string tx_id = 3;
-    bool is_valid = 4;
-    string error_message = 5;
+    protoblocktx.Status status = 4;
 }
 
 message ResponseBatch {

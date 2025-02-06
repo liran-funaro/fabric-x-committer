@@ -96,6 +96,7 @@ cover-report-%:
 
 clean:
 	@rm -rf $(output_dir)
+	@rm -rf $(arch_output_dir)
 
 kill-test-docker:
 	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(DOCKER_CMD) rm -f

@@ -6,12 +6,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -50,6 +52,13 @@ func main() {
 }
 
 func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme string) error {
+	pBytes, err := proto.Marshal(&protoblocktx.NamespacePolicy{
+		PublicKey: publicKey,
+		Scheme:    scheme,
+	})
+	if err != nil {
+		return err
+	}
 	clientConfig := connection.NewDialConfig(&endpoint)
 	conn, err := connection.Connect(clientConfig)
 	if err != nil {
@@ -60,10 +69,11 @@ func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme s
 	defer cancel()
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	_, err = client.SetMetaNamespaceVerificationKey(ctx, &protosigverifierservice.Key{
-		NsId:            uint32(types.MetaNamespaceID),
-		SerializedBytes: publicKey,
-		Scheme:          scheme,
+	_, err = client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
+		Policies: []*protosigverifierservice.PolicyItem{{
+			Namespace: types.MetaNamespaceID.Bytes(),
+			Policy:    pBytes,
+		}},
 	})
 	return err
 }

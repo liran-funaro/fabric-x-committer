@@ -73,8 +73,9 @@ func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("sidecar connected to coordinator at %s", &s.config.Committer.Endpoint)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	if s.config.MetaNamespaceVerificationKey != nil {
-		_, err = client.SetMetaNamespaceVerificationKey(ctx, s.config.MetaNamespaceVerificationKey)
+	if s.config.Policies != nil {
+		// This will be removed once the coordinator will process config TXs.
+		_, err = client.UpdatePolicies(ctx, s.config.Policies)
 		if err != nil {
 			return err
 		}

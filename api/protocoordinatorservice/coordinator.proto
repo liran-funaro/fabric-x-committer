@@ -8,12 +8,13 @@ import "api/protoblocktx/block_tx.proto";
 import "api/protosigverifierservice/verifier.proto";
 
 service Coordinator {
-    rpc SetMetaNamespaceVerificationKey(protosigverifierservice.Key) returns (Empty);
     rpc BlockProcessing(stream protoblocktx.Block) returns (stream protoblocktx.TransactionsStatus);
     rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
     rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
+    // This method will be removed once the config block is processed by the coordinator.
+    rpc UpdatePolicies(protosigverifierservice.Policies) returns (Empty);
 }
 
 message Empty {

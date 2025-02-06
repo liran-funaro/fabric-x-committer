@@ -21,24 +21,25 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Coordinator_SetMetaNamespaceVerificationKey_FullMethodName = "/protocoordinatorservice.Coordinator/SetMetaNamespaceVerificationKey"
-	Coordinator_BlockProcessing_FullMethodName                 = "/protocoordinatorservice.Coordinator/BlockProcessing"
-	Coordinator_SetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
-	Coordinator_GetLastCommittedBlockNumber_FullMethodName     = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
-	Coordinator_GetNextExpectedBlockNumber_FullMethodName      = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
-	Coordinator_GetTransactionsStatus_FullMethodName           = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
+	Coordinator_BlockProcessing_FullMethodName             = "/protocoordinatorservice.Coordinator/BlockProcessing"
+	Coordinator_SetLastCommittedBlockNumber_FullMethodName = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
+	Coordinator_GetLastCommittedBlockNumber_FullMethodName = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
+	Coordinator_GetNextExpectedBlockNumber_FullMethodName  = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
+	Coordinator_GetTransactionsStatus_FullMethodName       = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
+	Coordinator_UpdatePolicies_FullMethodName              = "/protocoordinatorservice.Coordinator/UpdatePolicies"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CoordinatorClient interface {
-	SetMetaNamespaceVerificationKey(ctx context.Context, in *protosigverifierservice.Key, opts ...grpc.CallOption) (*Empty, error)
 	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
+	// This method will be removed once the config block is processed by the coordinator.
+	UpdatePolicies(ctx context.Context, in *protosigverifierservice.Policies, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type coordinatorClient struct {
@@ -47,15 +48,6 @@ type coordinatorClient struct {
 
 func NewCoordinatorClient(cc grpc.ClientConnInterface) CoordinatorClient {
 	return &coordinatorClient{cc}
-}
-
-func (c *coordinatorClient) SetMetaNamespaceVerificationKey(ctx context.Context, in *protosigverifierservice.Key, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, Coordinator_SetMetaNamespaceVerificationKey_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error) {
@@ -125,16 +117,26 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *proto
 	return out, nil
 }
 
+func (c *coordinatorClient) UpdatePolicies(ctx context.Context, in *protosigverifierservice.Policies, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Coordinator_UpdatePolicies_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility
 type CoordinatorServer interface {
-	SetMetaNamespaceVerificationKey(context.Context, *protosigverifierservice.Key) (*Empty, error)
 	BlockProcessing(Coordinator_BlockProcessingServer) error
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
+	// This method will be removed once the config block is processed by the coordinator.
+	UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -142,9 +144,6 @@ type CoordinatorServer interface {
 type UnimplementedCoordinatorServer struct {
 }
 
-func (UnimplementedCoordinatorServer) SetMetaNamespaceVerificationKey(context.Context, *protosigverifierservice.Key) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetMetaNamespaceVerificationKey not implemented")
-}
 func (UnimplementedCoordinatorServer) BlockProcessing(Coordinator_BlockProcessingServer) error {
 	return status.Errorf(codes.Unimplemented, "method BlockProcessing not implemented")
 }
@@ -160,6 +159,9 @@ func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
+func (UnimplementedCoordinatorServer) UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
+}
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 
 // UnsafeCoordinatorServer may be embedded to opt out of forward compatibility for this service.
@@ -171,24 +173,6 @@ type UnsafeCoordinatorServer interface {
 
 func RegisterCoordinatorServer(s grpc.ServiceRegistrar, srv CoordinatorServer) {
 	s.RegisterService(&Coordinator_ServiceDesc, srv)
-}
-
-func _Coordinator_SetMetaNamespaceVerificationKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(protosigverifierservice.Key)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CoordinatorServer).SetMetaNamespaceVerificationKey(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Coordinator_SetMetaNamespaceVerificationKey_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).SetMetaNamespaceVerificationKey(ctx, req.(*protosigverifierservice.Key))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -289,6 +273,24 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(protosigverifierservice.Policies)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).UpdatePolicies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_UpdatePolicies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).UpdatePolicies(ctx, req.(*protosigverifierservice.Policies))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -296,10 +298,6 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "protocoordinatorservice.Coordinator",
 	HandlerType: (*CoordinatorServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "SetMetaNamespaceVerificationKey",
-			Handler:    _Coordinator_SetMetaNamespaceVerificationKey_Handler,
-		},
 		{
 			MethodName: "SetLastCommittedBlockNumber",
 			Handler:    _Coordinator_SetLastCommittedBlockNumber_Handler,
@@ -315,6 +313,10 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTransactionsStatus",
 			Handler:    _Coordinator_GetTransactionsStatus_Handler,
+		},
+		{
+			MethodName: "UpdatePolicies",
+			Handler:    _Coordinator_UpdatePolicies_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

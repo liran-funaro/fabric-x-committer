@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -80,11 +81,11 @@ func (c *commonAdapter) setupCoordinator(ctx context.Context, client protocoordi
 	if !ok {
 		return errors.New("no meta namespace signer found")
 	}
-	p := signer.GetVerificationPolicy()
-	_, err := client.SetMetaNamespaceVerificationKey(ctx, &protosigverifierservice.Key{
-		NsId:            uint32(types.MetaNamespaceID),
-		SerializedBytes: p.PublicKey,
-		Scheme:          p.Scheme,
+	_, err := client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
+		Policies: []*protosigverifierservice.PolicyItem{{
+			Namespace: types.MetaNamespaceID.Bytes(),
+			Policy:    protoutil.MarshalOrPanic(signer.GetVerificationPolicy()),
+		}},
 	})
 	if err != nil {
 		return err

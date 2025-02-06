@@ -253,10 +253,13 @@ func TestSidecarWithBlockMultipleWrongOrderers(t *testing.T) {
 func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 	env := newSidecarTestEnv(t)
 	makeBlock(t, env)
-	k := env.config.MetaNamespaceVerificationKey
-	require.NotNil(t, k)
-	require.Equal(t, uint32(types.MetaNamespaceID), k.NsId)
-	verifier, err := signature.NewNsVerifier(k.Scheme, k.SerializedBytes)
+	p := env.config.Policies
+	require.NotNil(t, p)
+	require.Len(t, p.Policies, 1)
+	require.Equal(t, types.MetaNamespaceID.Bytes(), p.Policies[0].Namespace)
+	nsp := protoblocktx.NamespacePolicy{}
+	require.NoError(t, proto.Unmarshal(p.Policies[0].Policy, &nsp))
+	verifier, err := signature.NewNsVerifier(nsp.Scheme, nsp.PublicKey)
 	require.NoError(t, err)
 	require.NotNil(t, verifier)
 }

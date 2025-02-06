@@ -9,6 +9,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
@@ -16,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"google.golang.org/protobuf/proto"
 )
 
 // Config holds the configuration of the sidecar service. This includes
@@ -30,8 +32,9 @@ type Config struct {
 	Ledger     LedgerConfig             `mapstructure:"ledger"`
 	// ConfigBlockPath if set, it will overwrite the above configurations with the ones from the config block.
 	ConfigBlockPath string `mapstructure:"config-block-path"`
-	// MetaNamespaceVerificationKey is used internally, but cannot be passed via the yaml file.
-	MetaNamespaceVerificationKey *protosigverifierservice.Key
+	// Policies are used internally, but cannot be passed via the yaml file.
+	// It will be removed once the coordinator process config TXs.
+	Policies *protosigverifierservice.Policies
 }
 
 // CoordinatorConfig holds the endpoint of the coordinator component in the
@@ -61,14 +64,14 @@ func ReadConfig() Config {
 
 // OverwriteConfigFromBlock overwrites the sidecar configuration with relevant fields from the config block.
 // For now, it fetches the following:
-// - MetaNamespaceVerificationKey.
+// - Policies.
 // - Orderer endpoints.
 func OverwriteConfigFromBlock(conf *Config, configBlock *cb.Block) error {
 	bundle, err := bundleFromConfigBlock(configBlock)
 	if err != nil {
 		return err
 	}
-	conf.MetaNamespaceVerificationKey, err = keyFromConfigBlock(bundle)
+	conf.Policies, err = policiesFromConfigBlock(bundle)
 	if err != nil {
 		return err
 	}
@@ -87,7 +90,8 @@ func bundleFromConfigBlock(configBlock *cb.Block) (*channelconfig.Bundle, error)
 	return channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 }
 
-func keyFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierservice.Key, error) {
+// policiesFromConfigBlock will be removed once the coordinator will process config TXs.
+func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierservice.Policies, error) {
 	ac, ok := bundle.ApplicationConfig()
 	if !ok {
 		return nil, errors.New("application configuration is missing")
@@ -97,13 +101,22 @@ func keyFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierservice.
 		return nil, errors.New("application configuration of incorrect type")
 	}
 	key := acx.MetaNamespaceVerificationKey()
-	return &protosigverifierservice.Key{
-		NsId:            uint32(types.MetaNamespaceID),
-		SerializedBytes: key.KeyMaterial,
+	p := &protoblocktx.NamespacePolicy{
 		// We use existing proto here to avoid introducing new once.
 		// So we encode the key schema as the identifier.
 		// This will be replaced in the future with a generic policy mechanism.
-		Scheme: key.KeyIdentifier,
+		Scheme:    key.KeyIdentifier,
+		PublicKey: key.KeyMaterial,
+	}
+	pBytes, err := proto.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	return &protosigverifierservice.Policies{
+		Policies: []*protosigverifierservice.PolicyItem{{
+			Namespace: types.MetaNamespaceID.Bytes(),
+			Policy:    pBytes,
+		}},
 	}, nil
 }
 

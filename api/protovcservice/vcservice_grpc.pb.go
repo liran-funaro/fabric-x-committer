@@ -9,6 +9,7 @@ package protovcservice
 import (
 	context "context"
 	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	protosigverifierservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -25,6 +26,7 @@ const (
 	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
 	ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/GetLastCommittedBlockNumber"
 	ValidationAndCommitService_GetTransactionsStatus_FullMethodName                = "/protovcservice.ValidationAndCommitService/GetTransactionsStatus"
+	ValidationAndCommitService_GetPolicies_FullMethodName                          = "/protovcservice.ValidationAndCommitService/GetPolicies"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -36,6 +38,7 @@ type ValidationAndCommitServiceClient interface {
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
+	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protosigverifierservice.Policies, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -113,6 +116,15 @@ func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Con
 	return out, nil
 }
 
+func (c *validationAndCommitServiceClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protosigverifierservice.Policies, error) {
+	out := new(protosigverifierservice.Policies)
+	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetPolicies_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ValidationAndCommitServiceServer is the server API for ValidationAndCommitService service.
 // All implementations must embed UnimplementedValidationAndCommitServiceServer
 // for forward compatibility
@@ -122,6 +134,7 @@ type ValidationAndCommitServiceServer interface {
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
+	GetPolicies(context.Context, *Empty) (*protosigverifierservice.Policies, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -143,6 +156,9 @@ func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber
 }
 func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
+}
+func (UnimplementedValidationAndCommitServiceServer) GetPolicies(context.Context, *Empty) (*protosigverifierservice.Policies, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPolicies not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
 }
@@ -256,6 +272,24 @@ func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ValidationAndCommitService_GetPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ValidationAndCommitServiceServer).GetPolicies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ValidationAndCommitService_GetPolicies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ValidationAndCommitServiceServer).GetPolicies(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ValidationAndCommitService_ServiceDesc is the grpc.ServiceDesc for ValidationAndCommitService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +312,10 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTransactionsStatus",
 			Handler:    _ValidationAndCommitService_GetTransactionsStatus_Handler,
+		},
+		{
+			MethodName: "GetPolicies",
+			Handler:    _ValidationAndCommitService_GetPolicies_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

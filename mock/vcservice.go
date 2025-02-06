@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -65,6 +66,14 @@ func (vc *VcService) GetLastCommittedBlockNumber(
 		return nil, vcservice.ErrMetadataEmpty
 	}
 	return &protoblocktx.BlockInfo{Number: uint64(vc.lastCommittedBlock.Load())}, nil // nolint:gosec
+}
+
+// GetPolicies is a mock implementation of the protovcservice.GetPolicies.
+func (*VcService) GetPolicies(
+	context.Context,
+	*protovcservice.Empty,
+) (*protosigverifierservice.Policies, error) {
+	return &protosigverifierservice.Policies{}, nil
 }
 
 // GetMaxSeenBlockNumber get the last seen maximum block number in the database/ledger.

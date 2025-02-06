@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -40,12 +41,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	for _, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
 
-		logger.Infof("Set verification verification keys")
-		for _, key := range getKeys(c.res) {
-			_, err = client.SetVerificationKey(ctx, key)
-			if err != nil {
-				return errors.Wrap(err, "failed setting verification key")
-			}
+		logger.Infof("Set verification verification policy")
+		if _, err = client.UpdatePolicies(ctx, getPolicies(c.res)); err != nil {
+			return errors.Wrap(err, "failed setting verification policy")
 		}
 
 		logger.Infof("Opening stream")
@@ -70,18 +68,18 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	return g.Wait()
 }
 
-func getKeys(res *ClientResources) []*protosigverifierservice.Key {
+func getPolicies(res *ClientResources) *protosigverifierservice.Policies {
 	e := workload.NewTxSignerVerifier(res.Profile.Transaction.Policy)
-	keys := make([]*protosigverifierservice.Key, 0, len(e.HashSigners))
+	policyMsg := &protosigverifierservice.Policies{
+		Policies: make([]*protosigverifierservice.PolicyItem, 0, len(e.HashSigners)),
+	}
 	for nsID, s := range e.HashSigners {
-		p := s.GetVerificationPolicy()
-		keys = append(keys, &protosigverifierservice.Key{
-			NsId:            uint32(nsID),
-			SerializedBytes: p.PublicKey,
-			Scheme:          p.Scheme,
+		policyMsg.Policies = append(policyMsg.Policies, &protosigverifierservice.PolicyItem{
+			Namespace: nsID.Bytes(),
+			Policy:    protoutil.MarshalOrPanic(s.GetVerificationPolicy()),
 		})
 	}
-	return keys
+	return policyMsg
 }
 
 func (c *SvAdapter) receiveStatus(
@@ -95,11 +93,8 @@ func (c *SvAdapter) receiveStatus(
 
 		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))
 		for _, response := range responseBatch.Responses {
-			status := protoblocktx.Status_COMMITTED
-			if !response.IsValid {
-				status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
-			}
-			c.res.Metrics.OnReceiveTransaction(response.TxId, status)
+			logger.Infof("Received response: %s", response.Status)
+			c.res.Metrics.OnReceiveTransaction(response.TxId, response.Status)
 		}
 	}
 	return nil

@@ -42,9 +42,9 @@ func (c *Coordinator) Close() {
 	close(c.stop)
 }
 
-// SetMetaNamespaceVerificationKey sets the verification key.
-func (*Coordinator) SetMetaNamespaceVerificationKey(
-	_ context.Context, _ *protosigverifierservice.Key,
+// UpdatePolicies updates the verification policies.
+func (*Coordinator) UpdatePolicies(
+	context.Context, *protosigverifierservice.Policies,
 ) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, nil
 }

@@ -14,8 +14,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -33,6 +31,7 @@ type (
 		dependencyMgr         *dependencygraph.Manager
 		signatureVerifierMgr  *signatureVerifierManager
 		validatorCommitterMgr *validatorCommitterManager
+		policyMgr             *policyManager
 		queues                *channels
 		config                *CoordinatorConfig
 		metrics               *perfMetrics
@@ -69,11 +68,6 @@ type (
 		// sender: signature verifier manager sends valid transactions to this channel.
 		// receiver: validator-committer manager receives valid transactions from this channel.
 		sigVerifierToVCServiceValidatedTxs chan dependencygraph.TxNodeBatch
-
-		// sender: coordinator sends invalid transactions (due to incorrect formation) to this channel.
-		// receiver: validator committer manager receives these invalid transactions from this channel
-		//           and forwards them to vcservice for the commit of the invalid status code.
-		coordinatorToVCServiceInvalidTxs chan []*protovcservice.Transaction
 
 		// sender: validator committer manager sends validated transactions nodes to this channel. For each validator
 		// 	       committer server, there is a goroutine that sends validated transactions nodes to this channel.
@@ -117,7 +111,6 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		coordinatorToDepGraphTxs:           make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
-		coordinatorToVCServiceInvalidTxs:   make(chan []*protovcservice.Transaction, bufSzPerChanForValCommitMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		vcServiceToCoordinatorTxStatus:     make(chan *protoblocktx.TransactionsStatus, bufSzPerChanForValCommitMgr),
 	}
@@ -149,15 +142,15 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		},
 	)
 
+	policyMgr := &policyManager{signVerifierMgr: svMgr}
 	vcMgr := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			serversConfig:                         c.ValidatorCommitterConfig.ServerConfig,
-			incomingTxsForValidationCommit:        queues.sigVerifierToVCServiceValidatedTxs,
-			incomingBadlyFormedTxsStatusForCommit: queues.coordinatorToVCServiceInvalidTxs,
-			outgoingValidatedTxsNode:              queues.vcServiceToDepGraphValidatedTxs,
-			outgoingTxsStatus:                     queues.vcServiceToCoordinatorTxStatus,
-			metrics:                               metrics,
-			signVerifierMgr:                       svMgr,
+			serversConfig:                  c.ValidatorCommitterConfig.ServerConfig,
+			incomingTxsForValidationCommit: queues.sigVerifierToVCServiceValidatedTxs,
+			outgoingValidatedTxsNode:       queues.vcServiceToDepGraphValidatedTxs,
+			outgoingTxsStatus:              queues.vcServiceToCoordinatorTxStatus,
+			metrics:                        metrics,
+			policyMgr:                      policyMgr,
 		},
 	)
 
@@ -166,6 +159,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		dependencyMgr:                  depMgr,
 		signatureVerifierMgr:           svMgr,
 		validatorCommitterMgr:          vcMgr,
+		policyMgr:                      policyMgr,
 		queues:                         queues,
 		config:                         c,
 		metrics:                        metrics,
@@ -218,6 +212,10 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 	case <-c.validatorCommitterMgr.connectionReady:
 	}
 
+	if err := c.validatorCommitterMgr.getPolicies(ctx); err != nil {
+		return err
+	}
+
 	lastCommittedBlock, err := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
 	if err != nil {
 		if !hasErrMetadataEmpty(err) {
@@ -253,15 +251,11 @@ func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
 	return true
 }
 
-// SetMetaNamespaceVerificationKey sets the verification key for the signature verifier manager.
-func (c *CoordinatorService) SetMetaNamespaceVerificationKey(
-	ctx context.Context,
-	k *protosigverifierservice.Key,
+// UpdatePolicies updates the verification policies.
+func (c *CoordinatorService) UpdatePolicies(
+	ctx context.Context, p *protosigverifierservice.Policies,
 ) (*protocoordinatorservice.Empty, error) {
-	if k.NsId != uint32(types.MetaNamespaceID) {
-		return nil, errors.New("namespace ID is not meta namespace ID")
-	}
-	return &protocoordinatorservice.Empty{}, c.signatureVerifierMgr.setVerificationKey(ctx, k)
+	return &protocoordinatorservice.Empty{}, c.policyMgr.updatePolicies(ctx, p)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
@@ -359,7 +353,8 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 		// Even if the stream terminates unexpectedly, any received blocks will
 		// still be forwarded to downstream components for complete processing.
 
-		if blk.Number != c.nextExpectedBlockNumberToBeReceived.Load() {
+		swapped := c.nextExpectedBlockNumberToBeReceived.CompareAndSwap(blk.Number, blk.Number+1)
+		if !swapped {
 			errMsg := fmt.Sprintf(
 				"coordinator expects block [%d] but received block [%d]",
 				c.nextExpectedBlockNumberToBeReceived.Load(),
@@ -368,16 +363,9 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 			logger.Error(errMsg)
 			return errors.New(errMsg)
 		}
-		c.nextExpectedBlockNumberToBeReceived.Add(1)
-
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
 		c.metrics.transactionReceived(len(blk.Txs))
-
-		malformedTxs := c.preProcessBlock(blk)
-		if len(malformedTxs) != 0 {
-			c.queues.coordinatorToVCServiceInvalidTxs <- malformedTxs
-		}
 
 		if len(blk.Txs) == 0 {
 			continue
