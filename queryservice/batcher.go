@@ -75,7 +75,7 @@ type (
 		metrics  *perfMetrics
 		queryObj sharedQuerier
 
-		nsID    uint32
+		nsID    string
 		keys    [][]byte
 		minSize int
 		created time.Time
@@ -96,7 +96,7 @@ type (
 func (q *viewsBatcher) makeView(
 	viewID string, p *protoqueryservice.ViewParameters,
 ) bool {
-	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond)
+	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) // nolint:gosec
 	v := &viewHolder{
 		ctx:    ctx,
 		cancel: cancel,
@@ -262,7 +262,7 @@ func (b *batcher) isStale() bool {
 func (b *batcher) join(v *viewHolder) bool {
 	b.m.Lock()
 	defer b.m.Unlock()
-	if b.isStale() || b.refCounter >= uint64(b.config.MaxAggregatedViews) {
+	if b.isStale() || b.refCounter >= uint64(b.config.MaxAggregatedViews) { // nolint:gosec
 		return false
 	}
 	b.refCounter++
@@ -286,7 +286,7 @@ func (b *batcher) leave() {
 
 // addNamespaceKeys add the given keys to the latest query batch.
 // It creates a new query batch if needed.
-func (b *batcher) addNamespaceKeys(ctx context.Context, nsID uint32, keys [][]byte) (*namespaceQueryBatch, error) {
+func (b *batcher) addNamespaceKeys(ctx context.Context, nsID string, keys [][]byte) (*namespaceQueryBatch, error) {
 	return mapUpdateOrCreate(
 		ctx,
 		&b.nsToLatestQueryBatch,

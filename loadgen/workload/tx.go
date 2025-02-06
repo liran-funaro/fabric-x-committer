@@ -52,7 +52,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 		Id: g.TxIDGenerator.Next(),
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:        0,
+				NsId:        "0",
 				NsVersion:   types.VersionNumber(0).Bytes(),
 				ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
 				ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),

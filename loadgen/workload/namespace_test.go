@@ -9,14 +9,14 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 )
 
-var namespacesUnderTest = []types.NamespaceID{0, 1, 2, types.MetaNamespaceID}
+var namespacesUnderTest = []string{"0", "1", "2", types.MetaNamespaceID}
 
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.
 func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 	for _, sig := range []Scheme{signature.Ecdsa, signature.Bls, signature.Eddsa} {
 		policyProfile := &PolicyProfile{
-			NamespacePolicies: make(map[types.NamespaceID]*Policy, len(namespacesUnderTest)),
+			NamespacePolicies: make(map[string]*Policy, len(namespacesUnderTest)),
 		}
 		for i, ns := range namespacesUnderTest {
 			policyProfile.NamespacePolicies[ns] = &Policy{
@@ -56,7 +56,7 @@ func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 func getReadWritesFromNamespaceTx(t *testing.T, tx *protoblocktx.Tx) []*protoblocktx.ReadWrite {
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)
-	require.Equal(t, uint32(types.MetaNamespaceID), tx.Namespaces[0].NsId)
+	require.Equal(t, types.MetaNamespaceID, tx.Namespaces[0].NsId)
 	require.Len(t, tx.Namespaces[0].ReadWrites, len(namespacesUnderTest)-1)
 	return tx.Namespaces[0].ReadWrites
 }

@@ -74,7 +74,7 @@ func BenchmarkVerifierServer(b *testing.B) {
 				defer c.TearDown()
 				_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
 					Policies: []*sigverification.PolicyItem{
-						policy.MakePolicy(b, 1, &protoblocktx.NamespacePolicy{
+						policy.MakePolicy(b, "1", &protoblocktx.NamespacePolicy{
 							PublicKey: publicKey,
 							Scheme:    config.InputGeneratorParams.RequestBatch.Tx.Scheme,
 						}),

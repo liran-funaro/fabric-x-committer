@@ -1,7 +1,8 @@
 package dependencygraph
 
 import (
-	"encoding/binary"
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -159,10 +160,10 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 		// NOTE: if ns.NsID is a types.MetaNamespaceID, we should use the config namespaceID instead
 		//       of types.MetaNamespaceID when constructing the composite key. This approach would introduce
 		//       dependency between the namespace lifecycle transaction and the config transaction.
-		if ns.NsId != uint32(types.MetaNamespaceID) {
+		if ns.NsId != types.MetaNamespaceID {
 			readOnlyKeys = append(
 				readOnlyKeys,
-				constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(ns.NsId).Bytes()),
+				constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId)),
 			)
 		}
 
@@ -186,12 +187,13 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 	}
 }
 
-func constructCompositeKey(ns uint32, key []byte) string {
+func constructCompositeKey(ns string, key []byte) string {
 	// NOTE: composite key construction must ensure
 	//       no false positives collisions in the
 	//       composite key space.
-	ck := make([]byte, 0, len(key)+4)
-	ck = binary.BigEndian.AppendUint32(ck, ns)
-	ck = append(ck, key...)
-	return string(ck)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%03d", len(ns))) //nolint:revive
+	sb.WriteString(ns)                           //nolint:revive
+	sb.Write(key)                                //nolint:revive
+	return sb.String()
 }

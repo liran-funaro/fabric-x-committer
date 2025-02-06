@@ -18,7 +18,7 @@ func ListPolicyItems[T KeyValue](rws []T) []*protosigverifierservice.PolicyItem 
 	pd := make([]*protosigverifierservice.PolicyItem, len(rws))
 	for i, rw := range rws {
 		pd[i] = &protosigverifierservice.PolicyItem{
-			Namespace: rw.GetKey(),
+			Namespace: string(rw.GetKey()),
 			Policy:    rw.GetValue(),
 		}
 	}
@@ -27,14 +27,14 @@ func ListPolicyItems[T KeyValue](rws []T) []*protosigverifierservice.PolicyItem 
 
 // ParsePolicyItem parses policy item to a namespace policy.
 func ParsePolicyItem(pd *protosigverifierservice.PolicyItem) (
-	ns types.NamespaceID, key *protoblocktx.NamespacePolicy, err error,
+	ns string, key *protoblocktx.NamespacePolicy, err error,
 ) {
-	ns, err = types.NamespaceIDFromBytes(pd.Namespace)
+	err = types.ValidateNamespaceID(pd.Namespace)
 	if err != nil {
 		return ns, key, err
 	}
 	key, err = keysFromMetaNamespaceTx(pd.Policy)
-	return ns, key, err
+	return pd.Namespace, key, err
 }
 
 func keysFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {

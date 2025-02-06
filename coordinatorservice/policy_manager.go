@@ -19,7 +19,7 @@ func (p *policyManager) updatePoliciesFromTx(
 	namespaces []*protoblocktx.TxNamespace,
 ) error {
 	for _, ns := range namespaces {
-		if types.NamespaceID(ns.NsId) != types.MetaNamespaceID {
+		if ns.NsId != types.MetaNamespaceID {
 			continue
 		}
 		pd := append(policy.ListPolicyItems(ns.ReadWrites), policy.ListPolicyItems(ns.BlindWrites)...)

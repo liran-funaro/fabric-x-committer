@@ -10,7 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
-var nsID1ForTest = uint32(1)
+var nsID1ForTest = "1"
 
 func TestTransactionNode(t *testing.T) {
 	t.Parallel()
@@ -95,7 +95,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	}
 	expectedReads = append(
 		expectedReads,
-		constructCompositeKey(uint32(types.MetaNamespaceID), types.NamespaceID(nsID).Bytes()),
+		constructCompositeKey(types.MetaNamespaceID, []byte(nsID)),
 	)
 
 	for _, k := range readWrite {
@@ -121,7 +121,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 }
 
 func createTxForTest( // nolint: revive
-	_ *testing.T, nsID uint32, readOnly, readWrite, blindWrite [][]byte,
+	_ *testing.T, nsID string, readOnly, readWrite, blindWrite [][]byte,
 ) *protoblocktx.Tx {
 	reads := make([]*protoblocktx.Read, len(readOnly))
 	for i, k := range readOnly {

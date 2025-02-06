@@ -47,7 +47,7 @@ func (g *QueryGenerator) Next() *protoqueryservice.Query {
 	return &protoqueryservice.Query{
 		Namespaces: []*protoqueryservice.QueryNamespace{
 			{
-				NsId: 0,
+				NsId: "0",
 				Keys: keys,
 			},
 		},

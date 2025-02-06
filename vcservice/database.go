@@ -21,21 +21,21 @@ import (
 
 const (
 	// tableNameTemplate is the template for the table name for each namespace.
-	tableNameTemplate = "ns_%d"
+	tableNameTemplate = "ns_%s"
 
 	// validateReadsSQLTemplate template for validating reads for each namespace.
-	validateReadsSQLTemplate = "SELECT * FROM validate_reads_ns_%d($1::bytea[], $2::bytea[]);"
+	validateReadsSQLTemplate = "SELECT * FROM validate_reads_ns_%s($1::bytea[], $2::bytea[]);"
 	// queryVersionsSQLTemplate template for the querying versions for given keys for each namespace.
 	queryVersionsSQLTemplate = "SELECT key, version FROM %s WHERE key = ANY($1);"
 	// commitTxStatusSQLTemplate template for committing transaction's status for each TX.
 	commitTxStatusSQLTemplate = "SELECT commit_tx_status($1::bytea[], $2::integer[], $3::bytea[]);"
 	// commitUpdateWritesSQLTemplate template for the committing updates for each namespace.
-	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%d($1::bytea[], $2::bytea[], $3::bytea[]);"
+	commitUpdateWritesSQLTemplate = "SELECT commit_update_ns_%s($1::bytea[], $2::bytea[], $3::bytea[]);"
 	// commitNewWritesSQLTemplate template for committing new keys for each namespace.
-	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%d($1::bytea[], $2::bytea[]);"
+	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%s($1::bytea[], $2::bytea[]);"
 )
 
-var queryPolicies = fmt.Sprintf("SELECT key, value from ns_%d;", types.MetaNamespaceID)
+var queryPolicies = fmt.Sprintf("SELECT key, value from ns_%s;", types.MetaNamespaceID)
 
 // ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
 var ErrMetadataEmpty = errors.New("metadata value is empty")
@@ -106,7 +106,7 @@ func (db *database) close() {
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
-func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*reads /* mismatching reads */, error) {
+func (db *database) validateNamespaceReads(nsID string, r *reads) (*reads /* mismatching reads */, error) {
 	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
 	// the reads. This function returns the keys and versions of the mismatching reads.
 	// Note that we have a table per namespace.
@@ -136,7 +136,7 @@ func (db *database) validateNamespaceReads(nsID types.NamespaceID, r *reads) (*r
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(nsID types.NamespaceID, queryKeys [][]byte) (keyToVersion, error) {
+func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTemplate, TableName(nsID))
 
@@ -381,10 +381,7 @@ func (db *database) createTablesAndFunctionsForNamespace(tx pgx.Tx, newNs *names
 	}
 
 	for _, ns := range newNs.keys {
-		nsID, err := types.NamespaceIDFromBytes(ns)
-		if err != nil {
-			return err
-		}
+		nsID := string(ns)
 
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
@@ -460,7 +457,7 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 }
 
 // TableName returns the table name for the given namespace.
-func TableName(nsID types.NamespaceID) string {
+func TableName(nsID string) string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
 }
 
@@ -509,7 +506,7 @@ func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.
 	}
 	for i, key := range keys {
 		policy.Policies[i] = &protosigverifierservice.PolicyItem{
-			Namespace: key,
+			Namespace: string(key),
 			Policy:    values[i],
 		}
 	}

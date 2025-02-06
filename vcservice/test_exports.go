@@ -233,7 +233,7 @@ func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrit
 
 func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
 	t *testing.T,
-	nsIDs []int,
+	nsIDs []string,
 	writes namespaceToWrites,
 	batchStatus *protoblocktx.TransactionsStatus,
 	txIDToHeight transactionIDToHeight,
@@ -250,7 +250,7 @@ func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
 }
 
 // FetchKeys fetches a list of keys.
-func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID types.NamespaceID, keys [][]byte) map[string]*ValueVersion {
+func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) map[string]*ValueVersion {
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
 
 	kvPairs, err := env.DB.pool.Query(context.Background(), query, keys)
@@ -272,7 +272,7 @@ func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID types.NamespaceID, keys
 	return actualRows
 }
 
-func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
+func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID string) {
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
 	names, err := env.DB.pool.Query(context.Background(), query)
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID types.NamespaceID) {
 	require.True(t, names.Next())
 }
 
-func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expectedRows namespaceWrites) {
+func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, expectedRows namespaceWrites) {
 	actualRows := env.FetchKeys(t, nsID, expectedRows.keys)
 
 	assert.Len(t, actualRows, len(expectedRows.keys))
@@ -292,7 +292,7 @@ func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID types.NamespaceID, expe
 	}
 }
 
-func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID types.NamespaceID, keys [][]byte) {
+func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byte) {
 	actualRows := env.FetchKeys(t, nsID, keys)
 
 	assert.Len(t, actualRows, 0)

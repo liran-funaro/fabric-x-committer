@@ -33,7 +33,7 @@ func TestQueryService(t *testing.T) {
 		&runner.Config{
 			NumSigVerifiers:     2,
 			NumVCService:        2,
-			InitializeNamespace: []types.NamespaceID{1, 2},
+			InitializeNamespace: []string{"1", "2"},
 			BlockTimeout:        2 * time.Second,
 		},
 	)
@@ -51,7 +51,7 @@ func TestQueryService(t *testing.T) {
 					Id: "write items to namespaces",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(1),
+							NsId:      "1",
 							NsVersion: types.VersionNumber(0).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -65,7 +65,7 @@ func TestQueryService(t *testing.T) {
 							},
 						},
 						{
-							NsId:      uint32(2),
+							NsId:      "2",
 							NsVersion: types.VersionNumber(0).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -102,13 +102,13 @@ func TestQueryService(t *testing.T) {
 			&protoqueryservice.Query{
 				Namespaces: []*protoqueryservice.QueryNamespace{
 					{
-						NsId: 1,
+						NsId: "1",
 						Keys: [][]byte{
 							[]byte("k1"), []byte("k2"),
 						},
 					},
 					{
-						NsId: 2,
+						NsId: "2",
 						Keys: [][]byte{
 							[]byte("k3"), []byte("k4"),
 						},
@@ -122,7 +122,7 @@ func TestQueryService(t *testing.T) {
 
 		requiredItems := []*protoqueryservice.RowsNamespace{
 			{
-				NsId: uint32(1),
+				NsId: "1",
 				Rows: []*protoqueryservice.Row{
 					{
 						Key:     []byte("k1"),
@@ -137,7 +137,7 @@ func TestQueryService(t *testing.T) {
 				},
 			},
 			{
-				NsId: uint32(2),
+				NsId: "2",
 				Rows: []*protoqueryservice.Row{
 					{
 						Key:     []byte("k3"),

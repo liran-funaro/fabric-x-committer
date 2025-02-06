@@ -26,7 +26,7 @@ type (
 
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
 	TxSignerVerifier struct {
-		HashSigners map[types.NamespaceID]*HashSignerVerifier
+		HashSigners map[string]*HashSignerVerifier
 	}
 
 	// HashSignerVerifier supports signing and verifying a hash value.
@@ -44,9 +44,9 @@ var defaultPolicy = Policy{
 
 // NewTxSignerVerifier creates a new TxSignerVerifier given a workload profile.
 func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
-	signers := make(map[types.NamespaceID]*HashSignerVerifier)
+	signers := make(map[string]*HashSignerVerifier)
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
-	signers[0] = NewHashSignerVerifier(&defaultPolicy)
+	signers["0"] = NewHashSignerVerifier(&defaultPolicy)
 	signers[types.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
 
 	for nsID, p := range policy.NamespacePolicies {
@@ -60,7 +60,7 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 // Sign signs a TX.
 func (e *TxSignerVerifier) Sign(tx *protoblocktx.Tx) {
 	for nsIndex, ns := range tx.GetNamespaces() {
-		signer := e.HashSigners[types.NamespaceID(ns.NsId)]
+		signer := e.HashSigners[ns.NsId]
 		tx.Signatures = append(tx.Signatures, signer.Sign(tx, nsIndex))
 	}
 }
@@ -72,7 +72,7 @@ func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 	}
 
 	for nsIndex, ns := range tx.GetNamespaces() {
-		signer := e.HashSigners[types.NamespaceID(ns.NsId)]
+		signer := e.HashSigners[ns.NsId]
 		if !signer.Verify(tx, nsIndex) {
 			return false
 		}

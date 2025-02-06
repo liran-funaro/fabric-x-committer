@@ -44,10 +44,6 @@ const setMetadataPrepStmt = `
   UPDATE metadata SET value = $2 where key = $1;
 `
 
-const setMetadataIfGreaterPrepStmt = `
-  UPDATE metadata SET value = $2 where key = $1 and (value IS NULL or value < $2);
-`
-
 const getMetadataPrepStmt = `
   SELECT value from metadata where key = $1;
 `
@@ -230,7 +226,7 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 }
 
 // ClearDatabase clears the DB tables and methods.
-func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []int) error {
+func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []string) error {
 	pool, err := NewDatabasePool(ctx, config)
 	if err != nil {
 		return err
@@ -277,7 +273,7 @@ func stmtFmt(stmtTemplate, tableName, dbType string) string {
 	return fmt.Sprintf(stmtTemplate+"%.0[1]s%.0[2]s", tableName, splitStmt)
 }
 
-func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
+func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string) error {
 	logger.Infof("Starting DB tables initialization. Already performed action will be ignored.")
 	dbType, err := getDbType(ctx, pool)
 	if err != nil {
@@ -300,9 +296,9 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 		return errors.Wrapf(execErr, "failed initialization metadata table")
 	}
 
-	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
+	nsIDs = append(nsIDs, types.MetaNamespaceID)
 	for _, nsID := range nsIDs {
-		tableName := TableName(types.NamespaceID(nsID))
+		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
 			if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
 				return errors.Wrapf(execErr, "failed creating meta-namespace")
@@ -313,7 +309,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) er
 	return nil
 }
 
-func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) error {
+func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string) error {
 	logger.Info("Dropping tx status table and its methods.")
 	dbType, err := getDbType(ctx, pool)
 	if err != nil {
@@ -331,9 +327,9 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []int) e
 	}
 	logger.Info("tx status table is cleared.")
 
-	nsIDs = append(nsIDs, int(types.MetaNamespaceID))
+	nsIDs = append(nsIDs, types.MetaNamespaceID)
 	for _, nsID := range nsIDs {
-		tableName := TableName(types.NamespaceID(nsID))
+		tableName := TableName(nsID)
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {

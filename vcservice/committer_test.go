@@ -37,9 +37,9 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 }
 
 type state struct {
-	namespace      types.NamespaceID
+	namespace      string
 	keySuffix      int
-	updateSequence int
+	updateSequence uint64
 }
 
 func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: revive
@@ -51,8 +51,8 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: rev
 			ver = types.VersionNumber(ww.updateSequence).Bytes()
 		}
 		nw.append(
-			[]byte(fmt.Sprintf("key%d.%d", ww.namespace, ww.keySuffix)),
-			[]byte(fmt.Sprintf("value%d.%d.%d", ww.namespace, ww.keySuffix, ww.updateSequence)),
+			[]byte(fmt.Sprintf("key%s.%d", ww.namespace, ww.keySuffix)),
+			[]byte(fmt.Sprintf("value%s.%d.%d", ww.namespace, ww.keySuffix, ww.updateSequence)),
 			ver,
 		)
 	}
@@ -64,17 +64,17 @@ func TestCommit(t *testing.T) {
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
-		[]int{1, 2},
+		[]string{"1", "2"},
 		writes(
 			false,
-			state{1, 1, 1},
-			state{1, 2, 1},
-			state{1, 3, 2},
-			state{1, 4, 2},
-			state{2, 1, 0},
-			state{2, 2, 0},
-			state{2, 3, 1},
-			state{2, 4, 1},
+			state{"1", 1, 1},
+			state{"1", 2, 1},
+			state{"1", 3, 2},
+			state{"1", 4, 2},
+			state{"2", 1, 0},
+			state{"2", 2, 0},
+			state{"2", 3, 1},
+			state{"2", 4, 1},
 		),
 		&protoblocktx.TransactionsStatus{
 			Status: map[string]*protoblocktx.StatusWithHeight{
@@ -105,17 +105,17 @@ func TestCommit(t *testing.T) {
 				newWrites: transactionToWrites{
 					"tx-new-1": writes(
 						true,
-						state{1, 10, 0},
-						state{1, 11, 0},
-						state{2, 10, 0},
-						state{2, 11, 0},
+						state{"1", 10, 0},
+						state{"1", 11, 0},
+						state{"2", 10, 0},
+						state{"2", 11, 0},
 					),
 					"tx-new-2": writes(
 						true,
-						state{1, 20, 0},
-						state{1, 21, 0},
-						state{2, 20, 0},
-						state{2, 21, 0},
+						state{"1", 20, 0},
+						state{"1", 21, 0},
+						state{"2", 20, 0},
+						state{"2", 21, 0},
 					),
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{},
@@ -130,14 +130,14 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 10, 0},
-				state{1, 11, 0},
-				state{2, 10, 0},
-				state{2, 11, 0},
-				state{1, 20, 0},
-				state{1, 21, 0},
-				state{2, 20, 0},
-				state{2, 21, 0},
+				state{"1", 10, 0},
+				state{"1", 11, 0},
+				state{"2", 10, 0},
+				state{"2", 11, 0},
+				state{"1", 20, 0},
+				state{"1", 21, 0},
+				state{"2", 20, 0},
+				state{"2", 21, 0},
 			),
 			expectedMaxSeenBlocNumber: 244,
 		},
@@ -147,10 +147,10 @@ func TestCommit(t *testing.T) {
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-non-blind-1": writes(
 						false,
-						state{1, 1, 2},
-						state{1, 2, 2},
-						state{2, 1, 1},
-						state{2, 2, 1},
+						state{"1", 1, 2},
+						state{"1", 2, 2},
+						state{"2", 1, 1},
+						state{"2", 2, 1},
 					),
 				},
 				validTxBlindWrites: transactionToWrites{},
@@ -165,10 +165,10 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 1, 2},
-				state{1, 2, 2},
-				state{2, 1, 1},
-				state{2, 2, 1},
+				state{"1", 1, 2},
+				state{"1", 2, 2},
+				state{"2", 1, 1},
+				state{"2", 2, 1},
 			),
 			expectedMaxSeenBlocNumber: 244,
 		},
@@ -179,10 +179,10 @@ func TestCommit(t *testing.T) {
 				validTxBlindWrites: transactionToWrites{
 					"tx-blind-1": writes(
 						true,
-						state{1, 1, 3},
-						state{1, 2, 3},
-						state{2, 1, 2},
-						state{2, 2, 2},
+						state{"1", 1, 3},
+						state{"1", 2, 3},
+						state{"2", 1, 2},
+						state{"2", 2, 2},
 					),
 				},
 				newWrites:       transactionToWrites{},
@@ -196,10 +196,10 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 1, 3},
-				state{1, 2, 3},
-				state{2, 1, 2},
-				state{2, 2, 2},
+				state{"1", 1, 3},
+				state{"1", 2, 3},
+				state{"2", 1, 2},
+				state{"2", 2, 2},
 			),
 			expectedMaxSeenBlocNumber: 1024,
 		},
@@ -209,37 +209,37 @@ func TestCommit(t *testing.T) {
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-all-1": writes(
 						false,
-						state{1, 1, 4},
-						state{1, 2, 4},
+						state{"1", 1, 4},
+						state{"1", 2, 4},
 					),
 					"tx-all-2": writes(
 						false,
-						state{1, 3, 3},
-						state{1, 4, 3},
+						state{"1", 3, 3},
+						state{"1", 4, 3},
 					),
 				},
 				validTxBlindWrites: transactionToWrites{
 					"tx-all-1": writes(
 						true,
-						state{2, 1, 3},
-						state{2, 2, 3},
-						state{2, 5, 0},
+						state{"2", 1, 3},
+						state{"2", 2, 3},
+						state{"2", 5, 0},
 					),
 					"tx-all-2": writes(
 						true,
-						state{2, 3, 2},
-						state{2, 4, 2},
-						state{2, 6, 0},
+						state{"2", 3, 2},
+						state{"2", 4, 2},
+						state{"2", 6, 0},
 					),
 				},
 				newWrites: transactionToWrites{
 					"tx-all-1": writes(
 						true,
-						state{2, 30, 0},
+						state{"2", 30, 0},
 					),
 					"tx-all-2": writes(
 						true,
-						state{2, 31, 0},
+						state{"2", 31, 0},
 					),
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{
@@ -264,18 +264,18 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 1, 4},
-				state{1, 2, 4},
-				state{1, 3, 3},
-				state{1, 4, 3},
-				state{2, 1, 3},
-				state{2, 2, 3},
-				state{2, 3, 2},
-				state{2, 4, 2},
-				state{2, 5, 0},
-				state{2, 6, 0},
-				state{2, 30, 0},
-				state{2, 31, 0},
+				state{"1", 1, 4},
+				state{"1", 2, 4},
+				state{"1", 3, 3},
+				state{"1", 4, 3},
+				state{"2", 1, 3},
+				state{"2", 2, 3},
+				state{"2", 3, 2},
+				state{"2", 4, 2},
+				state{"2", 5, 0},
+				state{"2", 6, 0},
+				state{"2", 30, 0},
+				state{"2", 31, 0},
 			),
 			expectedMaxSeenBlocNumber: 1024,
 		},
@@ -285,39 +285,39 @@ func TestCommit(t *testing.T) {
 				validTxNonBlindWrites: transactionToWrites{
 					"tx-not-violate-1": writes(
 						false,
-						state{1, 1, 5},
+						state{"1", 1, 5},
 					),
 					"tx-violate-1": writes(
 						true,
-						state{1, 3, 4},
+						state{"1", 3, 4},
 					),
 				},
 				validTxBlindWrites: transactionToWrites{
 					"tx-not-violate-1": writes(
 						false,
-						state{1, 2, 5},
+						state{"1", 2, 5},
 					),
 					"tx-violate-1": writes(
 						true,
-						state{1, 4, 4},
+						state{"1", 4, 4},
 					),
 				},
 				newWrites: transactionToWrites{
 					"tx-not-violate-1": writes(
 						true,
-						state{1, 22, 0}, // not violate
+						state{"1", 22, 0}, // not violate
 					),
 					"tx-violate-1": writes(
 						true,
-						state{1, 10, 0}, // violate
-						state{1, 12, 0}, // not violate
+						state{"1", 10, 0}, // violate
+						state{"1", 12, 0}, // not violate
 					),
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
 				readToTransactionIndices: map[comparableRead][]TxID{
-					{1, "key1.10", ""}: {"tx-violate-1"},
+					{"1", "key1.10", ""}: {"tx-violate-1"},
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx-violate-1":     types.NewHeight(1, 1),
@@ -332,16 +332,16 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 1, 5},
-				state{1, 2, 5},
-				state{1, 3, 3},
-				state{1, 4, 3},
-				state{1, 10, 0},
-				state{1, 22, 0},
+				state{"1", 1, 5},
+				state{"1", 2, 5},
+				state{"1", 3, 3},
+				state{"1", 4, 3},
+				state{"1", 10, 0},
+				state{"1", 22, 0},
 			),
 			unexpectedNsRows: writes(
 				false,
-				state{1, 12, 0},
+				state{"1", 12, 0},
 			),
 			expectedMaxSeenBlocNumber: 10000,
 		},
@@ -349,13 +349,13 @@ func TestCommit(t *testing.T) {
 			name: "all invalid txs",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx1": writes(false, state{2, 7, 1}),
+					"tx1": writes(false, state{"2", 7, 1}),
 				},
 				validTxBlindWrites: transactionToWrites{
-					"tx1": writes(true, state{1, 1, 6}),
+					"tx1": writes(true, state{"1", 1, 6}),
 				},
 				newWrites: transactionToWrites{
-					"tx1": writes(true, state{1, 40, 0}),
+					"tx1": writes(true, state{"1", 40, 0}),
 				},
 				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-10": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
@@ -377,12 +377,12 @@ func TestCommit(t *testing.T) {
 			},
 			expectedNsRows: writes(
 				false,
-				state{1, 1, 5},
+				state{"1", 1, 5},
 			),
 			unexpectedNsRows: writes(
 				false,
-				state{2, 7, 0},
-				state{1, 40, 0},
+				state{"2", 7, 0},
+				state{"1", 40, 0},
 			),
 			expectedMaxSeenBlocNumber: 66000,
 		},

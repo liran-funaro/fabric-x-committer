@@ -71,7 +71,7 @@ func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme s
 
 	_, err = client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
 		Policies: []*protosigverifierservice.PolicyItem{{
-			Namespace: types.MetaNamespaceID.Bytes(),
+			Namespace: types.MetaNamespaceID,
 			Policy:    pBytes,
 		}},
 	})

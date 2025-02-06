@@ -83,8 +83,9 @@ func (q *QueryService) BeginView(
 	q.metrics.requests.WithLabelValues(grpcBeginView).Inc()
 	defer q.requestLatency(grpcBeginView, time.Now())
 
-	if params.TimeoutMilliseconds == 0 || int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() {
-		params.TimeoutMilliseconds = uint64(q.config.MaxViewTimeout.Milliseconds())
+	if params.TimeoutMilliseconds == 0 ||
+		int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() { // nolint:gosec
+		params.TimeoutMilliseconds = uint64(q.config.MaxViewTimeout.Milliseconds()) // nolint:gosec
 	}
 
 	// We try again if we have view-id collision.

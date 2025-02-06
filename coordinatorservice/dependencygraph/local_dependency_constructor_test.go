@@ -77,9 +77,9 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				),
 				createTxForTest(
 					t,
-					uint32(types.MetaNamespaceID),
+					types.MetaNamespaceID,
 					nil,
-					[][]byte{types.NamespaceID(2).Bytes()},
+					[][]byte{[]byte("2")},
 					nil,
 				),
 			},
@@ -145,7 +145,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			ID: 3,
 			Txs: []*protoblocktx.Tx{
 				createTxForTest(
-					t, uint32(types.MetaNamespaceID), nil, [][]byte{types.NamespaceID(nsID1ForTest).Bytes()}, nil,
+					t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
@@ -179,7 +179,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
 				createTxForTest(
-					t, uint32(types.MetaNamespaceID), nil, [][]byte{types.NamespaceID(nsID1ForTest).Bytes()}, nil,
+					t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
 			},
 			TxsNum: []uint32{0, 1, 2, 3},

@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type validatorTestEnv struct {
@@ -60,20 +59,20 @@ func TestValidate(t *testing.T) {
 
 	env.dbEnv.populateDataWithCleanup(
 		t,
-		[]int{1, 2, int(types.MetaNamespaceID)},
+		[]string{"1", "2", types.MetaNamespaceID},
 		namespaceToWrites{
-			1: {
+			"1": {
 				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
 				values:   [][]byte{[]byte("value1.1"), []byte("value1.2"), []byte("value1.3"), []byte("value1.4")},
 				versions: [][]byte{v1, v1, v2, v2},
 			},
-			2: {
+			"2": {
 				keys:     [][]byte{k2_1, k2_2, k2_3, k2_4},
 				values:   [][]byte{[]byte("value2.1"), []byte("value2.2"), []byte("value2.3"), []byte("value2.4")},
 				versions: [][]byte{v0, v0, v1, v1},
 			},
 			types.MetaNamespaceID: {
-				keys:     [][]byte{types.NamespaceID(1).Bytes(), types.NamespaceID(2).Bytes()},
+				keys:     [][]byte{[]byte("1"), []byte("2")},
 				versions: [][]byte{v2, v2},
 			},
 		},
@@ -82,33 +81,33 @@ func TestValidate(t *testing.T) {
 	)
 
 	tx1NonBlindWrites := namespaceToWrites{
-		1: {
+		"1": {
 			keys:     [][]byte{k1_1},
 			values:   [][]byte{[]byte("value1.1.1")},
 			versions: [][]byte{v2},
 		},
-		2: {
+		"2": {
 			keys:     [][]byte{k2_1},
 			values:   [][]byte{[]byte("value1.1.1")},
 			versions: [][]byte{v2},
 		},
 	}
 	tx2NonBlindWrites := namespaceToWrites{
-		1: {
+		"1": {
 			keys:     [][]byte{k1_5},
 			values:   [][]byte{[]byte("value1.5.1")},
 			versions: [][]byte{v0},
 		},
 	}
 	tx3NonBlindWrites := namespaceToWrites{
-		2: {
+		"2": {
 			keys:     [][]byte{k2_2},
 			values:   [][]byte{[]byte("value2.2.1")},
 			versions: [][]byte{v2},
 		},
 	}
 	tx3BlindWrites := namespaceToWrites{
-		1: {
+		"1": {
 			keys:     [][]byte{k1_6},
 			values:   [][]byte{[]byte("value1.6")},
 			versions: [][]byte{nil},
@@ -125,42 +124,42 @@ func TestValidate(t *testing.T) {
 			name: "all valid tx",
 			preparedTx: &preparedTransactions{
 				nsToReads: namespaceToReads{
-					1: &reads{
+					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
 					},
-					2: &reads{
+					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{v0, v0, nil},
 					},
 					types.MetaNamespaceID: &reads{
-						keys:     [][]byte{types.NamespaceID(1).Bytes(), types.NamespaceID(2).Bytes()},
+						keys:     [][]byte{[]byte("1"), []byte("2")},
 						versions: [][]byte{v2, v2},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []TxID{
+					comparableRead{"1", string(k1_1), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v1)}: []TxID{
+					comparableRead{"1", string(k1_2), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), ""}: []TxID{
+					comparableRead{"1", string(k1_5), ""}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), string(v0)}: []TxID{
+					comparableRead{"2", string(k2_1), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), string(v0)}: []TxID{
+					comparableRead{"2", string(k2_2), string(v0)}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []TxID{
+					comparableRead{"2", string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "1", string(v2)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "2", string(v2)}: []TxID{
 						"tx1", "tx3",
 					},
 				},
@@ -200,42 +199,42 @@ func TestValidate(t *testing.T) {
 			name: "all invalid tx",
 			preparedTx: &preparedTransactions{
 				nsToReads: namespaceToReads{
-					1: &reads{
+					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v0, v0, v1},
 					},
-					2: &reads{
+					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{nil, nil, nil},
 					},
 					types.MetaNamespaceID: &reads{
-						keys:     [][]byte{types.NamespaceID(1).Bytes(), types.NamespaceID(2).Bytes()},
+						keys:     [][]byte{[]byte("1"), []byte("2")},
 						versions: [][]byte{v1, v1},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v0)}: []TxID{
+					comparableRead{"1", string(k1_1), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v0)}: []TxID{
+					comparableRead{"1", string(k1_2), string(v0)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), string(v1)}: []TxID{
+					comparableRead{"1", string(k1_5), string(v1)}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), ""}: []TxID{
+					comparableRead{"2", string(k2_1), ""}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), ""}: []TxID{
+					comparableRead{"2", string(k2_2), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []TxID{
+					comparableRead{"2", string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v1)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{
 						"tx1", "tx2",
 					},
 				},
@@ -273,47 +272,49 @@ func TestValidate(t *testing.T) {
 			name: "valid and invalid tx",
 			preparedTx: &preparedTransactions{
 				nsToReads: namespaceToReads{
-					1: &reads{
+					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
 						versions: [][]byte{v1, v1, nil},
 					},
-					2: &reads{
+					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: [][]byte{nil, nil, nil},
 					},
 					types.MetaNamespaceID: &reads{
 						keys: [][]byte{
-							types.NamespaceID(1).Bytes(), types.NamespaceID(2).Bytes(), types.NamespaceID(2).Bytes(),
+							[]byte("1"),
+							[]byte("2"),
+							[]byte("2"),
 						},
 						versions: [][]byte{v2, v2, v1},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{1, string(k1_1), string(v1)}: []TxID{
+					comparableRead{"1", string(k1_1), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_2), string(v1)}: []TxID{
+					comparableRead{"1", string(k1_2), string(v1)}: []TxID{
 						"tx1",
 					},
-					comparableRead{1, string(k1_5), ""}: []TxID{
+					comparableRead{"1", string(k1_5), ""}: []TxID{
 						"tx2",
 					},
-					comparableRead{2, string(k2_1), ""}: []TxID{
+					comparableRead{"2", string(k2_1), ""}: []TxID{
 						"tx1",
 					},
-					comparableRead{2, string(k2_2), ""}: []TxID{
+					comparableRead{"2", string(k2_2), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{2, string(k2_5), ""}: []TxID{
+					comparableRead{"2", string(k2_5), ""}: []TxID{
 						"tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(1).Bytes()), string(v2)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "1", string(v2)}: []TxID{
 						"tx1", "tx2",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v2)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "2", string(v2)}: []TxID{
 						"tx1", "tx3",
 					},
-					comparableRead{types.MetaNamespaceID, string(types.NamespaceID(2).Bytes()), string(v1)}: []TxID{
+					comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{
 						"tx4",
 					},
 				},

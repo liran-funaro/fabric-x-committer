@@ -17,7 +17,7 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 		&runner.Config{
 			NumSigVerifiers:     2,
 			NumVCService:        2,
-			InitializeNamespace: []types.NamespaceID{1},
+			InitializeNamespace: []string{"1"},
 			BlockSize:           5,
 			BlockTimeout:        2 * time.Second,
 		},
@@ -99,7 +99,7 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 		t.Run(tt.name, func(t *testing.T) {
 			for i, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
-					ns.NsId = 1
+					ns.NsId = "1"
 					ns.NsVersion = v0
 				}
 				if tt.validSign[i] {

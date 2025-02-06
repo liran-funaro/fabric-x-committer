@@ -123,7 +123,7 @@ func TestDependencyGraph(t *testing.T) {
 		keys := makeTestKeys(t, 10)
 		// t2 depends on t1
 		t1 := createTxForTest(
-			t, uint32(types.MetaNamespaceID), nil, [][]byte{types.NamespaceID(nsID1ForTest).Bytes()}, nil,
+			t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 		)
 		t2 := createTxForTest(
 			t, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
@@ -137,7 +137,7 @@ func TestDependencyGraph(t *testing.T) {
 
 		// t3 depends on t2 and t1
 		t3 := createTxForTest(
-			t, uint32(types.MetaNamespaceID), nil, [][]byte{types.NamespaceID(nsID1ForTest).Bytes()}, nil,
+			t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 		)
 		// t4 depends on t3, t2 and t1
 		t4 := createTxForTest(

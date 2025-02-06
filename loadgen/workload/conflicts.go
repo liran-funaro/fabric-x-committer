@@ -52,7 +52,7 @@ func newSignTxModifier(
 		Id: "fake",
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:      0,
+				NsId:      "0",
 				NsVersion: types.VersionNumber(0).Bytes(),
 			},
 		},

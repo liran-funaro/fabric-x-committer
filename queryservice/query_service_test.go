@@ -29,7 +29,7 @@ type queryServiceTestEnv struct {
 	config        *Config
 	ctx           context.Context
 	qs            *QueryService
-	ns            []int
+	ns            []string
 	clientConn    *grpc.ClientConn
 	pool          *pgxpool.Pool
 	disabledViews []string
@@ -41,7 +41,7 @@ func TestQuery(t *testing.T) {
 	requiredItems := make([]*items, len(env.ns))
 	for i, ns := range env.ns {
 		requiredItems[i] = &items{
-			ns:       uint32(ns),
+			ns:       ns,
 			keys:     strToBytes("item1", "item2", "item3", "item4"),
 			values:   strToBytes("value1", "value2", "value3", "value4"),
 			versions: verToBytes(0, 1, 2, 3),
@@ -62,11 +62,11 @@ func TestQuery(t *testing.T) {
 	csParams := &protoqueryservice.ViewParameters{
 		IsoLevel:            protoqueryservice.IsoLevel_RepeatableRead,
 		NonDeferrable:       false,
-		TimeoutMilliseconds: uint64(time.Minute.Milliseconds()),
+		TimeoutMilliseconds: uint64(time.Minute.Milliseconds()), // nolint:gosec
 	}
 
 	for i, qNs := range query.Namespaces {
-		t.Run(fmt.Sprintf("Query internal NS %d", qNs.NsId), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Query internal NS %s", qNs.NsId), func(t *testing.T) {
 			ret, err := unsafeQueryRows(env.ctx, env.qs.batcher.pool, qNs.NsId, qNs.Keys)
 			require.NoError(t, err)
 			requireRow(t, requiredItems[i], &protoqueryservice.RowsNamespace{
@@ -121,7 +121,7 @@ func TestQuery(t *testing.T) {
 		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
 
 		t1 := requiredItems[0]
-		testItem1 := items{0, t1.keys[:1], t1.values[:1], t1.versions[:1]}
+		testItem1 := items{"0", t1.keys[:1], t1.values[:1], t1.versions[:1]}
 
 		view := env.beginView(t, client, csParams)
 		ret, err := client.GetRows(env.ctx, &protoqueryservice.Query{
@@ -236,13 +236,13 @@ func strToBytes(str ...string) [][]byte {
 func verToBytes(ver ...int) [][]byte {
 	ret := make([][]byte, len(ver))
 	for i, v := range ver {
-		ret[i] = types.VersionNumber(v).Bytes()
+		ret[i] = types.VersionNumber(v).Bytes() // nolint:gosec
 	}
 	return ret
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	cs := loadgen.GenerateNamespacesUnderTest(t, []types.NamespaceID{0, 1, 2})
+	cs := loadgen.GenerateNamespacesUnderTest(t, []string{"0", "1", "2"})
 
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
@@ -305,14 +305,14 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		config:     config,
 		ctx:        ctx,
 		qs:         qs,
-		ns:         []int{0, 1, 2},
+		ns:         []string{"0", "1", "2"},
 		clientConn: clientConn,
 		pool:       pool,
 	}
 }
 
 type items struct {
-	ns                     uint32
+	ns                     string
 	keys, values, versions [][]byte
 }
 
@@ -342,7 +342,7 @@ func (q *queryServiceTestEnv) insert(t *testing.T, i *items) {
 		`insert into %s values (
 			UNNEST($1::bytea[]), UNNEST($2::bytea[]), UNNEST($3::bytea[])
 		);`,
-		vcservice.TableName(types.NamespaceID(i.ns)),
+		vcservice.TableName(i.ns),
 	)
 	_, err := q.pool.Exec(q.ctx, query, i.keys, i.values, i.versions)
 	require.NoError(t, err)
@@ -358,7 +358,7 @@ func (q *queryServiceTestEnv) update(t *testing.T, i *items) {
 		) AS t
 		WHERE %[1]s.key = t.key;
 		`,
-		vcservice.TableName(types.NamespaceID(i.ns)),
+		vcservice.TableName(i.ns),
 	)
 	_, err := q.pool.Exec(q.ctx, query, i.keys, i.values, i.versions)
 	require.NoError(t, err)

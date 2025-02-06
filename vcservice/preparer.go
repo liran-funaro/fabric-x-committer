@@ -49,7 +49,7 @@ type (
 	transactionIDToHeight map[TxID]*types.Height
 
 	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
-	namespaceToReads map[types.NamespaceID]*reads
+	namespaceToReads map[string]*reads
 
 	// reads represents a list of keys and their corresponding versions.
 	reads struct {
@@ -64,14 +64,14 @@ type (
 
 	// comparableRead defines a read with fields suitable for use as a map key (for uniqueness).
 	comparableRead struct {
-		nsID    types.NamespaceID
+		nsID    string
 		key     string
 		version string
 	}
 
 	transactionToWrites map[TxID]namespaceToWrites
 
-	namespaceToWrites map[types.NamespaceID]*namespaceWrites
+	namespaceToWrites map[string]*namespaceWrites
 
 	namespaceWrites struct {
 		keys     [][]byte
@@ -132,7 +132,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			txIDToHeight:           make(transactionIDToHeight),
 		}
 		metaNs := &protoblocktx.TxNamespace{
-			NsId: uint32(types.MetaNamespaceID),
+			NsId: types.MetaNamespaceID,
 		}
 
 		maxBlkNum := uint64(0)
@@ -159,12 +159,12 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// we need to reject the transaction. This is done by
 				// adding the namespaceID, and version to the reads-only
 				// list of the metaNamespaceID.
-				if nsOperations.NsId == uint32(types.MetaNamespaceID) {
+				if nsOperations.NsId == types.MetaNamespaceID {
 					continue
 				}
 				metaNs.ReadsOnly = []*protoblocktx.Read{
 					{
-						Key:     types.NamespaceID(nsOperations.NsId).Bytes(),
+						Key:     []byte(nsOperations.NsId),
 						Version: nsOperations.NsVersion,
 					},
 				}
@@ -197,14 +197,13 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 		return
 	}
 
-	nsID := types.NamespaceID(ns.NsId)
-	nsReads := p.nsToReads.getOrCreate(nsID)
+	nsReads := p.nsToReads.getOrCreate(ns.NsId)
 
 	for _, r := range ns.ReadsOnly {
 		// When more than one txs read the same key, we only need to add the key once for validation.
 		// If the read is already present in the list, we can skip adding it.
 		cr := comparableRead{
-			nsID:    nsID,
+			nsID:    ns.NsId,
 			key:     string(r.Key),
 			version: string(r.Version),
 		}
@@ -222,17 +221,16 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 		return
 	}
 
-	nsID := types.NamespaceID(ns.NsId)
-	nsReads := p.nsToReads.getOrCreate(nsID)
-	nsWrites := p.txIDToNsNonBlindWrites.getOrCreate(id, nsID)
-	newWrites := p.txIDToNsNewWrites.getOrCreate(id, nsID)
+	nsReads := p.nsToReads.getOrCreate(ns.NsId)
+	nsWrites := p.txIDToNsNonBlindWrites.getOrCreate(id, ns.NsId)
+	newWrites := p.txIDToNsNewWrites.getOrCreate(id, ns.NsId)
 
 	for _, rw := range ns.ReadWrites {
 		// In read-writes, duplicates are not possible between transactions. This is because
 		// read-write and write-write dependency ensures that only one of the transactions is
 		// chosen for the validation and commit.
 		cr := comparableRead{
-			nsID:    nsID,
+			nsID:    ns.NsId,
 			key:     string(rw.Key),
 			version: string(rw.Version),
 		}
@@ -254,8 +252,7 @@ func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamesp
 		return
 	}
 
-	nsID := types.NamespaceID(ns.NsId)
-	nsWrites := p.txIDToNsBlindWrites.getOrCreate(id, nsID)
+	nsWrites := p.txIDToNsBlindWrites.getOrCreate(id, ns.NsId)
 
 	for _, w := range ns.BlindWrites {
 		nsWrites.append(w.Key, w.Value, nil)
@@ -276,7 +273,7 @@ func (nw namespaceToWrites) empty() bool {
 	return true
 }
 
-func (nw namespaceToWrites) getOrCreate(nsID types.NamespaceID) *namespaceWrites {
+func (nw namespaceToWrites) getOrCreate(nsID string) *namespaceWrites {
 	nsWrites, ok := nw[nsID]
 	if !ok {
 		nsWrites = &namespaceWrites{}
@@ -285,7 +282,7 @@ func (nw namespaceToWrites) getOrCreate(nsID types.NamespaceID) *namespaceWrites
 	return nsWrites
 }
 
-func (nr namespaceToReads) getOrCreate(nsID types.NamespaceID) *reads {
+func (nr namespaceToReads) getOrCreate(nsID string) *reads {
 	nsRead, ok := nr[nsID]
 	if !ok {
 		nsRead = &reads{}
@@ -294,7 +291,7 @@ func (nr namespaceToReads) getOrCreate(nsID types.NamespaceID) *reads {
 	return nsRead
 }
 
-func (tw transactionToWrites) getOrCreate(id TxID, nsID types.NamespaceID) *namespaceWrites {
+func (tw transactionToWrites) getOrCreate(id TxID, nsID string) *namespaceWrites {
 	nsToWrites, ok := tw[id]
 	if !ok {
 		nsToWrites = make(namespaceToWrites)
@@ -318,7 +315,7 @@ func (tw transactionToWrites) clearEmpty() {
 			continue
 		}
 
-		var emptyNsID []types.NamespaceID
+		var emptyNsID []string
 		for nsID, nw := range ntw {
 			if nw.empty() {
 				emptyNsID = append(emptyNsID, nsID)

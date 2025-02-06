@@ -114,7 +114,7 @@ func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierser
 	}
 	return &protosigverifierservice.Policies{
 		Policies: []*protosigverifierservice.PolicyItem{{
-			Namespace: types.MetaNamespaceID.Bytes(),
+			Namespace: types.MetaNamespaceID,
 			Policy:    pBytes,
 		}},
 	}, nil

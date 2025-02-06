@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -128,7 +127,7 @@ func activateVcServiceForTest(t *testing.T, ports, metricPorts []int) *yuga.Conn
 }
 
 // GenerateNamespacesUnderTest is an export function that creates namespaces using the vc-service.
-func GenerateNamespacesUnderTest(t *testing.T, namespaces []types.NamespaceID) *yuga.Connection {
+func GenerateNamespacesUnderTest(t *testing.T, namespaces []string) *yuga.Connection {
 	conn := activateVcServiceForTest(t, []int{9123}, []int{10010})
 
 	loadConfigString(
@@ -140,7 +139,7 @@ func GenerateNamespacesUnderTest(t *testing.T, namespaces []types.NamespaceID) *
 	)
 	vcConfig := ReadConfig()
 	policy := &workload.PolicyProfile{
-		NamespacePolicies: make(map[types.NamespaceID]*workload.Policy, len(namespaces)),
+		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
 	for i, ns := range namespaces {
 		policy.NamespacePolicies[ns] = &workload.Policy{

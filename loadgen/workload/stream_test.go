@@ -35,8 +35,8 @@ func defaultProfile(workers uint32) *Profile {
 		Transaction: TransactionProfile{
 			ReadWriteCount: NewConstantDistribution(2),
 			Policy: &PolicyProfile{
-				NamespacePolicies: map[types.NamespaceID]*Policy{
-					0:                     {Scheme: signature.Ecdsa},
+				NamespacePolicies: map[string]*Policy{
+					"0":                   {Scheme: signature.Ecdsa},
 					types.MetaNamespaceID: {Scheme: signature.Ecdsa},
 				},
 			},
@@ -144,7 +144,7 @@ func benchTxProfiles() (profiles []*Profile) {
 	for _, sign := range []bool{true, false} {
 		for _, p := range benchWorkersProfiles() {
 			if !sign {
-				p.Transaction.Policy.NamespacePolicies[0].Scheme = signature.NoScheme
+				p.Transaction.Policy.NamespacePolicies["0"].Scheme = signature.NoScheme
 			}
 			profiles = append(profiles, p)
 		}
@@ -154,7 +154,7 @@ func benchTxProfiles() (profiles []*Profile) {
 
 func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 	for _, p := range benchTxProfiles() {
-		name := fmt.Sprintf("workers-%d-sign-%s", p.Workers, p.Transaction.Policy.NamespacePolicies[0].Scheme)
+		name := fmt.Sprintf("workers-%d-sign-%s", p.Workers, p.Transaction.Policy.NamespacePolicies["0"].Scheme)
 		b.Run(name, func(b *testing.B) {
 			benchFunc(b, p)
 		})
@@ -321,7 +321,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := defaultProfile(1)
-	p.Transaction.Policy.NamespacePolicies[0].Scheme = signature.NoScheme
+	p.Transaction.Policy.NamespacePolicies["0"].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
 			Gap:         NewConstantDistribution(1),

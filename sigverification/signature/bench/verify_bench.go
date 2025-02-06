@@ -46,7 +46,7 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 			tx := &protoblocktx.Tx{
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:       0,
+					NsId:       "0",
 					ReadWrites: []*protoblocktx.ReadWrite{},
 				}},
 			}

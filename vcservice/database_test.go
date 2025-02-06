@@ -13,8 +13,8 @@ import (
 //	     chaincode deployment model.
 
 const (
-	ns1 = types.NamespaceID(1)
-	ns2 = types.NamespaceID(2)
+	ns1 = "1"
+	ns2 = "2"
 )
 
 var (
@@ -37,7 +37,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 	env.populateDataWithCleanup(
 		t,
-		[]int{int(ns1), int(ns2)},
+		[]string{ns1, ns2},
 		namespaceToWrites{
 			ns1: {
 				keys:     [][]byte{k1, k2, k3},
@@ -56,7 +56,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		nsID                    types.NamespaceID
+		nsID                    string
 		r                       *reads
 		expectedMismatchedReads *reads
 	}{
@@ -231,7 +231,7 @@ func TestDBCommit(t *testing.T) {
 
 	dbEnv.populateDataWithCleanup(
 		t,
-		[]int{int(ns1), int(ns2)},
+		[]string{ns1, ns2},
 		nil,
 		nil,
 		nil,
@@ -256,7 +256,7 @@ func TestDBCommit(t *testing.T) {
 			versions: [][]byte{v1, v1, v1},
 		},
 		types.MetaNamespaceID: {
-			keys:     [][]byte{types.NamespaceID(3).Bytes(), types.NamespaceID(4).Bytes()},
+			keys:     [][]byte{[]byte("3"), []byte("4")},
 			values:   [][]byte{[]byte("value7"), []byte("value8")},
 			versions: [][]byte{v0, v0, v0},
 		},
@@ -270,16 +270,16 @@ func TestDBCommit(t *testing.T) {
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
 	dbEnv.rowExists(t, types.MetaNamespaceID, *nsToWrites[types.MetaNamespaceID])
-	dbEnv.tableExists(t, types.NamespaceID(3))
-	dbEnv.tableExists(t, types.NamespaceID(4))
+	dbEnv.tableExists(t, "3")
+	dbEnv.tableExists(t, "4")
 
 	nsToWrites = namespaceToWrites{
-		3: {
+		"3": {
 			keys:     [][]byte{k1, k2},
 			values:   [][]byte{[]byte("value1"), []byte("value2")},
 			versions: [][]byte{v0, v0},
 		},
-		4: {
+		"4": {
 			keys:     [][]byte{k4, k5},
 			values:   [][]byte{[]byte("value4"), []byte("value5")},
 			versions: [][]byte{v0, v0},
@@ -287,6 +287,6 @@ func TestDBCommit(t *testing.T) {
 	}
 	_, _, err = dbEnv.DB.commit(&statesToBeCommitted{newWrites: nsToWrites})
 	require.NoError(t, err)
-	dbEnv.rowExists(t, 3, *nsToWrites[3])
-	dbEnv.rowExists(t, 4, *nsToWrites[4])
+	dbEnv.rowExists(t, "3", *nsToWrites["3"])
+	dbEnv.rowExists(t, "4", *nsToWrites["4"])
 }

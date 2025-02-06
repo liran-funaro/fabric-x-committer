@@ -75,7 +75,7 @@ func getPolicies(res *ClientResources) *protosigverifierservice.Policies {
 	}
 	for nsID, s := range e.HashSigners {
 		policyMsg.Policies = append(policyMsg.Policies, &protosigverifierservice.PolicyItem{
-			Namespace: nsID.Bytes(),
+			Namespace: nsID,
 			Policy:    protoutil.MarshalOrPanic(s.GetVerificationPolicy()),
 		})
 	}

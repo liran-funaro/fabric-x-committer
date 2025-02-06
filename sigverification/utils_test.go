@@ -27,7 +27,7 @@ func TestEndToEnd(t *testing.T) {
 				Id: "test",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:       0,
+						NsId:       "0",
 						NsVersion:  make([]byte, 0),
 						ReadWrites: make([]*protoblocktx.ReadWrite, 0),
 					},
@@ -79,7 +79,7 @@ func TestEcdsaPem(t *testing.T) {
 		Id: "test",
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:       0,
+				NsId:       "0",
 				NsVersion:  make([]byte, 0),
 				ReadWrites: make([]*protoblocktx.ReadWrite, 0),
 			},

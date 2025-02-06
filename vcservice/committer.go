@@ -166,7 +166,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protoblocktx.Transactio
 // fillVersionForBlindWrites fetches the current version of the blind-writes keys, and assigns them
 // to the appropriate category (new/update).
 func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransactions) error {
-	state := make(map[types.NamespaceID]keyToVersion)
+	state := make(map[string]keyToVersion)
 	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance

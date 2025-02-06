@@ -56,8 +56,8 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk1
 	inputBlock <- blk2
 
-	for i := range 3 {
+	for i := range uint64(3) {
 		blk := <-receivedBlocksFromLedgerService
-		require.Equal(t, uint64(i), blk.Header.Number)
+		require.Equal(t, i, blk.Header.Number)
 	}
 }

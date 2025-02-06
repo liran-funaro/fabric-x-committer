@@ -56,14 +56,14 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	ctx := createContext(t)
 	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 
-	env.dbEnv.populateDataWithCleanup(t, []int{1, int(types.MetaNamespaceID)}, namespaceToWrites{
-		1: &namespaceWrites{
+	env.dbEnv.populateDataWithCleanup(t, []string{"1", types.MetaNamespaceID}, namespaceToWrites{
+		"1": &namespaceWrites{
 			keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
 			values:   [][]byte{[]byte("value"), []byte("value")},
 			versions: [][]byte{v0},
 		},
 		types.MetaNamespaceID: &namespaceWrites{
-			keys:     [][]byte{types.NamespaceID(1).Bytes()},
+			keys:     [][]byte{[]byte("1")},
 			versions: [][]byte{v0},
 		},
 	}, nil, nil)
@@ -76,7 +76,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "Blind write without value",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -92,7 +92,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "Blind write with value",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -109,7 +109,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "Blind write update existing key",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -127,7 +127,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "New key with value",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
@@ -144,7 +144,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "New key no value",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
@@ -161,7 +161,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "Existing key",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
@@ -209,7 +209,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "New key 2 no value",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v0,
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
@@ -240,7 +240,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					ID: "Namespace version mismatch",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: v1,
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -384,14 +384,14 @@ func TestTransactionResubmission(t *testing.T) {
 	ctx := createContext(t)
 	env := newValidatorAndCommitServiceTestEnv(ctx, t)
 
-	env.dbEnv.populateDataWithCleanup(t, []int{3, int(types.MetaNamespaceID)}, namespaceToWrites{
-		3: &namespaceWrites{
+	env.dbEnv.populateDataWithCleanup(t, []string{"3", types.MetaNamespaceID}, namespaceToWrites{
+		"3": &namespaceWrites{
 			keys:     [][]byte{[]byte("Existing key")},
 			values:   [][]byte{[]byte("value")},
 			versions: [][]byte{v0},
 		},
 		types.MetaNamespaceID: &namespaceWrites{
-			keys:     [][]byte{types.NamespaceID(3).Bytes()},
+			keys:     [][]byte{[]byte("3")},
 			versions: [][]byte{v0},
 		},
 	}, nil, nil)
@@ -405,7 +405,7 @@ func TestTransactionResubmission(t *testing.T) {
 				ID: "Blind write with value",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      3,
+						NsId:      "3",
 						NsVersion: v0,
 						BlindWrites: []*protoblocktx.Write{
 							{
@@ -425,7 +425,7 @@ func TestTransactionResubmission(t *testing.T) {
 				ID: "New key with value",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      3,
+						NsId:      "3",
 						NsVersion: v0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -445,7 +445,7 @@ func TestTransactionResubmission(t *testing.T) {
 				ID: "New key no value",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      3,
+						NsId:      "3",
 						NsVersion: v0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -486,7 +486,7 @@ func TestTransactionResubmission(t *testing.T) {
 				ID: "conflict",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      3,
+						NsId:      "3",
 						NsVersion: v0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{

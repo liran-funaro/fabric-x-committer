@@ -8,30 +8,34 @@ import (
 )
 
 type (
-	// NamespaceID identities a database namespace.
-	NamespaceID uint32
 	// VersionNumber represents a row's version.
 	VersionNumber uint64
 )
 
 // MetaNamespaceID is an ID of a system namespace which holds information about user's namespaces.
-const MetaNamespaceID = NamespaceID(1024)
+const MetaNamespaceID = "_meta"
 
 // ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
-// Bytes converts a NamespaceID to bytes representation.
-func (nsID NamespaceID) Bytes() []byte {
-	return protowire.AppendVarint(nil, uint64(nsID))
-}
+// MaxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
+const MaxNamespaceIDLength = 64
 
-// NamespaceIDFromBytes converts a bytes representation of NamespaceID to NamespaceID.
-func NamespaceIDFromBytes(ns []byte) (NamespaceID, error) {
-	v, l := protowire.ConsumeVarint(ns)
-	if l < 0 || l != len(ns) {
-		return 0, ErrInvalidNamespaceID
+// ValidateNamespaceID checks that a given namespace fulfills namespace naming conventions.
+func ValidateNamespaceID(nsID string) error {
+	// length checks
+	if len(nsID) == 0 || len(nsID) > MaxNamespaceIDLength {
+		return ErrInvalidNamespaceID
 	}
-	return NamespaceID(v), nil
+
+	// if it matches our holy MetaNamespaceID it is valid
+	if nsID == MetaNamespaceID {
+		return nil
+	}
+
+	// TODO: add more validation checks
+
+	return nil
 }
 
 // Bytes converts a version number representation to bytes representation.

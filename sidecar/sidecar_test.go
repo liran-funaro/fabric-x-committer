@@ -135,7 +135,7 @@ func commonTest(t *testing.T, env *sidecarTestEnv) {
 		for i := range 100 {
 			txs[i] = &protoblocktx.Tx{
 				Id:         txIDPrefix + strconv.Itoa(i),
-				Namespaces: []*protoblocktx.TxNamespace{{NsId: uint32(i)}}, // nolint:gosec
+				Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}}, // nolint:gosec
 			}
 			_, resp, err := env.broadcastClient.SubmitWithEnv(protoutil.MarshalOrPanic(txs[i]))
 			require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 	p := env.config.Policies
 	require.NotNil(t, p)
 	require.Len(t, p.Policies, 1)
-	require.Equal(t, types.MetaNamespaceID.Bytes(), p.Policies[0].Namespace)
+	require.Equal(t, types.MetaNamespaceID, p.Policies[0].Namespace)
 	nsp := protoblocktx.NamespacePolicy{}
 	require.NoError(t, proto.Unmarshal(p.Policies[0].Policy, &nsp))
 	verifier, err := signature.NewNsVerifier(nsp.Scheme, nsp.PublicKey)

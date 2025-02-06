@@ -258,7 +258,7 @@ func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
 	}
 
 	return &protovcservice.WaitingTransactions{
-		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatus)),
+		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatus)), // nolint:gosec
 	}, nil
 }
 
@@ -272,7 +272,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 			return connection.FilterStreamRPCError(err)
 		}
 		txCount := len(b.Transactions)
-		vc.numWaitingTxsForStatus.Add(int32(txCount))
+		vc.numWaitingTxsForStatus.Add(int32(txCount)) // nolint:gosec
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 		vc.receivedTxBatch <- b
 	}
@@ -332,7 +332,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		if !ok {
 			return nil
 		}
-		vc.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status)))
+		vc.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) // nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
 			return connection.FilterStreamRPCError(err)

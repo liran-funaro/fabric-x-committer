@@ -17,7 +17,7 @@ message Policies {
 }
 
 message PolicyItem {
-    bytes namespace = 1;
+    string namespace = 1;
     bytes policy = 2;
 }
 

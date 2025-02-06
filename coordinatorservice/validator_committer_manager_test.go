@@ -164,10 +164,10 @@ func TestValidatorCommitterManager(t *testing.T) {
 					ID: "create ns 1",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId: uint32(types.MetaNamespaceID),
+							NsId: types.MetaNamespaceID,
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: pBytes,
 								},
 							},
@@ -191,7 +191,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
 			require.ElementsMatch(t, []*protosigverifierservice.PolicyItem{
 				{
-					Namespace: types.NamespaceID(1).Bytes(),
+					Namespace: "1",
 					Policy:    pBytes,
 				},
 			}, mockSvService.GetPolicies().Policies)

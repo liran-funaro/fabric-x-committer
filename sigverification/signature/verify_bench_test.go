@@ -63,7 +63,7 @@ func BenchmarkTxVerifier(b *testing.B) {
 
 				// create tx with a single namespace
 				tx := &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{NsId: 1}},
+					Namespaces: []*protoblocktx.TxNamespace{{NsId: "1"}},
 				}
 
 				// attach all inputs (sns) as readWrites

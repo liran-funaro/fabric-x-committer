@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBadlyFormedTxs(t *testing.T) {
-	RegisterTestingT(t)
+	gomega.RegisterTestingT(t)
 	c := runner.NewCluster(
 		t,
 		&runner.Config{
@@ -35,7 +35,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 		},
 	)
 
-	cr := c.CreateCryptoForNs(t, types.NamespaceID(1), signature.Ecdsa)
+	cr := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 	ns1Policy := cr.HashSigner.GetVerificationPolicy()
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "missing signature",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId: 1,
+							NsId: "1",
 						},
 					},
 				},
@@ -63,7 +63,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "missing namespace",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId: 1,
+							NsId: "1",
 						},
 					},
 					Signatures: [][]byte{[]byte("signature")},
@@ -72,8 +72,8 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "no writes",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
-							NsVersion: types.NamespaceID(0).Bytes(),
+							NsId:      "1",
+							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadsOnly: []*protoblocktx.Read{
 								{
 									Key:     []byte("k3"),
@@ -102,7 +102,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "blind writes not allowed in ns lifecycle",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -117,11 +117,12 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "invalid namespace id in ns lifecycle",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key: []byte("key1"),
+									// empty namespaces are invalid
+									Key: []byte(""),
 								},
 							},
 						},
@@ -132,11 +133,11 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "invalid signature",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: policyBytes,
 								},
 							},
@@ -148,11 +149,11 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "invalid policy in ns lifecycle",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: []byte("policy"),
 								},
 							},
@@ -183,21 +184,21 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "duplicate namespace",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: policyBytes,
 								},
 							},
 						},
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: policyBytes,
 								},
 							},
@@ -209,11 +210,11 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "duplicate namespace",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: policyBytes,
 								},
 							},
@@ -225,7 +226,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 					Id: "missing signature",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId: 1,
+							NsId: "1",
 						},
 					},
 				},

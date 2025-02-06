@@ -3,7 +3,6 @@ package workload
 import (
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,7 +88,7 @@ type DependencyDescription struct {
 
 // PolicyProfile holds the policy information for the load generation.
 type PolicyProfile struct {
-	NamespacePolicies map[types.NamespaceID]*Policy `mapstructure:"namespace-policies" yaml:"namespace-policies"`
+	NamespacePolicies map[string]*Policy `mapstructure:"namespace-policies" yaml:"namespace-policies"`
 }
 
 // Policy describes how to sign/verify a TX.

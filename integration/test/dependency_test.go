@@ -19,7 +19,7 @@ func testSetup(t *testing.T) *runner.Cluster {
 		&runner.Config{
 			NumSigVerifiers:     2,
 			NumVCService:        2,
-			InitializeNamespace: []types.NamespaceID{1},
+			InitializeNamespace: []string{"1"},
 			BlockSize:           5,
 			BlockTimeout:        2 * time.Second,
 		},
@@ -29,7 +29,7 @@ func testSetup(t *testing.T) *runner.Cluster {
 		Id: "blind write keys to ns1",
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:      1,
+				NsId:      "1",
 				NsVersion: types.VersionNumber(0).Bytes(),
 				BlindWrites: []*protoblocktx.Write{
 					{
@@ -152,7 +152,7 @@ func TestDependentHappyPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
-					ns.NsId = 1
+					ns.NsId = "1"
 					ns.NsVersion = v0
 				}
 				c.AddSignatures(t, tx)
@@ -241,7 +241,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 				Id: tt.txID,
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: v0,
 						ReadsOnly: tt.readsOnly,
 						BlindWrites: []*protoblocktx.Write{
@@ -337,7 +337,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 				Id: tt.txID,
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:       1,
+						NsId:       "1",
 						NsVersion:  v0,
 						ReadWrites: tt.readWrites,
 					},
@@ -505,7 +505,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
-					ns.NsId = 1
+					ns.NsId = "1"
 					ns.NsVersion = v0
 				}
 				c.AddSignatures(t, tx)
@@ -613,7 +613,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
-					ns.NsId = 1
+					ns.NsId = "1"
 					ns.NsVersion = v0
 				}
 				c.AddSignatures(t, tx)

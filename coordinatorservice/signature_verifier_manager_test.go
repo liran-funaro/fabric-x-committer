@@ -9,7 +9,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
@@ -156,8 +155,7 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 	// set verification key
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	ns := uint32(0)
-	nsID := types.NamespaceID(ns)
+	nsID := "0"
 	expectedPolicy := &protosigverifierservice.Policies{
 		Policies: []*protosigverifierservice.PolicyItem{
 			policy.MakePolicy(t, nsID, &protoblocktx.NamespacePolicy{

@@ -25,12 +25,12 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		},
 	)
 
-	cr1 := c.CreateCryptoForNs(t, types.NamespaceID(1), signature.Ecdsa)
+	cr1 := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 	ns1Policy := cr1.HashSigner.GetVerificationPolicy()
 	policyBytes, err := proto.Marshal(ns1Policy)
 	require.NoError(t, err)
 
-	cr2 := c.CreateCryptoForNs(t, types.NamespaceID(2), signature.Ecdsa)
+	cr2 := c.CreateCryptoForNs(t, "2", signature.Ecdsa)
 	ns2Policy := cr2.HashSigner.GetVerificationPolicy()
 	policyBytesNs2, err := proto.Marshal(ns2Policy)
 	require.NoError(t, err)
@@ -47,11 +47,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "create ns 1",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:   types.NamespaceID(1).Bytes(),
+									Key:   []byte("1"),
 									Value: policyBytes,
 								},
 							},
@@ -71,7 +71,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "write to ns 1",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: types.VersionNumber(0).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -95,7 +95,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "write to ns 1 before updating ns1",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: types.VersionNumber(0).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -110,11 +110,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "update ns 1 with incorrect policy",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:     types.NamespaceID(1).Bytes(),
+									Key:     []byte("1"),
 									Version: types.VersionNumber(0).Bytes(),
 									Value:   policyBytesNs2,
 								},
@@ -126,7 +126,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "write to stale ns 1 after incorrect policy",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: types.VersionNumber(1).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -141,11 +141,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "update ns 1 with correct policy",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      uint32(types.MetaNamespaceID),
+							NsId:      types.MetaNamespaceID,
 							NsVersion: types.VersionNumber(0).Bytes(),
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
-									Key:     types.NamespaceID(1).Bytes(),
+									Key:     []byte("1"),
 									Version: types.VersionNumber(1).Bytes(),
 									Value:   policyBytes,
 								},
@@ -157,7 +157,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "write to stale ns 1 after correct policy",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: types.VersionNumber(1).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{
@@ -193,7 +193,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Id: "write to ns1 again",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId:      1,
+							NsId:      "1",
 							NsVersion: types.VersionNumber(2).Bytes(),
 							BlindWrites: []*protoblocktx.Write{
 								{

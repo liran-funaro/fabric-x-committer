@@ -56,7 +56,7 @@ type (
 		committedBlock chan *common.Block
 		rootDir        string
 
-		nsToCrypto     map[types.NamespaceID]*Crypto
+		nsToCrypto     map[string]*Crypto
 		nsToCryptoLock sync.Mutex
 
 		clusterConfig *Config
@@ -67,7 +67,7 @@ type (
 
 	// Crypto holds crypto material for a namespace.
 	Crypto struct {
-		Namespace  types.NamespaceID
+		Namespace  string
 		Profile    *workload.Policy
 		HashSigner *workload.HashSignerVerifier
 		NsSigner   sigverificationtest.NsSigner
@@ -79,7 +79,7 @@ type (
 	Config struct {
 		NumSigVerifiers     int
 		NumVCService        int
-		InitializeNamespace []types.NamespaceID
+		InitializeNamespace []string
 		BlockSize           uint64
 		BlockTimeout        time.Duration
 		LoadGen             bool
@@ -110,7 +110,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		),
 		dbEnv:            vcservice.NewDatabaseTestEnv(t),
 		rootDir:          t.TempDir(),
-		nsToCrypto:       make(map[types.NamespaceID]*Crypto),
+		nsToCrypto:       make(map[string]*Crypto),
 		clusterConfig:    clusterConfig,
 		channelID:        "channel1",
 		committedBlock:   make(chan *common.Block, 100),
@@ -206,7 +206,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 			ChannelID:           c.channelID,
 			BlockSize:           clusterConfig.BlockSize,
 			Policy: &workload.PolicyProfile{
-				NamespacePolicies: make(map[types.NamespaceID]*workload.Policy),
+				NamespacePolicies: make(map[string]*workload.Policy),
 			},
 		}
 		for _, cr := range c.GetAllCrypto() {
@@ -248,13 +248,13 @@ func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 }
 
 // createNamespacesAndCommit creates namespaces in the committer.
-func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.NamespaceID) {
+func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []string) {
 	if len(namespaces) == 0 {
 		return
 	}
 
 	writeToMetaNs := &protoblocktx.TxNamespace{
-		NsId:       uint32(types.MetaNamespaceID),
+		NsId:       types.MetaNamespaceID,
 		NsVersion:  types.VersionNumber(0).Bytes(),
 		ReadWrites: make([]*protoblocktx.ReadWrite, 0, len(namespaces)),
 	}
@@ -269,7 +269,7 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 		require.NoError(t, err)
 
 		writeToMetaNs.ReadWrites = append(writeToMetaNs.ReadWrites, &protoblocktx.ReadWrite{
-			Key:   nsID.Bytes(),
+			Key:   []byte(nsID),
 			Value: policyBytes,
 		})
 	}
@@ -294,7 +294,7 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []types.Nam
 // AddSignatures adds signature for each namespace in a given transaction.
 func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 	for idx, ns := range tx.Namespaces {
-		nsCr := c.GetCryptoForNs(t, types.NamespaceID(ns.NsId))
+		nsCr := c.GetCryptoForNs(t, ns.NsId)
 		sig, err := nsCr.NsSigner.SignNs(tx, idx)
 		require.NoError(t, err)
 		tx.Signatures = append(tx.Signatures, sig)
@@ -311,7 +311,7 @@ func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx
 }
 
 // CreateCryptoForNs creates the Crypto materials for a namespace using the signature profile.
-func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID types.NamespaceID, schema signature.Scheme) *Crypto {
+func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
 	policyMsg := &workload.Policy{
 		Scheme: schema,
 		Seed:   c.seedForCryptoGen.Int63(),
@@ -334,7 +334,7 @@ func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID types.NamespaceID, schema
 }
 
 // GetCryptoForNs returns the Crypto material a namespace.
-func (c *Cluster) GetCryptoForNs(t *testing.T, nsID types.NamespaceID) *Crypto {
+func (c *Cluster) GetCryptoForNs(t *testing.T, nsID string) *Crypto {
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()
 

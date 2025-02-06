@@ -77,7 +77,7 @@ func (t *sharedLazyTx) Release() {
 // unsafeQueryRows queries rows for the given keys.
 // It may not support concurrent execution, depending on the querier implementation.
 func unsafeQueryRows(
-	ctx context.Context, queryObj querier, nsID uint32, keys [][]byte,
+	ctx context.Context, queryObj querier, nsID string, keys [][]byte,
 ) ([]*protoqueryservice.Row, error) {
 	queryStmt := fmt.Sprintf(queryRowSQLTemplate, nsID)
 	r, err := queryObj.Query(ctx, queryStmt, keys)

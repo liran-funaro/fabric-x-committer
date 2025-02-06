@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -37,13 +37,13 @@ func TestNoVerificationKeySet(t *testing.T) {
 	c := sigverification_test.NewTestState(t, verifierserver.New(parallelExecutionConfig, m))
 
 	stream, err := c.Client.StartStream(context.Background())
-	Expect(err).To(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	err = stream.Send(&sigverification.RequestBatch{})
-	Expect(err).To(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	_, err = stream.Recv()
-	Expect(err).NotTo(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	c.TearDown()
 }
@@ -57,7 +57,7 @@ func TestNoInput(t *testing.T) {
 
 	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
 		Policies: []*sigverification.PolicyItem{
-			policy.MakePolicy(t, 1, &protoblocktx.NamespacePolicy{
+			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
 			}),
@@ -68,11 +68,11 @@ func TestNoInput(t *testing.T) {
 	stream, _ := c.Client.StartStream(context.Background())
 
 	err = stream.Send(&sigverification.RequestBatch{})
-	Expect(err).To(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	output := sigverification_test.OutputChannel(stream)
-	Expect(err).To(BeNil())
-	Eventually(output).WithTimeout(testTimeout).ShouldNot(Receive())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
+	gomega.Eventually(output).WithTimeout(testTimeout).ShouldNot(gomega.Receive())
 
 	c.TearDown()
 }
@@ -87,20 +87,20 @@ func TestMinimalInput(t *testing.T) {
 
 	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
 		Policies: []*sigverification.PolicyItem{
-			policy.MakePolicy(t, 1, &protoblocktx.NamespacePolicy{
+			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
 			}),
 		},
 	})
 	require.NoError(t, err)
-	Expect(err).To(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	stream, _ := c.Client.StartStream(context.Background())
 
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      1,
+			NsId:      "1",
 			NsVersion: types.VersionNumber(0).Bytes(),
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0001"),
@@ -112,7 +112,7 @@ func TestMinimalInput(t *testing.T) {
 
 	tx2 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      1,
+			NsId:      "1",
 			NsVersion: types.VersionNumber(0).Bytes(),
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0010"),
@@ -125,7 +125,7 @@ func TestMinimalInput(t *testing.T) {
 
 	tx3 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      1,
+			NsId:      "1",
 			NsVersion: types.VersionNumber(0).Bytes(),
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0011"),
@@ -140,11 +140,11 @@ func TestMinimalInput(t *testing.T) {
 		{BlockNum: 1, TxNum: 2, Tx: tx2},
 		{BlockNum: 1, TxNum: 3, Tx: tx3},
 	}})
-	Expect(err).To(BeNil())
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	output := sigverification_test.OutputChannel(stream)
-	Expect(err).To(BeNil())
-	Eventually(output).WithTimeout(1 * time.Second).Should(Receive(HaveLen(3)))
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
+	gomega.Eventually(output).WithTimeout(1 * time.Second).Should(gomega.Receive(gomega.HaveLen(3)))
 
 	c.TearDown()
 }
@@ -163,7 +163,7 @@ func TestBadTxFormat(t *testing.T) {
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
 		Policies: []*sigverification.PolicyItem{
-			policy.MakePolicy(t, 1, &protoblocktx.NamespacePolicy{
+			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
 			}),
@@ -202,7 +202,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "missing namespace version",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId: 1,
+						NsId: "1",
 					},
 				},
 				Signatures: [][]byte{
@@ -216,7 +216,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "no writes",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadsOnly: []*protoblocktx.Read{
 							{
@@ -236,7 +236,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "namespace id is invalid in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -245,11 +245,12 @@ func TestBadTxFormat(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key: []byte("key"),
+								// empty namespaceIDs are not allowed
+								Key: []byte(""),
 							},
 						},
 					},
@@ -266,7 +267,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "namespace policy is invalid in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -275,11 +276,11 @@ func TestBadTxFormat(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key:   types.NamespaceID(2).Bytes(),
+								Key:   []byte("2"),
 								Value: []byte("value"),
 							},
 						},
@@ -297,7 +298,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "duplicate namespace",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -306,17 +307,17 @@ func TestBadTxFormat(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key:   types.NamespaceID(2).Bytes(),
+								Key:   []byte("2"),
 								Value: nsPolicy,
 							},
 						},
 					},
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 					},
 				},
@@ -333,7 +334,7 @@ func TestBadTxFormat(t *testing.T) {
 				Id: "blind writes not allowed in metaNs tx",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -342,11 +343,11 @@ func TestBadTxFormat(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						BlindWrites: []*protoblocktx.Write{
 							{
-								Key:   types.NamespaceID(2).Bytes(),
+								Key:   []byte("2"),
 								Value: nsPolicy,
 							},
 						},

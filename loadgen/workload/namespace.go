@@ -26,7 +26,7 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 			return nil, errors.New("failed to serialize namespace policy")
 		}
 		readWrites = append(readWrites, &protoblocktx.ReadWrite{
-			Key:   ns.Bytes(),
+			Key:   []byte(ns),
 			Value: policyBytes,
 		})
 	}
@@ -34,7 +34,7 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 	tx := &protoblocktx.Tx{
 		Id: "initial policy update",
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:       uint32(types.MetaNamespaceID),
+			NsId:       types.MetaNamespaceID,
 			NsVersion:  types.VersionNumber(0).Bytes(),
 			ReadWrites: readWrites,
 		}},

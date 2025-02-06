@@ -55,7 +55,7 @@ func NewValidTxGenerator(params *TxGeneratorParams) *ValidTxGenerator {
 
 func (g *ValidTxGenerator) Next() *TxWithStatus {
 	tx := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{NsId: 1}},
+		Namespaces: []*protoblocktx.TxNamespace{{NsId: "1"}},
 	}
 
 	// attach all serial numbers as readWrites

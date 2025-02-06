@@ -83,7 +83,7 @@ func (c *commonAdapter) setupCoordinator(ctx context.Context, client protocoordi
 	}
 	_, err := client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
 		Policies: []*protosigverifierservice.PolicyItem{{
-			Namespace: types.MetaNamespaceID.Bytes(),
+			Namespace: types.MetaNamespaceID,
 			Policy:    protoutil.MarshalOrPanic(signer.GetVerificationPolicy()),
 		}},
 	})

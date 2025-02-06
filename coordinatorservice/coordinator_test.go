@@ -125,7 +125,7 @@ func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
 	}, 4*time.Second, 250*time.Millisecond)
 }
 
-func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum, nsID int) {
+func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum int, nsID string) {
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
 		PublicKey: []byte("publicKey"),
@@ -141,11 +141,11 @@ func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum, nsID int) {
 				Id: txID,
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key:   types.NamespaceID(nsID).Bytes(), // nolint:gosec
+								Key:   []byte(nsID),
 								Value: pBytes,
 							},
 						},
@@ -200,7 +200,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
-	env.createNamespace(t, 0, 1)
+	env.createNamespace(t, 0, "1")
 
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -215,7 +215,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 				Id: "tx1",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -224,11 +224,11 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key:   types.NamespaceID(2).Bytes(),
+								Key:   []byte("2"),
 								Value: pBytes,
 							},
 						},
@@ -277,7 +277,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
-	utNsID := types.NamespaceID(1)
+	utNsID := "1"
 	utNsVersion := types.VersionNumber(0).Bytes()
 	mainKey := []byte("main-key")
 	subKey := []byte("sub-key")
@@ -296,11 +296,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "create namespace 1",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(types.MetaNamespaceID),
+					NsId:      types.MetaNamespaceID,
 					NsVersion: types.VersionNumber(0).Bytes(),
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
-							Key:   utNsID.Bytes(),
+							Key:   []byte(utNsID),
 							Value: pBytes,
 						},
 					},
@@ -309,7 +309,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "create main key (read-write version 0)",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(utNsID),
+					NsId:      utNsID,
 					NsVersion: utNsVersion,
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:   mainKey,
@@ -320,7 +320,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "update main key (read-write version 1)",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(utNsID),
+					NsId:      utNsID,
 					NsVersion: utNsVersion,
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
@@ -332,7 +332,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "update main key (blind-write version 2)",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(utNsID),
+					NsId:      utNsID,
 					NsVersion: utNsVersion,
 					BlindWrites: []*protoblocktx.Write{{
 						Key:   mainKey,
@@ -343,7 +343,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "read main key, create sub key (read version 2, read-write version 0)",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(utNsID),
+					NsId:      utNsID,
 					NsVersion: utNsVersion,
 					ReadsOnly: []*protoblocktx.Read{{
 						Key:     mainKey,
@@ -358,7 +358,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			{
 				Id: "update main key (read-write version 3)",
 				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:      uint32(utNsID),
+					NsId:      utNsID,
 					NsVersion: utNsVersion,
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
@@ -451,7 +451,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.start(ctx, t)
 
 	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
-	env.createNamespace(t, 0, 1)
+	env.createNamespace(t, 0, "1")
 	require.Equal(t, uint64(1), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 
 	err := env.csStream.Send(&protoblocktx.Block{
@@ -461,7 +461,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx1",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -510,7 +510,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx2",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -527,7 +527,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "mvcc conflict",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      2,
+						NsId:      "2",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -544,7 +544,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx1",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -599,7 +599,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx2",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -616,7 +616,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx3",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -633,7 +633,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "mvcc conflict",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      2,
+						NsId:      "2",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -650,7 +650,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "duplicate namespace",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -659,17 +659,17 @@ func TestCoordinatorRecovery(t *testing.T) {
 						},
 					},
 					{
-						NsId:      uint32(types.MetaNamespaceID),
+						NsId:      types.MetaNamespaceID,
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
-								Key:   types.NamespaceID(2).Bytes(),
+								Key:   []byte("2"),
 								Value: nsPolicy,
 							},
 						},
 					},
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 					},
 				},
@@ -683,7 +683,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Id: "tx1",
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
-						NsId:      1,
+						NsId:      "1",
 						NsVersion: types.VersionNumber(0).Bytes(),
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
@@ -762,7 +762,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 			Id: "tx" + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
-					NsId:      1,
+					NsId:      "1",
 					NsVersion: types.VersionNumber(0).Bytes(),
 					BlindWrites: []*protoblocktx.Write{
 						{

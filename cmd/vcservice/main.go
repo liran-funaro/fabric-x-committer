@@ -69,7 +69,7 @@ func startCmd() *cobra.Command {
 func clearCmd() *cobra.Command {
 	var (
 		configPath string
-		namespaces []int
+		namespaces []string
 	)
 	cmd := &cobra.Command{
 		Use:   "clear",
@@ -89,6 +89,6 @@ func clearCmd() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.Flags().IntSliceVar(&namespaces, "namespaces", []int{}, "set the namespaces to clear")
+	cmd.Flags().StringSliceVar(&namespaces, "namespaces", []string{}, "set the namespaces to clear")
 	return cmd
 }

@@ -149,14 +149,14 @@ func (s *VerifierServer) verify(tx *protoblocktx.Tx) (protoblocktx.Status, error
 	return retValid, nil
 }
 
-func (s *VerifierServer) getVerifier(nsID uint32) (signature.NsVerifier, error) {
-	v, ok := s.verifier.Load(types.NamespaceID(nsID))
+func (s *VerifierServer) getVerifier(nsID string) (signature.NsVerifier, error) {
+	v, ok := s.verifier.Load(nsID)
 	if !ok {
 		return nil, ErrNoVerifier
 	}
 	verifier, ok := v.(signature.NsVerifier)
 	if !ok {
-		return nil, errors.Errorf("verifier does not cast to signature.NsVerifier for namespace %d", nsID)
+		return nil, errors.Errorf("verifier does not cast to signature.NsVerifier for namespace %s", nsID)
 	}
 	return verifier, nil
 }
@@ -170,7 +170,7 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 		return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 	}
 
-	nsIDs := make(map[uint32]*protoblocktx.TxNamespace)
+	nsIDs := make(map[string]*protoblocktx.TxNamespace)
 	for _, ns := range tx.Namespaces {
 		if _, ok := nsIDs[ns.NsId]; ok {
 			return protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE
@@ -181,7 +181,7 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 		nsIDs[ns.NsId] = ns
 	}
 
-	metaNs, ok := nsIDs[uint32(types.MetaNamespaceID)]
+	metaNs, ok := nsIDs[types.MetaNamespaceID]
 	if ok {
 		// TODO: need to decide whether we can allow other namespaces
 		//       in the transaction when the MetaNamespaceID is present.
@@ -207,7 +207,7 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 		return protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED
 	}
 
-	nsUpdate := make(map[types.NamespaceID]any)
+	nsUpdate := make(map[string]any)
 	for _, pd := range policy.ListPolicyItems(txNs.ReadWrites) {
 		ns, _, err := policy.ParsePolicyItem(pd)
 		if err != nil {

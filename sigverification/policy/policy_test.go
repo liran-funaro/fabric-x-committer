@@ -21,7 +21,7 @@ func TestListPolicyItems(t *testing.T) {
 	pd := ListPolicyItems(items)
 	require.Len(t, pd, len(items))
 	for i, p := range pd {
-		require.Equal(t, items[i].Key, p.Namespace)
+		require.Equal(t, items[i].Key, []byte(p.Namespace))
 		require.Equal(t, items[i].Value, p.Policy)
 	}
 }
@@ -31,8 +31,8 @@ func TestParsePolicyItem(t *testing.T) {
 		Scheme:    "schema",
 		PublicKey: []byte("public-key"),
 	}
-	for _, ns := range []types.NamespaceID{0, 1024} {
-		t.Run(fmt.Sprintf("valid policy ns: %d", ns), func(t *testing.T) {
+	for _, ns := range []string{"0", types.MetaNamespaceID} {
+		t.Run(fmt.Sprintf("valid policy ns: %s", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			retNs, retP, err := ParsePolicyItem(pd)
 			require.NoError(t, err)
@@ -42,14 +42,15 @@ func TestParsePolicyItem(t *testing.T) {
 	}
 
 	t.Run("invalid ns", func(t *testing.T) {
-		pd := MakePolicy(t, 0, p)
-		pd.Namespace = []byte("bad-namespace")
+		pd := MakePolicy(t, "0", p)
+		// set some bad namespace
+		pd.Namespace = ""
 		_, _, err := ParsePolicyItem(pd)
 		require.ErrorIs(t, err, types.ErrInvalidNamespaceID)
 	})
 
 	t.Run("invalid policy", func(t *testing.T) {
-		pd := MakePolicy(t, 0, p)
+		pd := MakePolicy(t, "0", p)
 		pd.Policy = []byte("bad-policy")
 		_, _, err := ParsePolicyItem(pd)
 		require.Error(t, err)

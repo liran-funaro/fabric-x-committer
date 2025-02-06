@@ -53,7 +53,7 @@ func (*Coordinator) UpdatePolicies(
 func (c *Coordinator) SetLastCommittedBlockNumber(
 	_ context.Context, lastBlock *protoblocktx.BlockInfo,
 ) (*protocoordinatorservice.Empty, error) {
-	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number))
+	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number)) // nolint:gosec
 	return &protocoordinatorservice.Empty{}, nil
 }
 
@@ -62,7 +62,7 @@ func (c *Coordinator) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protocoordinatorservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil
+	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil // nolint:gosec
 }
 
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
