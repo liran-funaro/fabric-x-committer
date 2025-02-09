@@ -23,7 +23,6 @@ type VcService struct {
 	numBatchesReceived     *atomic.Uint32
 	lastCommittedBlock     atomic.Int64
 	numWaitingTransactions atomic.Int32
-	maxBlockNumber         atomic.Int64
 	txsStatus              *sync.Map
 }
 
@@ -35,7 +34,6 @@ func NewMockVcService() *VcService {
 		txsStatus:          &sync.Map{},
 	}
 	m.lastCommittedBlock.Store(-1)
-	m.maxBlockNumber.Store(-1)
 
 	return m
 }
@@ -74,17 +72,6 @@ func (*VcService) GetPolicies(
 	*protovcservice.Empty,
 ) (*protosigverifierservice.Policies, error) {
 	return &protosigverifierservice.Policies{}, nil
-}
-
-// GetMaxSeenBlockNumber get the last seen maximum block number in the database/ledger.
-func (vc *VcService) GetMaxSeenBlockNumber(
-	_ context.Context,
-	_ *protovcservice.Empty,
-) (*protoblocktx.BlockInfo, error) {
-	if vc.maxBlockNumber.Load() == -1 {
-		return nil, vcservice.ErrMetadataEmpty
-	}
-	return &protoblocktx.BlockInfo{Number: uint64(vc.maxBlockNumber.Load())}, nil // nolint:gosec
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.
@@ -169,7 +156,6 @@ func (vc *VcService) sendTransactionStatus(
 			Status: make(map[string]*protoblocktx.StatusWithHeight),
 		}
 
-		maxNum := vc.lastCommittedBlock.Load()
 		for _, tx := range txBatch.Transactions {
 			code := protoblocktx.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
@@ -177,9 +163,7 @@ func (vc *VcService) sendTransactionStatus(
 			}
 			txsStatus.Status[tx.ID] = types.CreateStatusWithHeight(code, tx.BlockNumber, int(tx.TxNum))
 			vc.txsStatus.Store(tx.ID, code)
-			maxNum = max(maxNum, int64(tx.BlockNumber)) // nolint:gosec
 		}
-		vc.maxBlockNumber.Store(maxNum)
 
 		err := stream.Send(txsStatus)
 		if err != nil {
