@@ -57,8 +57,8 @@ type (
 		versions [][]byte
 	}
 
-	// readToTransactions maps a read to the index of the transaction that contains it
-	// used to find the index of invalid transactions when a read is invalid
+	// readToTransactions maps a read to the transaction ID.
+	// It is used to find the txID of invalid transactions when a read is invalid
 	// i.e., the read version is not matching the committed version.
 	readToTransactions map[comparableRead][]TxID
 
@@ -135,9 +135,18 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			NsId: types.MetaNamespaceID,
 		}
 
-		maxBlkNum := uint64(0)
 		for _, tx := range txBatch.Transactions {
-			maxBlkNum = max(maxBlkNum, tx.BlockNumber)
+			if _, ok := prepTxs.txIDToHeight[TxID(tx.ID)]; ok {
+				// It's possible to receive the same transaction multiple times within a batch
+				// if there's a connection issue between the coordinator and the vcservice.
+				// Although the coordinator does not send the same transaction more than once
+				// in a single batch, connection failures may cause the same transaction to
+				// appear in multiple batches. Because the vcservice's minBatchSize limit
+				// can merge these batches, the same transaction may appear multiple times
+				// within one batch.
+				// Hence, we detect such duplicate transactions and ignore them.
+				continue
+			}
 			prepTxs.txIDToHeight[TxID(tx.ID)] = &types.Height{BlockNum: tx.BlockNumber, TxNum: tx.TxNum}
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,

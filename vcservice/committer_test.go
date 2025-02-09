@@ -316,7 +316,7 @@ func TestCommit(t *testing.T) {
 				invalidTxStatus: map[TxID]protoblocktx.Status{
 					"tx-conflict-4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 				},
-				readToTransactionIndices: map[comparableRead][]TxID{
+				readToTxIDs: map[comparableRead][]TxID{
 					{"1", "key1.10", ""}: {"tx-violate-1"},
 				},
 				txIDToHeight: transactionIDToHeight{

@@ -28,12 +28,12 @@ type transactionValidator struct {
 
 // validatedTransactions contains the writes of valid transactions and the txIDs of invalid transactions.
 type validatedTransactions struct {
-	validTxNonBlindWrites    transactionToWrites
-	validTxBlindWrites       transactionToWrites
-	newWrites                transactionToWrites
-	readToTransactionIndices readToTransactions
-	invalidTxStatus          map[TxID]protoblocktx.Status
-	txIDToHeight             transactionIDToHeight
+	validTxNonBlindWrites transactionToWrites
+	validTxBlindWrites    transactionToWrites
+	newWrites             transactionToWrites
+	readToTxIDs           readToTransactions
+	invalidTxStatus       map[TxID]protoblocktx.Status
+	txIDToHeight          transactionIDToHeight
 }
 
 func (v *validatedTransactions) Debug() {
@@ -45,9 +45,9 @@ func (v *validatedTransactions) Debug() {
 		"valid blind writes: %d\n\t"+
 		"new writes: %d\n\treads: %d\n\tinvalid: %d\n",
 		len(v.validTxNonBlindWrites)+len(v.validTxBlindWrites)+len(v.newWrites)+
-			len(v.readToTransactionIndices)+len(v.invalidTxStatus),
+			len(v.readToTxIDs)+len(v.invalidTxStatus),
 		len(v.validTxNonBlindWrites), len(v.validTxBlindWrites), len(v.newWrites),
-		len(v.readToTransactionIndices), len(v.invalidTxStatus))
+		len(v.readToTxIDs), len(v.invalidTxStatus))
 }
 
 // newValidator creates a new validator.
@@ -102,23 +102,23 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 
 		// Step 2: we construct validated transactions by removing the writes of invalid transactions
 		// and recording the txIDs of invalid transactions.
-		validatedTxs := &validatedTransactions{
-			validTxNonBlindWrites:    prepTx.txIDToNsNonBlindWrites,
-			validTxBlindWrites:       prepTx.txIDToNsBlindWrites,
-			newWrites:                prepTx.txIDToNsNewWrites,
-			readToTransactionIndices: prepTx.readToTxIDs,
-			invalidTxStatus:          prepTx.invalidTxIDStatus,
-			txIDToHeight:             prepTx.txIDToHeight,
+		vTxs := &validatedTransactions{
+			validTxNonBlindWrites: prepTx.txIDToNsNonBlindWrites,
+			validTxBlindWrites:    prepTx.txIDToNsBlindWrites,
+			newWrites:             prepTx.txIDToNsNewWrites,
+			readToTxIDs:           prepTx.readToTxIDs,
+			invalidTxStatus:       prepTx.invalidTxIDStatus,
+			txIDToHeight:          prepTx.txIDToHeight,
 		}
-		if matchErr := validatedTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
+		if matchErr := vTxs.updateMismatch(nsToMismatchingReads); matchErr != nil {
 			return matchErr
 		}
 
 		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
-		outgoingValidatedTransactions.Write(validatedTxs)
+		outgoingValidatedTransactions.Write(vTxs)
 
 		logger.Debugf("Validator sent batch of validated TXs to the committer")
-		validatedTxs.Debug()
+		vTxs.Debug()
 	}
 }
 
@@ -166,7 +166,7 @@ func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToR
 				version: string(mismatchingReads.versions[index]),
 			}
 
-			txIDs, ok := v.readToTransactionIndices[r]
+			txIDs, ok := v.readToTxIDs[r]
 			if !ok {
 				return fmt.Errorf("read %v not found in readToTransactionIndices", r)
 			}

@@ -206,10 +206,10 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	select {
-	case <-eCtx.Done():
+	if !waitForReady(eCtx, []chan any{
+		c.validatorCommitterMgr.connectionReady, c.signatureVerifierMgr.connectionReady,
+	}) {
 		return g.Wait()
-	case <-c.validatorCommitterMgr.connectionReady:
 	}
 
 	if err := c.validatorCommitterMgr.getPolicies(ctx); err != nil {
@@ -239,9 +239,14 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 // WaitForReady wait for coordinator to be ready to be exposed as gRPC service.
 // If the context ended before the service is ready, returns false.
 func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
-	for _, ch := range []chan any{
-		c.signatureVerifierMgr.connectionReady, c.validatorCommitterMgr.connectionReady, c.initializationDone,
-	} {
+	// NOTE: We set `initializationDone` only if signature verifier manager
+	//       and vcservice manager are ready. Hence, we can just wait for
+	//       the coordinator initialization.
+	return waitForReady(ctx, []chan any{c.initializationDone})
+}
+
+func waitForReady(ctx context.Context, ready []chan any) bool {
+	for _, ch := range ready {
 		select {
 		case <-ctx.Done():
 			return false

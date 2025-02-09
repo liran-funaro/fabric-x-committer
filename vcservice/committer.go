@@ -92,9 +92,26 @@ func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
 ) (*protoblocktx.TransactionsStatus, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
-	if err := c.fillVersionForBlindWrites(vTx); err != nil {
+	if err := c.populateVersionsAndCategorizeBlindWrites(vTx); err != nil {
 		return nil, err
 	}
+
+	// Ideally, we should add BlindWrite entries with a null version to the
+	// `readToTxIDs` map. This is because transactions can be resubmitted to multiple
+	// `vcservice` instances during connection issue between the coordinator and
+	// a vcservice instance. One instance might successfully write the BlindWrite,
+	// while others encounter a conflict at commit time because the new keys
+	// already exist. In these cases, we need to mark the TxID as invalid.
+	// Since mismatches are processed against `readToTxIDs`,
+	// we must include BlindWrites with a null version in this map.
+	//
+	// Eventually, the transaction will receive the correct committed status based on
+	// TxID deduplication.
+	//
+	// However, we can avoid this complexity if we commit transaction IDs to the
+	// `tx_status` table *before* processing the writes. This ensures that blind writes
+	// will not return a conflict, as we would reject the transaction earlier due
+	// to a duplicate transaction ID.
 
 	// Theoretically, we can only retry twice. Once for attempting to insert existing keys, and once for attempting
 	// to reuse transaction IDs.
@@ -163,9 +180,9 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protoblocktx.Transactio
 	return txCommitStatus
 }
 
-// fillVersionForBlindWrites fetches the current version of the blind-writes keys, and assigns them
+// populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
 // to the appropriate category (new/update).
-func (c *transactionCommitter) fillVersionForBlindWrites(vTx *validatedTransactions) error {
+func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(vTx *validatedTransactions) error {
 	state := make(map[string]keyToVersion)
 	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain

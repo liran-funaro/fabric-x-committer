@@ -246,16 +246,12 @@ func (db *database) commitStatesByGroup(
 	tx pgx.Tx,
 	states *statesToBeCommitted,
 ) (namespaceToReads, []TxID, error) {
-	mismatched, err := db.commitNewKeys(tx, states.newWrites)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
-	}
-
-	if !mismatched.empty() {
-		// Since a mismatch causes a rollback, we fail fast.
-		return mismatched, nil, nil
-	}
-
+	// Because the coordinator might submit duplicate transactions during connection issues,
+	// we must commit transaction IDs first. This allows us to detect conflicts early,
+	// as another vcservice instance might have already committed the same transaction.
+	// If we don't commit transaction IDs first, there are other consequences. These
+	// could be mitigated by adding writes with a null version present in BlindWrites
+	// to the readToTxIDs map, but committing the IDs upfront is a cleaner solution.
 	duplicated, err := db.commitTxStatus(ctx, tx, states)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err)
@@ -264,6 +260,16 @@ func (db *database) commitStatesByGroup(
 	if len(duplicated) > 0 {
 		// Since a duplicate ID causes a rollback, we fail fast.
 		return nil, duplicated, nil
+	}
+
+	mismatched, err := db.commitNewKeys(tx, states.newWrites)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err)
+	}
+
+	if !mismatched.empty() {
+		// Since a mismatch causes a rollback, we fail fast.
+		return mismatched, nil, nil
 	}
 
 	// Updates cannot have a mismatch because their versions are validated beforehand.

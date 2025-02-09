@@ -28,9 +28,9 @@ const (
 
 // ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
 type ValidatorAndCommitterServiceTestEnv struct {
-	VCService *ValidatorCommitterService
-	DBEnv     *DatabaseTestEnv
-	Config    *ValidatorCommitterServiceConfig
+	VCServices []*ValidatorCommitterService
+	DBEnv      *DatabaseTestEnv
+	Configs    []*ValidatorCommitterServiceConfig
 }
 
 // ValueVersion contains a list of values and their matching versions.
@@ -42,6 +42,7 @@ type ValueVersion struct {
 // NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
 func NewValidatorAndCommitServiceTestEnv(
 	t *testing.T,
+	numServices int,
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
 	require.LessOrEqual(t, len(db), 1)
@@ -56,46 +57,51 @@ func NewValidatorAndCommitServiceTestEnv(
 		t.Fatalf("At most one db env can be passed as n argument but received %d envs", len(db))
 	}
 
-	config := &ValidatorCommitterServiceConfig{
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-		},
-		Database: dbEnv.DBConf,
-		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:             2,
-			MaxWorkersForValidator:            2,
-			MaxWorkersForCommitter:            2,
-			MinTransactionBatchSize:           1,
-			TimeoutForMinTransactionBatchSize: 20 * time.Second, // to avoid flakyness in TestWaitingTxsCount, we are
-			// setting the timeout value to 20 seconds
-		},
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Enable: true,
-				Endpoint: &connection.Endpoint{
+	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(initCancel)
+	vcservices := make([]*ValidatorCommitterService, numServices)
+	configs := make([]*ValidatorCommitterServiceConfig, numServices)
+	for i := range vcservices {
+		config := &ValidatorCommitterServiceConfig{
+			Server: &connection.ServerConfig{
+				Endpoint: connection.Endpoint{
 					Host: "localhost",
 					Port: 0,
 				},
 			},
-		},
+			Database: dbEnv.DBConf,
+			ResourceLimits: &ResourceLimitsConfig{
+				MaxWorkersForPreparer:             2,
+				MaxWorkersForValidator:            2,
+				MaxWorkersForCommitter:            2,
+				MinTransactionBatchSize:           1,
+				TimeoutForMinTransactionBatchSize: 20 * time.Second, // to avoid flakyness in TestWaitingTxsCount,
+				// we are setting the timeout value to 20 seconds
+			},
+			Monitoring: &monitoring.Config{
+				Metrics: &metrics.Config{
+					Enable: true,
+					Endpoint: &connection.Endpoint{
+						Host: "localhost",
+						Port: 0,
+					},
+				},
+			},
+		}
+		vcs, err := NewValidatorCommitterService(initCtx, config)
+		require.NoError(t, err)
+		t.Cleanup(vcs.Close)
+		test.RunServiceAndGrpcForTest(context.Background(), t, vcs, config.Server, func(server *grpc.Server) {
+			protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
+		})
+		vcservices[i] = vcs
+		configs[i] = config
 	}
 
-	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(initCancel)
-	vcs, err := NewValidatorCommitterService(initCtx, config)
-	require.NoError(t, err)
-	t.Cleanup(vcs.Close)
-	test.RunServiceAndGrpcForTest(context.Background(), t, vcs, config.Server, func(server *grpc.Server) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
-	})
-
 	return &ValidatorAndCommitterServiceTestEnv{
-		VCService: vcs,
-		DBEnv:     dbEnv,
-		Config:    config,
+		VCServices: vcservices,
+		DBEnv:      dbEnv,
+		Configs:    configs,
 	}
 }
 

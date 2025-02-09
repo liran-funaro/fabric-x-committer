@@ -46,12 +46,9 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	var vcsTestEnv *vcservice.ValidatorAndCommitterServiceTestEnv
 
 	if !tConfig.mockVcService {
-		vcsTestEnv = vcservice.NewValidatorAndCommitServiceTestEnv(t)
-		vcServerConfigs = append(vcServerConfigs, vcsTestEnv.Config.Server)
-
-		for range tConfig.numVcService - 1 {
-			vcs := vcservice.NewValidatorAndCommitServiceTestEnv(t, vcsTestEnv.GetDBEnv(t))
-			vcServerConfigs = append(vcServerConfigs, vcs.Config.Server)
+		vcsTestEnv = vcservice.NewValidatorAndCommitServiceTestEnv(t, tConfig.numVcService)
+		for _, c := range vcsTestEnv.Configs {
+			vcServerConfigs = append(vcServerConfigs, c.Server)
 		}
 	} else {
 		_, vcServers := mock.StartMockVCService(t, tConfig.numVcService)
@@ -578,8 +575,8 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	cancel()
 
-	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(t, env.dbEnv)
-	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Config.Server}
+	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
+	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Configs[0].Server}
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
