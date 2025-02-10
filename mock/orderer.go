@@ -2,6 +2,8 @@ package mock
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -31,6 +33,15 @@ type (
 	Orderer struct {
 		inEnvs    chan<- *common.Envelope
 		outBlocks <-chan *common.Block
+		cache     *blockCache
+	}
+
+	blockCache struct {
+		storage       map[uint64]*common.Block
+		freeSlotCount int
+		leastBlockNum uint64
+		maxBlockNum   uint64
+		mu            *sync.Mutex
 	}
 
 	// MultiOrderer supports running multiple mock order services which mock a consortium.
@@ -64,6 +75,7 @@ var (
 			}),
 		})}},
 	}
+	defaultBlockCacheSize = 1000
 )
 
 // NewMultiOrderer creates multiple orderer instances.
@@ -113,6 +125,11 @@ func newMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *common.Blo
 	return &Orderer{
 		inEnvs:    inEnvs,
 		outBlocks: outBlocks,
+		cache: &blockCache{
+			storage:       make(map[uint64]*common.Block),
+			freeSlotCount: defaultBlockCacheSize,
+			mu:            &sync.Mutex{},
+		},
 	}
 }
 
@@ -143,12 +160,41 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting delivery with %s", addr)
 
+	sendBlock := func(block *common.Block) error {
+		if err := stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}); err != nil {
+			return err
+		}
+		logger.Debugf("Emitted block %d", block.Header.Number)
+		return nil
+	}
+
 	seekInfo, channelID, err := readSeekEnvelope(stream)
 	if err != nil {
 		return errors.Wrap(err, "failed reading seek request")
 	}
+
+	if start, ok := seekInfo.Start.Type.(*ab.SeekPosition_Specified); ok {
+		// for simplicity, we would retrieve from cache only if all blocks in the range (start, end)
+		// present in the cache. Otherwise, we send from the newest block.
+		var blocks []*common.Block
+		blocks, err = o.cache.tryGetBlocks(start.Specified.Number, seekInfo.Stop.GetSpecified().Number)
+		if err != nil {
+			return err
+		}
+
+		if len(blocks) > 0 {
+			for _, blk := range blocks {
+				if err = sendBlock(blk); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+
 	logger.Infof("Received listening request for channel '%s': %v\n "+
-		"We ignore the request and send a stream anyway.", channelID, seekInfo)
+		"We ignore all unspecified seek request, specified range which are not in the block cache "+
+		"and send a stream anyway.", channelID, seekInfo)
 
 	outBlocks := channel.NewReader(stream.Context(), o.outBlocks)
 	for {
@@ -156,11 +202,10 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		if !ok {
 			return stream.Context().Err()
 		}
-		err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}})
-		if err != nil {
+		o.cache.add(block)
+		if err = sendBlock(block); err != nil {
 			return err
 		}
-		logger.Debugf("Emitted block %d", block.Header.Number)
 	}
 }
 
@@ -319,4 +364,41 @@ func (o *MultiOrderer) cutBlocks(
 		}
 		sendBlock()
 	}
+}
+
+func (c *blockCache) add(b *common.Block) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.freeSlotCount == 0 {
+		delete(c.storage, c.leastBlockNum)
+		c.leastBlockNum++
+		c.freeSlotCount++
+	}
+
+	c.storage[b.Header.Number] = b
+	c.freeSlotCount--
+
+	c.leastBlockNum = min(c.leastBlockNum, b.Header.Number)
+	c.maxBlockNum = max(c.maxBlockNum, b.Header.Number)
+}
+
+func (c *blockCache) tryGetBlocks(startBlkNum, endBlkNum uint64) ([]*common.Block, error) {
+	if endBlkNum < startBlkNum {
+		return nil, fmt.Errorf("end block number [%d] cannot be lower than the start block number [%d]",
+			endBlkNum, startBlkNum)
+	}
+
+	var blocks []*common.Block
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// for simplicity, we would retrieve from cache only if all blocks in the range (start, end)
+	// present in the cache. Otherwise, we send from the newest block.
+	if len(c.storage) > 0 && c.leastBlockNum <= startBlkNum && c.maxBlockNum >= endBlkNum {
+		for i := startBlkNum; i <= endBlkNum; i++ {
+			blocks = append(blocks, c.storage[i])
+		}
+	}
+
+	return blocks, nil
 }

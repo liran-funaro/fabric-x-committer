@@ -10,6 +10,6 @@ import (
 // EnsureAtLeastHeight checks if the ledger is at or above the specified height.
 func EnsureAtLeastHeight(t *testing.T, s *Service, height uint64) {
 	require.Eventually(t, func() bool {
-		return s.ledger.Height() >= height
+		return s.GetBlockHeight() >= height
 	}, 5*time.Second, 500*time.Millisecond)
 }

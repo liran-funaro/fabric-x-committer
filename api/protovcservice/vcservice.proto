@@ -6,10 +6,11 @@ package protovcservice;
 
 import "api/protoblocktx/block_tx.proto";
 import "api/protosigverifierservice/verifier.proto";
+import "api/protocoordinatorservice/coordinator.proto";
 
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream protoblocktx.TransactionsStatus);
-  rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
+  rpc NumberOfWaitingTransactionsForStatus(Empty) returns (protocoordinatorservice.WaitingTransactions);
   rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
   rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
   rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {}
@@ -30,10 +31,6 @@ message Transaction {
 
 message InvalidTxStatus {
     protoblocktx.Status code = 1;
-}
-
-message WaitingTransactions {
-    int32 count = 1;
 }
 
 message Empty {}

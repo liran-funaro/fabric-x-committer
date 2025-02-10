@@ -53,6 +53,8 @@ type (
 		// corresponding responses are not associated with specific streams, so
 		// multiple concurrent streams could lead to unreliable status delivery.
 		streamActive sync.RWMutex
+
+		numWaitingTxsForStatus *atomic.Int32
 	}
 
 	channels struct {
@@ -164,6 +166,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		config:                         c,
 		metrics:                        metrics,
 		initializationDone:             make(chan any),
+		numWaitingTxsForStatus:         &atomic.Int32{},
 	}
 }
 
@@ -302,6 +305,22 @@ func (c *CoordinatorService) GetTransactionsStatus(
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 
+// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
+func (c *CoordinatorService) NumberOfWaitingTransactionsForStatus(
+	_ context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protocoordinatorservice.WaitingTransactions, error) {
+	if !c.streamActive.TryLock() {
+		return nil, fmt.Errorf("stream is still active." +
+			"NumberOfWaitingTransactionsForStatus should be called only when the stream is inactive")
+	}
+	defer c.streamActive.Unlock()
+
+	return &protocoordinatorservice.WaitingTransactions{
+		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), // nolint:gosec
+	}, nil
+}
+
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *CoordinatorService) BlockProcessing(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
@@ -371,6 +390,7 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
 		c.metrics.transactionReceived(len(blk.Txs))
+		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) // nolint:gosec
 
 		if len(blk.Txs) == 0 {
 			continue
@@ -403,6 +423,7 @@ func (c *CoordinatorService) sendTxStatus(
 		if !ctxAlive {
 			return nil
 		}
+		c.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) // nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
 			return err

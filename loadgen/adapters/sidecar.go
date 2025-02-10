@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"math"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -66,6 +67,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 	committedBlock := make(chan *common.Block, 100)
 	g.Go(func() error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
+			EndBlkNum:   math.MaxUint64,
 			OutputBlock: committedBlock,
 		})
 	})

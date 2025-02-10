@@ -2,7 +2,7 @@ package broadcastdeliver
 
 import (
 	"context"
-	"math"
+	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -27,6 +27,7 @@ type (
 	// DeliverConfig holds the configuration needed for deliver to run.
 	DeliverConfig struct {
 		StartBlkNum int64
+		EndBlkNum   uint64
 		OutputBlock chan<- *common.Block
 	}
 
@@ -44,6 +45,9 @@ func (c *DeliverCftClient) Deliver(ctx context.Context, config *DeliverConfig) e
 	// We shuffle the nodes for load balancing.
 	shuffle(nodes)
 	for ctx.Err() == nil {
+		if config.StartBlkNum > 0 && uint64(config.StartBlkNum) > config.EndBlkNum { // nolint:gosec
+			return nil
+		}
 		curNode := nodes[0]
 		err := c.receiveFromBlockDeliverer(ctx, curNode, config)
 		logger.Infof("Error receiving blocks: %v", err)
@@ -68,7 +72,7 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	}
 
 	logger.Infof("Sending seek request from block %d on channel %s.", config.StartBlkNum, c.ChannelID)
-	seekEnv, err := seekSince(config.StartBlkNum, c.ChannelID, c.Signer)
+	seekEnv, err := seekSince(config.StartBlkNum, config.EndBlkNum, c.ChannelID, c.Signer)
 	if err != nil {
 		return errors.Wrap(err, "failed to create seek request")
 	}
@@ -83,8 +87,11 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	outputBlock := channel.NewWriter(ctx, config.OutputBlock)
 	for ctx.Err() == nil {
 		block, status, err := stream.RecvBlockOrStatus()
-		if err != nil || status != nil {
-			return errors.Wrapf(err, "disconnecting deliver service with status %s", status)
+		if err != nil {
+			return err
+		}
+		if status != nil {
+			return fmt.Errorf("disconnecting deliver service with status %s", status)
 		}
 
 		//nolint:gosec // integer overflow conversion uint64 -> int64
@@ -105,14 +112,16 @@ const (
 )
 
 var (
-	oldest  = &orderer.SeekPosition{Type: &orderer.SeekPosition_Oldest{Oldest: &orderer.SeekOldest{}}}
-	newest  = &orderer.SeekPosition{Type: &orderer.SeekPosition_Newest{Newest: &orderer.SeekNewest{}}}
-	maxStop = &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
-		Number: math.MaxUint64,
-	}}}
+	oldest = &orderer.SeekPosition{Type: &orderer.SeekPosition_Oldest{Oldest: &orderer.SeekOldest{}}}
+	newest = &orderer.SeekPosition{Type: &orderer.SeekPosition_Newest{Newest: &orderer.SeekNewest{}}}
 )
 
-func seekSince(startBlockNumber int64, cID string, signer protoutil.Signer) (*common.Envelope, error) {
+func seekSince(
+	startBlockNumber int64,
+	endBlkNum uint64,
+	channelID string,
+	signer protoutil.Signer,
+) (*common.Envelope, error) {
 	var startPosition *orderer.SeekPosition
 	switch startBlockNumber {
 	case seekSinceOldestBlock:
@@ -132,9 +141,11 @@ func seekSince(startBlockNumber int64, cID string, signer protoutil.Signer) (*co
 		signer = &noOpSigner{}
 	}
 
-	return protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, cID, signer, &orderer.SeekInfo{
-		Start:    startPosition,
-		Stop:     maxStop,
+	return protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
+		Start: startPosition,
+		Stop: &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
+			Number: endBlkNum,
+		}}},
 		Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 	}, 0, 0)
 }

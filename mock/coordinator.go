@@ -24,13 +24,23 @@ type Coordinator struct {
 	nextExpectedBlockNumber  atomic.Uint64
 	streamActive             *sync.Mutex
 	stop                     chan any
+	numWaitingTxs            atomic.Int32
+
+	txsStatus   map[string]*protoblocktx.StatusWithHeight
+	txsStatusMu *sync.Mutex
 }
+
+// We don't want to utilize unlimited memory for storing the transactions status.
+// A value of 1000 is adequate for most of the unit-test.
+var defaultTxStatusStorageCleanupBlockInterval = 1000
 
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	c := &Coordinator{
 		streamActive: &sync.Mutex{},
 		stop:         make(chan any),
+		txsStatus:    make(map[string]*protoblocktx.StatusWithHeight),
+		txsStatusMu:  &sync.Mutex{},
 	}
 	c.lastCommittedBlockNumber.Store(-1)
 	return c
@@ -73,6 +83,32 @@ func (c *Coordinator) GetNextExpectedBlockNumber(
 	return &protoblocktx.BlockInfo{Number: c.nextExpectedBlockNumber.Load()}, nil
 }
 
+// GetTransactionsStatus returns the status of given set of transaction identifiers.
+func (c *Coordinator) GetTransactionsStatus(
+	_ context.Context,
+	q *protoblocktx.QueryStatus,
+) (*protoblocktx.TransactionsStatus, error) {
+	status := make(map[string]*protoblocktx.StatusWithHeight)
+
+	c.txsStatusMu.Lock()
+	defer c.txsStatusMu.Unlock()
+	for _, txID := range q.TxIDs {
+		status[txID] = c.txsStatus[txID]
+	}
+
+	return &protoblocktx.TransactionsStatus{Status: status}, nil
+}
+
+// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
+func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
+	_ context.Context,
+	_ *protocoordinatorservice.Empty,
+) (*protocoordinatorservice.WaitingTransactions, error) {
+	return &protocoordinatorservice.WaitingTransactions{
+		Count: c.numWaitingTxs.Load(),
+	}, nil
+}
+
 // BlockProcessing processes a block.
 func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
 	if !c.streamActive.TryLock() {
@@ -84,7 +120,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 	defer close(input)
 	defer logger.Infof("Closed mock coordinator")
 
-	go sendTxsValidationStatus(stream, input)
+	go c.sendTxsValidationStatus(stream, input)
 
 	// start listening
 	for {
@@ -111,11 +147,18 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 		}
 		c.nextExpectedBlockNumber.Add(1)
 
+		if c.nextExpectedBlockNumber.Load()%uint64(defaultTxStatusStorageCleanupBlockInterval) == 0 { // nolint:gosec
+			c.txsStatusMu.Lock()
+			c.txsStatus = make(map[string]*protoblocktx.StatusWithHeight)
+			c.txsStatusMu.Unlock()
+		}
+
 		if len(block.Txs) != len(block.TxsNum) {
 			return fmt.Errorf("the block doesn't have the correct number of transactions set")
 		}
 
 		logger.Debugf("Received block %d with %d transactions", block.Number, len(block.Txs))
+		c.numWaitingTxs.Add(int32(len(block.Txs))) // nolint:gosec
 
 		// send to the validation
 		select {
@@ -136,19 +179,22 @@ func (c *Coordinator) IsStreamActive() bool {
 	return true
 }
 
-func sendTxsValidationStatus(
+func (c *Coordinator) sendTxsValidationStatus(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 	input chan *protoblocktx.Block,
 ) {
 	for scBlock := range input {
 		txs := scBlock.Txs
 		txCount := 0
+		c.txsStatusMu.Lock()
 		for len(txs) > 0 {
 			chunkSize := rand.Intn(len(txs)) + 1
 			b := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
 			for _, tx := range txs[:chunkSize] {
-				b.Status[tx.GetId()] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, scBlock.Number,
+				s := types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, scBlock.Number,
 					int(scBlock.TxsNum[txCount]))
+				b.Status[tx.GetId()] = s
+				c.txsStatus[tx.GetId()] = s
 				txCount++
 			}
 
@@ -158,8 +204,16 @@ func sendTxsValidationStatus(
 				utils.Must(connection.FilterStreamRPCError(rpcErr))
 			}
 			logger.Debugf("Sent back batch with %d TXs", len(b.Status))
+			c.numWaitingTxs.Add(-int32(len(b.Status))) // nolint:gosec
 
 			txs = txs[chunkSize:]
 		}
+		c.txsStatusMu.Unlock()
 	}
+}
+
+// SetWaitingTxsCount sets the waiting transactions count. The purpose
+// of this method is to set the count manually for testing purpose.
+func (c *Coordinator) SetWaitingTxsCount(count int32) {
+	c.numWaitingTxs.Store(count)
 }

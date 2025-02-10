@@ -7,6 +7,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"golang.org/x/sync/errgroup"
 )
 
 // SigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -19,6 +20,7 @@ type SigVerifier struct {
 	numBlocksReceived *atomic.Uint32
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
+	requestBatch           chan *protosigverifierservice.RequestBatch
 }
 
 // NewMockSigVerifier returns a new mock verifier.
@@ -41,49 +43,44 @@ func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protosigverifi
 
 // StartStream is a mock implementation of the protosignverifierservice.VerifierServer.
 func (m *SigVerifier) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
-	errChan := make(chan error, 2)
-	// We need each stream to have its own requests channel to avoid "stealing" values from other streams.
-	requestBatch := make(chan *protosigverifierservice.RequestBatch, 10)
+	m.requestBatch = make(chan *protosigverifierservice.RequestBatch, 10)
+	g, eCtx := errgroup.WithContext(stream.Context())
 
-	go func() {
-		errChan <- m.receiveRequestBatch(stream, requestBatch)
-	}()
+	g.Go(func() error {
+		return m.receiveRequestBatch(eCtx, stream)
+	})
 
-	go func() {
-		errChan <- m.sendResponseBatch(stream, requestBatch)
-	}()
+	g.Go(func() error {
+		return m.sendResponseBatch(eCtx, stream)
+	})
 
-	for i := 0; i < 2; i++ {
-		err := <-errChan
+	return g.Wait()
+}
+
+func (m *SigVerifier) receiveRequestBatch(
+	ctx context.Context,
+	stream protosigverifierservice.Verifier_StartStreamServer,
+) error {
+	for ctx.Err() == nil {
+		reqBatch, err := stream.Recv()
 		if err != nil {
-			return err
+			return connection.FilterStreamRPCError(err)
 		}
+
+		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
+		m.requestBatch <- reqBatch
+		m.numBlocksReceived.Add(1)
 	}
 
 	return nil
 }
 
-func (m *SigVerifier) receiveRequestBatch(
-	stream protosigverifierservice.Verifier_StartStreamServer, requestBatch chan *protosigverifierservice.RequestBatch,
-) error {
-	for {
-		reqBatch, err := stream.Recv()
-		if err != nil {
-			close(requestBatch)
-			return connection.FilterStreamRPCError(err)
-		}
-
-		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
-		requestBatch <- reqBatch
-		m.numBlocksReceived.Add(1)
-	}
-}
-
 func (m *SigVerifier) sendResponseBatch(
+	ctx context.Context,
 	stream protosigverifierservice.Verifier_StartStreamServer,
-	requestBatch <-chan *protosigverifierservice.RequestBatch,
 ) error {
-	for reqBatch := range requestBatch {
+	for ctx.Err() == nil {
+		reqBatch := <-m.requestBatch
 		respBatch := &protosigverifierservice.ResponseBatch{
 			Responses: make([]*protosigverifierservice.Response, 0, len(reqBatch.Requests)),
 		}
@@ -120,4 +117,10 @@ func (m *SigVerifier) GetNumBlocksReceived() uint32 {
 // GetPolicies returns the verification key of the mock verifier.
 func (m *SigVerifier) GetPolicies() *protosigverifierservice.Policies {
 	return m.policies
+}
+
+// SendRequestBatchWithoutStream allows the caller to bypass the stream to send
+// a request batch.
+func (m *SigVerifier) SendRequestBatchWithoutStream(requestBatch *protosigverifierservice.RequestBatch) {
+	m.requestBatch <- requestBatch
 }

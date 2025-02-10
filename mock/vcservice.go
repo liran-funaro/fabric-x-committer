@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -42,8 +43,8 @@ func NewMockVcService() *VcService {
 func (vc *VcService) NumberOfWaitingTransactionsForStatus(
 	_ context.Context,
 	_ *protovcservice.Empty,
-) (*protovcservice.WaitingTransactions, error) {
-	return &protovcservice.WaitingTransactions{Count: vc.numWaitingTransactions.Load()}, nil
+) (*protocoordinatorservice.WaitingTransactions, error) {
+	return &protocoordinatorservice.WaitingTransactions{Count: vc.numWaitingTransactions.Load()}, nil
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.

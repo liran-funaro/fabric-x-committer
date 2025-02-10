@@ -25,11 +25,14 @@ import (
 
 type (
 	coordinatorTestEnv struct {
-		coordinator *CoordinatorService
-		config      *CoordinatorConfig
-		client      protocoordinatorservice.CoordinatorClient
-		csStream    protocoordinatorservice.Coordinator_BlockProcessingClient
-		dbEnv       *vcservice.DatabaseTestEnv
+		coordinator            *CoordinatorService
+		config                 *CoordinatorConfig
+		client                 protocoordinatorservice.CoordinatorClient
+		csStream               protocoordinatorservice.Coordinator_BlockProcessingClient
+		streamCancel           context.CancelFunc
+		dbEnv                  *vcservice.DatabaseTestEnv
+		sigVerifiers           []*mock.SigVerifier
+		sigVerifierGrpcServers *test.GrpcServers
 	}
 
 	testConfig struct {
@@ -40,7 +43,7 @@ type (
 )
 
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
-	_, svServers := mock.StartMockSVService(t, tConfig.numSigService)
+	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
 	var vcsTestEnv *vcservice.ValidatorAndCommitterServiceTestEnv
@@ -80,9 +83,11 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 
 	return &coordinatorTestEnv{
-		coordinator: NewCoordinatorService(c),
-		config:      c,
-		dbEnv:       vcsTestEnv.GetDBEnv(t),
+		coordinator:            NewCoordinatorService(c),
+		config:                 c,
+		dbEnv:                  vcsTestEnv.GetDBEnv(t),
+		sigVerifiers:           svs,
+		sigVerifierGrpcServers: svServers,
 	}
 }
 
@@ -110,6 +115,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	require.NoError(t, err)
 
 	e.csStream = csStream
+	e.streamCancel = sCancel
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -782,6 +788,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 		TxsNum: txsNum,
 	})
 	require.NoError(t, err)
+
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == float64(txPerBlock)
 	}, 4*time.Second, 100*time.Millisecond)
@@ -798,6 +805,107 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
 	require.Equal(t, float64(txPerBlock), statusSentTotal)
+}
+
+func TestWaitingTxsCount(t *testing.T) {
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
+
+	txPerBlock := 10
+	txs := make([]*protoblocktx.Tx, txPerBlock)
+	txsNum := make([]uint32, txPerBlock)
+	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	for i := 0; i < txPerBlock; i++ {
+		txs[i] = &protoblocktx.Tx{
+			Id: "tx" + strconv.Itoa(i),
+			Namespaces: []*protoblocktx.TxNamespace{
+				{
+					NsId:      "1",
+					NsVersion: types.VersionNumber(0).Bytes(),
+					BlindWrites: []*protoblocktx.Write{
+						{
+							Key: []byte("key" + strconv.Itoa(i)),
+						},
+					},
+				},
+			},
+			Signatures: [][]byte{
+				[]byte("dummy"),
+			},
+		}
+		txsNum[i] = uint32(i) // nolint:gosec
+		expectedTxsStatus["tx"+strconv.Itoa(i)] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, i)
+	}
+
+	success := make(chan bool, 1)
+	go func() {
+		require.Eventually(t, func() bool {
+			if env.coordinator.numWaitingTxsForStatus.Load() == int32(2) {
+				success <- true
+				return true
+			}
+			return false
+		}, 3*time.Second, 250*time.Millisecond)
+		close(success)
+	}()
+
+	env.sigVerifiers[0].MockFaultyNodeDropSize = 2
+	err := env.csStream.Send(&protoblocktx.Block{
+		Number: 0,
+		Txs:    txs,
+		TxsNum: txsNum,
+	})
+	require.NoError(t, err)
+	require.True(t, <-success)
+
+	count, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+	require.Contains(t, err.Error(), "stream is still active")
+	require.Nil(t, count)
+
+	env.sigVerifierGrpcServers.Servers[0].Stop()
+	require.Eventually(t, func() bool {
+		return test.CheckServerStopped(t, env.sigVerifierGrpcServers.Configs[0].Endpoint.Address())
+	}, 4*time.Second, 500*time.Millisecond)
+
+	env.sigVerifiers[0].MockFaultyNodeDropSize = 0
+	env.sigVerifierGrpcServers = mock.StartMockSVServiceFromListWithConfig(
+		t,
+		env.sigVerifiers,
+		env.sigVerifierGrpcServers.Configs,
+	)
+
+	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	for len(actualTxsStatus) < txPerBlock {
+		txStatus, err := env.csStream.Recv()
+		require.NoError(t, err)
+		for id, s := range txStatus.Status {
+			actualTxsStatus[id] = s
+		}
+	}
+
+	require.Equal(t, expectedTxsStatus, actualTxsStatus)
+	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	require.Equal(t, float64(txPerBlock), statusSentTotal)
+
+	env.streamCancel()
+	require.Eventually(t, func() bool {
+		if !env.coordinator.streamActive.TryLock() {
+			return false
+		}
+		defer env.coordinator.streamActive.Unlock()
+		return true
+	}, 2*time.Second, 100*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+		if err != nil {
+			return false
+		}
+		return wTxs.GetCount() == 0
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {

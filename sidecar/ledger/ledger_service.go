@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
@@ -22,10 +23,11 @@ var logger = logging.New("ledger")
 
 // Service implements peer.DeliverServer.
 type Service struct {
-	ledger         blockledger.ReadWriter
-	ledgerProvider blockledger.Factory
-	channelID      string
-	committedBlock <-chan *common.Block
+	ledger                       blockledger.ReadWriter
+	ledgerProvider               blockledger.Factory
+	channelID                    string
+	committedBlock               <-chan *common.Block
+	nextToBeCommittedBlockNumber uint64
 }
 
 // New creates a new ledger service.
@@ -42,10 +44,11 @@ func New(channelID, ledgerDir string, input <-chan *common.Block) (*Service, err
 	}
 
 	return &Service{
-		ledger:         ledger,
-		ledgerProvider: factory,
-		channelID:      channelID,
-		committedBlock: input,
+		ledger:                       ledger,
+		ledgerProvider:               factory,
+		channelID:                    channelID,
+		committedBlock:               input,
+		nextToBeCommittedBlockNumber: ledger.Height(),
 	}, nil
 }
 
@@ -57,6 +60,22 @@ func (s *Service) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
+
+		if block.Header.Number < s.nextToBeCommittedBlockNumber {
+			// NOTE: The block store height can be greater than the state database
+			//       height. This is because the last committed block number is
+			//       updated in the state database periodically, while blocks are
+			//       written to the block store immediately. Consequently, it's
+			//       possible to receive a block that is already present in the
+			//       block store when the sidecar recovers after a failure, or when the
+			//       coordinator recovers after a failure.
+			continue
+		} else if block.Header.Number > s.nextToBeCommittedBlockNumber {
+			return fmt.Errorf("block store expects block number [%d] but received a greater block number [%d]",
+				s.nextToBeCommittedBlockNumber, block.Header.Number)
+		}
+		s.nextToBeCommittedBlockNumber++
+
 		logger.Debugf("Appending block %d to ledger.\n", block.Header.Number)
 		if err := s.ledger.Append(block); err != nil {
 			return err
@@ -122,6 +141,12 @@ func (*Service) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
 // can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
 func (*Service) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
 	return errors.New("method is deprecated")
+}
+
+// GetBlockHeight returns the height of the block store, i.e., the last committed block + 1. The +1 is needed
+// to include block 0 as well.
+func (s *Service) GetBlockHeight() uint64 {
+	return s.ledger.Height()
 }
 
 func (s *Service) deliverBlocks(

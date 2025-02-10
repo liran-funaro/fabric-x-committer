@@ -9,6 +9,7 @@ package protovcservice
 import (
 	context "context"
 	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	protocoordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	protosigverifierservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -34,7 +35,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
-	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
+	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protocoordinatorservice.WaitingTransactions, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
@@ -80,8 +81,8 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*
 	return m, nil
 }
 
-func (c *validationAndCommitServiceClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error) {
-	out := new(WaitingTransactions)
+func (c *validationAndCommitServiceClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protocoordinatorservice.WaitingTransactions, error) {
+	out := new(protocoordinatorservice.WaitingTransactions)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -130,7 +131,7 @@ func (c *validationAndCommitServiceClient) GetPolicies(ctx context.Context, in *
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
-	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
+	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*protocoordinatorservice.WaitingTransactions, error)
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
@@ -145,7 +146,7 @@ type UnimplementedValidationAndCommitServiceServer struct {
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
+func (UnimplementedValidationAndCommitServiceServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*protocoordinatorservice.WaitingTransactions, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error) {

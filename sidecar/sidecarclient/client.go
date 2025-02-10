@@ -28,6 +28,7 @@ type (
 	// This is copy of broadcastdeliver.DeliverConfig to allow easy divergence in the future.
 	DeliverConfig struct {
 		StartBlkNum int64
+		EndBlkNum   uint64
 		OutputBlock chan<- *common.Block
 	}
 
@@ -67,6 +68,7 @@ func New(config *Config) (*Client, error) {
 func (c *Client) Deliver(ctx context.Context, config *DeliverConfig) error {
 	return c.DeliverCftClient.Deliver(ctx, &broadcastdeliver.DeliverConfig{
 		StartBlkNum: config.StartBlkNum,
+		EndBlkNum:   config.EndBlkNum,
 		OutputBlock: config.OutputBlock,
 	})
 }

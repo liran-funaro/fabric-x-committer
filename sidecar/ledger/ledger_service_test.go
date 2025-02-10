@@ -40,6 +40,8 @@ func TestLedgerService(t *testing.T) {
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}
 	blk0.Metadata = metadata
+
+	require.Zero(t, ledgerService.GetBlockHeight())
 	inputBlock <- blk0
 
 	EnsureAtLeastHeight(t, ledgerService, 1)
@@ -56,8 +58,13 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk1
 	inputBlock <- blk2
 
-	for i := range uint64(3) {
+	EnsureAtLeastHeight(t, ledgerService, 3)
+	for i := range 3 {
 		blk := <-receivedBlocksFromLedgerService
-		require.Equal(t, i, blk.Header.Number)
+		require.Equal(t, uint64(i), blk.Header.Number) // nolint:gosec
 	}
+
+	// if we input the already stored block, it would simply skip.
+	inputBlock <- blk2
+	EnsureAtLeastHeight(t, ledgerService, 3)
 }

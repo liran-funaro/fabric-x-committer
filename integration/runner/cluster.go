@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -182,6 +183,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
+			EndBlkNum:   math.MaxUint64,
 			OutputBlock: c.committedBlock,
 		})
 	}, func(ctx context.Context) bool {

@@ -15,6 +15,11 @@ service Coordinator {
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
     // This method will be removed once the config block is processed by the coordinator.
     rpc UpdatePolicies(protosigverifierservice.Policies) returns (Empty);
+    rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
+}
+
+message WaitingTransactions {
+    int32 count = 1;
 }
 
 message Empty {

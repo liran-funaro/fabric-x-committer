@@ -18,6 +18,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type (
@@ -221,4 +222,23 @@ func EnsurePersistedTxStatus( // nolint:revive
 	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
 	require.Equal(t, expected, actualStatus.Status)
+}
+
+// CheckServerStopped returns true if the grpc server listening on a
+// given address has been stopped.
+func CheckServerStopped(_ *testing.T, addr string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext( // nolint:staticcheck
+		ctx,
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(), // nolint:staticcheck
+	)
+	if err != nil {
+		return true
+	}
+	_ = conn.Close()
+	return false
 }

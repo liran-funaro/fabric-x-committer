@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -251,13 +252,13 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
 	_ context.Context,
 	_ *protovcservice.Empty,
-) (*protovcservice.WaitingTransactions, error) {
+) (*protocoordinatorservice.WaitingTransactions, error) {
 	if vc.isStreamActive.Load() {
 		return nil, fmt.Errorf("stream is still active." +
 			"NumberOfWaitingTransactionsForStatus should be called only when the stream is inactive")
 	}
 
-	return &protovcservice.WaitingTransactions{
+	return &protocoordinatorservice.WaitingTransactions{
 		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatus)), // nolint:gosec
 	}, nil
 }

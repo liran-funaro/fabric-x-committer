@@ -2,6 +2,7 @@ package sidecarclient
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -24,6 +25,7 @@ func StartSidecarClient(
 		return connection.FilterStreamRPCError(deliverClient.Deliver(ctx,
 			&DeliverConfig{
 				StartBlkNum: startBlkNum,
+				EndBlkNum:   math.MaxUint64,
 				OutputBlock: receivedBlocksFromLedgerService,
 			},
 		))

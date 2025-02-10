@@ -21,12 +21,13 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Coordinator_BlockProcessing_FullMethodName             = "/protocoordinatorservice.Coordinator/BlockProcessing"
-	Coordinator_SetLastCommittedBlockNumber_FullMethodName = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
-	Coordinator_GetLastCommittedBlockNumber_FullMethodName = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
-	Coordinator_GetNextExpectedBlockNumber_FullMethodName  = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
-	Coordinator_GetTransactionsStatus_FullMethodName       = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
-	Coordinator_UpdatePolicies_FullMethodName              = "/protocoordinatorservice.Coordinator/UpdatePolicies"
+	Coordinator_BlockProcessing_FullMethodName                      = "/protocoordinatorservice.Coordinator/BlockProcessing"
+	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
+	Coordinator_GetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
+	Coordinator_GetNextExpectedBlockNumber_FullMethodName           = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
+	Coordinator_GetTransactionsStatus_FullMethodName                = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
+	Coordinator_UpdatePolicies_FullMethodName                       = "/protocoordinatorservice.Coordinator/UpdatePolicies"
+	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protocoordinatorservice.Coordinator/NumberOfWaitingTransactionsForStatus"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -40,6 +41,7 @@ type CoordinatorClient interface {
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 	// This method will be removed once the config block is processed by the coordinator.
 	UpdatePolicies(ctx context.Context, in *protosigverifierservice.Policies, opts ...grpc.CallOption) (*Empty, error)
+	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
 type coordinatorClient struct {
@@ -126,6 +128,15 @@ func (c *coordinatorClient) UpdatePolicies(ctx context.Context, in *protosigveri
 	return out, nil
 }
 
+func (c *coordinatorClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error) {
+	out := new(WaitingTransactions)
+	err := c.cc.Invoke(ctx, Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility
@@ -137,6 +148,7 @@ type CoordinatorServer interface {
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	// This method will be removed once the config block is processed by the coordinator.
 	UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error)
+	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -161,6 +173,9 @@ func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *pr
 }
 func (UnimplementedCoordinatorServer) UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
+}
+func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 
@@ -291,6 +306,24 @@ func _Coordinator_UpdatePolicies_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).NumberOfWaitingTransactionsForStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).NumberOfWaitingTransactionsForStatus(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -317,6 +350,10 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdatePolicies",
 			Handler:    _Coordinator_UpdatePolicies_Handler,
+		},
+		{
+			MethodName: "NumberOfWaitingTransactionsForStatus",
+			Handler:    _Coordinator_NumberOfWaitingTransactionsForStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

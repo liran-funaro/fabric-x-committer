@@ -3,14 +3,15 @@ package sidecar
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -28,7 +29,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
@@ -129,32 +129,116 @@ func commonTest(t *testing.T, env *sidecarTestEnv) {
 	t.Cleanup(cancel)
 	env.start(ctx, t, 0)
 
-	// mockorderer expects 100 txs to create the next block
-	txs := make([]*protoblocktx.Tx, 100)
-	sendTxs := func(txIDPrefix string) {
-		for i := range 100 {
-			txs[i] = &protoblocktx.Tx{
-				Id:         txIDPrefix + strconv.Itoa(i),
-				Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}}, // nolint:gosec
-			}
-			_, resp, err := env.broadcastClient.SubmitWithEnv(protoutil.MarshalOrPanic(txs[i]))
-			require.NoError(t, err)
-			t.Logf("Response: %s", resp.Info)
-		}
-	}
-
-	checkLastCommittedBlock(ctx, t, env.coordinator, 0)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
-
-	sendTxs("tx")
-	checkLastCommittedBlock(ctx, t, env.coordinator, 1)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
-
 	configBlock := <-env.committedBlock
 	require.Equal(t, uint64(0), configBlock.Header.Number)
+	sendTransactionsAndEnsureCommitted(ctx, t, env, 1)
+}
+
+func TestSidecarRecovery(t *testing.T) {
+	env := newSidecarTestEnv(t)
+	env.init(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 1)
+
+	// 1. Commit block 1 to 10
+	for i := range 10 {
+		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) // nolint:gosec
+	}
+
+	// 2. Stop the sidecar service and ledger service
+	cancel()
+	require.Eventually(t, func() bool {
+		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+	}, 4*time.Second, 500*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return !env.coordinator.IsStreamActive()
+	}, 2*time.Second, 250*time.Millisecond)
+
+	// NOTE: It is challenging to make the block store lag behind the state
+	//       database because we record the last committed block number in
+	//       the database at regular intervals (e.g., every five seconds).
+	//       In most cases, this interval allows the sidecar enough time
+	//       to commit the block to the block store. However, if the sidecar
+	//       fails immediately after recording the last committed block
+	//       number—i.e., before the ledger server empties its input queues—
+	//       then the block store could end up behind the state database.
+	//       Directly testing this scenario could lead to flakiness.
+	//       Therefore, to simulate it, we use certain Fabric utilities
+	//       to artificially create a situation where the block store
+	//       falls behind the state database by removing blocks.
+	// 3. Remove all blocks from the ledger except block 0
+	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel2)
+	checkLastCommittedBlock(ctx2, t, env.coordinator, 10)
+
+	// NOTE: The Fabric block store implementation used by the sidecar
+	//       maintains the ledger height in memory and updates it whenever
+	//       a new block is committed. Utilities such as ResetBlockStore
+	//       are expected to be executed only when the process is fully
+	//       shut down. Consequently, when the block store object is
+	//       recreated, it reads the current height from disk. Therefore,
+	//       we reset the ledger service object so that its in-memory data
+	//       structure reflects the correct height.
+	var err error
+	env.sidecar.ledgerService, err = ledger.New(
+		env.config.Orderer.ChannelID,
+		env.config.Ledger.Path,
+		env.sidecar.committedBlock,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), env.sidecar.ledgerService.GetBlockHeight()) // back to block 0
+
+	// 4. Make coordinator not idle to ensure sidecar is waiting
+	env.coordinator.SetWaitingTxsCount(10)
+
+	// 5. Restart the sidecar service and ledger service
+	env.start(ctx2, t, 11)
+
+	// 6. Recovery should not happen when coordinator is not idle.
+	require.Never(t, func() bool {
+		return env.sidecar.ledgerService.GetBlockHeight() > 1
+	}, 3*time.Second, 1*time.Second)
+
+	// 7. Make coordinator idle
+	env.coordinator.SetWaitingTxsCount(0)
+
+	// 8. Blockstore would recover lost blocks
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
+
+	// 9. Send the next expected block by the coordinator.
+	sendTransactionsAndEnsureCommitted(ctx, t, env, 11)
+
+	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
+	cancel2()
+}
+
+func sendTransactionsAndEnsureCommitted(
+	ctx context.Context,
+	t *testing.T,
+	env *sidecarTestEnv,
+	expectedBlockNumber uint64,
+) {
+	// mockorderer expects 100 txs to create the next block
+	txIDPrefix := uuid.New().String()
+	txs := make([]*protoblocktx.Tx, 100)
+	for i := range 100 {
+		txs[i] = &protoblocktx.Tx{
+			Id:         txIDPrefix + strconv.Itoa(i),
+			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}}, // nolint:gosec
+		}
+		_, resp, err := env.broadcastClient.SubmitWithEnv(protoutil.MarshalOrPanic(txs[i]))
+		require.NoError(t, err)
+		logger.Debugf("Response: %s", resp.Info)
+	}
+
+	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
 
 	block := <-env.committedBlock
-	require.Equal(t, uint64(1), block.Header.Number)
+	require.Equal(t, expectedBlockNumber, block.Header.Number)
 
 	for i := range 100 {
 		actualEnv, err := protoutil.ExtractEnvelope(block, i)
@@ -165,30 +249,6 @@ func commonTest(t *testing.T, env *sidecarTestEnv) {
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i], tx))
 	}
-
-	// restart and ensures it sends the next expected block by the coordinator.
-	cancel()
-	require.Eventually(t, func() bool {
-		return checkServerStopped(t, env.config.Server.Endpoint.Address())
-	}, 4*time.Second, 500*time.Millisecond)
-	require.Eventually(t, func() bool {
-		return !env.coordinator.IsStreamActive()
-	}, 2*time.Second, 250*time.Millisecond)
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel2)
-	env.start(ctx2, t, 2)
-
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 1)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 2)
-	sendTxs("newTx")
-
-	block = <-env.committedBlock
-	require.Equal(t, uint64(2), block.Header.Number)
-
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 2)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 3)
-	cancel2()
 }
 
 func makeBlock(t *testing.T, env *sidecarTestEnv) {
@@ -264,6 +324,53 @@ func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 	require.NotNil(t, verifier)
 }
 
+func TestConstructStatuses(t *testing.T) {
+	statuses := map[string]*protoblocktx.StatusWithHeight{
+		"tx1": {
+			Code:        protoblocktx.Status_COMMITTED,
+			BlockNumber: 1,
+			TxNumber:    1,
+		},
+		"tx2": {
+			Code:        protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			BlockNumber: 1,
+			TxNumber:    3,
+		},
+		"tx3": {
+			Code:        protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+			BlockNumber: 2,
+			TxNumber:    3,
+		},
+		"tx4": {
+			Code:        protoblocktx.Status_COMMITTED,
+			BlockNumber: 1,
+			TxNumber:    6,
+		},
+	}
+	expectedHeight := map[string]*types.Height{
+		"tx1": types.NewHeight(1, 1),
+		"tx2": types.NewHeight(1, 3),
+		"tx3": types.NewHeight(1, 5),
+		"tx4": types.NewHeight(1, 6),
+	}
+
+	expectedFinalStatuses := []byte{
+		byte(peer.TxValidationCode_VALID),
+		byte(protoblocktx.Status_COMMITTED),
+		byte(peer.TxValidationCode_VALID),
+		byte(protoblocktx.Status_ABORTED_SIGNATURE_INVALID),
+		byte(peer.TxValidationCode_VALID),
+		byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID),
+		byte(protoblocktx.Status_COMMITTED),
+	}
+	actualFinalStatuses := newValidationCodes(7)
+	for _, skippedIdx := range []int{0, 2, 4} {
+		actualFinalStatuses[skippedIdx] = byte(peer.TxValidationCode_VALID)
+	}
+	require.NoError(t, fillStatuses(actualFinalStatuses, statuses, expectedHeight))
+	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
+}
+
 func checkLastCommittedBlock(
 	ctx context.Context,
 	t *testing.T,
@@ -277,25 +384,4 @@ func checkLastCommittedBlock(
 		}
 		return expectedBlockNumber == lastBlock.Number
 	}, 15*time.Second, 1*time.Second)
-}
-
-func checkServerStopped(_ *testing.T, addr string) bool {
-	// Try a short timeout so we don't block too long
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext( // nolint:staticcheck
-		ctx,
-		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), // nolint:staticcheck
-	)
-	if err != nil {
-		// If we cannot connect at all, the server is likely stopped.
-		fmt.Println("Connection failed as expected:", err)
-		return true
-	}
-	// If we get a connection object, it means something is listening on that port.
-	_ = conn.Close()
-	return false
 }
