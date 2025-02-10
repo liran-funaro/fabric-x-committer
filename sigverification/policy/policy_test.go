@@ -40,7 +40,10 @@ func TestParsePolicyItem(t *testing.T) {
 		})
 	}
 
-	for _, ns := range []string{"x", "abc_d", "a5_9Z", "ABC_D", types.MetaNamespaceID} {
+	for _, ns := range []string{
+		"x", "abc_d", "a5_9z", types.MetaNamespaceID,
+		"not_too_long_namespace_namespace_id_0123456789_0123456789_01",
+	} {
 		t.Run(fmt.Sprintf("valid ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			_, err := ParsePolicyItem(pd)
@@ -49,12 +52,13 @@ func TestParsePolicyItem(t *testing.T) {
 	}
 
 	for _, ns := range []string{
-		"", "Too_long_namespace_namespace_ID_0123456789_0123456789_0123456789_0123456789",
+		"", "abc_$", "a-", "go!", "My Namespace", "my name", "ABC_D", "new\nline",
+		"____too_long_namespace_namespace_id_0123456789_0123456789_012",
 	} {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			_, err := ParsePolicyItem(pd)
-			require.ErrorIs(t, err, types.ErrInvalidNamespaceID)
+			require.ErrorIs(t, err, ErrInvalidNamespaceID)
 		})
 	}
 

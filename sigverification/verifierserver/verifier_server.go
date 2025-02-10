@@ -221,7 +221,7 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 	for _, pd := range policy.ListPolicyItems(txNs.ReadWrites) {
 		_, err := policy.ParsePolicyItem(pd)
 		if err != nil {
-			if errors.Is(err, types.ErrInvalidNamespaceID) {
+			if errors.Is(err, policy.ErrInvalidNamespaceID) {
 				return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
 			}
 			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID

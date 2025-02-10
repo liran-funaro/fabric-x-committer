@@ -1,8 +1,6 @@
 package types
 
 import (
-	"errors"
-
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -14,29 +12,6 @@ type (
 
 // MetaNamespaceID is an ID of a system namespace which holds information about user's namespaces.
 const MetaNamespaceID = "_meta"
-
-// ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
-var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
-
-// MaxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
-const MaxNamespaceIDLength = 64
-
-// ValidateNamespaceID checks that a given namespace fulfills namespace naming conventions.
-func ValidateNamespaceID(nsID string) error {
-	// length checks
-	if len(nsID) == 0 || len(nsID) > MaxNamespaceIDLength {
-		return ErrInvalidNamespaceID
-	}
-
-	// if it matches our holy MetaNamespaceID it is valid
-	if nsID == MetaNamespaceID {
-		return nil
-	}
-
-	// TODO: add more validation checks
-
-	return nil
-}
 
 // Bytes converts a version number representation to bytes representation.
 func (v VersionNumber) Bytes() []byte {
