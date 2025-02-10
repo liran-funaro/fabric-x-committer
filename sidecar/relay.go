@@ -102,6 +102,10 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 		if !ok {
 			return nil
 		}
+		if block.Header == nil {
+			logger.Warn("Received a block without header")
+			continue
+		}
 		blockNum := block.Header.Number
 		logger.Debugf("Block %d arrived in the relay", blockNum)
 
@@ -119,7 +123,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 			pendingCount:  txCount - len(filteredTxsIndex),
 		}
 
-		// set all filtered transaction to valid by default
+		// set all filtered transaction to invalid by default
 		// TODO once SC V2 can process config transaction and alike, this needs to be changed
 		for txIndex := range filteredTxsIndex {
 			logger.Debugf("TX [%d:%d] is excluded: %v", blockNum, txIndex, excludedStatus)
@@ -137,7 +141,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 			}
 			logger.Debugf("txID [%s] is duplicate", tx.GetId())
 			blkWithResult.pendingCount--
-			blkWithResult.txStatus[txIndex] = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+			blkWithResult.txStatus[txIndex] = validationCode(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 			dupIdx = append(dupIdx, txIndex)
 		}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	sidecartest "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -35,7 +36,7 @@ func TestLedgerService(t *testing.T) {
 	//       result in an error. This is due to the iterator implementation in the
 	//       fabric ledger.
 	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"0", "1", "2"})
-	valid := byte(peer.TxValidationCode_VALID)
+	valid := byte(protoblocktx.Status_COMMITTED)
 	metadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}

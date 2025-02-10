@@ -2,7 +2,6 @@ package sidecar
 
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"google.golang.org/protobuf/proto"
@@ -11,8 +10,8 @@ import (
 type validationCode = byte
 
 const (
-	excludedStatus  = validationCode(peer.TxValidationCode_VALID)
-	notYetValidated = validationCode(peer.TxValidationCode_NOT_VALIDATED)
+	excludedStatus  = validationCode(protoblocktx.Status_ABORTED_UNSUPPORTED_TX_PAYLOAD)
+	notYetValidated = validationCode(protoblocktx.Status_NOT_VALIDATED)
 )
 
 func newValidationCodes(expected int) []validationCode {
@@ -24,18 +23,24 @@ func newValidationCodes(expected int) []validationCode {
 }
 
 func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
+	if block.Data == nil {
+		logger.Warnf("Received a block [%d] without data", block.Header.Number)
+		return &protoblocktx.Block{
+			Number: block.Header.Number,
+		}, nil
+	}
+
 	excluded := make([]int, 0, len(block.Data.Data))
 	txs := make([]*protoblocktx.Tx, 0, len(block.Data.Data))
 	txsNum := make([]uint32, 0, len(block.Data.Data))
 	for txNum, msg := range block.Data.Data {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", block.Header.Number, txNum)
 		if data, channelHdr, err := serialization.UnwrapEnvelope(msg); err != nil {
-			logger.Fatalf("error unwrapping envelope: %v", err)
+			excluded = exclude(excluded, txNum, channelHdr, err.Error())
 		} else if channelHdr.Type != int32(common.HeaderType_MESSAGE) {
-			logger.Debugf("Ignoring TX [%s] of type %d", channelHdr.TxId, channelHdr.Type)
-			excluded = append(excluded, txNum)
+			excluded = exclude(excluded, txNum, channelHdr, "unsupported type")
 		} else if tx, err := UnmarshalTx(data); err != nil {
-			logger.Fatalf("error unmarshaling MESSAGE tx [%s] tx: %v", channelHdr.TxId, err)
+			excluded = exclude(excluded, txNum, channelHdr, err.Error())
 		} else {
 			logger.Debugf("Appended txID [%s] -> [%s]", channelHdr.TxId, tx.Id)
 			txs = append(txs, tx)
@@ -47,6 +52,11 @@ func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
 		Txs:    txs,
 		TxsNum: txsNum,
 	}, excluded
+}
+
+func exclude(excluded []int, txNum int, channelHdr *common.ChannelHeader, reason string) []int {
+	logger.Debugf("Excluding TX [%s] of type %d due to %s", channelHdr.TxId, channelHdr.Type, reason)
+	return append(excluded, txNum)
 }
 
 // UnmarshalTx unmarshals data bytes to protoblocktx.Tx.
