@@ -2,9 +2,10 @@ package sigverification_test
 
 import (
 	"context"
-	"log"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -12,10 +13,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Constants
-
-// De facto constants
-
+// De facto constants.
 var (
 	SerialNumberCountDistribution = test.Constant(int64(test.TxSize))
 	SerialNumberSize              = test.Constant(32)
@@ -26,45 +24,35 @@ var (
 	VerificationScheme            = signature.Ecdsa
 )
 
-// Typical result values from experiments
-
+// TypicalTxValidationDelay Typical result values from experiments.
 var TypicalTxValidationDelay = int64(time.Second / 10_000)
 
-// Optimal values resulting from benchmarking
-
+// Optimal values resulting from benchmarking.
 var (
 	OptimalBatchTimeCutoff   = 500 * time.Millisecond
 	OptimalChannelBufferSize = 50
 )
 
+// State test state.
 type State struct {
-	Client     sigverification.VerifierClient
-	StopClient func() error
-	StopServer func()
+	Client sigverification.VerifierClient
 }
 
 func NewTestState(t test.TestingT, server sigverification.VerifierServer) *State {
 	serverConnectionConfig := connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost", Port: 0}}
-	s := &State{}
-
 	test.RunGrpcServerForTest(context.Background(), t, &serverConnectionConfig, func(grpcServer *grpc.Server) {
-		s.StopServer = grpcServer.GracefulStop
 		sigverification.RegisterVerifierServer(grpcServer, server)
 	})
 
 	clientConnectionConfig := connection.NewDialConfig(&serverConnectionConfig.Endpoint)
-	clientConnection, _ := connection.Connect(clientConnectionConfig)
-	s.Client = sigverification.NewVerifierClient(clientConnection)
-	s.StopClient = clientConnection.Close
-	return s
-}
-
-func (s *State) TearDown() {
-	err := s.StopClient()
-	if err != nil {
-		log.Fatalf("failed to close connection: %v", err)
+	clientConnection, err := connection.Connect(clientConnectionConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, clientConnection.Close())
+	})
+	return &State{
+		Client: sigverification.NewVerifierClient(clientConnection),
 	}
-	s.StopServer()
 }
 
 func InputChannel(stream sigverification.Verifier_StartStreamClient) chan<- *sigverification.RequestBatch {

@@ -3,9 +3,10 @@ package verifierserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
+	"sync/atomic"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -23,25 +24,30 @@ import (
 type VerifierServer struct {
 	sigverification.UnimplementedVerifierServer
 	streamHandler *streamhandler.StreamHandler
-	verifier      *sync.Map
-	metrics       *metrics.Metrics
+	verifiers     atomic.Pointer[map[string]signature.NsVerifier]
+
+	// Ensures a sequential updates.
+	updateLock sync.Mutex
+
+	metrics *metrics.Metrics
 }
 
 const (
 	retValid = protoblocktx.Status_COMMITTED
-	retError = -1
 )
 
 var (
 	logger = logging.New("verifier")
 
-	// ErrNoVerifier is returned when no verifier is set for a namespace.
-	ErrNoVerifier = errors.New("no verifier set")
+	// ErrUpdatePolicies is returned when UpdatePolicies fails to parse a given policy.
+	ErrUpdatePolicies = errors.New("failed to update policies")
 )
 
 // New instantiate a new VerifierServer.
 func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *VerifierServer {
-	s := &VerifierServer{verifier: &sync.Map{}, metrics: m}
+	s := &VerifierServer{metrics: m}
+	verifiers := make(map[string]signature.NsVerifier)
+	s.verifiers.Store(&verifiers)
 
 	executor := parallelexecutor.New(s.verifyRequest, parallelExecutionConfig, m)
 	s.streamHandler = streamhandler.New(
@@ -71,19 +77,36 @@ func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *
 func (s *VerifierServer) UpdatePolicies(
 	_ context.Context, policies *sigverification.Policies,
 ) (*sigverification.Empty, error) {
-	for _, pd := range policies.Policies {
-		nsID, key, err := policy.ParsePolicyItem(pd)
+	// We parse the policy during validation and mark transactions as invalid if parsing fails.
+	// While it might seem unlikely that policy parsing would fail at this stage, it could happen
+	// if the stored policy in the database is corrupted or maliciously altered, or if there's a
+	// bug in the committer that modifies the policy bytes.
+	newVerifiers := make(map[string]signature.NsVerifier)
+	updatedNamespaces := make([]string, len(policies.Policies))
+	for i, pd := range policies.Policies {
+		key, err := policy.ParsePolicyItem(pd)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(ErrUpdatePolicies, err)
 		}
 		verifier, err := signature.NewNsVerifier(key.GetScheme(), key.GetPublicKey())
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(ErrUpdatePolicies, err)
 		}
-		s.verifier.Store(nsID, verifier)
-		logger.Infof("New verification key for namespace %d", nsID)
+		newVerifiers[pd.Namespace] = verifier
+		updatedNamespaces[i] = pd.Namespace
 	}
-	return &sigverification.Empty{}, nil
+
+	defer logger.Infof("New verification policies for namespaces %v", updatedNamespaces)
+
+	s.updateLock.Lock()
+	defer s.updateLock.Unlock()
+	for k, v := range *s.verifiers.Load() {
+		if _, ok := newVerifiers[k]; !ok {
+			newVerifiers[k] = v
+		}
+	}
+	s.verifiers.Store(&newVerifiers)
+	return nil, nil
 }
 
 // StartStream starts a verification stream.
@@ -105,30 +128,29 @@ func (s *VerifierServer) verifyRequest(request *sigverification.Request) (*sigve
 		defer s.metrics.RequestTracer.AddEvent(txID, "End verification")
 	}
 	debug(request)
-	status, err := s.verify(request.Tx)
-	if err != nil {
-		return nil, err
-	}
 	return &sigverification.Response{
 		TxId:     request.Tx.Id,
 		BlockNum: request.BlockNum,
 		TxNum:    request.TxNum,
-		Status:   status,
+		Status:   s.verify(request.Tx),
 	}, nil
 }
 
-func (s *VerifierServer) verify(tx *protoblocktx.Tx) (protoblocktx.Status, error) {
+func (s *VerifierServer) verify(tx *protoblocktx.Tx) protoblocktx.Status {
 	if status := verifyTxForm(tx); status != retValid {
-		return status, nil
+		return status
 	}
 
+	// The verifiers might temporarily retain the old map while UpdatePolicies has already set a new one.
+	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
+	// after updating the policies in the SigVerifier.
+	// This ensures that dependent data transactions on these updated namespaces always use the map
+	// containing the latest policy.
+	verifiers := *s.verifiers.Load()
 	for nsIndex, ns := range tx.Namespaces {
-		verifier, err := s.getVerifier(ns.NsId)
-		if errors.Is(err, ErrNoVerifier) {
-			return protoblocktx.Status_ABORTED_SIGNATURE_INVALID, nil
-		} else if err != nil {
-			// Internal error.
-			return retError, err
+		verifier, ok := verifiers[ns.NsId]
+		if !ok {
+			return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 		}
 
 		// NOTE: We do not compare the namespace version in the transaction
@@ -140,25 +162,13 @@ func (s *VerifierServer) verify(tx *protoblocktx.Tx) (protoblocktx.Status, error
 		//       the signatures are valid, the validator-committer service would
 		//       still mark the transaction as invalid due to an MVCC conflict on the
 		//       namespace version, which would reflect the correct validation status.
-		if err = verifier.VerifyNs(tx, nsIndex); err != nil {
+		if err := verifier.VerifyNs(tx, nsIndex); err != nil {
 			logger.Debugf("Invalid signature found: %v", tx.GetId())
-			return protoblocktx.Status_ABORTED_SIGNATURE_INVALID, nil //nolint:nilerr
+			return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 		}
 	}
 
-	return retValid, nil
-}
-
-func (s *VerifierServer) getVerifier(nsID string) (signature.NsVerifier, error) {
-	v, ok := s.verifier.Load(nsID)
-	if !ok {
-		return nil, ErrNoVerifier
-	}
-	verifier, ok := v.(signature.NsVerifier)
-	if !ok {
-		return nil, errors.Errorf("verifier does not cast to signature.NsVerifier for namespace %s", nsID)
-	}
-	return verifier, nil
+	return retValid
 }
 
 func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
@@ -209,7 +219,7 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 
 	nsUpdate := make(map[string]any)
 	for _, pd := range policy.ListPolicyItems(txNs.ReadWrites) {
-		ns, _, err := policy.ParsePolicyItem(pd)
+		_, err := policy.ParsePolicyItem(pd)
 		if err != nil {
 			if errors.Is(err, types.ErrInvalidNamespaceID) {
 				return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
@@ -217,13 +227,13 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
 		}
 		// The meta-namespace is updated only via blind-write.
-		if ns == types.MetaNamespaceID {
+		if pd.Namespace == types.MetaNamespaceID {
 			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
 		}
-		if _, ok := nsUpdate[ns]; ok {
+		if _, ok := nsUpdate[pd.Namespace]; ok {
 			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
 		}
-		nsUpdate[ns] = nil
+		nsUpdate[pd.Namespace] = nil
 	}
 
 	return retValid

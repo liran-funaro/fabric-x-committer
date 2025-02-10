@@ -71,7 +71,6 @@ func BenchmarkVerifierServer(b *testing.B) {
 				server := verifierserver.New(config.ParallelExecutionConfig, m)
 				c := sigverification_test.NewTestState(b, server)
 				t := connection.NewRequestTracker()
-				defer c.TearDown()
 				_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
 					Policies: []*sigverification.PolicyItem{
 						policy.MakePolicy(b, "1", &protoblocktx.NamespacePolicy{

@@ -43,7 +43,6 @@ func BenchmarkStreamHandler(b *testing.B) {
 				g := NewInputGenerator(config.InputGeneratorParams)
 				s := sigverification_test.NewTestState(b, g.VerifierServer())
 				t := connection.NewRequestTracker()
-				defer s.TearDown()
 				stream, _ := s.Client.StartStream(context.Background())
 				send := sigverification_test.InputChannel(stream)
 

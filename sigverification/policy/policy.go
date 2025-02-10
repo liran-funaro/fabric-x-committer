@@ -26,18 +26,15 @@ func ListPolicyItems[T KeyValue](rws []T) []*protosigverifierservice.PolicyItem 
 }
 
 // ParsePolicyItem parses policy item to a namespace policy.
-func ParsePolicyItem(pd *protosigverifierservice.PolicyItem) (
-	ns string, key *protoblocktx.NamespacePolicy, err error,
-) {
-	err = types.ValidateNamespaceID(pd.Namespace)
-	if err != nil {
-		return ns, key, err
+func ParsePolicyItem(pd *protosigverifierservice.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
+	if err := types.ValidateNamespaceID(pd.Namespace); err != nil {
+		return nil, err
 	}
-	key, err = keysFromMetaNamespaceTx(pd.Policy)
-	return pd.Namespace, key, err
+	return policyFromMetaNamespaceTx(pd.Policy)
 }
 
-func keysFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
+// policyFromMetaNamespaceTx parse a namespace policy.
+func policyFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
 	p := &protoblocktx.NamespacePolicy{}
 	err := proto.Unmarshal(value, p)
 	if err != nil {

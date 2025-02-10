@@ -32,27 +32,36 @@ func TestParsePolicyItem(t *testing.T) {
 		PublicKey: []byte("public-key"),
 	}
 	for _, ns := range []string{"0", types.MetaNamespaceID} {
-		t.Run(fmt.Sprintf("valid policy ns: %s", ns), func(t *testing.T) {
+		t.Run(fmt.Sprintf("valid policy ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
-			retNs, retP, err := ParsePolicyItem(pd)
+			retP, err := ParsePolicyItem(pd)
 			require.NoError(t, err)
-			require.Equal(t, ns, retNs)
 			require.True(t, proto.Equal(p, retP))
 		})
 	}
 
-	t.Run("invalid ns", func(t *testing.T) {
-		pd := MakePolicy(t, "0", p)
-		// set some bad namespace
-		pd.Namespace = ""
-		_, _, err := ParsePolicyItem(pd)
-		require.ErrorIs(t, err, types.ErrInvalidNamespaceID)
-	})
+	for _, ns := range []string{"x", "abc_d", "a5_9Z", "ABC_D", types.MetaNamespaceID} {
+		t.Run(fmt.Sprintf("valid ns: '%s'", ns), func(t *testing.T) {
+			pd := MakePolicy(t, ns, p)
+			_, err := ParsePolicyItem(pd)
+			require.NoError(t, err)
+		})
+	}
+
+	for _, ns := range []string{
+		"", "Too_long_namespace_namespace_ID_0123456789_0123456789_0123456789_0123456789",
+	} {
+		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
+			pd := MakePolicy(t, ns, p)
+			_, err := ParsePolicyItem(pd)
+			require.ErrorIs(t, err, types.ErrInvalidNamespaceID)
+		})
+	}
 
 	t.Run("invalid policy", func(t *testing.T) {
 		pd := MakePolicy(t, "0", p)
 		pd.Policy = []byte("bad-policy")
-		_, _, err := ParsePolicyItem(pd)
+		_, err := ParsePolicyItem(pd)
 		require.Error(t, err)
 	})
 }
