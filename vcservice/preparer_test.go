@@ -128,10 +128,10 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			comparableRead{"2", string(k4), string(v1)}: []TxID{"tx2"},
 			comparableRead{"2", string(k5), string(v0)}: []TxID{"tx2"},
 			comparableRead{"2", string(k6), ""}:         []TxID{"tx2"},
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v1)}: []TxID{
+			comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{
 				"tx1", "tx2",
 			},
-			comparableRead{types.MetaNamespaceID, string([]byte("2")), string(v1)}: []TxID{
+			comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{
 				"tx1", "tx2",
 			},
 		},
@@ -217,9 +217,9 @@ func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v1)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string([]byte("2")), string(v1)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v2)}: []TxID{"tx2"},
+			comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "1", string(v2)}: []TxID{"tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites: transactionToWrites{
@@ -348,10 +348,10 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			comparableRead{"2", string(k5), ""}:         []TxID{"tx1"},
 			comparableRead{"2", string(k6), ""}:         []TxID{"tx2"},
 			comparableRead{"2", string(k7), ""}:         []TxID{"tx2"},
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v2)}: []TxID{
+			comparableRead{types.MetaNamespaceID, "1", string(v2)}: []TxID{
 				"tx1", "tx2",
 			},
-			comparableRead{types.MetaNamespaceID, string([]byte("2")), string(v2)}: []TxID{
+			comparableRead{types.MetaNamespaceID, "2", string(v2)}: []TxID{
 				"tx1", "tx2",
 			},
 		},
@@ -531,16 +531,16 @@ func TestPrepareTx(t *testing.T) {
 			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{"1", string(k1), string(v1)}:                            []TxID{"tx1"},
-			comparableRead{"1", string(k2), string(v2)}:                            []TxID{"tx1"},
-			comparableRead{"1", string(k3), string(v3)}:                            []TxID{"tx1"},
-			comparableRead{"1", string(k8), string(v8)}:                            []TxID{"tx2"},
-			comparableRead{"1", string(k9), string(v9)}:                            []TxID{"tx2"},
-			comparableRead{"2", string(k5), ""}:                                    []TxID{"tx1"},
-			comparableRead{"2", string(k6), ""}:                                    []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v1)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string([]byte("2")), string(v2)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, string([]byte("1")), string(v3)}: []TxID{"tx2"},
+			comparableRead{"1", string(k1), string(v1)}:            []TxID{"tx1"},
+			comparableRead{"1", string(k2), string(v2)}:            []TxID{"tx1"},
+			comparableRead{"1", string(k3), string(v3)}:            []TxID{"tx1"},
+			comparableRead{"1", string(k8), string(v8)}:            []TxID{"tx2"},
+			comparableRead{"1", string(k9), string(v9)}:            []TxID{"tx2"},
+			comparableRead{"2", string(k5), ""}:                    []TxID{"tx1"},
+			comparableRead{"2", string(k6), ""}:                    []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "2", string(v2)}: []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "1", string(v3)}: []TxID{"tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
