@@ -2,12 +2,12 @@ package yuga
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/pkg/errors"
 )
 
 const (

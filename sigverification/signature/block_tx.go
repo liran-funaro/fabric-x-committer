@@ -3,8 +3,8 @@ package signature
 import (
 	"crypto/sha256"
 	"encoding/asn1"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
@@ -48,7 +48,7 @@ func HashTxNamespace(t *protoblocktx.Tx, nsIndex int) []byte {
 	bytes, err := asn1.Marshal(tx)
 	if err != nil {
 		// TODO better way to deal with an error here
-		panic(errors.Wrap(err, "cannot hash transaction due to marshaling error"))
+		panic(fmt.Errorf("cannot hash transaction due to marshaling error: %w", err))
 	}
 
 	h := sha256.New()

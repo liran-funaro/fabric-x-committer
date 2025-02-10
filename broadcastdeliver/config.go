@@ -1,8 +1,10 @@
 package broadcastdeliver
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -59,7 +61,7 @@ func validateConfig(c *Config) error {
 		c.ConsensusType = DefaultConsensus
 	}
 	if c.ConsensusType != Bft && c.ConsensusType != Cft {
-		return errors.Errorf("unsupported orderer type %s", c.ConsensusType)
+		return fmt.Errorf("unsupported orderer type %s", c.ConsensusType)
 	}
 	if len(c.Endpoints) == 0 {
 		return ErrNoEndpoints
@@ -71,7 +73,7 @@ func validateConfig(c *Config) error {
 		}
 		target := e.Address()
 		if other, ok := uniqueEndpoints[target]; ok {
-			return errors.Errorf("endpoint [%s] specified multiple times: %s, %s", target, other, e.String())
+			return fmt.Errorf("endpoint [%s] specified multiple times: %s, %s", target, other, e.String())
 		}
 		uniqueEndpoints[target] = e.String()
 	}

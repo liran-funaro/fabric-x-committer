@@ -6,7 +6,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
@@ -40,7 +39,7 @@ func New(config *Config) (*Client, error) {
 
 	conn, err := connection.OpenLazyConnections(config.Endpoints, creds)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open connections to orderers")
+		return nil, fmt.Errorf("failed to open connections to ordering services: %w", err)
 	}
 	logger.Infof("Opened %d connections", len(conn))
 	for i := range s.connections {

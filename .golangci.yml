@@ -31,6 +31,7 @@ linters:
     - wastedassign
     - whitespace
     - gocognit
+    - depguard
 
 linters-settings:
   errcheck:
@@ -120,6 +121,12 @@ linters-settings:
       - github.com/prometheus/client_golang/prometheus.Counter
       - github.com/prometheus/client_golang/prometheus.Gauge
       - github.com/prometheus/client_golang/prometheus.Histogram
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: github.com/pkg/errors
+            desc: github.com/pkg/errors is no longer maintained
 
 issues:
   # The list of ids of default excludes to include or disable.

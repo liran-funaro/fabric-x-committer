@@ -2,11 +2,11 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
@@ -37,8 +37,8 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) *Sidec
 func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	coordinatorConn, err := connection.Connect(connection.NewDialConfig(c.config.Coordinator.Endpoint))
 	if err != nil {
-		return errors.Wrapf(
-			err, "failed to connect to coordinator on %s", c.config.Coordinator.Endpoint.String(),
+		return fmt.Errorf(
+			"failed to connect to coordinator on %s: %w", c.config.Coordinator.Endpoint.String(), err,
 		)
 	}
 	defer connection.CloseConnectionsLog(coordinatorConn)
@@ -52,13 +52,13 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 		Endpoint:  c.config.Endpoint,
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed to create listener")
+		return fmt.Errorf("failed to create listener: %w", err)
 	}
 	logger.Info("Listener created")
 
 	broadcastSubmitter, err := broadcastdeliver.New(&c.config.Orderer)
 	if err != nil {
-		return errors.Wrap(err, "failed to create orderer clients")
+		return fmt.Errorf("failed to create orderer clients: %w", err)
 	}
 	defer broadcastSubmitter.Close()
 

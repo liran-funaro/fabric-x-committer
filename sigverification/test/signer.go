@@ -3,11 +3,11 @@ package sigverification_test
 import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"errors"
 	"math/big"
 	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	signature2 "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"

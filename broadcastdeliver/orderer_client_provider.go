@@ -1,9 +1,10 @@
 package broadcastdeliver
 
 import (
+	"errors"
+
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/pkg/errors"
 )
 
 // ordererDeliverStream implements DeliverStream.

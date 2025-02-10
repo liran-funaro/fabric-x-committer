@@ -1,11 +1,10 @@
 package connection
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 type Host = string

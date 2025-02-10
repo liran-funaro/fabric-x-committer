@@ -1,9 +1,9 @@
 package sigverification_test
 
 import (
+	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -58,11 +58,11 @@ func ReadOrGenerateKeys(profile signature.Profile) (PrivateKey, signature.Public
 		logger.Infof("Verification/signing keys found in files %s/%s. Importing...", profile.KeyPath.VerificationKey, profile.KeyPath.SigningKey)
 		verificationKey, err := os.ReadFile(profile.KeyPath.VerificationKey)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read public key from %s", profile.KeyPath.VerificationKey)
+			return nil, nil, fmt.Errorf("could not read public key from %s: %w", profile.KeyPath.VerificationKey, err)
 		}
 		signingKey, err := os.ReadFile(profile.KeyPath.SigningKey)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read private key from %s", profile.KeyPath.SigningKey)
+			return nil, nil, fmt.Errorf("could not read private key from %s: %w", profile.KeyPath.SigningKey, err)
 		}
 		logger.Infoln("Keys successfully imported!")
 		return signingKey, verificationKey, nil
@@ -73,11 +73,11 @@ func ReadOrGenerateKeys(profile signature.Profile) (PrivateKey, signature.Public
 		logger.Infof("Sign cert and key found in files %s/%s. Importing...", profile.KeyPath.SignCertificate, profile.KeyPath.SigningKey)
 		verificationKey, err := signature.GetSerializedKeyFromCert(profile.KeyPath.SignCertificate)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read sign cert from %s", profile.KeyPath.SignCertificate)
+			return nil, nil, fmt.Errorf("could not read sign cert from %s: %w", profile.KeyPath.SignCertificate, err)
 		}
 		signingKey, err := os.ReadFile(profile.KeyPath.SigningKey)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read private key from %s", profile.KeyPath.SigningKey)
+			return nil, nil, fmt.Errorf("could not read private key from %s: %w", profile.KeyPath.SigningKey, err)
 		}
 		logger.Infoln("Keys successfully imported!")
 		return signingKey, verificationKey, nil
@@ -91,11 +91,11 @@ func ReadOrGenerateKeys(profile signature.Profile) (PrivateKey, signature.Public
 	if profile.KeyPath != nil && profile.KeyPath.SigningKey != "" && profile.KeyPath.VerificationKey != "" {
 		err := utils.WriteFile(profile.KeyPath.VerificationKey, verificationKey)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not write public key into %s.", profile.KeyPath.VerificationKey)
+			return nil, nil, fmt.Errorf("could not write public key into %s: %w", profile.KeyPath.VerificationKey, err)
 		}
 		err = utils.WriteFile(profile.KeyPath.SigningKey, signingKey)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "could not write private key into %s", profile.KeyPath.SigningKey)
+			return nil, nil, fmt.Errorf("could not write private key into %s: %w", profile.KeyPath.SigningKey, err)
 		}
 		logger.Infoln("Keys successfully exported!")
 	}

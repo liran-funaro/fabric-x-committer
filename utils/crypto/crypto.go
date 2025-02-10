@@ -9,10 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"golang.org/x/crypto/sha3"
 )
@@ -49,7 +49,8 @@ func NewECDSAKeyWithSeed(seed int64) (*ecdsa.PrivateKey, error) {
 
 var verifyError = errors.New("failed to verify signature")
 
-func VerifyMessage(verificationKey *ecdsa.PublicKey, message []byte, signature []byte) error {
+// VerifyMessage verifies message using the given public key.
+func VerifyMessage(verificationKey *ecdsa.PublicKey, message, signature []byte) error {
 	hash := sha256.Sum256(message)
 
 	valid := ecdsa.VerifyASN1(verificationKey, hash[:], signature)
@@ -63,12 +64,12 @@ func VerifyMessage(verificationKey *ecdsa.PublicKey, message []byte, signature [
 func ParseVerificationKey(key []byte) (*ecdsa.PublicKey, error) {
 	block, _ := pem.Decode(key)
 	if block == nil || block.Type != "PUBLIC KEY" {
-		return nil, errors.Errorf("failed to decode PEM block containing public key, got %v", block)
+		return nil, fmt.Errorf("failed to decode PEM block containing public key, got %v", block)
 	}
 
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot parse public key")
+		return nil, fmt.Errorf("cannot parse public key: %w", err)
 	}
 
 	return pub.(*ecdsa.PublicKey), nil
@@ -101,14 +102,14 @@ func ParseSigningKey(keyContent []byte) (*ecdsa.PrivateKey, error) {
 	case "EC PRIVATE KEY":
 		return x509.ParseECPrivateKey(block.Bytes)
 	default:
-		return nil, errors.Errorf("unknown block type: %s", block.Type)
+		return nil, fmt.Errorf("unknown block type: %s", block.Type)
 	}
 }
 
 func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
 	x509encodedPri, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot serialize private key")
+		return nil, fmt.Errorf("cannot serialize private key: %w", err)
 	}
 
 	return pem.EncodeToMemory(&pem.Block{

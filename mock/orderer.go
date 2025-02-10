@@ -10,7 +10,6 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -170,7 +169,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 
 	seekInfo, channelID, err := readSeekEnvelope(stream)
 	if err != nil {
-		return errors.Wrap(err, "failed reading seek request")
+		return fmt.Errorf("failed reading seek request: %w", err)
 	}
 
 	if start, ok := seekInfo.Start.Type.(*ab.SeekPosition_Specified); ok {

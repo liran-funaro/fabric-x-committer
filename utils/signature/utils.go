@@ -1,10 +1,10 @@
 package signature
 
 import (
+	"errors"
 	"flag"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 

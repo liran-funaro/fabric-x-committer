@@ -2,27 +2,31 @@ package experiment
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
-type valueExtractor = func(*data) float64
-type metric struct {
-	query, description, unit string
-	extractor                valueExtractor
-}
+type (
+	valueExtractor = func(*data) float64
+	metric         struct {
+		query, description, unit string
+		extractor                valueExtractor
+	}
+)
+
 type ResultReader struct {
 	server  *connection.Endpoint
 	metrics []*metric
 }
 
-func NewResultReader(client *connection.Endpoint, server *connection.Endpoint, rateInterval time.Duration) *ResultReader {
+// NewResultReader instantiate a result reader.
+func NewResultReader(client, server *connection.Endpoint, rateInterval time.Duration) *ResultReader {
 	return &ResultReader{
 		server: server,
 		metrics: []*metric{

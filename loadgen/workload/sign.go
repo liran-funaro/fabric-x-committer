@@ -1,9 +1,10 @@
 package workload
 
 import (
+	"errors"
+	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
@@ -140,16 +141,16 @@ func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (PublicKey, sigverifi
 
 func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 	if !utils.FileExists(keyPath.SigningKey) {
-		return nil, nil, errors.Errorf("signing key file not found in %s", keyPath.SigningKey)
+		return nil, nil, fmt.Errorf("signing key file not found in %s", keyPath.SigningKey)
 	}
 	signingKey, err := os.ReadFile(keyPath.SigningKey)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "could not read private key from %s", keyPath.SigningKey)
+		return nil, nil, fmt.Errorf("could not read private key from %s: %w", keyPath.SigningKey, err)
 	}
 
 	if utils.FileExists(keyPath.VerificationKey) {
 		if verificationKey, err := os.ReadFile(keyPath.VerificationKey); err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read public key from %s", keyPath.VerificationKey)
+			return nil, nil, fmt.Errorf("could not read public key from %s: %w", keyPath.VerificationKey, err)
 		} else {
 			logger.Infof("Loaded private key and verification key from files %s and %s.",
 				keyPath.SigningKey, keyPath.VerificationKey)
@@ -159,7 +160,7 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 
 	if utils.FileExists(keyPath.SignCertificate) {
 		if verificationKey, err := signature.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
-			return nil, nil, errors.Wrapf(err, "could not read sign cert from %s", keyPath.SignCertificate)
+			return nil, nil, fmt.Errorf("could not read sign cert from %s: %w", keyPath.SignCertificate, err)
 		} else {
 			logger.Infof("Sign cert and key found in files %s/%s. Importing...",
 				keyPath.SignCertificate, keyPath.SigningKey)

@@ -2,13 +2,13 @@ package signature
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"math/big"
 	mathRand "math/rand"
 	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"
 )
 

@@ -2,8 +2,8 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
@@ -29,7 +29,7 @@ func NewCoordinatorAdapter(config *CoordinatorClientConfig, res *ClientResources
 func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	conn, err := connection.Connect(connection.NewDialConfig(c.config.Endpoint))
 	if err != nil {
-		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint.String())
+		return fmt.Errorf("failed to connect to %s: %w", c.config.Endpoint.String(), err)
 	}
 	defer connection.CloseConnectionsLog(conn)
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
@@ -46,7 +46,7 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream)
 	logger.Info("Opening stream")
 	stream, err := client.BlockProcessing(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed creating stream to coordinator")
+		return fmt.Errorf("failed creating stream to coordinator: %w", err)
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)

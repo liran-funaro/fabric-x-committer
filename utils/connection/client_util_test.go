@@ -2,6 +2,7 @@ package connection_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -209,7 +209,7 @@ func TestFilterStreamRPCError(t *testing.T) {
 		_, err = env.deliver.Recv()
 		require.Error(t, err)
 		require.Error(t, connection.FilterStreamRPCError(err))
-		require.Error(t, connection.FilterStreamRPCError(errors.Wrap(err, "failed")))
+		require.Error(t, connection.FilterStreamRPCError(errors.Join(err, errors.New("failed"))))
 		require.Error(t, connection.FilterStreamRPCError(fmt.Errorf("failed: %w", err)))
 	})
 
@@ -250,10 +250,10 @@ func TestFilterStreamRPCError(t *testing.T) {
 
 func requireNoWrappedError(t *testing.T, err error) {
 	require.NoError(t, connection.FilterStreamRPCError(err))
-	require.NoError(t, connection.FilterStreamRPCError(errors.Wrap(err, "failed")))
 	if err == nil {
 		return
 	}
+	require.NoError(t, connection.FilterStreamRPCError(errors.Join(err, errors.New("failed"))))
 	require.NoError(t, connection.FilterStreamRPCError(fmt.Errorf("failed: %w", err)))
 }
 

@@ -3,21 +3,23 @@ package test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 type Percentage = float64
 
-var Always Percentage = 1
-var Never Percentage = 0
-var NoDelay = Constant(0)
+// Useful Percentage values.
+var (
+	Always  Percentage = 1
+	Never   Percentage
+	NoDelay = Constant(0)
+)
 
 type distributionType int
 
@@ -148,6 +150,7 @@ var PercentageUniformDistribution = newUniformDistribution(0, 1)
 func Volatile(mean int64) Distribution {
 	return newNormalDistribution(float64(mean), float64(mean)/2)
 }
+
 func Stable(mean int64) Distribution {
 	return newNormalDistribution(float64(mean), float64(mean)/100)
 }

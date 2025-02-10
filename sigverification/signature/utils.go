@@ -7,12 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/crypto"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
-
-var logger = logging.New("signature")
 
 func GetSerializedKeyFromCert(certPath string) (PublicKey, error) {
 	pemContent, err := os.ReadFile(certPath)
@@ -22,7 +18,7 @@ func GetSerializedKeyFromCert(certPath string) (PublicKey, error) {
 	block, _ := pem.Decode(pemContent)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot parse cert")
+		return nil, fmt.Errorf("cannot parse cert: %w", err)
 	}
 
 	if cert.PublicKeyAlgorithm != x509.ECDSA {
@@ -31,7 +27,7 @@ func GetSerializedKeyFromCert(certPath string) (PublicKey, error) {
 
 	pubBytes, err := crypto.SerializeVerificationKey(cert.PublicKey.(*ecdsa.PublicKey))
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot serialize ecdsa pub key")
+		return nil, fmt.Errorf("cannot serialize ecdsa pub key: %w", err)
 	}
 
 	return pubBytes, nil

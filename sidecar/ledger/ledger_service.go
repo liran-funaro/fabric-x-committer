@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric/common/util"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -155,7 +155,7 @@ func (s *Service) deliverBlocks(
 ) (common.Status, error) {
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
-		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
+		return common.Status_BAD_REQUEST, fmt.Errorf("error parsing envelope: %w", err)
 	}
 
 	if chdr.ChannelId != s.channelID {
@@ -178,7 +178,7 @@ func (s *Service) deliverBlocks(
 		}
 
 		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
-			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
+			return common.Status_INTERNAL_SERVER_ERROR, fmt.Errorf("error sending response: %w", err)
 		}
 		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
 

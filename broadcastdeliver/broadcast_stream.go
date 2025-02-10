@@ -2,14 +2,13 @@ package broadcastdeliver
 
 import (
 	"context"
-	errors2 "errors"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 )
 
@@ -99,7 +98,7 @@ func (s *broadcastCft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error)
 			for i, n := range s.nodes {
 				errs[i] = n.err
 			}
-			return nil, errors2.Join(errs...)
+			return nil, errors.Join(errs...)
 		}
 		resp := node.submit(m)
 		if node.err == nil {
@@ -150,7 +149,7 @@ func (s *broadcastBft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error)
 
 	info := strings.Join(infoList, "\n")
 	if success < s.quorum {
-		return nil, errors.Errorf("insufficient quorum: %s", info)
+		return nil, fmt.Errorf("insufficient quorum: %s", info)
 	}
 	return &ab.BroadcastResponse{
 		Status: common.Status_SUCCESS,

@@ -2,9 +2,9 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
@@ -33,7 +33,7 @@ func NewSVAdapter(config *SVClientConfig, res *ClientResources) *SvAdapter {
 func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
-		return errors.Wrap(err, "failed opening connections")
+		return fmt.Errorf("failed opening connections: %w", err)
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
@@ -43,13 +43,13 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 
 		logger.Infof("Set verification verification policy")
 		if _, err = client.UpdatePolicies(ctx, getPolicies(c.res)); err != nil {
-			return errors.Wrap(err, "failed setting verification policy")
+			return fmt.Errorf("failed setting verification policy: %w", err)
 		}
 
 		logger.Infof("Opening stream")
 		stream, err := client.StartStream(ctx)
 		if err != nil {
-			return errors.Wrapf(err, "failed opening connection to %s", conn.Target())
+			return fmt.Errorf("failed opening connection to %s: %w", conn.Target(), err)
 		}
 		streams = append(streams, stream)
 	}

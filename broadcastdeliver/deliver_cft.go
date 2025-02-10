@@ -2,12 +2,12 @@ package broadcastdeliver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -74,10 +74,10 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	logger.Infof("Sending seek request from block %d on channel %s.", config.StartBlkNum, c.ChannelID)
 	seekEnv, err := seekSince(config.StartBlkNum, config.EndBlkNum, c.ChannelID, c.Signer)
 	if err != nil {
-		return errors.Wrap(err, "failed to create seek request")
+		return fmt.Errorf("failed to create seek request: %w", err)
 	}
 	if err := stream.Send(seekEnv); err != nil {
-		return errors.Wrap(err, "failed to send seek request")
+		return fmt.Errorf("failed to send seek request: %w", err)
 	}
 	logger.Infof("Seek request sent.")
 

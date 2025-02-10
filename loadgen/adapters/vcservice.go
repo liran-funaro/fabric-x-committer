@@ -2,8 +2,8 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -31,7 +31,7 @@ func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
-		return errors.Wrap(err, "failed opening connection to vc-service")
+		return fmt.Errorf("failed opening connection to vc-service: %w", err)
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
@@ -50,7 +50,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		logger.Info("Opening VC stream")
 		stream, err := client.StartValidateAndCommitStream(ctx)
 		if err != nil {
-			return errors.Wrapf(err, "failed opening stream to %s", conn.Target())
+			return fmt.Errorf("failed opening stream to %s: %w", conn.Target(), err)
 		}
 		streams = append(streams, stream)
 	}

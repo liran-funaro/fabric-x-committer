@@ -2,11 +2,11 @@ package yuga
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -100,7 +100,7 @@ func WaitFirstReady(ctx context.Context, connOptions []*Connection) (*Connection
 	case <-ctx.Done():
 		err := ctx.Err()
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			err = errors.Wrap(err, "database is not ready")
+			err = fmt.Errorf("database is not ready: %w", err)
 		}
 		return nil, err
 	}

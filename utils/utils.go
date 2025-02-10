@@ -2,12 +2,11 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/pkg/errors"
 )
 
 func FileExists(path string) bool {
@@ -18,7 +17,7 @@ func FileExists(path string) bool {
 func OverwriteFile(path string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to open %s", path)
+		return nil, fmt.Errorf("unable to open %s: %w", path, err)
 	}
 	return file, nil
 }
@@ -52,7 +51,7 @@ func WriteFile(path string, data []byte) error {
 
 func Must(err error, msg ...string) {
 	if err != nil {
-		panic(errors.Wrapf(err, "%v", msg))
+		panic(fmt.Errorf("%v: %w", msg, err))
 	}
 }
 

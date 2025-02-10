@@ -2,11 +2,11 @@ package test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
@@ -15,6 +15,7 @@ type ValueFormatter = func(interface{}) interface{}
 var NoFormatting = func(v interface{}) interface{} {
 	return v
 }
+
 var ConstantDistributionFormatter = func(value interface{}) interface{} {
 	return int(value.(Distribution).Delegate.(*constantDistribution).Value)
 }
@@ -42,6 +43,7 @@ func (o *ResultOptions) validate() error {
 	}
 	return nil
 }
+
 func (o *ResultOptions) totalFields() int {
 	return len(o.Columns)
 }
@@ -92,11 +94,12 @@ func (o *ResultOutput) Record(values ...interface{}) error {
 		results[i] = o.options.Columns[i].Formatter(value)
 	}
 	return o.record(results...)
-
 }
 
-const valueSeparator = ", "
-const dataPointSeparator = "\n"
+const (
+	valueSeparator     = ", "
+	dataPointSeparator = "\n"
+)
 
 func (o *ResultOutput) record(values ...interface{}) error {
 	var data []byte

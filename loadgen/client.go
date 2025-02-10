@@ -2,9 +2,10 @@ package loadgen
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
@@ -139,7 +140,7 @@ func (c *Client) Run(ctx context.Context) error {
 		logger.Errorf("Failed to process meta tx: %v", err)
 		cancel()
 		if gErr := g.Wait(); gErr != nil {
-			return errors.Wrapf(gErr, "failed to process meta TX")
+			return fmt.Errorf("failed to process meta TX: %w", gErr)
 		}
 		return err
 	}
