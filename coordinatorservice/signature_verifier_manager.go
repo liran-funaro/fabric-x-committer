@@ -79,7 +79,10 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 
 	txBatchQueue := channel.NewReaderWriter(eCtx, make(chan dependencygraph.TxNodeBatch, cap(c.outgoingValidatedTxs)))
 	g.Go(func() error {
-		ingestIncomingTxsToInternalQueue(channel.NewReader(eCtx, c.incomingTxsForValidation), txBatchQueue)
+		ingestIncomingTxsToInternalQueue(
+			channel.NewReader(eCtx, c.incomingTxsForValidation),
+			txBatchQueue,
+		)
 		return nil
 	})
 
@@ -128,7 +131,7 @@ func ingestIncomingTxsToInternalQueue(
 		}
 
 		batchSize := len(txs)
-		logger.Debugf("New transaction batch (size: %d) came from dependency graph manager to sv manager", batchSize)
+		logger.Debugf("New transaction batch (size: %d) received", batchSize)
 
 		txsQueue.Write(txs)
 	}
@@ -178,7 +181,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 			inputTxBatch.Write(pendingTxs)
 		}
 
-		sv.waitForConnection(ctx)
+		waitForConnection(ctx, sv.conn)
 		stream, err := sv.client.StartStream(ctx)
 		if err != nil {
 			logger.Warnf("Failed starting stream with error: %s", err)
@@ -201,8 +204,8 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 }
 
 // waitForConnection returns when SV is connected or the SVM have closed.
-func (sv *signatureVerifier) waitForConnection(ctx context.Context) {
-	if sv.conn.GetState() == connectivity.Ready {
+func waitForConnection(ctx context.Context, conn *grpc.ClientConn) {
+	if conn.GetState() == connectivity.Ready {
 		return
 	}
 
@@ -214,8 +217,8 @@ func (sv *signatureVerifier) waitForConnection(ctx context.Context) {
 			return
 		case <-ticker.C:
 			logger.Debug("Reconnecting SV.")
-			sv.conn.Connect()
-			if sv.conn.GetState() == connectivity.Ready {
+			conn.Connect()
+			if conn.GetState() == connectivity.Ready {
 				return
 			}
 			logger.Debug("SV connection is not ready.")

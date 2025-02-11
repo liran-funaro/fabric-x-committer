@@ -50,9 +50,8 @@ func commonGrpcRetryTest(
 	require.NoError(t, err)
 
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
-	w, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+	_, err = client.GetPolicies(ctx, nil)
 	require.NoError(t, err)
-	require.Zero(t, w.Count)
 
 	cancel() // stopping the grpc server
 
@@ -60,7 +59,7 @@ func commonGrpcRetryTest(
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel2()
 	require.Eventually(t, func() bool {
-		_, err := client.NumberOfWaitingTransactionsForStatus(ctx2, nil)
+		_, err := client.GetPolicies(ctx2, nil)
 		return err != nil
 	}, 5*time.Second, 250*time.Millisecond)
 	time.Sleep(5 * time.Second)
@@ -71,7 +70,7 @@ func commonGrpcRetryTest(
 	go func() {
 		defer wg.Done()
 		require.Eventually(t, func() bool {
-			_, err := client.NumberOfWaitingTransactionsForStatus(ctx2, nil)
+			_, err := client.GetPolicies(ctx2, nil)
 			return err == nil
 		}, 2*time.Minute, 5*time.Second)
 	}()

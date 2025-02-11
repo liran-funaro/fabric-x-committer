@@ -9,7 +9,6 @@ package protovcservice
 import (
 	context "context"
 	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	protocoordinatorservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	protosigverifierservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -22,12 +21,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName         = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
-	ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protovcservice.ValidationAndCommitService/NumberOfWaitingTransactionsForStatus"
-	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
-	ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName          = "/protovcservice.ValidationAndCommitService/GetLastCommittedBlockNumber"
-	ValidationAndCommitService_GetTransactionsStatus_FullMethodName                = "/protovcservice.ValidationAndCommitService/GetTransactionsStatus"
-	ValidationAndCommitService_GetPolicies_FullMethodName                          = "/protovcservice.ValidationAndCommitService/GetPolicies"
+	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
+	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName  = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName  = "/protovcservice.ValidationAndCommitService/GetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetTransactionsStatus_FullMethodName        = "/protovcservice.ValidationAndCommitService/GetTransactionsStatus"
+	ValidationAndCommitService_GetPolicies_FullMethodName                  = "/protovcservice.ValidationAndCommitService/GetPolicies"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -35,7 +33,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
-	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protocoordinatorservice.WaitingTransactions, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
@@ -81,15 +78,6 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*
 	return m, nil
 }
 
-func (c *validationAndCommitServiceClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protocoordinatorservice.WaitingTransactions, error) {
-	out := new(protocoordinatorservice.WaitingTransactions)
-	err := c.cc.Invoke(ctx, ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error) {
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
@@ -131,7 +119,6 @@ func (c *validationAndCommitServiceClient) GetPolicies(ctx context.Context, in *
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
-	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*protocoordinatorservice.WaitingTransactions, error)
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
@@ -145,9 +132,6 @@ type UnimplementedValidationAndCommitServiceServer struct {
 
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
-}
-func (UnimplementedValidationAndCommitServiceServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*protocoordinatorservice.WaitingTransactions, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
@@ -199,24 +183,6 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*
 		return nil, err
 	}
 	return m, nil
-}
-
-func _ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ValidationAndCommitServiceServer).NumberOfWaitingTransactionsForStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).NumberOfWaitingTransactionsForStatus(ctx, req.(*Empty))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -298,10 +264,6 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "protovcservice.ValidationAndCommitService",
 	HandlerType: (*ValidationAndCommitServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "NumberOfWaitingTransactionsForStatus",
-			Handler:    _ValidationAndCommitService_NumberOfWaitingTransactionsForStatus_Handler,
-		},
 		{
 			MethodName: "SetLastCommittedBlockNumber",
 			Handler:    _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler,

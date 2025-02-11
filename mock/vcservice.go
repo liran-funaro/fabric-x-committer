@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -20,11 +19,12 @@ import (
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
-	txBatchChan            chan *protovcservice.TransactionBatch
-	numBatchesReceived     *atomic.Uint32
-	lastCommittedBlock     atomic.Int64
-	numWaitingTransactions atomic.Int32
-	txsStatus              *sync.Map
+	txBatchChan        chan *protovcservice.TransactionBatch
+	numBatchesReceived *atomic.Uint32
+	lastCommittedBlock atomic.Int64
+	txsStatus          *sync.Map
+	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
+	MockFaultyNodeDropSize int
 }
 
 // NewMockVcService returns a new VcService.
@@ -37,14 +37,6 @@ func NewMockVcService() *VcService {
 	m.lastCommittedBlock.Store(-1)
 
 	return m
-}
-
-// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
-func (vc *VcService) NumberOfWaitingTransactionsForStatus(
-	_ context.Context,
-	_ *protovcservice.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
-	return &protocoordinatorservice.WaitingTransactions{Count: vc.numWaitingTransactions.Load()}, nil
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
@@ -135,7 +127,6 @@ func (vc *VcService) receiveAndProcessTransactions(
 			}
 		}
 
-		vc.numWaitingTransactions.Add(int32(len(txBatch.Transactions))) // nolint:gosec
 		vc.numBatchesReceived.Add(1)
 
 		if !txBatchChan.Write(txBatch) {
@@ -157,7 +148,11 @@ func (vc *VcService) sendTransactionStatus(
 			Status: make(map[string]*protoblocktx.StatusWithHeight),
 		}
 
-		for _, tx := range txBatch.Transactions {
+		// We simulate a faulty node by not responding to the first X TXs.
+		for i, tx := range txBatch.Transactions {
+			if i < vc.MockFaultyNodeDropSize {
+				continue
+			}
 			code := protoblocktx.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
 				code = tx.PrelimInvalidTxStatus.Code
@@ -173,8 +168,6 @@ func (vc *VcService) sendTransactionStatus(
 			}
 			return err
 		}
-
-		vc.numWaitingTransactions.Add(-int32(len(txBatch.Transactions))) // nolint:gosec
 	}
 }
 

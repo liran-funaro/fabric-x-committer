@@ -26,6 +26,7 @@ type vcMgrTestEnv struct {
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           chan *protoblocktx.TransactionsStatus
 	mockVcServices            []*mock.VcService
+	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
 }
 
@@ -65,6 +66,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		outputTxs:                 outputTxs,
 		outputTxsStatus:           outputTxsStatus,
 		mockVcServices:            vcs,
+		mockVCGrpcServers:         servers,
 		sigVerTestEnv:             svEnv,
 	}
 }
@@ -206,6 +208,41 @@ func TestValidatorCommitterManager(t *testing.T) {
 		})
 		require.Zero(t, count)
 	}
+}
+
+func TestValidatorCommitterManagerRecovery(t *testing.T) {
+	env := newVcMgrTestEnv(t, 1)
+	env.mockVcServices[0].MockFaultyNodeDropSize = 4
+
+	numTxs := 10
+	txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, numTxs, 0, 0)
+	env.inputTxs <- txBatch
+
+	require.Eventually(t, func() bool {
+		count := 0
+		env.validatorCommitterManager.validatorCommitter[0].txBeingValidated.Range(func(_, _ any) bool {
+			count++
+			return true
+		})
+		return count == numTxs-6
+	}, 4*time.Second, 100*time.Millisecond)
+
+	env.mockVCGrpcServers.Servers[0].Stop()
+	time.Sleep(2 * time.Second) // replace with test.CheckServerStopped
+
+	env.mockVcServices[0].MockFaultyNodeDropSize = 0
+	env.mockVCGrpcServers = mock.StartMockVCServiceFromListWithConfig(
+		t, env.mockVcServices, env.mockVCGrpcServers.Configs,
+	)
+
+	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	for range 2 {
+		result := <-env.outputTxsStatus
+		for txID, height := range result.Status {
+			actualTxsStatus[txID] = height
+		}
+	}
+	require.Equal(t, expectedTxsStatus.Status, actualTxsStatus)
 }
 
 func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int, blkNum uint64) (

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -43,7 +42,6 @@ type ValidatorCommitterService struct {
 	promErrChan              <-chan error
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
-	numWaitingTxsForStatus   atomic.Int32
 	config                   *ValidatorCommitterServiceConfig
 
 	// isStreamActive indicates whether a stream from the client (i.e., coordinator) to the vcservice
@@ -248,21 +246,6 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	return g.Wait()
 }
 
-// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
-func (vc *ValidatorCommitterService) NumberOfWaitingTransactionsForStatus(
-	_ context.Context,
-	_ *protovcservice.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
-	if vc.isStreamActive.Load() {
-		return nil, fmt.Errorf("stream is still active." +
-			"NumberOfWaitingTransactionsForStatus should be called only when the stream is inactive")
-	}
-
-	return &protocoordinatorservice.WaitingTransactions{
-		Count: vc.numWaitingTxsForStatus.Load() - int32(len(vc.txsStatus)), // nolint:gosec
-	}, nil
-}
-
 func (vc *ValidatorCommitterService) receiveTransactions(
 	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
@@ -273,7 +256,6 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 			return connection.FilterStreamRPCError(err)
 		}
 		txCount := len(b.Transactions)
-		vc.numWaitingTxsForStatus.Add(int32(txCount)) // nolint:gosec
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 		vc.receivedTxBatch <- b
 	}
@@ -333,7 +315,6 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		if !ok {
 			return nil
 		}
-		vc.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) // nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
 			return connection.FilterStreamRPCError(err)

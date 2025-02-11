@@ -54,6 +54,15 @@ func StartMockVCService(t *testing.T, numService int) (
 	return vcServices, vcGrpc
 }
 
+// StartMockVCServiceFromListWithConfig starts a specified number of mock vc service.
+func StartMockVCServiceFromListWithConfig(
+	t *testing.T, vcs []*VcService, sc []*connection.ServerConfig,
+) *test.GrpcServers {
+	return test.StartGrpcServersWithConfigForTest(context.Background(), t, sc, func(server *grpc.Server, index int) {
+		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs[index])
+	})
+}
+
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
 func StartMockCoordinatorService(t *testing.T) (
 	*Coordinator, *test.GrpcServers,
