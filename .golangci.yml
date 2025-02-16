@@ -32,6 +32,20 @@ linters:
     - whitespace
     - gocognit
     - depguard
+    - nolintlint
+    - rowserrcheck
+    - testifylint
+    - wrapcheck
+    - usetesting
+    - thelper
+    - maintidx
+    - sqlclosecheck
+    - paralleltest
+    - mirror
+    - intrange
+    - fatcontext
+    - containedctx
+    - contextcheck
 
 linters-settings:
   errcheck:
@@ -127,6 +141,36 @@ linters-settings:
         deny:
           - pkg: github.com/pkg/errors
             desc: github.com/pkg/errors is no longer maintained
+  fatcontext:
+    # Check for potential fat contexts in struct pointers.
+    # May generate false positives.
+    # Default: false
+    check-struct-pointers: true
+  maintidx:
+    # Show functions with maintainability index lower than N.
+    # A high index indicates better maintainability (it's kind of the opposite of complexity).
+    # Default: 20
+    under: 100
+  rowserrcheck:
+    # database/sql is always checked
+    # Default: []
+    packages:
+      - github.com/jackc/pgx/v5
+      - github.com/jackc/pgx/v4
+  nolintlint:
+    # Exclude following linters from requiring an explanation.
+    # Default: []
+    allow-no-explanation: []
+    # Enable to require nolint directives to mention the specific linter being suppressed.
+    # Default: false
+    require-specific: true
+  iface:
+    # List of analyzers.
+    # Default: ["identical"]
+    enable:
+      - identical # Identifies interfaces in the same package that have identical method sets.
+      - unused # Identifies interfaces that are not used anywhere in the same package where the interface is defined.
+      - opaque # Identifies functions that return interfaces, but the actual returned value is always a single concrete implementation.
 
 issues:
   # The list of ids of default excludes to include or disable.

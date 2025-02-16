@@ -48,7 +48,7 @@ var (
 
 func FailHandler(t *testing.T) {
 	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Fatalf(message)
+		t.Fatal(message)
 	})
 }
 

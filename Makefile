@@ -22,7 +22,7 @@ output_dir      ?= $(project_dir)/bin
 arch_output_dir ?= $(project_dir)/archbin
 cache_dir       ?= $(shell go env GOCACHE)
 mod_cache_dir   ?= $(shell go env GOMODCACHE)
-go_version      ?= 1.23.4
+go_version      ?= 1.24
 golang_image    ?= golang:$(go_version)-bookworm
 db_image        ?= yugabytedb/yugabyte:2.20.7.0-b58
 
