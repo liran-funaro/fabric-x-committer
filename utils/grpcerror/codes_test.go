@@ -1,0 +1,155 @@
+package grpcerror
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func TestHasCode(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		inputErr       error
+		inputCode      codes.Code
+		expectedReturn bool
+	}{
+		{
+			name:           "nil error returns false",
+			inputErr:       nil,
+			expectedReturn: false,
+		},
+		{
+			name:           "non-status error returns false",
+			inputErr:       errors.New("plain error"),
+			inputCode:      codes.Internal,
+			expectedReturn: false,
+		},
+		{
+			name:           "status error with matching code returns true",
+			inputErr:       status.Error(codes.Internal, "internal error occurred"),
+			inputCode:      codes.Internal,
+			expectedReturn: true,
+		},
+		{
+			name:           "status error with mismatched code returns false",
+			inputErr:       status.Error(codes.NotFound, "not found error occurred"),
+			inputCode:      codes.Internal,
+			expectedReturn: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expectedReturn, HasCode(tc.inputErr, tc.inputCode))
+		})
+	}
+}
+
+func TestHasCodeWithGRPCService(t *testing.T) {
+	t.Parallel()
+	type VcServiceUnimplemented struct {
+		protovcservice.ValidationAndCommitServiceServer
+	}
+
+	vc := &VcServiceUnimplemented{protovcservice.UnimplementedValidationAndCommitServiceServer{}}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	vcGrpc := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
+		protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+	})
+
+	conn, err := connection.Connect(connection.NewDialConfig(&vcGrpc.Configs[0].Endpoint))
+	require.NoError(t, err)
+
+	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+
+	_, err = client.SetLastCommittedBlockNumber(ctx, nil)
+	require.True(t, HasCode(err, codes.Unimplemented))
+
+	_, err = client.GetLastCommittedBlockNumber(ctx, nil)
+	require.False(t, HasCode(err, codes.NotFound)) // all APIs are codes.Unimplemented
+}
+
+func TestWrapErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name             string
+		createFunc       func(error) error
+		input            error
+		expectedNilError bool
+		expectedCode     codes.Code
+		expectedMsg      string
+	}{
+		{
+			name:             "WrapInternalError returns nil for nil input",
+			createFunc:       WrapInternalError,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapInternalError returns error with Internal code",
+			createFunc:       WrapInternalError,
+			input:            errors.New("something went wrong"),
+			expectedNilError: false,
+			expectedCode:     codes.Internal,
+			expectedMsg:      "something went wrong",
+		},
+		{
+			name:             "WrapInvalidArgument returns nil for nil input",
+			createFunc:       WrapInvalidArgument,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapInvalidArgument returns error with InvalidArgument code",
+			createFunc:       WrapInvalidArgument,
+			input:            errors.New("invalid argument provided"),
+			expectedNilError: false,
+			expectedCode:     codes.InvalidArgument,
+			expectedMsg:      "invalid argument provided",
+		},
+		{
+			name:             "WrapNotFound returns nil for nil input",
+			createFunc:       WrapNotFound,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapNotFound returns error with NotFound code",
+			createFunc:       WrapNotFound,
+			input:            errors.New("resource not found"),
+			expectedNilError: false,
+			expectedCode:     codes.NotFound,
+			expectedMsg:      "resource not found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tc.createFunc(tc.input)
+			if tc.expectedNilError {
+				require.NoError(t, err)
+				return
+			}
+
+			st, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, tc.expectedCode, st.Code())
+			require.Equal(t, tc.expectedMsg, st.Message())
+		})
+	}
+}

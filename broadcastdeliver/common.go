@@ -81,8 +81,11 @@ func (c *connNode) stop() bool {
 
 func (c *connNode) backoff() {
 	backoffTime := c.retry.NextBackOff()
+	if backoffTime == c.retry.Stop {
+		backoffTime = c.retry.MaxInterval
+		c.isStop = true
+	}
 	c.nextConnectionAttempt = time.Now().Add(backoffTime)
-	c.isStop = backoffTime == c.retry.Stop
 }
 
 func (c *connNode) reset() {

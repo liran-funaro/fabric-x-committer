@@ -3,10 +3,10 @@ package vcservice
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
@@ -161,7 +161,8 @@ func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (key
 }
 
 func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
-	return db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
+	blkInfo, err := db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
+	return blkInfo, errors.Wrap(err, "failed to guery the last committed block number")
 }
 
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
@@ -171,7 +172,7 @@ func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*prot
 		r = db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
 		return r.Scan(&value)
 	}); retryErr != nil {
-		return nil, retryErr
+		return nil, errors.Wrapf(retryErr, "failed to query key [%s] from metadata table", key)
 	}
 	if len(value) == 0 {
 		return nil, ErrMetadataEmpty
@@ -194,14 +195,11 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	if retryErr := db.retry.Execute(ctx, func() error {
+	retryErr := db.retry.Execute(ctx, func() error {
 		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
 		return err
-	}); retryErr != nil {
-		return fmt.Errorf("failed to set the last committed block number: %w", retryErr)
-	}
-
-	return nil
+	})
+	return errors.Wrap(retryErr, "failed to set the last committed block number")
 }
 
 // commit commits the writes to the database.
@@ -427,13 +425,13 @@ func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
 		var key K
 		var value V
 		if err := r.Scan(&key, &value); err != nil {
-			return nil, nil, err
+			return nil, nil, errors.Wrap(err, "failed while scaning a row")
 		}
 		keys = append(keys, key)
 		values = append(values, value)
 	}
 
-	return keys, values, r.Err()
+	return keys, values, errors.Wrap(r.Err(), "failed while reading from rows")
 }
 
 func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
@@ -467,13 +465,13 @@ func TableName(nsID string) string {
 	return fmt.Sprintf(tableNameTemplate, nsID)
 }
 
-func (db *database) readStatusWithHeight( // nolint:ireturn
+func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (map[string]*protoblocktx.StatusWithHeight, error) {
 	r, retryErr := db.retryQuery(ctx, queryTxIDsStatus, txIDs)
 	if retryErr != nil {
-		return nil, fmt.Errorf("error reading status for txIDs: %w", retryErr)
+		return nil, errors.Wrap(retryErr, "failed to query txIDs from the tx_status table")
 	}
 	defer r.Close()
 
@@ -484,28 +482,28 @@ func (db *database) readStatusWithHeight( // nolint:ireturn
 		var height []byte
 
 		if err := r.Scan(&id, &status, &height); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to read rows from the query result")
 		}
 
 		ht, _, err := types.NewHeightFromBytes(height)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "failed to create height from encoded bytes [%v]", height)
 		}
 
 		rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
 	}
-	return rows, r.Err()
+	return rows, errors.Wrap(r.Err(), "error occurred while reading")
 }
 
 func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.Policies, error) {
 	rows, err := db.retryQuery(ctx, queryPolicies)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to query rows from the meta namespace")
 	}
 	defer rows.Close()
 	keys, values, err := readKeysAndValues[[]byte, []byte](rows)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to read from rows of meta namespace")
 	}
 	policy := &protosigverifierservice.Policies{
 		Policies: make([]*protosigverifierservice.PolicyItem, len(keys)),
@@ -519,12 +517,12 @@ func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.
 	return policy, nil
 }
 
-func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { // nolint:ireturn
+func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { //nolint:ireturn
 	var rows pgx.Rows
 	retryErr := db.retry.Execute(ctx, func() error {
 		var err error
 		rows, err = db.pool.Query(ctx, sql, arg...)
-		return err
+		return errors.Wrapf(err, "failed to execute sql query [%s]", sql)
 	})
-	return rows, retryErr
+	return rows, errors.Wrap(retryErr, "multiple retries failed")
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/cockroachdb/errors"
 )
 
 // RetryProfile can be used to define the backoff properties for retries.
@@ -37,7 +38,7 @@ const (
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
 // It returns nil on success, or the error returned by the final attempt on timeout.
 func (p *RetryProfile) Execute(ctx context.Context, o backoff.Operation) error {
-	return backoff.Retry(o, backoff.WithContext(p.NewBackoff(), ctx))
+	return errors.Wrap(backoff.Retry(o, backoff.WithContext(p.NewBackoff(), ctx)), "multiple retries failed")
 }
 
 func (p *RetryProfile) NewBackoff() *backoff.ExponentialBackOff {
@@ -66,7 +67,7 @@ func (p *RetryProfile) NewBackoff() *backoff.ExponentialBackOff {
 			b.MaxElapsedTime = p.MaxElapsedTime
 		}
 	}
-	b.Stop = b.MaxElapsedTime
+	b.Stop = backoff.Stop // -1 to stop retries
 	b.Reset()
 	return b
 }

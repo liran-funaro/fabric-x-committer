@@ -82,3 +82,11 @@ func getEncoderConfig(dev bool) zapcore.EncoderConfig {
 func New(name string) *Logger {
 	return &loggerInstance
 }
+
+// ErrorStackTrace prints the stack trace present in the error type.
+func (l *Logger) ErrorStackTrace(err error) {
+	if err == nil {
+		return
+	}
+	l.Errorf("%+v", err)
+}

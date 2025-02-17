@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
@@ -21,11 +22,11 @@ func NewHeight(blockNum uint64, txNum uint32) *Height {
 func NewHeightFromBytes(b []byte) (*Height, int, error) {
 	blockNum, n1, err := utils.DecodeOrderPreservingVarUint64(b)
 	if err != nil {
-		return nil, -1, err
+		return nil, -1, errors.Wrapf(err, "failed to decode block number from bytes [%v]", b)
 	}
 	txNum, n2, err := utils.DecodeOrderPreservingVarUint64(b[n1:])
 	if err != nil {
-		return nil, -1, err
+		return nil, -1, errors.Wrapf(err, "failed to decode tx number from bytes [%v]", b)
 	}
 	return NewHeight(blockNum, uint32(txNum)), n1 + n2, nil //nolint:gosec
 }

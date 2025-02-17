@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
@@ -54,7 +55,7 @@ func (vc *VcService) GetLastCommittedBlockNumber(
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
 	if vc.lastCommittedBlock.Load() == -1 {
-		return nil, vcservice.ErrMetadataEmpty
+		return nil, grpcerror.WrapNotFound(vcservice.ErrMetadataEmpty)
 	}
 	return &protoblocktx.BlockInfo{Number: uint64(vc.lastCommittedBlock.Load())}, nil // nolint:gosec
 }

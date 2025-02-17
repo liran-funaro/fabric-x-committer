@@ -11,8 +11,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"google.golang.org/grpc/codes"
 )
 
 type validatorAndCommitterServiceTestEnv struct {
@@ -315,15 +317,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	})
 }
 
-func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
+func TestLastCommittedBlockNumber(t *testing.T) {
+	t.Parallel()
 	ctx, _ := createContext(t)
 	numServices := 3
 	env := newValidatorAndCommitServiceTestEnv(ctx, t, numServices)
 
 	for i := range numServices {
 		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
-		require.Error(t, err, ErrMetadataEmpty)
-		require.Nil(t, lastCommittedBlock)
+		requireGRPCErrorCode(t, codes.NotFound, err, lastCommittedBlock)
+		require.ErrorContains(t, err, ErrMetadataEmpty.Error())
 	}
 
 	_, err := env.clients[0].SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
@@ -334,6 +337,77 @@ func TestLastCommittedAndLastSeenBlockNumber(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), lastCommittedBlock.Number)
 	}
+}
+
+func TestGRPCStatusCode(t *testing.T) {
+	t.Parallel()
+	logging.SetupWithConfig(
+		&logging.Config{
+			Enabled: true,
+			Level:   logging.Debug,
+		},
+	)
+	ctx, _ := createContext(t)
+	env := newValidatorAndCommitServiceTestEnv(ctx, t, 1)
+	c := env.clients[0]
+
+	t.Run("GetTransactionsStatus returns an invalid argument error", func(t *testing.T) {
+		t.Parallel()
+		ret, err := c.GetTransactionsStatus(ctx, nil)
+		requireGRPCErrorCode(t, codes.InvalidArgument, err, ret)
+	})
+
+	//nolint:paralleltest // to get the NotFound code, this test needs to be run before closing the pool.
+	t.Run("GetLastCommittedBlockNumber returns an not found error", func(t *testing.T) {
+		ret, err := c.GetLastCommittedBlockNumber(ctx, nil)
+		requireGRPCErrorCode(t, codes.NotFound, err, ret)
+	})
+
+	env.vcs[0].db.pool.Close()
+	env.vcs[0].db.retry = &connection.RetryProfile{
+		InitialInterval: 100 * time.Millisecond,
+		MaxInterval:     1 * time.Second,
+		MaxElapsedTime:  3 * time.Second,
+	}
+
+	testCases := []struct {
+		name string
+		fn   func() (any, error)
+	}{
+		{
+			name: "SetLastCommittedBlockNumber returns an internal error",
+			fn:   func() (any, error) { return c.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1}) },
+		},
+		{
+			name: "GetLastCommittedBlockNumber returns an internal error",
+			fn:   func() (any, error) { return c.GetLastCommittedBlockNumber(ctx, nil) },
+		},
+		{
+			name: "GetPolicies returns an internal error",
+			fn:   func() (any, error) { return c.GetPolicies(ctx, nil) },
+		},
+		{
+			name: "GetTransactionsStatus returns an internal error",
+			fn: func() (any, error) {
+				return c.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: []string{"t1"}})
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ret, err := tc.fn()
+			requireGRPCErrorCode(t, codes.Internal, err, ret)
+		})
+	}
+}
+
+func requireGRPCErrorCode(t *testing.T, code codes.Code, err error, ret any) {
+	t.Helper()
+	require.True(t, grpcerror.HasCode(err, code))
+	require.Error(t, err)
+	require.Nil(t, ret)
 }
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {

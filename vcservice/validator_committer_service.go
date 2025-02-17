@@ -2,16 +2,16 @@ package vcservice
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"golang.org/x/sync/errgroup"
@@ -178,10 +178,9 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
 	lastCommittedBlock *protoblocktx.BlockInfo,
 ) (*protovcservice.Empty, error) {
-	if lastCommittedBlock == nil {
-		return nil, fmt.Errorf("the last committed block number is not set")
-	}
-	return nil, vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
+	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
+	logger.ErrorStackTrace(err)
+	return nil, grpcerror.WrapInternalError(err)
 }
 
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
@@ -189,7 +188,12 @@ func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 	ctx context.Context,
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return vc.db.getLastCommittedBlockNumber(ctx)
+	blkInfo, err := vc.db.getLastCommittedBlockNumber(ctx)
+	if err != nil && errors.Is(err, ErrMetadataEmpty) {
+		return nil, grpcerror.WrapNotFound(err)
+	}
+	logger.ErrorStackTrace(err)
+	return blkInfo, grpcerror.WrapInternalError(err)
 }
 
 // GetTransactionsStatus gets the status of a given set of transaction IDs.
@@ -197,6 +201,9 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
 	query *protoblocktx.QueryStatus,
 ) (*protoblocktx.TransactionsStatus, error) {
+	if len(query.TxIDs) == 0 {
+		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
+	}
 	txIDs := make([][]byte, len(query.GetTxIDs()))
 	for i, txID := range query.GetTxIDs() {
 		txIDs[i] = []byte(txID)
@@ -204,7 +211,8 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 
 	txIDsStatus, err := vc.db.readStatusWithHeight(ctx, txIDs)
 	if err != nil {
-		return nil, err
+		logger.ErrorStackTrace(err)
+		return nil, grpcerror.WrapInternalError(err)
 	}
 
 	return &protoblocktx.TransactionsStatus{
@@ -217,7 +225,9 @@ func (vc *ValidatorCommitterService) GetPolicies(
 	ctx context.Context,
 	_ *protovcservice.Empty,
 ) (*protosigverifierservice.Policies, error) {
-	return vc.db.readPolicies(ctx)
+	policies, err := vc.db.readPolicies(ctx)
+	logger.ErrorStackTrace(err)
+	return policies, grpcerror.WrapInternalError(err)
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
@@ -243,7 +253,9 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 		return vc.sendTransactionStatus(ctx, stream)
 	})
 
-	return g.Wait()
+	err := g.Wait()
+	logger.ErrorStackTrace(err)
+	return grpcerror.WrapInternalError(err)
 }
 
 func (vc *ValidatorCommitterService) receiveTransactions(
@@ -253,7 +265,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(err, "failed to receive transactions from the coordinator")
 		}
 		txCount := len(b.Transactions)
 		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
@@ -317,14 +329,14 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		}
 
 		if err := stream.Send(txStatus); err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(err, "failed to send transactions status to the coordinator")
 		}
 
 		committed := 0
 		mvcc := 0
 		dup := 0
-		for _, status := range txStatus.Status {
-			switch status.Code {
+		for _, s := range txStatus.Status {
+			switch s.Code {
 			case protoblocktx.Status_COMMITTED:
 				committed++
 			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:

@@ -4,21 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 var logger = logging.New("coordinator service")
@@ -221,7 +221,7 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 
 	lastCommittedBlock, err := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
 	if err != nil {
-		if !hasErrMetadataEmpty(err) {
+		if !grpcerror.HasCode(err, codes.NotFound) {
 			return err
 		}
 		// no block has been committed.
@@ -465,8 +465,4 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 		m.setQueueSize(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
 		m.setQueueSize(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
 	}
-}
-
-func hasErrMetadataEmpty(err error) bool {
-	return strings.Contains(err.Error(), vcservice.ErrMetadataEmpty.Error())
 }
