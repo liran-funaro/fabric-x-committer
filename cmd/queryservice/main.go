@@ -101,6 +101,6 @@ func setDefaults() {
 	viper.SetDefault(prefix+"min-batch-keys", 1024)
 	viper.SetDefault(prefix+"max-batch-wait", 100*time.Millisecond)
 	viper.SetDefault(prefix+"view-aggregation-window", 100*time.Millisecond)
-	viper.SetDefault(prefix+"max-aggregated-viewIDToViewHolder", 1024)
+	viper.SetDefault(prefix+"max-aggregated-views", 1024)
 	viper.SetDefault(prefix+"max-view-timeout", 10*time.Second)
 }

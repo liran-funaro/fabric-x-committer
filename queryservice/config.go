@@ -35,6 +35,6 @@ type Config struct {
 	MinBatchKeys          int                       `mapstructure:"min-batch-keys"`
 	MaxBatchWait          time.Duration             `mapstructure:"max-batch-wait"`
 	ViewAggregationWindow time.Duration             `mapstructure:"view-aggregation-window"`
-	MaxAggregatedViews    int                       `mapstructure:"max-aggregated-viewIDToViewHolder"`
+	MaxAggregatedViews    int                       `mapstructure:"max-aggregated-views"`
 	MaxViewTimeout        time.Duration             `mapstructure:"max-view-timeout"`
 }
