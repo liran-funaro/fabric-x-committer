@@ -57,7 +57,7 @@ func startCmd() *cobra.Command {
 			config.Unmarshal(wrapper)
 			conf := &wrapper.Config
 
-			service, err := mock.NewMultiOrderer(conf)
+			service, err := mock.NewMockOrderer(conf)
 			if err != nil {
 				return err
 			}
@@ -67,12 +67,11 @@ func startCmd() *cobra.Command {
 
 			cmd.Printf("Starting %v service\n", serviceName)
 			g, gCtx := errgroup.WithContext(cmd.Context())
-			for i, inst := range service.Instances() {
+			for i := range conf.NumService {
 				c := conf.ServerConfigs[i]
-				inst := inst
 				g.Go(func() error {
 					return connection.StartService(gCtx, service, c, func(s *grpc.Server) {
-						ab.RegisterAtomicBroadcastServer(s, inst)
+						ab.RegisterAtomicBroadcastServer(s, service)
 					})
 				})
 			}

@@ -59,7 +59,8 @@ func (s *Client) Close() {
 // Broadcast creates a broadcast stream.
 func (s *Client) Broadcast(ctx context.Context) (*EnvelopedStream, error) {
 	ret := &EnvelopedStream{
-		envelopeCreator: NewEnvelopeCreator(s.config.ChannelID, s.signer),
+		channelID: s.config.ChannelID,
+		signer:    s.signer,
 	}
 	switch s.config.ConsensusType {
 	case Cft:

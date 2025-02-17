@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
@@ -306,7 +305,7 @@ func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 // SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
 func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
 	for _, tx := range txs {
-		_, resp, err := c.ordererClient.SubmitWithEnv(protoutil.MarshalOrPanic(tx))
+		_, resp, err := c.ordererClient.SubmitWithEnv(tx)
 		require.NoError(t, err)
 		require.Equal(t, common.Status_SUCCESS, resp.Status)
 	}

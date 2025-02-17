@@ -2,7 +2,11 @@ package mock
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -13,7 +17,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -25,40 +31,43 @@ type (
 		BlockSize        uint32                     `mapstructure:"block-size"`
 		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
 		OutBlockCapacity uint32                     `mapstructure:"out-block-capacity"`
+		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 	}
 
-	// Orderer is a mock of a single ordering GRPC service.
+	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
-		inEnvs    chan<- *common.Envelope
-		outBlocks <-chan *common.Block
-		cache     *blockCache
+		config      *OrdererConfig
+		configBlock *common.Block
+		inEnvs      chan *common.Envelope
+		inBlocks    chan *common.Block
+		cutBlock    chan any
+		cache       *blockCache
 	}
 
 	blockCache struct {
-		storage       map[uint64]*common.Block
-		freeSlotCount int
-		leastBlockNum uint64
-		maxBlockNum   uint64
-		mu            *sync.Mutex
+		storage           []*common.Block
+		maxDeliveredBlock int64
+		mu                *sync.Cond
 	}
 
-	// MultiOrderer supports running multiple mock order services which mock a consortium.
-	MultiOrderer struct {
-		config              *OrdererConfig
-		mocks               []*Orderer
-		configBlock         *common.Block
-		inEnvsPerOrderer    []<-chan *common.Envelope
-		outBlocksPerOrderer []chan<- *common.Block
+	payloadCache struct {
+		cache       map[string]any
+		insertQueue []string
+		insertIndex int
 	}
 )
 
 var (
+	// ErrLostBlock is returned if a block was removed from the cache.
+	ErrLostBlock = errors.New("lost block")
+
 	defaultConfig = OrdererConfig{
 		NumService:       1,
 		BlockSize:        100,
 		BlockTimeout:     100 * time.Millisecond,
-		OutBlockCapacity: 128,
+		OutBlockCapacity: 1024,
+		PayloadCacheSize: 1024,
 	}
 	defaultConfigBlock = &common.Block{
 		Header: &common.BlockHeader{
@@ -74,11 +83,13 @@ var (
 			}),
 		})}},
 	}
-	defaultBlockCacheSize = 1000
+	repsSuccess = ab.BroadcastResponse{
+		Status: common.Status_SUCCESS,
+	}
 )
 
-// NewMultiOrderer creates multiple orderer instances.
-func NewMultiOrderer(config *OrdererConfig) (*MultiOrderer, error) {
+// NewMockOrderer creates multiple orderer instances.
+func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.BlockSize == 0 {
 		config.BlockSize = defaultConfig.BlockSize
 	}
@@ -91,6 +102,9 @@ func NewMultiOrderer(config *OrdererConfig) (*MultiOrderer, error) {
 	if config.OutBlockCapacity == 0 {
 		config.OutBlockCapacity = defaultConfig.OutBlockCapacity
 	}
+	if config.PayloadCacheSize == 0 {
+		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
+	}
 	configBlock := defaultConfigBlock
 	if config.ConfigBlockPath != "" {
 		var err error
@@ -100,36 +114,14 @@ func NewMultiOrderer(config *OrdererConfig) (*MultiOrderer, error) {
 		}
 	}
 
-	mocks := make([]*Orderer, config.NumService)
-	inEnvsPerOrderer := make([]<-chan *common.Envelope, config.NumService)
-	outBlocksPerOrderer := make([]chan<- *common.Block, config.NumService)
-	for i := range config.NumService {
-		outBlocks := make(chan *common.Block, config.OutBlockCapacity)
-		inEnvs := make(chan *common.Envelope, config.BlockSize*config.OutBlockCapacity)
-		outBlocksPerOrderer[i] = outBlocks
-		inEnvsPerOrderer[i] = inEnvs
-		mocks[i] = newMockOrderer(inEnvs, outBlocks)
-	}
-	return &MultiOrderer{
-		config:              config,
-		mocks:               mocks,
-		configBlock:         configBlock,
-		inEnvsPerOrderer:    inEnvsPerOrderer,
-		outBlocksPerOrderer: outBlocksPerOrderer,
-	}, nil
-}
-
-// newMockOrderer creates a new mock ordering GRPC service.
-func newMockOrderer(inEnvs chan<- *common.Envelope, outBlocks <-chan *common.Block) *Orderer {
 	return &Orderer{
-		inEnvs:    inEnvs,
-		outBlocks: outBlocks,
-		cache: &blockCache{
-			storage:       make(map[uint64]*common.Block),
-			freeSlotCount: defaultBlockCacheSize,
-			mu:            &sync.Mutex{},
-		},
-	}
+		config:      config,
+		configBlock: configBlock,
+		inEnvs:      make(chan *common.Envelope, config.NumService*int(config.BlockSize*config.OutBlockCapacity)),
+		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
+		cutBlock:    make(chan any),
+		cache:       newBlockCache(config.OutBlockCapacity),
+	}, nil
 }
 
 // Broadcast receives TXs and returns ACKs.
@@ -145,10 +137,7 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 			return err
 		}
 		inEnvs.Write(env)
-		err = stream.Send(&ab.BroadcastResponse{
-			Status: common.Status_SUCCESS,
-		})
-		if err != nil {
+		if err = stream.Send(&repsSuccess); err != nil {
 			return err
 		}
 	}
@@ -158,246 +147,258 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Starting delivery with %s", addr)
+	defer logger.Infof("Finished delivery with %s", addr)
 
-	sendBlock := func(block *common.Block) error {
-		if err := stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}); err != nil {
-			return err
-		}
-		logger.Debugf("Emitted block %d", block.Header.Number)
-		return nil
-	}
-
-	seekInfo, channelID, err := readSeekEnvelope(stream)
+	start, end, err := readSeekInfo(stream)
 	if err != nil {
-		return fmt.Errorf("failed reading seek request: %w", err)
+		return status.Errorf(codes.InvalidArgument, "failed reading seek request: %s", err)
 	}
 
-	if start, ok := seekInfo.Start.Type.(*ab.SeekPosition_Specified); ok {
-		// for simplicity, we would retrieve from cache only if all blocks in the range (start, end)
-		// present in the cache. Otherwise, we send from the newest block.
-		var blocks []*common.Block
-		blocks, err = o.cache.tryGetBlocks(start.Specified.Number, seekInfo.Stop.GetSpecified().Number)
-		if err != nil {
+	ctx := stream.Context()
+	// Ensures releasing the waiters when this context ends.
+	stop := o.cache.releaseAfter(ctx)
+	defer stop()
+
+	var prevBlock *common.Block
+	for i := start; i <= end && ctx.Err() == nil; i++ {
+		b, err := o.cache.getBlock(ctx, i)
+		if errors.Is(err, ErrLostBlock) {
+			// We send an empty block for the sake of the delivery progress.
+			b = &common.Block{Data: &common.BlockData{}}
+			addBlockHeader(prevBlock, b)
+		} else if err != nil {
 			return err
 		}
-
-		if len(blocks) > 0 {
-			for _, blk := range blocks {
-				if err = sendBlock(blk); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}
-
-	logger.Infof("Received listening request for channel '%s': %v\n "+
-		"We ignore all unspecified seek request, specified range which are not in the block cache "+
-		"and send a stream anyway.", channelID, seekInfo)
-
-	outBlocks := channel.NewReader(stream.Context(), o.outBlocks)
-	for {
-		block, ok := outBlocks.Read()
-		if !ok {
-			return stream.Context().Err()
-		}
-		o.cache.add(block)
-		if err = sendBlock(block); err != nil {
+		if err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: b}}); err != nil {
 			return err
 		}
+		logger.Debugf("Emitted block %d", b.Header.Number)
+		prevBlock = b
 	}
+	return status.Errorf(codes.Canceled, "context ended: %s", ctx.Err())
 }
 
-func readSeekEnvelope(stream ab.AtomicBroadcast_DeliverServer) (*ab.SeekInfo, string, error) {
+func readSeekInfo(stream ab.AtomicBroadcast_DeliverServer) (start, end uint64, err error) {
+	start = 0
+	end = math.MaxUint64
+
 	env, err := stream.Recv()
 	if err != nil {
-		return nil, "", err
+		return start, end, fmt.Errorf("failed reading seek request: %w", err)
 	}
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	if err != nil {
-		return nil, "", err
+		return start, end, fmt.Errorf("failed unmarshalling payload: %w", err)
 	}
 	seekInfo := &ab.SeekInfo{}
 	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
-		return nil, "", err
+		return start, end, fmt.Errorf("failed unmarshalling seek info: %w", err)
 	}
 
-	chdr := &common.ChannelHeader{}
-	if err = proto.Unmarshal(payload.Header.ChannelHeader, chdr); err != nil {
-		return nil, "", err
+	if startMsg := seekInfo.Start.GetSpecified(); startMsg != nil {
+		start = startMsg.Number
 	}
-	return seekInfo, chdr.ChannelId, nil
-}
-
-// Run creates a specified number of mock ordering service and runs them.
-func (o *MultiOrderer) Run(ctx context.Context) error {
-	allInEnvs := make(chan *common.Envelope, o.config.OutBlockCapacity)
-	allOutBlocks := make(chan *common.Block, o.config.OutBlockCapacity)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return fanIn(gCtx, o.inEnvsPerOrderer, allInEnvs)
-	})
-	g.Go(func() error {
-		return o.cutBlocks(gCtx, allInEnvs, allOutBlocks)
-	})
-	g.Go(func() error {
-		return fanOut(gCtx, allOutBlocks, o.outBlocksPerOrderer)
-	})
-	return connection.FilterStreamRPCError(g.Wait())
-}
-
-// WaitForReady returns true when we are ready to process GRPC requests.
-func (*MultiOrderer) WaitForReady(context.Context) bool {
-	return true
-}
-
-// Instances returns the ordering GRPC services.
-func (o *MultiOrderer) Instances() []*Orderer {
-	return o.mocks
-}
-
-// fanIn reads the envelopes from all in channels to ensure the channels do not fill up.
-// However, we only forward the envelopes from the first channel to avoid having to merge the data.
-func fanIn(ctx context.Context, in []<-chan *common.Envelope, out chan<- *common.Envelope) error {
-	g, gCtx := errgroup.WithContext(ctx)
-	for i := range in {
-		i := i
-		g.Go(func() error {
-			cIn := channel.NewReader(gCtx, in[i])
-			cOut := channel.NewWriter(gCtx, out)
-			for {
-				env, ok := cIn.Read()
-				if !ok {
-					return gCtx.Err()
-				}
-				if i == 0 {
-					cOut.Write(env)
-				}
-			}
-		})
+	if endMsg := seekInfo.Stop.GetSpecified(); endMsg != nil {
+		end = endMsg.Number
 	}
-	return g.Wait()
+	if start > end {
+		return start, end, fmt.Errorf("invalid block range: (start) [%d] > [%d] (end)", start, end)
+	}
+	return start, end, nil
 }
 
-func fanOut(ctx context.Context, in <-chan *common.Block, out []chan<- *common.Block) error {
-	cIn := channel.NewReader(ctx, in)
-	cOut := make([]channel.Writer[*common.Block], len(out))
-	for i, o := range out {
-		cOut[i] = channel.NewWriter(ctx, o)
-	}
-	for {
-		block, ok := cIn.Read()
-		if !ok {
-			return ctx.Err()
-		}
-		logger.Debugf(
-			"Block %d, prev: [%x], current: [%x]",
-			block.Header.Number,
-			block.Header.PreviousHash,
-			block.Header.DataHash,
-		)
-		for _, ch := range cOut {
-			ch.Write(block)
-		}
-	}
-}
-
-func (o *MultiOrderer) cutBlocks(
-	ctx context.Context,
-	inEnvs <-chan *common.Envelope,
-	outBlocks chan<- *common.Block,
-) error {
-	logger.Debugf("Start cutting blocks")
+// Run collects the envelopes, cuts the blocks, and store them to the block cache.
+func (o *Orderer) Run(ctx context.Context) error {
+	// Ensures releasing the waiters when this context ends.
+	stop := o.cache.releaseAfter(ctx)
+	defer stop()
 
 	tick := time.NewTicker(o.config.BlockTimeout)
-	cOutBlocks := channel.NewWriter(ctx, outBlocks)
-
-	block := o.configBlock
-	blockNum := block.Header.Number
-	sendBlock := func() {
-		cOutBlocks.Write(block)
-		tick.Reset(o.config.BlockTimeout)
-		blockNum++
-		block = &common.Block{
-			Header: &common.BlockHeader{
-				Number:       blockNum,
-				PreviousHash: protoutil.BlockHeaderHash(block.Header),
-			},
-			Data: &common.BlockData{
-				Data: make([][]byte, 0, o.config.BlockSize),
-			},
+	var prevBlock *common.Block
+	sendBlock := func(b *common.Block) {
+		if b == nil {
+			return
 		}
+		addBlockHeader(prevBlock, b)
+		o.cache.addBlock(ctx, b)
+		tick.Reset(o.config.BlockTimeout)
+		prevBlock = b
 	}
 
 	// Submit the config block.
-	sendBlock()
+	sendBlock(o.configBlock)
 
+	data := make([][]byte, 0, o.config.BlockSize)
+	sendBlockData := func(reason string) {
+		if len(data) == 0 {
+			return
+		}
+		logger.Debugf("block with [%d] txs has been cut (%s)", len(data), reason)
+		sendBlock(&common.Block{Data: &common.BlockData{Data: data}})
+		data = make([][]byte, 0, o.config.BlockSize)
+	}
+	envCache := newPayloadCache(o.config.PayloadCacheSize)
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case b := <-o.inBlocks:
+			sendBlock(b)
+		case <-o.cutBlock:
+			sendBlockData("external")
 		case <-tick.C:
-			if len(block.Data.Data) == 0 {
+			sendBlockData("timeout")
+		case env := <-o.inEnvs:
+			if !envCache.addEnvelope(env) {
 				continue
 			}
-			logger.Debugf(
-				"block [%d] with [%d] txs has been cut due to timeout",
-				blockNum,
-				len(block.Data.Data),
-			)
-		case env, ok := <-inEnvs:
-			if !ok {
-				logger.Infof("Closing block cutter")
-				return nil
+			data = append(data, protoutil.MarshalOrPanic(env))
+			if len(data) >= int(o.config.BlockSize) {
+				sendBlockData("size")
 			}
-			block.Data.Data = append(block.Data.Data, protoutil.MarshalOrPanic(env))
-			if len(block.Data.Data) < int(o.config.BlockSize) {
-				continue
-			}
-			logger.Debugf(
-				"block [%d] has been cut as it reached the required block size [%d]",
-				blockNum,
-				o.config.BlockSize,
-			)
 		}
-		sendBlock()
 	}
 }
 
-func (c *blockCache) add(b *common.Block) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.freeSlotCount == 0 {
-		delete(c.storage, c.leastBlockNum)
-		c.leastBlockNum++
-		c.freeSlotCount++
-	}
-
-	c.storage[b.Header.Number] = b
-	c.freeSlotCount--
-
-	c.leastBlockNum = min(c.leastBlockNum, b.Header.Number)
-	c.maxBlockNum = max(c.maxBlockNum, b.Header.Number)
+// WaitForReady returns true when we are ready to process GRPC requests.
+func (*Orderer) WaitForReady(context.Context) bool {
+	return true
 }
 
-func (c *blockCache) tryGetBlocks(startBlkNum, endBlkNum uint64) ([]*common.Block, error) {
-	if endBlkNum < startBlkNum {
-		return nil, fmt.Errorf("end block number [%d] cannot be lower than the start block number [%d]",
-			endBlkNum, startBlkNum)
-	}
+// SubmitBlock allows submitting blocks directly for testing other packages.
+// The block header will be replaced with a generated header.
+func (o *Orderer) SubmitBlock(ctx context.Context, b *common.Block) bool {
+	return channel.NewWriter(ctx, o.inBlocks).Write(b)
+}
 
-	var blocks []*common.Block
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	// for simplicity, we would retrieve from cache only if all blocks in the range (start, end)
-	// present in the cache. Otherwise, we send from the newest block.
-	if len(c.storage) > 0 && c.leastBlockNum <= startBlkNum && c.maxBlockNum >= endBlkNum {
-		for i := startBlkNum; i <= endBlkNum; i++ {
-			blocks = append(blocks, c.storage[i])
+// SubmitEnv allows submitting envelops directly for testing other packages.
+func (o *Orderer) SubmitEnv(ctx context.Context, e *common.Envelope) bool {
+	return channel.NewWriter(ctx, o.inEnvs).Write(e)
+}
+
+// SubmitPayload allows submitting payload data directly for testing other packages.
+func (o *Orderer) SubmitPayload(ctx context.Context, channelID string, protoMsg proto.Message) (string, error) {
+	env, txID, err := serialization.CreateEnvelope(channelID, nil, protoMsg)
+	if err != nil {
+		return txID, fmt.Errorf("failed creating envelope: %w", err)
+	}
+	if ok := o.SubmitEnv(ctx, env); !ok {
+		return txID, errors.New("failed to submit envelope")
+	}
+	return txID, nil
+}
+
+// GetBlock allows fetching blocks directly for testing other packages.
+func (o *Orderer) GetBlock(ctx context.Context, blockNum uint64) (*common.Block, error) {
+	// Ensures releasing the waiters when this context ends.
+	stop := o.cache.releaseAfter(ctx)
+	defer stop()
+	return o.cache.getBlock(ctx, blockNum)
+}
+
+// CutBlock allows forcing block cut for testing other packages.
+func (o *Orderer) CutBlock(ctx context.Context) bool {
+	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
+}
+
+func addBlockHeader(prevBlock, curBlock *common.Block) {
+	var blockNumber uint64
+	var previousHash []byte
+	if prevBlock != nil {
+		blockNumber = prevBlock.Header.Number + 1
+		previousHash = protoutil.BlockHeaderHash(prevBlock.Header)
+	}
+	curBlock.Header = &common.BlockHeader{
+		Number:       blockNumber,
+		DataHash:     protoutil.ComputeBlockDataHash(curBlock.Data),
+		PreviousHash: previousHash,
+	}
+}
+
+func newBlockCache(size uint32) *blockCache {
+	return &blockCache{
+		storage:           make([]*common.Block, size),
+		maxDeliveredBlock: -1,
+		mu:                sync.NewCond(&sync.Mutex{}),
+	}
+}
+
+func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {
+	return context.AfterFunc(ctx, func() {
+		c.mu.L.Lock()
+		defer c.mu.L.Unlock()
+		c.mu.Broadcast()
+	})
+}
+
+// addBlock returns true if the block was inserted.
+// It may fail if the context ends.
+func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
+	blockIndex := int(b.Header.Number) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+
+	c.mu.L.Lock()
+	defer c.mu.L.Unlock()
+	// We ensure that we don't overwrite a block that haven't been delivered yet.
+	//nolint:gosec // integer overflow conversion uint64 -> int64
+	for c.storage[blockIndex] != nil && int64(c.storage[blockIndex].Header.Number) > c.maxDeliveredBlock {
+		if ctx.Err() != nil {
+			return false
+		}
+		c.mu.Wait()
+	}
+	c.storage[blockIndex] = b
+	// Wakeup all waiting to get blocks.
+	c.mu.Broadcast()
+	return true
+}
+
+func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Block, error) {
+	blockIndex := int(blockNum) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+
+	c.mu.L.Lock()
+	defer c.mu.L.Unlock()
+	for ctx.Err() == nil {
+		b := c.storage[blockIndex]
+		switch {
+		case b == nil || b.Header.Number < blockNum:
+			// There is still hope for this block.
+			c.mu.Wait()
+		case b.Header.Number > blockNum:
+			// We'll never see this block again.
+			return nil, ErrLostBlock
+		default: // b.Header.Number == blockNum
+			//nolint:gosec // integer overflow conversion uint64 -> int64
+			c.maxDeliveredBlock = max(c.maxDeliveredBlock, int64(b.Header.Number))
+			// Wakeup all waiting to add blocks.
+			c.mu.Broadcast()
+			return b, nil
 		}
 	}
+	return nil, fmt.Errorf("context ended: %w", ctx.Err())
+}
 
-	return blocks, nil
+func newPayloadCache(size int) *payloadCache {
+	return &payloadCache{
+		cache:       make(map[string]any, size),
+		insertQueue: make([]string, size),
+		insertIndex: 0,
+	}
+}
+
+// addEnvelope returns true if the entry is unique.
+// It employs a FIFO eviction policy.
+func (c *payloadCache) addEnvelope(e *common.Envelope) bool {
+	if e == nil {
+		return false
+	}
+	digestRaw := sha256.Sum256(e.Payload)
+	digest := base64.StdEncoding.EncodeToString(digestRaw[:])
+	if _, ok := c.cache[digest]; ok {
+		return false
+	}
+	delete(c.cache, c.insertQueue[c.insertIndex])
+	c.cache[digest] = nil
+	c.insertQueue[c.insertIndex] = digest
+	c.insertIndex = (c.insertIndex + 1) % len(c.insertQueue)
+	return true
 }

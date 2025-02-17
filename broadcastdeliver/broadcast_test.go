@@ -8,7 +8,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -21,7 +20,7 @@ import (
 )
 
 func TestServers(t *testing.T) {
-	mocks, orderers, conf := makeConfig(t)
+	ordererService, orderers, conf := makeConfig(t)
 
 	client, err := New(&conf)
 	require.NoError(t, err)
@@ -69,7 +68,7 @@ func TestServers(t *testing.T) {
 	// All good again.
 	fakeServer.Stop()
 	orderers.Servers[2] = test.RunGrpcServerForTest(ctx, t, orderers.Configs[2], func(server *grpc.Server) {
-		ab.RegisterAtomicBroadcastServer(server, mocks.Instances()[2])
+		ab.RegisterAtomicBroadcastServer(server, ordererService)
 	})
 	time.Sleep(3 * time.Second)
 	recv, err = sendRecv(t, stream)
@@ -92,7 +91,7 @@ func TestServers(t *testing.T) {
 
 func sendRecv(t *testing.T, stream *EnvelopedStream) (string, error) {
 	tx := &protoblocktx.Tx{}
-	_, resp, err := stream.SubmitWithEnv(protoutil.MarshalOrPanic(tx))
+	_, resp, err := stream.SubmitWithEnv(tx)
 	if err != nil {
 		t.Logf("Response error: %s", err)
 		return err.Error(), err
@@ -102,7 +101,8 @@ func sendRecv(t *testing.T, stream *EnvelopedStream) (string, error) {
 	return resp.Info, err
 }
 
-func makeConfig(t *testing.T) (*mock.MultiOrderer, *test.GrpcServers, Config) {
+func makeConfig(t *testing.T) (*mock.Orderer, *test.GrpcServers, Config) {
+	t.Helper()
 	logging.SetupWithConfig(&logging.Config{
 		Enabled:     true,
 		Level:       logging.Info,

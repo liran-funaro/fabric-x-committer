@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
@@ -106,11 +105,7 @@ func (c *SidecarAdapter) sendTransactions(
 			// If the context ended, the generator returns nil.
 			break
 		}
-		txBytes, err := protoutil.Marshal(tx)
-		if err != nil {
-			return err
-		}
-		txID, resp, err := stream.SubmitWithEnv(txBytes)
+		txID, resp, err := stream.SubmitWithEnv(tx)
 		if err != nil {
 			return err
 		}

@@ -3,7 +3,9 @@ package sidecar
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,74 +35,116 @@ import (
 )
 
 type sidecarTestEnv struct {
-	config      *Config
-	coordinator *mock.Coordinator
+	config           Config
+	coordinator      *mock.Coordinator
+	orderer          *mock.Orderer
+	ordererServers   *test.GrpcServers
+	ordererEndpoints []*connection.OrdererEndpoint
+	chanID           string
 
-	sidecar         *Service
-	gServer         *grpc.Server
-	broadcastClient *broadcastdeliver.EnvelopedStream
-	committedBlock  chan *common.Block
+	sidecar        *Service
+	gServer        *grpc.Server
+	committedBlock chan *common.Block
 }
 
-func newSidecarTestEnv(t *testing.T) *sidecarTestEnv {
-	_, orderersServer := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: 1, BlockSize: 100, BlockTimeout: time.Minute},
+type sidecarTestConfig struct {
+	NumService      int
+	NumFakeService  int
+	WithConfigBlock bool
+}
+
+func (c *sidecarTestConfig) String() string {
+	var b []string
+	if c.NumService > 1 {
+		b = append(b, fmt.Sprintf("services:%d", c.NumService))
+	}
+	if c.NumFakeService > 0 {
+		b = append(b, fmt.Sprintf("fake:%d", c.NumFakeService))
+	}
+	if c.WithConfigBlock {
+		b = append(b, "config-block")
+	}
+	if len(b) > 0 {
+		return strings.Join(b, ",")
+	}
+	return "default"
+}
+
+func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
+	t.Helper()
+	orderer, ordererServers := mock.StartMockOrderingServices(
+		t, &mock.OrdererConfig{NumService: conf.NumService, BlockSize: 100, BlockTimeout: time.Minute},
 	)
+	id := uint32(0)
+	msp := "org"
+	ordererEndpoints := make([]*connection.OrdererEndpoint, len(ordererServers.Configs))
+	for i, c := range ordererServers.Configs {
+		ordererEndpoints[i] = &connection.OrdererEndpoint{
+			ID:       id,
+			MspID:    msp,
+			API:      []string{connection.Broadcast, connection.Deliver},
+			Endpoint: c.Endpoint,
+		}
+	}
+	for range conf.NumFakeService {
+		fakeServer := &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
+		healthcheck := health.NewServer()
+		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+		test.RunGrpcServerForTest(t.Context(), t, fakeServer, func(server *grpc.Server) {
+			healthgrpc.RegisterHealthServer(server, healthcheck)
+		})
+		ordererEndpoints = append(ordererEndpoints, &connection.OrdererEndpoint{
+			ID:       id,
+			MspID:    msp,
+			API:      []string{connection.Broadcast, connection.Deliver},
+			Endpoint: fakeServer.Endpoint,
+		})
+	}
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	return &sidecarTestEnv{
-		coordinator: coordinator,
-		config: &Config{
-			Server: &connection.ServerConfig{
-				Endpoint: connection.Endpoint{
-					Host: "localhost",
-					Port: 3101,
-				},
-			},
-			Orderer: broadcastdeliver.Config{
-				ChannelID: "ch1",
-				Endpoints: []*connection.OrdererEndpoint{{
-					MspID:    "org",
-					Endpoint: orderersServer.Configs[0].Endpoint,
-				}},
-			},
-			Committer: CoordinatorConfig{
-				Endpoint: coordinatorServer.Configs[0].Endpoint,
-			},
-			Ledger: LedgerConfig{
-				Path: t.TempDir(),
-			},
-			Monitoring: &monitoring.Config{
-				Metrics: &metrics.Config{
-					Enable: true,
-					Endpoint: &connection.Endpoint{
-						Host: "localhost",
-						Port: 3111,
-					},
-				},
+	configBlockPath := ""
+	chanID := "ch1"
+	if conf.WithConfigBlock {
+		configBlockPath = configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+			ChannelID:        chanID,
+			OrdererEndpoints: ordererEndpoints,
+		})
+	}
+	sidecarConf := &Config{
+		Server: &connection.ServerConfig{
+			Endpoint: connection.Endpoint{Host: "localhost"},
+		},
+		Orderer: broadcastdeliver.Config{
+			ChannelID: "ch1",
+			Endpoints: ordererEndpoints,
+		},
+		Committer: CoordinatorConfig{
+			Endpoint: coordinatorServer.Configs[0].Endpoint,
+		},
+		Ledger: LedgerConfig{
+			Path: t.TempDir(),
+		},
+		Monitoring: &monitoring.Config{
+			Metrics: &metrics.Config{
+				Enable:   true,
+				Endpoint: &connection.Endpoint{Host: "localhost"},
 			},
 		},
+		ConfigBlockPath: configBlockPath,
 	}
-}
-
-func (env *sidecarTestEnv) init(t *testing.T) {
-	sidecar, err := New(env.config)
+	sidecar, err := New(sidecarConf)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
-	env.sidecar = sidecar
 
-	broadcastSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
-		Endpoints:       env.config.Orderer.Endpoints,
-		SignedEnvelopes: false,
-		ChannelID:       env.config.Orderer.ChannelID,
-		ConsensusType:   broadcastdeliver.Bft,
-	})
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	t.Cleanup(cancel)
-	env.broadcastClient, err = broadcastSubmitter.Broadcast(ctx)
-	require.NoError(t, err)
+	return &sidecarTestEnv{
+		sidecar:          sidecar,
+		coordinator:      coordinator,
+		orderer:          orderer,
+		ordererServers:   ordererServers,
+		ordererEndpoints: ordererEndpoints,
+		chanID:           chanID,
+		config:           *sidecarConf,
+	}
 }
 
 func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
@@ -118,23 +162,33 @@ func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum 
 }
 
 func TestSidecar(t *testing.T) {
-	commonTest(t, newSidecarTestEnv(t))
-}
+	t.Parallel()
+	for _, conf := range []sidecarTestConfig{
+		{WithConfigBlock: false},
+		{WithConfigBlock: true},
+		{
+			WithConfigBlock: true,
+			NumFakeService:  3,
+		},
+	} {
+		conf := conf
+		t.Run(conf.String(), func(t *testing.T) {
+			t.Parallel()
+			env := newSidecarTestEnv(t, conf)
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+			t.Cleanup(cancel)
+			env.start(ctx, t, 0)
 
-func commonTest(t *testing.T, env *sidecarTestEnv) {
-	env.init(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	env.start(ctx, t, 0)
-
-	configBlock := <-env.committedBlock
-	require.Equal(t, uint64(0), configBlock.Header.Number)
-	sendTransactionsAndEnsureCommitted(ctx, t, env, 1)
+			configBlock := <-env.committedBlock
+			require.Equal(t, uint64(0), configBlock.Header.Number)
+			sendTransactionsAndEnsureCommitted(ctx, t, env, 1)
+		})
+	}
 }
 
 func TestSidecarRecovery(t *testing.T) {
-	env := newSidecarTestEnv(t)
-	env.init(t)
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t, 1)
@@ -206,7 +260,7 @@ func TestSidecarRecovery(t *testing.T) {
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
 
 	// 9. Send the next expected block by the coordinator.
-	sendTransactionsAndEnsureCommitted(ctx, t, env, 11)
+	sendTransactionsAndEnsureCommitted(ctx2, t, env, 11)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
@@ -227,9 +281,8 @@ func sendTransactionsAndEnsureCommitted(
 			Id:         txIDPrefix + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}}, // nolint:gosec
 		}
-		_, resp, err := env.broadcastClient.SubmitWithEnv(protoutil.MarshalOrPanic(txs[i]))
-		require.NoError(t, err)
-		logger.Debugf("Response: %s", resp.Info)
+		_, err := env.orderer.SubmitPayload(ctx, env.chanID, txs[i])
+		require.NoErrorf(t, err, "block %d, tx %d", expectedBlockNumber, i)
 	}
 
 	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
@@ -249,56 +302,11 @@ func sendTransactionsAndEnsureCommitted(
 	}
 }
 
-func makeBlock(t *testing.T, env *sidecarTestEnv) {
-	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
-		ChannelID:        env.config.Orderer.ChannelID,
-		OrdererEndpoints: env.config.Orderer.Endpoints,
-	})
-	env.config.ConfigBlockPath = configBlockPath
-}
-
-func TestSidecarWithBlock(t *testing.T) {
-	env := newSidecarTestEnv(t)
-	makeBlock(t, env)
-	commonTest(t, env)
-}
-
-func TestSidecarWithBlockMultipleWrongOrderers(t *testing.T) {
-	env := newSidecarTestEnv(t)
-
-	var id uint32
-	var msp string
-	for _, e := range env.config.Orderer.Endpoints {
-		id = e.ID
-		msp = e.MspID
-	}
-
-	for range 3 {
-		fakeServer := &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
-		healthcheck := health.NewServer()
-		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-		test.RunGrpcServerForTest(context.Background(), t, fakeServer, func(server *grpc.Server) {
-			healthgrpc.RegisterHealthServer(server, healthcheck)
-		})
-		env.config.Orderer.Endpoints = append(env.config.Orderer.Endpoints, &connection.OrdererEndpoint{
-			ID:       id,
-			MspID:    msp,
-			API:      []string{connection.Broadcast, connection.Deliver},
-			Endpoint: fakeServer.Endpoint,
-		})
-	}
-	t.Log(env.config.Orderer.Endpoints)
-	makeBlock(t, env)
-	t.Log(env.config.Orderer.Endpoints)
-	commonTest(t, env)
-}
-
 func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
-	env := newSidecarTestEnv(t)
-	makeBlock(t, env)
-	// Make the sidecar load the config block.
-	_, err := New(env.config)
-	require.NoError(t, err)
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{
+		WithConfigBlock: true,
+	})
 	p := env.config.Policies
 	require.NotNil(t, p)
 	require.Len(t, p.Policies, 1)
@@ -311,6 +319,7 @@ func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 }
 
 func TestConstructStatuses(t *testing.T) {
+	t.Parallel()
 	statuses := map[string]*protoblocktx.StatusWithHeight{
 		"tx1": {
 			Code:        protoblocktx.Status_COMMITTED,

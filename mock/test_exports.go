@@ -77,25 +77,26 @@ func StartMockCoordinatorService(t *testing.T) (
 
 // StartMockOrderingServices starts a specified number of mock ordering service and register cancellation.
 func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
-	*MultiOrderer, *test.GrpcServers,
+	*Orderer, *test.GrpcServers,
 ) {
-	service, err := NewMultiOrderer(conf)
+	service, err := NewMockOrderer(conf)
 	require.NoError(t, err)
-	test.RunServiceForTest(context.Background(), t, service.Run, service.WaitForReady)
-	mocks := service.Instances()
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(service.Run(ctx))
+	}, service.WaitForReady)
 
 	if len(conf.ServerConfigs) == conf.NumService {
 		return service, test.StartGrpcServersWithConfigForTest(
 			context.Background(),
 			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
-				ab.RegisterAtomicBroadcastServer(server, mocks[index])
+				ab.RegisterAtomicBroadcastServer(server, service)
 			},
 		)
 	}
 
 	servers := test.StartGrpcServersForTest(
 		context.Background(), t, conf.NumService, func(server *grpc.Server, index int) {
-			ab.RegisterAtomicBroadcastServer(server, mocks[index])
+			ab.RegisterAtomicBroadcastServer(server, service)
 		},
 	)
 	return service, servers

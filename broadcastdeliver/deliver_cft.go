@@ -10,6 +10,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"google.golang.org/grpc"
 )
 
@@ -138,7 +139,7 @@ func seekSince(
 	}
 
 	if signer == nil {
-		signer = &noOpSigner{}
+		signer = &serialization.NoOpSigner{}
 	}
 
 	return protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
