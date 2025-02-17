@@ -121,6 +121,8 @@ linters-settings:
       - name: confusing-naming
         # Due to a bug, this rule fails multiple implementations of the same interface.
         disabled: true
+      - name: comment-spacings
+        arguments: ["nolint:"]
   ireturn:
     # By default, it allows using errors, empty interfaces, anonymous interfaces,
     # and interfaces provided by the standard library.
@@ -150,7 +152,7 @@ linters-settings:
     # Show functions with maintainability index lower than N.
     # A high index indicates better maintainability (it's kind of the opposite of complexity).
     # Default: 20
-    under: 100
+    under: 20
   rowserrcheck:
     # database/sql is always checked
     # Default: []

@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
@@ -50,7 +52,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := vcservice.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			vcs := mock.NewMockVcService()
@@ -62,4 +64,29 @@ func startCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
 	return cmd
+}
+
+// readConfig reads the configuration from the viper instance.
+// If the configuration file is used, the caller should call
+// config.ReadFromYamlFile() before calling this function.
+func readConfig() *vcservice.ValidatorCommitterServiceConfig {
+	setDefaults()
+
+	wrapper := new(struct {
+		Config vcservice.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	// defaults for ServerConfig
+	prefix := "validator-committer-service.server.endpoint."
+	viper.SetDefault(prefix+"host", "localhost")
+	viper.SetDefault(prefix+"port", 6001)
+
+	// defaults for monitoring.config
+	prefix = "validator-committer-service.monitoring."
+	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
+	viper.SetDefault(prefix+"metrics.enable", true)
 }

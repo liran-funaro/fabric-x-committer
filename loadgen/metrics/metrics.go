@@ -114,7 +114,7 @@ func (c *PerfMetrics) OnSendTransaction(txID string) {
 
 // CreateProvider creates the appropriate provider for the metrics.
 func CreateProvider(c *metrics.Config) metrics.Provider {
-	if !c.Enable {
+	if c == nil || !c.Enable {
 		return metrics.NewNoOpProvider()
 	}
 	return &defaultProvider{

@@ -1,4 +1,4 @@
-package queryservice
+package main
 
 import (
 	"testing"
@@ -6,7 +6,8 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -17,13 +18,13 @@ func TestConfig(t *testing.T) {
 	tests := []struct {
 		name                   string
 		configFilePath         string
-		expectedConfig         *Config
+		expectedConfig         *queryservice.Config
 		expectedDataSourceName string
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "../config/samples/config-queryservice.yaml",
-			expectedConfig: &Config{
+			configFilePath: "../../config/samples/config-queryservice.yaml",
+			expectedConfig: &queryservice.Config{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
@@ -59,7 +60,7 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "no config file",
 			configFilePath: "",
-			expectedConfig: &Config{
+			expectedConfig: &queryservice.Config{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
@@ -101,7 +102,7 @@ func TestConfig(t *testing.T) {
 			if tt.configFilePath != "" {
 				require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
 			}
-			c := ReadConfig()
+			c := readConfig()
 
 			require.Equal(t, tt.expectedConfig, c)
 

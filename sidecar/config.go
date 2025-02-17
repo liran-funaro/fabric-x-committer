@@ -5,16 +5,12 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/protobuf/proto"
@@ -45,21 +41,6 @@ type CoordinatorConfig struct {
 
 type LedgerConfig struct {
 	Path string `mapstructure:"path"`
-}
-
-// ReadConfig reads the config.
-func ReadConfig() Config {
-	wrapper := new(struct {
-		Config Config `mapstructure:"sidecar"`
-	})
-	config.Unmarshal(wrapper)
-	if len(wrapper.Config.ConfigBlockPath) > 0 {
-		configBlock, err := configtxgen.ReadBlock(wrapper.Config.ConfigBlockPath)
-		utils.Must(err)
-		err = OverwriteConfigFromBlock(&wrapper.Config, configBlock)
-		utils.Must(err)
-	}
-	return wrapper.Config
 }
 
 // OverwriteConfigFromBlock overwrites the sidecar configuration with relevant fields from the config block.
@@ -139,17 +120,4 @@ func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*connection
 		}
 	}
 	return endpoints, nil
-}
-
-func init() {
-	viper.SetDefault("sidecar.server.endpoint", ":8832")
-	viper.SetDefault("sidecar.metrics.endpoint", ":2112")
-
-	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
-	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
-
-	viper.SetDefault("sidecar.committer.endpoint", ":5002")
-	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
-
-	viper.SetDefault("sidecar.ledger.path", "./ledger/")
 }

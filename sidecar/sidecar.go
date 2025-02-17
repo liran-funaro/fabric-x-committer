@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -33,6 +34,17 @@ type Service struct {
 
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
+	if len(c.ConfigBlockPath) > 0 {
+		configBlock, err := configtxgen.ReadBlock(c.ConfigBlockPath)
+		if err != nil {
+			return nil, fmt.Errorf("error reading config block: %w", err)
+		}
+		err = OverwriteConfigFromBlock(c, configBlock)
+		if err != nil {
+			return nil, fmt.Errorf("error overwriting config block: %w", err)
+		}
+	}
+
 	// 1. Fetch blocks from the ordering service.
 	ordererClient, err := broadcastdeliver.New(&c.Orderer)
 	if err != nil {

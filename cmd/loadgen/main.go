@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 )
 
@@ -48,7 +49,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := loadgen.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			if onlyNamespace {
@@ -70,4 +71,11 @@ func startCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&onlyNamespace, "only-namespace", false, "only run namespace generation")
 	cmd.PersistentFlags().BoolVar(&onlyWorkload, "only-workload", false, "only run workload generation")
 	return cmd
+}
+
+// readConfig is a function that reads the client configuration.
+func readConfig() *loadgen.ClientConfig {
+	wrapper := new(loadgen.ClientConfig)
+	config.Unmarshal(wrapper)
+	return wrapper
 }

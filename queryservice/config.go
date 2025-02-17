@@ -3,8 +3,6 @@ package queryservice
 import (
 	"time"
 
-	"github.com/spf13/viper"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
@@ -39,45 +37,4 @@ type Config struct {
 	ViewAggregationWindow time.Duration             `mapstructure:"view-aggregation-window"`
 	MaxAggregatedViews    int                       `mapstructure:"max-aggregated-viewIDToViewHolder"`
 	MaxViewTimeout        time.Duration             `mapstructure:"max-view-timeout"`
-}
-
-// ReadConfig reads the configuration from the viper instance.
-// If the configuration file is used, the caller should call
-// config.ReadFromYamlFile() before calling this function.
-func ReadConfig() *Config {
-	setDefaults()
-
-	wrapper := new(struct {
-		Config Config `mapstructure:"query-service"`
-	})
-	config.Unmarshal(wrapper)
-	return &wrapper.Config
-}
-
-func setDefaults() {
-	// defaults for ServerConfig
-	viper.SetDefault("query-service.server.endpoint", "localhost:7003")
-
-	// defaults for DatabaseConfig
-	prefix := "query-service.database."
-	viper.SetDefault(prefix+"host", "localhost")
-	viper.SetDefault(prefix+"port", 5433)
-	viper.SetDefault(prefix+"username", "yugabyte")
-	viper.SetDefault(prefix+"password", "yugabyte")
-	viper.SetDefault(prefix+"database", "yugabyte")
-	viper.SetDefault(prefix+"max-connections", 20)
-	viper.SetDefault(prefix+"min-connections", 10)
-
-	// defaults for monitoring.config
-	prefix = "query-service.monitoring."
-	viper.SetDefault(prefix+"metrics.endpoint", "localhost:7004")
-	viper.SetDefault(prefix+"metrics.enable", true)
-
-	// defaults for monitoring.config
-	prefix = "query-service."
-	viper.SetDefault(prefix+"min-batch-keys", 1024)
-	viper.SetDefault(prefix+"max-batch-wait", 100*time.Millisecond)
-	viper.SetDefault(prefix+"view-aggregation-window", 100*time.Millisecond)
-	viper.SetDefault(prefix+"max-aggregated-viewIDToViewHolder", 1024)
-	viper.SetDefault(prefix+"max-view-timeout", 10*time.Second)
 }

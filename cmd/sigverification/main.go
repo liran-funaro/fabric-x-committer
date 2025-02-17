@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
@@ -53,7 +55,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := serverconfig.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 			fmt.Println(conf)
 
@@ -105,4 +107,32 @@ func setFlags(cmd *cobra.Command) {
 		"Batch time cutoff limit",
 		fmt.Sprintf("%v.parallel-executor.batch-time-cutoff", serviceName),
 	)
+}
+
+func readConfig() *serverconfig.SigVerificationConfig {
+	setDefaults()
+	wrapper := new(struct {
+		Config serverconfig.SigVerificationConfig `mapstructure:"sig-verification"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	viper.SetDefault("sig-verification.server.endpoint", fmt.Sprintf(":%d", 5000))
+	viper.SetDefault("sig-verification.monitoring.metrics.endpoint", ":2112")
+	viper.SetDefault("sig-verification.monitoring.latency.endpoint", ":14268")
+	viper.SetDefault("sig-verification.monitoring.latency.span-exporter", "console")
+	viper.SetDefault("sig-verification.monitoring.latency.sampler.type", "never")
+
+	viper.SetDefault("sig-verification.scheme", "Ecdsa")
+
+	viper.SetDefault("sig-verification.parallel-executor.parallelism", 4)
+	viper.SetDefault("sig-verification.parallel-executor.batch-time-cutoff", "500ms")
+	viper.SetDefault("sig-verification.parallel-executor.batch-size-cutoff", 50)
+	viper.SetDefault("sig-verification.parallel-executor.channel-buffer-size", 50)
+
+	viper.SetDefault("logging.development", "false")
+	viper.SetDefault("logging.enabled", "true")
+	viper.SetDefault("logging.level", "Info")
 }

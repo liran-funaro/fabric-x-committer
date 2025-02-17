@@ -3,7 +3,6 @@ package sidecar
 import (
 	"context"
 	_ "embed"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -22,7 +21,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -256,22 +254,7 @@ func makeBlock(t *testing.T, env *sidecarTestEnv) {
 		ChannelID:        env.config.Orderer.ChannelID,
 		OrdererEndpoints: env.config.Orderer.Endpoints,
 	})
-	cfg := configtempl.SidecarConfig{
-		CommonEndpoints: configtempl.CommonEndpoints{
-			ServerEndpoint:  env.config.Server.Endpoint.String(),
-			MetricsEndpoint: env.config.Monitoring.Metrics.Endpoint.String(),
-		},
-		ChannelID:           env.config.Orderer.ChannelID,
-		CoordinatorEndpoint: env.config.Committer.Endpoint.String(),
-		LedgerPath:          env.config.Ledger.Path,
-		ConfigBlockPath:     configBlockPath,
-	}
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	configtempl.CreateConfigFile(t, cfg, "../config/templates/sidecar.yaml", configPath)
-	require.NoError(t, config.ReadYamlConfigs([]string{configPath}))
-
-	conf := ReadConfig()
-	env.config = &conf
+	env.config.ConfigBlockPath = configBlockPath
 }
 
 func TestSidecarWithBlock(t *testing.T) {
@@ -313,6 +296,9 @@ func TestSidecarWithBlockMultipleWrongOrderers(t *testing.T) {
 func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 	env := newSidecarTestEnv(t)
 	makeBlock(t, env)
+	// Make the sidecar load the config block.
+	_, err := New(env.config)
+	require.NoError(t, err)
 	p := env.config.Policies
 	require.NotNil(t, p)
 	require.Len(t, p.Policies, 1)

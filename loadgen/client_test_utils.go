@@ -3,61 +3,26 @@ package loadgen
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"net/http"
-	"path"
-	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	utilsmetrics "github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 	"google.golang.org/grpc"
 )
-
-// general config templates.
-var (
-	//go:embed config_template/logging.yaml
-	loggingTemplate string
-
-	//go:embed config_template/client.yaml
-	clientOnlyTemplate string
-
-	//go:embed config_template/server.yaml
-	serverTemplate string
-
-	//go:embed config_template/vc_server.yaml
-	vcServerConfig string
-
-	//go:embed config_template/single_vc_client.yaml
-	vcSingleClientConfig string
-)
-
-func combineServerTemplates(additionalTemplate string) string {
-	return loggingTemplate + additionalTemplate + serverTemplate
-}
-
-func combineClientTemplates(additionalTemplate string) string {
-	return loggingTemplate + clientOnlyTemplate + additionalTemplate
-}
-
-func loadConfigString(t *testing.T, template string, params ...any) {
-	conf := fmt.Sprintf(template, params...)
-	require.NoError(t, config.LoadYamlConfigs(conf))
-}
-
-func tempFile(t *testing.T, filename string) string {
-	return filepath.Clean(path.Join(t.TempDir(), filename))
-}
 
 func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 	client, err := NewLoadGenClient(c)
@@ -104,40 +69,56 @@ func eventuallyMetrics(
 }
 
 // activateVcServiceForTest activating the vc-service with the given ports for test purpose.
-func activateVcServiceForTest(t *testing.T, ports, metricPorts []int) *yuga.Connection {
+func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*connection.Endpoint) {
+	t.Helper()
 	conn := yuga.PrepareYugaTestEnv(t)
+	dbPort, err := strconv.ParseInt(conn.Port, 10, 64)
+	require.NoError(t, err)
 
-	for i := range ports {
-		loadConfigString(t, combineServerTemplates(vcServerConfig),
-			tempFile(t, "server-log.txt"),
-			conn.Host, conn.Port, conn.User, conn.Password, conn.Database,
-			metricPorts[i], ports[i])
-		conf := vcservice.ReadConfig()
+	endpoints := make([]*connection.Endpoint, count)
 
-		initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	for i := range endpoints {
+		vcConf := &vcservice.ValidatorCommitterServiceConfig{
+			Server:     defaultServer(),
+			Monitoring: defaultMonitoring(),
+			Database: &vcservice.DatabaseConfig{
+				Host:           conn.Host,
+				Port:           int(dbPort),
+				Username:       conn.User,
+				Password:       conn.Password,
+				Database:       conn.Database,
+				MaxConnections: 10,
+				MinConnections: 1,
+				LoadBalance:    false,
+			},
+			ResourceLimits: &vcservice.ResourceLimitsConfig{
+				MaxWorkersForPreparer:  2,
+				MaxWorkersForCommitter: 2,
+				MaxWorkersForValidator: 2,
+			},
+		}
+
+		initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 		t.Cleanup(initCancel)
-		service, err := vcservice.NewValidatorCommitterService(initCtx, conf)
+		service, err := vcservice.NewValidatorCommitterService(initCtx, vcConf)
 		require.NoError(t, err)
 		t.Cleanup(service.Close)
-		test.RunServiceAndGrpcForTest(context.Background(), t, service, conf.Server, func(server *grpc.Server) {
+		test.RunServiceAndGrpcForTest(t.Context(), t, service, vcConf.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 		})
+		endpoints[i] = &vcConf.Server.Endpoint
 	}
-	return conn
+	return conn, endpoints
 }
 
 // GenerateNamespacesUnderTest is an export function that creates namespaces using the vc-service.
 func GenerateNamespacesUnderTest(t *testing.T, namespaces []string) *yuga.Connection {
-	conn := activateVcServiceForTest(t, []int{9123}, []int{10010})
+	conn, endpoints := activateVcServiceForTest(t, 1)
 
-	loadConfigString(
-		t,
-		combineClientTemplates(vcSingleClientConfig),
-		tempFile(t, "client-log.txt"),
-		2225,
-		9123,
-	)
-	vcConfig := ReadConfig()
+	clientConf := defaultClientConf()
+	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
+		Endpoints: endpoints,
+	}
 	policy := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
@@ -147,8 +128,70 @@ func GenerateNamespacesUnderTest(t *testing.T, namespaces []string) *yuga.Connec
 			Seed:   int64(i),
 		}
 	}
-	vcConfig.LoadProfile.Transaction.Policy = policy
-	vcConfig.Generate = &Generate{Namespaces: true}
-	runLoadGenerator(t, vcConfig)
+	clientConf.LoadProfile.Transaction.Policy = policy
+	clientConf.Generate = &Generate{Namespaces: true}
+	runLoadGenerator(t, clientConf)
 	return conn
+}
+
+// defaultClientConf returns default config values for client testing.
+func defaultClientConf() *ClientConfig {
+	return &ClientConfig{
+		LoadProfile: &workload.Profile{
+			Key:   workload.KeyProfile{Size: 32},
+			Block: workload.BlockProfile{Size: 500},
+			Transaction: workload.TransactionProfile{
+				ReadWriteCount: workload.NewConstantDistribution(2),
+				Policy: &workload.PolicyProfile{
+					NamespacePolicies: map[string]*workload.Policy{
+						"0": {
+							Scheme: signature.Ecdsa,
+							Seed:   10,
+						},
+						"_meta": {
+							Scheme: signature.Ecdsa,
+							Seed:   11,
+						},
+					},
+				},
+			},
+			Conflicts: workload.ConflictProfile{
+				InvalidSignatures: 0.1,
+			},
+			Seed: 12345,
+			// We use small number of workers to reduce the CPU load during tests.
+			Workers: 1,
+		},
+		Stream: &workload.StreamOptions{
+			RateLimit: &workload.LimiterConfig{InitialLimit: 1_000},
+			// We set low values for the buffer and batch to reduce the CPU load during tests.
+			BuffersSize: 1,
+			GenBatch:    1,
+		},
+		Generate: &Generate{
+			Namespaces: true,
+			Load:       true,
+		},
+		Monitoring: monitoring.Config{
+			Metrics: &utilsmetrics.Config{
+				Enable:   true,
+				Endpoint: &connection.Endpoint{Host: "localhost"},
+			},
+		},
+	}
+}
+
+func defaultMonitoring() *monitoring.Config {
+	return &monitoring.Config{
+		Metrics: &utilsmetrics.Config{
+			Enable:   true,
+			Endpoint: &connection.Endpoint{Host: "localhost"},
+		},
+	}
+}
+
+func defaultServer() *connection.ServerConfig {
+	return &connection.ServerConfig{
+		Endpoint: connection.Endpoint{Host: "localhost"},
+	}
 }

@@ -1,11 +1,12 @@
-package coordinatorservice
+package main
 
 import (
 	"testing"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -15,19 +16,19 @@ func TestReadConfig(t *testing.T) {
 	tests := []struct {
 		name           string
 		configFilePath string
-		expectedConfig *CoordinatorConfig
+		expectedConfig *coordinatorservice.CoordinatorConfig
 	}{
 		{
 			name:           "config",
-			configFilePath: "../config/samples/config-coordinator.yaml",
-			expectedConfig: &CoordinatorConfig{
+			configFilePath: "../../config/samples/config-coordinator.yaml",
+			expectedConfig: &coordinatorservice.CoordinatorConfig{
 				ServerConfig: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 9001,
 					},
 				},
-				SignVerifierConfig: &SignVerifierConfig{
+				SignVerifierConfig: &coordinatorservice.SignVerifierConfig{
 					ServerConfig: []*connection.ServerConfig{
 						{
 							Endpoint: connection.Endpoint{
@@ -43,7 +44,7 @@ func TestReadConfig(t *testing.T) {
 						},
 					},
 				},
-				ValidatorCommitterConfig: &ValidatorCommitterConfig{
+				ValidatorCommitterConfig: &coordinatorservice.ValidatorCommitterConfig{
 					ServerConfig: []*connection.ServerConfig{
 						{
 							Endpoint: connection.Endpoint{
@@ -59,7 +60,7 @@ func TestReadConfig(t *testing.T) {
 						},
 					},
 				},
-				DependencyGraphConfig: &DependencyGraphConfig{
+				DependencyGraphConfig: &coordinatorservice.DependencyGraphConfig{
 					NumOfLocalDepConstructors:       1,
 					WaitingTxsLimit:                 10000,
 					NumOfWorkersForGlobalDepManager: 1,
@@ -79,14 +80,14 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:           "default config",
 			configFilePath: "./testdata/default-config.yaml",
-			expectedConfig: &CoordinatorConfig{
+			expectedConfig: &coordinatorservice.CoordinatorConfig{
 				ServerConfig: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 3001,
 					},
 				},
-				SignVerifierConfig: &SignVerifierConfig{
+				SignVerifierConfig: &coordinatorservice.SignVerifierConfig{
 					ServerConfig: []*connection.ServerConfig{
 						{
 							Endpoint: connection.Endpoint{
@@ -102,7 +103,7 @@ func TestReadConfig(t *testing.T) {
 						},
 					},
 				},
-				ValidatorCommitterConfig: &ValidatorCommitterConfig{
+				ValidatorCommitterConfig: &coordinatorservice.ValidatorCommitterConfig{
 					ServerConfig: []*connection.ServerConfig{
 						{
 							Endpoint: connection.Endpoint{
@@ -118,7 +119,7 @@ func TestReadConfig(t *testing.T) {
 						},
 					},
 				},
-				DependencyGraphConfig: &DependencyGraphConfig{
+				DependencyGraphConfig: &coordinatorservice.DependencyGraphConfig{
 					NumOfLocalDepConstructors:       1,
 					WaitingTxsLimit:                 10000,
 					NumOfWorkersForGlobalDepManager: 1,
@@ -133,7 +134,7 @@ func TestReadConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
 			require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
-			c := ReadConfig()
+			c := readConfig()
 
 			require.Equal(t, tt.expectedConfig, c)
 		})

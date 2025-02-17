@@ -6,7 +6,9 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -51,7 +53,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := sidecar.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			service, err := sidecar.New(&conf)
@@ -90,4 +92,27 @@ func setFlags(cmd *cobra.Command) {
 		"sets the path of the ledger",
 		fmt.Sprintf("%v.ledger.path", serviceName),
 	)
+}
+
+// readConfig reads the config.
+func readConfig() sidecar.Config {
+	setDefaults()
+	wrapper := new(struct {
+		Config sidecar.Config `mapstructure:"sidecar"`
+	})
+	config.Unmarshal(wrapper)
+	return wrapper.Config
+}
+
+func setDefaults() {
+	viper.SetDefault("sidecar.server.endpoint", ":8832")
+	viper.SetDefault("sidecar.metrics.endpoint", ":2112")
+
+	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
+	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
+
+	viper.SetDefault("sidecar.committer.endpoint", ":5002")
+	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
+
+	viper.SetDefault("sidecar.ledger.path", "./ledger/")
 }

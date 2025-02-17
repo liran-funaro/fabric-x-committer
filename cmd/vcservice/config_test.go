@@ -1,4 +1,4 @@
-package vcservice
+package main
 
 import (
 	"testing"
@@ -6,30 +6,31 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 func TestConfig(t *testing.T) {
 	tests := []struct {
 		name                   string
 		configFilePath         string
-		expectedConfig         *ValidatorCommitterServiceConfig
+		expectedConfig         *vcservice.ValidatorCommitterServiceConfig
 		expectedDataSourceName string
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "../config/samples/config-vcservice.yaml",
-			expectedConfig: &ValidatorCommitterServiceConfig{
+			configFilePath: "../../config/samples/config-vcservice.yaml",
+			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 6002,
 					},
 				},
-				Database: &DatabaseConfig{
+				Database: &vcservice.DatabaseConfig{
 					Host:           "localhost",
 					Port:           5433,
 					Username:       "yugabyte",
@@ -41,7 +42,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &ResourceLimitsConfig{
+				ResourceLimits: &vcservice.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -63,7 +64,7 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "default config",
 			configFilePath: "testdata/default_config.yaml",
-			expectedConfig: &ValidatorCommitterServiceConfig{
+			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
@@ -71,7 +72,7 @@ func TestConfig(t *testing.T) {
 					},
 					Creds: nil,
 				},
-				Database: &DatabaseConfig{
+				Database: &vcservice.DatabaseConfig{
 					Host:           "localhost",
 					Port:           5433,
 					Username:       "yugabyte",
@@ -83,7 +84,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &ResourceLimitsConfig{
+				ResourceLimits: &vcservice.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -105,14 +106,14 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "no config file",
 			configFilePath: "",
-			expectedConfig: &ValidatorCommitterServiceConfig{
+			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 6001,
 					},
 				},
-				Database: &DatabaseConfig{
+				Database: &vcservice.DatabaseConfig{
 					Host:           "localhost",
 					Port:           5433,
 					Username:       "yugabyte",
@@ -124,7 +125,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &ResourceLimitsConfig{
+				ResourceLimits: &vcservice.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -153,7 +154,7 @@ func TestConfig(t *testing.T) {
 				require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
 			}
 
-			c := ReadConfig()
+			c := readConfig()
 
 			require.Equal(t, tt.expectedConfig, c)
 

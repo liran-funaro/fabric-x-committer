@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -48,7 +50,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := coordinatorservice.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			service := coordinatorservice.NewCoordinatorService(conf)
@@ -64,4 +66,26 @@ func startCmd() *cobra.Command { //nolint:gocognit
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
+}
+
+// readConfig reads the configuration from the viper instance.
+// If the configuration file is used, the caller should call
+// config.ReadFromYamlFile() before calling this function.
+func readConfig() *coordinatorservice.CoordinatorConfig {
+	setDefaults()
+
+	wrapper := new(struct {
+		Config coordinatorservice.CoordinatorConfig `mapstructure:"coordinator-service"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	viper.SetDefault("coordinator-service.server.endpoint.host", "localhost")
+	viper.SetDefault("coordinator-service.server.endpoint.port", 3001)
+	viper.SetDefault("coordinator-service.dependency-graph.num-of-local-dep-constructors", 1)
+	viper.SetDefault("coordinator-service.dependency-graph.waiting-txs-limit", 10000)
+	viper.SetDefault("coordinator-service.dependency-graph.num-of-workers-for-global-dep-manager", 1)
+	viper.SetDefault("coordinator-service.per-channel-buffer-size-per-goroutine", 10)
 }

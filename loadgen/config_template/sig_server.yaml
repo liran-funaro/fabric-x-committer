@@ -1,8 +1,0 @@
-
-sig-verification:
-  parallel-executor:
-    batch-size-cutoff: 50
-    batch-time-cutoff: 10ms
-    channel-buffer-size: 50
-    parallelism: 40
-  scheme: Ecdsa

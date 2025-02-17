@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -50,7 +52,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := serverconfig.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			sv := mock.NewMockSigVerifier()
@@ -62,4 +64,19 @@ func startCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
 	return cmd
+}
+
+func readConfig() *serverconfig.SigVerificationConfig {
+	setDefaults()
+	wrapper := new(struct {
+		Config serverconfig.SigVerificationConfig `mapstructure:"sig-verification"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	viper.SetDefault("logging.development", "false")
+	viper.SetDefault("logging.enabled", "true")
+	viper.SetDefault("logging.level", "Info")
 }

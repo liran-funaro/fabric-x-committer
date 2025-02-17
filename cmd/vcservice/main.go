@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"google.golang.org/grpc"
@@ -50,7 +53,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := vcservice.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), conf)
 			if err != nil {
@@ -80,7 +83,7 @@ func clearCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			vcConfig := vcservice.ReadConfig()
+			vcConfig := readConfig()
 
 			cmd.Printf("Clearing database: %v\n", namespaces)
 
@@ -91,4 +94,48 @@ func clearCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
 	cmd.Flags().StringSliceVar(&namespaces, "namespaces", []string{}, "set the namespaces to clear")
 	return cmd
+}
+
+// readConfig reads the configuration from the viper instance.
+// If the configuration file is used, the caller should call
+// config.ReadFromYamlFile() before calling this function.
+func readConfig() *vcservice.ValidatorCommitterServiceConfig {
+	setDefaults()
+
+	wrapper := new(struct {
+		Config vcservice.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	// defaults for ServerConfig
+	prefix := "validator-committer-service.server.endpoint."
+	viper.SetDefault(prefix+"host", "localhost")
+	viper.SetDefault(prefix+"port", 6001)
+
+	// defaults for DatabaseConfig
+	prefix = "validator-committer-service.database."
+	viper.SetDefault(prefix+"host", "localhost")
+	viper.SetDefault(prefix+"port", 5433)
+	viper.SetDefault(prefix+"username", "yugabyte")
+	viper.SetDefault(prefix+"password", "yugabyte")
+	viper.SetDefault(prefix+"database", "yugabyte")
+	viper.SetDefault(prefix+"max-connections", 20)
+	viper.SetDefault(prefix+"min-connections", 10)
+	viper.SetDefault(prefix+"retry.max-elapsed-time", 20*time.Second)
+
+	// defaults for ResourceLimitsConfig
+	prefix = "validator-committer-service.resource-limits."
+	viper.SetDefault(prefix+"max-workers-for-preparer", 1)
+	viper.SetDefault(prefix+"max-workers-for-validator", 1)
+	viper.SetDefault(prefix+"max-workers-for-committer", 20)
+	viper.SetDefault(prefix+"min-transaction-batch-size", 1)
+	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
+
+	// defaults for monitoring.config
+	prefix = "validator-committer-service.monitoring."
+	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
+	viper.SetDefault(prefix+"metrics.enable", true)
 }

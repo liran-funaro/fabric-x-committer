@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
@@ -48,7 +51,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			conf := queryservice.ReadConfig()
+			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			qs := queryservice.NewQueryService(conf)
@@ -59,4 +62,45 @@ func startCmd() *cobra.Command {
 	}
 	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
 	return cmd
+}
+
+// readConfig reads the configuration from the viper instance.
+// If the configuration file is used, the caller should call
+// config.ReadFromYamlFile() before calling this function.
+func readConfig() *queryservice.Config {
+	setDefaults()
+
+	wrapper := new(struct {
+		Config queryservice.Config `mapstructure:"query-service"`
+	})
+	config.Unmarshal(wrapper)
+	return &wrapper.Config
+}
+
+func setDefaults() {
+	// defaults for ServerConfig
+	viper.SetDefault("query-service.server.endpoint", "localhost:7003")
+
+	// defaults for DatabaseConfig
+	prefix := "query-service.database."
+	viper.SetDefault(prefix+"host", "localhost")
+	viper.SetDefault(prefix+"port", 5433)
+	viper.SetDefault(prefix+"username", "yugabyte")
+	viper.SetDefault(prefix+"password", "yugabyte")
+	viper.SetDefault(prefix+"database", "yugabyte")
+	viper.SetDefault(prefix+"max-connections", 20)
+	viper.SetDefault(prefix+"min-connections", 10)
+
+	// defaults for monitoring.config
+	prefix = "query-service.monitoring."
+	viper.SetDefault(prefix+"metrics.endpoint", "localhost:7004")
+	viper.SetDefault(prefix+"metrics.enable", true)
+
+	// defaults for monitoring.config
+	prefix = "query-service."
+	viper.SetDefault(prefix+"min-batch-keys", 1024)
+	viper.SetDefault(prefix+"max-batch-wait", 100*time.Millisecond)
+	viper.SetDefault(prefix+"view-aggregation-window", 100*time.Millisecond)
+	viper.SetDefault(prefix+"max-aggregated-viewIDToViewHolder", 1024)
+	viper.SetDefault(prefix+"max-view-timeout", 10*time.Second)
 }

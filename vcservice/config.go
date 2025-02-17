@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/viper"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
@@ -51,48 +49,4 @@ type ResourceLimitsConfig struct {
 	MaxWorkersForCommitter            int           `mapstructure:"max-workers-for-committer"`
 	MinTransactionBatchSize           int           `mapstructure:"min-transaction-batch-size"`
 	TimeoutForMinTransactionBatchSize time.Duration `mapstructure:"timeout-for-min-transaction-batch-size"`
-}
-
-// ReadConfig reads the configuration from the viper instance.
-// If the configuration file is used, the caller should call
-// config.ReadFromYamlFile() before calling this function.
-func ReadConfig() *ValidatorCommitterServiceConfig {
-	setDefaults()
-
-	wrapper := new(struct {
-		Config ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
-	})
-	config.Unmarshal(wrapper)
-	return &wrapper.Config
-}
-
-func setDefaults() {
-	// defaults for ServerConfig
-	prefix := "validator-committer-service.server.endpoint."
-	viper.SetDefault(prefix+"host", "localhost")
-	viper.SetDefault(prefix+"port", 6001)
-
-	// defaults for DatabaseConfig
-	prefix = "validator-committer-service.database."
-	viper.SetDefault(prefix+"host", "localhost")
-	viper.SetDefault(prefix+"port", 5433)
-	viper.SetDefault(prefix+"username", "yugabyte")
-	viper.SetDefault(prefix+"password", "yugabyte")
-	viper.SetDefault(prefix+"database", "yugabyte")
-	viper.SetDefault(prefix+"max-connections", 20)
-	viper.SetDefault(prefix+"min-connections", 10)
-	viper.SetDefault(prefix+"retry.max-elapsed-time", 20*time.Second)
-
-	// defaults for ResourceLimitsConfig
-	prefix = "validator-committer-service.resource-limits."
-	viper.SetDefault(prefix+"max-workers-for-preparer", 1)
-	viper.SetDefault(prefix+"max-workers-for-validator", 1)
-	viper.SetDefault(prefix+"max-workers-for-committer", 20)
-	viper.SetDefault(prefix+"min-transaction-batch-size", 1)
-	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
-
-	// defaults for monitoring.config
-	prefix = "validator-committer-service.monitoring."
-	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
-	viper.SetDefault(prefix+"metrics.enable", true)
 }
