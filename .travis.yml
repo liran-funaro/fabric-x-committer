@@ -59,7 +59,7 @@ jobs:
     - stage: test
       name: Integration Tests (yugabyte)
       env: VCSERVICE_DB=yuga
-      script: make integration-test
+      script: travis_wait 20 make integration-test
     - stage: test
       name: Build and test container images
       install: skip

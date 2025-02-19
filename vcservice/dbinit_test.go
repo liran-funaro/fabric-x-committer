@@ -56,7 +56,7 @@ func TestRetry(t *testing.T) {
 }
 
 func TestConcurrentDatabaseTablesInit(t *testing.T) {
-	cs := yuga.PrepareYugaTestEnv(t)
+	cs := yuga.PrepareTestEnv(t)
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
 

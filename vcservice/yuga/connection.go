@@ -19,7 +19,7 @@ const (
 	defaultPassword = "yugabyte"
 
 	stmtTemplateCreateDb       = "CREATE DATABASE %s;"
-	stmtTemplateDropDbIfExists = "DROP DATABASE IF EXISTS %s;"
+	stmtTemplateDropDbIfExists = "DROP DATABASE IF EXISTS %s WITH (FORCE);"
 )
 
 // DefaultRetry is used for tests.
@@ -83,8 +83,7 @@ func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 
 // WaitFirstReady waits for a successful interaction with the database on one of the connections.
 func WaitFirstReady(ctx context.Context, connOptions []*Connection) (*Connection, error) {
-	reachableConn := make(chan *Connection)
-	defer close(reachableConn)
+	reachableConn := make(chan *Connection, len(connOptions))
 
 	for _, conn := range connOptions {
 		go func(c *Connection) {

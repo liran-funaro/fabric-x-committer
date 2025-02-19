@@ -45,6 +45,7 @@ type (
 		DatabaseHost string
 		DatabasePort int
 		DatabaseName string
+		LoadBalance  bool
 	}
 
 	// CoordinatorConfig represents the configuration of the coordinator process.

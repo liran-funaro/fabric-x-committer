@@ -151,7 +151,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mismatchingReads, err := env.DB.validateNamespaceReads(tt.nsID, tt.r)
+			mismatchingReads, err := env.DB.validateNamespaceReads(t.Context(), tt.nsID, tt.r)
 			require.NoError(t, err)
 			requireReadsMatch(t, tt.expectedMismatchedReads, mismatchingReads)
 		})
@@ -262,10 +262,10 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	_, _, err := dbEnv.DB.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	_, _, err := dbEnv.DB.commit(t.Context(), &statesToBeCommitted{newWrites: nsToWrites})
 	require.NoError(t, err)
 
-	_, _, err = dbEnv.DB.commit(&statesToBeCommitted{updateWrites: nsToWrites})
+	_, _, err = dbEnv.DB.commit(t.Context(), &statesToBeCommitted{updateWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
@@ -285,7 +285,7 @@ func TestDBCommit(t *testing.T) {
 			versions: [][]byte{v0, v0},
 		},
 	}
-	_, _, err = dbEnv.DB.commit(&statesToBeCommitted{newWrites: nsToWrites})
+	_, _, err = dbEnv.DB.commit(t.Context(), &statesToBeCommitted{newWrites: nsToWrites})
 	require.NoError(t, err)
 	dbEnv.rowExists(t, "3", *nsToWrites["3"])
 	dbEnv.rowExists(t, "4", *nsToWrites["4"])

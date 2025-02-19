@@ -10,6 +10,7 @@ validator-committer-service:
     database: {{ .DatabaseName }}
     max-connections: 10
     min-connections: 5
+    load-balance: {{ .LoadBalance }}
 
   resource-limits:
     max-workers-for-preparer: 1

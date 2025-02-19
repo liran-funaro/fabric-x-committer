@@ -81,6 +81,7 @@ func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
 func (v *transactionValidator) validate(ctx context.Context) error {
 	incomingPreparedTransactions := channel.NewReader(ctx, v.incomingPreparedTransactions)
 	outgoingValidatedTransactions := channel.NewWriter(ctx, v.outgoingValidatedTransactions)
+
 	for {
 		prepTx, ok := incomingPreparedTransactions.Read()
 		if !ok {
@@ -95,11 +96,10 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 		// 		 over parallelize and make contention among preparer, validator, and committer
 		//       goroutines to acquire the CPU. Based on performance evaluation, we can decide
 		//       to run per namespace validation in parallel.
-		nsToMismatchingReads, valErr := v.validateReads(prepTx.nsToReads)
+		nsToMismatchingReads, valErr := v.validateReads(ctx, prepTx.nsToReads)
 		if valErr != nil {
 			return valErr
 		}
-
 		// Step 2: we construct validated transactions by removing the writes of invalid transactions
 		// and recording the txIDs of invalid transactions.
 		vTxs := &validatedTransactions{
@@ -123,6 +123,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 }
 
 func (v *transactionValidator) validateReads(
+	ctx context.Context,
 	nsToReads namespaceToReads,
 ) (namespaceToReads /* mismatched */, error) {
 	// nsToMismatchingReads maintains all mismatching reads per namespace.
@@ -130,7 +131,7 @@ func (v *transactionValidator) validateReads(
 	nsToMismatchingReads := make(namespaceToReads)
 
 	for nsID, r := range nsToReads {
-		mismatch, err := v.db.validateNamespaceReads(nsID, r)
+		mismatch, err := v.db.validateNamespaceReads(ctx, nsID, r)
 		if err != nil {
 			return nil, err
 		}

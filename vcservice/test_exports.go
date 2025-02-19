@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v4"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
@@ -27,17 +26,19 @@ const (
 )
 
 // ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
-type ValidatorAndCommitterServiceTestEnv struct {
-	VCServices []*ValidatorCommitterService
-	DBEnv      *DatabaseTestEnv
-	Configs    []*ValidatorCommitterServiceConfig
-}
+type (
+	ValidatorAndCommitterServiceTestEnv struct {
+		VCServices []*ValidatorCommitterService
+		DBEnv      *DatabaseTestEnv
+		Configs    []*ValidatorCommitterServiceConfig
+	}
 
-// ValueVersion contains a list of values and their matching versions.
-type ValueVersion struct {
-	Value   []byte
-	Version []byte
-}
+	// ValueVersion contains a list of values and their matching versions.
+	ValueVersion struct {
+		Value   []byte
+		Version []byte
+	}
+)
 
 // NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
 func NewValidatorAndCommitServiceTestEnv(
@@ -119,9 +120,21 @@ type DatabaseTestEnv struct {
 	DBConf *DatabaseConfig
 }
 
-// NewDatabaseTestEnv creates a new database test environment.
+// NewDatabaseTestEnv creates a new default database test environment.
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
-	cs := yuga.PrepareYugaTestEnv(t)
+	// default parameters set.
+	return newDatabaseTestEnv(t, yuga.PrepareTestEnv(t), 1)
+}
+
+// NewDatabaseTestEnvWithCluster creates a new db cluster test environment.
+func NewDatabaseTestEnvWithCluster(t *testing.T, dbOpts *yuga.DBOptions) *DatabaseTestEnv {
+	t.Helper()
+	require.NotNil(t, dbOpts.Connections)
+	return newDatabaseTestEnv(t, yuga.PrepareTestEnvWithConnection(t, dbOpts.Connections), dbOpts.ClusterSize)
+}
+
+func newDatabaseTestEnv(t *testing.T, cs *yuga.Connection, clusterSize int) *DatabaseTestEnv {
+	t.Helper()
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
 
@@ -133,6 +146,7 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 		Database:       cs.Database,
 		MaxConnections: 10,
 		MinConnections: 1,
+		LoadBalance:    clusterSize > 1,
 	}
 
 	m := newVCServiceMetrics()
@@ -142,6 +156,12 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	require.NoError(t, err)
 	t.Cleanup(db.close)
 
+	// sets a default retry profile for tests.
+	db.retry = &connection.RetryProfile{
+		MaxElapsedTime:  3 * time.Minute,
+		InitialInterval: 100 * time.Millisecond,
+	}
+
 	return &DatabaseTestEnv{
 		DB:     db,
 		DBConf: config,
@@ -150,21 +170,23 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 
 // CountStatus returns the number of transactions with a given tx status.
 func (env *DatabaseTestEnv) CountStatus(t *testing.T, status protoblocktx.Status) int {
-	query := fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status)
-	row := env.DB.pool.QueryRow(context.Background(), query)
-	return readCount(t, row)
+	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status))
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
 func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
-	query := fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status)
-	row := env.DB.pool.QueryRow(context.Background(), query)
-	return readCount(t, row)
+	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status))
 }
 
-func readCount(t *testing.T, r pgx.Row) int {
+// queryRow execute a single-row query and return the result.
+func (env *DatabaseTestEnv) getRowCount(t *testing.T, query string) int {
+	t.Helper()
 	var count int
-	require.NoError(t, r.Scan(&count))
+	require.NoError(t, env.DB.retry.Execute(t.Context(), func() error {
+		row := env.DB.pool.QueryRow(t.Context(), query)
+		return row.Scan(&count)
+	}))
+
 	return count
 }
 
@@ -246,7 +268,7 @@ func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
 ) {
 	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
 
-	_, _, err := env.DB.commit(&statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
+	_, _, err := env.DB.commit(t.Context(), &statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
 	require.NoError(t, err)
 	env.commitState(t, writes)
 

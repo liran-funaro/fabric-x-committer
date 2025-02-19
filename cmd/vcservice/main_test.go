@@ -17,7 +17,7 @@ import (
 var configTemplate string
 
 func TestVCServiceCmd(t *testing.T) {
-	conn := yuga.PrepareYugaTestEnv(t)
+	conn := yuga.PrepareTestEnv(t)
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(
 		configTemplate,

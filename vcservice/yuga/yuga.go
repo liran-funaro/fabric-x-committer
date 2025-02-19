@@ -22,14 +22,19 @@ const (
 	yugaDBPort            = "5433"
 )
 
+// DBOptions defines the YugaDB cluster initialization configuration.
+type DBOptions struct {
+	ClusterSize int
+	Connections []*Connection
+}
+
 // randDbName generates random DB name.
-func randDbName() (string, error) {
+func randDbName(t *testing.T) string {
+	t.Helper()
 	uuidObj, err := uuid.NewRandomFromReader(rand.Reader)
-	if err != nil {
-		return "", err
-	}
+	require.NoError(t, err)
 	uuidStr := strings.ReplaceAll(uuidObj.String(), "-", "_")
-	return fmt.Sprintf("%s%s", defaultDBPrefix, uuidStr), nil
+	return fmt.Sprintf("%s%s", defaultDBPrefix, uuidStr)
 }
 
 // getYugaInstanceType get the desired yuga instance type from the environment variable.
@@ -42,55 +47,57 @@ func getYugaInstanceType() string {
 	return yugaInstanceContainer
 }
 
-// PrepareYugaTestEnv initializes a test environment for YugabyteDB.
-func PrepareYugaTestEnv(t *testing.T) *Connection {
-	// Impose 5 minutes timeout for starting/connecting to the container.
-	ctx, cancel := context.WithTimeout(context.Background(), defaultStartTimeout)
-	defer cancel()
+// PrepareTestEnv initializes a test environment for an existing or uncontrollable db instance.
+func PrepareTestEnv(t *testing.T) *Connection {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), defaultStartTimeout)
+	t.Cleanup(cancel)
+	return PrepareTestEnvWithConnection(t, StartAndConnect(ctx, t))
+}
 
-	conn, err := StartAndConnect(ctx)
+// PrepareTestEnvWithConnection initializes a test environment given a db connection.
+func PrepareTestEnvWithConnection(t *testing.T, connections []*Connection) *Connection {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), defaultStartTimeout)
+	t.Cleanup(cancel)
+	conn, err := WaitFirstReady(ctx, connections)
 	require.NoError(t, err)
+	t.Logf("chosen connection details: %s:%s", conn.Host, conn.Port)
 
-	dbName, err := randDbName()
-	require.NoError(t, err)
+	dbName := randDbName(t)
+	require.NoError(t, conn.CreateDB(ctx, dbName))
 
 	t.Cleanup(func() {
-		cleanUpCtx, cleanUpCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		//nolint:usetesting // t.Context is finishing right after the test resulting in context.Deadline error.
+		cleanUpCtx, cleanUpCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cleanUpCancel()
 		assert.NoError(t, DefaultRetry.Execute(cleanUpCtx, func() error {
 			return conn.DropDB(cleanUpCtx, dbName)
 		}))
 	})
-	require.NoError(t, conn.CreateDB(ctx, dbName))
-
-	// We copy the connection and add the database name.
+	// We copy the connection and add the database name
 	connSettings := *conn
 	connSettings.Database = dbName
+
 	return &connSettings
 }
 
-// StartAndConnect connects to an existing Yugabyte instance or creates a new one.
-func StartAndConnect(ctx context.Context) (*Connection, error) {
+// StartAndConnect connects to an existing Yugabyte instance or creates a containerized new one.
+func StartAndConnect(ctx context.Context, t *testing.T) []*Connection {
+	t.Helper()
 	yugaInstance := getYugaInstanceType()
 
 	var connOptions []*Connection
 	switch yugaInstance {
 	case yugaInstanceContainer:
 		container := YugabyteDBContainer{}
-		err := container.StartContainer(ctx)
-		if err != nil {
-			return nil, err
-		}
-		connOptions, err = container.getConnectionOptions(ctx)
-		if err != nil {
-			return nil, err
-		}
+		container.StartContainer(ctx, t)
+		connOptions = container.getConnectionOptions(ctx, t)
 	case yugaInstanceLocal:
-		connOptions = []*Connection{
-			NewConnection("localhost", yugaDBPort),
-		}
+		connOptions = append(connOptions, NewConnection("localhost", yugaDBPort))
 	default:
-		return nil, fmt.Errorf("unknown yuga instance type: %s", yugaInstance)
+		t.Logf("unknown yuga instance type: %s", yugaInstance)
+		return nil
 	}
-	return WaitFirstReady(ctx, connOptions)
+	return connOptions
 }

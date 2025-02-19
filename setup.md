@@ -39,6 +39,23 @@ go version
 brew install docker
 ```
 
+To enable network connectivity for Docker containers on macOS, run the following commands:
+
+```shell
+brew install chipmk/tap/docker-mac-net-connect
+```
+
+```shell
+sudo brew services start chipmk/tap/docker-mac-net-connect
+```
+
+This script enables the integration test TestDBNodeCrushHandling to run.
+If you have already run the scripts but the test is not executing, restart the service by running the following:
+```shell
+sudo brew services restart chipmk/tap/docker-mac-net-connect
+```
+
+
 #### Ubuntu:
 
 Follow instructions [here](https://docs.docker.com/engine/install/ubuntu/)

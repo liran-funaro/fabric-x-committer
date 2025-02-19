@@ -106,7 +106,11 @@ func (db *database) close() {
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
-func (db *database) validateNamespaceReads(nsID string, r *reads) (*reads /* mismatching reads */, error) {
+func (db *database) validateNamespaceReads(
+	ctx context.Context,
+	nsID string,
+	r *reads,
+) (*reads /* mismatching reads */, error) {
 	// For each namespace nsID, we use the validate_reads_ns_<nsID> function to validate
 	// the reads. This function returns the keys and versions of the mismatching reads.
 	// Note that we have a table per namespace.
@@ -117,15 +121,9 @@ func (db *database) validateNamespaceReads(nsID string, r *reads) (*reads /* mis
 	start := time.Now()
 	query := fmt.Sprintf(validateReadsSQLTemplate, nsID)
 
-	mismatch, err := db.retryQuery(context.Background(), query, r.keys, r.versions)
+	keys, values, err := db.retryQueryAndReadRows(ctx, query, r.keys, r.versions)
 	if err != nil {
-		return nil, fmt.Errorf("failed query: %w", err)
-	}
-	defer mismatch.Close()
-
-	keys, values, err := readKeysAndValues[[]byte, []byte](mismatch)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading key and version: %w", err)
+		return nil, errors.Wrap(err, "failed reading key and version")
 	}
 
 	mismatchingReads := &reads{}
@@ -140,13 +138,7 @@ func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (key
 	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTemplate, TableName(nsID))
 
-	keysVers, err := db.retryQuery(context.Background(), query, queryKeys)
-	if err != nil {
-		return nil, err
-	}
-	defer keysVers.Close()
-
-	foundKeys, foundVersions, err := readKeysAndValues[[]byte, []byte](keysVers)
+	foundKeys, foundVersions, err := db.retryQueryAndReadRows(context.Background(), query, queryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +195,7 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 }
 
 // commit commits the writes to the database.
-func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []TxID, error) {
+func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (namespaceToReads, []TxID, error) {
 	start := time.Now()
 	if states.empty() {
 		return nil, nil, nil
@@ -212,8 +204,7 @@ func (db *database) commit(states *statesToBeCommitted) (namespaceToReads, []TxI
 	// We want to commit all the writes to all namespaces or none at all,
 	// so we use a database transaction. Otherwise, the failure and recovery
 	// logic will be very complicated.
-	ctx := context.Background()
-	tx, rollBackFunc, err := db.beginTx(context.Background())
+	tx, rollBackFunc, err := db.beginTx(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -469,39 +460,41 @@ func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (map[string]*protoblocktx.StatusWithHeight, error) {
-	r, retryErr := db.retryQuery(ctx, queryTxIDsStatus, txIDs)
-	if retryErr != nil {
-		return nil, errors.Wrap(retryErr, "failed to query txIDs from the tx_status table")
-	}
-	defer r.Close()
 
-	rows := make(map[string]*protoblocktx.StatusWithHeight)
-	for r.Next() {
-		var id []byte
-		var status int32
-		var height []byte
-
-		if err := r.Scan(&id, &status, &height); err != nil {
-			return nil, errors.Wrap(err, "failed to read rows from the query result")
-		}
-
-		ht, _, err := types.NewHeightFromBytes(height)
+	var rows map[string]*protoblocktx.StatusWithHeight
+	retryErr := db.retry.Execute(ctx, func() error {
+		r, err := db.pool.Query(ctx, queryTxIDsStatus, txIDs)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create height from encoded bytes [%v]", height)
+			return errors.Wrap(err, "failed to query txIDs from the tx_status table")
 		}
+		defer r.Close()
 
-		rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
-	}
-	return rows, errors.Wrap(r.Err(), "error occurred while reading")
+		// reset map every retry
+		rows = make(map[string]*protoblocktx.StatusWithHeight)
+		for r.Next() {
+			var id []byte
+			var status int32
+			var height []byte
+
+			if err = r.Scan(&id, &status, &height); err != nil {
+				return errors.Wrap(err, "failed to read rows from the query result")
+			}
+
+			ht, _, err := types.NewHeightFromBytes(height)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create height from encoded bytes [%v]", height)
+			}
+
+			rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
+		}
+		return r.Err()
+	})
+
+	return rows, errors.Wrap(retryErr, "error occurred while reading")
 }
 
 func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.Policies, error) {
-	rows, err := db.retryQuery(ctx, queryPolicies)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query rows from the meta namespace")
-	}
-	defer rows.Close()
-	keys, values, err := readKeysAndValues[[]byte, []byte](rows)
+	keys, values, err := db.retryQueryAndReadRows(ctx, queryPolicies)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read from rows of meta namespace")
 	}
@@ -517,12 +510,25 @@ func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.
 	return policy, nil
 }
 
-func (db *database) retryQuery(ctx context.Context, sql string, arg ...any) (pgx.Rows, error) { //nolint:ireturn
-	var rows pgx.Rows
+func (db *database) retryQueryAndReadRows(
+	ctx context.Context, query string, args ...any,
+) (rows [][]byte,
+	metadata [][]byte,
+	err error,
+) {
+	var (
+		values [][]byte
+		keys   [][]byte
+	)
 	retryErr := db.retry.Execute(ctx, func() error {
-		var err error
-		rows, err = db.pool.Query(ctx, sql, arg...)
-		return errors.Wrapf(err, "failed to execute sql query [%s]", sql)
+		rows, err := db.pool.Query(ctx, query, args...)
+		if err != nil {
+			return errors.Wrap(err, "failed to query rows")
+		}
+		defer rows.Close()
+		keys, values, err = readKeysAndValues[[]byte, []byte](rows)
+		return err
 	})
-	return rows, errors.Wrap(retryErr, "multiple retries failed")
+
+	return keys, values, errors.Wrapf(retryErr, "error reading rows")
 }

@@ -17,21 +17,22 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-type validatorAndCommitterServiceTestEnv struct {
+type validatorAndCommitterServiceTestEnvWithClient struct {
 	vcs     []*ValidatorCommitterService
 	clients []protovcservice.ValidationAndCommitServiceClient
 	streams []protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
 	dbEnv   *DatabaseTestEnv
 }
 
-func newValidatorAndCommitServiceTestEnv(
+func newValidatorAndCommitServiceTestEnvWithClient(
 	ctx context.Context,
 	t *testing.T,
 	numServices int,
-) *validatorAndCommitterServiceTestEnv {
+) *validatorAndCommitterServiceTestEnvWithClient {
+	t.Helper()
 	vcs := NewValidatorAndCommitServiceTestEnv(t, numServices)
 
-	vcsTestEnv := &validatorAndCommitterServiceTestEnv{
+	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
 		vcs:     vcs.VCServices,
 		clients: make([]protovcservice.ValidationAndCommitServiceClient, numServices),
 		streams: make([]protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, numServices),
@@ -63,7 +64,7 @@ func newValidatorAndCommitServiceTestEnv(
 
 func TestValidatorAndCommitterService(t *testing.T) {
 	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnv(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 
 	env.dbEnv.populateDataWithCleanup(t, []string{"1", types.MetaNamespaceID}, namespaceToWrites{
 		"1": &namespaceWrites{
@@ -321,7 +322,7 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 	t.Parallel()
 	ctx, _ := createContext(t)
 	numServices := 3
-	env := newValidatorAndCommitServiceTestEnv(ctx, t, numServices)
+	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, numServices)
 
 	for i := range numServices {
 		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
@@ -348,7 +349,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		},
 	)
 	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnv(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 	c := env.clients[0]
 
 	t.Run("GetTransactionsStatus returns an invalid argument error", func(t *testing.T) {
@@ -412,7 +413,7 @@ func requireGRPCErrorCode(t *testing.T, code codes.Code, err error, ret any) {
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnv(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
@@ -425,10 +426,10 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 }
 
 func TestTransactionResubmission(t *testing.T) {
-	setup := func() (context.Context, *validatorAndCommitterServiceTestEnv) {
+	setup := func() (context.Context, *validatorAndCommitterServiceTestEnvWithClient) {
 		ctx, _ := createContext(t)
 		numServices := 3
-		env := newValidatorAndCommitServiceTestEnv(ctx, t, numServices)
+		env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, numServices)
 
 		env.dbEnv.populateDataWithCleanup(t, []string{"3", types.MetaNamespaceID}, namespaceToWrites{
 			"3": &namespaceWrites{

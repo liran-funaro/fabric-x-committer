@@ -13,7 +13,7 @@ import (
 // ##########################################
 
 func Test_StartAndQuery(t *testing.T) {
-	connSettings := PrepareYugaTestEnv(t)
+	connSettings := PrepareTestEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -73,10 +74,8 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// Rather than distinguishing retryable transaction error, we retry for all errors.
 		// This is for simplicity and we can improve it in future.
 		// TODO: Add test to ensure commit is retried.
-		if retryErr := c.db.retry.Execute(ctx, func() error {
-			txsStatus, err = c.commitTransactions(ctx, vTx)
-			return err
-		}); retryErr != nil {
+		txsStatus, err = c.commitTransactions(ctx, vTx)
+		if err != nil {
 			logger.Errorf("failed to commit transactions: %s", err)
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
@@ -126,9 +125,16 @@ func (c *transactionCommitter) commitTransactions(
 			txIDToHeight: vTx.txIDToHeight,
 		}
 
-		mismatch, duplicated, err := c.db.commit(info)
-		if err != nil {
-			return nil, err
+		var (
+			mismatch   namespaceToReads
+			duplicated []TxID
+			err        error
+		)
+		if retryErr := c.db.retry.Execute(ctx, func() error {
+			mismatch, duplicated, err = c.db.commit(ctx, info)
+			return err
+		}); retryErr != nil {
+			return nil, errors.Wrap(retryErr, "failed to commit transactions")
 		}
 
 		if mismatch.empty() && len(duplicated) == 0 {

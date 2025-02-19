@@ -84,6 +84,7 @@ func newQueryServiceOrVCServiceConfig(
 		DatabaseHost:    dbEnv.DBConf.Host,
 		DatabasePort:    dbEnv.DBConf.Port,
 		DatabaseName:    dbEnv.DBConf.Database,
+		LoadBalance:     dbEnv.DBConf.LoadBalance,
 	}
 }
 

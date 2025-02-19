@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -83,6 +84,7 @@ type (
 		BlockSize           uint64
 		BlockTimeout        time.Duration
 		LoadGen             bool
+		DBOpts              *yuga.DBOptions
 	}
 )
 
@@ -102,13 +104,20 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		t.Fatalf("Failed to build binaries")
 	}
 
+	var dbEnvironment *vcservice.DatabaseTestEnv
+	if clusterConfig.DBOpts == nil {
+		dbEnvironment = vcservice.NewDatabaseTestEnv(t)
+	} else {
+		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, clusterConfig.DBOpts)
+	}
+
 	c := &Cluster{
 		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], clusterConfig.NumSigVerifiers),
 		vcService: make(
 			[]*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig],
-			clusterConfig.NumSigVerifiers,
+			clusterConfig.NumVCService,
 		),
-		dbEnv:            vcservice.NewDatabaseTestEnv(t),
+		dbEnv:            dbEnvironment,
 		rootDir:          t.TempDir(),
 		nsToCrypto:       make(map[string]*Crypto),
 		clusterConfig:    clusterConfig,
@@ -174,7 +183,7 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	}
 	c.sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	t.Cleanup(cancel)
 
 	c.createClients(ctx, t)

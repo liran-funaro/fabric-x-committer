@@ -71,7 +71,7 @@ func eventuallyMetrics(
 // activateVcServiceForTest activating the vc-service with the given ports for test purpose.
 func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*connection.Endpoint) {
 	t.Helper()
-	conn := yuga.PrepareYugaTestEnv(t)
+	conn := yuga.PrepareTestEnv(t)
 	dbPort, err := strconv.ParseInt(conn.Port, 10, 64)
 	require.NoError(t, err)
 

@@ -1,26 +1,29 @@
 package yuga
 
 import (
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"testing"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
 	defaultImage        = "yugabytedb/yugabyte:2.20.7.0-b58"
 	defaultInstanceName = "sc_yugabyte_unit_tests"
 	defaultHostIP       = "127.0.0.1"
+	defaultPortMap      = "7000/tcp"
 )
 
 // yugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
 var yugabyteCMD = []string{
 	"bin/yugabyted", "start",
 	"--callhome", "false",
-	"--fault_tolerance", "none",
 	"--background", "false",
 	"--ui", "false",
 	"--tserver_flags", "ysql_max_connections=5000",
@@ -29,19 +32,25 @@ var yugabyteCMD = []string{
 
 // YugabyteDBContainer manages the execution of an instance of a dockerized YugabyteDB for tests.
 type YugabyteDBContainer struct {
-	Name     string
-	Image    string
-	HostIP   string
-	HostPort int
-	DbPort   docker.Port
-	Binds    []string
+	Name      string
+	Image     string
+	HostIP    string
+	Network   string
+	Cmd       []string
+	HostPort  int
+	DbPort    docker.Port
+	PortMap   docker.Port
+	PortBinds map[docker.Port][]docker.PortBinding
+	NetToIP   map[string]*docker.EndpointConfig
+	AutoRm    bool
 
 	client      *docker.Client
 	containerID string
 }
 
 // InitDefaults initialized default parameters.
-func (y *YugabyteDBContainer) InitDefaults() error {
+func (y *YugabyteDBContainer) InitDefaults(t *testing.T) {
+	t.Helper()
 	if y.Image == "" {
 		y.Image = defaultImage
 	}
@@ -58,64 +67,62 @@ func (y *YugabyteDBContainer) InitDefaults() error {
 		y.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
 	}
 
-	if y.client == nil {
-		client, err := docker.NewClientFromEnv()
-		if err != nil {
-			return err
-		}
-		y.client = client
+	if y.Cmd == nil {
+		y.Cmd = yugabyteCMD
 	}
 
-	return nil
+	if y.PortMap == "" {
+		y.PortMap = defaultPortMap
+	}
+
+	if y.PortBinds == nil {
+		y.PortBinds = map[docker.Port][]docker.PortBinding{
+			y.PortMap: {{
+				HostIP:   y.HostIP,
+				HostPort: strconv.Itoa(y.HostPort),
+			}},
+		}
+	}
+	if y.client == nil {
+		y.client = getDockerClient(t)
+	}
 }
 
 // StartContainer runs a YugabyteDB container.
-func (y *YugabyteDBContainer) StartContainer(ctx context.Context) error {
-	err := y.InitDefaults()
-	if err != nil {
-		return err
-	}
+func (y *YugabyteDBContainer) StartContainer(ctx context.Context, t *testing.T) {
+	t.Helper()
+	y.InitDefaults(t)
 
-	err = y.createContainer(ctx)
-	if err != nil {
-		return err
-	}
+	y.createContainer(ctx, t)
 
 	// Starts the container
-	err = y.client.StartContainerWithContext(y.containerID, nil, ctx)
+	err := y.client.StartContainerWithContext(y.containerID, nil, ctx)
 	if _, ok := err.(*docker.ContainerAlreadyRunning); ok {
-		return nil
-	} else if err != nil {
-		return err
+		t.Log("Container is already running")
+		return
 	}
+	require.NoError(t, err)
 
 	// Stream logs to stdout/stderr
-	go y.streamLogs()
-
-	return nil
+	go y.streamLogs(t)
 }
 
 // createContainer attempts to create a container instance, or attach to an existing one.
-func (y *YugabyteDBContainer) createContainer(ctx context.Context) error {
+func (y *YugabyteDBContainer) createContainer(ctx context.Context, t *testing.T) {
+	t.Helper()
 	// If container exists, we don't have to create it.
-	found, err := y.findContainer()
-	if err != nil {
-		return err
-	}
+	found := y.findContainer(t)
 
 	if found {
-		return nil
+		return
 	}
 
 	// Pull the image if not exist
-	err = y.client.PullImage(docker.PullImageOptions{
+	require.NoError(t, y.client.PullImage(docker.PullImageOptions{
 		Context:      ctx,
 		Repository:   y.Image,
 		OutputStream: os.Stdout,
-	}, docker.AuthConfiguration{})
-	if err != nil {
-		return err
-	}
+	}, docker.AuthConfiguration{}))
 
 	// Create the container instance
 	container, err := y.client.CreateContainer(
@@ -124,17 +131,11 @@ func (y *YugabyteDBContainer) createContainer(ctx context.Context) error {
 			Name:    y.Name,
 			Config: &docker.Config{
 				Image: y.Image,
-				Cmd:   yugabyteCMD,
+				Cmd:   y.Cmd,
 			},
 			HostConfig: &docker.HostConfig{
-				AutoRemove: true,
-				PortBindings: map[docker.Port][]docker.PortBinding{
-					y.DbPort: {{
-						HostIP:   y.HostIP,
-						HostPort: strconv.Itoa(y.HostPort),
-					}},
-				},
-				Binds: y.Binds,
+				AutoRemove:   y.AutoRm,
+				PortBindings: y.PortBinds,
 			},
 		},
 	)
@@ -142,52 +143,40 @@ func (y *YugabyteDBContainer) createContainer(ctx context.Context) error {
 	// If container created successfully, finish.
 	if err == nil {
 		y.containerID = container.ID
-		return nil
-	} else if !errors.Is(err, docker.ErrContainerAlreadyExists) {
-		return err
+		return
 	}
+	require.ErrorIs(t, err, docker.ErrContainerAlreadyExists)
 
 	// Try to find it again.
-	found, err = y.findContainer()
-	if err != nil {
-		return err
-	}
-
-	if found {
-		return nil
-	}
-
-	return errors.New("cannot create container (already exists), but cannot find it")
+	require.True(t, y.findContainer(t), "cannot create container (already exists), but cannot find it")
 }
 
 // findContainer looks up a container with the same name.
-func (y *YugabyteDBContainer) findContainer() (bool, error) {
+func (y *YugabyteDBContainer) findContainer(t *testing.T) bool {
+	t.Helper()
 	allContainers, err := y.client.ListContainers(docker.ListContainersOptions{All: true})
-	if err != nil {
-		return false, err
-	}
+	require.NoError(t, err, "could not load containers.")
 
 	for _, c := range allContainers {
 		for _, n := range c.Names {
 			if n == y.Name || n == fmt.Sprintf("/%s", y.Name) {
 				y.containerID = c.ID
-				return true, nil
+				return true
 			}
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // getConnectionOptions inspect the container and fetches the available connection options.
-func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context) ([]*Connection, error) {
+func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context, t *testing.T) []*Connection {
+	t.Helper()
 	container, err := y.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
 		ID:      y.containerID,
 	})
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
 	connOptions := []*Connection{
 		NewConnection(container.NetworkSettings.IPAddress, y.DbPort.Port()),
@@ -196,11 +185,24 @@ func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context) ([]*Conn
 		connOptions = append(connOptions, NewConnection(p.HostIP, p.HostPort))
 	}
 
-	return connOptions, nil
+	return connOptions
+}
+
+// getContainerConnection inspect the container and fetches its connection.
+func (y *YugabyteDBContainer) getContainerConnection(ctx context.Context, t *testing.T) *Connection {
+	t.Helper()
+	container, err := y.client.InspectContainerWithOptions(docker.InspectContainerOptions{
+		Context: ctx,
+		ID:      y.containerID,
+	})
+	require.NoError(t, err)
+
+	return NewConnection(container.NetworkSettings.IPAddress, y.DbPort.Port())
 }
 
 // streamLogs streams the container output to the requested stream.
-func (y *YugabyteDBContainer) streamLogs() {
+func (y *YugabyteDBContainer) streamLogs(t *testing.T) {
+	t.Helper()
 	logOptions := docker.LogsOptions{
 		Context:      context.Background(),
 		Container:    y.containerID,
@@ -211,5 +213,25 @@ func (y *YugabyteDBContainer) streamLogs() {
 		Stdout:       true,
 	}
 
-	_ = y.client.Logs(logOptions)
+	assert.NoError(t, y.client.Logs(logOptions))
+}
+
+// GetContainerLogs return the output of the YugabyteDBContainer.
+func (y *YugabyteDBContainer) GetContainerLogs(t *testing.T) string {
+	t.Helper()
+	var outputBuffer bytes.Buffer
+	require.NoError(t, y.client.Logs(docker.LogsOptions{
+		Stdout:       true, // Capture standard output
+		Container:    y.Name,
+		OutputStream: &outputBuffer, // Capture in a string
+	}))
+
+	return outputBuffer.String()
+}
+
+func getDockerClient(t *testing.T) *docker.Client {
+	t.Helper()
+	client, err := docker.NewClientFromEnv()
+	require.NoError(t, err)
+	return client
 }
