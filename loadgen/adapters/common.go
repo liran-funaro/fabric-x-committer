@@ -8,7 +8,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
@@ -81,8 +80,8 @@ func (c *commonAdapter) setupCoordinator(ctx context.Context, client protocoordi
 	if !ok {
 		return errors.New("no meta namespace signer found")
 	}
-	_, err := client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
-		Policies: []*protosigverifierservice.PolicyItem{{
+	_, err := client.UpdatePolicies(ctx, &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{{
 			Namespace: types.MetaNamespaceID,
 			Policy:    protoutil.MarshalOrPanic(signer.GetVerificationPolicy()),
 		}},

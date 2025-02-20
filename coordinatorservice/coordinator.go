@@ -13,7 +13,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
@@ -261,7 +260,7 @@ func waitForReady(ctx context.Context, ready []chan any) bool {
 
 // UpdatePolicies updates the verification policies.
 func (c *CoordinatorService) UpdatePolicies(
-	ctx context.Context, p *protosigverifierservice.Policies,
+	ctx context.Context, p *protoblocktx.Policies,
 ) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, c.policyMgr.updatePolicies(ctx, p)
 }

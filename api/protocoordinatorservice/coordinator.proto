@@ -5,7 +5,6 @@ option go_package = "github.ibm.com/decentralized-trust-research/scalable-commit
 package protocoordinatorservice;
 
 import "api/protoblocktx/block_tx.proto";
-import "api/protosigverifierservice/verifier.proto";
 
 service Coordinator {
     rpc BlockProcessing(stream protoblocktx.Block) returns (stream protoblocktx.TransactionsStatus);
@@ -14,7 +13,7 @@ service Coordinator {
     rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
     // This method will be removed once the config block is processed by the coordinator.
-    rpc UpdatePolicies(protosigverifierservice.Policies) returns (Empty);
+    rpc UpdatePolicies(protoblocktx.Policies) returns (Empty);
     rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
 }
 

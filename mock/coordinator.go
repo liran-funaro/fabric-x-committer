@@ -11,7 +11,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -54,7 +53,7 @@ func (c *Coordinator) Close() {
 
 // UpdatePolicies updates the verification policies.
 func (*Coordinator) UpdatePolicies(
-	context.Context, *protosigverifierservice.Policies,
+	context.Context, *protoblocktx.Policies,
 ) (*protocoordinatorservice.Empty, error) {
 	return &protocoordinatorservice.Empty{}, nil
 }

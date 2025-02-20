@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"go.uber.org/zap/zapcore"
 
@@ -460,7 +459,6 @@ func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (map[string]*protoblocktx.StatusWithHeight, error) {
-
 	var rows map[string]*protoblocktx.StatusWithHeight
 	retryErr := db.retry.Execute(ctx, func() error {
 		r, err := db.pool.Query(ctx, queryTxIDsStatus, txIDs)
@@ -493,16 +491,16 @@ func (db *database) readStatusWithHeight(
 	return rows, errors.Wrap(retryErr, "error occurred while reading")
 }
 
-func (db *database) readPolicies(ctx context.Context) (*protosigverifierservice.Policies, error) {
+func (db *database) readPolicies(ctx context.Context) (*protoblocktx.Policies, error) {
 	keys, values, err := db.retryQueryAndReadRows(ctx, queryPolicies)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read from rows of meta namespace")
 	}
-	policy := &protosigverifierservice.Policies{
-		Policies: make([]*protosigverifierservice.PolicyItem, len(keys)),
+	policy := &protoblocktx.Policies{
+		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
 	}
 	for i, key := range keys {
-		policy.Policies[i] = &protosigverifierservice.PolicyItem{
+		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(key),
 			Policy:    values[i],
 		}

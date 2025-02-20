@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
@@ -191,7 +190,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 		require.Equal(t, txBatch, <-env.outputTxs)
 
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			require.ElementsMatch(t, []*protosigverifierservice.PolicyItem{
+			require.ElementsMatch(t, []*protoblocktx.PolicyItem{
 				{
 					Namespace: "1",
 					Policy:    pBytes,

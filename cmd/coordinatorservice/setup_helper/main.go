@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
@@ -69,8 +68,8 @@ func setVerificationKey(endpoint connection.Endpoint, publicKey []byte, scheme s
 	defer cancel()
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	_, err = client.UpdatePolicies(ctx, &protosigverifierservice.Policies{
-		Policies: []*protosigverifierservice.PolicyItem{{
+	_, err = client.UpdatePolicies(ctx, &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{{
 			Namespace: types.MetaNamespaceID,
 			Policy:    pBytes,
 		}},

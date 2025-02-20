@@ -75,6 +75,16 @@ message StatusWithHeight {
     uint32 tx_number = 3;
 }
 
+message Policies {
+    repeated PolicyItem policies = 1;
+}
+
+message PolicyItem {
+    string namespace = 1;
+    bytes policy = 2;
+    bytes version = 3;
+}
+
 enum Status {
     COMMITTED = 0;
     ABORTED_MVCC_CONFLICT = 1;

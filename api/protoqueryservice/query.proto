@@ -4,10 +4,13 @@ option go_package = "github.ibm.com/decentralized-trust-research/scalable-commit
 
 package protoqueryservice;
 
+import "api/protoblocktx/block_tx.proto";
+
 service QueryService {
   rpc GetRows(Query) returns (Rows) {}
   rpc BeginView(ViewParameters) returns (View) {}
   rpc EndView(View) returns (View) {}
+  rpc GetPolicies(Empty) returns (protoblocktx.Policies) {}
 }
 
 message View {
@@ -53,3 +56,5 @@ message Row {
   bytes value = 2;
   bytes version = 3;
 }
+
+message Empty {}

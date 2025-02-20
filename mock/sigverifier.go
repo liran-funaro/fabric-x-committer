@@ -16,7 +16,7 @@ import (
 // - when the tx has non-empty signature, it is valid.
 type SigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	policies          *protosigverifierservice.Policies
+	policies          *protoblocktx.Policies
 	numBlocksReceived *atomic.Uint32
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
@@ -28,12 +28,12 @@ func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
 		UnimplementedVerifierServer: protosigverifierservice.UnimplementedVerifierServer{},
 		numBlocksReceived:           &atomic.Uint32{},
-		policies:                    &protosigverifierservice.Policies{},
+		policies:                    &protoblocktx.Policies{},
 	}
 }
 
 // UpdatePolicies is a mock implementation of the protosignverifierservice.UpdatePolicies.
-func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protosigverifierservice.Policies) (
+func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protoblocktx.Policies) (
 	*protosigverifierservice.Empty, error,
 ) {
 	m.policies.Policies = append(m.policies.Policies, policies.Policies...)
@@ -115,7 +115,7 @@ func (m *SigVerifier) GetNumBlocksReceived() uint32 {
 }
 
 // GetPolicies returns the verification key of the mock verifier.
-func (m *SigVerifier) GetPolicies() *protosigverifierservice.Policies {
+func (m *SigVerifier) GetPolicies() *protoblocktx.Policies {
 	return m.policies
 }
 

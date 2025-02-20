@@ -107,7 +107,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 
 func (svm *signatureVerifierManager) updatePolicies(
 	ctx context.Context,
-	policies *protosigverifierservice.Policies,
+	policies *protoblocktx.Policies,
 ) error {
 	for i, sv := range svm.signVerifier {
 		logger.Infof("Updating policy for sv [%d]", i)

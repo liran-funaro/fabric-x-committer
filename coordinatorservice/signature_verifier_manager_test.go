@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -156,8 +155,8 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	nsID := "0"
-	expectedPolicy := &protosigverifierservice.Policies{
-		Policies: []*protosigverifierservice.PolicyItem{
+	expectedPolicy := &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{
 			policy.MakePolicy(t, nsID, &protoblocktx.NamespacePolicy{
 				Scheme:    signature.Ecdsa,
 				PublicKey: []byte("dummy"),

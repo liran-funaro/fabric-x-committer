@@ -8,6 +8,7 @@ package protosigverifierservice
 
 import (
 	context "context"
+	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -27,7 +28,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VerifierClient interface {
-	UpdatePolicies(ctx context.Context, in *Policies, opts ...grpc.CallOption) (*Empty, error)
+	UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error)
 	StartStream(ctx context.Context, opts ...grpc.CallOption) (Verifier_StartStreamClient, error)
 }
 
@@ -39,7 +40,7 @@ func NewVerifierClient(cc grpc.ClientConnInterface) VerifierClient {
 	return &verifierClient{cc}
 }
 
-func (c *verifierClient) UpdatePolicies(ctx context.Context, in *Policies, opts ...grpc.CallOption) (*Empty, error) {
+func (c *verifierClient) UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error) {
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, Verifier_UpdatePolicies_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -83,7 +84,7 @@ func (x *verifierStartStreamClient) Recv() (*ResponseBatch, error) {
 // All implementations must embed UnimplementedVerifierServer
 // for forward compatibility
 type VerifierServer interface {
-	UpdatePolicies(context.Context, *Policies) (*Empty, error)
+	UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error)
 	StartStream(Verifier_StartStreamServer) error
 	mustEmbedUnimplementedVerifierServer()
 }
@@ -92,7 +93,7 @@ type VerifierServer interface {
 type UnimplementedVerifierServer struct {
 }
 
-func (UnimplementedVerifierServer) UpdatePolicies(context.Context, *Policies) (*Empty, error) {
+func (UnimplementedVerifierServer) UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
 }
 func (UnimplementedVerifierServer) StartStream(Verifier_StartStreamServer) error {
@@ -112,7 +113,7 @@ func RegisterVerifierServer(s grpc.ServiceRegistrar, srv VerifierServer) {
 }
 
 func _Verifier_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Policies)
+	in := new(protoblocktx.Policies)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func _Verifier_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: Verifier_UpdatePolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VerifierServer).UpdatePolicies(ctx, req.(*Policies))
+		return srv.(VerifierServer).UpdatePolicies(ctx, req.(*protoblocktx.Policies))
 	}
 	return interceptor(ctx, in, info, handler)
 }

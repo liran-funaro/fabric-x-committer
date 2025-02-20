@@ -15,6 +15,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
@@ -36,6 +38,7 @@ type queryServiceTestEnv struct {
 }
 
 func TestQuery(t *testing.T) {
+	t.Parallel()
 	env := newQueryServiceTestEnv(t)
 
 	requiredItems := make([]*items, len(env.ns))
@@ -216,6 +219,31 @@ func TestQuery(t *testing.T) {
 	requireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
 }
 
+func TestQueryPolicies(t *testing.T) {
+	t.Parallel()
+	env := newQueryServiceTestEnv(t)
+
+	client := protoqueryservice.NewQueryServiceClient(env.clientConn)
+	policies, err := client.GetPolicies(env.ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, policies)
+	require.Len(t, policies.Policies, len(env.ns))
+
+	expectedNamespaces := make(map[string]any, len(env.ns))
+	for _, ns := range env.ns {
+		expectedNamespaces[ns] = nil
+	}
+
+	for _, p := range policies.Policies {
+		_, ok := expectedNamespaces[p.Namespace]
+		require.True(t, ok)
+		delete(expectedNamespaces, p.Namespace)
+		item, err := policy.ParsePolicyItem(p)
+		require.NoError(t, err)
+		require.Equal(t, signature.Ecdsa, item.Scheme)
+	}
+}
+
 func requireMapSize(t *testing.T, expectedSize int, m *sync.Map) {
 	n := 0
 	m.Range(func(_, _ any) bool {
@@ -242,7 +270,8 @@ func verToBytes(ver ...int) [][]byte {
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	cs := loadgen.GenerateNamespacesUnderTest(t, []string{"0", "1", "2"})
+	namespacesToTest := []string{"0", "1", "2"}
+	cs := loadgen.GenerateNamespacesUnderTest(t, namespacesToTest)
 
 	port, err := strconv.Atoi(cs.Port)
 	require.NoError(t, err)
@@ -283,7 +312,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	sConfig := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
-	test.RunServiceAndGrpcForTest(context.Background(), t, qs, sConfig, func(server *grpc.Server) {
+	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig, func(server *grpc.Server) {
 		protoqueryservice.RegisterQueryServiceServer(server, qs)
 	})
 
@@ -294,7 +323,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	})
 
 	// We set a default context with timeout to make sure the test never halts progress.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute*10)
 	t.Cleanup(cancel)
 
 	pool, err := vcservice.NewDatabasePool(ctx, config.Database)
@@ -305,7 +334,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		config:     config,
 		ctx:        ctx,
 		qs:         qs,
-		ns:         []string{"0", "1", "2"},
+		ns:         namespacesToTest,
 		clientConn: clientConn,
 		pool:       pool,
 	}

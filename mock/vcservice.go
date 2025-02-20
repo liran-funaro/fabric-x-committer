@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -64,8 +63,8 @@ func (vc *VcService) GetLastCommittedBlockNumber(
 func (*VcService) GetPolicies(
 	context.Context,
 	*protovcservice.Empty,
-) (*protosigverifierservice.Policies, error) {
-	return &protosigverifierservice.Policies{}, nil
+) (*protoblocktx.Policies, error) {
+	return &protoblocktx.Policies{}, nil
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.

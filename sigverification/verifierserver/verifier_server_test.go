@@ -62,8 +62,8 @@ func TestNoInput(t *testing.T) {
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
 
-	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-		Policies: []*sigverification.PolicyItem{
+	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{
 			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
@@ -90,8 +90,8 @@ func TestMinimalInput(t *testing.T) {
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, _ := factory.NewSigner(signingKey)
 
-	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-		Policies: []*sigverification.PolicyItem{
+	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{
 			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
@@ -101,7 +101,7 @@ func TestMinimalInput(t *testing.T) {
 	require.NoError(t, err)
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-	stream, _ := c.Client.StartStream(context.Background())
+	stream, _ := c.Client.StartStream(t.Context())
 
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -159,8 +159,8 @@ func TestBadTxFormat(t *testing.T) {
 	c := sigverification_test.NewTestState(t, New(parallelExecutionConfigQuick, m))
 
 	_, verificationKey := sigverification_test.GetSignatureFactory(signature.Ecdsa).NewKeys()
-	_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-		Policies: []*sigverification.PolicyItem{
+	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{
 			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
 				PublicKey: verificationKey,
 				Scheme:    signature.Ecdsa,
@@ -377,7 +377,7 @@ func TestUpdatePolicies(t *testing.T) {
 	m, ok := (&metrics.Provider{}).NewMonitoring(false, &latency.NoOpTracer{}).(*metrics.Metrics)
 	require.True(t, ok)
 	c := sigverification_test.NewTestState(t, New(parallelExecutionConfigQuick, m))
-	stream, err := c.Client.StartStream(context.Background())
+	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
 	ns1 := "ns1"
@@ -387,16 +387,16 @@ func TestUpdatePolicies(t *testing.T) {
 	t.Run("no partial valid update", func(t *testing.T) {
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, ns2Signer := makePolicyItem(t, ns2)
-		_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-			Policies: []*sigverification.PolicyItem{ns1Policy, ns2Policy},
+		_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 		})
 		require.NoError(t, err)
 
 		// We attempt a bad policies update.
 		// We expect no update since one of the given policies are invalid.
 		p3, _ := makePolicyItem(t, ns1)
-		_, err = c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-			Policies: []*sigverification.PolicyItem{
+		_, err = c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+			Policies: []*protoblocktx.PolicyItem{
 				p3,
 				policy.MakePolicy(t, ns2, &protoblocktx.NamespacePolicy{
 					PublicKey: []byte("bad-key"),
@@ -418,14 +418,14 @@ func TestUpdatePolicies(t *testing.T) {
 	t.Run("partial update", func(t *testing.T) {
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		_, err := c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-			Policies: []*sigverification.PolicyItem{ns1Policy, ns2Policy},
+		_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 		})
 		require.NoError(t, err)
 
 		ns2PolicyUpdate, ns2Signer := makePolicyItem(t, ns2)
-		_, err = c.Client.UpdatePolicies(context.Background(), &sigverification.Policies{
-			Policies: []*sigverification.PolicyItem{ns2PolicyUpdate},
+		_, err = c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
+			Policies: []*protoblocktx.PolicyItem{ns2PolicyUpdate},
 		})
 		require.NoError(t, err)
 
@@ -456,7 +456,7 @@ func TestParallelUpdatePolicies(t *testing.T) {
 	updateCount := len(ns) - 1
 	endBarrier := sync.WaitGroup{}
 	endBarrier.Add(updateCount)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 	uniqueNsSigners := make([]sigverification_test.NsSigner, updateCount)
 	commonNsSigners := make([]sigverification_test.NsSigner, updateCount)
@@ -465,8 +465,8 @@ func TestParallelUpdatePolicies(t *testing.T) {
 		uniqueNsSigners[i] = uniqueNsSigner
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
-		p := &sigverification.Policies{
-			Policies: []*sigverification.PolicyItem{uniqueNsPolicy, commonNsPolicy},
+		p := &protoblocktx.Policies{
+			Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 		}
 		go func() {
 			defer endBarrier.Done()
@@ -551,7 +551,8 @@ func makeTX(name string, namespaces ...string) *protoblocktx.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*sigverification.PolicyItem, sigverification_test.NsSigner) {
+func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, sigverification_test.NsSigner) {
+	t.Helper()
 	factory := sigverification_test.GetSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, err := factory.NewSigner(signingKey)

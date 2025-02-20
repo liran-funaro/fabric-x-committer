@@ -5,7 +5,6 @@ import (
 	"regexp"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"google.golang.org/protobuf/proto"
 )
@@ -35,10 +34,10 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
 // ListPolicyItems translates key-value list to policy items.
-func ListPolicyItems[T KeyValue](rws []T) []*protosigverifierservice.PolicyItem {
-	pd := make([]*protosigverifierservice.PolicyItem, len(rws))
+func ListPolicyItems[T KeyValue](rws []T) []*protoblocktx.PolicyItem {
+	pd := make([]*protoblocktx.PolicyItem, len(rws))
 	for i, rw := range rws {
-		pd[i] = &protosigverifierservice.PolicyItem{
+		pd[i] = &protoblocktx.PolicyItem{
 			Namespace: string(rw.GetKey()),
 			Policy:    rw.GetValue(),
 		}
@@ -47,7 +46,7 @@ func ListPolicyItems[T KeyValue](rws []T) []*protosigverifierservice.PolicyItem 
 }
 
 // ParsePolicyItem parses policy item to a namespace policy.
-func ParsePolicyItem(pd *protosigverifierservice.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
+func ParsePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
 	if err := validateNamespaceID(pd.Namespace); err != nil {
 		return nil, err
 	}

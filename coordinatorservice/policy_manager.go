@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 )
@@ -26,7 +25,7 @@ func (p *policyManager) updatePoliciesFromTx(
 		if len(pd) == 0 {
 			return nil
 		}
-		return p.updatePolicies(ctx, &protosigverifierservice.Policies{
+		return p.updatePolicies(ctx, &protoblocktx.Policies{
 			Policies: pd,
 		})
 	}
@@ -35,7 +34,7 @@ func (p *policyManager) updatePoliciesFromTx(
 
 func (p *policyManager) updatePolicies(
 	ctx context.Context,
-	policies *protosigverifierservice.Policies,
+	policies *protoblocktx.Policies,
 ) error {
 	return p.signVerifierMgr.updatePolicies(ctx, policies)
 }

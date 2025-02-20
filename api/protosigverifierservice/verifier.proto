@@ -8,17 +8,8 @@ import "api/protoblocktx/block_tx.proto";
 
 
 service Verifier {
-    rpc UpdatePolicies(Policies) returns (Empty);
+    rpc UpdatePolicies(protoblocktx.Policies) returns (Empty);
     rpc StartStream(stream RequestBatch) returns (stream ResponseBatch);
-}
-
-message Policies {
-    repeated PolicyItem policies = 1;
-}
-
-message PolicyItem {
-    string namespace = 1;
-    bytes policy = 2;
 }
 
 message Empty {

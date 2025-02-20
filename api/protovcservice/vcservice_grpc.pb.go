@@ -9,7 +9,6 @@ package protovcservice
 import (
 	context "context"
 	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	protosigverifierservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -36,7 +35,7 @@ type ValidationAndCommitServiceClient interface {
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
-	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protosigverifierservice.Policies, error)
+	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -105,8 +104,8 @@ func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Con
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protosigverifierservice.Policies, error) {
-	out := new(protosigverifierservice.Policies)
+func (c *validationAndCommitServiceClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error) {
+	out := new(protoblocktx.Policies)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetPolicies_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -122,7 +121,7 @@ type ValidationAndCommitServiceServer interface {
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
-	GetPolicies(context.Context, *Empty) (*protosigverifierservice.Policies, error)
+	GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -142,7 +141,7 @@ func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber
 func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetPolicies(context.Context, *Empty) (*protosigverifierservice.Policies, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPolicies not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {

@@ -68,13 +68,13 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	return g.Wait()
 }
 
-func getPolicies(res *ClientResources) *protosigverifierservice.Policies {
+func getPolicies(res *ClientResources) *protoblocktx.Policies {
 	e := workload.NewTxSignerVerifier(res.Profile.Transaction.Policy)
-	policyMsg := &protosigverifierservice.Policies{
-		Policies: make([]*protosigverifierservice.PolicyItem, 0, len(e.HashSigners)),
+	policyMsg := &protoblocktx.Policies{
+		Policies: make([]*protoblocktx.PolicyItem, 0, len(e.HashSigners)),
 	}
 	for nsID, s := range e.HashSigners {
-		policyMsg.Policies = append(policyMsg.Policies, &protosigverifierservice.PolicyItem{
+		policyMsg.Policies = append(policyMsg.Policies, &protoblocktx.PolicyItem{
 			Namespace: nsID,
 			Policy:    protoutil.MarshalOrPanic(s.GetVerificationPolicy()),
 		})

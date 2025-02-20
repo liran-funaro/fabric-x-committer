@@ -7,7 +7,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -224,7 +223,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 func (vc *ValidatorCommitterService) GetPolicies(
 	ctx context.Context,
 	_ *protovcservice.Empty,
-) (*protosigverifierservice.Policies, error) {
+) (*protoblocktx.Policies, error) {
 	policies, err := vc.db.readPolicies(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)

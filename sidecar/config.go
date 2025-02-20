@@ -8,7 +8,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -30,7 +29,7 @@ type Config struct {
 	ConfigBlockPath string `mapstructure:"config-block-path"`
 	// Policies are used internally, but cannot be passed via the yaml file.
 	// It will be removed once the coordinator process config TXs.
-	Policies *protosigverifierservice.Policies
+	Policies *protoblocktx.Policies
 }
 
 // CoordinatorConfig holds the endpoint of the coordinator component in the
@@ -72,7 +71,7 @@ func bundleFromConfigBlock(configBlock *cb.Block) (*channelconfig.Bundle, error)
 }
 
 // policiesFromConfigBlock will be removed once the coordinator will process config TXs.
-func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierservice.Policies, error) {
+func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protoblocktx.Policies, error) {
 	ac, ok := bundle.ApplicationConfig()
 	if !ok {
 		return nil, errors.New("application configuration is missing")
@@ -93,8 +92,8 @@ func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protosigverifierser
 	if err != nil {
 		return nil, err
 	}
-	return &protosigverifierservice.Policies{
-		Policies: []*protosigverifierservice.PolicyItem{{
+	return &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{{
 			Namespace: types.MetaNamespaceID,
 			Policy:    pBytes,
 		}},

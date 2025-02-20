@@ -75,7 +75,7 @@ func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *
 
 // UpdatePolicies updates the policies of the verifier.
 func (s *VerifierServer) UpdatePolicies(
-	_ context.Context, policies *sigverification.Policies,
+	_ context.Context, policies *protoblocktx.Policies,
 ) (*sigverification.Empty, error) {
 	// We parse the policy during validation and mark transactions as invalid if parsing fails.
 	// While it might seem unlikely that policy parsing would fail at this stage, it could happen

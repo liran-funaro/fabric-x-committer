@@ -5,14 +5,13 @@ option go_package = "github.ibm.com/decentralized-trust-research/scalable-commit
 package protovcservice;
 
 import "api/protoblocktx/block_tx.proto";
-import "api/protosigverifierservice/verifier.proto";
 
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream protoblocktx.TransactionsStatus);
   rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {}
   rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
   rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {}
-  rpc GetPolicies(Empty) returns (protosigverifierservice.Policies) {}
+  rpc GetPolicies(Empty) returns (protoblocktx.Policies) {}
 }
 
 message TransactionBatch {

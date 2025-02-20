@@ -6,13 +6,18 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 //go:embed query.sql
 var queryRowSQLTemplate string
+
+var queryPoliciesStmt = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
 
 // sharedPool and sharedLazyTx implements of sharedQuerier.
 // sharedPool returns a new connection (implements acquiredQuerier)
@@ -85,11 +90,37 @@ func unsafeQueryRows(
 		return nil, err
 	}
 	defer r.Close()
+	return readKeysAndValues(r, len(keys))
+}
 
-	rows := make([]*protoqueryservice.Row, 0, len(keys))
+func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Policies, error) {
+	r, err := queryObj.Query(ctx, queryPoliciesStmt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query policies")
+	}
+	defer r.Close()
+	rows, err := readKeysAndValues(r, 1)
+	if err != nil {
+		return nil, err
+	}
+	policy := &protoblocktx.Policies{
+		Policies: make([]*protoblocktx.PolicyItem, len(rows)),
+	}
+	for i, row := range rows {
+		policy.Policies[i] = &protoblocktx.PolicyItem{
+			Namespace: string(row.Key),
+			Policy:    row.Value,
+			Version:   row.Version,
+		}
+	}
+	return policy, nil
+}
+
+func readKeysAndValues(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, error) {
+	rows := make([]*protoqueryservice.Row, 0, expectedSize)
 	for r.Next() {
 		v := &protoqueryservice.Row{}
-		if err = r.Scan(&v.Key, &v.Value, &v.Version); err != nil {
+		if err := r.Scan(&v.Key, &v.Value, &v.Version); err != nil {
 			return nil, err
 		}
 		rows = append(rows, v)

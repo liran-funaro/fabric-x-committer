@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
@@ -140,6 +141,14 @@ func (q *QueryService) GetRows(
 		prometheusmetrics.AddToCounter(q.metrics.keysResponded, len(resRows))
 	}
 	return res, err
+}
+
+// GetPolicies implements the query-service interface.
+func (q *QueryService) GetPolicies(
+	ctx context.Context,
+	_ *protoqueryservice.Empty,
+) (*protoblocktx.Policies, error) {
+	return queryPolicies(ctx, q.batcher.pool)
 }
 
 func (q *QueryService) assignRequest(

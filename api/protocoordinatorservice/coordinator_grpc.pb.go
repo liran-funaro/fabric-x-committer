@@ -9,7 +9,6 @@ package protocoordinatorservice
 import (
 	context "context"
 	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	protosigverifierservice "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -40,7 +39,7 @@ type CoordinatorClient interface {
 	GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 	// This method will be removed once the config block is processed by the coordinator.
-	UpdatePolicies(ctx context.Context, in *protosigverifierservice.Policies, opts ...grpc.CallOption) (*Empty, error)
+	UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
@@ -119,7 +118,7 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *proto
 	return out, nil
 }
 
-func (c *coordinatorClient) UpdatePolicies(ctx context.Context, in *protosigverifierservice.Policies, opts ...grpc.CallOption) (*Empty, error) {
+func (c *coordinatorClient) UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error) {
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, Coordinator_UpdatePolicies_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -147,7 +146,7 @@ type CoordinatorServer interface {
 	GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	// This method will be removed once the config block is processed by the coordinator.
-	UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error)
+	UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
@@ -171,7 +170,7 @@ func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedCoordinatorServer) UpdatePolicies(context.Context, *protosigverifierservice.Policies) (*Empty, error) {
+func (UnimplementedCoordinatorServer) UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
 }
 func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
@@ -289,7 +288,7 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 }
 
 func _Coordinator_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(protosigverifierservice.Policies)
+	in := new(protoblocktx.Policies)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -301,7 +300,7 @@ func _Coordinator_UpdatePolicies_Handler(srv interface{}, ctx context.Context, d
 		FullMethod: Coordinator_UpdatePolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).UpdatePolicies(ctx, req.(*protosigverifierservice.Policies))
+		return srv.(CoordinatorServer).UpdatePolicies(ctx, req.(*protoblocktx.Policies))
 	}
 	return interceptor(ctx, in, info, handler)
 }
