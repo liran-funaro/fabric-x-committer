@@ -73,11 +73,8 @@ MAKEFLAGS += --jobs=16
 #########################
 
 test: build
-	# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
-	go list ./... \
-		| grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/integration" \
-		| grep -v "github.ibm.com/decentralized-trust-research/scalable-committer/docker" \
-		| xargs go test -v
+	@# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
+	@go test -v $(shell go list ./... | grep -vE ".*/scalable-committer/(docker|integration)")
 
 integration-test: build
 	go test -timeout 30m -v ./integration/...
