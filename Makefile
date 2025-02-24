@@ -66,8 +66,6 @@ endif
 
 MAKEFLAGS += --jobs=16
 
-.PHONY: $(MAKECMDGOALS)
-
 #########################
 # Quickstart
 #########################
@@ -85,23 +83,23 @@ container-test: build-test-node-image build-mock-orderer-image
 test-package-%: build
 	go test -v ./$*/...
 
-test-cover:
+test-cover: build
 	go test -v -coverprofile=coverage.profile ./...
 
-test-cover-%:
+test-cover-%: build
 	go test -v -coverprofile=$*.coverage.profile "./$*/..."
 
-cover-report:
+cover-report: FORCE
 	go tool cover -html=coverage.profile
 
-cover-report-%:
+cover-report-%: FORCE
 	go tool cover -html=$*.coverage.profile
 
-clean:
+clean: FORCE
 	@rm -rf $(output_dir)
 	@rm -rf $(arch_output_dir)
 
-kill-test-docker:
+kill-test-docker: FORCE
 	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(DOCKER_CMD) rm -f
 
 #########################
@@ -111,12 +109,12 @@ kill-test-docker:
 PROTO_TARGETS ?= $(shell find ./api \
 	 -name '*.proto' -print0 | \
 	 xargs -0 -n 1 dirname | xargs -n 1 basename | \
-	 sort -u | grep -v testdata \
+	 sort -u | sed -e "s/^proto/proto-/" \
 )
 
 proto: $(PROTO_TARGETS)
 
-proto%:
+proto-%: FORCE
 	@echo "Compiling: $*"
 	@protoc --proto_path="${PWD}" \
           --go-grpc_out=. --go-grpc_opt=paths=source_relative \
@@ -134,50 +132,50 @@ $(cache_dir) $(mod_cache_dir):
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
 BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor \
-							loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
+			  loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
 
 build: $(output_dir) $(BUILD_TARGETS)
 
 build-arch: build-arch-linux-$(arch) build-arch-linux-amd64 build-arch-linux-arm64 build-arch-linux-s390x
 
-build-arch-%:
+build-arch-%: FORCE
 	@CGO_ENABLED=0 make \
 		os=$(word 1, $(subst -, ,$*)) \
 		arch=$(word 2, $(subst -, ,$*)) \
 		output_dir=$(arch_output_dir)/$* \
 		build
 
-coordinator: $(output_dir)
+coordinator: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/coordinator" ./cmd/coordinatorservice
 
-signatureverifier: $(output_dir)
+signatureverifier: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/signatureverifier" ./cmd/sigverification
 
-validatorpersister: $(output_dir)
+validatorpersister: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/validatorpersister" ./cmd/vcservice
 
-sidecar: $(output_dir)
+sidecar: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/sidecar" ./cmd/sidecar
 
-queryexecutor: $(output_dir)
+queryexecutor: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/queryexecutor" ./cmd/queryservice
 
-loadgen: $(output_dir)
+loadgen: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/loadgen" ./cmd/loadgen
 
-coordinator_setup: $(output_dir)
+coordinator_setup: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/coordinator_setup" ./cmd/coordinatorservice/setup_helper
 
-mockvcservice: $(output_dir)
+mockvcservice: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/mockvcservice" ./cmd/mockvcservice
 
-mocksigservice: $(output_dir)
+mocksigservice: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/mocksigservice" ./cmd/mocksigservice
 
-mockorderingservice: $(output_dir)
+mockorderingservice: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/mockorderingservice" ./cmd/mockorderingservice
 
-build-docker: $(cache_dir) $(mod_cache_dir)
+build-docker: FORCE $(cache_dir) $(mod_cache_dir)
 	$(docker_cmd) run --rm -it \
 	  --mount "type=bind,source=$(project_dir),target=$(project_dir)" \
 	  --mount "type=bind,source=$(cache_dir),target=$(cache_dir)" \
@@ -188,7 +186,6 @@ build-docker: $(cache_dir) $(mod_cache_dir)
 	  $(golang_image) \
     make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
-
 
 build-test-node-image: build-arch
 	${docker_cmd} build \
@@ -212,7 +209,13 @@ build-mock-orderer-image: build-arch
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		.
 
-lint:
+lint: FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --sort-results --new-from-rev=main --timeout=4m
 	@echo "Linting Complete. Parsing Errors..."
+
+# https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
+# If a rule has no prerequisites or recipe, and the target of the rule is a nonexistent file,
+# then make imagines this target to have been updated whenever its rule is run.
+# This implies that all targets depending on this one will always have their recipe run.
+FORCE:
