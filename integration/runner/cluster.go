@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
-	"os/exec"
 	"path"
 	"sync"
 	"testing"
@@ -90,19 +88,7 @@ type (
 
 // NewCluster creates a new test cluster.
 func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
-	dir, err := os.Getwd()
-	require.NoError(t, err)
-	t.Logf("Working dir: %s", dir)
-	buildCmd := exec.Command("make", "build")
-	buildCmd.Dir = path.Clean(path.Join(dir, "../.."))
-	makeRun := run(buildCmd, "make", "")
-	select {
-	case err = <-makeRun.Wait():
-		require.NoError(t, err)
-	case <-time.After(3 * time.Minute):
-		makeRun.Signal(os.Kill)
-		t.Fatalf("Failed to build binaries")
-	}
+	t.Helper()
 
 	var dbEnvironment *vcservice.DatabaseTestEnv
 	if clusterConfig.DBOpts == nil {

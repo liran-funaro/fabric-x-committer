@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/onsi/gomega"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
@@ -55,7 +54,14 @@ func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *process
 	}
 }
 
-func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:ireturn
+// Run executes the specified command and returns the corresponding process.
+// It is important to note that the underlying invocation function (Invoke)
+// returns only when either process.Ready or process.Wait has been read.
+// Consequently, the caller only needs to read process.Wait to wait for the
+// process to complete and capture any errors that may have occurred during execution.
+//
+//nolint:ireturn
+func Run(cmd *exec.Cmd, name, startCheck string) ifrit.Process {
 	p := ginkgomon.New(ginkgomon.Config{
 		Command:           cmd,
 		Name:              name,
@@ -66,13 +72,12 @@ func run(cmd *exec.Cmd, name, startCheck string) ifrit.Process { //nolint:iretur
 		},
 	})
 	process := ifrit.Invoke(p)
-	gomega.Eventually(process.Ready(), 3*time.Minute, 1*time.Second).Should(gomega.BeClosed())
 	return process
 }
 
 func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
 	c := exec.Command(cmd, "start", "--configs", configFilePath)
-	return run(c, name, "Serving")
+	return Run(c, name, "Serving")
 }
 
 func newQueryServiceOrVCServiceConfig(
