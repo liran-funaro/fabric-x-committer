@@ -80,6 +80,11 @@ func getEncoderConfig(dev bool) zapcore.EncoderConfig {
 }
 
 func New(name string) *Logger {
+	// Due to package initialization order, the Fabric package that initialize the GRPC logger
+	// might be initialized after our own package.
+	// Since methods calls can happen only after package initialization,
+	// this call ensures the GRPC logger will stay quiet.
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
 	return &loggerInstance
 }
 
