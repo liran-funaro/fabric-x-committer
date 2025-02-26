@@ -5,12 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/protobuf/proto"
@@ -24,7 +27,9 @@ type svMgrTestEnv struct {
 	grpcServers         *test.GrpcServers
 }
 
-func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
+func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
+	t.Helper()
+	expectedEndError := string(expectedEndErrorMsg)
 	svs, sc := mock.StartMockSVService(t, numSvService)
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
@@ -39,14 +44,23 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 		},
 	)
 
-	test.RunServiceForTest(context.Background(), t, svm.run, func(ctx context.Context) bool {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-svm.connectionReady:
-			return true
-		}
-	})
+	test.RunServiceForTest(t.Context(), t,
+		func(ctx context.Context) error {
+			if expectedEndError != "" {
+				require.ErrorContains(t, connection.FilterStreamRPCError(svm.run(ctx)), expectedEndError)
+			} else {
+				assert.NoError(t, svm.run(ctx))
+			}
+			return nil
+		},
+		func(ctx context.Context) bool {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-svm.connectionReady:
+				return true
+			}
+		})
 
 	env := &svMgrTestEnv{
 		signVerifierManager: svm,
@@ -60,6 +74,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int) *svMgrTestEnv {
 }
 
 func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs dependencygraph.TxNodeBatch) {
+	t.Helper()
 	select {
 	case actualTxBatch := <-e.outputValidatedTxs:
 		require.ElementsMatch(t, expectedValidatedTxs, actualTxBatch)
@@ -69,6 +84,7 @@ func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs depende
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
+	t.Parallel()
 	// SigVerifier marks valid and invalid flag as follows:
 	// - when the block number is even, the even numbered txs are valid and the odd numbered txs are invalid
 	// - when the block number is odd, the even numbered txs are invalid and the odd numbered txs are valid
@@ -104,22 +120,23 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 }
 
 func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
+	t.Parallel()
 	env := newSvMgrTestEnv(t, 2)
 
 	numTxs := 10
 	numBlocks := 1000
 	txBatches := make([]dependencygraph.TxNodeBatch, numBlocks)
 	expectedValidatedTxs := make([]dependencygraph.TxNodeBatch, numBlocks)
-	for i := 0; i < numBlocks; i++ {
+	for i := range numBlocks {
 		txBatches[i], expectedValidatedTxs[i] = createTxNodeBatchForTest(t, i, numTxs)
 	}
-	for i := 0; i < numBlocks; i++ {
+	for i := range numBlocks {
 		env.inputTxBatch <- txBatches[i]
 	}
 
 	deadline := time.After(10 * time.Second)
 	// For each input batch in the input, we expect a batch in each of the two outputs.
-	for i := 0; i < numBlocks; i++ {
+	for range numBlocks {
 		select {
 		case txBatch := <-env.outputValidatedTxs:
 			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].Tx.BlockNumber], txBatch)
@@ -138,12 +155,13 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 
 	for _, sv := range env.signVerifierManager.signVerifier {
 		sv.txMu.Lock()
-		require.Len(t, sv.txBeingValidated, 0)
+		require.Empty(t, sv.txBeingValidated)
 		sv.txMu.Unlock()
 	}
 }
 
 func TestSignatureVerifierManagerKey(t *testing.T) {
+	t.Parallel()
 	env := newSvMgrTestEnv(t, 3)
 
 	// verify that all mock policy verifiers have empty verification key.
@@ -152,7 +170,7 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 	}
 
 	// set verification key
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	nsID := "0"
 	expectedPolicy := &protoblocktx.Policies{
@@ -173,6 +191,7 @@ func TestSignatureVerifierManagerKey(t *testing.T) {
 }
 
 func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
+	t.Parallel()
 	txBatch := dependencygraph.TxNodeBatch{}
 	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
 	for i := range 3 {
@@ -202,7 +221,7 @@ func createTxNodeBatchForTest(
 	_ *testing.T,
 	blkNum, numTxs int,
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
-	for i := 0; i < numTxs; i++ {
+	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
 				BlockNumber: uint64(blkNum), //nolint:gosec
@@ -235,6 +254,7 @@ func createTxNodeBatchForTest(
 }
 
 func TestSignatureVerifierManagerRecovery(t *testing.T) {
+	t.Parallel()
 	env := newSvMgrTestEnv(t, 1)
 	for _, sv := range env.mockSvService {
 		sv.MockFaultyNodeDropSize = 4
@@ -253,10 +273,10 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		return len(firstSv.txBeingValidated) == numTxs-6 // first 4 transactions would be pending
 	}, 4*time.Second, 100*time.Millisecond)
 
-	for _, s := range env.grpcServers.Servers {
+	for i, s := range env.grpcServers.Servers {
 		s.Stop()
+		test.CheckServerStopped(t, env.grpcServers.Configs[i].Endpoint.Address())
 	}
-	time.Sleep(time.Second)
 
 	for _, sv := range env.mockSvService {
 		sv.MockFaultyNodeDropSize = 0
@@ -267,4 +287,71 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 
 	env.requireTxBatch(t, expectedValidatedTxs[4:])
 	env.requireTxBatch(t, expectedValidatedTxs[:4])
+}
+
+func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
+	t.Parallel()
+	env := newSvMgrTestEnv(t, 1, []byte("invalid argument")...)
+
+	env.grpcServers.Servers[0].Stop()
+	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
+
+	pendingPoliciesUpdate := env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
+	require.Empty(t, pendingPoliciesUpdate)
+	ns1Policy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns1")
+	ns2Policy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns2")
+	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+	}))
+
+	pendingPoliciesUpdate = env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
+	require.Len(t, pendingPoliciesUpdate, 2)
+	require.Equal(t, ns1Policy, pendingPoliciesUpdate["ns1"])
+	require.Equal(t, ns2Policy, pendingPoliciesUpdate["ns2"])
+
+	ns2NewPolicy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns2")
+	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
+	}))
+
+	pendingPoliciesUpdate = env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
+	require.Len(t, pendingPoliciesUpdate, 2)
+	require.Equal(t, ns1Policy, pendingPoliciesUpdate["ns1"])
+	require.Equal(t, ns2NewPolicy, pendingPoliciesUpdate["ns2"])
+
+	blkNum := 0
+	numTxs := 10
+	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs)
+	env.inputTxBatch <- txBatch
+
+	require.Never(t, func() bool {
+		return len(pendingPoliciesUpdate) == 0
+	}, 2*time.Second, 1*time.Second)
+
+	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
+		t, env.mockSvService, env.grpcServers.Configs,
+	)
+
+	require.Eventually(t, func() bool {
+		return len(env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate) == 0
+	}, 3*time.Second, 250*time.Millisecond)
+
+	env.requireTxBatch(t, expectedValidatedTxs)
+
+	env.mockSvService[0].SetReturnErrorForUpdatePolicies(true)
+
+	// empty policies never reach the verifier
+	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{}))
+
+	require.Error(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
+		Policies: []*protoblocktx.PolicyItem{
+			{
+				Namespace: "$$$",
+			},
+		},
+	}))
+	env.inputTxBatch <- txBatch
+	require.Never(t, func() bool {
+		return len(env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate) == 0
+	}, 2*time.Second, 500*time.Millisecond)
 }

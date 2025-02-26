@@ -76,10 +76,17 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 
 	_, err = client.SetLastCommittedBlockNumber(ctx, nil)
-	require.True(t, HasCode(err, codes.Unimplemented))
+	require.True(t, HasCode(err, codes.Unimplemented)) // all APIs are codes.Unimplemented
 
 	_, err = client.GetLastCommittedBlockNumber(ctx, nil)
 	require.False(t, HasCode(err, codes.NotFound)) // all APIs are codes.Unimplemented
+
+	vcGrpc.Servers[0].Stop()
+	test.CheckServerStopped(t, vcGrpc.Configs[0].Endpoint.Address())
+
+	_, err = client.GetLastCommittedBlockNumber(ctx, nil)
+	require.True(t, HasCode(err, codes.Unavailable))
+	require.NoError(t, FilterUnavailableErrorCode(err))
 }
 
 func TestWrapErrors(t *testing.T) {

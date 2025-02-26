@@ -42,3 +42,12 @@ func WrapNotFound(err error) error {
 	}
 	return status.Error(codes.NotFound, err.Error()) //nolint:wrapcheck
 }
+
+// FilterUnavailableErrorCode rpc error that caused due to transient connectivity issue.
+func FilterUnavailableErrorCode(rpcErr error) error {
+	if HasCode(rpcErr, codes.Unavailable) {
+		return nil
+	}
+
+	return rpcErr
+}

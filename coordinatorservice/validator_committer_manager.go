@@ -2,15 +2,15 @@ package coordinatorservice
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
@@ -80,20 +80,21 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 	for i, serverConfig := range c.serversConfig {
 		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, &serverConfig.Endpoint)
-		vc, err := newValidatorCommitter(serverConfig, c.metrics, c.policyMgr)
+		vc, err := newValidatorCommitter(serverConfig, c.metrics, c.policyMgr) //nolint:contextcheck // issue #693
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to create validator client with %s", serverConfig.Endpoint.Address())
 		}
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 		vcm.validatorCommitter[i] = vc
 
 		g.Go(func() error {
-			return vc.sendTransactionsAndForwardStatus(
+			err := vc.sendTransactionsAndForwardStatus(
 				eCtx,
 				txBatchQueue,
 				channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
 				channel.NewWriter(eCtx, c.outgoingTxsStatus),
 			)
+			return errors.Wrap(err, "failed to send transactions and receive commit status from validator-committers")
 		})
 	}
 
@@ -112,7 +113,7 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 		}
 	}
 
-	return fmt.Errorf("failed to set the last committed block number [%d]: %w", lastBlock.Number, err)
+	return errors.Wrapf(err, "failed to set the last committed block number [%d]", lastBlock.Number)
 }
 
 func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
@@ -127,7 +128,7 @@ func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
 		}
 	}
 
-	return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
+	return nil, errors.Wrap(err, "failed to get the last committed block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
@@ -143,13 +144,13 @@ func (vcm *validatorCommitterManager) getTransactionsStatus(
 		}
 	}
 
-	return nil, fmt.Errorf("failed to get transactions status: %w", err)
+	return nil, errors.Wrap(err, "failed to get transactions status")
 }
 
 func (vcm *validatorCommitterManager) getPolicies(
 	ctx context.Context,
 ) error {
-	var errs []error //nolint:prealloc
+	var errs []error
 	for _, vc := range vcm.validatorCommitter {
 		policyMsg, err := vc.client.GetPolicies(ctx, nil)
 		if err != nil {
@@ -158,7 +159,7 @@ func (vcm *validatorCommitterManager) getPolicies(
 		}
 		return vcm.config.policyMgr.updatePolicies(ctx, policyMsg)
 	}
-	return fmt.Errorf("failed loading policy: %w", errors.Join(errs...))
+	return errors.Wrap(errors.Join(errs...), "failed loading policy: %w")
 }
 
 func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfMetrics, policyMgr *policyManager) (
@@ -166,11 +167,8 @@ func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfM
 ) {
 	conn, err := connection.Connect(connection.NewDialConfig(&serverConfig.Endpoint))
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to create connection to validator persister running at %s: %w",
-			&serverConfig.Endpoint,
-			err,
-		)
+		return nil, errors.Wrapf(err, "failed to create connection to validator persister running at %s",
+			&serverConfig.Endpoint)
 	}
 	logger.Infof("validator persister manager connected to validator persister at %s", &serverConfig.Endpoint)
 
@@ -205,7 +203,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 			return true
 		})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to start sender and receiver of validator-committer")
 		}
 		vc.txBeingValidated = &sync.Map{}
 
@@ -214,25 +212,37 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 		}
 
 		waitForConnection(ctx, vc.conn)
-		stream, err := vc.client.StartValidateAndCommitStream(ctx)
+
+		sCtx, sCancel := context.WithCancel(ctx)
+		stream, err := vc.client.StartValidateAndCommitStream(sCtx)
 		if err != nil {
 			logger.Warnf("Failed starting stream with error: %s", err)
+			sCancel()
+			continue
 		}
+		logger.Debug("VC stream is connected")
 
-		g, eCtx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			// NOTE: The channels outputValidatedTxsNode and outputTxsStatus should not depend on the stream context.
-			//       Doing so can result in permanently lost validation results. Specifically, after reading a
-			//       transaction from the stream and removing it from txBeingValidated, if the stream context is
-			//       canceled before we can write to these two channels, the validation results are lost forever.
-			return vc.forwardTransactionsStatusAndTxsNode(eCtx, stream, outputValidatedTxsNode, outputTxsStatus)
-		})
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() { //nolint:contextcheck
+			defer wg.Done()
+			vc.sendTransactionsToVCService(stream, inputTxBatch.WithContext(stream.Context()))
+		}()
 
-		g.Go(func() error {
-			return vc.sendTransactionsToVCService(eCtx, stream, inputTxBatch.WithContext(stream.Context()))
-		})
+		// NOTE: The channels outputValidatedTxsNode and outputTxsStatus should not depend on the stream context.
+		//       Doing so can result in permanently lost validation results. Specifically, after reading a
+		//       transaction from the stream and removing it from txBeingValidated, if the stream context is
+		//       canceled before we can write to these two channels, the validation results are lost forever.
+		//       Similarly, the first argument, i.e., context should not be stream context.
+		err = vc.receiveStatusAndForwardToOutput(ctx, stream, outputValidatedTxsNode, outputTxsStatus)
+		sCancel() // if receiveStatusAndForwardToOutput fails due to an internal error in
+		// the verifier, the sendTransactionsAndForwardStatus wouldn't return unless we cancel the stream context.
 
-		err = g.Wait()
+		wg.Wait()
+		if err != nil {
+			logger.ErrorStackTrace(err)
+			return errors.Wrap(err, "failed to receive status and forward to output")
+		}
 		logger.Debug("Stream ended: %s", err)
 	}
 
@@ -240,14 +250,14 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 }
 
 func (vc *validatorCommitter) sendTransactionsToVCService(
-	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	inputTxsNode channel.Reader[dependencygraph.TxNodeBatch],
-) error {
-	for ctx.Err() == nil {
+) {
+	for {
 		txsNode, ok := inputTxsNode.Read()
 		if !ok {
-			return nil
+			logger.Warnf("context has ended: %s", inputTxsNode.Context().Err())
+			return
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
@@ -261,27 +271,27 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			Transactions: txBatch,
 		})
 		if err != nil {
-			return err
+			// The stream ended or the VCM was closed.
+			logger.Warnf("Receive from stream ended with error: %s. Reconnecting.", err)
+			return
 		}
 		logger.Debugf("TX node contains %d TXs, and was sent to a vcservice", len(txBatch))
 	}
-
-	return nil
 }
 
-func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:gocognit
+// NOTE: receiveStatusAndForwardToOutput filters all transient connection related errors.
+func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
 	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
 ) error {
-	dCtx, cancel := context.WithCancel(outputTxsStatus.Context())
-	defer cancel()
-
-	for ctx.Err() == nil {
+	for {
 		txsStatus, err := stream.Recv()
 		if err != nil {
-			return err
+			// The stream ended or the SVM was closed.
+			logger.Warnf("Receive from stream ended with error: %s. Reconnecting.", err)
+			return nil
 		}
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
@@ -330,14 +340,10 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:goc
 			// NOTE: Updating policy before sending transaction nodes to the dependency
 			//       graph manager to free dependent transactions. Otherwise, dependent transactions
 			//       might be validated against a stale policy.
-			if err := vc.policyMgr.updatePoliciesFromTx(dCtx, txNode.Tx.Namespaces); err != nil {
-				// NOTE: After issues #582 and #665 are resolved, `updatePoliciesFromTx` will no longer return an error.
-				//       It will indefinitely retry if all signature verifiers are unavailable. Likewise, if some
-				//       signature verifiers are unreachable, `updatePoliciesFromTx` will return without an error.
-				//       Instead, the signature verifier manager will update their status once a connection is
-				//       reestablished. Currently, the error returned by `updatePoliciesFromTx` causes
-				//       `sendTransactionsAndForwardStatus` to unnecessarily attempt to restart its goroutines.
-				return fmt.Errorf("failed to update policy after processing a transaction: %w", err)
+			if err := vc.policyMgr.updatePoliciesFromTx(ctx, txNode.Tx.Namespaces); err != nil {
+				logger.ErrorStackTrace(err)
+				return errors.Wrap(grpcerror.FilterUnavailableErrorCode(err),
+					"failed to update policy after processing a transaction")
 			}
 		}
 
@@ -346,6 +352,4 @@ func (vc *validatorCommitter) forwardTransactionsStatusAndTxsNode( // nolint:goc
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
 	}
-
-	return nil
 }

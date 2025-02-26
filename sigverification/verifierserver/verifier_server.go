@@ -15,6 +15,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/streamhandler"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap/zapcore"
@@ -73,7 +74,9 @@ func New(parallelExecutionConfig *parallelexecutor.Config, m *metrics.Metrics) *
 	return s
 }
 
-// UpdatePolicies updates the policies of the verifier.
+// UpdatePolicies updates the verifier's policies.
+// If an error is returned, it will always be codes.InvalidArgument,
+// indicating that the provided policies argument is invalid.
 func (s *VerifierServer) UpdatePolicies(
 	_ context.Context, policies *protoblocktx.Policies,
 ) (*sigverification.Empty, error) {
@@ -86,11 +89,11 @@ func (s *VerifierServer) UpdatePolicies(
 	for i, pd := range policies.Policies {
 		key, err := policy.ParsePolicyItem(pd)
 		if err != nil {
-			return nil, errors.Join(ErrUpdatePolicies, err)
+			return nil, grpcerror.WrapInvalidArgument(errors.Join(ErrUpdatePolicies, err))
 		}
 		verifier, err := signature.NewNsVerifier(key.GetScheme(), key.GetPublicKey())
 		if err != nil {
-			return nil, errors.Join(ErrUpdatePolicies, err)
+			return nil, grpcerror.WrapInvalidArgument(errors.Join(ErrUpdatePolicies, err))
 		}
 		newVerifiers[pd.Namespace] = verifier
 		updatedNamespaces[i] = pd.Namespace

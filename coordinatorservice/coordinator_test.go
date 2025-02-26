@@ -43,6 +43,7 @@ type (
 )
 
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
+	t.Helper()
 	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
@@ -92,6 +93,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 }
 
 func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
+	t.Helper()
 	cs := e.coordinator
 	sc := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{
@@ -103,7 +105,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
 	})
 
-	conn, err := connection.Connect(connection.NewDialConfig(&sc.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&sc.Endpoint)) //nolint:contextcheck // issue #693
 	require.NoError(t, err)
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
@@ -119,6 +121,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
+	t.Helper()
 	require.Eventually(t, func() bool {
 		if !e.coordinator.streamActive.TryLock() {
 			return true
@@ -129,6 +132,7 @@ func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
 }
 
 func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum int, nsID string) {
+	t.Helper()
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
 		PublicKey: []byte("publicKey"),
@@ -171,8 +175,9 @@ func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum int, nsID stri
 }
 
 func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -185,8 +190,9 @@ func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
 }
 
 func TestGetNextBlockNumWithActiveStream(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -198,8 +204,9 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -259,10 +266,11 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	require.Equal(t, expectedTxStatus, txStatus.Status)
 	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx1"}, expectedTxStatus)
 
-	require.Equal(
+	require.InEpsilon(
 		t,
 		float64(2),
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+		1e-10,
 	)
 
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
@@ -274,9 +282,10 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
+	t.Parallel()
 	// TODO: Use real signature verifier instead of mocks.
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -376,7 +385,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		tx.Signatures = [][]byte{
 			[]byte("dummy"),
 		}
-		b1.TxsNum = append(b1.TxsNum, uint32(i)) // nolint:gosec // integer overflow conversion int -> uint32
+		b1.TxsNum = append(b1.TxsNum, uint32(i)) //nolint:gosec // integer overflow conversion int -> uint32
 	}
 
 	expectedReceived := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) + float64(len(b1.Txs))
@@ -398,10 +407,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	for txID, txStatus := range status {
 		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}
-	require.Equal(
+	require.InEpsilon(
 		t,
 		expectedReceived,
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
+		1e-10,
 	)
 
 	res := env.dbEnv.FetchKeys(t, utNsID, [][]byte{mainKey, subKey})
@@ -414,9 +424,10 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	require.Equal(t, types.VersionNumber(0).Bytes(), subValue.Version)
 }
 
-func TestQueueSize(t *testing.T) { // nolint:gocognit
+func TestQueueSize(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	go env.coordinator.monitorQueues(ctx)
 
@@ -448,8 +459,9 @@ func TestQueueSize(t *testing.T) { // nolint:gocognit
 }
 
 func TestCoordinatorRecovery(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -584,7 +596,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	vcEnv := vcservice.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
 	env.config.ValidatorCommitterConfig.ServerConfig = []*connection.ServerConfig{vcEnv.Configs[0].Server}
 	env.coordinator = NewCoordinatorService(env.config)
-	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -732,8 +744,9 @@ func TestCoordinatorRecovery(t *testing.T) {
 }
 
 func TestGRPCConnectionFailure(t *testing.T) {
+	t.Parallel()
 	c := NewCoordinatorService(fakeConfigForTest(t))
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	err := c.Run(ctx)
 	require.ErrorContains(t, err, "transport: Error while dialing: dial tcp: lookup random")
@@ -741,8 +754,9 @@ func TestGRPCConnectionFailure(t *testing.T) {
 }
 
 func TestConnectionReadyWithTimeout(t *testing.T) {
+	t.Parallel()
 	c := NewCoordinatorService(fakeConfigForTest(t))
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	require.Never(t, func() bool {
 		c.WaitForReady(ctx)
@@ -751,8 +765,9 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 }
 
 func TestChunkSizeSentForDepGraph(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -760,7 +775,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	txs := make([]*protoblocktx.Tx, txPerBlock)
 	txsNum := make([]uint32, txPerBlock)
 	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for i := 0; i < txPerBlock; i++ {
+	for i := range txPerBlock {
 		txs[i] = &protoblocktx.Tx{
 			Id: "tx" + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{
@@ -804,13 +819,14 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
-	require.Equal(t, float64(txPerBlock), statusSentTotal)
+	require.InEpsilon(t, float64(txPerBlock), statusSentTotal, 1e-10)
 }
 
 func TestWaitingTxsCount(t *testing.T) {
+	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -818,7 +834,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	txs := make([]*protoblocktx.Tx, txPerBlock)
 	txsNum := make([]uint32, txPerBlock)
 	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for i := 0; i < txPerBlock; i++ {
+	for i := range txPerBlock {
 		txs[i] = &protoblocktx.Tx{
 			Id: "tx" + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{
@@ -861,7 +877,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, <-success)
 
-	count, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+	count, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
 	require.Contains(t, err.Error(), "stream is still active")
 	require.Nil(t, count)
 
@@ -888,7 +904,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	statusSentTotal := test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal)
-	require.Equal(t, float64(txPerBlock), statusSentTotal)
+	require.InEpsilon(t, float64(txPerBlock), statusSentTotal, 1e-10)
 
 	env.streamCancel()
 	require.Eventually(t, func() bool {
@@ -900,7 +916,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(context.Background(), nil)
+		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
 		if err != nil {
 			return false
 		}

@@ -2,11 +2,13 @@ package mock
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -19,8 +21,9 @@ type SigVerifier struct {
 	policies          *protoblocktx.Policies
 	numBlocksReceived *atomic.Uint32
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize int
-	requestBatch           chan *protosigverifierservice.RequestBatch
+	MockFaultyNodeDropSize     int
+	requestBatch               chan *protosigverifierservice.RequestBatch
+	returnErrForUpdatePolicies atomic.Bool
 }
 
 // NewMockSigVerifier returns a new mock verifier.
@@ -36,9 +39,18 @@ func NewMockSigVerifier() *SigVerifier {
 func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protoblocktx.Policies) (
 	*protosigverifierservice.Empty, error,
 ) {
+	if m.returnErrForUpdatePolicies.Load() {
+		return nil, grpcerror.WrapInvalidArgument(errors.New("invalid argument"))
+	}
 	m.policies.Policies = append(m.policies.Policies, policies.Policies...)
 	logger.Info("policy has been updated")
 	return &protosigverifierservice.Empty{}, nil
+}
+
+// SetReturnErrorForUpdatePolicies configures the SigVerifier to return an error during policy updates.
+// When setError is true, the verifier will signal an error during the update policies process.
+func (m *SigVerifier) SetReturnErrorForUpdatePolicies(setError bool) {
+	m.returnErrForUpdatePolicies.Store(setError)
 }
 
 // StartStream is a mock implementation of the protosignverifierservice.VerifierServer.
