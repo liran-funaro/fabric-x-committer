@@ -116,7 +116,9 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		},
 		Orderer: broadcastdeliver.Config{
 			ChannelID: "ch1",
-			Endpoints: ordererEndpoints,
+			Connection: broadcastdeliver.ConnectionConfig{
+				Endpoints: ordererEndpoints,
+			},
 		},
 		Committer: CoordinatorConfig{
 			Endpoint: coordinatorServer.Configs[0].Endpoint,
@@ -296,7 +298,7 @@ func sendTransactionsAndEnsureCommitted(
 		require.NoError(t, err)
 		payload, _, err := serialization.ParseEnvelope(actualEnv)
 		require.NoError(t, err)
-		tx, err := UnmarshalTx(payload.Data)
+		tx, err := serialization.UnmarshalTx(payload.Data)
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i], tx))
 	}

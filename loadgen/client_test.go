@@ -139,10 +139,11 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	}
 
 	ordererConfig := broadcastdeliver.Config{
-		Endpoints:       endpoints,
-		ChannelID:       "mychannel",
-		ConsensusType:   broadcastdeliver.Bft,
-		SignedEnvelopes: false,
+		Connection: broadcastdeliver.ConnectionConfig{
+			Endpoints: endpoints,
+		},
+		ChannelID:     "mychannel",
+		ConsensusType: broadcastdeliver.Bft,
 	}
 	sidecarConf := &sidecar.Config{
 		Server:     defaultServer(),

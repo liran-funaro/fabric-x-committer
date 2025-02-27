@@ -2,11 +2,11 @@ package sidecarclient
 
 import (
 	"context"
-	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -25,7 +25,7 @@ func StartSidecarClient(
 		return connection.FilterStreamRPCError(deliverClient.Deliver(ctx,
 			&DeliverConfig{
 				StartBlkNum: startBlkNum,
-				EndBlkNum:   math.MaxUint64,
+				EndBlkNum:   broadcastdeliver.MaxBlockNum,
 				OutputBlock: receivedBlocksFromLedgerService,
 			},
 		))

@@ -3,7 +3,6 @@ package sidecar
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -136,7 +135,7 @@ func (s *Service) Run(ctx context.Context) error {
 	g.Go(func() error {
 		return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
 			StartBlkNum: int64(blkInfo.GetNumber()), // nolint:gosec
-			EndBlkNum:   math.MaxUint64,
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
 			OutputBlock: s.blockToBeCommitted,
 		})
 	})

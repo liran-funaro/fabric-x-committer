@@ -1,18 +1,17 @@
-vc-client:
-coordinator-client:
 sidecar-client:
   endpoint: {{ .SidecarEndpoint }}
   coordinator:
     endpoint: {{ .CoordinatorEndpoint }}
   orderer:
-    endpoints:
-      {{- range .OrdererEndpoints }}
-      - {{ . }}
-      {{- end }}
+    connection:
+      endpoints:
+        {{- range .OrdererEndpoints }}
+        - {{ . }}
+        {{- end }}
     consensus-type: BFT
     channel-id: {{ .ChannelID }}
   broadcast-parallelism: 50
-sig-verifier-client:
+
 monitoring:
   metrics:
     enable: true
@@ -27,7 +26,9 @@ monitoring:
     endpoint: {{ .CommonEndpoints.LatencyEndpoint }}
     max-latency: 5s
     bucket-count: 1000
+
 buffer-size: 0
+
 load-profile:
   block:
     size: {{ .BlockSize }}
@@ -56,15 +57,18 @@ load-profile:
     dependencies:
   seed: 12345
   workers: 1
+
 stream:
   rate-limit:
     endpoint: {{ .CommonEndpoints.ServerEndpoint }}
     initial-limit: 1000
   gen-batch: 1
   buffers-size: 1
+
 generate:
   namespaces: true
   load: true
+
 logging:
   enabled: true
   level: INFO 

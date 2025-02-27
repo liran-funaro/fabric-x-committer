@@ -10,10 +10,11 @@ sidecar:
         permit-without-stream: false
 
   orderer:
-    endpoints:
-      {{- range .OrdererEndpoints }}
-      - {{ . }}
-      {{- end }}
+    connection:
+      endpoints:
+        {{- range .OrdererEndpoints }}
+        - {{ . }}
+        {{- end }}
     channel-id: {{ .ChannelID }}
     consensus-type: BFT
   committer:

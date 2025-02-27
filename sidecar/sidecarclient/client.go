@@ -6,9 +6,10 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
 )
 
 type (
@@ -40,15 +41,18 @@ type (
 
 // New instantiate a new sidecar client.
 func New(config *Config) (*Client, error) {
-	conn, err := connection.LazyConnect(connection.NewDialConfig(config.Endpoint))
-	if err != nil {
+	cm := &broadcastdeliver.OrdererConnectionManager{}
+	connConfig := &broadcastdeliver.ConnectionConfig{
+		Endpoints: []*connection.OrdererEndpoint{{Endpoint: *config.Endpoint}},
+		Retry:     config.Retry,
+	}
+	if err := cm.Update(connConfig); err != nil {
 		return nil, err
 	}
 	return &Client{
 		DeliverCftClient: broadcastdeliver.DeliverCftClient{
-			Connections: []*grpc.ClientConn{conn},
-			ChannelID:   config.ChannelID,
-			Retry:       config.Retry,
+			ConnectionManager: cm,
+			ChannelID:         config.ChannelID,
 			StreamCreator: func(ctx context.Context, conn grpc.ClientConnInterface) (
 				broadcastdeliver.DeliverStream, error,
 			) {

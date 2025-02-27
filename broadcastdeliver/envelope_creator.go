@@ -1,11 +1,13 @@
 package broadcastdeliver
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"google.golang.org/protobuf/proto"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 type (
@@ -26,8 +28,8 @@ type (
 func (s *EnvelopedStream) SubmitWithEnv(dataMsg proto.Message) (string, *ab.BroadcastResponse, error) {
 	env, txID, err := serialization.CreateEnvelope(s.channelID, s.signer, dataMsg)
 	if err != nil {
-		return txID, nil, err
+		return txID, nil, errors.Wrap(err, "error serializing envelope")
 	}
 	resp, err := s.Submit(env)
-	return txID, resp, err
+	return txID, resp, errors.Wrap(err, "error submitting envelope")
 }

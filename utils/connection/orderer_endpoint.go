@@ -34,6 +34,7 @@ var (
 	ErrorInvalidEndpoint    = errors.New("invalid endpoint")
 )
 
+// String returns a deterministic representation of the endpoint.
 func (e *OrdererEndpoint) String() string {
 	var output strings.Builder
 	output.WriteString("id=")

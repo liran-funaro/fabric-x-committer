@@ -1,0 +1,16 @@
+package serialization
+
+import (
+	"github.com/cockroachdb/errors"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"google.golang.org/protobuf/proto"
+)
+
+// UnmarshalTx unmarshals data bytes to protoblocktx.Tx.
+func UnmarshalTx(data []byte) (*protoblocktx.Tx, error) {
+	var tx protoblocktx.Tx
+	if err := proto.Unmarshal(data, &tx); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal tx")
+	}
+	return &tx, nil
+}

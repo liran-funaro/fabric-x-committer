@@ -2,71 +2,74 @@ package broadcastdeliver
 
 import (
 	cryptotls "crypto/tls"
-	"net/http"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
+	"gopkg.in/yaml.v3"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/tls"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
-func GetOrdererConnectionCreds(config *OrdererConnectionProfile) (credentials.TransportCredentials, msp.SigningIdentity) {
-	tlsCreds := insecure.NewCredentials()
+// NewIdentitySigner instantiate a signer for the given identity.
+//
+//nolint:ireturn // NewIdentitySigner returns interface
+func NewIdentitySigner(config *IdentityConfig) (msp.SigningIdentity, error) {
 	if config == nil {
-		logger.Infof("Returning empty creds")
-		return tlsCreds, nil
+		logger.Infof("No identity configuration. Skipping signer initialization")
+		return nil, nil
 	}
-	logger.Infof("Initialize creds:\n"+
-		"\tMSP Dir: %s\n"+
-		"\tMSP ID: %s\n"+
-		"\tRoot CA Paths: %v\n"+
-		"\tBCCSP: %v\n", config.MSPDir, config.MspID, config.RootCAPaths, config.BCCSP)
-
-	var signer msp.SigningIdentity
-	if config.MspID == "" && config.MSPDir == "" {
-		logger.Infof("MspID and MSPDir not set, skipping signer initialization")
+	if configBytes, err := yaml.Marshal(config); err == nil {
+		logger.Infof("Initialize signer:\n%s", string(configBytes))
 	} else {
-		mspConfig, err := msp.GetLocalMspConfig(config.MSPDir, config.BCCSP, config.MspID)
-		if err != nil {
-			logger.Fatalf("Failed to load MSP config: %s", err)
-		}
-		err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
-		if err != nil { // Handle errors reading the config file
-			logger.Fatalf("failed to initialize local MSP: %v", err)
-		}
-
-		signer, err = mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
-		if err != nil {
-			logger.Fatalf("failed to load local signing identity: %v", err)
-		}
+		logger.Debugf("Cannot marshal identity config: %s", err)
 	}
 
-	var tlsConfig *cryptotls.Config
-	var err error
-	if len(config.RootCA) > 0 {
-		tlsConfig, err = tls.LoadTLSCredentialsRaw(config.RootCA)
-		if err != nil {
-			logger.Fatalf("cannot load TLS credentials: %v", err)
-		}
+	if !config.SignedEnvelopes || config.MspID == "" || config.MSPDir == "" {
+		logger.Infof("Skipping signer initialization")
+		return nil, nil
 	}
-	if len(config.RootCAPaths) > 0 {
-		tlsConfig, err = tls.LoadTLSCredentials(config.RootCAPaths)
-		if err != nil {
-			logger.Fatalf("cannot load TLS credentials: %v", err)
-		}
+
+	mspConfig, err := msp.GetLocalMspConfig(config.MSPDir, config.BCCSP, config.MspID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load MSP config")
 	}
-	if tlsConfig != nil {
-		tlsCreds = credentials.NewTLS(tlsConfig)
+	err = mspmgmt.GetLocalMSP(factory.GetDefault()).Setup(mspConfig)
+	if err != nil { // Handle errors reading the config file
+		return nil, errors.Wrap(err, "failed to initialize local MSP")
 	}
-	return tlsCreds, signer
+
+	signer, err := mspmgmt.GetLocalMSP(factory.GetDefault()).GetDefaultSigningIdentity()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load local signing identity")
+	}
+	return signer, nil
 }
 
-func SecureClient(rootCAPaths ...string) *http.Client {
-	tlsConfig, err := tls.LoadTLSCredentials(rootCAPaths)
-	if err != nil {
-		logger.Fatalf("cannot load TLS credentials: %s", err)
+// LoadTLSConfig returns TLS configuration for connections.
+func LoadTLSConfig(config *ConnectionConfig) (*cryptotls.Config, error) {
+	var conf *cryptotls.Config
+	var err error
+	switch {
+	case len(config.RootCA) > 0:
+		conf, err = tls.LoadTLSCredentialsRaw(config.RootCA)
+	case len(config.RootCAPaths) > 0:
+		conf, err = tls.LoadTLSCredentials(config.RootCAPaths)
 	}
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load TLS config")
+	}
+	return conf, nil
+}
+
+// IsTLSConfigEqual returns true of the two configurations are equal.
+func IsTLSConfigEqual(c1, c2 *cryptotls.Config) bool {
+	if c1 == nil && c2 == nil {
+		return true
+	}
+	if c1 == nil || c2 == nil {
+		return false
+	}
+	return c1.RootCAs.Equal(c2.RootCAs)
 }

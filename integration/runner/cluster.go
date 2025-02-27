@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"path"
 	"sync"
@@ -26,7 +25,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -176,10 +174,10 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	c.ensureLastCommittedBlockNumber(t, 0)
 
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
-			EndBlkNum:   math.MaxUint64,
+		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
 			OutputBlock: c.committedBlock,
-		})
+		}))
 	}, func(ctx context.Context) bool {
 		select {
 		case <-ctx.Done():
@@ -225,12 +223,13 @@ func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
 	ordererSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
-		Endpoints: []*connection.OrdererEndpoint{
-			{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
+		Connection: broadcastdeliver.ConnectionConfig{
+			Endpoints: []*connection.OrdererEndpoint{
+				{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
+			},
 		},
-		SignedEnvelopes: false,
-		ChannelID:       c.channelID,
-		ConsensusType:   broadcastdeliver.Bft,
+		ChannelID:     c.channelID,
+		ConsensusType: broadcastdeliver.Bft,
 	})
 	require.NoError(t, err)
 	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
@@ -387,7 +386,7 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 	for txNum, txEnv := range blk.Data.Data {
 		txBytes, _, err := serialization.UnwrapEnvelope(txEnv)
 		require.NoError(t, err)
-		tx, err := sidecar.UnmarshalTx(txBytes)
+		tx, err := serialization.UnmarshalTx(txBytes)
 		require.NoError(t, err)
 		require.Equal(t, expectedResults.TxIDs[txNum], tx.GetId())
 	}

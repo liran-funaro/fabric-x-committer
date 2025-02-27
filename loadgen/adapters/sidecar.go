@@ -3,7 +3,6 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"math"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -66,7 +65,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 	committedBlock := make(chan *common.Block, 100)
 	g.Go(func() error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
-			EndBlkNum:   math.MaxUint64,
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})

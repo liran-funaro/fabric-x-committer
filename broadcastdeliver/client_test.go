@@ -1,0 +1,234 @@
+package broadcastdeliver
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+)
+
+func TestServers(t *testing.T) {
+	t.Parallel()
+	ordererService, servers, conf := makeConfig(t)
+
+	allEndpoints := conf.Connection.Endpoints
+
+	// We only take the bottom endpoints for now.
+	// Later we take the other endpoints and update the client.
+	conf.Connection.Endpoints = allEndpoints[:6]
+	client, err := New(&conf)
+	require.NoError(t, err)
+	t.Cleanup(client.Close)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	t.Cleanup(cancel)
+	stream, err := client.Broadcast(ctx)
+	require.NoError(t, err)
+	outputBlocksChan := make(chan *common.Block, 100)
+	go func() {
+		deliverConf := &DeliverConfig{
+			StartBlkNum: 0,
+			EndBlkNum:   MaxBlockNum,
+			OutputBlock: outputBlocksChan,
+		}
+		// We set the client to stop retry after a second to quickly
+		// receive the broadcast errors.
+		// But for delivery, we want to continue indefinitely.
+		for ctx.Err() == nil {
+			err = client.Deliver(ctx, deliverConf)
+			t.Logf("Deliver ended with: %v", err)
+		}
+	}()
+	outputBlocks := channel.NewReader(ctx, outputBlocksChan)
+
+	// Read config block.
+	b, ok := outputBlocks.Read()
+	require.True(t, ok)
+	require.NotNil(t, b)
+	require.Len(t, b.Data.Data, 1)
+
+	// All good.
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:      "1",
+		success: 3,
+	})
+
+	// One server down.
+	servers[2].Servers[0].Stop()
+	time.Sleep(3 * time.Second)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:      "2",
+		success: 3,
+	})
+
+	// Two servers down.
+	servers[2].Servers[1].Stop()
+	time.Sleep(3 * time.Second)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:          "3",
+		success:     2,
+		unavailable: 2,
+	})
+
+	// One incorrect server.
+	healthcheck := health.NewServer()
+	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+	fakeServer := test.RunGrpcServerForTest(
+		ctx,
+		t, &connection.ServerConfig{
+			Endpoint: servers[2].Configs[0].Endpoint,
+		}, func(server *grpc.Server) {
+			healthgrpc.RegisterHealthServer(server, healthcheck)
+		},
+	)
+	time.Sleep(3 * time.Second)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:            "4",
+		success:       2,
+		unavailable:   1,
+		unimplemented: 1,
+	})
+
+	// All good again.
+	fakeServer.Stop()
+	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], func(server *grpc.Server) {
+		ab.RegisterAtomicBroadcastServer(server, ordererService)
+	})
+	time.Sleep(3 * time.Second)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:      "5",
+		success: 3,
+	})
+
+	// Insufficient quorum.
+	servers[0].Servers[0].Stop()
+	servers[0].Servers[1].Stop()
+	servers[1].Servers[0].Stop()
+	servers[1].Servers[1].Stop()
+	time.Sleep(3 * time.Second)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:          "6",
+		error:       true,
+		success:     1,
+		unavailable: 4,
+	})
+
+	// Update endpoints.
+	conf.Connection.Endpoints = allEndpoints[6:]
+	err = client.UpdateConnections(&conf.Connection)
+	require.NoError(t, err)
+	submit(t, stream, outputBlocks, expectedSubmit{
+		id:      "7",
+		success: 3,
+	})
+}
+
+type expectedSubmit struct {
+	id            string
+	error         bool
+	success       int
+	unavailable   int
+	unimplemented int
+}
+
+func submit(
+	t *testing.T,
+	stream *EnvelopedStream,
+	outputBlocks channel.Reader[*common.Block],
+	expected expectedSubmit,
+) {
+	t.Helper()
+	tx := &protoblocktx.Tx{Id: expected.id}
+	_, resp, err := stream.SubmitWithEnv(tx)
+	var info string
+	if err != nil {
+		t.Logf("Response error:\n%s", err)
+		info = err.Error()
+	} else {
+		t.Logf("Response info:\n%s", resp.Info)
+		info = resp.Info
+	}
+	if expected.error {
+		require.Error(t, err)
+	} else {
+		require.NoError(t, err)
+		require.Equal(t, common.Status_SUCCESS, resp.Status)
+	}
+
+	require.Equal(t, expected.success, strings.Count(info, "SUCCESS"), info)
+	require.Equal(t, expected.unavailable, strings.Count(info, "Unavailable"), info)
+	require.Equal(t, expected.unimplemented, strings.Count(info, "Unimplemented"), info)
+
+	b, ok := outputBlocks.Read()
+	require.True(t, ok)
+	require.NotNil(t, b)
+	require.Len(t, b.Data.Data, 1)
+	data, _, err := serialization.UnwrapEnvelope(b.Data.Data[0])
+	require.NoError(t, err)
+	blockTx, err := serialization.UnmarshalTx(data)
+	require.NoError(t, err)
+	require.Equal(t, tx.Id, blockTx.Id)
+}
+
+func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
+	t.Helper()
+	logging.SetupWithConfig(&logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      true,
+		Development: true,
+	})
+
+	idCount := 3
+	serverPerID := 4
+	instanceCount := idCount * serverPerID
+	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
+	ordererService, ordererServer := mock.StartMockOrderingServices(
+		t, &mock.OrdererConfig{NumService: instanceCount, BlockSize: 1},
+	)
+	require.Len(t, ordererServer.Servers, instanceCount)
+
+	conf := Config{
+		ChannelID:     "mychannel",
+		ConsensusType: Bft,
+		Connection: ConnectionConfig{
+			Retry: &connection.RetryProfile{
+				MaxElapsedTime: time.Second,
+			},
+		},
+	}
+	servers := make([]test.GrpcServers, idCount)
+	for i, c := range ordererServer.Configs {
+		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
+		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &connection.OrdererEndpoint{
+			ID:       id,
+			Endpoint: c.Endpoint,
+		})
+		s := &servers[id]
+		s.Configs = append(s.Configs, c)
+		s.Servers = append(s.Servers, ordererServer.Servers[i])
+	}
+	for i, s := range servers {
+		require.Lenf(t, s.Configs, serverPerID, "id: %d", i)
+		require.Lenf(t, s.Servers, serverPerID, "id: %d", i)
+	}
+	for i, e := range conf.Connection.Endpoints {
+		t.Logf("ENDPOINT [%02d] %s", i, e.String())
+	}
+	return ordererService, servers, conf
+}

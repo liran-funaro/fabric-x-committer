@@ -2,27 +2,26 @@ package broadcastdeliver
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"google.golang.org/grpc"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 type (
 	// DeliverCftClient allows delivering blocks from one connection at a time.
 	// If one connection fails, it will try to connect to another one.
 	DeliverCftClient struct {
-		Connections   []*grpc.ClientConn
-		Signer        protoutil.Signer
-		ChannelID     string
-		Retry         *connection.RetryProfile
-		StreamCreator func(ctx context.Context, conn grpc.ClientConnInterface) (DeliverStream, error)
+		ConnectionManager *OrdererConnectionManager
+		Signer            protoutil.Signer
+		ChannelID         string
+		StreamCreator     func(ctx context.Context, conn grpc.ClientConnInterface) (DeliverStream, error)
 	}
 
 	// DeliverConfig holds the configuration needed for deliver to run.
@@ -39,60 +38,65 @@ type (
 	}
 )
 
+// MaxBlockNum is used for endless deliver.
+const MaxBlockNum uint64 = math.MaxUint64
+
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
 // The value of config.StartBlkNum is updated with the latest block number.
 func (c *DeliverCftClient) Deliver(ctx context.Context, config *DeliverConfig) error {
-	nodes := makeConnNodes(c.Connections, c.Retry)
-	// We shuffle the nodes for load balancing.
-	shuffle(nodes)
+	resiliencyManager := c.ConnectionManager.GetResiliencyManager(WithAPI(Deliver))
 	for ctx.Err() == nil {
 		if config.StartBlkNum > 0 && uint64(config.StartBlkNum) > config.EndBlkNum { // nolint:gosec
+			logger.Debugf("Deliver finished successfully")
 			return nil
 		}
-		curNode := nodes[0]
-		err := c.receiveFromBlockDeliverer(ctx, curNode, config)
-		logger.Infof("Error receiving blocks: %v", err)
-		curNode.backoff()
-		sortNodes(nodes)
+		logger.Debugf("Deliver is waiting for connection")
+		if c.ConnectionManager.IsStale(resiliencyManager) {
+			resiliencyManager = c.ConnectionManager.GetResiliencyManager(WithAPI(Deliver))
+		}
+		curConn, err := resiliencyManager.GetNextConnection(ctx)
+		if err != nil {
+			logger.Debugf("Deliver failed to get next connection: %s", err)
+			// We stop delivering if we fail to get an alive connection.
+			return errors.Wrap(err, "failed to get next connection")
+		}
+		curConn.LastError = c.receiveFromBlockDeliverer(ctx, curConn, config)
+		logger.Debugf("Error receiving blocks: %v", curConn.LastError)
 	}
-	return nil
+	logger.Debugf("Deliver context ended: %v", ctx.Err())
+	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (c *DeliverCftClient) receiveFromBlockDeliverer(
-	ctx context.Context, conn *connNode, config *DeliverConfig,
+	ctx context.Context, conn *OrdererConnection, config *DeliverConfig,
 ) error {
-	err := conn.wait(ctx)
+	logger.Infof("Connecting to %s", conn.Target())
+	stream, err := c.StreamCreator(ctx, conn)
 	if err != nil {
-		return err
-	}
-
-	logger.Infof("Connecting to %s", conn.connection.Target())
-	stream, err := c.StreamCreator(ctx, conn.connection)
-	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create stream")
 	}
 
 	logger.Infof("Sending seek request from block %d on channel %s.", config.StartBlkNum, c.ChannelID)
 	seekEnv, err := seekSince(config.StartBlkNum, config.EndBlkNum, c.ChannelID, c.Signer)
 	if err != nil {
-		return fmt.Errorf("failed to create seek request: %w", err)
+		return errors.Wrap(err, "failed to create seek request")
 	}
 	if err := stream.Send(seekEnv); err != nil {
-		return fmt.Errorf("failed to send seek request: %w", err)
+		return errors.Wrap(err, "failed to send seek request")
 	}
 	logger.Infof("Seek request sent.")
 
 	// If we managed to send a request, we can reset the connection's backoff.
-	conn.reset()
+	conn.ResetBackoff()
 
 	outputBlock := channel.NewWriter(ctx, config.OutputBlock)
 	for ctx.Err() == nil {
 		block, status, err := stream.RecvBlockOrStatus()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to receive block")
 		}
 		if status != nil {
-			return fmt.Errorf("disconnecting deliver service with status %s", status)
+			return errors.Newf("disconnecting deliver service with status %s", status)
 		}
 
 		//nolint:gosec // integer overflow conversion uint64 -> int64

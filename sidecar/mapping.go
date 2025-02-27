@@ -4,7 +4,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
-	"google.golang.org/protobuf/proto"
 )
 
 type validationCode = byte
@@ -39,7 +38,7 @@ func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
 			excluded = exclude(excluded, txNum, channelHdr, err.Error())
 		} else if channelHdr.Type != int32(common.HeaderType_MESSAGE) {
 			excluded = exclude(excluded, txNum, channelHdr, "unsupported type")
-		} else if tx, err := UnmarshalTx(data); err != nil {
+		} else if tx, err := serialization.UnmarshalTx(data); err != nil {
 			excluded = exclude(excluded, txNum, channelHdr, err.Error())
 		} else {
 			logger.Debugf("Appended txID [%s] -> [%s]", channelHdr.TxId, tx.Id)
@@ -57,13 +56,4 @@ func mapBlock(block *common.Block) (*protoblocktx.Block, []int) {
 func exclude(excluded []int, txNum int, channelHdr *common.ChannelHeader, reason string) []int {
 	logger.Debugf("Excluding TX [%s] of type %d due to %s", channelHdr.TxId, channelHdr.Type, reason)
 	return append(excluded, txNum)
-}
-
-// UnmarshalTx unmarshals data bytes to protoblocktx.Tx.
-func UnmarshalTx(data []byte) (*protoblocktx.Tx, error) {
-	var tx protoblocktx.Tx
-	if err := proto.Unmarshal(data, &tx); err != nil {
-		return nil, err
-	}
-	return &tx, nil
 }

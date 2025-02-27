@@ -1,7 +1,8 @@
 sidecar:
   orderer:
-    endpoints:
-      - localhost:%d
+    connection:
+      endpoints:
+        - localhost:%d
     channel-id: mychannel
   committer:
     endpoint: localhost:%d

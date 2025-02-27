@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
@@ -14,8 +13,6 @@ type (
 	Signature = signature.Signature
 	PublicKey = signature.PublicKey
 )
-
-var log = logging.New("verifier")
 
 type Scheme = signature.Scheme
 

@@ -2,58 +2,53 @@ package broadcastdeliver
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
 
 type (
 	// Client is a collection of nodes and their connections.
 	Client struct {
-		config      *Config
-		connections []*ordererConnection
-		signer      protoutil.Signer
+		config            *Config
+		connectionManager *OrdererConnectionManager
+		signer            protoutil.Signer
 	}
 )
 
 // New creates a broadcast/deliver client. It must be closed to release all the associated connections.
 func New(config *Config) (*Client, error) {
 	if err := validateConfig(config); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error validating config")
 	}
 
-	creds, credSigner := GetOrdererConnectionCreds(config.ConnectionProfile)
-	var signer protoutil.Signer
-	if config.SignedEnvelopes {
-		signer = credSigner
-	}
-
-	s := &Client{
-		config:      config,
-		connections: make([]*ordererConnection, len(config.Endpoints)),
-		signer:      signer,
-	}
-
-	conn, err := connection.OpenLazyConnections(config.Endpoints, creds)
+	signer, err := NewIdentitySigner(config.Identity)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open connections to ordering services: %w", err)
+		return nil, errors.Wrap(err, "error creating identity signer")
 	}
-	logger.Infof("Opened %d connections", len(conn))
-	for i := range s.connections {
-		s.connections[i] = &ordererConnection{
-			OrdererEndpoint: config.Endpoints[i],
-			ClientConn:      conn[i],
-		}
+
+	cm := &OrdererConnectionManager{}
+	if err = cm.Update(&config.Connection); err != nil {
+		return nil, errors.Wrap(err, "error creating connections")
 	}
-	return s, nil
+
+	return &Client{
+		config:            config,
+		connectionManager: cm,
+		signer:            signer,
+	}, nil
 }
 
 // Close closes all the connections for the client.
 func (s *Client) Close() {
-	connection.CloseConnectionsLog(s.connections...)
+	s.connectionManager.Close()
+}
+
+// UpdateConnections updates the connection config.
+func (s *Client) UpdateConnections(config *ConnectionConfig) error {
+	return s.connectionManager.Update(config)
 }
 
 // Broadcast creates a broadcast stream.
@@ -62,13 +57,17 @@ func (s *Client) Broadcast(ctx context.Context) (*EnvelopedStream, error) {
 		channelID: s.config.ChannelID,
 		signer:    s.signer,
 	}
+	common := broadcastCommon{
+		ctx:               ctx,
+		connectionManager: s.connectionManager,
+	}
 	switch s.config.ConsensusType {
 	case Cft:
-		ret.BroadcastStream = newBroadcastCft(ctx, s.connections, s.config)
+		ret.BroadcastStream = &broadcastCft{broadcastCommon: common}
 	case Bft:
-		ret.BroadcastStream = newBroadcastBft(ctx, s.connections, s.config)
+		ret.BroadcastStream = &broadcastBft{broadcastCommon: common}
 	default:
-		return nil, fmt.Errorf("invalid consensus type: %s", s.config.ConsensusType)
+		return nil, errors.Newf("invalid consensus type: '%s'", s.config.ConsensusType)
 	}
 	return ret, nil
 }
@@ -83,10 +82,9 @@ func (s *Client) Deliver(ctx context.Context, deliverConfig *DeliverConfig) erro
 		fallthrough
 	case Cft:
 		c := &DeliverCftClient{
-			Connections: filterOrdererConnections(s.connections, Deliver),
-			Signer:      s.signer,
-			Retry:       s.config.Retry,
-			ChannelID:   s.config.ChannelID,
+			ConnectionManager: s.connectionManager,
+			Signer:            s.signer,
+			ChannelID:         s.config.ChannelID,
 			StreamCreator: func(ctx context.Context, conn grpc.ClientConnInterface) (DeliverStream, error) {
 				client, err := orderer.NewAtomicBroadcastClient(conn).Deliver(ctx)
 				if err != nil {
@@ -97,6 +95,6 @@ func (s *Client) Deliver(ctx context.Context, deliverConfig *DeliverConfig) erro
 		}
 		return c.Deliver(ctx, deliverConfig)
 	default:
-		return fmt.Errorf("invalid consensus type: %s", s.config.ConsensusType)
+		return errors.Newf("invalid consensus type: %s", s.config.ConsensusType)
 	}
 }

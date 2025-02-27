@@ -2,120 +2,118 @@ package broadcastdeliver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 )
 
 type (
+	//nolint:containedctx // grpc's stream contain context.
+	broadcastCommon struct {
+		ctx               context.Context
+		connectionManager *OrdererConnectionManager
+		resiliencyManager *OrdererConnectionResiliencyManager
+	}
+
+	//nolint:containedctx // grpc's stream contain context.
 	broadcastCft struct {
 		broadcastCommon
-		nodes []*broadcastNode
+		streamCtx    context.Context
+		streamCancel context.CancelFunc
+		conn         *OrdererConnection
+		stream       ab.AtomicBroadcast_BroadcastClient
 	}
 
 	broadcastBft struct {
 		broadcastCommon
-		streams map[uint32]*broadcastCft
-		quorum  int
-	}
-
-	broadcastCommon struct {
-		// ctx nodes keep the context internally.
-		ctx context.Context
-	}
-
-	broadcastNode struct {
-		connNode
-		parentCtx context.Context
-		ctx       context.Context
-		cancel    context.CancelFunc
-		client    ab.AtomicBroadcastClient
-		stream    ab.AtomicBroadcast_BroadcastClient
+		idToStream map[uint32]*broadcastCft
+		quorum     int
 	}
 )
 
-func newBroadcastCft(
-	ctx context.Context, connections []*ordererConnection, config *Config,
-) *broadcastCft {
-	connEndpoints := filterOrdererConnections(connections, Broadcast)
-	connNodes := makeConnNodes(connEndpoints, config.Retry)
-	// We shuffle the nodes for load balancing.
-	shuffle(connNodes)
-	nodes := make([]*broadcastNode, len(connNodes))
-	for i, c := range connNodes {
-		nodes[i] = &broadcastNode{
-			connNode:  *c,
-			parentCtx: ctx,
-			client:    ab.NewAtomicBroadcastClient(c.connection),
-		}
-	}
-	return &broadcastCft{
-		broadcastCommon: broadcastCommon{ctx: ctx},
-		nodes:           nodes,
-	}
-}
-
-func newBroadcastBft(
-	ctx context.Context, connections []*ordererConnection, config *Config,
-) *broadcastBft {
-	connectionMap := make(map[uint32][]*ordererConnection)
-	for _, c := range connections {
-		connectionMap[c.ID] = append(connectionMap[c.ID], c)
+// update returns true if the data was stale.
+func (s *broadcastCommon) update() bool {
+	// We also support using this module without a connection manager.
+	if s.connectionManager == nil {
+		return false
 	}
 
-	streams := make(map[uint32]*broadcastCft, len(connectionMap))
-	for id, c := range connectionMap {
-		streams[id] = newBroadcastCft(ctx, c, config)
+	isStale := s.connectionManager.IsStale(s.resiliencyManager)
+	if isStale {
+		s.resiliencyManager = s.connectionManager.GetResiliencyManager(WithAPI(Broadcast))
 	}
-
-	n := len(streams)
-	q, _ := computeBFTQuorum(n)
-	return &broadcastBft{
-		broadcastCommon: broadcastCommon{ctx: ctx},
-		streams:         streams,
-		quorum:          q,
-	}
-}
-
-func (s *broadcastCommon) Context() context.Context {
-	return s.ctx
+	return isStale
 }
 
 func (s *broadcastCft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error) {
-	// We retry again for each call to submit, but we keep the previous order.
-	for _, n := range s.nodes {
-		n.reset()
-	}
-	for {
-		node := s.nodes[0]
-		if node.stop() {
-			errs := make([]error, len(s.nodes))
-			for i, n := range s.nodes {
-				errs[i] = n.err
-			}
-			return nil, errors.Join(errs...)
+	return s.apply(func(stream ab.AtomicBroadcast_BroadcastClient) (*ab.BroadcastResponse, error) {
+		err := stream.Send(m)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to send message")
 		}
-		resp := node.submit(m)
-		if node.err == nil {
+		resp, err := stream.Recv()
+		return resp, errors.Wrap(err, "failed to receive message")
+	})
+}
+
+func (s *broadcastCft) apply(
+	f func(stream ab.AtomicBroadcast_BroadcastClient) (*ab.BroadcastResponse, error),
+) (*ab.BroadcastResponse, error) {
+	// We retry again for each call to submit, but we keep the previous order.
+	s.resiliencyManager.ResetBackoff()
+	for {
+		if err := s.connect(); err != nil {
+			return nil, errors.Wrap(err, "failed connecting")
+		}
+		var resp *ab.BroadcastResponse
+		resp, s.conn.LastError = f(s.stream)
+		if s.conn.LastError == nil {
+			// If we succeed, we reset the connection's backoff
+			s.conn.ResetBackoff()
 			return resp, nil
 		}
-		sortNodes(s.nodes)
 	}
 }
 
+// connect returns error if there is no alive node.
+func (s *broadcastCft) connect() error {
+	if s.conn != nil && s.conn.LastError == nil && s.stream != nil && s.streamCtx != nil && s.streamCtx.Err() == nil {
+		return nil
+	}
+	if s.streamCancel != nil {
+		// Ensure the previous stream context is cancelled.
+		s.streamCancel()
+	}
+	//nolint:fatcontext // The previous streamCtx is cancelled prior to this.
+	s.streamCtx, s.streamCancel = context.WithCancel(s.ctx)
+	// We try any connection until we succeed.
+	for s.conn == nil || s.conn.LastError != nil {
+		s.update()
+		var err error
+		s.conn, err = s.resiliencyManager.GetNextConnection(s.streamCtx)
+		if err != nil {
+			return errors.Wrap(err, "failed getting next connection")
+		}
+		s.stream, s.conn.LastError = ab.NewAtomicBroadcastClient(s.conn).Broadcast(s.streamCtx)
+	}
+	return nil
+}
+
 func (s *broadcastBft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error) {
+	s.update()
 	type response struct {
 		id   uint32
 		resp *ab.BroadcastResponse
 		err  error
 	}
-	respQueue := channel.Make[response](s.ctx, len(s.streams))
-	for id, stream := range s.streams {
+	respQueue := channel.Make[response](s.ctx, len(s.idToStream))
+	for id, stream := range s.idToStream {
 		go func(id uint32, stream *broadcastCft) {
 			r, err := stream.Submit(m)
 			respQueue.Write(response{id: id, resp: r, err: err})
@@ -124,7 +122,7 @@ func (s *broadcastBft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error)
 
 	var infoList []string
 	var success int
-	for len(infoList) < len(s.streams) {
+	for len(infoList) < len(s.idToStream) {
 		r, ok := respQueue.Read()
 		if !ok {
 			break
@@ -149,7 +147,7 @@ func (s *broadcastBft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error)
 
 	info := strings.Join(infoList, "\n")
 	if success < s.quorum {
-		return nil, fmt.Errorf("insufficient quorum: %s", info)
+		return nil, errors.Newf("insufficient quorum: %s", info)
 	}
 	return &ab.BroadcastResponse{
 		Status: common.Status_SUCCESS,
@@ -157,55 +155,37 @@ func (s *broadcastBft) Submit(m *common.Envelope) (*ab.BroadcastResponse, error)
 	}, nil
 }
 
-func (s *broadcastNode) submit(m *common.Envelope) *ab.BroadcastResponse {
-	s.err = s.wait(s.ctx)
-	if s.err != nil {
-		return nil
+func (s *broadcastBft) update() {
+	if !s.broadcastCommon.update() && s.idToStream != nil {
+		return
 	}
-
-	var resp *ab.BroadcastResponse
-	// We try to create a new stream if we fail to send/receive.
-	for range 2 {
-		if !s.connect() {
-			break
+	streams := make(map[uint32]*broadcastCft)
+	for id := range s.resiliencyManager.IDs() {
+		idResiliencyManager := s.resiliencyManager.Filter(WithID(id))
+		if s.idToStream != nil && s.idToStream[id] != nil {
+			prevStream := s.idToStream[id]
+			delete(s.idToStream, id)
+			prevStream.resiliencyManager = idResiliencyManager
+			streams[id] = prevStream
+		} else {
+			// We don't provide it with the connection manager to prevent automatic updates.
+			// We want to preserve a consistent connection version across all parties.
+			streams[id] = &broadcastCft{
+				broadcastCommon: broadcastCommon{
+					ctx:               s.ctx,
+					resiliencyManager: idResiliencyManager,
+				},
+			}
 		}
-
-		s.err = s.stream.Send(m)
-		if s.err != nil {
-			continue
-		}
-		resp, s.err = s.stream.Recv()
-		if s.err == nil {
-			break
+	}
+	for _, stream := range s.idToStream {
+		if stream.streamCancel != nil {
+			stream.streamCancel()
 		}
 	}
-
-	if s.err != nil {
-		// Cancel the stream context to ensure resource release.
-		s.cancel()
-		s.backoff()
-	} else {
-		s.reset()
-	}
-	return resp
-}
-
-// connect returns true if successful.
-func (s *broadcastNode) connect() bool {
-	if s.parentCtx.Err() != nil {
-		s.err = s.parentCtx.Err()
-		return false
-	}
-	if s.err == nil && s.stream != nil && s.ctx != nil && s.ctx.Err() == nil {
-		return true
-	}
-	if s.cancel != nil {
-		// Ensure the previous stream context is cancelled.
-		s.cancel()
-	}
-	s.ctx, s.cancel = context.WithCancel(s.parentCtx)
-	s.stream, s.err = s.client.Broadcast(s.ctx)
-	return s.err == nil
+	s.idToStream = streams
+	n := len(streams)
+	s.quorum, _ = computeBFTQuorum(n)
 }
 
 // Copied from the smartbft library.

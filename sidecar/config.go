@@ -55,7 +55,7 @@ func OverwriteConfigFromBlock(conf *Config, configBlock *cb.Block) error {
 	if err != nil {
 		return err
 	}
-	conf.Orderer.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
+	conf.Orderer.Connection.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
 	if err != nil {
 		return err
 	}

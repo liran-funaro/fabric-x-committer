@@ -1,34 +1,37 @@
 package broadcastdeliver
 
 import (
-	"errors"
-	"fmt"
-
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type (
 	// Config for the orderer-client.
 	Config struct {
-		Endpoints         []*connection.OrdererEndpoint `mapstructure:"endpoints"`
-		ConnectionProfile *OrdererConnectionProfile     `mapstructure:"connection-profile"`
-		SignedEnvelopes   bool                          `mapstructure:"signed-envelopes"`
-		ConsensusType     ConsensusType                 `mapstructure:"consensus-type"`
-		ChannelID         string                        `mapstructure:"channel-id"`
-		Retry             *connection.RetryProfile      `mapstructure:"reconnect"`
+		Connection    ConnectionConfig `mapstructure:"connection"`
+		ConsensusType ConsensusType    `mapstructure:"consensus-type"`
+		ChannelID     string           `mapstructure:"channel-id"`
+		Identity      *IdentityConfig  `mapstructure:"identity"`
 	}
 
-	// OrdererConnectionProfile defines the orderer's MSP.
-	OrdererConnectionProfile struct {
+	// ConnectionConfig contains the endpoints, CAs, and retry profile.
+	ConnectionConfig struct {
+		Endpoints []*connection.OrdererEndpoint `mapstructure:"endpoints"`
+		Retry     *connection.RetryProfile      `mapstructure:"reconnect"`
+		RootCA    [][]byte                      `mapstructure:"root-ca"`
+		// RootCAPaths The path to the root CAs (alternative to the raw data).
+		RootCAPaths []string `mapstructure:"root-ca-paths"`
+	}
+
+	// IdentityConfig defines the orderer's MSP.
+	IdentityConfig struct {
+		SignedEnvelopes bool `mapstructure:"signed-envelopes" yaml:"signed-envelopes"`
 		// MspID indicates to which MSP this client belongs to.
-		MspID string `mapstructure:"msp-id"`
-		// RootCA The raw root CAs for the Orderers.
-		RootCA [][]byte `mapstructure:"root-ca"`
-		// RootCAPaths The path to the root CAs for the Orderers.
-		RootCAPaths []string             `mapstructure:"root-ca-paths"`
-		MSPDir      string               `mapstructure:"msp-dir"`
-		BCCSP       *factory.FactoryOpts `mapstructure:"bccsp"`
+		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
+		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
+		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
 	}
 
 	// ConsensusType can be either CFT or BFT.
@@ -49,11 +52,11 @@ const (
 	Deliver = "deliver"
 )
 
+// Errors that may be returned when updating a configuration.
 var (
-	// ErrEmptyEndpoint is returned when endpoint does not contain a port.
-	ErrEmptyEndpoint = errors.New("empty endpoint")
-	// ErrNoEndpoints is returned when no endpoints are supplied.
-	ErrNoEndpoints = errors.New("no endpoints")
+	ErrEmptyConnectionConfig = errors.New("empty connection config")
+	ErrEmptyEndpoint         = errors.New("empty endpoint")
+	ErrNoEndpoints           = errors.New("no endpoints")
 )
 
 func validateConfig(c *Config) error {
@@ -61,7 +64,14 @@ func validateConfig(c *Config) error {
 		c.ConsensusType = DefaultConsensus
 	}
 	if c.ConsensusType != Bft && c.ConsensusType != Cft {
-		return fmt.Errorf("unsupported orderer type %s", c.ConsensusType)
+		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
+	}
+	return validateConnectionConfig(&c.Connection)
+}
+
+func validateConnectionConfig(c *ConnectionConfig) error {
+	if c == nil {
+		return ErrEmptyConnectionConfig
 	}
 	if len(c.Endpoints) == 0 {
 		return ErrNoEndpoints
@@ -73,7 +83,7 @@ func validateConfig(c *Config) error {
 		}
 		target := e.Address()
 		if other, ok := uniqueEndpoints[target]; ok {
-			return fmt.Errorf("endpoint [%s] specified multiple times: %s, %s", target, other, e.String())
+			return errors.Newf("endpoint [%s] specified multiple times: %s, %s", target, other, e.String())
 		}
 		uniqueEndpoints[target] = e.String()
 	}
