@@ -24,10 +24,6 @@ before_install:
   - export DB_INSTANCE=local
   - git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.ibm.com".insteadOf "https://github.ibm.com"
 
-install:
-  # Start VCService database
-  - scripts/get-and-start-$VCSERVICE_DB.sh
-
 jobs:
   include:
     - stage: lint
@@ -49,18 +45,20 @@ jobs:
         # Run lint and test
         - make lint
     - stage: test
+      name: Unit Test (non DB)
+      script: make test-non-db-packages
+    - stage: test
       name: Unit Tests (postgres)
-      env: VCSERVICE_DB=postgres
-      script: make test
+      install: scripts/get-and-start-postgres.sh
+      script: make test-db-packages
     - stage: test
       name: Unit Tests (yugabyte)
-      env: VCSERVICE_DB=yuga
-      script: make test
+      install: scripts/get-and-start-yuga.sh
+      script: make test-db-packages
     - stage: test
       name: Integration Tests (yugabyte)
-      env: VCSERVICE_DB=yuga
+      install: scripts/get-and-start-yuga.sh
       script: travis_wait 20 make integration-test
     - stage: test
       name: Build and test container images
-      install: skip
       script: make container-test -j16

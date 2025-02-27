@@ -70,9 +70,12 @@ MAKEFLAGS += --jobs=16
 # Quickstart
 #########################
 
+DB_PACKAGES_REGEXP = .*/scalable-committer/(coordinatorservice|vcservice|queryservice|loadgen|cmd)
+HEAVY_PACKAGES_REGEXP = .*/scalable-committer/(docker|integration)
+
 test: build
 	@# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
-	@go test -v $(shell go list ./... | grep -vE ".*/scalable-committer/(docker|integration)")
+	@go test -v $(shell go list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
 
 integration-test: build
 	go test -timeout 30m -v ./integration/...
@@ -82,6 +85,12 @@ container-test: build-test-node-image build-mock-orderer-image
 
 test-package-%: build
 	go test -v ./$*/...
+
+test-db-packages: build
+	@go test -v $(shell go list ./... | grep -E "$(DB_PACKAGES_REGEXP)")
+
+test-non-db-packages: build
+	@go test -v $(shell go list ./... | grep -vE "$(DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
 test-cover: build
 	go test -v -coverprofile=coverage.profile ./...
