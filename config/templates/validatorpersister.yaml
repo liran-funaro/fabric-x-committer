@@ -19,8 +19,7 @@ validator-committer-service:
     min-transaction-batch-size: 1
 
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 logging:
   development: true

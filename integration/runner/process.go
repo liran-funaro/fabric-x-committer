@@ -94,10 +94,9 @@ func newQueryServiceOrVCServiceConfig(
 }
 
 func newCommonEndpoints(t *testing.T) configtempl.CommonEndpoints {
-	ports := findAvailablePortRange(t, 3)
+	ports := findAvailablePortRange(t, 2)
 	return configtempl.CommonEndpoints{
 		ServerEndpoint:  makeLocalListenAddress(ports[0]),
 		MetricsEndpoint: makeLocalListenAddress(ports[1]),
-		LatencyEndpoint: makeLocalListenAddress(ports[2]),
 	}
 }

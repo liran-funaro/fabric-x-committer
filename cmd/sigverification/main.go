@@ -6,14 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	sigverification "github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"google.golang.org/grpc"
 )
 
@@ -57,12 +54,10 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-			fmt.Println(conf)
 
-			m := monitoring.LaunchMonitoring(conf.Monitoring, &metrics.Provider{}).(*metrics.Metrics)
-			service := verifierserver.New(&conf.ParallelExecutor, m)
-			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
-				sigverification.RegisterVerifierServer(server, service)
+			service := sigverification.New(conf)
+			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
+				protosigverifierservice.RegisterVerifierServer(server, service)
 			})
 		},
 	}
@@ -109,23 +104,20 @@ func setFlags(cmd *cobra.Command) {
 	)
 }
 
-func readConfig() *serverconfig.SigVerificationConfig {
+func readConfig() *sigverification.Config {
 	setDefaults()
 	wrapper := new(struct {
-		Config serverconfig.SigVerificationConfig `mapstructure:"sig-verification"`
+		Config sigverification.Config `mapstructure:"sig-verification"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config
 }
 
 func setDefaults() {
-	viper.SetDefault("sig-verification.server.endpoint", fmt.Sprintf(":%d", 5000))
-	viper.SetDefault("sig-verification.monitoring.metrics.endpoint", ":2112")
-	viper.SetDefault("sig-verification.monitoring.latency.endpoint", ":14268")
-	viper.SetDefault("sig-verification.monitoring.latency.span-exporter", "console")
-	viper.SetDefault("sig-verification.monitoring.latency.sampler.type", "never")
+	viper.SetDefault("sig-verification.server.endpoint", "localhost:5000")
+	viper.SetDefault("sig-verification.monitoring.server.endpoint", "localhost:2112")
 
-	viper.SetDefault("sig-verification.scheme", "Ecdsa")
+	viper.SetDefault("sig-verification.scheme", "ECDSA")
 
 	viper.SetDefault("sig-verification.parallel-executor.parallelism", 4)
 	viper.SetDefault("sig-verification.parallel-executor.batch-time-cutoff", "500ms")

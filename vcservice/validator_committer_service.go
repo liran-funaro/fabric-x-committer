@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
-	"golang.org/x/sync/errgroup"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var logger = logging.New("validator and committer service")
@@ -38,7 +39,6 @@ type ValidatorCommitterService struct {
 	txsStatus                chan *protoblocktx.TransactionsStatus
 	db                       *database
 	metrics                  *perfMetrics
-	promErrChan              <-chan error
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
 	config                   *ValidatorCommitterServiceConfig
@@ -109,8 +109,8 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		_ = vc.metrics.provider.StartPrometheusServer(
-			eCtx, vc.config.Monitoring.Metrics.Endpoint, vc.monitorQueues,
+		_ = vc.metrics.StartPrometheusServer(
+			eCtx, vc.config.Monitoring.Server, vc.monitorQueues,
 		)
 		// We don't return error here to avoid stopping the service due to monitoring error.
 		// But we use the errgroup to ensure the method returns only when the server exits.
@@ -160,15 +160,11 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-		case err := <-vc.promErrChan:
-			// Once the prometheus server is stopped, we no longer need to monitor the queues.
-			logger.Errorf("Prometheus ended with error: %s", err)
-			return
 		}
-		prometheusmetrics.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
-		prometheusmetrics.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
-		prometheusmetrics.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
-		prometheusmetrics.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
+		monitoring.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
+		monitoring.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
+		monitoring.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
+		monitoring.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
 	}
 }
 
@@ -267,7 +263,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 			return errors.Wrap(err, "failed to receive transactions from the coordinator")
 		}
 		txCount := len(b.Transactions)
-		prometheusmetrics.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
+		monitoring.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 		vc.receivedTxBatch <- b
 	}
 
@@ -345,10 +341,10 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 			}
 		}
 
-		prometheusmetrics.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
-		prometheusmetrics.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
-		prometheusmetrics.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
-		prometheusmetrics.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
+		monitoring.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
+		monitoring.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
+		monitoring.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
+		monitoring.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
 }
 

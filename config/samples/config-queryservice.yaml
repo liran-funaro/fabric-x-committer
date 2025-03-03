@@ -16,8 +16,7 @@ query-service:
     max-connections: 10                        # The maximum size of the connection pool
     min-connections: 5                         # The minimum size of the connection pool.
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: localhost:7004
   # Resource limit configurations
   min-batch-keys: 1024             # A batch will execute once it accumulated this number of keys.

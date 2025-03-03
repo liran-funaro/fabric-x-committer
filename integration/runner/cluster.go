@@ -12,11 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -24,12 +19,17 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 type (
@@ -67,7 +67,7 @@ type (
 		Namespace  string
 		Profile    *workload.Policy
 		HashSigner *workload.HashSignerVerifier
-		NsSigner   sigverificationtest.NsSigner
+		NsSigner   *sigtest.NsSigner
 		PubKey     []byte
 		PubKeyPath string
 	}
@@ -307,6 +307,7 @@ func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx
 
 // CreateCryptoForNs creates the Crypto materials for a namespace using the signature profile.
 func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
+	t.Helper()
 	policyMsg := &workload.Policy{
 		Scheme: schema,
 		Seed:   c.seedForCryptoGen.Int63(),

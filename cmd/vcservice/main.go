@@ -112,8 +112,7 @@ func readConfig() *vcservice.ValidatorCommitterServiceConfig {
 func setDefaults() {
 	// defaults for ServerConfig
 	prefix := "validator-committer-service.server.endpoint."
-	viper.SetDefault(prefix+"host", "localhost")
-	viper.SetDefault(prefix+"port", 6001)
+	viper.SetDefault("validator-committer-service.server.endpoint", "localhost:6001")
 
 	// defaults for DatabaseConfig
 	prefix = "validator-committer-service.database."
@@ -135,7 +134,5 @@ func setDefaults() {
 	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
 
 	// defaults for monitoring.config
-	prefix = "validator-committer-service.monitoring."
-	viper.SetDefault(prefix+"metrics.endpoint", "localhost:6002")
-	viper.SetDefault(prefix+"metrics.enable", true)
+	viper.SetDefault("validator-committer-service.monitoring.server.endpoint", "localhost:6002")
 }

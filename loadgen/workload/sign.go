@@ -7,24 +7,15 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
-	sigverificationtest "github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 )
 
 var logger = logging.New("load-gen-sign")
 
 type (
-	// Scheme is the name of the signature scheme.
-	Scheme = string
-	// Signature represents a signature.
-	Signature = []byte
-	// PublicKey is the signature public key.
-	PublicKey = []byte
-	// PrivateKey is the signature private key.
-	PrivateKey = []byte
-
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
 	TxSignerVerifier struct {
 		HashSigners map[string]*HashSignerVerifier
@@ -32,10 +23,10 @@ type (
 
 	// HashSignerVerifier supports signing and verifying a hash value.
 	HashSignerVerifier struct {
-		signer   sigverificationtest.NsSigner
-		verifier signature.NsVerifier
-		pubKey   PublicKey
-		scheme   Scheme
+		signer   *sigtest.NsSigner
+		verifier *signature.NsVerifier
+		pubKey   signature.PublicKey
+		scheme   signature.Scheme
 	}
 )
 
@@ -85,10 +76,10 @@ func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
 // NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile and a seed.
 func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 	logger.Debugf("sig profile: %v", profile)
-	factory := sigverificationtest.GetSignatureFactory(profile.Scheme)
+	factory := sigtest.NewSignatureFactory(profile.Scheme)
 
-	var signingKey PrivateKey
-	var verificationKey PublicKey
+	var signingKey signature.PrivateKey
+	var verificationKey signature.PublicKey
 	if profile.KeyPath != nil {
 		logger.Infof("Attempting to load keys")
 		var err error
@@ -98,21 +89,21 @@ func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 		logger.Debugf("Generating new keys")
 		signingKey, verificationKey = factory.NewKeysWithSeed(profile.Seed)
 	}
-	verifier, err := factory.NewVerifier(verificationKey)
+	v, err := factory.NewVerifier(verificationKey)
 	utils.Must(err)
 	signer, err := factory.NewSigner(signingKey)
 	utils.Must(err)
 
 	return &HashSignerVerifier{
 		signer:   signer,
-		verifier: verifier,
+		verifier: v,
 		pubKey:   verificationKey,
 		scheme:   profile.Scheme,
 	}
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) Signature {
+func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) signature.Signature {
 	sign, err := e.signer.SignNs(tx, nsIndex)
 	Must(err)
 	return sign
@@ -135,11 +126,11 @@ func (e *HashSignerVerifier) GetVerificationPolicy() *protoblocktx.NamespacePoli
 }
 
 // GetVerificationKeyAndSigner returns the verification key and the signer.
-func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (PublicKey, sigverificationtest.NsSigner) {
+func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (signature.PublicKey, *sigtest.NsSigner) {
 	return e.pubKey, e.signer
 }
 
-func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
+func loadKeys(keyPath KeyPath) (signature.PrivateKey, signature.PublicKey, error) {
 	if !utils.FileExists(keyPath.SigningKey) {
 		return nil, nil, fmt.Errorf("signing key file not found in %s", keyPath.SigningKey)
 	}
@@ -159,7 +150,7 @@ func loadKeys(keyPath KeyPath) (PrivateKey, PublicKey, error) {
 	}
 
 	if utils.FileExists(keyPath.SignCertificate) {
-		if verificationKey, err := signature.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
+		if verificationKey, err := sigtest.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
 			return nil, nil, fmt.Errorf("could not read sign cert from %s: %w", keyPath.SignCertificate, err)
 		} else {
 			logger.Infof("Sign cert and key found in files %s/%s. Importing...",

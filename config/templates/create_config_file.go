@@ -31,7 +31,6 @@ type (
 	CommonEndpoints struct {
 		ServerEndpoint  string
 		MetricsEndpoint string
-		LatencyEndpoint string
 	}
 
 	// SigVerifierConfig represents the configuration of the sigverifier process.

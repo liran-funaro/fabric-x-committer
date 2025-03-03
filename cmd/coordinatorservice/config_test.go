@@ -9,7 +9,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 )
 
 func TestReadConfig(t *testing.T) {
@@ -66,11 +65,10 @@ func TestReadConfig(t *testing.T) {
 					NumOfWorkersForGlobalDepManager: 1,
 				},
 				ChannelBufferSizePerGoroutine: 10,
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
-							Host: "",
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
+							Host: "localhost",
 							Port: 2110,
 						},
 					},

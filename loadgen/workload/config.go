@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 // Profile describes the generated workload characteristics.
@@ -93,8 +95,8 @@ type PolicyProfile struct {
 
 // Policy describes how to sign/verify a TX.
 type Policy struct {
-	Scheme Scheme `mapstructure:"scheme" yaml:"scheme"`
-	Seed   int64  `mapstructure:"seed" yaml:"seed"`
+	Scheme signature.Scheme `mapstructure:"scheme" yaml:"scheme"`
+	Seed   int64            `mapstructure:"seed" yaml:"seed"`
 	// KeyPath describes how to find/generate the signature keys.
 	// KeyPath is still not supported.
 	KeyPath *KeyPath `mapstructure:"key-path" yaml:"key-path"`

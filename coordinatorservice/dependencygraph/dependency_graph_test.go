@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
 func TestDependencyGraph(t *testing.T) {
@@ -19,7 +19,7 @@ func TestDependencyGraph(t *testing.T) {
 	localDepIncomingTxs := make(chan *TransactionBatch, 10)
 	localDepOutgoingTxs := make(chan *transactionNodeBatch, 10)
 
-	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
+	metrics := newPerformanceMetrics(monitoring.NewProvider())
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs, metrics)
 
 	globalDepOutgoingTxs := make(chan TxNodeBatch, 10)

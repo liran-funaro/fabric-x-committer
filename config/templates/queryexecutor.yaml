@@ -14,8 +14,7 @@ query-service:
     min-connections: 5                         # The minimum size of the connection pool.
   # Resource limit configurations
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 logging:
   development: true

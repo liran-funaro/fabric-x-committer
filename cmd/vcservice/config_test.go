@@ -9,7 +9,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
@@ -49,11 +48,10 @@ func TestConfig(t *testing.T) {
 					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 2 * time.Second,
 				},
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
-							Host: "",
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
+							Host: "localhost",
 							Port: 2111,
 						},
 					},
@@ -70,7 +68,6 @@ func TestConfig(t *testing.T) {
 						Host: "localhost",
 						Port: 6001,
 					},
-					Creds: nil,
 				},
 				Database: &vcservice.DatabaseConfig{
 					Host:           "localhost",
@@ -91,10 +88,9 @@ func TestConfig(t *testing.T) {
 					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
 							Host: "localhost",
 							Port: 6002,
 						},
@@ -132,10 +128,9 @@ func TestConfig(t *testing.T) {
 					MinTransactionBatchSize:           1,
 					TimeoutForMinTransactionBatchSize: 5 * time.Second,
 				},
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
 							Host: "localhost",
 							Port: 6002,
 						},

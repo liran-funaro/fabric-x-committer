@@ -10,7 +10,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
@@ -40,10 +39,9 @@ func TestConfig(t *testing.T) {
 					MaxConnections: 10,
 					MinConnections: 5,
 				},
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
 							Host: "localhost",
 							Port: 7004,
 						},
@@ -76,10 +74,9 @@ func TestConfig(t *testing.T) {
 					MaxConnections: 20,
 					MinConnections: 10,
 				},
-				Monitoring: &monitoring.Config{
-					Metrics: &metrics.Config{
-						Enable: true,
-						Endpoint: &connection.Endpoint{
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
 							Host: "localhost",
 							Port: 7004,
 						},

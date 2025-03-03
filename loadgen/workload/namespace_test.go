@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 var namespacesUnderTest = []string{"0", "1", "2", types.MetaNamespaceID}
@@ -14,17 +14,19 @@ var namespacesUnderTest = []string{"0", "1", "2", types.MetaNamespaceID}
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.
 func TestNamespaceGeneratorKeyCreation(t *testing.T) {
-	for _, sig := range []Scheme{signature.Ecdsa, signature.Bls, signature.Eddsa} {
+	t.Parallel()
+	for _, scheme := range signature.AllRealSchemes {
 		policyProfile := &PolicyProfile{
 			NamespacePolicies: make(map[string]*Policy, len(namespacesUnderTest)),
 		}
 		for i, ns := range namespacesUnderTest {
 			policyProfile.NamespacePolicies[ns] = &Policy{
-				Scheme: sig,
+				Scheme: scheme,
 				Seed:   int64(i),
 			}
 		}
-		t.Run(sig, func(t *testing.T) {
+		t.Run(scheme, func(t *testing.T) {
+			t.Parallel()
 			mainNsTx, err := CreateNamespaces(policyProfile)
 			require.NoError(t, err)
 			mainRw := getReadWritesFromNamespaceTx(t, mainNsTx)

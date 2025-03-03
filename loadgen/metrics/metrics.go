@@ -1,24 +1,21 @@
 package metrics
 
 import (
-	"context"
-
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 // PerfMetrics is a struct that contains the metrics for the block generator.
 type PerfMetrics struct {
-	provider                        metrics.Provider
-	blockSentTotal                  *metrics.IntCounter
-	transactionSentTotal            *metrics.IntCounter
-	transactionReceivedTotal        *metrics.IntCounter
-	transactionCommittedTotal       *metrics.IntCounter
-	transactionAbortedTotal         *metrics.IntCounter
+	*monitoring.Provider
+
+	blockSentTotal                  *monitoring.IntCounter
+	transactionSentTotal            *monitoring.IntCounter
+	transactionReceivedTotal        *monitoring.IntCounter
+	transactionCommittedTotal       *monitoring.IntCounter
+	transactionAbortedTotal         *monitoring.IntCounter
 	validTransactionLatencySecond   prometheus.Histogram
 	invalidTransactionLatencySecond prometheus.Histogram
 
@@ -26,10 +23,11 @@ type PerfMetrics struct {
 }
 
 // NewLoadgenServiceMetrics creates a new PerfMetrics instance.
-func NewLoadgenServiceMetrics(p metrics.Provider) *PerfMetrics {
-	buckets := p.Buckets()
+func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
+	p := monitoring.NewProvider()
+	buckets := c.Latency.BucketConfig.Buckets()
 	m := &PerfMetrics{
-		provider: p,
+		Provider: p,
 		blockSentTotal: p.NewIntCounter(prometheus.CounterOpts{
 			Namespace: "blockgen",
 			Name:      "block_sent_total",
@@ -71,7 +69,7 @@ func NewLoadgenServiceMetrics(p metrics.Provider) *PerfMetrics {
 		}),
 	}
 	m.latencyTracker = NewReceiverSender(
-		m.provider, m.validTransactionLatencySecond, m.invalidTransactionLatencySecond,
+		&c.Latency.SamplerConfig, m.validTransactionLatencySecond, m.invalidTransactionLatencySecond,
 	)
 	return m
 }
@@ -110,34 +108,4 @@ func (c *PerfMetrics) OnSendBlock(block *protoblocktx.Block) {
 func (c *PerfMetrics) OnSendTransaction(txID string) {
 	c.transactionSentTotal.Add(1)
 	c.latencyTracker.OnSendTransaction(txID)
-}
-
-// CreateProvider creates the appropriate provider for the metrics.
-func CreateProvider(c *metrics.Config) metrics.Provider {
-	if c == nil || !c.Enable {
-		return metrics.NewNoOpProvider()
-	}
-	return &defaultProvider{
-		LatencyConfig:  &c.Latency,
-		Provider:       prometheusmetrics.NewProvider(),
-		serverEndpoint: c.Endpoint,
-	}
-}
-
-type defaultProvider struct {
-	*metrics.LatencyConfig
-	*prometheusmetrics.Provider
-	serverEndpoint *connection.Endpoint
-}
-
-func (p *defaultProvider) StartPrometheusServer(ctx context.Context) error {
-	return p.Provider.StartPrometheusServer(ctx, p.serverEndpoint)
-}
-
-func (p *defaultProvider) NewIntCounter(opts prometheus.CounterOpts) *metrics.IntCounter {
-	return &metrics.IntCounter{Counter: p.NewCounter(opts)}
-}
-
-func (p *defaultProvider) NewIntGauge(opts prometheus.GaugeOpts) *metrics.IntGauge {
-	return &metrics.IntGauge{Gauge: p.NewGauge(opts)}
 }

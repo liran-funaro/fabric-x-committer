@@ -8,7 +8,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -193,7 +193,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			lst.clearEmpty()
 		}
 
-		prometheusmetrics.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
+		monitoring.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
 		outgoingPreparedTransactions.Write(prepTxs)
 
 		logger.Debugf("Transaction preparing finished.")

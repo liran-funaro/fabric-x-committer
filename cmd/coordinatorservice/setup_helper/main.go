@@ -9,9 +9,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -38,7 +38,7 @@ func main() {
 		keyPath,
 		scheme,
 	)
-	pubBytes, err := signature.GetSerializedKeyFromCert(keyPath)
+	pubBytes, err := sigtest.GetSerializedKeyFromCert(keyPath)
 	utils.Must(err)
 
 	fmt.Println("Successfully retrieved public key from path.")

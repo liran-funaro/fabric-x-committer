@@ -46,7 +46,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int, expectedEndErrorMsg ...byte
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        newPerformanceMetrics(true),
+			metrics:                        newPerformanceMetrics(),
 			policyMgr:                      &policyManager{signVerifierMgr: svEnv.signVerifierManager},
 		},
 	)

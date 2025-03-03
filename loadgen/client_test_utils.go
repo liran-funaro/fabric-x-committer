@@ -14,10 +14,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	utilsmetrics "github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
@@ -79,7 +78,7 @@ func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*con
 
 	for i := range endpoints {
 		vcConf := &vcservice.ValidatorCommitterServiceConfig{
-			Server:     defaultServer(),
+			Server:     connection.NewLocalHostServer(),
 			Monitoring: defaultMonitoring(),
 			Database: &vcservice.DatabaseConfig{
 				Host:           conn.Host,
@@ -172,26 +171,14 @@ func defaultClientConf() *ClientConfig {
 			Namespaces: true,
 			Load:       true,
 		},
-		Monitoring: monitoring.Config{
-			Metrics: &utilsmetrics.Config{
-				Enable:   true,
-				Endpoint: &connection.Endpoint{Host: "localhost"},
-			},
+		Monitoring: metrics.Config{
+			Config: defaultMonitoring(),
 		},
 	}
 }
 
-func defaultMonitoring() *monitoring.Config {
-	return &monitoring.Config{
-		Metrics: &utilsmetrics.Config{
-			Enable:   true,
-			Endpoint: &connection.Endpoint{Host: "localhost"},
-		},
-	}
-}
-
-func defaultServer() *connection.ServerConfig {
-	return &connection.ServerConfig{
-		Endpoint: connection.Endpoint{Host: "localhost"},
+func defaultMonitoring() monitoring.Config {
+	return monitoring.Config{
+		Server: connection.NewLocalHostServer(),
 	}
 }

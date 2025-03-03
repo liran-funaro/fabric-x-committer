@@ -9,8 +9,7 @@ sig-verification:
     endpoint: %s
 
   monitoring:
-    metrics:
-      enable: %b
+    server:
       endpoint: %s
 
 logging:

@@ -2,8 +2,8 @@ package loadgen
 
 import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type (
@@ -11,8 +11,8 @@ type (
 	ClientConfig struct {
 		Adapter adapters.AdapterConfig `mapstructure:",squash" yaml:",inline"`
 
-		Monitoring monitoring.Config `mapstructure:"monitoring" yaml:"monitoring"`
-		BufferSize int               `mapstructure:"buffer-size" yaml:"buffer-size"`
+		Monitoring metrics.Config `mapstructure:"monitoring" yaml:"monitoring"`
+		BufferSize int            `mapstructure:"buffer-size" yaml:"buffer-size"`
 
 		LoadProfile *workload.Profile       `mapstructure:"load-profile" yaml:"load-profile"`
 		Stream      *workload.StreamOptions `mapstructure:"stream" yaml:"stream"`

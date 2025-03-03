@@ -10,7 +10,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 // transactionValidator validates the reads of transactions against the committed states.
@@ -114,7 +114,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 			return matchErr
 		}
 
-		prometheusmetrics.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
+		monitoring.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
 		outgoingValidatedTransactions.Write(vTxs)
 
 		logger.Debugf("Validator sent batch of validated TXs to the committer")

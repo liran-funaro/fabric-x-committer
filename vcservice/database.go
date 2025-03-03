@@ -11,11 +11,11 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 )
 
 const (
@@ -127,7 +127,7 @@ func (db *database) validateNamespaceReads(
 
 	mismatchingReads := &reads{}
 	mismatchingReads.appendMany(keys, values)
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
+	monitoring.Observe(db.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
 
 	return mismatchingReads, nil
 }
@@ -146,7 +146,7 @@ func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (key
 	for i, key := range foundKeys {
 		kToV[string(key)] = foundVersions[i]
 	}
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
+	monitoring.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
 
 	return kToV, nil
 }
@@ -221,7 +221,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (na
 	}
 
 	err = tx.Commit(ctx)
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
+	monitoring.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed tx commit: %w", err)
 	}
@@ -302,7 +302,7 @@ func (db *database) commitTxStatus(
 		return nil, fmt.Errorf("failed fetching results from query: %w", err)
 	}
 	if len(duplicated) == 0 {
-		prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+		monitoring.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 		return nil, nil
 	}
 
@@ -310,7 +310,7 @@ func (db *database) commitTxStatus(
 	for i, v := range duplicated {
 		duplicatedTx[i] = TxID(v)
 	}
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+	monitoring.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicatedTx, nil
 }
 
@@ -319,7 +319,7 @@ func (db *database) commitNewKeys(
 ) (namespaceToReads /* mismatched */, error) {
 	start := time.Now()
 	defer func() {
-		prometheusmetrics.Observe(
+		monitoring.Observe(
 			db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
 			time.Since(start),
 		)
@@ -364,7 +364,7 @@ func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites nam
 			return fmt.Errorf("failed tx exec: %w", err)
 		}
 	}
-	prometheusmetrics.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
+	monitoring.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
 
 	return nil
 }

@@ -205,6 +205,8 @@ linters-settings:
     # Default: []
     # ignoreInterfaceRegexps:
     #   - ^(?i)c(?-i)ach(ing|e)
+  goimports:
+    local-prefixes: github.ibm.com/decentralized-trust-research/scalable-committer
 
 issues:
   # The list of ids of default excludes to include or disable.

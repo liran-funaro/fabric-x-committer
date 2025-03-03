@@ -13,7 +13,7 @@ type ValidatorCommitterServiceConfig struct {
 	Server         *connection.ServerConfig `mapstructure:"server"`
 	Database       *DatabaseConfig          `mapstructure:"database"`
 	ResourceLimits *ResourceLimitsConfig    `mapstructure:"resource-limits"`
-	Monitoring     *monitoring.Config       `mapstructure:"monitoring"`
+	Monitoring     monitoring.Config        `mapstructure:"monitoring"`
 }
 
 // DatabaseConfig is the configuration for the database.

@@ -9,9 +9,8 @@ sig-verification:
     endpoint: localhost:5000
 
   monitoring:
-    metrics:
-      enable: true
-      endpoint: :2110
+    server:
+      endpoint: localhost:2110
 
 logging:
   development: true

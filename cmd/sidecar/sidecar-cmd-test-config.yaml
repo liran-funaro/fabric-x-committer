@@ -9,17 +9,8 @@ sidecar:
   ledger:
     path: %s
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: localhost:%d
-      latency:
-        sampler:
-          type: timer
-          sampling-interval: 10s
-        buckets:
-          type: uniform
-          max-latency: 5s
-          bucket-count: 1000
   server:
     endpoint: localhost:%d
 

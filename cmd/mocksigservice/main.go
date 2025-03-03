@@ -10,7 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 )
@@ -66,10 +66,10 @@ func startCmd() *cobra.Command {
 	return cmd
 }
 
-func readConfig() *serverconfig.SigVerificationConfig {
+func readConfig() *sigverification.Config {
 	setDefaults()
 	wrapper := new(struct {
-		Config serverconfig.SigVerificationConfig `mapstructure:"sig-verification"`
+		Config sigverification.Config `mapstructure:"sig-verification"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

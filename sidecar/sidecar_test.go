@@ -22,11 +22,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -126,11 +125,8 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Enable:   true,
-				Endpoint: &connection.Endpoint{Host: "localhost"},
-			},
+		Monitoring: monitoring.Config{
+			Server: connection.NewLocalHostServer(),
 		},
 		ConfigBlockPath: configBlockPath,
 	}
@@ -315,9 +311,9 @@ func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
 	require.Equal(t, types.MetaNamespaceID, p.Policies[0].Namespace)
 	nsp := protoblocktx.NamespacePolicy{}
 	require.NoError(t, proto.Unmarshal(p.Policies[0].Policy, &nsp))
-	verifier, err := signature.NewNsVerifier(nsp.Scheme, nsp.PublicKey)
+	nsVerifier, err := signature.NewNsVerifier(nsp.Scheme, nsp.PublicKey)
 	require.NoError(t, err)
-	require.NotNil(t, verifier)
+	require.NotNil(t, nsVerifier)
 }
 
 func TestConstructStatuses(t *testing.T) {

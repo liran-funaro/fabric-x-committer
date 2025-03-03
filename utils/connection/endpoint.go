@@ -26,6 +26,8 @@ func (e *Endpoint) String() string {
 	return e.Address()
 }
 
+// CreateEndpoint parses an endpoint from an address string.
+// It panics if it fails to parse.
 func CreateEndpoint(value string) *Endpoint {
 	endpoint, err := NewEndpoint(value)
 	if err != nil {
@@ -34,6 +36,7 @@ func CreateEndpoint(value string) *Endpoint {
 	return endpoint
 }
 
+// NewEndpoint parses an endpoint from an address string.
 func NewEndpoint(value string) (*Endpoint, error) {
 	if len(value) == 0 {
 		return &Endpoint{}, nil
@@ -48,4 +51,9 @@ func NewEndpoint(value string) (*Endpoint, error) {
 		return nil, err
 	}
 	return &Endpoint{Host: host, Port: port}, nil
+}
+
+// NewLocalHost returns a default endpoint "localhost:0".
+func NewLocalHost() *Endpoint {
+	return &Endpoint{Host: "localhost"}
 }

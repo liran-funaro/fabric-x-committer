@@ -20,8 +20,8 @@ import (
 // committer endpoint to which the sidecar pushes the block and pulls statuses,
 // and the config of ledger service.
 type Config struct {
-	Monitoring *monitoring.Config       `mapstructure:"monitoring"`
 	Server     *connection.ServerConfig `mapstructure:"server"`
+	Monitoring monitoring.Config        `mapstructure:"monitoring"`
 	Orderer    broadcastdeliver.Config  `mapstructure:"orderer"`
 	Committer  CoordinatorConfig        `mapstructure:"committer"`
 	Ledger     LedgerConfig             `mapstructure:"ledger"`

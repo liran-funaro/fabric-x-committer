@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -22,7 +22,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 	inComingTxs := make(chan *TransactionBatch, 5)
 	outGoingTxs := make(chan *transactionNodeBatch, 5)
 
-	metrics := newPerformanceMetrics(true, prometheusmetrics.NewProvider())
+	metrics := newPerformanceMetrics(monitoring.NewProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
 	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 5)

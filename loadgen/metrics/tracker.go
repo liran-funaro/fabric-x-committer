@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var logger = logging.New("tracker")
@@ -34,21 +35,11 @@ type latencyReceiverSender struct {
 	Sender
 }
 
-type (
-	txTracingSampler    = func(key txTracingID) bool
-	txTracingID         = string
-	blockTracingSampler = func(blockNumber uint64) bool
-	batchTracingSampler = func() bool
-)
-
-type samplerProvider interface {
-	TxSampler() txTracingSampler
-	BatchSampler() batchTracingSampler
-	BlockSampler() blockTracingSampler
-}
-
 // NewReceiverSender instantiate latencyReceiverSender.
-func NewReceiverSender(sampler samplerProvider, validLatency, invalidLatency prometheus.Histogram) ReceiverSender {
+func NewReceiverSender(
+	sampler *monitoring.SamplerConfig,
+	validLatency, invalidLatency prometheus.Histogram,
+) ReceiverSender {
 	latencyTracker := &sync.Map{}
 	return &latencyReceiverSender{
 		Receiver: &latencyReceiverTracker{
@@ -58,7 +49,6 @@ func NewReceiverSender(sampler samplerProvider, validLatency, invalidLatency pro
 		},
 		Sender: &latencySenderTracker{
 			latencyTracker: latencyTracker,
-			batchSampler:   sampler.BatchSampler(),
 			blockSampler:   sampler.BlockSampler(),
 			txSampler:      sampler.TxSampler(),
 		},

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 //go:embed sigverification-cmd-test-config.yaml
@@ -22,9 +23,8 @@ func TestSigverifierCmd(t *testing.T) {
 		"10ms",
 		50,
 		40,
-		"Ecdsa",
+		signature.Ecdsa,
 		"localhost:5000",
-		1,
 		"localhost:2222",
 		loggerOutputPath,
 	)

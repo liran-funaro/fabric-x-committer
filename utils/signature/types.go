@@ -1,15 +1,43 @@
 package signature
 
-type Message = []byte
-type Signature = []byte
-type PrivateKey = []byte
-type PublicKey = []byte
+import (
+	"github.com/cockroachdb/errors"
+)
 
-type Scheme = string
+type (
+	// Digest of a message.
+	Digest = []byte
+	// Signature of a message.
+	Signature = []byte
+	// PrivateKey to be used.
+	PrivateKey = []byte
+	// PublicKey to be used.
+	PublicKey = []byte
+	// Scheme to be used.
+	Scheme = string
+)
 
+// Supported schemes.
 const (
+	// NoScheme does nothing.
 	NoScheme Scheme = "NONE"
-	Ecdsa           = "ECDSA"
-	Bls             = "BLS"
-	Eddsa           = "EDDSA"
+	// Ecdsa use the ECDSA scheme.
+	Ecdsa Scheme = "ECDSA"
+	// Bls use the BLS scheme.
+	Bls Scheme = "BLS"
+	// Eddsa use the EDDSA scheme.
+	Eddsa Scheme = "EDDSA"
+)
+
+var (
+	// ErrSignatureMismatch is returned when a verifier detect a wrong signature.
+	ErrSignatureMismatch = errors.New("signature mismatch")
+	// AllSchemes all the supported scheme.
+	AllSchemes = []Scheme{
+		NoScheme, Ecdsa, Bls, Eddsa,
+	}
+	// AllRealSchemes all supported real scheme (excluding NoScheme).
+	AllRealSchemes = []Scheme{
+		Ecdsa, Bls, Eddsa,
+	}
 )

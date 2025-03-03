@@ -19,8 +19,7 @@ coordinator-service:
   per-channel-buffer-size-per-goroutine: 10
 
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
 # For debugging, change the output to "xxx.log" and the level to "DEBUG"

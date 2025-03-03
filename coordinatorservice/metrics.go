@@ -2,12 +2,11 @@ package coordinatorservice
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type perfMetrics struct {
-	enabled  bool
-	provider *prometheusmetrics.Provider
+	*monitoring.Provider
 
 	// received and processed transactions
 	transactionReceivedTotal                   prometheus.Counter
@@ -27,12 +26,11 @@ type perfMetrics struct {
 	vcserviceTransactionProcessedTotal   prometheus.Counter
 }
 
-func newPerformanceMetrics(enabled bool) *perfMetrics {
-	p := prometheusmetrics.NewProvider()
+func newPerformanceMetrics() *perfMetrics {
+	p := monitoring.NewProvider()
 
 	return &perfMetrics{
-		enabled:  enabled,
-		provider: p,
+		Provider: p,
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "grpc",
@@ -105,19 +103,13 @@ func newPerformanceMetrics(enabled bool) *perfMetrics {
 }
 
 func (s *perfMetrics) transactionReceived(n int) {
-	if s.enabled {
-		s.transactionReceivedTotal.Add(float64(n))
-	}
+	s.transactionReceivedTotal.Add(float64(n))
 }
 
 func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
-	if s.enabled {
-		c.Add(float64(n))
-	}
+	c.Add(float64(n))
 }
 
 func (s *perfMetrics) setQueueSize(queue prometheus.Gauge, size int) {
-	if s.enabled {
-		queue.Set(float64(size))
-	}
+	queue.Set(float64(size))
 }

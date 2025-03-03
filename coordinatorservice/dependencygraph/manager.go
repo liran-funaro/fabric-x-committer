@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 	"golang.org/x/sync/errgroup"
 )
@@ -42,15 +42,13 @@ type (
 		// that can be waiting at the dependency manager.
 		WaitingTxsLimit int
 		// PrometheusMetricsProvider is the provider for Prometheus metrics.
-		PrometheusMetricsProvider *prometheusmetrics.Provider
-		// MetricsEnabled defines whether metrics are enabled.
-		MetricsEnabled bool
+		PrometheusMetricsProvider *monitoring.Provider
 	}
 )
 
 // NewManager creates a new dependency graph manager.
 func NewManager(c *Config) *Manager {
-	metrics := newPerformanceMetrics(c.MetricsEnabled, c.PrometheusMetricsProvider)
+	metrics := newPerformanceMetrics(c.PrometheusMetricsProvider)
 
 	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, cap(c.IncomingTxs))
 	ldp := newLocalDependencyConstructor(c.IncomingTxs, outgoingTxsNodeWithLocalDep, metrics)

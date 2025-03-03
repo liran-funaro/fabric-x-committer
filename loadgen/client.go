@@ -13,18 +13,16 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	monitoringmetrics "github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"golang.org/x/sync/errgroup"
 )
 
 type (
 	// Client for applying load on the services.
 	Client struct {
-		conf           *ClientConfig
-		txStream       *workload.TxStream
-		metricProvider monitoringmetrics.Provider
-		resources      adapters.ClientResources
-		adapter        ServiceAdapter
+		conf      *ClientConfig
+		txStream  *workload.TxStream
+		resources adapters.ClientResources
+		adapter   ServiceAdapter
 	}
 
 	// ServiceAdapter encapsulates the common interface for adapters.
@@ -75,14 +73,13 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	}
 
 	c := &Client{
-		conf:           conf,
-		txStream:       workload.NewTxStream(conf.LoadProfile, conf.Stream),
-		metricProvider: metrics.CreateProvider(conf.Monitoring.Metrics),
+		conf:     conf,
+		txStream: workload.NewTxStream(conf.LoadProfile, conf.Stream),
 		resources: adapters.ClientResources{
 			Profile: conf.LoadProfile,
 		},
 	}
-	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(c.metricProvider)
+	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring)
 
 	adapter, err := getAdapter(&conf.Adapter, &c.resources)
 	if err != nil {
@@ -117,7 +114,7 @@ func (c *Client) Run(ctx context.Context) error {
 	defer cancel()
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return c.metricProvider.StartPrometheusServer(gCtx)
+		return c.resources.Metrics.StartPrometheusServer(gCtx, c.conf.Monitoring.Server)
 	})
 	g.Go(func() error {
 		return c.txStream.Run(gCtx)

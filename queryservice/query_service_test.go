@@ -16,10 +16,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"golang.org/x/exp/slices"
@@ -297,14 +296,8 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 			MaxConnections: 10,
 			MinConnections: 1,
 		},
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Enable: true,
-				Endpoint: &connection.Endpoint{
-					Host: "localhost",
-					Port: 0,
-				},
-			},
+		Monitoring: monitoring.Config{
+			Server: connection.NewLocalHostServer(),
 		},
 	}
 

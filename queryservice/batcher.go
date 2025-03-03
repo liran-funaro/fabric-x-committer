@@ -9,7 +9,7 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 // viewParametersPermutations there is a constant number of view-parameter permutations.
@@ -393,8 +393,8 @@ func (q *namespaceQueryBatch) execute() {
 		}
 	}
 
-	prometheusmetrics.Observe(q.metrics.batchQueuingTimeSeconds, time.Since(q.created))
-	prometheusmetrics.ObserveSize(q.metrics.batchQuerySize, len(uniqueKeys))
+	monitoring.Observe(q.metrics.batchQueuingTimeSeconds, time.Since(q.created))
+	monitoring.ObserveSize(q.metrics.batchQuerySize, len(uniqueKeys))
 
 	start := time.Now()
 	rows, err := unsafeQueryRows(q.ctx, queryObj, q.nsID, uniqueKeys)
@@ -402,8 +402,8 @@ func (q *namespaceQueryBatch) execute() {
 		q.cancel(err)
 		return
 	}
-	prometheusmetrics.Observe(q.metrics.queryLatencySeconds, time.Since(start))
-	prometheusmetrics.ObserveSize(q.metrics.batchResponseSize, len(rows))
+	monitoring.Observe(q.metrics.queryLatencySeconds, time.Since(start))
+	monitoring.ObserveSize(q.metrics.batchResponseSize, len(rows))
 
 	for _, r := range rows {
 		q.result[string(r.Key)] = r

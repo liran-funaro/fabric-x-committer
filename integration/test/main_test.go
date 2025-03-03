@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"google.golang.org/grpc/grpclog"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
 func TestMain(m *testing.M) {

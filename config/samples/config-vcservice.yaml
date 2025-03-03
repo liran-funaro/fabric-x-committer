@@ -23,9 +23,8 @@ validator-committer-service:
     min-transaction-batch-size: 1
     timeout-for-min-transaction-batch-size: 2s
   monitoring:
-    metrics:
-      enable: true
-      endpoint: :2111
+    server:
+      endpoint: localhost:2111
 logging:
   development: true
   enabled: true

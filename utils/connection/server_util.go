@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -24,6 +25,33 @@ type (
 		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 	}
 
+	// ServerKeepAliveConfig describes the keep alive parameters.
+	ServerKeepAliveConfig struct {
+		Params            *ServerKeepAliveParamsConfig            `mapstructure:"params"`
+		EnforcementPolicy *ServerKeepAliveEnforcementPolicyConfig `mapstructure:"enforcement-policy"`
+	}
+
+	// ServerKeepAliveParamsConfig describes the keep alive policy.
+	ServerKeepAliveParamsConfig struct {
+		MaxConnectionIdle     time.Duration `mapstructure:"max-connection-idle"`
+		MaxConnectionAge      time.Duration `mapstructure:"max-connection-age"`
+		MaxConnectionAgeGrace time.Duration `mapstructure:"max-connection-age-grace"`
+		Time                  time.Duration `mapstructure:"time"`
+		Timeout               time.Duration `mapstructure:"timeout"`
+	}
+
+	// ServerKeepAliveEnforcementPolicyConfig describes the keep alive enforcement policy.
+	ServerKeepAliveEnforcementPolicyConfig struct {
+		MinTime             time.Duration `mapstructure:"min-time"`
+		PermitWithoutStream bool          `mapstructure:"permit-without-stream"`
+	}
+
+	// ServerCredsConfig describes the server's credentials configuration.
+	ServerCredsConfig struct {
+		CertPath string `mapstructure:"cert-path"`
+		KeyPath  string `mapstructure:"key-path"`
+	}
+
 	// Service describes the method that are required for a service to run.
 	Service interface {
 		// Run executes the service until the context is done.
@@ -34,77 +62,65 @@ type (
 	}
 )
 
-func (c *ServerConfig) Opts() []grpc.ServerOption {
-	opts := make([]grpc.ServerOption, 0)
+// NewLocalHostServer returns a default server config with endpoint "localhost:0".
+func NewLocalHostServer() *ServerConfig {
+	return &ServerConfig{Endpoint: *NewLocalHost()}
+}
+
+func (c *ServerConfig) opts() []grpc.ServerOption {
+	var opts []grpc.ServerOption
 	if c.Creds != nil {
-		opts = append(opts, c.Creds.serverOption())
+		cert, err := tls.LoadX509KeyPair(c.Creds.CertPath, c.Creds.KeyPath)
+		utils.Must(err)
+		opts = append(opts, grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.NoClientCert,
+			MinVersion:   tls.VersionTLS12,
+		})))
 	}
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
-		opts = append(opts, c.KeepAlive.Params.serverOption())
+		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle:     c.KeepAlive.Params.MaxConnectionIdle,
+			MaxConnectionAge:      c.KeepAlive.Params.MaxConnectionAge,
+			MaxConnectionAgeGrace: c.KeepAlive.Params.MaxConnectionAgeGrace,
+			Time:                  c.KeepAlive.Params.Time,
+			Timeout:               c.KeepAlive.Params.Timeout,
+		}))
 	}
 	if c.KeepAlive != nil && c.KeepAlive.EnforcementPolicy != nil {
-		opts = append(opts, c.KeepAlive.EnforcementPolicy.serverOption())
+		opts = append(opts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             c.KeepAlive.EnforcementPolicy.MinTime,
+			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
+		}))
 	}
 	return opts
 }
 
-type ServerKeepAliveConfig struct {
-	Params            *ServerKeepAliveParamsConfig            `mapstructure:"params"`
-	EnforcementPolicy *ServerKeepAliveEnforcementPolicyConfig `mapstructure:"enforcement-policy"`
-}
-type ServerKeepAliveParamsConfig struct {
-	MaxConnectionIdle     time.Duration `mapstructure:"max-connection-idle"`
-	MaxConnectionAge      time.Duration `mapstructure:"max-connection-age"`
-	MaxConnectionAgeGrace time.Duration `mapstructure:"max-connection-age-grace"`
-	Time                  time.Duration `mapstructure:"time"`
-	Timeout               time.Duration `mapstructure:"timeout"`
-}
-
-func (c *ServerKeepAliveParamsConfig) serverOption() grpc.ServerOption {
-	return grpc.KeepaliveParams(keepalive.ServerParameters{
-		MaxConnectionIdle:     c.MaxConnectionIdle,
-		MaxConnectionAge:      c.MaxConnectionAge,
-		MaxConnectionAgeGrace: c.MaxConnectionAgeGrace,
-		Time:                  c.Time,
-		Timeout:               c.Timeout,
-	})
-}
-
-type ServerKeepAliveEnforcementPolicyConfig struct {
-	MinTime             time.Duration `mapstructure:"min-time"`
-	PermitWithoutStream bool          `mapstructure:"permit-without-stream"`
-}
-
-func (c *ServerKeepAliveEnforcementPolicyConfig) serverOption() grpc.ServerOption {
-	return grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-		MinTime:             c.MinTime,
-		PermitWithoutStream: c.PermitWithoutStream,
-	})
-}
-
-type ServerCredsConfig struct {
-	CertPath string `mapstructure:"cert-path"`
-	KeyPath  string `mapstructure:"key-path"`
-}
-
-func (c *ServerCredsConfig) serverOption() grpc.ServerOption {
-	cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
-	utils.Must(err)
-	creds := grpc.Creds(credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.NoClientCert,
-	}))
-	return creds
-}
-
-func NewGrpcServer(config *ServerConfig) (*grpc.Server, net.Listener, error) {
-	logger.Infof("Running server at: %s://%s", grpcProtocol, config.Endpoint.Address())
+// Listen instantiate a [net.Listener] and updates the config port with the effective port.
+func Listen(config *ServerConfig) (net.Listener, error) {
 	listener, err := net.Listen(grpcProtocol, config.Endpoint.Address())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to listen")
+	}
+
+	addr := listener.Addr()
+	tcpAddress, ok := addr.(*net.TCPAddr)
+	if !ok {
+		return nil, errors.Join(errors.New("failed to cast to TCP address"), listener.Close())
+	}
+	config.Endpoint.Port = tcpAddress.Port
+
+	logger.Infof("Running server at: %s://%s", grpcProtocol, config.Endpoint.String())
+	return listener, nil
+}
+
+// NewGrpcServer instantiate a [grpc.Server] and [net.Listener].
+func NewGrpcServer(config *ServerConfig) (*grpc.Server, net.Listener, error) {
+	listener, err := Listen(config)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	server := grpc.NewServer(config.Opts()...)
+	server := grpc.NewServer(config.opts()...)
 	return server, listener, nil
 }
 
@@ -118,8 +134,6 @@ func RunGrpcServerMainWithError(
 	if err != nil {
 		return err
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	serverConfig.Endpoint.Port = port
 	register(server)
 
 	g, gCtx := errgroup.WithContext(ctx)

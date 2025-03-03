@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -33,27 +32,24 @@ type (
 		Errorf(format string, args ...interface{})
 		FailNow()
 		Cleanup(f func())
+		Context() context.Context
+		Helper()
 	}
 )
 
-var (
-	TxSize           = 1
-	ClientInputDelay = NoDelay
-	BatchSize        = 100
-	defaultEndPoint  = connection.Endpoint{
-		Host: "localhost",
-		Port: 0,
-	}
-)
-
-func FailHandler(t *testing.T) {
+// FailHandler registers a [gomega] fail handler.
+func FailHandler(t TestingT) {
+	t.Helper()
 	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Fatal(message)
+		t.Helper()
+		t.Errorf(message)
+		t.FailNow()
 	})
 }
 
 // CheckMetrics checks the metrics endpoint for the expected metrics.
 func CheckMetrics(t TestingT, client *http.Client, url string, expectedMetrics []string) {
+	t.Helper()
 	resp, err := client.Get(url)
 	require.NoError(t, err)
 
@@ -75,23 +71,25 @@ func CheckMetrics(t TestingT, client *http.Client, url string, expectedMetrics [
 
 // GetMetricValue returns the value of a prometheus metric.
 func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
+	t.Helper()
 	gm := promgo.Metric{}
 	require.NoError(t, m.Write(&gm))
 
-	switch m.(type) {
-	case prometheus.Gauge:
+	switch {
+	case gm.Gauge != nil:
 		return gm.Gauge.GetValue()
-	case prometheus.Counter:
+	case gm.Counter != nil:
 		return gm.Counter.GetValue()
-	case *metrics.IntCounter:
-		return gm.Counter.GetValue()
-	case *metrics.IntGauge:
-		return gm.Gauge.GetValue()
+	case gm.Untyped != nil:
+		return gm.Untyped.GetValue()
+	case gm.Summary != nil:
+		return gm.Summary.GetSampleSum()
+	case gm.Histogram != nil:
+		return gm.Histogram.GetSampleSum()
 	default:
-		require.Fail(t, "metric is not counter or gauge")
+		require.Fail(t, "unsupported metric")
+		return 0
 	}
-
-	return 0
 }
 
 // RunGrpcServerForTest starts a GRPC server using a register method.
@@ -103,6 +101,7 @@ func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 func RunGrpcServerForTest(
 	ctx context.Context, t TestingT, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
 ) *grpc.Server {
+	t.Helper()
 	server, listener, err := connection.NewGrpcServer(serverConfig)
 	require.NoError(t, err)
 
@@ -132,9 +131,10 @@ func StartGrpcServersForTest(
 	numService int,
 	register func(*grpc.Server, int),
 ) *GrpcServers {
+	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
-		sc[i] = &connection.ServerConfig{Endpoint: defaultEndPoint}
+		sc[i] = connection.NewLocalHostServer()
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, sc, register)
 }
@@ -166,6 +166,7 @@ func RunServiceForTest(
 	service func(ctx context.Context) error,
 	waitFunc func(ctx context.Context) bool,
 ) {
+	t.Helper()
 	var wg sync.WaitGroup
 	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
 	//       order of cleanup matters, which is last added first called.
@@ -197,6 +198,7 @@ func RunServiceAndGrpcForTest(
 	serverConfig *connection.ServerConfig,
 	register func(server *grpc.Server),
 ) *grpc.Server {
+	t.Helper()
 	RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
@@ -214,11 +216,12 @@ type StatusRetriever interface {
 
 func EnsurePersistedTxStatus( // nolint:revive
 	ctx context.Context,
-	t *testing.T,
+	t TestingT,
 	r StatusRetriever,
 	txIDs []string,
 	expected map[string]*protoblocktx.StatusWithHeight,
 ) {
+	t.Helper()
 	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
 	require.Equal(t, expected, actualStatus.Status)

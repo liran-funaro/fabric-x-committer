@@ -13,20 +13,18 @@ sidecar-client:
   broadcast-parallelism: 50
 
 monitoring:
-  metrics:
-    enable: true
+  server:
     endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
   latency:
-    span-exporter: jaeger
     sampler:
-      type: blocktx
+      type: hash
       ratio: 10
       sample-size: 100
       sample-period: 100000
-    endpoint: {{ .CommonEndpoints.LatencyEndpoint }}
-    max-latency: 5s
-    bucket-count: 1000
-
+    buckets:
+      type: uniform
+      max-latency: 5s
+      bucket-count: 1000
 buffer-size: 0
 
 load-profile:

@@ -12,13 +12,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
-	loadgenmetrics "github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/parallelexecutor"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/serverconfig"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
@@ -31,7 +28,7 @@ func TestLoadGenForVCService(t *testing.T) {
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
 		Endpoints: endpoints,
 	}
-	testLoadGenerator(t, clientConf, func(m loadgenmetrics.Values) bool {
+	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
 		return m.TransactionSentTotal > 100 &&
 			m.TransactionReceivedTotal > 100 &&
 			m.TransactionCommittedTotal > 100 &&
@@ -44,9 +41,9 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	t.Parallel()
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
-		sConf := &serverconfig.SigVerificationConfig{
-			Server: defaultServer(),
-			ParallelExecutor: parallelexecutor.Config{
+		sConf := &sigverification.Config{
+			Server: connection.NewLocalHostServer(),
+			ParallelExecutor: sigverification.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
 				ChannelBufferSize: 50,
@@ -54,7 +51,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 			},
 		}
 
-		service := verifierserver.New(&sConf.ParallelExecutor, &metrics.Metrics{Enabled: false})
+		service := sigverification.New(sConf)
 		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, func(server *grpc.Server) {
 			protosigverifierservice.RegisterVerifierServer(server, service)
 		})
@@ -66,7 +63,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
 		Endpoints: endpoints,
 	}
-	testLoadGenerator(t, clientConf, func(m loadgenmetrics.Values) bool {
+	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
 		return m.TransactionSentTotal > 100 &&
 			m.TransactionReceivedTotal > 100 &&
 			m.TransactionCommittedTotal > 100 &&
@@ -80,7 +77,7 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 	_, vcServer := mock.StartMockVCService(t, 1)
 
 	cConf := &coordinatorservice.CoordinatorConfig{
-		ServerConfig: defaultServer(),
+		ServerConfig: connection.NewLocalHostServer(),
 		Monitoring:   defaultMonitoring(),
 		SignVerifierConfig: &coordinatorservice.SignVerifierConfig{
 			ServerConfig: []*connection.ServerConfig{
@@ -114,7 +111,7 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 	clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
 		Endpoint: &cConf.ServerConfig.Endpoint,
 	}
-	testLoadGenerator(t, clientConf, func(m loadgenmetrics.Values) bool {
+	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
 		return m.TransactionSentTotal > 100 &&
 			m.TransactionReceivedTotal > 100 &&
 			m.TransactionCommittedTotal > 100 &&
@@ -146,7 +143,7 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 		ConsensusType: broadcastdeliver.Bft,
 	}
 	sidecarConf := &sidecar.Config{
-		Server:     defaultServer(),
+		Server:     connection.NewLocalHostServer(),
 		Monitoring: defaultMonitoring(),
 		Orderer:    ordererConfig,
 		Committer: sidecar.CoordinatorConfig{
@@ -175,7 +172,7 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 		Orderer:              ordererConfig,
 		BroadcastParallelism: 5,
 	}
-	testLoadGenerator(t, clientConf, func(m loadgenmetrics.Values) bool {
+	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
 		return m.TransactionSentTotal > 100 &&
 			m.TransactionReceivedTotal > 100 &&
 			m.TransactionCommittedTotal > 100 &&

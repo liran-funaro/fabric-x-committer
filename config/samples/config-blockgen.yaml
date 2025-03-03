@@ -10,17 +10,16 @@ sidecar-client:
     channel-id: channel
   broadcast-parallelism: 50
 monitoring:
-  metrics:
-    enable: true
+  server:
     endpoint: localhost:5002
-    latency:
-      sampler:
-        type: timer
-        sampling-interval: 10s
-      buckets:
-        type: uniform
-        max-latency: 5s
-        bucket-count: 1000
+  latency:
+    sampler:
+      type: timer
+      sampling-interval: 10s
+    buckets:
+      type: uniform
+      max-latency: 5s
+      bucket-count: 1000
 load-profile:
   key:
     size: 32

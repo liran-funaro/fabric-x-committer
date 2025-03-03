@@ -12,7 +12,7 @@ type (
 		SignVerifierConfig            *SignVerifierConfig       `mapstructure:"sign-verifier"`
 		ValidatorCommitterConfig      *ValidatorCommitterConfig `mapstructure:"validator-committer"`
 		DependencyGraphConfig         *DependencyGraphConfig    `mapstructure:"dependency-graph"`
-		Monitoring                    *monitoring.Config        `mapstructure:"monitoring"`
+		Monitoring                    monitoring.Config         `mapstructure:"monitoring"`
 		ChannelBufferSizePerGoroutine int                       `mapstructure:"per-channel-buffer-size-per-goroutine"`
 	}
 

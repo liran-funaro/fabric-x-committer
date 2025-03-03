@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -24,7 +24,7 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 		incomingTxs:  make(chan *transactionNodeBatch, 10),
 		outgoingTxs:  make(chan TxNodeBatch, 10),
 		validatedTxs: make(chan TxNodeBatch, 10),
-		metrics:      newPerformanceMetrics(true, prometheusmetrics.NewProvider()),
+		metrics:      newPerformanceMetrics(monitoring.NewProvider()),
 	}
 
 	dm := newGlobalDependencyManager(

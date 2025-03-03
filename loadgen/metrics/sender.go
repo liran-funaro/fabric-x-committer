@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type storer interface {
@@ -12,9 +13,8 @@ type storer interface {
 
 type latencySenderTracker struct {
 	latencyTracker storer
-	batchSampler   batchTracingSampler
-	blockSampler   blockTracingSampler
-	txSampler      txTracingSampler
+	blockSampler   monitoring.NumberTracingSampler
+	txSampler      monitoring.KeyTracingSampler
 }
 
 func (c *latencySenderTracker) OnSendBlock(block *protoblocktx.Block) {

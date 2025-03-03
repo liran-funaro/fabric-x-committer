@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
@@ -71,7 +71,7 @@ func (q *QueryService) Run(ctx context.Context) error {
 	}
 	close(q.ready)
 
-	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring.Metrics.Endpoint)
+	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring.Server)
 	// We don't use the error here as we avoid stopping the service due to monitoring error.
 	<-ctx.Done()
 	return nil
@@ -118,7 +118,7 @@ func (q *QueryService) GetRows(
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
 	defer q.requestLatency(grpcGetRows, time.Now())
 	for _, ns := range query.Namespaces {
-		prometheusmetrics.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
+		monitoring.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
 	}
 
 	batches, err := q.assignRequest(ctx, query)
@@ -138,7 +138,7 @@ func (q *QueryService) GetRows(
 			NsId: ns.NsId,
 			Rows: resRows,
 		}
-		prometheusmetrics.AddToCounter(q.metrics.keysResponded, len(resRows))
+		monitoring.AddToCounter(q.metrics.keysResponded, len(resRows))
 	}
 	return res, err
 }
@@ -155,7 +155,7 @@ func (q *QueryService) assignRequest(
 	ctx context.Context, query *protoqueryservice.Query,
 ) ([]*namespaceQueryBatch, error) {
 	defer func(start time.Time) {
-		prometheusmetrics.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))
+		monitoring.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))
 	}(time.Now())
 	batcher, err := q.batcher.getBatcher(ctx, query.View)
 	if err != nil {
@@ -181,5 +181,5 @@ func getUUID() (string, error) {
 }
 
 func (q *QueryService) requestLatency(method string, start time.Time) {
-	prometheusmetrics.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
+	monitoring.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
 }

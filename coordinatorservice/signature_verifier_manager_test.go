@@ -7,16 +7,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/verifierserver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/protobuf/proto"
 )
 
 type svMgrTestEnv struct {
@@ -40,7 +41,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 			serversConfig:            sc.Configs,
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
-			metrics:                  newPerformanceMetrics(true),
+			metrics:                  newPerformanceMetrics(),
 		},
 	)
 
@@ -298,8 +299,8 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 
 	pendingPoliciesUpdate := env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
 	require.Empty(t, pendingPoliciesUpdate)
-	ns1Policy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns1")
-	ns2Policy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns2")
+	ns1Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns1")
+	ns2Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 	}))
@@ -309,7 +310,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	require.Equal(t, ns1Policy, pendingPoliciesUpdate["ns1"])
 	require.Equal(t, ns2Policy, pendingPoliciesUpdate["ns2"])
 
-	ns2NewPolicy, _ := verifierserver.MakePolicyAndNsSigner(t, "ns2")
+	ns2NewPolicy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
 	}))

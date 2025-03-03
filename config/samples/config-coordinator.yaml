@@ -31,9 +31,8 @@ coordinator-service:
   per-channel-buffer-size-per-goroutine: 10
 
   monitoring:
-    metrics:
-      enable: true
-      endpoint: :2110
+    server:
+      endpoint: localhost:2110
 
 logging:
   development: true

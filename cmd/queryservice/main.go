@@ -78,10 +78,10 @@ func readConfig() *queryservice.Config {
 }
 
 func setDefaults() {
-	// defaults for ServerConfig
+	// defaults for server config.
 	viper.SetDefault("query-service.server.endpoint", "localhost:7003")
 
-	// defaults for DatabaseConfig
+	// defaults for database config,
 	prefix := "query-service.database."
 	viper.SetDefault(prefix+"host", "localhost")
 	viper.SetDefault(prefix+"port", 5433)
@@ -91,12 +91,10 @@ func setDefaults() {
 	viper.SetDefault(prefix+"max-connections", 20)
 	viper.SetDefault(prefix+"min-connections", 10)
 
-	// defaults for monitoring.config
-	prefix = "query-service.monitoring."
-	viper.SetDefault(prefix+"metrics.endpoint", "localhost:7004")
-	viper.SetDefault(prefix+"metrics.enable", true)
+	// defaults for monitoring config.
+	viper.SetDefault("query-service.monitoring.server.endpoint", "localhost:7004")
 
-	// defaults for monitoring.config
+	// defaults for batching.
 	prefix = "query-service."
 	viper.SetDefault(prefix+"min-batch-keys", 1024)
 	viper.SetDefault(prefix+"max-batch-wait", 100*time.Millisecond)

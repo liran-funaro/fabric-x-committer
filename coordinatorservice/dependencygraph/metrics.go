@@ -4,14 +4,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var bucket = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
 type perfMetrics struct {
-	enabled  bool
-	provider *prometheusmetrics.Provider
+	provider *monitoring.Provider
 
 	// queue sizes
 	ldgInputTxBatchQueueSize prometheus.Gauge
@@ -39,9 +38,8 @@ type perfMetrics struct {
 	gdgOutputFreedTxSeconds prometheus.Histogram
 }
 
-func newPerformanceMetrics(enabled bool, p *prometheusmetrics.Provider) *perfMetrics {
+func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 	return &perfMetrics{
-		enabled:  enabled,
 		provider: p,
 		ldgInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
@@ -153,19 +151,13 @@ func newPerformanceMetrics(enabled bool, p *prometheusmetrics.Provider) *perfMet
 }
 
 func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
-	if s.enabled {
-		c.Add(float64(n))
-	}
+	c.Add(float64(n))
 }
 
 func (s *perfMetrics) setQueueSize(queue prometheus.Gauge, size int) {
-	if s.enabled {
-		queue.Set(float64(size))
-	}
+	queue.Set(float64(size))
 }
 
 func (s *perfMetrics) observe(h prometheus.Histogram, d time.Duration) {
-	if s.enabled {
-		h.Observe(d.Seconds())
-	}
+	h.Observe(d.Seconds())
 }

@@ -17,7 +17,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -64,12 +63,7 @@ func NewValidatorAndCommitServiceTestEnv(
 	configs := make([]*ValidatorCommitterServiceConfig, numServices)
 	for i := range vcservices {
 		config := &ValidatorCommitterServiceConfig{
-			Server: &connection.ServerConfig{
-				Endpoint: connection.Endpoint{
-					Host: "localhost",
-					Port: 0,
-				},
-			},
+			Server:   connection.NewLocalHostServer(),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{
 				MaxWorkersForPreparer:             2,
@@ -79,20 +73,14 @@ func NewValidatorAndCommitServiceTestEnv(
 				TimeoutForMinTransactionBatchSize: 20 * time.Second, // to avoid flakyness in TestWaitingTxsCount,
 				// we are setting the timeout value to 20 seconds
 			},
-			Monitoring: &monitoring.Config{
-				Metrics: &metrics.Config{
-					Enable: true,
-					Endpoint: &connection.Endpoint{
-						Host: "localhost",
-						Port: 0,
-					},
-				},
+			Monitoring: monitoring.Config{
+				Server: connection.NewLocalHostServer(),
 			},
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)
 		t.Cleanup(vcs.Close)
-		test.RunServiceAndGrpcForTest(context.Background(), t, vcs, config.Server, func(server *grpc.Server) {
+		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server, func(server *grpc.Server) {
 			protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
 		})
 		vcservices[i] = vcs

@@ -19,6 +19,5 @@ validator-committer-service:
     min-connections: 1
     load-balance: false
   monitoring:
-    metrics:
-      enable: true
+    server:
       endpoint: localhost:2111

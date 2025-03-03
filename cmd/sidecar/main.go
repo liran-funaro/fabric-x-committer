@@ -105,13 +105,13 @@ func readConfig() sidecar.Config {
 }
 
 func setDefaults() {
-	viper.SetDefault("sidecar.server.endpoint", ":8832")
-	viper.SetDefault("sidecar.metrics.endpoint", ":2112")
+	viper.SetDefault("sidecar.server.endpoint", "localhost:8832")
+	viper.SetDefault("sidecar.monitoring.server.endpoint", "localhost:2112")
 
 	viper.SetDefault("sidecar.orderer.channel-id", "mychannel")
-	viper.SetDefault("sidecar.orderer.endpoint", ":7050")
+	viper.SetDefault("sidecar.orderer.endpoint", "localhost:7050")
 
-	viper.SetDefault("sidecar.committer.endpoint", ":5002")
+	viper.SetDefault("sidecar.committer.endpoint", "localhost:5002")
 	viper.SetDefault("sidecar.committer.output-channel-capacity", 20)
 
 	viper.SetDefault("sidecar.ledger.path", "./ledger/")

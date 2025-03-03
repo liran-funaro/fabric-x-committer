@@ -18,7 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
@@ -72,14 +71,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 			ServerConfig: vcServerConfigs,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Enable: true,
-				Endpoint: &connection.Endpoint{
-					Host: "localhost",
-					Port: 0,
-				},
-			},
+		Monitoring: monitoring.Config{
+			Server: connection.NewLocalHostServer(),
 		},
 	}
 
@@ -936,9 +929,9 @@ func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {
 		ValidatorCommitterConfig: &ValidatorCommitterConfig{
 			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
 		},
-		Monitoring: &monitoring.Config{
-			Metrics: &metrics.Config{
-				Endpoint: &connection.Endpoint{Host: "", Port: 1877},
+		Monitoring: monitoring.Config{
+			Server: &connection.ServerConfig{
+				Endpoint: connection.Endpoint{Host: "", Port: 1877},
 			},
 		},
 	}

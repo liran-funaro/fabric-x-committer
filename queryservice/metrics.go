@@ -2,7 +2,7 @@ package queryservice
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/prometheusmetrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 const (
@@ -22,7 +22,7 @@ var (
 )
 
 type perfMetrics struct {
-	*prometheusmetrics.Provider
+	*monitoring.Provider
 
 	requests                        *prometheus.CounterVec
 	requestsLatency                 *prometheus.HistogramVec
@@ -37,7 +37,7 @@ type perfMetrics struct {
 }
 
 func newQueryServiceMetrics() *perfMetrics {
-	p := prometheusmetrics.NewProvider()
+	p := monitoring.NewProvider()
 
 	return &perfMetrics{
 		Provider: p,

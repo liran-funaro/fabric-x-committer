@@ -18,7 +18,7 @@ type Values struct {
 // GetMetricsForTests returns a snapshot of the metrics values.
 func GetMetricsForTests(t *testing.T, m *PerfMetrics) Values {
 	return Values{
-		URL:                       m.provider.URL(),
+		URL:                       m.URL(),
 		TransactionSentTotal:      test.GetMetricValue(t, m.transactionSentTotal),
 		TransactionReceivedTotal:  test.GetMetricValue(t, m.transactionReceivedTotal),
 		TransactionCommittedTotal: test.GetMetricValue(t, m.transactionCommittedTotal),

@@ -2,11 +2,13 @@ package utils
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 func FileExists(path string) bool {
@@ -51,7 +53,7 @@ func WriteFile(path string, data []byte) error {
 
 func Must(err error, msg ...string) {
 	if err != nil {
-		panic(fmt.Errorf("%v: %w", msg, err))
+		panic(errors.Wrap(err, strings.Join(msg, " ")))
 	}
 }
 
