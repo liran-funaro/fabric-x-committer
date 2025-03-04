@@ -72,7 +72,9 @@ func (c *sidecarTestConfig) String() string {
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	t.Helper()
 	orderer, ordererServers := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: conf.NumService, BlockSize: 100, BlockTimeout: time.Minute},
+		// We want each block to contain 100 transactions. Therefore, we set a higher block timeout
+		// so that we have enough time to send 100 transactions to the orderer and create a block.
+		t, &mock.OrdererConfig{NumService: conf.NumService, BlockSize: 100, BlockTimeout: 5 * time.Minute},
 	)
 	id := uint32(0)
 	msp := "org"
@@ -146,6 +148,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 }
 
 func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
+	t.Helper()
 	env.gServer = test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
 	})
@@ -187,13 +190,13 @@ func TestSidecar(t *testing.T) {
 func TestSidecarRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnv(t, sidecarTestConfig{})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t, 1)
 
 	// 1. Commit block 1 to 10
 	for i := range 10 {
-		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) // nolint:gosec
+		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) //nolint:gosec
 	}
 
 	// 2. Stop the sidecar service and ledger service
@@ -219,7 +222,7 @@ func TestSidecarRecovery(t *testing.T) {
 	//       falls behind the state database by removing blocks.
 	// 3. Remove all blocks from the ledger except block 0
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel2)
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 10)
 
@@ -271,13 +274,14 @@ func sendTransactionsAndEnsureCommitted(
 	env *sidecarTestEnv,
 	expectedBlockNumber uint64,
 ) {
+	t.Helper()
 	// mockorderer expects 100 txs to create the next block
 	txIDPrefix := uuid.New().String()
 	txs := make([]*protoblocktx.Tx, 100)
 	for i := range 100 {
 		txs[i] = &protoblocktx.Tx{
 			Id:         txIDPrefix + strconv.Itoa(i),
-			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}}, // nolint:gosec
+			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}},
 		}
 		_, err := env.orderer.SubmitPayload(ctx, env.chanID, txs[i])
 		require.NoErrorf(t, err, "block %d, tx %d", expectedBlockNumber, i)
@@ -370,6 +374,7 @@ func checkLastCommittedBlock(
 	coordinator *mock.Coordinator,
 	expectedBlockNumber uint64,
 ) {
+	t.Helper()
 	require.Eventually(t, func() bool {
 		lastBlock, err := coordinator.GetLastCommittedBlockNumber(ctx, nil)
 		if err != nil {

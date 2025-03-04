@@ -11,22 +11,13 @@ sidecar:
   monitoring:
     metrics:
       endpoint: :2111
-    latency:
-      span-exporter: jaeger
-      sampler:
-        type: blocktx
-        ratio: 10
-        sample-size: 100
-        sample-period: 100000
-      endpoint: localhost:14268
-      max-latency: 5s
-      bucket-count: 1000
 
   orderer:
-    endpoints:
-      - :7050
+    connection:
+      endpoints:
+        - :7050
     channel-id: mychannel
-    signed-envelopes: false
+    consensus-type: BFT
   committer:
     endpoint: localhost:5002
     ledger-path: /root/sc/ledger

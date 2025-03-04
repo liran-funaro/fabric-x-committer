@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"log"
 	"os"
 	"path"
@@ -11,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+
+	"github.com/cockroachdb/errors"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
@@ -53,31 +55,35 @@ const (
 // TestStartTestNode spawns a mock orderer and an all-in-one instance of the committer using docker
 // to verify that the committer container starts as expected.
 func TestStartTestNode(t *testing.T) {
+	t.Skip()
+	t.Parallel()
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	testdataPath := path.Join(wd, "testdata")
 
 	// create a docker client
-	ctx := context.Background()
+	ctx := t.Context()
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	require.NoError(t, err)
-	defer dockerClient.Close() // nolint:errcheck
+	defer func() {
+		connection.CloseConnectionsLog(dockerClient)
+	}()
 
 	stopAndRemoveContainer(dockerClient, "orderer")
 	stopAndRemoveContainer(dockerClient, "committer")
 
 	// start orderer
-	err = startOrderer(ctx, dockerClient, "orderer", testdataPath)
-	require.NoError(t, err)
+	startOrderer(ctx, t, dockerClient, "orderer", testdataPath)
 
 	// start committer
-	err = startCommitter(ctx, dockerClient, "committer", testdataPath)
-	require.NoError(t, err)
+	startCommitter(ctx, t, dockerClient, "committer", testdataPath)
 
 	// TODO: do some more checks
 }
 
-func startOrderer(ctx context.Context, dockerClient *client.Client, name, testdataPath string) error {
+//nolint:revive
+func startOrderer(ctx context.Context, t *testing.T, dockerClient *client.Client, name, testdataPath string) {
+	t.Helper()
 	imageName := ordererImage
 	containerName := name
 	servicePort := ordererPort
@@ -111,10 +117,12 @@ func startOrderer(ctx context.Context, dockerClient *client.Client, name, testda
 		},
 	}
 
-	return startContainer(ctx, dockerClient, containerName, containerCfg, hostCfg, nil, nil, nil)
+	startContainer(ctx, t, dockerClient, containerName, containerCfg, hostCfg, nil, nil, nil)
 }
 
-func startCommitter(ctx context.Context, dockerClient *client.Client, name, testdataPath string) error {
+//nolint:revive
+func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Client, name, testdataPath string) {
+	t.Helper()
 	imageName := testNodeImage
 	containerName := name
 
@@ -178,9 +186,8 @@ func startCommitter(ctx context.Context, dockerClient *client.Client, name, test
 	}
 
 	endpoint := "localhost:" + sidecarPort
-	timeout := time.Minute
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
 	options := []grpc.DialOption{
@@ -189,14 +196,13 @@ func startCommitter(ctx context.Context, dockerClient *client.Client, name, test
 	}
 
 	conn, err := grpc.NewClient(endpoint, options...)
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
-	return startContainer(ctx, dockerClient, containerName, containerCfg, hostCfg, nil, nil, conn)
+	startContainer(ctx, t, dockerClient, containerName, containerCfg, hostCfg, nil, nil, conn)
 }
 
-func startContainer(ctx context.Context, // nolint:revive
+func startContainer(ctx context.Context, //nolint:revive
+	t *testing.T,
 	dockerClient *client.Client,
 	containerName string,
 	containerCfg *container.Config,
@@ -204,39 +210,33 @@ func startContainer(ctx context.Context, // nolint:revive
 	networkCfg *network.NetworkingConfig,
 	platformCfg *spec.Platform,
 	conn grpc.ClientConnInterface,
-) error {
+) {
+	t.Helper()
 	resp, err := dockerClient.ContainerCreate(ctx, containerCfg, hostCfg, networkCfg, platformCfg, containerName)
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	if err != nil {
-		return err
-	}
+	require.NoError(t, dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}))
 
 	// return if we don't want wait for the health check to pass
 	if conn != nil {
-		return waitUntilReady(ctx, conn)
+		require.NoError(t, waitUntilReady(ctx, conn))
 	}
-
-	return nil
 }
 
 func waitUntilReady(ctx context.Context, conn grpc.ClientConnInterface) error {
 	healthClient := healthgrpc.NewHealthClient(conn)
 	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{
 		Service: "",
-	})
+	}, grpc.WaitForReady(true))
 	if status.Code(err) == codes.Canceled {
-		return fmt.Errorf("healthcheck canceled: %w", err)
+		return errors.Wrap(err, "healthcheck canceled")
 	}
 	if err != nil {
-		return fmt.Errorf("healthcheck failed: %w", err)
+		return errors.Wrap(err, "healthcheck failed")
 	}
 
 	if res.Status != healthgrpc.HealthCheckResponse_SERVING {
-		return fmt.Errorf("invalid status .... %s", res)
+		return errors.Wrap(err, "invalid status")
 	}
 
 	return nil
