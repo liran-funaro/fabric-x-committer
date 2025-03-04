@@ -9,6 +9,11 @@ cd "$HOME/bin/yugabyte" || exit 1
 echo "Installing YugabyteDB"
 bin/post_install.sh
 
+echo "Unlimited open files and enabling transparent huge pages..."
+ulimit -n unlimited
+echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo always | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
 echo "Running YugabyteDB"
 bin/yugabyted start \
   --advertise_address 0.0.0.0 \

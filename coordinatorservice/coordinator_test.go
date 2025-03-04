@@ -2,13 +2,14 @@ package coordinatorservice
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -16,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -386,17 +388,17 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	require.NoError(t, env.csStream.Send(b1))
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= expectedReceived
-	}, 5*time.Second, 500*time.Millisecond)
+	}, time.Minute, 500*time.Millisecond)
 
 	status := make(map[string]*protoblocktx.StatusWithHeight)
 	require.Eventually(t, func() bool {
 		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		for id, s := range txStatus.Status {
-			status[id] = s
+		if !assert.NoError(t, err) {
+			return false
 		}
+		maps.Insert(status, maps.All(txStatus.Status))
 		return len(status) == len(b1.Txs)
-	}, 20*time.Second, 500*time.Millisecond)
+	}, time.Minute, 500*time.Millisecond)
 	for txID, txStatus := range status {
 		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}

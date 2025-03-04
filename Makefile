@@ -53,7 +53,7 @@ arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
 # Set additional parameter to build the test-node for different platforms and push
 # E.g., make multiplatform=true docker_push=true build-test-node-image
-docker_build_flags=
+docker_build_flags=--quiet
 ifeq "$(multiplatform)" "true"
 	docker_build_flags+=--platform linux/amd64,linux/arm64
 endif
@@ -200,10 +200,10 @@ build-test-node-image: build-arch
 	${docker_cmd} build \
 		$(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
-	  -t ${image_namespace}/committer-test-node:${version} \
+		-t ${image_namespace}/committer-test-node:${version} \
 		--build-arg DB_IMAGE=${db_image} \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
-	  . \
+		. \
 		$(docker_push_arg)
 
 build-release-images: build-arch
@@ -211,7 +211,8 @@ build-release-images: build-arch
 		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(arch_output_dir_rel)
 
 build-mock-orderer-image: build-arch
-	${docker_cmd} build -f ${dockerfile_release_dir}/Dockerfile \
+	${docker_cmd} build $(docker_build_flags) \
+		-f ${dockerfile_release_dir}/Dockerfile \
 		-t ${image_namespace}/mock-ordering-service:${version} \
 		--build-arg SERVICE_NAME=mockorderingservice \
 		--build-arg PORTS=4001 \
