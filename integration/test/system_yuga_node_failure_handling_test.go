@@ -18,10 +18,10 @@ func TestDBNodeCrashHandling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 
-	clusterController, clusterConnections := yuga.StartYugaCluster(ctx, t, 3)
+	clusterController, clusterConnections := runner.StartYugaCluster(ctx, t, 3)
 
 	gomega.RegisterTestingT(t)
-	c := runner.NewCluster(
+	c := runner.NewRuntime(
 		t,
 		&runner.Config{
 			NumSigVerifiers: 2,
@@ -41,7 +41,7 @@ func TestDBNodeCrashHandling(t *testing.T) {
 	waitForCommittedTxs(t, c, 15_000)
 }
 
-func waitForCommittedTxs(t *testing.T, c *runner.Cluster, waitForCount int) {
+func waitForCommittedTxs(t *testing.T, c *runner.CommitterRuntime, waitForCount int) {
 	t.Helper()
 	currentAmountOfTxs := c.CountStatus(t, protoblocktx.Status_COMMITTED)
 	require.Eventually(t,

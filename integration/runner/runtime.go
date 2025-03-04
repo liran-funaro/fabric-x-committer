@@ -33,8 +33,8 @@ import (
 )
 
 type (
-	// Cluster represents a test cluster of Coordinator, SigVerifier, VCService and Query processes.
-	Cluster struct {
+	// CommitterRuntime represents a test system of Coordinator, SigVerifier, VCService and Query processes.
+	CommitterRuntime struct {
 		mockOrderer  *processWithConfig[*configtempl.OrdererConfig]
 		sidecar      *processWithConfig[*configtempl.SidecarConfig]
 		coordinator  *processWithConfig[*configtempl.CoordinatorConfig]
@@ -56,7 +56,7 @@ type (
 		nsToCrypto     map[string]*Crypto
 		nsToCryptoLock sync.Mutex
 
-		clusterConfig *Config
+		config *Config
 
 		channelID        string
 		seedForCryptoGen *rand.Rand
@@ -72,7 +72,7 @@ type (
 		PubKeyPath string
 	}
 
-	// Config represents the configuration of the cluster.
+	// Config represents the runtime configuration.
 	Config struct {
 		NumSigVerifiers     int
 		NumVCService        int
@@ -84,27 +84,27 @@ type (
 	}
 )
 
-// NewCluster creates a new test cluster.
-func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
+// NewRuntime creates a new test runtime˙.
+func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 	t.Helper()
 
 	var dbEnvironment *vcservice.DatabaseTestEnv
-	if clusterConfig.DBOpts == nil {
+	if config.DBOpts == nil {
 		dbEnvironment = vcservice.NewDatabaseTestEnv(t)
 	} else {
-		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, clusterConfig.DBOpts)
+		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, config.DBOpts)
 	}
 
-	c := &Cluster{
-		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], clusterConfig.NumSigVerifiers),
+	c := &CommitterRuntime{
+		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], config.NumSigVerifiers),
 		vcService: make(
 			[]*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig],
-			clusterConfig.NumVCService,
+			config.NumVCService,
 		),
 		dbEnv:            dbEnvironment,
 		rootDir:          t.TempDir(),
 		nsToCrypto:       make(map[string]*Crypto),
-		clusterConfig:    clusterConfig,
+		config:           config,
 		channelID:        "channel1",
 		committedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
@@ -122,21 +122,21 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 	})
 	ordererConfig := &configtempl.OrdererConfig{
 		ServerEndpoint:  ordererEndpoint,
-		BlockSize:       clusterConfig.BlockSize,
-		BlockTimeout:    clusterConfig.BlockTimeout,
+		BlockSize:       config.BlockSize,
+		BlockTimeout:    config.BlockTimeout,
 		ConfigBlockPath: configBlockPath,
 	}
 	c.mockOrderer = newProcess(t, mockordererCmd, c.rootDir, ordererConfig)
 
 	// Start signature-verifier
-	for i := range clusterConfig.NumSigVerifiers {
+	for i := range config.NumSigVerifiers {
 		c.sigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &configtempl.SigVerifierConfig{
 			CommonEndpoints: newCommonEndpoints(t),
 		})
 	}
 
 	// Start validator-persister
-	for i := range clusterConfig.NumVCService {
+	for i := range config.NumVCService {
 		c.vcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 	}
 
@@ -188,17 +188,17 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 		}
 	})
 
-	c.createNamespacesAndCommit(t, clusterConfig.InitializeNamespace)
+	c.createNamespacesAndCommit(t, config.InitializeNamespace)
 
 	// We need to run the load gen after initializing because it will re-initialize.
-	if clusterConfig.LoadGen {
+	if config.LoadGen {
 		loadgenConfig := &configtempl.LoadGenConfig{
 			CommonEndpoints:     newCommonEndpoints(t),
 			SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
 			CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
 			OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
 			ChannelID:           c.channelID,
-			BlockSize:           clusterConfig.BlockSize,
+			BlockSize:           config.BlockSize,
 			Policy: &workload.PolicyProfile{
 				NamespacePolicies: make(map[string]*workload.Policy),
 			},
@@ -215,7 +215,8 @@ func NewCluster(t *testing.T, clusterConfig *Config) *Cluster {
 
 // createClients utilize createClientConnection for connection creation
 // and responsible for the creation of the clients.
-func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
+func (c *CommitterRuntime) createClients(ctx context.Context, t *testing.T) {
+	t.Helper()
 	coordConn := createClientConnection(t, c.coordinator.config.ServerEndpoint)
 	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
@@ -243,7 +244,8 @@ func (c *Cluster) createClients(ctx context.Context, t *testing.T) {
 }
 
 // createNamespacesAndCommit creates namespaces in the committer.
-func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []string) {
+func (c *CommitterRuntime) createNamespacesAndCommit(t *testing.T, namespaces []string) {
+	t.Helper()
 	if len(namespaces) == 0 {
 		return
 	}
@@ -287,7 +289,8 @@ func (c *Cluster) createNamespacesAndCommit(t *testing.T, namespaces []string) {
 }
 
 // AddSignatures adds signature for each namespace in a given transaction.
-func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
+func (c *CommitterRuntime) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
+	t.Helper()
 	for idx, ns := range tx.Namespaces {
 		nsCr := c.GetCryptoForNs(t, ns.NsId)
 		sig, err := nsCr.NsSigner.SignNs(tx, idx)
@@ -297,7 +300,8 @@ func (c *Cluster) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 }
 
 // SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
-func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
+func (c *CommitterRuntime) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
+	t.Helper()
 	for _, tx := range txs {
 		_, resp, err := c.ordererClient.SubmitWithEnv(tx)
 		require.NoError(t, err)
@@ -306,7 +310,7 @@ func (c *Cluster) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx
 }
 
 // CreateCryptoForNs creates the Crypto materials for a namespace using the signature profile.
-func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
+func (c *CommitterRuntime) CreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
 	t.Helper()
 	policyMsg := &workload.Policy{
 		Scheme: schema,
@@ -330,7 +334,8 @@ func (c *Cluster) CreateCryptoForNs(t *testing.T, nsID string, schema signature.
 }
 
 // GetCryptoForNs returns the Crypto material a namespace.
-func (c *Cluster) GetCryptoForNs(t *testing.T, nsID string) *Crypto {
+func (c *CommitterRuntime) GetCryptoForNs(t *testing.T, nsID string) *Crypto {
+	t.Helper()
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()
 
@@ -340,7 +345,7 @@ func (c *Cluster) GetCryptoForNs(t *testing.T, nsID string) *Crypto {
 }
 
 // GetAllCrypto returns all the Crypto material.
-func (c *Cluster) GetAllCrypto() []*Crypto {
+func (c *CommitterRuntime) GetAllCrypto() []*Crypto {
 	c.nsToCryptoLock.Lock()
 	defer c.nsToCryptoLock.Unlock()
 	ret := make([]*Crypto, 0, len(c.nsToCrypto))
@@ -372,15 +377,16 @@ type ExpectedStatusInBlock struct {
 }
 
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
-func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expectedResults *ExpectedStatusInBlock) {
-	require.Len(t, expectedResults.Statuses, len(expectedResults.TxIDs))
+func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected *ExpectedStatusInBlock) {
+	t.Helper()
+	require.Len(t, expected.Statuses, len(expected.TxIDs))
 	blk, ok := <-c.committedBlock
 	if !ok {
 		return
 	}
 
-	expectedStatuses := make([]byte, 0, len(expectedResults.Statuses))
-	for _, s := range expectedResults.Statuses {
+	expectedStatuses := make([]byte, 0, len(expected.Statuses))
+	for _, s := range expected.Statuses {
 		expectedStatuses = append(expectedStatuses, byte(s))
 	}
 
@@ -389,7 +395,7 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 		require.NoError(t, err)
 		tx, err := serialization.UnmarshalTx(txBytes)
 		require.NoError(t, err)
-		require.Equal(t, expectedResults.TxIDs[txNum], tx.GetId())
+		require.Equal(t, expected.TxIDs[txNum], tx.GetId())
 	}
 
 	require.Equal(t, expectedStatuses, blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
@@ -399,9 +405,9 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	var nonDupTxIDs []string
 	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for i, tID := range expectedResults.TxIDs {
-		s := types.CreateStatusWithHeight(expectedResults.Statuses[i], blk.Header.Number, i)
-		if expectedResults.Statuses[i] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+	for i, tID := range expected.TxIDs {
+		s := types.CreateStatusWithHeight(expected.Statuses[i], blk.Header.Number, i)
+		if expected.Statuses[i] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
 			nonDuplicateTxIDsStatus[tID] = s
 			nonDupTxIDs = append(nonDupTxIDs, tID)
 			continue
@@ -420,16 +426,19 @@ func (c *Cluster) ValidateExpectedResultsInCommittedBlock(t *testing.T, expected
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (c *Cluster) CountStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountStatus(t *testing.T, status protoblocktx.Status) int {
+	t.Helper()
 	return c.dbEnv.CountStatus(t, status)
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (c *Cluster) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+	t.Helper()
 	return c.dbEnv.CountAlternateStatus(t, status)
 }
 
-func (c *Cluster) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
+func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 

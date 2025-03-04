@@ -1,4 +1,4 @@
-package yuga
+package runner
 
 import (
 	"context"
@@ -11,9 +11,11 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
-// ClusterController is a class that facilitates the manipulation of YugaDB cluster,
+// DBClusterController is a class that facilitates the manipulation of a DB cluster,
 // with its nodes running in Docker containers.
 //
 // To create the cluster, we are using Yugabyte's preconfigured tool, which is set up as follows:
@@ -27,17 +29,17 @@ import (
 // There are some bugs in YugaDB that prevent the cluster behavior from functioning as expected:
 // 1. After a master-node is deleted, a new master-node cannot be added to the cluster as a replacement.
 // 2. If the leader node is failing, the whole db connectivity will stop functioning.
-type ClusterController struct {
-	nodes []*YugabyteDBContainer
+type DBClusterController struct {
+	nodes []*yuga.YugabyteDBContainer
 	lock  sync.RWMutex
 }
 
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment and returns the first node connection properties.
-func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (*ClusterController, []*Connection) {
+func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (*DBClusterController, []*yuga.Connection) {
 	t.Helper()
 	require.GreaterOrEqual(t, clusterSize, uint(0))
 
-	cluster := &ClusterController{}
+	cluster := &DBClusterController{}
 
 	t.Logf("starting yuga cluster of size: %d", clusterSize)
 	for range clusterSize {
@@ -52,7 +54,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (*Clu
 }
 
 // AddNode creates, starts and add a YugabyteDB node to the cluster.
-func (cc *ClusterController) AddNode(ctx context.Context, t *testing.T) *YugabyteDBContainer {
+func (cc *DBClusterController) AddNode(ctx context.Context, t *testing.T) *yuga.YugabyteDBContainer {
 	t.Helper()
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
@@ -67,7 +69,7 @@ func (cc *ClusterController) AddNode(ctx context.Context, t *testing.T) *Yugabyt
 }
 
 // waitForNodeReadiness checks the container's readiness by monitoring its logs.
-func (*ClusterController) waitForNodeReadiness(t *testing.T, node *YugabyteDBContainer) {
+func (*DBClusterController) waitForNodeReadiness(t *testing.T, node *yuga.YugabyteDBContainer) {
 	t.Helper()
 	require.Eventually(
 		t,
@@ -82,7 +84,7 @@ func (*ClusterController) waitForNodeReadiness(t *testing.T, node *YugabyteDBCon
 }
 
 // RemoveLastNode stop and remove the last yugaDB node created, but not the first.
-func (cc *ClusterController) RemoveLastNode(t *testing.T) {
+func (cc *DBClusterController) RemoveLastNode(t *testing.T) {
 	t.Helper()
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
@@ -95,38 +97,38 @@ func (cc *ClusterController) RemoveLastNode(t *testing.T) {
 		t.Logf("only one node is alive. no follower nodes to remove.")
 
 	default:
-		stopAndRemoveDockerContainer(t, cc.nodes[clusterSize-1].containerID)
+		stopAndRemoveDockerContainer(t, cc.nodes[clusterSize-1].ContainerID())
 		cc.nodes = cc.nodes[:clusterSize-1]
 	}
 }
 
 // GetClusterSize returns the amount of active nodes in the cluster.
-func (cc *ClusterController) GetClusterSize() int {
+func (cc *DBClusterController) GetClusterSize() int {
 	cc.lock.RLock()
 	defer cc.lock.RUnlock()
 	return len(cc.nodes)
 }
 
 // GetNodesConnections return a slice with all the cluster nodes connections.
-func (cc *ClusterController) GetNodesConnections(ctx context.Context, t *testing.T) []*Connection {
+func (cc *DBClusterController) GetNodesConnections(ctx context.Context, t *testing.T) []*yuga.Connection {
 	t.Helper()
 	cc.lock.RLock()
 	defer cc.lock.RUnlock()
 
-	connections := make([]*Connection, len(cc.nodes))
+	connections := make([]*yuga.Connection, len(cc.nodes))
 
 	for i, node := range cc.nodes {
-		connections[i] = node.getContainerConnection(ctx, t)
+		connections[i] = node.GetContainerConnection(ctx, t)
 	}
 	return connections
 }
 
 // createNode initializes a new node with appropriate configuration.
-func (cc *ClusterController) createNode(ctx context.Context, t *testing.T) *YugabyteDBContainer {
+func (cc *DBClusterController) createNode(ctx context.Context, t *testing.T) *yuga.YugabyteDBContainer {
 	t.Helper()
-	node := &YugabyteDBContainer{
+	node := &yuga.YugabyteDBContainer{
 		Name: fmt.Sprintf("yuga-%s", uuid.New()),
-		Cmd:  yugabyteCMD,
+		Cmd:  yuga.YugabyteCMD,
 	}
 
 	if len(cc.nodes) != 0 {
@@ -136,33 +138,32 @@ func (cc *ClusterController) createNode(ctx context.Context, t *testing.T) *Yuga
 	return node
 }
 
-func (cc *ClusterController) stopAndRemoveYugaCluster(t *testing.T) {
+func (cc *DBClusterController) stopAndRemoveYugaCluster(t *testing.T) {
 	t.Helper()
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
 
 	for _, node := range cc.nodes {
 		t.Logf("stopping node: %v", node.Name)
-		stopAndRemoveDockerContainer(t, node.containerID)
+		stopAndRemoveDockerContainer(t, node.ContainerID())
 	}
-	cc.nodes = make([]*YugabyteDBContainer, 0)
+	cc.nodes = make([]*yuga.YugabyteDBContainer, 0)
 }
 
-func (cc *ClusterController) getFirstNodeConnection(ctx context.Context, t *testing.T) *Connection {
+func (cc *DBClusterController) getFirstNodeConnection(ctx context.Context, t *testing.T) *yuga.Connection {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes)
-	return cc.nodes[0].getContainerConnection(ctx, t)
+	return cc.nodes[0].GetContainerConnection(ctx, t)
 }
 
 // stopAndRemoveDockerContainer given a container name or ID.
 func stopAndRemoveDockerContainer(t *testing.T, containerID string) {
 	t.Helper()
-	require.NoError(t, getDockerClient(t).StopContainer(containerID, 10))
-
-	require.NoError(t, getDockerClient(t).RemoveContainer(docker.RemoveContainerOptions{
+	client := yuga.GetDockerClient(t)
+	require.NoError(t, client.StopContainer(containerID, 10))
+	require.NoError(t, client.RemoveContainer(docker.RemoveContainerOptions{
 		ID:    containerID,
 		Force: true,
 	}))
-
 	t.Logf("Container %s stopped and removed successfully", containerID)
 }

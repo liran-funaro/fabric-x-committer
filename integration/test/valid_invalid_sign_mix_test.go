@@ -13,7 +13,7 @@ import (
 
 func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 	gomega.RegisterTestingT(t)
-	c := runner.NewCluster(
+	c := runner.NewRuntime(
 		t,
 		&runner.Config{
 			NumSigVerifiers:     2,

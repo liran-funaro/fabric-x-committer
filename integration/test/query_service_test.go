@@ -29,7 +29,7 @@ func requireQueryResults(
 
 func TestQueryService(t *testing.T) {
 	gomega.RegisterTestingT(t)
-	c := runner.NewCluster(
+	c := runner.NewRuntime(
 		t,
 		&runner.Config{
 			NumSigVerifiers:     2,

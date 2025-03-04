@@ -20,8 +20,8 @@ const (
 	defaultPortMap      = "7000/tcp"
 )
 
-// yugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
-var yugabyteCMD = []string{
+// YugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
+var YugabyteCMD = []string{
 	"bin/yugabyted", "start",
 	"--callhome", "false",
 	"--background", "false",
@@ -68,7 +68,7 @@ func (y *YugabyteDBContainer) InitDefaults(t *testing.T) {
 	}
 
 	if y.Cmd == nil {
-		y.Cmd = yugabyteCMD
+		y.Cmd = YugabyteCMD
 	}
 
 	if y.PortMap == "" {
@@ -84,7 +84,7 @@ func (y *YugabyteDBContainer) InitDefaults(t *testing.T) {
 		}
 	}
 	if y.client == nil {
-		y.client = getDockerClient(t)
+		y.client = GetDockerClient(t)
 	}
 }
 
@@ -188,8 +188,8 @@ func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context, t *testi
 	return connOptions
 }
 
-// getContainerConnection inspect the container and fetches its connection.
-func (y *YugabyteDBContainer) getContainerConnection(ctx context.Context, t *testing.T) *Connection {
+// GetContainerConnection inspect the container and fetches its connection.
+func (y *YugabyteDBContainer) GetContainerConnection(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
 	container, err := y.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
@@ -229,7 +229,13 @@ func (y *YugabyteDBContainer) GetContainerLogs(t *testing.T) string {
 	return outputBuffer.String()
 }
 
-func getDockerClient(t *testing.T) *docker.Client {
+// ContainerID returns the container ID.
+func (y *YugabyteDBContainer) ContainerID() string {
+	return y.containerID
+}
+
+// GetDockerClient instantiate a new docker client.
+func GetDockerClient(t *testing.T) *docker.Client {
 	t.Helper()
 	client, err := docker.NewClientFromEnv()
 	require.NoError(t, err)

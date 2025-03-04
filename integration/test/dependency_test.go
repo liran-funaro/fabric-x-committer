@@ -12,9 +12,10 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
-func testSetup(t *testing.T) *runner.Cluster {
+func testSetup(t *testing.T) *runner.CommitterRuntime {
+	t.Helper()
 	gomega.RegisterTestingT(t)
-	c := runner.NewCluster(
+	c := runner.NewRuntime(
 		t,
 		&runner.Config{
 			NumSigVerifiers:     2,
