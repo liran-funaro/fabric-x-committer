@@ -2,14 +2,16 @@ package mock
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"golang.org/x/sync/errgroup"
 )
 
 // SigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -73,6 +75,7 @@ func (m *SigVerifier) receiveRequestBatch(
 	ctx context.Context,
 	stream protosigverifierservice.Verifier_StartStreamServer,
 ) error {
+	requestBatch := channel.NewWriter(ctx, m.requestBatch)
 	for ctx.Err() == nil {
 		reqBatch, err := stream.Recv()
 		if err != nil {
@@ -80,7 +83,7 @@ func (m *SigVerifier) receiveRequestBatch(
 		}
 
 		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
-		m.requestBatch <- reqBatch
+		requestBatch.Write(reqBatch)
 		m.numBlocksReceived.Add(1)
 	}
 
@@ -91,8 +94,12 @@ func (m *SigVerifier) sendResponseBatch(
 	ctx context.Context,
 	stream protosigverifierservice.Verifier_StartStreamServer,
 ) error {
+	requestBatch := channel.NewReader(ctx, m.requestBatch)
 	for ctx.Err() == nil {
-		reqBatch := <-m.requestBatch
+		reqBatch, ok := requestBatch.Read()
+		if !ok {
+			return errors.Wrap(ctx.Err(), "context ended")
+		}
 		respBatch := &protosigverifierservice.ResponseBatch{
 			Responses: make([]*protosigverifierservice.Response, 0, len(reqBatch.Requests)),
 		}
@@ -133,6 +140,10 @@ func (m *SigVerifier) GetPolicies() *protoblocktx.Policies {
 
 // SendRequestBatchWithoutStream allows the caller to bypass the stream to send
 // a request batch.
-func (m *SigVerifier) SendRequestBatchWithoutStream(requestBatch *protosigverifierservice.RequestBatch) {
-	m.requestBatch <- requestBatch
+// Returns true if successful.
+func (m *SigVerifier) SendRequestBatchWithoutStream(
+	ctx context.Context,
+	requestBatch *protosigverifierservice.RequestBatch,
+) bool {
+	return channel.NewWriter(ctx, m.requestBatch).Write(requestBatch)
 }

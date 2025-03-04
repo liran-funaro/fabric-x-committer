@@ -2,10 +2,12 @@ package mock
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -88,29 +90,20 @@ func (vc *VcService) GetTransactionsStatus(
 func (vc *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	errorChannel := make(chan error, 2)
-
-	go func() {
-		errorChannel <- vc.receiveAndProcessTransactions(stream)
-	}()
-
-	go func() {
-		errorChannel <- vc.sendTransactionStatus(stream)
-	}()
-
-	for i := 0; i < 2; i++ {
-		err := <-errorChannel
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	g, gCtx := errgroup.WithContext(stream.Context())
+	g.Go(func() error {
+		return vc.receiveAndProcessTransactions(gCtx, stream)
+	})
+	g.Go(func() error {
+		return vc.sendTransactionStatus(gCtx, stream)
+	})
+	return errors.Wrap(g.Wait(), "VC ended")
 }
 
 func (vc *VcService) receiveAndProcessTransactions(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := channel.NewWriter(stream.Context(), vc.txBatchChan)
+	txBatchChan := channel.NewWriter(ctx, vc.txBatchChan)
 	for {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -136,9 +129,9 @@ func (vc *VcService) receiveAndProcessTransactions(
 }
 
 func (vc *VcService) sendTransactionStatus(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := channel.NewReader(stream.Context(), vc.txBatchChan)
+	txBatchChan := channel.NewReader(ctx, vc.txBatchChan)
 	for {
 		txBatch, ok := txBatchChan.Read()
 		if !ok {

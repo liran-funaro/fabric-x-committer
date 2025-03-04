@@ -6,8 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"golang.org/x/sync/errgroup"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 )
 
 type (
@@ -102,6 +103,10 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		return dm.dependencyDetector.workers.Run(gCtx)
+	})
+
+	g.Go(func() error {
 		dm.constructDependencyGraph(gCtx)
 		return nil
 	})
@@ -120,6 +125,8 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 }
 
 func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context) {
+	done := context.AfterFunc(ctx, dm.waitingTxsSlots.broadcast)
+	defer done()
 	m := dm.metrics
 	var txsNode TxNodeBatch
 	incomingTransactionsNode := channel.NewReader(ctx, dm.incomingTransactionsNode)
@@ -132,7 +139,10 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 		constructionStart := time.Now()
 
 		txsNode = txsNodeBatch.txsNode
-		dm.waitingTxsSlots.acquire(uint32(len(txsNode)))
+		dm.waitingTxsSlots.acquire(ctx, int64(len(txsNode)))
+		if ctx.Err() != nil {
+			return
+		}
 
 		m.setQueueSize(
 			m.gdgWaitingTxQueueSize,
@@ -167,7 +177,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 		//         already has the reads and writes in required format, we are just
 		// 	       merging it with the global dependency detector.
 		start = time.Now()
-		dm.dependencyDetector.mergeWaitingTx(txsNodeBatch.localDepDetector)
+		dm.dependencyDetector.mergeWaitingTx(ctx, txsNodeBatch.localDepDetector)
 		m.observe(m.gdgUpdateDependencyDetectorSeconds, time.Since(start))
 
 		dm.mu.Unlock()
@@ -192,7 +202,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			return
 		}
 		processValidatedStart := time.Now()
-		dm.waitingTxsSlots.release(uint32(len(txsNode)))
+		dm.waitingTxsSlots.release(int64(len(txsNode)))
 		m.setQueueSize(
 			m.gdgWaitingTxQueueSize,
 			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
@@ -210,7 +220,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		for _, txNode := range txsNode {
 			fullyFreedDependents = append(fullyFreedDependents, txNode.freeDependents()...)
 		}
-		dm.dependencyDetector.removeWaitingTx(txsNode)
+		dm.dependencyDetector.removeWaitingTx(ctx, txsNode)
 		m.observe(m.gdgRemoveDependentsOfValidatedTxSeconds, time.Since(start))
 		dm.mu.Unlock()
 
@@ -278,16 +288,21 @@ func (f *dependencyFreedTransactions) waitAndRemove() TxNodeBatch {
 	return txsNode
 }
 
-func (w *waitingTransactionsSlots) acquire(n uint32) {
+// acquire assumes waitingTransactionsSlots.broadcast was registered to be called when the context is closed.
+func (w *waitingTransactionsSlots) acquire(ctx context.Context, n int64) {
 	w.slotsCond.L.Lock()
-	for w.availableSlots.Load() < int64(n) {
+	defer w.slotsCond.L.Unlock()
+	for w.availableSlots.Load() < n && ctx.Err() == nil {
 		w.slotsCond.Wait()
 	}
-	w.availableSlots.Add(-int64(n))
-	w.slotsCond.L.Unlock()
+	w.availableSlots.Add(-n)
 }
 
-func (w *waitingTransactionsSlots) release(n uint32) {
-	w.availableSlots.Add(int64(n))
+func (w *waitingTransactionsSlots) release(n int64) {
+	w.availableSlots.Add(n)
 	w.slotsCond.Signal()
+}
+
+func (w *waitingTransactionsSlots) broadcast() {
+	w.slotsCond.Broadcast()
 }

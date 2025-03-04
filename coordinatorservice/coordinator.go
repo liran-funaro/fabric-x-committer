@@ -2,12 +2,12 @@ package coordinatorservice
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 
@@ -86,6 +86,11 @@ type (
 )
 
 var (
+	// ErrActiveStreamWaitingTransactions is returned when NumberOfWaitingTransactionsForStatus is called
+	// while a stream is active. This value cannot be reliably determined in this state.
+	ErrActiveStreamWaitingTransactions = errors.New("cannot determine number of waiting transactions for " +
+		"status while stream is active")
+
 	// ErrActiveStreamBlockNumber is returned when GetNextExpectedBlockNumber is called while a stream is active.
 	// The next expected block number cannot be reliably determined in this state.
 	ErrActiveStreamBlockNumber = errors.New("cannot determine next expected block number while stream is active")
@@ -298,8 +303,7 @@ func (c *CoordinatorService) NumberOfWaitingTransactionsForStatus(
 	_ *protocoordinatorservice.Empty,
 ) (*protocoordinatorservice.WaitingTransactions, error) {
 	if !c.streamActive.TryLock() {
-		return nil, fmt.Errorf("stream is still active." +
-			"NumberOfWaitingTransactionsForStatus should be called only when the stream is inactive")
+		return nil, ErrActiveStreamWaitingTransactions
 	}
 	defer c.streamActive.Unlock()
 
@@ -329,7 +333,7 @@ func (c *CoordinatorService) BlockProcessing(
 	g.Go(func() error {
 		logger.Info("Started a goroutine to receive block and forward it to the dependency graph manager")
 		if err := c.receiveAndProcessBlock(eCtx, stream); err != nil {
-			logger.Errorf("stream to the coordinator is ending with an error: %v", err)
+			logger.Warnf("stream to the coordinator is ending with an error: %v", err)
 			return err
 		}
 		return nil
@@ -339,7 +343,7 @@ func (c *CoordinatorService) BlockProcessing(
 		logger.Info("Started a goroutine to receive transaction status from validator committer manager and" +
 			" forward the status to client")
 		if err := c.sendTxStatus(eCtx, stream); err != nil {
-			logger.Errorf("stream to the coordinator is ending with an error: %v", err)
+			logger.Warnf("stream to the coordinator is ending with an error: %v", err)
 		}
 		return nil
 	})
@@ -383,7 +387,8 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 			continue
 		}
 
-		chunkSizeForDepGraph := 500 // TODO: make it configurable.
+		// TODO: make it configurable.
+		chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
 		for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
 			end := min(i+chunkSizeForDepGraph, len(blk.Txs))
 			txsBatchForDependencyGraph.Write(

@@ -5,10 +5,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"golang.org/x/sync/errgroup"
 )
 
 var logger = logging.New("dependencygraph")
@@ -82,6 +83,7 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 	defer stop()
 
 	incomingTransactions := channel.NewReader(ctx, p.incomingTransactions)
+	outgoingTransactionsNode := channel.NewWriter(ctx, p.outgoingTransactionsNode)
 	for {
 		txs, ok := incomingTransactions.Read()
 		if !ok {
@@ -90,7 +92,6 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 		logger.Debugf("Constructing dependencies for txs with id %d", txs.ID)
 
 		depDetector := newDependencyDetector()
-		depDetector.workers.Close()
 		txsNode := make(TxNodeBatch, len(txs.Txs))
 
 		for i, tx := range txs.Txs {
@@ -129,10 +130,10 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 		}
 
 		p.metrics.addToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode))
-		p.outgoingTransactionsNode <- &transactionNodeBatch{
+		outgoingTransactionsNode.Write(&transactionNodeBatch{
 			txsNode:          txsNode,
 			localDepDetector: depDetector,
-		}
+		})
 
 		logger.Debugf("Constructed dependencies for txs with id %d", id)
 

@@ -1,8 +1,9 @@
 package dependencygraph
 
 import (
-	"sync"
+	"context"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
@@ -95,28 +96,48 @@ func (d *dependencyDetector) addWaitingTx(txNode *TransactionNode) {
 
 // mergeWaitingTx merges the waiting transaction's reads and writes from
 // another dependency detector. This method is not thread-safe.
-func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
+func (d *dependencyDetector) mergeWaitingTx(ctx context.Context, depDetector *dependencyDetector) {
 	// NOTE: The given depDetector is not modified ever after we reach here.
 	//       Hence, we don't need to copy the map and can safely assign them instead.
-	var wg sync.WaitGroup
-	wg.Add(3)
-	d.workers.Run(func() { d.readOnlyKeyToWaitingTxs.merge(depDetector.readOnlyKeyToWaitingTxs); wg.Done() })
-	d.workers.Run(func() { d.writeOnlyKeyToWaitingTxs.merge(depDetector.writeOnlyKeyToWaitingTxs); wg.Done() })
-	d.workers.Run(func() { d.readWriteKeyToWaitingTxs.merge(depDetector.readWriteKeyToWaitingTxs); wg.Done() })
-	wg.Wait()
+	done := channel.Make[any](ctx, 3)
+	d.workers.Submit(ctx, func() {
+		d.readOnlyKeyToWaitingTxs.merge(depDetector.readOnlyKeyToWaitingTxs)
+		done.Write(nil)
+	})
+	d.workers.Submit(ctx, func() {
+		d.writeOnlyKeyToWaitingTxs.merge(depDetector.writeOnlyKeyToWaitingTxs)
+		done.Write(nil)
+	})
+	d.workers.Submit(ctx, func() {
+		d.readWriteKeyToWaitingTxs.merge(depDetector.readWriteKeyToWaitingTxs)
+		done.Write(nil)
+	})
+	for range 3 {
+		done.Read()
+	}
 }
 
 // removeWaitingTx removes the given transaction's reads and writes from the dependency detector
 // so that getDependenciesOf() does not consider them when calculating dependencies.
 // This method is not thread-safe.
-func (d *dependencyDetector) removeWaitingTx(txsNode TxNodeBatch) {
-	var wg sync.WaitGroup
+func (d *dependencyDetector) removeWaitingTx(ctx context.Context, txsNode TxNodeBatch) {
+	done := channel.Make[any](ctx, 3)
 	for _, txNode := range txsNode {
-		wg.Add(3)
-		d.workers.Run(func() { d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode); wg.Done() })
-		d.workers.Run(func() { d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode); wg.Done() })
-		d.workers.Run(func() { d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode); wg.Done() })
-		wg.Wait()
+		d.workers.Submit(ctx, func() {
+			d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode)
+			done.Write(nil)
+		})
+		d.workers.Submit(ctx, func() {
+			d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode)
+			done.Write(nil)
+		})
+		d.workers.Submit(ctx, func() {
+			d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode)
+			done.Write(nil)
+		})
+		for range 3 {
+			done.Read()
+		}
 	}
 }
 

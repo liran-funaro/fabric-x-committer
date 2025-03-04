@@ -2,23 +2,25 @@ package connection_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func TestGRPCRetry(t *testing.T) {
@@ -261,4 +263,34 @@ func requireErrorIsRPC(t *testing.T, rpcErr error, code codes.Code) {
 	require.True(t, ok)
 	rpcErrCode := errStatus.Code()
 	require.Equal(t, code, rpcErrCode)
+}
+
+type closer struct {
+	err error
+}
+
+func (c *closer) Close() error {
+	return c.err
+}
+
+func TestCloseConnections(t *testing.T) {
+	t.Parallel()
+	testErrors := []error{
+		io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe, net.ErrClosed, context.Canceled, context.DeadlineExceeded,
+	}
+	for _, err := range testErrors {
+		t.Run(err.Error(), func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, connection.CloseConnections(&closer{err: errors.Wrap(err, "failed")}))
+		})
+	}
+
+	t.Run("all", func(t *testing.T) {
+		t.Parallel()
+		closers := make([]*closer, len(testErrors))
+		for i, err := range testErrors {
+			closers[i] = &closer{err: errors.Wrap(err, "failed")}
+		}
+		require.NoError(t, connection.CloseConnections(closers...))
+	})
 }

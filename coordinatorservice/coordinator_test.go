@@ -3,6 +3,7 @@ package coordinatorservice
 import (
 	"context"
 	"maps"
+	"math/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -66,7 +68,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		},
 		DependencyGraphConfig: &DependencyGraphConfig{
 			NumOfLocalDepConstructors:       3,
-			WaitingTxsLimit:                 2000,
+			WaitingTxsLimit:                 10,
 			NumOfWorkersForGlobalDepManager: 3,
 		},
 		ValidatorCommitterConfig: &ValidatorCommitterConfig{
@@ -767,40 +769,12 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	env.start(ctx, t)
 
 	txPerBlock := 1990
-	txs := make([]*protoblocktx.Tx, txPerBlock)
-	txsNum := make([]uint32, txPerBlock)
-	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for i := range txPerBlock {
-		txs[i] = &protoblocktx.Tx{
-			Id: "tx" + strconv.Itoa(i),
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: types.VersionNumber(0).Bytes(),
-					BlindWrites: []*protoblocktx.Write{
-						{
-							Key: []byte("key" + strconv.Itoa(i)),
-						},
-					},
-				},
-			},
-			Signatures: [][]byte{
-				[]byte("dummy"),
-			},
-		}
-		txsNum[i] = uint32(i) // nolint:gosec
-		expectedTxsStatus["tx"+strconv.Itoa(i)] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, i)
-	}
-
-	err := env.csStream.Send(&protoblocktx.Block{
-		Number: 0,
-		Txs:    txs,
-		TxsNum: txsNum,
-	})
+	b, expectedTxsStatus := makeTestBlock(txPerBlock)
+	err := env.csStream.Send(b)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == float64(txPerBlock)
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) > float64(txPerBlock)-1e-10
 	}, 4*time.Second, 100*time.Millisecond)
 
 	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
@@ -826,54 +800,25 @@ func TestWaitingTxsCount(t *testing.T) {
 	env.start(ctx, t)
 
 	txPerBlock := 10
-	txs := make([]*protoblocktx.Tx, txPerBlock)
-	txsNum := make([]uint32, txPerBlock)
-	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for i := range txPerBlock {
-		txs[i] = &protoblocktx.Tx{
-			Id: "tx" + strconv.Itoa(i),
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: types.VersionNumber(0).Bytes(),
-					BlindWrites: []*protoblocktx.Write{
-						{
-							Key: []byte("key" + strconv.Itoa(i)),
-						},
-					},
-				},
-			},
-			Signatures: [][]byte{
-				[]byte("dummy"),
-			},
-		}
-		txsNum[i] = uint32(i) // nolint:gosec
-		expectedTxsStatus["tx"+strconv.Itoa(i)] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, i)
-	}
+	b, expectedTxsStatus := makeTestBlock(txPerBlock)
 
-	success := make(chan bool, 1)
+	success := channel.Make[bool](ctx, 1)
 	go func() {
-		require.Eventually(t, func() bool {
-			if env.coordinator.numWaitingTxsForStatus.Load() == int32(2) {
-				success <- true
-				return true
-			}
-			return false
-		}, 3*time.Second, 250*time.Millisecond)
-		close(success)
+		success.Write(assert.Eventually(t, func() bool {
+			return env.coordinator.numWaitingTxsForStatus.Load() == int32(2)
+		}, 3*time.Second, 50*time.Millisecond))
 	}()
 
 	env.sigVerifiers[0].MockFaultyNodeDropSize = 2
-	err := env.csStream.Send(&protoblocktx.Block{
-		Number: 0,
-		Txs:    txs,
-		TxsNum: txsNum,
-	})
+	err := env.csStream.Send(b)
 	require.NoError(t, err)
-	require.True(t, <-success)
+	isSuccess, ok := success.Read()
+	require.True(t, ok, "timed out waiting for tx count")
+	require.True(t, isSuccess)
 
 	count, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
-	require.Contains(t, err.Error(), "stream is still active")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), ErrActiveStreamWaitingTransactions.Error())
 	require.Nil(t, count)
 
 	env.sigVerifierGrpcServers.Servers[0].Stop()
@@ -937,4 +882,30 @@ func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {
 			},
 		},
 	}
+}
+
+func makeTestBlock(txPerBlock int) (*protoblocktx.Block, map[string]*protoblocktx.StatusWithHeight) {
+	b := &protoblocktx.Block{
+		Txs:    make([]*protoblocktx.Tx, txPerBlock),
+		TxsNum: make([]uint32, txPerBlock),
+	}
+	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	for i := range txPerBlock {
+		txID := "tx" + strconv.Itoa(rand.Int())
+		b.Txs[i] = &protoblocktx.Tx{
+			Id: txID,
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId:      "1",
+				NsVersion: types.VersionNumber(0).Bytes(),
+				BlindWrites: []*protoblocktx.Write{{
+					Key: []byte("key" + strconv.Itoa(i)),
+				}},
+			}},
+			Signatures: [][]byte{[]byte("dummy")},
+		}
+		b.TxsNum[i] = uint32(i) //nolint:gosec
+		expectedTxsStatus[txID] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, i)
+	}
+
+	return b, expectedTxsStatus
 }

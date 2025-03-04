@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"regexp"
 	"time"
 
@@ -81,9 +82,30 @@ func CloseConnections[T io.Closer](connections ...T) error {
 	logger.Infof("Closing %d connections.\n", len(connections))
 	errs := make([]error, len(connections))
 	for i, closer := range connections {
-		errs[i] = closer.Close()
+		errs[i] = filterAcceptableCloseErr(closer.Close())
 	}
 	return errors.Join(errs...)
+}
+
+var acceptableCloseErr = []error{
+	io.EOF,
+	io.ErrClosedPipe,
+	io.ErrUnexpectedEOF,
+	net.ErrClosed,
+	context.Canceled,
+	context.DeadlineExceeded,
+}
+
+func filterAcceptableCloseErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, e := range acceptableCloseErr {
+		if errors.Is(err, e) {
+			return nil
+		}
+	}
+	return err
 }
 
 func CloseConnectionsLog[T io.Closer](connections ...T) {

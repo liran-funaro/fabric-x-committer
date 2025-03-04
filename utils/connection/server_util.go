@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 const grpcProtocol = "tcp"
