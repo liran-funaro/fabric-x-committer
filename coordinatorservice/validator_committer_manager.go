@@ -5,14 +5,15 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 )
 
 type (
@@ -26,7 +27,7 @@ type (
 		config              *validatorCommitterManagerConfig
 		validatorCommitter  []*validatorCommitter
 		txsStatusBufferSize int
-		connectionReady     chan any
+		connectionReady     *channel.Ready
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -56,12 +57,12 @@ func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validator
 	return &validatorCommitterManager{
 		config:              c,
 		txsStatusBufferSize: cap(c.outgoingTxsStatus),
-		connectionReady:     make(chan any),
+		connectionReady:     channel.NewReady(),
 	}
 }
 
 func (vcm *validatorCommitterManager) run(ctx context.Context) error {
-	defer func() { vcm.connectionReady = make(chan any) }()
+	defer vcm.connectionReady.Reset()
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.serversConfig))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.serversConfig))
@@ -98,7 +99,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		})
 	}
 
-	close(vcm.connectionReady)
+	vcm.connectionReady.SignalReady()
 	return g.Wait()
 }
 

@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
@@ -23,7 +25,7 @@ type (
 		batcher viewsBatcher
 		config  *Config
 		metrics *perfMetrics
-		ready   chan any
+		ready   *channel.Ready
 	}
 )
 
@@ -32,19 +34,14 @@ func NewQueryService(config *Config) *QueryService {
 	return &QueryService{
 		config:  config,
 		metrics: newQueryServiceMetrics(),
-		ready:   make(chan any),
+		ready:   channel.NewReady(),
 	}
 }
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
 func (q *QueryService) WaitForReady(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case <-q.ready:
-		return true
-	}
+	return q.ready.WaitForReady(ctx)
 }
 
 // Run starts the Prometheus server.
@@ -69,7 +66,7 @@ func (q *QueryService) Run(ctx context.Context) error {
 			queryObj: &sharedPool{pool: pool},
 		},
 	}
-	close(q.ready)
+	q.ready.SignalReady()
 
 	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring.Server)
 	// We don't use the error here as we avoid stopping the service due to monitoring error.

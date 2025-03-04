@@ -6,6 +6,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
@@ -14,9 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 )
 
 type (
@@ -29,7 +30,7 @@ type (
 		config          *signVerifierManagerConfig
 		signVerifier    []*signatureVerifier
 		metrics         *perfMetrics
-		connectionReady chan any
+		connectionReady *channel.Ready
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
@@ -68,12 +69,12 @@ func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVe
 	return &signatureVerifierManager{
 		config:          config,
 		metrics:         config.metrics,
-		connectionReady: make(chan any),
+		connectionReady: channel.NewReady(),
 	}
 }
 
 func (svm *signatureVerifierManager) run(ctx context.Context) error {
-	defer func() { svm.connectionReady = make(chan any) }()
+	defer svm.connectionReady.Reset()
 	c := svm.config
 	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.serversConfig))
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
@@ -111,7 +112,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		})
 	}
 
-	close(svm.connectionReady)
+	svm.connectionReady.SignalReady()
 	return g.Wait()
 }
 

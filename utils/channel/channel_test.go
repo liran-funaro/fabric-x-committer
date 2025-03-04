@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ type data struct {
 func TestChannel(t *testing.T) {
 	t.Parallel()
 
-	testContext, testCancel := context.WithTimeout(context.Background(), time.Minute)
+	testContext, testCancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(testCancel)
 
 	d := &data{5}
@@ -152,5 +153,99 @@ func TestChannel(t *testing.T) {
 		val, ok = c2.Read()
 		require.False(t, ok)
 		require.Nil(t, val)
+	})
+}
+
+func TestWaitForReady(t *testing.T) {
+	t.Parallel()
+	testContext, testCancel := context.WithTimeout(t.Context(), time.Minute)
+	t.Cleanup(testCancel)
+
+	t.Run("ready", func(t *testing.T) {
+		t.Parallel()
+		r := NewReady()
+		go func() {
+			assert.True(t, r.WaitForReady(testContext))
+		}()
+		time.Sleep(time.Second)
+		r.SignalReady()
+	})
+
+	t.Run("not ready", func(t *testing.T) {
+		t.Parallel()
+		r := NewReady()
+		timeoutCtx, timeoutCancel := context.WithTimeout(testContext, 3*time.Second)
+		t.Cleanup(timeoutCancel)
+		require.False(t, r.WaitForReady(timeoutCtx))
+	})
+
+	t.Run("closed", func(t *testing.T) {
+		t.Parallel()
+		r := NewReady()
+		go func() {
+			assert.False(t, r.WaitForReady(testContext))
+		}()
+		time.Sleep(time.Second)
+		r.Close()
+	})
+
+	t.Run("reset", func(t *testing.T) {
+		t.Parallel()
+		r := NewReady()
+		go func() {
+			assert.False(t, r.WaitForReady(testContext))
+		}()
+		time.Sleep(time.Second)
+		r.Reset()
+		go func() {
+			assert.True(t, r.WaitForReady(testContext))
+		}()
+		time.Sleep(time.Second)
+		r.SignalReady()
+	})
+
+	t.Run("all ready", func(t *testing.T) {
+		t.Parallel()
+		r := make([]*Ready, 3)
+		for i := range r {
+			r[i] = NewReady()
+		}
+		go func() {
+			assert.True(t, WaitForAllReady(testContext, r...))
+		}()
+		time.Sleep(time.Second)
+		for _, ready := range r {
+			ready.SignalReady()
+		}
+	})
+
+	t.Run("not all ready", func(t *testing.T) {
+		t.Parallel()
+		r := make([]*Ready, 3)
+		for i := range r {
+			r[i] = NewReady()
+		}
+		for _, ready := range r[1:] {
+			ready.SignalReady()
+		}
+		timeoutCtx, timeoutCancel := context.WithTimeout(testContext, 3*time.Second)
+		t.Cleanup(timeoutCancel)
+		require.False(t, WaitForAllReady(timeoutCtx, r...))
+	})
+
+	t.Run("some closed", func(t *testing.T) {
+		t.Parallel()
+		r := make([]*Ready, 3)
+		for i := range r {
+			r[i] = NewReady()
+		}
+		for _, ready := range r[2:] {
+			ready.SignalReady()
+		}
+		go func() {
+			assert.False(t, WaitForAllReady(testContext, r...))
+		}()
+		time.Sleep(time.Second)
+		r[0].Close()
 	})
 }

@@ -41,9 +41,9 @@ type (
 		// starting to pull blocks from the ordering service.
 		nextExpectedBlockNumberToBeReceived atomic.Uint64
 
-		// initializationDone channel is used to find out whether the coordinator service has
+		// initializationDone is used to find out whether the coordinator service has
 		// been initialized or not.
-		initializationDone chan any
+		initializationDone *channel.Ready
 
 		// streamActive guards against concurrent streams from the client (sidecar)
 		// to the coordinator and prevents conflicting operations while a stream is
@@ -163,7 +163,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		queues:                         queues,
 		config:                         c,
 		metrics:                        metrics,
-		initializationDone:             make(chan any),
+		initializationDone:             channel.NewReady(),
 		numWaitingTxsForStatus:         &atomic.Int32{},
 	}
 }
@@ -205,9 +205,11 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	if !waitForReady(eCtx, []chan any{
-		c.validatorCommitterMgr.connectionReady, c.signatureVerifierMgr.connectionReady,
-	}) {
+	if !channel.WaitForAllReady(
+		eCtx,
+		c.validatorCommitterMgr.connectionReady,
+		c.signatureVerifierMgr.connectionReady,
+	) {
 		return g.Wait()
 	}
 
@@ -226,7 +228,7 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		c.nextExpectedBlockNumberToBeReceived.Store(lastCommittedBlock.Number + 1)
 	}
 
-	close(c.initializationDone)
+	c.initializationDone.SignalReady()
 
 	if err := g.Wait(); err != nil {
 		logger.Errorf("coordinator processing has been stopped due to err [%v]", err)
@@ -241,18 +243,7 @@ func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
 	// NOTE: We set `initializationDone` only if signature verifier manager
 	//       and vcservice manager are ready. Hence, we can just wait for
 	//       the coordinator initialization.
-	return waitForReady(ctx, []chan any{c.initializationDone})
-}
-
-func waitForReady(ctx context.Context, ready []chan any) bool {
-	for _, ch := range ready {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-ch:
-		}
-	}
-	return true
+	return c.initializationDone.WaitForReady(ctx)
 }
 
 // UpdatePolicies updates the verification policies.

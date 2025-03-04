@@ -54,14 +54,8 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 			}
 			return nil
 		},
-		func(ctx context.Context) bool {
-			select {
-			case <-ctx.Done():
-				return false
-			case <-svm.connectionReady:
-				return true
-			}
-		})
+		svm.connectionReady.WaitForReady,
+	)
 
 	env := &svMgrTestEnv{
 		signVerifierManager: svm,

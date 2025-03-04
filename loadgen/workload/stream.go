@@ -4,11 +4,12 @@ import (
 	"context"
 	"math/rand"
 
+	"go.uber.org/ratelimit"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"go.uber.org/ratelimit"
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -18,7 +19,7 @@ type (
 		gens    []*txModifierDecorator
 		txQueue chan []*protoblocktx.Tx
 		options *StreamOptions
-		ready   chan any
+		ready   *channel.Ready
 	}
 
 	// QueryStream generates stream's queries consumers.
@@ -27,7 +28,7 @@ type (
 		gen     []*QueryGenerator
 		queue   chan []*protoqueryservice.Query
 		options *StreamOptions
-		ready   chan any
+		ready   *channel.Ready
 	}
 
 	// Stream makes generators that consume from a stream (BatchQueue).
@@ -53,7 +54,7 @@ func NewTxStream(
 ) *TxStream {
 	signer := NewTxSignerVerifier(profile.Transaction.Policy)
 	txStream := &TxStream{
-		ready:   make(chan any),
+		ready:   channel.NewReady(),
 		txQueue: make(chan []*protoblocktx.Tx, max(options.BuffersSize, 1)),
 		options: options,
 	}
@@ -78,12 +79,7 @@ func NewTxStream(
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
 func (s *TxStream) WaitForReady(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case <-s.ready:
-		return true
-	}
+	return s.ready.WaitForReady(ctx)
 }
 
 // Run starts the stream workers.
@@ -103,7 +99,7 @@ func (s *TxStream) Run(ctx context.Context) error {
 		Limiter:    NewLimiter(s.options.RateLimit),
 		BatchQueue: txQueue,
 	}
-	close(s.ready)
+	s.ready.SignalReady()
 	return g.Wait()
 }
 
@@ -124,7 +120,7 @@ func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
 	qs := &QueryStream{
 		options: options,
 		queue:   make(chan []*protoqueryservice.Query, max(options.BuffersSize, 1)),
-		ready:   make(chan any),
+		ready:   channel.NewReady(),
 	}
 	for _, w := range makeWorkersData(profile) {
 		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
@@ -136,12 +132,7 @@ func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
 func (s *QueryStream) WaitForReady(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case <-s.ready:
-		return true
-	}
+	return s.ready.WaitForReady(ctx)
 }
 
 // Run starts the workers.
@@ -160,7 +151,7 @@ func (s *QueryStream) Run(ctx context.Context) error {
 		Limiter:    NewLimiter(s.options.RateLimit),
 		BatchQueue: queue,
 	}
-	close(s.ready)
+	s.ready.SignalReady()
 	return g.Wait()
 }
 

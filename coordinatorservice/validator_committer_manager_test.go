@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -17,7 +19,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/protobuf/proto"
 )
 
 type vcMgrTestEnv struct {
@@ -60,14 +61,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int, expectedEndErrorMsg ...byte
 			assert.NoError(t, err)
 		}
 		return nil
-	}, func(ctx context.Context) bool {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-vcm.connectionReady:
-			return true
-		}
-	})
+	}, vcm.connectionReady.WaitForReady)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
