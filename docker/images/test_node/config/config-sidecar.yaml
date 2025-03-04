@@ -11,39 +11,16 @@ sidecar:
   monitoring:
     metrics:
       endpoint: :2111
-    latency:
-      span-exporter: jaeger
-      sampler:
-        type: blocktx
-        ratio: 10
-        sample-size: 100
-        sample-period: 100000
-      endpoint: localhost:14268
-      max-latency: 5s
-      bucket-count: 1000
 
   orderer:
-    # SC_SIDECAR_ORDERER_ENDPOINTS="localhost:7777 localhost:8888"
-    endpoints:
-      - :7050
+    # SC_SIDECAR_ORDERER_CONNECTION_ENDPOINTS="localhost:7777 localhost:8888"
+    connection:
+      endpoints:
+        - :7050
     # SC_SIDECAR_ORDERER_CHANNEL_ID=someChannel
     channel-id: mychannel
-    # SC_SIDECAR_ORDERER_SIGNED_ENVELOPES=true or false
-    signed-envelopes: false
+    consensus-type: BFT
 
-    connection-profile:
-      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_ROOT_CA_PATHS=/some/path/to/ca-certs.pem
-      root-ca-paths:
-        - /root/config/crypto/ca-certs.pem
-      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_MSP_DIR=/some/path/to/msp
-      msp-dir: /root/config/crypto/peerOrganizations/defaultpeerorg.example.com/peers/peerservice-machine1.defaultpeerorg.example.com/msp
-      # SC_SIDECAR_ORDERER_CONNECTION_PROFILE_MSP_ID=SomeOrgMSP
-      msp-id: DefaultPeerOrgMSP
-      bccsp:
-        Default: SW
-        SW:
-          Security: 256
-          Hash: SHA2
   committer:
     endpoint: localhost:5002
     ledger-path: /root/sc/ledger

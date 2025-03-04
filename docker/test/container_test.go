@@ -55,7 +55,6 @@ const (
 // TestStartTestNode spawns a mock orderer and an all-in-one instance of the committer using docker
 // to verify that the committer container starts as expected.
 func TestStartTestNode(t *testing.T) {
-	t.Skip()
 	t.Parallel()
 	wd, err := os.Getwd()
 	require.NoError(t, err)
@@ -135,8 +134,7 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 
 	containerEnvOverride := []string{
 		"SC_SIDECAR_ORDERER_CHANNEL_ID=" + channelName,
-		"SC_SIDECAR_ORDERER_ENDPOINTS=" + ordererEndpoint,
-		"SC_SIDECAR_ORDERER_SIGNED_ENVELOPES=false",
+		"SC_SIDECAR_ORDERER_CONNECTION_ENDPOINTS=" + ordererEndpoint,
 		"METANS_SIG_SCHEME=ECDSA",
 		"METANS_SIG_VERIFICATION_KEY_PATH=/sc_pubkey.pem",
 		"SC_QUERY_SERVICE_SERVER_ENDPOINT=" + queryServiceEndpoint,
