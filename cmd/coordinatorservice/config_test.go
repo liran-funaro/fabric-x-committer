@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -123,6 +124,11 @@ func TestReadConfig(t *testing.T) {
 					NumOfWorkersForGlobalDepManager: 1,
 				},
 				ChannelBufferSizePerGoroutine: 10,
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: *connection.CreateEndpoint("localhost:7005"),
+					},
+				},
 			},
 		},
 	}

@@ -6,12 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -89,5 +90,5 @@ func setDefaults() {
 	viper.SetDefault("coordinator-service.per-channel-buffer-size-per-goroutine", 10)
 
 	// defaults for monitoring config.
-	viper.SetDefault("query-service.monitoring.server.endpoint", "localhost:7005")
+	viper.SetDefault("coordinator-service.monitoring.server.endpoint", "localhost:7005")
 }
