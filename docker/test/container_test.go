@@ -3,14 +3,12 @@ package test
 import (
 	"context"
 	_ "embed"
-	"log"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 
 	"github.com/cockroachdb/errors"
 	"github.com/docker/docker/api/types/container"
@@ -25,6 +23,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (
@@ -59,22 +59,15 @@ func TestStartTestNode(t *testing.T) {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	testdataPath := path.Join(wd, "testdata")
+	require.DirExists(t, testdataPath)
 
-	// create a docker client
 	ctx := t.Context()
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	require.NoError(t, err)
-	defer func() {
-		connection.CloseConnectionsLog(dockerClient)
-	}()
+	defer connection.CloseConnectionsLog(dockerClient)
 
-	stopAndRemoveContainer(dockerClient, "orderer")
-	stopAndRemoveContainer(dockerClient, "committer")
-
-	// start orderer
+	stopAndRemoveContainersByName(ctx, t, dockerClient, "orderer", "committer")
 	startOrderer(ctx, t, dockerClient, "orderer", testdataPath)
-
-	// start committer
 	startCommitter(ctx, t, dockerClient, "committer", testdataPath)
 
 	// TODO: do some more checks
@@ -89,6 +82,7 @@ func startOrderer(ctx context.Context, t *testing.T, dockerClient *client.Client
 
 	// TODO: we want to replace this with `config/templates` in the future
 	configPath := path.Join(testdataPath, "config-orderer.yaml")
+	require.FileExists(t, configPath)
 
 	containerCfg := &container.Config{
 		Image: imageName,
@@ -96,6 +90,7 @@ func startOrderer(ctx context.Context, t *testing.T, dockerClient *client.Client
 			nat.Port(servicePort + "/tcp"): struct{}{},
 		},
 		Cmd: []string{"/app", "start", "--configs=/config.yaml"},
+		Tty: true,
 	}
 
 	hostCfg := &container.HostConfig{
@@ -147,21 +142,26 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 			nat.Port(queryServicePort + "/tcp"): struct{}{},
 		},
 		Env: containerEnvOverride,
+		Tty: true,
 	}
 
+	configPath := filepath.Join(testdataPath, "config-sidecar.yaml")
+	keyPath := filepath.Join(testdataPath, "sc_pubkey.pem")
+	require.FileExists(t, configPath)
+	require.FileExists(t, keyPath)
 	hostCfg := &container.HostConfig{
 		Mounts: []mount.Mount{
 			{
 				// configuration
 				Type:   mount.TypeBind,
-				Source: filepath.Join(testdataPath, "sc_pubkey.pem"),
+				Source: keyPath,
 				Target: "/sc_pubkey.pem",
 			},
 			{
 				// configuration
 				Type: mount.TypeBind,
 				// TODO: we want to replace this with `config/templates` in the future
-				Source: filepath.Join(testdataPath, "config-sidecar.yaml"),
+				Source: configPath,
 				Target: "/root/config/config-sidecar.yaml",
 			},
 		},
@@ -199,7 +199,9 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 	startContainer(ctx, t, dockerClient, containerName, containerCfg, hostCfg, nil, nil, conn)
 }
 
-func startContainer(ctx context.Context, //nolint:revive
+//nolint:revive
+func startContainer(
+	ctx context.Context,
 	t *testing.T,
 	dockerClient *client.Client,
 	containerName string,
@@ -213,46 +215,83 @@ func startContainer(ctx context.Context, //nolint:revive
 	resp, err := dockerClient.ContainerCreate(ctx, containerCfg, hostCfg, networkCfg, platformCfg, containerName)
 	require.NoError(t, err)
 
+	//nolint:contextcheck // We want to ensure cleanup when the test is done.
+	t.Cleanup(func() {
+		stopAndRemoveID(context.Background(), t, dockerClient, resp.ID)
+	})
+
 	require.NoError(t, dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}))
 
+	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+	})
+	require.NoError(t, err)
+	go func() {
+		_, err = io.Copy(os.Stdout, logs)
+		if err != nil {
+			t.Logf("logs ended with: %v", err)
+		}
+	}()
+
 	// return if we don't want wait for the health check to pass
-	if conn != nil {
-		require.NoError(t, waitUntilReady(ctx, conn))
-	}
+	require.NoError(t, waitUntilReady(ctx, conn))
 }
 
 func waitUntilReady(ctx context.Context, conn grpc.ClientConnInterface) error {
+	if conn == nil {
+		return nil
+	}
 	healthClient := healthgrpc.NewHealthClient(conn)
-	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{
-		Service: "",
-	}, grpc.WaitForReady(true))
+	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{}, grpc.WaitForReady(true))
 	if status.Code(err) == codes.Canceled {
 		return errors.Wrap(err, "healthcheck canceled")
 	}
 	if err != nil {
 		return errors.Wrap(err, "healthcheck failed")
 	}
-
 	if res.Status != healthgrpc.HealthCheckResponse_SERVING {
-		return errors.Wrap(err, "invalid status")
+		return errors.Newf("invalid status: %s", res.Status)
 	}
-
 	return nil
 }
 
-func stopAndRemoveContainer(dockerClient *client.Client, containerName string) {
-	ctx := context.Background()
+func stopAndRemoveContainersByName(ctx context.Context, t *testing.T, dockerClient *client.Client, names ...string) {
+	t.Helper()
+	list, err := dockerClient.ContainerList(ctx, container.ListOptions{
+		All: true,
+	})
+	require.NoError(t, err)
 
-	if err := dockerClient.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
-		log.Printf("Unable to stop container %s: %s", containerName, err)
+	nameToID := make(map[string]string)
+	for _, c := range list {
+		for _, name := range c.Names {
+			nameToID[name[1:]] = c.ID
+		}
 	}
+	for _, containerName := range names {
+		id, ok := nameToID[containerName]
+		if !ok {
+			t.Logf("container '%s' not found", containerName)
+			continue
+		}
+		t.Logf("stopping container '%s' (%s)", containerName, id)
+		stopAndRemoveID(ctx, t, dockerClient, id)
+	}
+}
 
-	removeOptions := container.RemoveOptions{
+func stopAndRemoveID(ctx context.Context, t *testing.T, dockerClient *client.Client, id string) {
+	t.Helper()
+	err := dockerClient.ContainerStop(ctx, id, container.StopOptions{})
+	if err != nil {
+		t.Logf("unable to stop container %s: %s", id, err)
+	}
+	err = dockerClient.ContainerRemove(ctx, id, container.RemoveOptions{
 		RemoveVolumes: true,
 		Force:         true,
-	}
-
-	if err := dockerClient.ContainerRemove(ctx, containerName, removeOptions); err != nil {
-		log.Printf("Unable to remove container: %s", err)
+	})
+	if err != nil {
+		t.Logf("unable to remove container: %s", err)
 	}
 }

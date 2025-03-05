@@ -22,4 +22,4 @@ query-service:
 logging:
   development: true
   enabled: true
-  level: DEBUG
+  level: INFO
