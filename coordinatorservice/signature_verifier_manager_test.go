@@ -291,28 +291,30 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	env.grpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
 
-	pendingPoliciesUpdate := env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
-	require.Empty(t, pendingPoliciesUpdate)
+	allNsPolicies := env.signVerifierManager.signVerifier[0].allNsPolicies
+	require.Empty(t, allNsPolicies)
+	require.False(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
 	ns1Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns1")
 	ns2Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 	}))
 
-	pendingPoliciesUpdate = env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
-	require.Len(t, pendingPoliciesUpdate, 2)
-	require.Equal(t, ns1Policy, pendingPoliciesUpdate["ns1"])
-	require.Equal(t, ns2Policy, pendingPoliciesUpdate["ns2"])
+	allNsPolicies = env.signVerifierManager.signVerifier[0].allNsPolicies
+	require.Len(t, allNsPolicies, 2)
+	require.Equal(t, ns1Policy, allNsPolicies["ns1"])
+	require.Equal(t, ns2Policy, allNsPolicies["ns2"])
+	require.True(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
 
 	ns2NewPolicy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
 	}))
 
-	pendingPoliciesUpdate = env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate
-	require.Len(t, pendingPoliciesUpdate, 2)
-	require.Equal(t, ns1Policy, pendingPoliciesUpdate["ns1"])
-	require.Equal(t, ns2NewPolicy, pendingPoliciesUpdate["ns2"])
+	require.Len(t, allNsPolicies, 2)
+	require.Equal(t, ns1Policy, allNsPolicies["ns1"])
+	require.Equal(t, ns2NewPolicy, allNsPolicies["ns2"])
+	require.True(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
 
 	blkNum := 0
 	numTxs := 10
@@ -320,7 +322,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	env.inputTxBatch <- txBatch
 
 	require.Never(t, func() bool {
-		return len(pendingPoliciesUpdate) == 0
+		return !env.signVerifierManager.signVerifier[0].pendingNsPolicies
 	}, 2*time.Second, 1*time.Second)
 
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
@@ -328,7 +330,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	)
 
 	require.Eventually(t, func() bool {
-		return len(env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate) == 0
+		return !env.signVerifierManager.signVerifier[0].pendingNsPolicies
 	}, 3*time.Second, 250*time.Millisecond)
 
 	env.requireTxBatch(t, expectedValidatedTxs)
@@ -345,8 +347,18 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 			},
 		},
 	}))
-	env.inputTxBatch <- txBatch
+	require.True(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
+
+	env.grpcServers.Servers[0].Stop()
+	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
+	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
+		t, env.mockSvService, env.grpcServers.Configs,
+	)
+
+	// When the server is restarted, it would try to send all policies including the
+	// bad policy. As a result, the svm would fail with an invalid argument error.
+	// It would not even reach the location where it sends the pendingNsPolicies.
 	require.Never(t, func() bool {
-		return len(env.signVerifierManager.signVerifier[0].pendingPoliciesUpdate) == 0
+		return !env.signVerifierManager.signVerifier[0].pendingNsPolicies
 	}, 2*time.Second, 500*time.Millisecond)
 }

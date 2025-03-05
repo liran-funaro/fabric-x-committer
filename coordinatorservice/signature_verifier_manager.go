@@ -46,12 +46,16 @@ type (
 		// requeued to the input queue for processing by other signature verifiers.
 		txBeingValidated map[types.Height]*dependencygraph.TransactionNode
 		txMu             *sync.Mutex
-		// pendingPoliciesUpdate holds the policies that are not yet applied to the verifier.
-		// If the connection to the verifier is not ready, these policies are added to this queue.
-		// Once the connection is established, these pending policies must be set.
-		pendingPoliciesUpdate map[string]*protoblocktx.PolicyItem
-		pendingPoliciesMu     *sync.Mutex
+
+		// pendingNsPolicies indicates whether a policy update is pending. We do not maintain a detailed
+		// list of pending policies; instead, we send all policies because verifier restarts and transient
+		// connection issues occur very infrequently. This infrequency allows us to simplify the logic.
+		pendingNsPolicies bool
+		allNsPolicies     nsToPolicy
+		nsPolicyMu        *sync.Mutex
 	}
+
+	nsToPolicy map[string]*protoblocktx.PolicyItem
 
 	signVerifierManagerConfig struct {
 		serversConfig            []*connection.ServerConfig
@@ -123,7 +127,8 @@ func (svm *signatureVerifierManager) updatePolicies(
 	for i, sv := range svm.signVerifier {
 		logger.Infof("Updating policy for sv [%d]", i)
 
-		if err := grpcerror.FilterUnavailableErrorCode(sv.updatePolicies(ctx, policies.Policies...)); err != nil {
+		err := grpcerror.FilterUnavailableErrorCode(sv.updatePolicies(ctx, false, policies.Policies...))
+		if err != nil {
 			logger.ErrorStackTrace(err)
 			// we reach here only if we receive an internal error but it is quite rare.
 			return errors.Wrap(err, "failed to update verifiers with new policies")
@@ -170,13 +175,13 @@ func newSignatureVerifier(serverConfig *connection.ServerConfig, metrics *perfMe
 	logger.Infof("signature verifier manager connected to signature verifier at %s", &serverConfig.Endpoint)
 
 	return &signatureVerifier{
-		conn:                  conn,
-		client:                protosigverifierservice.NewVerifierClient(conn),
-		metrics:               metrics,
-		txBeingValidated:      make(map[types.Height]*dependencygraph.TransactionNode),
-		txMu:                  &sync.Mutex{},
-		pendingPoliciesUpdate: make(map[string]*protoblocktx.PolicyItem),
-		pendingPoliciesMu:     &sync.Mutex{},
+		conn:             conn,
+		client:           protosigverifierservice.NewVerifierClient(conn),
+		metrics:          metrics,
+		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
+		txMu:             &sync.Mutex{},
+		allNsPolicies:    make(nsToPolicy),
+		nsPolicyMu:       &sync.Mutex{},
 	}, nil
 }
 
@@ -205,6 +210,19 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 		}
 
 		waitForConnection(ctx, sv.conn)
+
+		// NOTE: To simplify the implementation, we do not distinguish between transient connection failures
+		//       and verifier process failures/restarts. Consequently, every time a connection is established
+		//       with a signature verifier, we send all namespace policies. This may cause the verifier to
+		//       unnecessarily create new namespace verifiers, but the tradeoff is acceptable as it is an
+		//       infrequent operation.
+		if err := grpcerror.FilterUnavailableErrorCode(sv.updatePolicies(ctx, true)); err != nil {
+			logger.ErrorStackTrace(err)
+			return errors.Wrap(err, "failed to update verifiers with new policies")
+		}
+		// If the failure is due to a transient connection issue, pendingNsPolicies will update the verifier.
+		// Otherwise, if it's not a transient issue, the subsequent start stream execution will fail, and the
+		// connection will be retried.
 
 		sCtx, sCancel := context.WithCancel(ctx)
 		stream, err := sv.client.StartStream(sCtx)
@@ -312,10 +330,13 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		//       As a result, these transactions could be provided as input to the same verifier client.
 		//       To avoid using an outdated policy, any pending policy updates must be cleared before
 		//       sending requests to the verifier.
-		if err := sv.updatePolicies(stream.Context()); err != nil {
+		//       Pending policies, unsent due to a transient connection failure, are released here.
+		//       This failure may have been isolated from the stream.
+		if err := sv.updatePolicies(stream.Context(), false); err != nil {
 			logger.ErrorStackTrace(err)
 			return errors.Wrap(grpcerror.FilterUnavailableErrorCode(err), "failed to update policies in verifier")
 		}
+
 		if err := stream.Send(request); err != nil {
 			logger.Warnf("Send to stream ended with error: %s. Reconnecting.", err)
 			return nil
@@ -367,44 +388,38 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	}
 }
 
+//nolint:revive // control flag is used to force update all policies.
 func (sv *signatureVerifier) updatePolicies(
 	ctx context.Context,
-	policyItems ...*protoblocktx.PolicyItem,
+	forceUpdateAllPolicies bool,
+	newPolicyItems ...*protoblocktx.PolicyItem,
 ) error {
-	sv.pendingPoliciesMu.Lock()
-	defer sv.pendingPoliciesMu.Unlock()
-
-	if len(sv.pendingPoliciesUpdate) > 0 {
-		newNsPolicy := make(map[string]any, len(policyItems))
-		for _, p := range policyItems {
-			newNsPolicy[p.Namespace] = nil
-		}
-
-		for ns, pItem := range sv.pendingPoliciesUpdate {
-			// Merge pending updates into policyItems, prioritizing those already in the policyItems.
-			// If a policy for a namespace exists in both pendingPoliciesUpdate and policyItems, the
-			// policyItems would always hold the recent policy.
-			if _, ok := newNsPolicy[ns]; !ok {
-				policyItems = append(policyItems, &protoblocktx.PolicyItem{
-					Namespace: ns,
-					Policy:    pItem.Policy,
-				})
-			}
-		}
-		sv.pendingPoliciesUpdate = make(map[string]*protoblocktx.PolicyItem)
+	sv.nsPolicyMu.Lock()
+	defer sv.nsPolicyMu.Unlock()
+	for _, p := range newPolicyItems {
+		sv.allNsPolicies[p.Namespace] = p
 	}
 
-	if len(policyItems) == 0 {
+	if sv.pendingNsPolicies || forceUpdateAllPolicies {
+		newPolicyItems = []*protoblocktx.PolicyItem{}
+		for ns, pItem := range sv.allNsPolicies { // allNsPolicies holds both the pending and new policies
+			newPolicyItems = append(newPolicyItems, &protoblocktx.PolicyItem{
+				Namespace: ns,
+				Policy:    pItem.Policy,
+			})
+		}
+	}
+
+	sv.pendingNsPolicies = false
+	if len(newPolicyItems) == 0 {
 		return nil
 	}
-	_, err := sv.client.UpdatePolicies(ctx, &protoblocktx.Policies{Policies: policyItems})
+
+	_, err := sv.client.UpdatePolicies(ctx, &protoblocktx.Policies{Policies: newPolicyItems})
 	if err == nil {
 		return nil
 	}
 
-	for _, pItem := range policyItems {
-		sv.pendingPoliciesUpdate[pItem.Namespace] = pItem
-	}
-
+	sv.pendingNsPolicies = true
 	return errors.Wrap(err, "failed to update a verifier")
 }
