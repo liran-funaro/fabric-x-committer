@@ -10,8 +10,8 @@ validator-committer-service:
     endpoint: localhost:6006
 
   database:
-    host: %s
-    port: %s
+    endpoints:
+      - %v
     username: %s
     password: %s
     database: %s

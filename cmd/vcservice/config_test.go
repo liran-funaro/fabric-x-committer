@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
@@ -30,8 +32,9 @@ func TestConfig(t *testing.T) {
 					},
 				},
 				Database: &vcservice.DatabaseConfig{
-					Host:           "localhost",
-					Port:           5433,
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("localhost:5433"),
+					},
 					Username:       "yugabyte",
 					Password:       "yugabyte",
 					Database:       "yugabyte",
@@ -70,8 +73,9 @@ func TestConfig(t *testing.T) {
 					},
 				},
 				Database: &vcservice.DatabaseConfig{
-					Host:           "localhost",
-					Port:           5433,
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("localhost:5433"),
+					},
 					Username:       "yugabyte",
 					Password:       "yugabyte",
 					Database:       "yugabyte",
@@ -100,6 +104,60 @@ func TestConfig(t *testing.T) {
 			expectedDataSourceName: "postgres://yugabyte:yugabyte@localhost:5433/yugabyte?sslmode=disable",
 		},
 		{
+			name: "config with multiple sources",
+			configFilePath: runner.CreateConfigFromTemplate(t, "validatorpersister", t.TempDir(),
+				&configtempl.QueryServiceOrVCServiceConfig{
+					CommonEndpoints: configtempl.CommonEndpoints{
+						ServerEndpoint:  "localhost:6001",
+						MetricsEndpoint: "localhost:6002",
+					},
+					DatabaseEndpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("host1:1111"),
+						connection.CreateEndpoint("host2:2222"),
+					},
+					DatabaseName: "yugabyte",
+				}),
+			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
+				Server: &connection.ServerConfig{
+					Endpoint: connection.Endpoint{
+						Host: "localhost",
+						Port: 6001,
+					},
+					Creds: nil,
+				},
+				Database: &vcservice.DatabaseConfig{
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("host1:1111"),
+						connection.CreateEndpoint("host2:2222"),
+					},
+					Username:       "yugabyte",
+					Password:       "yugabyte",
+					Database:       "yugabyte",
+					MaxConnections: 10,
+					MinConnections: 5,
+					Retry: &connection.RetryProfile{
+						MaxElapsedTime: 20 * time.Second,
+					},
+				},
+				ResourceLimits: &vcservice.ResourceLimitsConfig{
+					MaxWorkersForPreparer:             1,
+					MaxWorkersForValidator:            1,
+					MaxWorkersForCommitter:            20,
+					MinTransactionBatchSize:           1,
+					TimeoutForMinTransactionBatchSize: 5 * time.Second,
+				},
+				Monitoring: monitoring.Config{
+					Server: &connection.ServerConfig{
+						Endpoint: connection.Endpoint{
+							Host: "localhost",
+							Port: 6002,
+						},
+					},
+				},
+			},
+			expectedDataSourceName: "postgres://yugabyte:yugabyte@host1:1111,host2:2222/yugabyte?sslmode=disable",
+		},
+		{
 			name:           "no config file",
 			configFilePath: "",
 			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
@@ -110,8 +168,9 @@ func TestConfig(t *testing.T) {
 					},
 				},
 				Database: &vcservice.DatabaseConfig{
-					Host:           "localhost",
-					Port:           5433,
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("localhost:5433"),
+					},
 					Username:       "yugabyte",
 					Password:       "yugabyte",
 					Database:       "yugabyte",

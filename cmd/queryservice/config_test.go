@@ -31,8 +31,9 @@ func TestConfig(t *testing.T) {
 					},
 				},
 				Database: &vcservice.DatabaseConfig{
-					Host:           "localhost",
-					Port:           5433,
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("localhost:5433"),
+					},
 					Username:       "yugabyte",
 					Password:       "yugabyte",
 					Database:       "yugabyte",
@@ -66,8 +67,9 @@ func TestConfig(t *testing.T) {
 					},
 				},
 				Database: &vcservice.DatabaseConfig{
-					Host:           "localhost",
-					Port:           5433,
+					Endpoints: []*connection.Endpoint{
+						connection.CreateEndpoint("localhost:5433"),
+					},
 					Username:       "yugabyte",
 					Password:       "yugabyte",
 					Database:       "yugabyte",

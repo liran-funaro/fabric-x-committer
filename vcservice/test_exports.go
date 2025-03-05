@@ -3,7 +3,6 @@ package vcservice
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -111,30 +110,26 @@ type DatabaseTestEnv struct {
 // NewDatabaseTestEnv creates a new default database test environment.
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	// default parameters set.
-	return newDatabaseTestEnv(t, yuga.PrepareTestEnv(t), 1)
+	return newDatabaseTestEnv(t, yuga.PrepareTestEnv(t), false)
 }
 
 // NewDatabaseTestEnvWithCluster creates a new db cluster test environment.
-func NewDatabaseTestEnvWithCluster(t *testing.T, dbOpts *yuga.DBOptions) *DatabaseTestEnv {
+func NewDatabaseTestEnvWithCluster(t *testing.T, dbConnections *yuga.Connection) *DatabaseTestEnv {
 	t.Helper()
-	require.NotNil(t, dbOpts.Connections)
-	return newDatabaseTestEnv(t, yuga.PrepareTestEnvWithConnection(t, dbOpts.Connections), dbOpts.ClusterSize)
+	require.NotNil(t, dbConnections)
+	return newDatabaseTestEnv(t, yuga.PrepareTestEnvWithConnection(t, dbConnections), true)
 }
 
-func newDatabaseTestEnv(t *testing.T, cs *yuga.Connection, clusterSize int) *DatabaseTestEnv {
+func newDatabaseTestEnv(t *testing.T, cs *yuga.Connection, loadBalance bool) *DatabaseTestEnv {
 	t.Helper()
-	port, err := strconv.Atoi(cs.Port)
-	require.NoError(t, err)
-
 	config := &DatabaseConfig{
-		Host:           cs.Host,
-		Port:           port,
+		Endpoints:      cs.Endpoints,
 		Username:       cs.User,
 		Password:       cs.Password,
 		Database:       cs.Database,
 		MaxConnections: 10,
 		MinConnections: 1,
-		LoadBalance:    clusterSize > 1,
+		LoadBalance:    loadBalance,
 	}
 
 	m := newVCServiceMetrics()

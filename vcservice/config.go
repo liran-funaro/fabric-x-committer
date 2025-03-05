@@ -18,8 +18,7 @@ type ValidatorCommitterServiceConfig struct {
 
 // DatabaseConfig is the configuration for the database.
 type DatabaseConfig struct {
-	Host           string                   `mapstructure:"host"`
-	Port           int                      `mapstructure:"port"`
+	Endpoints      []*connection.Endpoint   `mapstructure:"endpoints"`
 	Username       string                   `mapstructure:"username"`
 	Password       string                   `mapstructure:"password"`
 	Database       string                   `mapstructure:"database"`
@@ -31,8 +30,8 @@ type DatabaseConfig struct {
 
 // DataSourceName returns the data source name of the database.
 func (d *DatabaseConfig) DataSourceName() string {
-	ret := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		d.Username, d.Password, d.Host, d.Port, d.Database)
+	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+		d.Username, d.Password, d.EndpointsString(), d.Database)
 
 	// The load balancing flag is only available when the server supports it (having multiple nodes).
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
@@ -40,6 +39,11 @@ func (d *DatabaseConfig) DataSourceName() string {
 		ret += "&load_balance=true"
 	}
 	return ret
+}
+
+// EndpointsString returns the address:port as a string with comma as a separator between endpoints.
+func (d *DatabaseConfig) EndpointsString() string {
+	return connection.AddressString(d.Endpoints...)
 }
 
 // ResourceLimitsConfig is the configuration for the resource limits.

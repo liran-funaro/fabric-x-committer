@@ -3,7 +3,6 @@ package queryservice
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -272,9 +271,6 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	namespacesToTest := []string{"0", "1", "2"}
 	cs := loadgen.GenerateNamespacesUnderTest(t, namespacesToTest)
 
-	port, err := strconv.Atoi(cs.Port)
-	require.NoError(t, err)
-
 	config := &Config{
 		MinBatchKeys:          5,
 		MaxBatchWait:          time.Second,
@@ -288,8 +284,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 			},
 		},
 		Database: &vcservice.DatabaseConfig{
-			Host:           cs.Host,
-			Port:           port,
+			Endpoints:      cs.Endpoints,
 			Username:       cs.User,
 			Password:       cs.Password,
 			Database:       cs.Database,

@@ -5,8 +5,12 @@ query-service:
     endpoint: {{ .CommonEndpoints.ServerEndpoint }}
     # Credentials for the server
   database:
-    host: {{ .DatabaseHost }}
-    port: {{ .DatabasePort }}
+    endpoints:
+      {{- range .DatabaseEndpoints }}
+      - host: {{ .Host }}
+        port: {{ .Port }}
+      {{- end }}
+
     username: "yugabyte"                       # The username for the database
     password: "yugabyte"                       # The password for the database
     database: {{ .DatabaseName }}

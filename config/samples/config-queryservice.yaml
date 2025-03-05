@@ -7,8 +7,8 @@ query-service:
       port: 7003        # The port of the server
     # Credentials for the server
   database:
-    host: "localhost"                          # The host of the database
-    port: 5433                                 # The port of the database
+    endpoints:
+      - localhost:5433
     username: "yugabyte"                       # The username for the database
     # TODO: pass password via environment variable
     password: "yugabyte"                       # The password for the database

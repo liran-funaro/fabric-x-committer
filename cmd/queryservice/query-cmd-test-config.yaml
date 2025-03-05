@@ -8,8 +8,8 @@ query-service:
   server:
     endpoint: localhost:7003
   database:
-    host: %s
-    port: %s
+    endpoints:
+      - %v
     username: %s
     password: %s
     database: %s

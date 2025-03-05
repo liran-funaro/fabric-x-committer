@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -35,7 +36,7 @@ type DBClusterController struct {
 }
 
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment and returns the first node connection properties.
-func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (*DBClusterController, []*yuga.Connection) {
+func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (*DBClusterController, *yuga.Connection) {
 	t.Helper()
 	require.GreaterOrEqual(t, clusterSize, uint(0))
 
@@ -77,7 +78,7 @@ func (*DBClusterController) waitForNodeReadiness(t *testing.T, node *yuga.Yugaby
 			output := node.GetContainerLogs(t)
 			return strings.Contains(output, "Data placement constraint successfully verified")
 		},
-		30*time.Second,
+		90*time.Second,
 		250*time.Millisecond,
 		"Node %s readiness check failed", node.Name,
 	)
@@ -110,17 +111,21 @@ func (cc *DBClusterController) GetClusterSize() int {
 }
 
 // GetNodesConnections return a slice with all the cluster nodes connections.
-func (cc *DBClusterController) GetNodesConnections(ctx context.Context, t *testing.T) []*yuga.Connection {
+func (cc *DBClusterController) GetNodesConnections(ctx context.Context, t *testing.T) *yuga.Connection {
 	t.Helper()
 	cc.lock.RLock()
 	defer cc.lock.RUnlock()
 
-	connections := make([]*yuga.Connection, len(cc.nodes))
-
-	for i, node := range cc.nodes {
-		connections[i] = node.GetContainerConnection(ctx, t)
+	if len(cc.nodes) == 0 {
+		return nil
 	}
-	return connections
+
+	endpoints := make([]*connection.Endpoint, len(cc.nodes))
+	for i, node := range cc.nodes {
+		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
+	}
+
+	return yuga.NewConnection(endpoints...)
 }
 
 // createNode initializes a new node with appropriate configuration.
@@ -132,7 +137,7 @@ func (cc *DBClusterController) createNode(ctx context.Context, t *testing.T) *yu
 	}
 
 	if len(cc.nodes) != 0 {
-		node.Cmd = append(node.Cmd, fmt.Sprintf("--join=%s", cc.getFirstNodeConnection(ctx, t).Host))
+		node.Cmd = append(node.Cmd, fmt.Sprintf("--join=%s", cc.getFirstNodeHost(ctx, t)))
 	}
 
 	return node
@@ -150,10 +155,11 @@ func (cc *DBClusterController) stopAndRemoveYugaCluster(t *testing.T) {
 	cc.nodes = make([]*yuga.YugabyteDBContainer, 0)
 }
 
-func (cc *DBClusterController) getFirstNodeConnection(ctx context.Context, t *testing.T) *yuga.Connection {
+func (cc *DBClusterController) getFirstNodeHost(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes)
-	return cc.nodes[0].GetContainerConnection(ctx, t)
+	nodeEndpoint := cc.nodes[0].GetContainerConnectionDetails(ctx, t)
+	return nodeEndpoint.GetHost()
 }
 
 // stopAndRemoveDockerContainer given a container name or ID.

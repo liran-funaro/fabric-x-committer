@@ -7,10 +7,8 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
-
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 func TestDBNodeCrashHandling(t *testing.T) {
@@ -18,7 +16,7 @@ func TestDBNodeCrashHandling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 
-	clusterController, clusterConnections := runner.StartYugaCluster(ctx, t, 3)
+	clusterController, clusterConnection := runner.StartYugaCluster(ctx, t, 3)
 
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(
@@ -29,10 +27,7 @@ func TestDBNodeCrashHandling(t *testing.T) {
 			BlockTimeout:    2 * time.Second,
 			BlockSize:       500,
 			LoadGen:         true,
-			DBOpts: &yuga.DBOptions{
-				Connections: clusterConnections,
-				ClusterSize: clusterController.GetClusterSize(),
-			},
+			DBCluster:       clusterConnection,
 		},
 	)
 

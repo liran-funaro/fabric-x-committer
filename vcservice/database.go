@@ -75,7 +75,7 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 		return nil, err
 	}
 
-	logger.Infof("validator persister connected to database at %s:%d", config.Host, config.Port)
+	logger.Infof("validator persister connected to database at %s", config.EndpointsString())
 
 	defer func() {
 		if err != nil {

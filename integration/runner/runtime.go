@@ -80,7 +80,9 @@ type (
 		BlockSize           uint64
 		BlockTimeout        time.Duration
 		LoadGen             bool
-		DBOpts              *yuga.DBOptions
+
+		// DBCluster configures the cluster to operate in DB cluster mode.
+		DBCluster *yuga.Connection
 	}
 )
 
@@ -89,10 +91,10 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 	t.Helper()
 
 	var dbEnvironment *vcservice.DatabaseTestEnv
-	if config.DBOpts == nil {
+	if config.DBCluster == nil {
 		dbEnvironment = vcservice.NewDatabaseTestEnv(t)
 	} else {
-		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, config.DBOpts)
+		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, config.DBCluster)
 	}
 
 	c := &CommitterRuntime{

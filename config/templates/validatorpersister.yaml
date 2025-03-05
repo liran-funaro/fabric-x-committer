@@ -1,9 +1,14 @@
 validator-committer-service:
   server:
     endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+
   database:
-    host: {{ .DatabaseHost }}
-    port: {{ .DatabasePort }}
+    endpoints:
+      {{- range .DatabaseEndpoints }}
+      - host: {{ .Host }}
+        port: {{ .Port }}
+      {{- end }}
+
     username: "yugabyte"
     # TODO: pass password via environment variable
     password: "yugabyte"
@@ -21,6 +26,7 @@ validator-committer-service:
   monitoring:
     server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+
 logging:
   development: true
   enabled: true

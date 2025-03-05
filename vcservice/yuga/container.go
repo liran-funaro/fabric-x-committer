@@ -11,6 +11,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (
@@ -170,7 +171,7 @@ func (y *YugabyteDBContainer) findContainer(t *testing.T) bool {
 }
 
 // getConnectionOptions inspect the container and fetches the available connection options.
-func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context, t *testing.T) []*Connection {
+func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
 	container, err := y.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
@@ -178,18 +179,21 @@ func (y *YugabyteDBContainer) getConnectionOptions(ctx context.Context, t *testi
 	})
 	require.NoError(t, err)
 
-	connOptions := []*Connection{
-		NewConnection(container.NetworkSettings.IPAddress, y.DbPort.Port()),
+	endpoints := []*connection.Endpoint{
+		connection.CreateEndpointHP(container.NetworkSettings.IPAddress, y.DbPort.Port()),
 	}
 	for _, p := range container.NetworkSettings.Ports[y.DbPort] {
-		connOptions = append(connOptions, NewConnection(p.HostIP, p.HostPort))
+		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
 	}
 
-	return connOptions
+	return NewConnection(endpoints...)
 }
 
-// GetContainerConnection inspect the container and fetches its connection.
-func (y *YugabyteDBContainer) GetContainerConnection(ctx context.Context, t *testing.T) *Connection {
+// GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.
+func (y *YugabyteDBContainer) GetContainerConnectionDetails(
+	ctx context.Context,
+	t *testing.T,
+) *connection.Endpoint {
 	t.Helper()
 	container, err := y.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
@@ -197,7 +201,7 @@ func (y *YugabyteDBContainer) GetContainerConnection(ctx context.Context, t *tes
 	})
 	require.NoError(t, err)
 
-	return NewConnection(container.NetworkSettings.IPAddress, y.DbPort.Port())
+	return connection.CreateEndpointHP(container.NetworkSettings.IPAddress, y.DbPort.Port())
 }
 
 // streamLogs streams the container output to the requested stream.

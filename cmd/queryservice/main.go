@@ -83,8 +83,9 @@ func setDefaults() {
 
 	// defaults for database config,
 	prefix := "query-service.database."
-	viper.SetDefault(prefix+"host", "localhost")
-	viper.SetDefault(prefix+"port", 5433)
+	viper.SetDefault(prefix+"endpoints", []*connection.Endpoint{
+		{Host: "localhost", Port: 5433},
+	})
 	viper.SetDefault(prefix+"username", "yugabyte")
 	viper.SetDefault(prefix+"password", "yugabyte")
 	viper.SetDefault(prefix+"database", "yugabyte")

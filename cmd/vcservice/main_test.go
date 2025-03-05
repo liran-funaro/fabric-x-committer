@@ -22,8 +22,7 @@ func TestVCServiceCmd(t *testing.T) {
 	config := fmt.Sprintf(
 		configTemplate,
 		loggerOutputPath,
-		conn.Host,
-		conn.Port,
+		conn.Endpoints[0],
 		conn.User,
 		conn.Password,
 		conn.Database,

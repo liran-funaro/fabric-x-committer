@@ -1,10 +1,11 @@
 package connection
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 type Host = string
@@ -26,12 +27,28 @@ func (e *Endpoint) String() string {
 	return e.Address()
 }
 
+// GetHost returns the host of the endpoint.
+func (e *Endpoint) GetHost() string { return e.Host }
+
+// CreateEndpointHP parses an endpoint from give host and port.
+// It panics if it fails to parse.
+func CreateEndpointHP(host, port string) *Endpoint {
+	convertedPort, err := strconv.Atoi(port)
+	if err != nil {
+		panic(errors.New("could not convert port to integer"))
+	}
+	return &Endpoint{
+		Host: host,
+		Port: convertedPort,
+	}
+}
+
 // CreateEndpoint parses an endpoint from an address string.
 // It panics if it fails to parse.
 func CreateEndpoint(value string) *Endpoint {
 	endpoint, err := NewEndpoint(value)
 	if err != nil {
-		panic(err)
+		panic(errors.Wrap(err, "could not create endpoint"))
 	}
 	return endpoint
 }

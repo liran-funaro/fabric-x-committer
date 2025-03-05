@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -71,8 +70,6 @@ func eventuallyMetrics(
 func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*connection.Endpoint) {
 	t.Helper()
 	conn := yuga.PrepareTestEnv(t)
-	dbPort, err := strconv.ParseInt(conn.Port, 10, 64)
-	require.NoError(t, err)
 
 	endpoints := make([]*connection.Endpoint, count)
 
@@ -81,8 +78,7 @@ func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*con
 			Server:     connection.NewLocalHostServer(),
 			Monitoring: defaultMonitoring(),
 			Database: &vcservice.DatabaseConfig{
-				Host:           conn.Host,
-				Port:           int(dbPort),
+				Endpoints:      conn.Endpoints,
 				Username:       conn.User,
 				Password:       conn.Password,
 				Database:       conn.Database,
@@ -97,7 +93,7 @@ func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*con
 			},
 		}
 
-		initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+		initCtx, initCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(initCancel)
 		service, err := vcservice.NewValidatorCommitterService(initCtx, vcConf)
 		require.NoError(t, err)

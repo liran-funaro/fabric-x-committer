@@ -71,7 +71,7 @@ func UnitTestRunner(
 	wg := &sync.WaitGroup{}
 	t.Cleanup(wg.Wait)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
 	wg.Add(1)
@@ -94,5 +94,5 @@ func UnitTestRunner(
 			return false
 		}
 		return strings.Contains(string(logOut), test.CmdLoggerOutput) && strings.Contains(string(logOut), test.Endpoint)
-	}, time.Minute, 500*time.Millisecond)
+	}, 3*time.Minute, 500*time.Millisecond)
 }

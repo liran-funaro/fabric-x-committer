@@ -2,11 +2,10 @@ package yuga
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
@@ -32,40 +31,38 @@ var DefaultRetry = &connection.RetryProfile{
 
 // Connection facilities connecting to a YugabyteDB instance.
 type Connection struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Database string
+	Endpoints []*connection.Endpoint
+	User      string
+	Password  string
+	Database  string
 }
 
 // NewConnection returns a connection parameters with the specified host:port, and the default values
 // for the other parameters.
-func NewConnection(host, port string) *Connection {
+func NewConnection(endpoints ...*connection.Endpoint) *Connection {
 	return &Connection{
-		Host:     host,
-		Port:     port,
-		User:     defaultUsername,
-		Password: defaultPassword,
+		Endpoints: endpoints,
+		User:      defaultUsername,
+		Password:  defaultPassword,
 	}
 }
 
 // DataSourceName returns the dataSourceName to be used by the database/sql package.
 func (y *Connection) DataSourceName() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		y.User, y.Password, y.Host, y.Port, y.Database)
+	return fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+		y.User, y.Password, y.EndpointsString(), y.Database)
 }
 
-// AddressString returns the address:port as a string.
-func (y *Connection) AddressString() string {
-	return net.JoinHostPort(y.Host, y.Port)
+// EndpointsString returns the address:port as a string with comma as a separator between endpoints.
+func (y *Connection) EndpointsString() string {
+	return connection.AddressString(y.Endpoints...)
 }
 
 // Open opens a connection pool to the database.
 func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig, err := pgxpool.ParseConfig(y.DataSourceName())
 	if err != nil {
-		return nil, fmt.Errorf("[%s] error parsing datasource: %w", y.AddressString(), err)
+		return nil, errors.Wrapf(err, "error parsing datasource: %s", y.EndpointsString())
 	}
 
 	poolConfig.MaxConns = 1
@@ -76,37 +73,13 @@ func (y *Connection) Open(ctx context.Context) (*pgxpool.Pool, error) {
 		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
 		return err
 	}); retryErr != nil {
-		return nil, fmt.Errorf("[%s] error making pool: %w", y.AddressString(), retryErr)
+		return nil, errors.Wrapf(err, "error making pool: %s", y.EndpointsString())
 	}
 	return pool, nil
 }
 
-// WaitFirstReady waits for a successful interaction with the database on one of the connections.
-func WaitFirstReady(ctx context.Context, connOptions []*Connection) (*Connection, error) {
-	reachableConn := make(chan *Connection, len(connOptions))
-
-	for _, conn := range connOptions {
-		go func(c *Connection) {
-			if c.WaitReady(ctx) {
-				reachableConn <- c
-			}
-		}(conn)
-	}
-
-	select {
-	case settings := <-reachableConn:
-		return settings, nil
-	case <-ctx.Done():
-		err := ctx.Err()
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			err = fmt.Errorf("database is not ready: %w", err)
-		}
-		return nil, err
-	}
-}
-
-// WaitReady repeatably checks readiness until positive response arrives.
-func (y *Connection) WaitReady(ctx context.Context) bool {
+// WaitForReady repeatably checks readiness until positive response arrives.
+func (y *Connection) WaitForReady(ctx context.Context) bool {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -126,16 +99,16 @@ func (y *Connection) WaitReady(ctx context.Context) bool {
 func (y *Connection) IsEndpointReady(ctx context.Context) bool {
 	conn, err := y.Open(ctx)
 	if err != nil {
-		logger.Debugf("[%s] error opening connection: %s", y.AddressString(), err)
+		logger.Debugf("[%s] error opening connection: %s", y.EndpointsString(), err)
 		return false
 	}
 	defer conn.Close()
 
 	if err = conn.Ping(ctx); err != nil {
-		logger.Debugf("[%s] error pinging connection: %s", y.AddressString(), err)
+		logger.Debugf("[%s] error pinging connection: %s", y.EndpointsString(), err)
 		return false
 	}
-	logger.Infof("[%s] Connected to database", y.AddressString())
+	logger.Infof("[%s] Connected to database", y.EndpointsString())
 	return true
 }
 

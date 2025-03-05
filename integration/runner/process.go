@@ -36,10 +36,8 @@ const (
 )
 
 func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *processWithConfig[T] {
-	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
-	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
-	configtempl.CreateConfigFile(t, config, inputConfigTemplateFilePath, outputConfigFilePath)
-	p := start(path.Join(executableRootPath, cmdName), outputConfigFilePath, cmdName)
+	t.Helper()
+	p := start(path.Join(executableRootPath, cmdName), CreateConfigFromTemplate(t, cmdName, rootDir, config), cmdName)
 	t.Cleanup(func() {
 		p.Signal(os.Kill)
 		select {
@@ -52,6 +50,16 @@ func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *process
 		process: p,
 		config:  config,
 	}
+}
+
+// CreateConfigFromTemplate creates a config file using template yaml and returning the output config path.
+func CreateConfigFromTemplate[T any](t *testing.T, cmdName, rootDir string, config T) string {
+	t.Helper()
+	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
+	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
+	configtempl.CreateConfigFile(t, config, inputConfigTemplateFilePath, outputConfigFilePath)
+
+	return outputConfigFilePath
 }
 
 // Run executes the specified command and returns the corresponding process.
@@ -85,11 +93,10 @@ func newQueryServiceOrVCServiceConfig(
 	dbEnv *vcservice.DatabaseTestEnv,
 ) *configtempl.QueryServiceOrVCServiceConfig {
 	return &configtempl.QueryServiceOrVCServiceConfig{
-		CommonEndpoints: newCommonEndpoints(t),
-		DatabaseHost:    dbEnv.DBConf.Host,
-		DatabasePort:    dbEnv.DBConf.Port,
-		DatabaseName:    dbEnv.DBConf.Database,
-		LoadBalance:     dbEnv.DBConf.LoadBalance,
+		CommonEndpoints:   newCommonEndpoints(t),
+		DatabaseEndpoints: dbEnv.DBConf.Endpoints,
+		DatabaseName:      dbEnv.DBConf.Database,
+		LoadBalance:       dbEnv.DBConf.LoadBalance,
 	}
 }
 

@@ -41,10 +41,9 @@ type (
 	// QueryServiceOrVCServiceConfig represents either the configuration of a query-service or a vc service.
 	QueryServiceOrVCServiceConfig struct {
 		CommonEndpoints
-		DatabaseHost string
-		DatabasePort int
-		DatabaseName string
-		LoadBalance  bool
+		DatabaseEndpoints []*connection.Endpoint
+		DatabaseName      string
+		LoadBalance       bool
 	}
 
 	// CoordinatorConfig represents the configuration of the coordinator process.

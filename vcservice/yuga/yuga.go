@@ -9,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (
@@ -21,12 +23,6 @@ const (
 	yugaInstanceContainer = "container"
 	yugaDBPort            = "5433"
 )
-
-// DBOptions defines the YugaDB cluster initialization configuration.
-type DBOptions struct {
-	ClusterSize int
-	Connections []*Connection
-}
 
 // randDbName generates random DB name.
 func randDbName(t *testing.T) string {
@@ -56,13 +52,12 @@ func PrepareTestEnv(t *testing.T) *Connection {
 }
 
 // PrepareTestEnvWithConnection initializes a test environment given a db connection.
-func PrepareTestEnvWithConnection(t *testing.T, connections []*Connection) *Connection {
+func PrepareTestEnvWithConnection(t *testing.T, conn *Connection) *Connection {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), defaultStartTimeout)
 	t.Cleanup(cancel)
-	conn, err := WaitFirstReady(ctx, connections)
-	require.NoError(t, err)
-	t.Logf("chosen connection details: %s:%s", conn.Host, conn.Port)
+	require.True(t, conn.WaitForReady(ctx), errors.Wrapf(ctx.Err(), "database is not ready"))
+	t.Logf("connection nodes details: %s", conn.EndpointsString())
 
 	dbName := randDbName(t)
 	require.NoError(t, conn.CreateDB(ctx, dbName))
@@ -83,18 +78,18 @@ func PrepareTestEnvWithConnection(t *testing.T, connections []*Connection) *Conn
 }
 
 // StartAndConnect connects to an existing Yugabyte instance or creates a containerized new one.
-func StartAndConnect(ctx context.Context, t *testing.T) []*Connection {
+func StartAndConnect(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
 	yugaInstance := getYugaInstanceType()
 
-	var connOptions []*Connection
+	var connOptions *Connection
 	switch yugaInstance {
 	case yugaInstanceContainer:
 		container := YugabyteDBContainer{}
 		container.StartContainer(ctx, t)
 		connOptions = container.getConnectionOptions(ctx, t)
 	case yugaInstanceLocal:
-		connOptions = append(connOptions, NewConnection("localhost", yugaDBPort))
+		connOptions = NewConnection(connection.CreateEndpointHP("localhost", yugaDBPort))
 	default:
 		t.Logf("unknown yuga instance type: %s", yugaInstance)
 		return nil

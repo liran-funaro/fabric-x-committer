@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -117,7 +118,7 @@ func CloseConnectionsLog[T io.Closer](connections ...T) {
 
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(retryPolicy))
-	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 90*time.Second)
 	defer cancel()
 
 	address := config.WithAddress.Address()
@@ -221,4 +222,13 @@ func IsStreamContextEnd(rpcErr error) bool {
 	}
 
 	return false
+}
+
+// AddressString returns the addresses as a string with comma as a separator between them.
+func AddressString[T WithAddress](addresses ...T) string {
+	listOfAddresses := make([]string, len(addresses))
+	for i, address := range addresses {
+		listOfAddresses[i] = address.Address()
+	}
+	return strings.Join(listOfAddresses, ",")
 }

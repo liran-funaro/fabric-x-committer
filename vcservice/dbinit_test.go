@@ -2,7 +2,6 @@ package vcservice
 
 import (
 	"context"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -45,8 +44,9 @@ func TestRetry(t *testing.T) {
 	pool, err := NewDatabasePool(
 		ctx,
 		&DatabaseConfig{
-			Host:           "",
-			Port:           1234,
+			Endpoints: []*connection.Endpoint{
+				connection.CreateEndpoint(":1234"),
+			},
 			Username:       "name",
 			Password:       "pwd",
 			MaxConnections: 5,
@@ -57,12 +57,9 @@ func TestRetry(t *testing.T) {
 
 func TestConcurrentDatabaseTablesInit(t *testing.T) {
 	cs := yuga.PrepareTestEnv(t)
-	port, err := strconv.Atoi(cs.Port)
-	require.NoError(t, err)
 
 	config := &DatabaseConfig{
-		Host:           cs.Host,
-		Port:           port,
+		Endpoints:      cs.Endpoints,
 		Username:       cs.User,
 		Password:       cs.Password,
 		Database:       cs.Database,
