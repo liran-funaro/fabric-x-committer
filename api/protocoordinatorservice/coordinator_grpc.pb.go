@@ -25,7 +25,7 @@ const (
 	Coordinator_GetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
 	Coordinator_GetNextExpectedBlockNumber_FullMethodName           = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
 	Coordinator_GetTransactionsStatus_FullMethodName                = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
-	Coordinator_UpdatePolicies_FullMethodName                       = "/protocoordinatorservice.Coordinator/UpdatePolicies"
+	Coordinator_GetPolicies_FullMethodName                          = "/protocoordinatorservice.Coordinator/GetPolicies"
 	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protocoordinatorservice.Coordinator/NumberOfWaitingTransactionsForStatus"
 )
 
@@ -38,8 +38,7 @@ type CoordinatorClient interface {
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
-	// This method will be removed once the config block is processed by the coordinator.
-	UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error)
+	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
@@ -118,9 +117,9 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *proto
 	return out, nil
 }
 
-func (c *coordinatorClient) UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, Coordinator_UpdatePolicies_FullMethodName, in, out, opts...)
+func (c *coordinatorClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error) {
+	out := new(protoblocktx.Policies)
+	err := c.cc.Invoke(ctx, Coordinator_GetPolicies_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +144,7 @@ type CoordinatorServer interface {
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
-	// This method will be removed once the config block is processed by the coordinator.
-	UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error)
+	GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
@@ -170,8 +168,8 @@ func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedCoordinatorServer) UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
+func (UnimplementedCoordinatorServer) GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPolicies not implemented")
 }
 func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
@@ -287,20 +285,20 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Coordinator_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(protoblocktx.Policies)
+func _Coordinator_GetPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CoordinatorServer).UpdatePolicies(ctx, in)
+		return srv.(CoordinatorServer).GetPolicies(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Coordinator_UpdatePolicies_FullMethodName,
+		FullMethod: Coordinator_GetPolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).UpdatePolicies(ctx, req.(*protoblocktx.Policies))
+		return srv.(CoordinatorServer).GetPolicies(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -347,8 +345,8 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Coordinator_GetTransactionsStatus_Handler,
 		},
 		{
-			MethodName: "UpdatePolicies",
-			Handler:    _Coordinator_UpdatePolicies_Handler,
+			MethodName: "GetPolicies",
+			Handler:    _Coordinator_GetPolicies_Handler,
 		},
 		{
 			MethodName: "NumberOfWaitingTransactionsForStatus",

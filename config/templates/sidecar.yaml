@@ -27,7 +27,8 @@ sidecar:
     server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
-  config-block-path: {{ .ConfigBlockPath }}
+  bootstrap:
+    genesis-block-file-path: {{ .ConfigBlockPath }}
 
 logging:
   development: true

@@ -1,17 +1,19 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -61,16 +63,24 @@ func startCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if conf.NumService != len(conf.ServerConfigs) {
-				return fmt.Errorf("number of service does not match number of server configs")
+			if len(conf.ServerConfigs) == 0 {
+				return errors.New("missing server configuration")
 			}
 
 			cmd.Printf("Starting %v service\n", serviceName)
 			g, gCtx := errgroup.WithContext(cmd.Context())
-			for i := range conf.NumService {
-				c := conf.ServerConfigs[i]
+
+			// We run the main server, and only start GRPC service for the others.
+			mainServer := conf.ServerConfigs[0]
+			g.Go(func() error {
+				return connection.StartService(gCtx, service, mainServer, func(s *grpc.Server) {
+					ab.RegisterAtomicBroadcastServer(s, service)
+				})
+			})
+			for _, subServer := range conf.ServerConfigs[1:] {
+				subServer := subServer
 				g.Go(func() error {
-					return connection.StartService(gCtx, service, c, func(s *grpc.Server) {
+					return connection.RunGrpcServerMainWithError(gCtx, subServer, func(s *grpc.Server) {
 						ab.RegisterAtomicBroadcastServer(s, service)
 					})
 				})

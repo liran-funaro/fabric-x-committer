@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"google.golang.org/protobuf/proto"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 )
 
 func TestListPolicyItems(t *testing.T) {
@@ -27,16 +29,18 @@ func TestListPolicyItems(t *testing.T) {
 }
 
 func TestParsePolicyItem(t *testing.T) {
+	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
 	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "schema",
-		PublicKey: []byte("public-key"),
+		Scheme:    signature.Ecdsa,
+		PublicKey: verificationKey,
 	}
 	for _, ns := range []string{"0", types.MetaNamespaceID} {
 		t.Run(fmt.Sprintf("valid policy ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			retP, err := ParsePolicyItem(pd)
 			require.NoError(t, err)
-			require.True(t, proto.Equal(p, retP))
+			require.Equal(t, p.PublicKey, retP.PublicKey)
+			require.Equal(t, p.Scheme, retP.Scheme)
 		})
 	}
 

@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
+	"github.com/hyperledger/fabric/protoutil"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -14,7 +17,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"golang.org/x/sync/errgroup"
 )
 
 var logger = logging.New("sidecar")
@@ -33,21 +35,15 @@ type Service struct {
 
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
-	if len(c.ConfigBlockPath) > 0 {
-		configBlock, err := configtxgen.ReadBlock(c.ConfigBlockPath)
-		if err != nil {
-			return nil, fmt.Errorf("error reading config block: %w", err)
-		}
-		err = OverwriteConfigFromBlock(c, configBlock)
-		if err != nil {
-			return nil, fmt.Errorf("error overwriting config block: %w", err)
-		}
+	err := LoadBootstrapConfig(c)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load shared config")
 	}
 
 	// 1. Fetch blocks from the ordering service.
 	ordererClient, err := broadcastdeliver.New(&c.Orderer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create orderer client: %w", err)
+		return nil, errors.Wrap(err, "failed to create orderer client")
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
@@ -56,10 +52,10 @@ func New(c *Config) (*Service, error) {
 	relayService := newRelay(&c.Committer, blockToBeCommitted, committedBlock)
 
 	// 3. Deliver the block with status to client.
-	logger.Infof("Create ledger service at %v for channel %s\n", c.Server.Endpoint.Address(), c.Orderer.ChannelID)
+	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)
 	ledgerService, err := ledger.New(c.Orderer.ChannelID, c.Ledger.Path, committedBlock)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create ledger: %w", err)
+		return nil, errors.Wrap(err, "failed to create ledger")
 	}
 	return &Service{
 		ordererClient:      ordererClient,
@@ -82,19 +78,12 @@ func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
 	conn, err := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint))
 	if err != nil {
-		return fmt.Errorf("failed to connect to coordinator: %w", err)
+		return errors.Wrap(err, "failed to connect to coordinator")
 	}
-	defer conn.Close() // nolint:errcheck
+	defer connection.CloseConnectionsLog(conn)
 	logger.Infof("sidecar connected to coordinator at %s", &s.config.Committer.Endpoint)
 
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	if s.config.Policies != nil {
-		// This will be removed once the coordinator will process config TXs.
-		_, err = client.UpdatePolicies(ctx, s.config.Policies)
-		if err != nil {
-			return err
-		}
-	}
+	coordClient := protocoordinatorservice.NewCoordinatorClient(conn)
 
 	// If the sidecar fails but the coordinator remains active, the sidecar
 	// must wait for the coordinator to become idle (i.e., to finish
@@ -116,22 +105,27 @@ func (s *Service) Run(ctx context.Context) error {
 	// pending transactions before attempting recovery. This ensures that the
 	// sidecar retrieves complete status information and avoids inconsistencies
 	// in its block store.
-	if err = waitForIdleCoordinator(ctx, client); err != nil {
+	if err = waitForIdleCoordinator(ctx, coordClient); err != nil {
 		return err
 	}
 
-	blkInfo, err := client.GetNextExpectedBlockNumber(ctx, nil)
+	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch the next expected block number from coordinator: %w", err)
 	}
 	logger.Infof("next expected block number by coordinator is %d", blkInfo.GetNumber())
 
-	if err := s.recoverLedgerStore(ctx, client, blkInfo.Number); err != nil {
-		return fmt.Errorf("failed to recover block store: %w", err)
+	if err := s.recoverLedgerStore(ctx, coordClient, blkInfo.Number); err != nil {
+		return errors.Wrap(err, "failed to recover block store")
+	}
+
+	if err := s.recoverPolicies(ctx, coordClient); err != nil {
+		return errors.Wrap(err, "failed to recover policies")
 	}
 
 	g, eCtx := errgroup.WithContext(ctx)
 
+	// 1. Fetch blocks from the ordering service.
 	g.Go(func() error {
 		return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
 			StartBlkNum: int64(blkInfo.GetNumber()), // nolint:gosec
@@ -140,10 +134,16 @@ func (s *Service) Run(ctx context.Context) error {
 		})
 	})
 
+	// 2. Relay the blocks to committer and receive the transaction status.
 	g.Go(func() error {
-		return s.relay.Run(eCtx, &relayRunConfig{client, blkInfo.GetNumber()})
+		return s.relay.Run(eCtx, &relayRunConfig{
+			coordClient:                    coordClient,
+			nextExpectedBlockByCoordinator: blkInfo.GetNumber(),
+			configUpdater:                  s.configUpdater,
+		})
 	})
 
+	// 3. Deliver the block with status to client.
 	g.Go(func() error {
 		return s.ledgerService.Run(eCtx)
 	})
@@ -157,6 +157,49 @@ func (s *Service) Run(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Service) configUpdater(block *common.Block) {
+	logger.Infof("updating config from block: %d", block.Header.Number)
+	err := OverwriteConfigFromBlock(s.config, block)
+	if err != nil {
+		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
+		return
+	}
+	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+	if err != nil {
+		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
+	}
+}
+
+func (s *Service) recoverPolicies(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {
+	policyMsg, err := client.GetPolicies(ctx, nil)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get policies from coordinator")
+	}
+	if policyMsg == nil {
+		return nil
+	}
+	var mataPolicy []byte
+	for _, policy := range policyMsg.Policies {
+		if policy.Namespace == types.MetaNamespaceID {
+			mataPolicy = policy.Policy
+			break
+		}
+	}
+	if mataPolicy == nil {
+		return nil
+	}
+	envelope, err := protoutil.UnmarshalEnvelope(mataPolicy)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal meta policy envelope")
+	}
+	err = OverwriteConfigFromEnvelope(s.config, envelope)
+	if err != nil {
+		return err
+	}
+	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+	return errors.Wrapf(err, "failed to update connections")
 }
 
 func (s *Service) recoverLedgerStore(
@@ -214,16 +257,12 @@ func (s *Service) appendMissingBlock(
 	client protocoordinatorservice.CoordinatorClient,
 	blk *common.Block,
 ) error {
-	scBlock, filteredTxsIndex := mapBlock(blk)
-	finalTxsStatus := newValidationCodes(len(blk.Data.Data))
-	for txIndex := range filteredTxsIndex {
-		finalTxsStatus[txIndex] = excludedStatus
-	}
-	txIDs := make([]string, len(scBlock.Txs))
+	mappedBlock := mapBlock(blk)
+	txIDs := make([]string, len(mappedBlock.block.Txs))
 	expectedHeight := make(map[string]*types.Height)
-	for i, tx := range scBlock.Txs {
+	for i, tx := range mappedBlock.block.Txs {
 		txIDs[i] = tx.Id
-		expectedHeight[tx.Id] = types.NewHeight(scBlock.Number, scBlock.TxsNum[i])
+		expectedHeight[tx.Id] = types.NewHeight(mappedBlock.block.Number, mappedBlock.block.TxsNum[i])
 	}
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
@@ -231,12 +270,12 @@ func (s *Service) appendMissingBlock(
 		return err
 	}
 
-	if err := fillStatuses(finalTxsStatus, txsStatus.Status, expectedHeight); err != nil {
+	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
 		return err
 	}
 
 	blk.Metadata = &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, finalTxsStatus},
+		Metadata: [][]byte{nil, nil, mappedBlock.withStatus.txStatus},
 	}
 
 	s.committedBlock <- blk

@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -38,17 +39,18 @@ type (
 	relayRunConfig struct {
 		coordClient                    protocoordinatorservice.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
+		configUpdater                  func(*common.Block)
 	}
 )
 
 func newRelay(
 	config *CoordinatorConfig,
-	uncommittedBlock <-chan *common.Block,
+	incomingBlockToBeCommitted <-chan *common.Block,
 	committedBlock chan<- *common.Block,
 ) *relay {
 	return &relay{
 		coordConfig:                   config,
-		incomingBlockToBeCommitted:    uncommittedBlock,
+		incomingBlockToBeCommitted:    incomingBlockToBeCommitted,
 		outgoingCommittedBlock:        committedBlock,
 		lastCommittedBlockSetInterval: 5 * time.Second, // TODO: make it configurable.
 	}
@@ -72,7 +74,7 @@ func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
 
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
-		return r.preProcessBlockAndSendToCoordinator(gCtx, stream)
+		return r.preProcessBlockAndSendToCoordinator(gCtx, stream, config.configUpdater)
 	})
 
 	statusBatch := make(chan *protoblocktx.TransactionsStatus, 1000)
@@ -94,6 +96,7 @@ func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
 func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -109,64 +112,43 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 		blockNum := block.Header.Number
 		logger.Debugf("Block %d arrived in the relay", blockNum)
 
-		// TODO: If we are expecting only scalable committer transactions, we
-		//       do not need to filter any transactions. We need to discuss about
-		//       the potential use-case. If there is none, we can remove the
-		//       filtering of transactions.
-		scBlock, filteredTxsIndex := mapBlock(block)
-
-		txCount := len(block.Data.Data)
-		blkWithResult := &blockWithStatus{
-			block:         block,
-			txStatus:      newValidationCodes(txCount),
-			txIDToTxIndex: make(map[string]int, txCount),
-			pendingCount:  txCount - len(filteredTxsIndex),
+		mappedBlock := mapBlock(block)
+		if mappedBlock.isConfig {
+			configUpdater(block)
 		}
 
-		// set all filtered transaction to invalid by default
-		// TODO once SC V2 can process config transaction and alike, this needs to be changed
-		for txIndex := range filteredTxsIndex {
-			logger.Debugf("TX [%d:%d] is excluded: %v", blockNum, txIndex, excludedStatus)
-			blkWithResult.txStatus[txIndex] = excludedStatus
-		}
+		r.blkNumToBlkWithStatus.Store(blockNum, mappedBlock.withStatus)
 
-		r.blkNumToBlkWithStatus.Store(blockNum, blkWithResult)
-
-		dupIdx := make([]int, 0, len(scBlock.Txs))
-		for txIndex, tx := range scBlock.Txs {
-			if _, loaded := r.txIDToBlkNum.LoadOrStore(tx.GetId(), blockNum); !loaded {
+		dupIdx := make([]int, 0, len(mappedBlock.block.Txs))
+		for txIndex, tx := range mappedBlock.block.Txs {
+			if _, loaded := r.txIDToBlkNum.LoadOrStore(tx.Id, blockNum); !loaded {
 				logger.Debugf("Adding txID [%s] to in progress list", tx.GetId())
-				blkWithResult.txIDToTxIndex[tx.GetId()] = txIndex
+				mappedBlock.withStatus.txIDToTxIndex[tx.Id] = txIndex
 				continue
 			}
 			logger.Debugf("txID [%s] is duplicate", tx.GetId())
-			blkWithResult.pendingCount--
-			blkWithResult.txStatus[txIndex] = validationCode(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+			mappedBlock.withStatus.pendingCount--
+			mappedBlock.withStatus.txStatus[txIndex] = validationCode(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 			dupIdx = append(dupIdx, txIndex)
 		}
 
 		// Iterate over the indices in reverse order. Note that the dupIdx is sorted by default.
 		for _, index := range slices.Backward(dupIdx) {
-			scBlock.Txs = append(scBlock.Txs[:index], scBlock.Txs[index+1:]...)
-			scBlock.TxsNum = append(scBlock.TxsNum[:index], scBlock.TxsNum[index+1:]...)
+			mappedBlock.block.Txs = append(mappedBlock.block.Txs[:index], mappedBlock.block.Txs[index+1:]...)
+			mappedBlock.block.TxsNum = append(mappedBlock.block.TxsNum[:index], mappedBlock.block.TxsNum[index+1:]...)
 		}
 
 		r.activeBlocksCount.Add(1)
 
-		// TODO: The following needs to be validated when the config transaction
-		//       is implemented.
-		//       In the case that we got a config block, we will not get any TX status
-		//       back from the coordinator, so we register it here as completed.
-		//       We also send it to the coordinator, so that it keeps track of which
-		//       blocks have already passed (to avoid delivering out of order blocks)
-		if len(scBlock.GetTxs()) == 0 && blkWithResult.pendingCount == 0 {
+		if len(mappedBlock.block.Txs) == 0 && mappedBlock.withStatus.pendingCount == 0 {
 			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
 		}
 
-		if err := stream.Send(scBlock); err != nil {
+		if err := stream.Send(mappedBlock.block); err != nil {
 			return connection.FilterStreamRPCError(err)
 		}
-		logger.Debugf("Sent scBlock %d with %d transactions to Coordinator", scBlock.Number, len(scBlock.Txs))
+		logger.Debugf("Sent SC block %d with %d transactions to Coordinator",
+			mappedBlock.block.Number, len(mappedBlock.block.Txs))
 	}
 }
 

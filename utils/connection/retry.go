@@ -32,7 +32,7 @@ const (
 	defaultRandomizationFactor = 0.5
 	defaultMultiplier          = 1.5
 	defaultMaxInterval         = 10 * time.Second
-	defaultMaxElapsedTime      = time.Minute
+	defaultMaxElapsedTime      = 15 * time.Minute
 )
 
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.

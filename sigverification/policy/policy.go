@@ -1,12 +1,16 @@
 package policy
 
 import (
-	"errors"
 	"regexp"
+
+	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric/protoutil"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
+	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"google.golang.org/protobuf/proto"
 )
 
 // KeyValue represents any key/value implementation.
@@ -50,17 +54,12 @@ func ParsePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy
 	if err := validateNamespaceID(pd.Namespace); err != nil {
 		return nil, err
 	}
-	return policyFromMetaNamespaceTx(pd.Policy)
-}
-
-// policyFromMetaNamespaceTx parse a namespace policy.
-func policyFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
-	p := &protoblocktx.NamespacePolicy{}
-	err := proto.Unmarshal(value, p)
-	if err != nil {
-		return nil, err
+	switch pd.Namespace {
+	case types.MetaNamespaceID:
+		return policyFromConfigTx(pd.Policy)
+	default:
+		return policyFromMetaNamespaceTx(pd.Policy)
 	}
-	return p, nil
 }
 
 // validateNamespaceID checks that a given namespace fulfills namespace naming conventions.
@@ -81,4 +80,41 @@ func validateNamespaceID(nsID string) error {
 	}
 
 	return nil
+}
+
+// policyFromMetaNamespaceTx parse a namespace policy.
+func policyFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
+	p := &protoblocktx.NamespacePolicy{}
+	err := proto.Unmarshal(value, p)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
+	}
+	return p, nil
+}
+
+func policyFromConfigTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
+	envelope, err := protoutil.UnmarshalEnvelope(value)
+	if err != nil {
+		return nil, errors.Wrap(err, "error unmarshalling envelope")
+	}
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing config")
+	}
+	ac, ok := bundle.ApplicationConfig()
+	if !ok {
+		return nil, errors.New("application configuration is missing")
+	}
+	acx, ok := ac.(*channelconfig.ApplicationConfig)
+	if !ok {
+		return nil, errors.New("application configuration of incorrect type")
+	}
+	key := acx.MetaNamespaceVerificationKey()
+	return &protoblocktx.NamespacePolicy{
+		PublicKey: key.KeyMaterial,
+		// We use existing proto here to avoid introducing new ones.
+		// So we encode the key schema as the identifier.
+		// This will be replaced in the future with a generic policy mechanism.
+		Scheme: key.KeyIdentifier,
+	}, nil
 }

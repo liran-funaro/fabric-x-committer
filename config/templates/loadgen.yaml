@@ -64,6 +64,8 @@ stream:
   buffers-size: 1
 
 generate:
+  # The sidecar does not support config TX from the stream.
+  config: false
   namespaces: true
   load: true
 

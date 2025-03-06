@@ -5,6 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
@@ -90,7 +92,17 @@ type DependencyDescription struct {
 
 // PolicyProfile holds the policy information for the load generation.
 type PolicyProfile struct {
+	// NamespacePolicies specifies the namespace policies.
 	NamespacePolicies map[string]*Policy `mapstructure:"namespace-policies" yaml:"namespace-policies"`
+
+	// OrdererEndpoints may specify the endpoints to add to the config block.
+	// If this field is empty, no endpoints will be configured.
+	// If ConfigBlockPath is specified, this value is ignored.
+	OrdererEndpoints []*connection.OrdererEndpoint `mapstructure:"orderer-endpoints" yaml:"orderer-endpoints"`
+
+	// ConfigBlockPath may specify the config block to use.
+	// If this field is empty, a default config block will be generated.
+	ConfigBlockPath string `mapstructure:"config-block-path" yaml:"config-block-path"`
 }
 
 // Policy describes how to sign/verify a TX.

@@ -7,18 +7,20 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
 )
 
 func TestLoadGenForVCService(t *testing.T) {
@@ -122,19 +124,13 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 
 func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	t.Parallel()
-	_, ordererServer := mock.StartMockOrderingServices(
+	// Start dependencies
+	orderer, ordererServer := mock.StartMockOrderingServices(
 		t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
 	)
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	endpoints := make([]*connection.OrdererEndpoint, len(ordererServer.Configs))
-	for i, c := range ordererServer.Configs {
-		endpoints[i] = &connection.OrdererEndpoint{
-			Endpoint: c.Endpoint,
-			ID:       uint32(i + 1), //nolint:gosec // integer overflow conversion int -> uint32
-		}
-	}
-
+	endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
 	ordererConfig := broadcastdeliver.Config{
 		Connection: broadcastdeliver.ConnectionConfig{
 			Endpoints: endpoints,
@@ -143,9 +139,8 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 		ConsensusType: broadcastdeliver.Bft,
 	}
 	sidecarConf := &sidecar.Config{
-		Server:     connection.NewLocalHostServer(),
-		Monitoring: defaultMonitoring(),
-		Orderer:    ordererConfig,
+		Server:  connection.NewLocalHostServer(),
+		Orderer: ordererConfig,
 		Committer: sidecar.CoordinatorConfig{
 			Endpoint: coordinatorServer.Configs[0].Endpoint,
 		},
@@ -162,13 +157,17 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 		peer.RegisterDeliverServer(server, service.GetLedgerService())
 	})
 
-	// Start client
+	// Submit default config block.
 	clientConf := defaultClientConf()
+	require.NotNil(t, clientConf.LoadProfile)
+	clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
+	configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+	require.NoError(t, err)
+	orderer.SubmitBlock(t.Context(), configBlock)
+
+	// Start client
 	clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-		Endpoint: &sidecarConf.Server.Endpoint,
-		Coordinator: &adapters.CoordinatorClientConfig{
-			Endpoint: &coordinatorServer.Configs[0].Endpoint,
-		},
+		Endpoint:             &sidecarConf.Server.Endpoint,
 		Orderer:              ordererConfig,
 		BroadcastParallelism: 5,
 	}

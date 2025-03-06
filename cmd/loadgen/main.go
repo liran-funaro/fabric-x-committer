@@ -5,9 +5,11 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 )
 
 const (
@@ -53,10 +55,10 @@ func startCmd() *cobra.Command {
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			if onlyNamespace {
-				conf.Generate = &loadgen.Generate{Namespaces: true}
+				conf.Generate = adapters.Phases{Namespaces: true}
 			}
 			if onlyWorkload {
-				conf.Generate = &loadgen.Generate{Load: true}
+				conf.Generate = adapters.Phases{Load: true}
 			}
 
 			client, err := loadgen.NewLoadGenClient(conf)

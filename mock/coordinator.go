@@ -51,11 +51,11 @@ func (c *Coordinator) Close() {
 	close(c.stop)
 }
 
-// UpdatePolicies updates the verification policies.
-func (*Coordinator) UpdatePolicies(
-	context.Context, *protoblocktx.Policies,
-) (*protocoordinatorservice.Empty, error) {
-	return &protocoordinatorservice.Empty{}, nil
+// GetPolicies retries the latest policies.
+func (*Coordinator) GetPolicies(
+	context.Context, *protocoordinatorservice.Empty,
+) (*protoblocktx.Policies, error) {
+	return &protoblocktx.Policies{}, nil
 }
 
 // SetLastCommittedBlockNumber sets the last committed block number.

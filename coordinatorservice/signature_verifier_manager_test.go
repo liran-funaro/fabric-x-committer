@@ -16,7 +16,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -294,8 +293,8 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	allNsPolicies := env.signVerifierManager.signVerifier[0].allNsPolicies
 	require.Empty(t, allNsPolicies)
 	require.False(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
-	ns1Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns1")
-	ns2Policy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
+	ns1Policy, _ := policy.MakePolicyAndNsSigner(t, "ns1")
+	ns2Policy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 	}))
@@ -306,7 +305,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	require.Equal(t, ns2Policy, allNsPolicies["ns2"])
 	require.True(t, env.signVerifierManager.signVerifier[0].pendingNsPolicies)
 
-	ns2NewPolicy, _ := sigtest.MakePolicyAndNsSigner(t, "ns2")
+	ns2NewPolicy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
 	require.NoError(t, env.signVerifierManager.updatePolicies(t.Context(), &protoblocktx.Policies{
 		Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
 	}))

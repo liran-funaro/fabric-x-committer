@@ -8,11 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -182,7 +184,31 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
 
+		configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+			MetaNamespaceVerificationKey: verificationKey,
+		})
+		configBlock, err := configtxgen.ReadBlock(configBlockPath)
+		require.NoError(t, err)
+
 		txBatch := dependencygraph.TxNodeBatch{
+			{
+				Tx: &protovcservice.Transaction{
+					ID: "create config",
+					Namespaces: []*protoblocktx.TxNamespace{
+						{
+							NsId: types.MetaNamespaceID,
+							BlindWrites: []*protoblocktx.Write{
+								{
+									Key:   []byte(types.MetaNamespaceID),
+									Value: configBlock.Data.Data[0],
+								},
+							},
+						},
+					},
+					BlockNumber: uint64(100),
+					TxNum:       uint32(63),
+				},
+			},
 			{
 				Tx: &protovcservice.Transaction{
 					ID: "create ns 1",
@@ -206,14 +232,24 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 
 		outTxsStatus := <-env.outputTxsStatus
 
-		require.Len(t, outTxsStatus.Status, 1)
-		require.Equal(t, types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
-			outTxsStatus.Status["create ns 1"])
+		require.Len(t, outTxsStatus.Status, 2)
+		require.Equal(t,
+			types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 63),
+			outTxsStatus.Status["create config"],
+		)
+		require.Equal(t,
+			types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
+			outTxsStatus.Status["create ns 1"],
+		)
 
-		require.Equal(t, txBatch, <-env.outputTxs)
+		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
 			require.ElementsMatch(t, []*protoblocktx.PolicyItem{
+				{
+					Namespace: types.MetaNamespaceID,
+					Policy:    configBlock.Data.Data[0],
+				},
 				{
 					Namespace: "1",
 					Policy:    pBytes,

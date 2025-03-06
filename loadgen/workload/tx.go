@@ -28,6 +28,9 @@ type (
 	}
 )
 
+// GeneratedNamespaceID for now we're only generating transactions for a single namespace.
+const GeneratedNamespaceID = "0"
+
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(
 	rnd *rand.Rand, keys Generator[Key], profile *TransactionProfile,
@@ -52,7 +55,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 		Id: g.TxIDGenerator.Next(),
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:        "0",
+				NsId:        GeneratedNamespaceID,
 				NsVersion:   types.VersionNumber(0).Bytes(),
 				ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
 				ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),

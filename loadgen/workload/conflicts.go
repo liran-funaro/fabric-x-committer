@@ -52,7 +52,7 @@ func newSignTxModifier(
 		Id: "fake",
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
-				NsId:      "0",
+				NsId:      GeneratedNamespaceID,
 				NsVersion: types.VersionNumber(0).Bytes(),
 			},
 		},
@@ -67,9 +67,12 @@ func newSignTxModifier(
 
 // Modify signs a transaction.
 func (g *signTxModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
-	if g.invalidSignGenerator.Next() {
+	switch {
+	case tx.Signatures != nil:
+		// We support pre-signed TXs
+	case g.invalidSignGenerator.Next():
 		tx.Signatures = g.invalidSignature
-	} else {
+	default:
 		g.Signer.Sign(tx)
 	}
 	return tx, nil

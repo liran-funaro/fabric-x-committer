@@ -31,13 +31,7 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 		return nil, nil, err
 	}
 
-	switch channelHdr.Type {
-	case int32(common.HeaderType_MESSAGE):
-		return payload.Data, channelHdr, nil
-	default:
-		// We are not interested in the data of a config tx
-		return nil, channelHdr, nil
-	}
+	return payload.Data, channelHdr, nil
 }
 
 // ParseEnvelope parse the envelope content.

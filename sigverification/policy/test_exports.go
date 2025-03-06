@@ -1,10 +1,17 @@
 package policy
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/protobuf/proto"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 // MakePolicy generates a policy item from a namespace policy.
@@ -13,10 +20,38 @@ func MakePolicy(
 	ns string,
 	nsPolicy *protoblocktx.NamespacePolicy,
 ) *protoblocktx.PolicyItem {
-	pBytes, err := proto.Marshal(nsPolicy)
-	require.NoError(t, err)
+	var policyBytes []byte
+	if ns == types.MetaNamespaceID {
+		block, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+			MetaNamespaceVerificationKey: nsPolicy.PublicKey,
+		})
+		require.NoError(t, err)
+		policyBytes = block.Data.Data[0]
+	} else {
+		pBytes, err := proto.Marshal(nsPolicy)
+		require.NoError(t, err)
+		policyBytes = pBytes
+	}
+
 	return &protoblocktx.PolicyItem{
 		Namespace: ns,
-		Policy:    pBytes,
+		Policy:    policyBytes,
 	}
+}
+
+// MakePolicyAndNsSigner generates a policyItem and NsSigner.
+func MakePolicyAndNsSigner(
+	t *testing.T,
+	ns string,
+) (*protoblocktx.PolicyItem, *sigtest.NsSigner) {
+	t.Helper()
+	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
+	signingKey, verificationKey := factory.NewKeys()
+	txSigner, err := factory.NewSigner(signingKey)
+	require.NoError(t, err)
+	p := MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
+		PublicKey: verificationKey,
+		Scheme:    signature.Ecdsa,
+	})
+	return p, txSigner
 }

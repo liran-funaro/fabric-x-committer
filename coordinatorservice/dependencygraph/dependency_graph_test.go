@@ -121,7 +121,10 @@ func TestDependencyGraph(t *testing.T) {
 
 	t.Run("check dependency in namespace", func(t *testing.T) {
 		keys := makeTestKeys(t, 10)
-		// t2 depends on t1
+		// t2 depends on t1, t1 depends on t0.
+		t0 := createTxForTest(
+			t, types.MetaNamespaceID, nil, nil, [][]byte{[]byte(types.MetaNamespaceID)},
+		)
 		t1 := createTxForTest(
 			t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 		)
@@ -131,11 +134,11 @@ func TestDependencyGraph(t *testing.T) {
 
 		localDepIncomingTxs <- &TransactionBatch{
 			ID:     3,
-			Txs:    []*protoblocktx.Tx{t1, t2},
-			TxsNum: []uint32{0, 1},
+			Txs:    []*protoblocktx.Tx{t0, t1, t2},
+			TxsNum: []uint32{0, 1, 2},
 		}
 
-		// t3 depends on t2 and t1
+		// t3 depends on t2, t1, and t0
 		t3 := createTxForTest(
 			t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 		)
@@ -150,8 +153,22 @@ func TestDependencyGraph(t *testing.T) {
 			TxsNum: []uint32{0, 1},
 		}
 
-		// only t1 is dependency free
+		// only t0 is dependency free
 		depFreeTxs := <-globalDepOutgoingTxs
+		require.Len(t, depFreeTxs, 1)
+		actualT0 := depFreeTxs[0]
+		require.Equal(t, t0.Id, actualT0.Tx.ID)
+
+		// t0 has 2 dependent transactions: t1, and t2
+		require.Eventually(t, func() bool {
+			t.Logf("length: %v", getLengthOfDependentTx(t, actualT0.dependentTxs))
+			return getLengthOfDependentTx(t, actualT0.dependentTxs) == 2
+		}, 2*time.Second, 200*time.Millisecond)
+
+		validatedTxs <- TxNodeBatch{actualT0}
+
+		// only t1 is dependency free
+		depFreeTxs = <-globalDepOutgoingTxs
 		require.Len(t, depFreeTxs, 1)
 		actualT1 := depFreeTxs[0]
 		require.Equal(t, t1.Id, actualT1.Tx.ID)
@@ -190,7 +207,7 @@ func TestDependencyGraph(t *testing.T) {
 
 		validatedTxs <- TxNodeBatch{actualT4}
 
-		ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
+		ensureProcessedAndValidatedMetrics(t, metrics, 9, 9)
 		// after validating all txs, the dependency detector should be empty
 		ensureEmptyDetector(t, dm.dependencyDetector)
 	})

@@ -34,7 +34,8 @@ type VerifierServer struct {
 }
 
 const (
-	retValid = protoblocktx.Status_COMMITTED
+	retValid  = protoblocktx.Status_COMMITTED
+	retConfig = protoblocktx.Status(-128)
 )
 
 var (
@@ -202,7 +203,17 @@ func (s *VerifierServer) verifyRequest(request *protosigverifierservice.Request)
 }
 
 func (s *VerifierServer) verify(tx *protoblocktx.Tx) protoblocktx.Status {
-	if status := verifyTxForm(tx); status != retValid {
+	status := verifyTxForm(tx)
+	switch status {
+	case retValid:
+		// continue.
+	case retConfig:
+		// If we receive a valid config TX, we require a single empty signature.
+		if len(tx.Signatures) != 1 || len(tx.Signatures[0]) != 0 {
+			return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+		}
+		return retValid
+	default:
 		return status
 	}
 
@@ -277,31 +288,53 @@ func checkNamespaceFormation(ns *protoblocktx.TxNamespace) protoblocktx.Status {
 }
 
 func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
-	// Blind-writes are not allowed.
-	if len(txNs.BlindWrites) > 0 {
-		return protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED
+	if len(txNs.ReadWrites) > 0 {
+		// If we have read-writes, we classify this as namespace policy update.
+		// Thus, blind-writes are not allowed.
+		if len(txNs.BlindWrites) > 0 {
+			return protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED
+		}
+
+		nsUpdate := make(map[string]any)
+		for _, pd := range policy.ListPolicyItems(txNs.ReadWrites) {
+			_, err := policy.ParsePolicyItem(pd)
+			if err != nil {
+				if errors.Is(err, policy.ErrInvalidNamespaceID) {
+					return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
+				}
+				return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
+			}
+			// The meta-namespace is updated only via blind-write.
+			if pd.Namespace == types.MetaNamespaceID {
+				return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
+			}
+			if _, ok := nsUpdate[pd.Namespace]; ok {
+				return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
+			}
+			nsUpdate[pd.Namespace] = nil
+		}
+
+		return retValid
 	}
 
-	nsUpdate := make(map[string]any)
-	for _, pd := range policy.ListPolicyItems(txNs.ReadWrites) {
+	// If we have blind writes, we classify it as meta-namespace update.
+	// Thus, we allow only a single blind-write, and no read-writes.
+	if len(txNs.BlindWrites) > 1 {
+		return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
+	}
+
+	for _, pd := range policy.ListPolicyItems(txNs.BlindWrites) {
 		_, err := policy.ParsePolicyItem(pd)
 		if err != nil {
-			if errors.Is(err, policy.ErrInvalidNamespaceID) {
-				return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
-			}
 			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
 		}
-		// The meta-namespace is updated only via blind-write.
-		if pd.Namespace == types.MetaNamespaceID {
-			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
+		// A non meta-namespace is updated only via read-write.
+		if pd.Namespace != types.MetaNamespaceID {
+			return protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED
 		}
-		if _, ok := nsUpdate[pd.Namespace]; ok {
-			return protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID
-		}
-		nsUpdate[pd.Namespace] = nil
 	}
 
-	return retValid
+	return retConfig
 }
 
 func debug(request *protosigverifierservice.Request) {

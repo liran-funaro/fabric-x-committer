@@ -122,6 +122,7 @@ func TestOrderer(t *testing.T) {
 		BlockTimeout:     time.Hour,
 		OutBlockCapacity: 10,
 		PayloadCacheSize: 10,
+		SendConfigBlock:  true,
 	})
 	require.NoError(t, err)
 

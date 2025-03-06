@@ -16,10 +16,9 @@ type (
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		Endpoint             *connection.Endpoint     `mapstructure:"endpoint"`
-		Coordinator          *CoordinatorClientConfig `mapstructure:"coordinator"`
-		Orderer              broadcastdeliver.Config  `mapstructure:"orderer"`
-		BroadcastParallelism int                      `mapstructure:"broadcast-parallelism"`
+		Endpoint             *connection.Endpoint    `mapstructure:"endpoint"`
+		Orderer              broadcastdeliver.Config `mapstructure:"orderer"`
+		BroadcastParallelism int                     `mapstructure:"broadcast-parallelism"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.

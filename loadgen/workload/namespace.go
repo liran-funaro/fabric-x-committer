@@ -1,11 +1,11 @@
 package workload
 
 import (
-	"errors"
+	"github.com/cockroachdb/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"google.golang.org/protobuf/proto"
 )
 
 // CreateNamespaces creating the transaction containing the requested namespaces into the MetaNamespace.
@@ -41,4 +41,31 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 	}
 	tx.Signatures = [][]byte{policyNamespaceSigner.Sign(tx, 0)}
 	return tx, nil
+}
+
+// CreatePolicies generates all the policies.
+func CreatePolicies(policy *PolicyProfile) (*protoblocktx.Policies, error) {
+	txSigner := NewTxSignerVerifier(policy)
+
+	policyMsg := &protoblocktx.Policies{
+		Policies: make([]*protoblocktx.PolicyItem, 0, len(txSigner.HashSigners)),
+	}
+	for ns, p := range txSigner.HashSigners {
+		var policyBytes []byte
+		var err error
+		if ns == types.MetaNamespaceID {
+			policyBytes, err = CreateMetaPolicy(policy)
+		} else {
+			policyBytes, err = proto.Marshal(p.GetVerificationPolicy())
+		}
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to serialize policy")
+		}
+		policyMsg.Policies = append(policyMsg.Policies, &protoblocktx.PolicyItem{
+			Namespace: ns,
+			Policy:    policyBytes,
+		})
+	}
+
+	return policyMsg, nil
 }

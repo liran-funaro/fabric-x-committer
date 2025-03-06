@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -15,12 +16,13 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
 type (
@@ -28,11 +30,12 @@ type (
 	OrdererConfig struct {
 		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
 		NumService       int                        `mapstructure:"num-services"`
-		BlockSize        uint32                     `mapstructure:"block-size"`
+		BlockSize        int                        `mapstructure:"block-size"`
 		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
-		OutBlockCapacity uint32                     `mapstructure:"out-block-capacity"`
+		OutBlockCapacity int                        `mapstructure:"out-block-capacity"`
 		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
+		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
@@ -43,6 +46,17 @@ type (
 		inBlocks    chan *common.Block
 		cutBlock    chan any
 		cache       *blockCache
+	}
+
+	// HoldingOrderer allows holding a block.
+	HoldingOrderer struct {
+		*Orderer
+		HoldBlock atomic.Uint64
+	}
+
+	holdingStream struct {
+		ab.AtomicBroadcast_DeliverServer
+		holdBlock *atomic.Uint64
 	}
 
 	blockCache struct {
@@ -96,6 +110,9 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.BlockTimeout.Abs() == 0 {
 		config.BlockTimeout = defaultConfig.BlockTimeout
 	}
+	if len(config.ServerConfigs) > 0 {
+		config.NumService = len(config.ServerConfigs)
+	}
 	if config.NumService == 0 {
 		config.NumService = defaultConfig.NumService
 	}
@@ -117,7 +134,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	return &Orderer{
 		config:      config,
 		configBlock: configBlock,
-		inEnvs:      make(chan *common.Envelope, config.NumService*int(config.BlockSize*config.OutBlockCapacity)),
+		inEnvs:      make(chan *common.Envelope, config.NumService*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:    make(chan any),
 		cache:       newBlockCache(config.OutBlockCapacity),
@@ -178,6 +195,31 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	return status.Errorf(codes.Canceled, "context ended: %s", ctx.Err())
 }
 
+// Deliver calls Orderer.Deliver, but with a holding stream.
+func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
+	return o.Orderer.Deliver(&holdingStream{
+		AtomicBroadcast_DeliverServer: stream,
+		holdBlock:                     &o.HoldBlock,
+	})
+}
+
+func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
+	block, ok := msg.Type.(*ab.DeliverResponse_Block)
+	if ok {
+		// A simple busy wait loop is sufficient here.
+		for block.Block.Header.Number >= s.holdBlock.Load() {
+			logger.Infof("Holding block: %d (up to %d)", block.Block.Header.Number, s.holdBlock.Load())
+			select {
+			case <-s.Context().Done():
+				return nil
+			case <-time.NewTimer(time.Second).C:
+			}
+		}
+	}
+	//nolint:wrapcheck // This is a mock for an external method.
+	return s.AtomicBroadcast_DeliverServer.Send(msg)
+}
+
 func readSeekInfo(stream ab.AtomicBroadcast_DeliverServer) (start, end uint64, err error) {
 	start = 0
 	end = math.MaxUint64
@@ -226,7 +268,9 @@ func (o *Orderer) Run(ctx context.Context) error {
 	}
 
 	// Submit the config block.
-	sendBlock(o.configBlock)
+	if o.config.SendConfigBlock {
+		sendBlock(o.configBlock)
+	}
 
 	data := make([][]byte, 0, o.config.BlockSize)
 	sendBlockData := func(reason string) {
@@ -315,7 +359,7 @@ func addBlockHeader(prevBlock, curBlock *common.Block) {
 	}
 }
 
-func newBlockCache(size uint32) *blockCache {
+func newBlockCache(size int) *blockCache {
 	return &blockCache{
 		storage:           make([]*common.Block, size),
 		maxDeliveredBlock: -1,

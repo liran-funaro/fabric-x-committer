@@ -33,9 +33,6 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream)
 	}
 	defer connection.CloseConnectionsLog(conn)
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	if err = c.setupCoordinator(ctx, client); err != nil {
-		return err
-	}
 	if lastBlockNum, coordErr := client.GetLastCommittedBlockNumber(ctx, nil); coordErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("cannot fetch the last committed block number: %v", coordErr)

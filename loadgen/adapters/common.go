@@ -5,10 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 
-	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -20,6 +17,13 @@ type (
 	ClientResources struct {
 		Metrics *metrics.PerfMetrics
 		Profile *workload.Profile
+	}
+
+	// Phases specify the generation phases to enable.
+	Phases struct {
+		Config     bool `mapstructure:"config" yaml:"config"`
+		Namespaces bool `mapstructure:"namespaces" yaml:"namespaces"`
+		Load       bool `mapstructure:"load" yaml:"load"`
 	}
 
 	// TxStream makes generators such that all can be used in parallel.
@@ -42,6 +46,27 @@ var (
 	ErrInvalidAdapterConfig = errors.New("invalid config passed")
 )
 
+// PhasesIntersect returns the phases that are both in p1 and p2.
+// If one of them is empty, it is assumed not to be specified.
+func PhasesIntersect(p1, p2 Phases) Phases {
+	if p1.Empty() {
+		return p2
+	}
+	if p2.Empty() {
+		return p1
+	}
+	return Phases{
+		Config:     p1.Config && p2.Config,
+		Namespaces: p1.Namespaces && p2.Namespaces,
+		Load:       p1.Load && p2.Load,
+	}
+}
+
+// Empty returns true if no phase was applied.
+func (p *Phases) Empty() bool {
+	return p == nil || (!p.Config && !p.Namespaces && !p.Load)
+}
+
 // Progress a committed transaction indicate progress for most adapters.
 func (c *commonAdapter) Progress() uint64 {
 	committed, err := c.res.Metrics.GetCommitted()
@@ -49,6 +74,15 @@ func (c *commonAdapter) Progress() uint64 {
 		return 0
 	}
 	return committed
+}
+
+// Supports specify which phases an adapter supports.
+func (*commonAdapter) Supports() Phases {
+	return Phases{
+		Config:     true,
+		Namespaces: true,
+		Load:       true,
+	}
 }
 
 func (c *commonAdapter) sendBlocks(
@@ -69,25 +103,6 @@ func (c *commonAdapter) sendBlocks(
 			return connection.FilterStreamRPCError(err)
 		}
 		c.res.Metrics.OnSendBlock(block)
-	}
-	return nil
-}
-
-// setupCoordinator this will be removed once the coordinator will process config TXs.
-func (c *commonAdapter) setupCoordinator(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {
-	txSigner := workload.NewTxSignerVerifier(c.res.Profile.Transaction.Policy)
-	signer, ok := txSigner.HashSigners[types.MetaNamespaceID]
-	if !ok {
-		return errors.New("no meta namespace signer found")
-	}
-	_, err := client.UpdatePolicies(ctx, &protoblocktx.Policies{
-		Policies: []*protoblocktx.PolicyItem{{
-			Namespace: types.MetaNamespaceID,
-			Policy:    protoutil.MarshalOrPanic(signer.GetVerificationPolicy()),
-		}},
-	})
-	if err != nil {
-		return err
 	}
 	return nil
 }

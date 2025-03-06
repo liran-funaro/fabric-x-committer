@@ -3,19 +3,17 @@ package configtempl
 import (
 	"bytes"
 	"html/template"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/core/config/configtest"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen/genesisconfig"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 type (
@@ -75,15 +73,12 @@ type (
 	}
 
 	// ConfigBlock represents the configuration of the config block.
-	ConfigBlock struct {
-		ChannelID                    string
-		OrdererEndpoints             []*connection.OrdererEndpoint
-		MetaNamespaceVerificationKey []byte
-	}
+	ConfigBlock = workload.ConfigBlock
 )
 
 // CreateConfigFile creates a configuration file by applying the given config on a template.
 func CreateConfigFile(t *testing.T, config any, templateFilePath, outputFilePath string) {
+	t.Helper()
 	tmpl, err := template.ParseFiles(templateFilePath)
 	require.NoError(t, err)
 
@@ -100,53 +95,19 @@ func CreateConfigFile(t *testing.T, config any, templateFilePath, outputFilePath
 	require.NoError(t, err)
 }
 
-// CreateConfigBlock writes a config block to file.
+// CreateConfigBlock create and writes a config block to file.
 func CreateConfigBlock(t *testing.T, conf *ConfigBlock) string {
+	t.Helper()
+	block, err := workload.CreateDefaultConfigBlock(conf)
+	require.NoError(t, err)
+	return WriteConfigBlock(t, block)
+}
+
+// WriteConfigBlock writes a config block to file.
+func WriteConfigBlock(t *testing.T, block *common.Block) string {
+	t.Helper()
 	blockDir := t.TempDir()
-
-	configBlock := genesisconfig.Load(genesisconfig.SampleFabricX, configtest.GetDevConfigDir())
-	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
-	for _, consenter := range configBlock.Orderer.ConsenterMapping {
-		consenter.Identity = tlsCertPath
-		consenter.ClientTLSCert = tlsCertPath
-		consenter.ServerTLSCert = tlsCertPath
-	}
-
-	metaPubKeyPath := filepath.Join(blockDir, "meta.pem")
-	if conf.MetaNamespaceVerificationKey == nil {
-		conf.MetaNamespaceVerificationKey, _ = workload.NewHashSignerVerifier(&workload.Policy{
-			Scheme: signature.Ecdsa,
-			Seed:   rand.Int64(),
-		}).GetVerificationKeyAndSigner()
-	}
-	require.NoError(t, os.WriteFile(metaPubKeyPath, conf.MetaNamespaceVerificationKey, 0o600))
-	configBlock.Application.MetaNamespaceVerificationKeyPath = metaPubKeyPath
-
-	require.GreaterOrEqual(t, len(configBlock.Orderer.Organizations), 1)
-	sourceOrg := *configBlock.Orderer.Organizations[0]
-	configBlock.Orderer.Organizations = nil
-
-	orgMap := make(map[string]*[]string)
-	for _, e := range conf.OrdererEndpoints {
-		orgEndpoints, ok := orgMap[e.MspID]
-		if !ok {
-			org := sourceOrg
-			org.ID = e.MspID
-			org.Name = e.MspID
-			org.OrdererEndpoints = nil
-			configBlock.Orderer.Organizations = append(configBlock.Orderer.Organizations, &org)
-			orgMap[e.MspID] = &org.OrdererEndpoints
-			orgEndpoints = &org.OrdererEndpoints
-		}
-		*orgEndpoints = append(*orgEndpoints, e.String())
-	}
-
-	channelID := conf.ChannelID
-	if channelID == "" {
-		channelID = "chan"
-	}
-
 	configBlockPath := filepath.Join(blockDir, "config.block")
-	require.NoError(t, configtxgen.DoOutputBlock(configBlock, channelID, configBlockPath))
+	require.NoError(t, configtxgen.WriteOutputBlock(block, configBlockPath))
 	return configBlockPath
 }

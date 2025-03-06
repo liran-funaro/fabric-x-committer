@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -17,20 +18,26 @@ import (
 )
 
 type relayTestEnv struct {
-	relay            *relay
-	uncommittedBlock chan *common.Block
-	committedBlock   chan *common.Block
+	relay                      *relay
+	incomingBlockToBeCommitted chan *common.Block
+	committedBlock             chan *common.Block
+	configBlocks               []*common.Block
 }
+
+const (
+	valid     = byte(protoblocktx.Status_COMMITTED)
+	duplicate = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+)
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 	coordinatorEndpoint := coordinatorServer.Configs[0].Endpoint
 
-	uncommittedBlock := make(chan *common.Block, 10)
+	incomingBlockToBeCommitted := make(chan *common.Block, 10)
 	committedBlock := make(chan *common.Block, 10)
 	relayService := newRelay(
 		&CoordinatorConfig{Endpoint: coordinatorEndpoint},
-		uncommittedBlock,
+		incomingBlockToBeCommitted,
 		committedBlock,
 	)
 
@@ -40,26 +47,31 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 
 	logger.Infof("sidecar connected to coordinator at %s", &coordinatorEndpoint)
 
+	env := &relayTestEnv{
+		relay:                      relayService,
+		incomingBlockToBeCommitted: incomingBlockToBeCommitted,
+		committedBlock:             committedBlock,
+	}
+
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(relayService.Run(ctx, &relayRunConfig{
-			client, 0,
+			coordClient:                    client,
+			nextExpectedBlockByCoordinator: 0,
+			configUpdater: func(block *common.Block) {
+				env.configBlocks = append(env.configBlocks, block)
+			},
 		}))
 	}, nil)
-	return &relayTestEnv{
-		relay:            relayService,
-		uncommittedBlock: uncommittedBlock,
-		committedBlock:   committedBlock,
-	}
+	return env
 }
 
 func TestRelayNormalBlock(t *testing.T) {
 	relayEnv := newRelayTestEnv(t)
 	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"tx1", "tx2", "tx3"})
 	require.Nil(t, blk0.Metadata)
-	relayEnv.uncommittedBlock <- blk0
+	relayEnv.incomingBlockToBeCommitted <- blk0
 	committedBlock0 := <-relayEnv.committedBlock
-	valid := byte(protoblocktx.Status_COMMITTED)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}
@@ -71,10 +83,8 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	relayEnv := newRelayTestEnv(t)
 	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"tx1", "tx1", "tx1"})
 	require.Nil(t, blk0.Metadata)
-	relayEnv.uncommittedBlock <- blk0
+	relayEnv.incomingBlockToBeCommitted <- blk0
 	committedBlock0 := <-relayEnv.committedBlock
-	valid := byte(protoblocktx.Status_COMMITTED)
-	duplicate := byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, duplicate, duplicate}},
 	}
@@ -83,7 +93,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 
 	blk1 := sidecartest.CreateBlockForTest(nil, 1, nil, [3]string{"tx2", "tx3", "tx2"})
 	require.Nil(t, blk1.Metadata)
-	relayEnv.uncommittedBlock <- blk1
+	relayEnv.incomingBlockToBeCommitted <- blk1
 	committedBlock1 := <-relayEnv.committedBlock
 	expectedMetadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, duplicate}},
@@ -95,9 +105,14 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 func TestRelayConfigBlock(t *testing.T) {
 	relayEnv := newRelayTestEnv(t)
 	configBlk := createConfigBlockForTest(nil, 0)
-	relayEnv.uncommittedBlock <- configBlk
+	relayEnv.incomingBlockToBeCommitted <- configBlk
 	committedBlock := <-relayEnv.committedBlock
 	require.Equal(t, configBlk, committedBlock)
+	require.Equal(t, &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid}},
+	}, committedBlock.Metadata)
+	require.Len(t, relayEnv.configBlocks, 1)
+	require.Equal(t, configBlk, relayEnv.configBlocks[0])
 }
 
 func createConfigBlockForTest(_ *testing.T, number uint64) *common.Block {

@@ -4,6 +4,7 @@ mock-ordering-service:
   block-size: {{ .BlockSize }}
   block-timeout: {{ .BlockTimeout }}
   config-block-path: {{ .ConfigBlockPath }}
+  send-config-block: true
 logging:
   Development: true
   enabled: true

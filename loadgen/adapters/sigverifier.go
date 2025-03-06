@@ -2,15 +2,15 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type (
@@ -31,33 +31,37 @@ func NewSVAdapter(config *SVClientConfig, res *ClientResources) *SvAdapter {
 
 // RunWorkload applies load on the SV.
 func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
+	policyMsg, err := workload.CreatePolicies(c.res.Profile.Transaction.Policy)
+	if err != nil {
+		return errors.Wrap(err, "failed creating verification policy")
+	}
+
 	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
-		return fmt.Errorf("failed opening connections: %w", err)
+		return errors.Newf("failed opening connections: %w", err)
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
-	streams := make([]protosigverifierservice.Verifier_StartStreamClient, 0, len(connections))
-	for _, conn := range connections {
+	g, gCtx := errgroup.WithContext(ctx)
+	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
+	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
 
 		logger.Infof("Set verification verification policy")
-		if _, err = client.UpdatePolicies(ctx, getPolicies(c.res)); err != nil {
-			return fmt.Errorf("failed setting verification policy: %w", err)
+		if _, err = client.UpdatePolicies(ctx, policyMsg); err != nil {
+			return errors.Wrap(err, "failed setting verification policy")
 		}
 
-		logger.Infof("Opening stream")
-		stream, err := client.StartStream(ctx)
+		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
+		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
-			return fmt.Errorf("failed opening connection to %s: %w", conn.Target(), err)
+			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Endpoints[i])
 		}
-		streams = append(streams, stream)
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
 	for _, stream := range streams {
 		g.Go(func() error {
-			return c.sendBlocks(ctx, txStream, func(block *protoblocktx.Block) error {
+			return c.sendBlocks(gCtx, txStream, func(block *protoblocktx.Block) error {
 				return stream.Send(mapVSBatch(block))
 			})
 		})
@@ -66,20 +70,6 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		})
 	}
 	return g.Wait()
-}
-
-func getPolicies(res *ClientResources) *protoblocktx.Policies {
-	e := workload.NewTxSignerVerifier(res.Profile.Transaction.Policy)
-	policyMsg := &protoblocktx.Policies{
-		Policies: make([]*protoblocktx.PolicyItem, 0, len(e.HashSigners)),
-	}
-	for nsID, s := range e.HashSigners {
-		policyMsg.Policies = append(policyMsg.Policies, &protoblocktx.PolicyItem{
-			Namespace: nsID,
-			Policy:    protoutil.MarshalOrPanic(s.GetVerificationPolicy()),
-		})
-	}
-	return policyMsg
 }
 
 func (c *SvAdapter) receiveStatus(

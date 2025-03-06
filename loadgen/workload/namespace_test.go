@@ -4,27 +4,20 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
-var namespacesUnderTest = []string{"0", "1", "2", types.MetaNamespaceID}
+var namespacesUnderTest = []string{GeneratedNamespaceID, "1", "2", types.MetaNamespaceID}
 
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.
 func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 	t.Parallel()
 	for _, scheme := range signature.AllRealSchemes {
-		policyProfile := &PolicyProfile{
-			NamespacePolicies: make(map[string]*Policy, len(namespacesUnderTest)),
-		}
-		for i, ns := range namespacesUnderTest {
-			policyProfile.NamespacePolicies[ns] = &Policy{
-				Scheme: scheme,
-				Seed:   int64(i),
-			}
-		}
+		policyProfile := makePolicyProfile(scheme)
 		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
 			mainNsTx, err := CreateNamespaces(policyProfile)
@@ -55,10 +48,30 @@ func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 	}
 }
 
+func TestCreateConfigTx(t *testing.T) {
+	t.Parallel()
+	policyProfile := makePolicyProfile(signature.Ecdsa)
+	_, err := CreateConfigTx(policyProfile)
+	require.NoError(t, err)
+}
+
 func getReadWritesFromNamespaceTx(t *testing.T, tx *protoblocktx.Tx) []*protoblocktx.ReadWrite {
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)
 	require.Equal(t, types.MetaNamespaceID, tx.Namespaces[0].NsId)
 	require.Len(t, tx.Namespaces[0].ReadWrites, len(namespacesUnderTest)-1)
 	return tx.Namespaces[0].ReadWrites
+}
+
+func makePolicyProfile(schema signature.Scheme) *PolicyProfile {
+	policyProfile := &PolicyProfile{
+		NamespacePolicies: make(map[string]*Policy, len(namespacesUnderTest)),
+	}
+	for i, ns := range namespacesUnderTest {
+		policyProfile.NamespacePolicies[ns] = &Policy{
+			Scheme: schema,
+			Seed:   int64(i),
+		}
+	}
+	return policyProfile
 }

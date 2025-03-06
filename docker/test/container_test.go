@@ -24,7 +24,10 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 )
 
 const (
@@ -96,9 +99,10 @@ func startOrderer(ctx context.Context, t *testing.T, dockerClient *client.Client
 	hostCfg := &container.HostConfig{
 		Mounts: []mount.Mount{
 			{
-				Type:   mount.TypeBind,
-				Source: configPath,
-				Target: "/config.yaml",
+				Type:     mount.TypeBind,
+				Source:   configPath,
+				Target:   "/config.yaml",
+				ReadOnly: true,
 			},
 		},
 		PortBindings: nat.PortMap{
@@ -120,20 +124,18 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 	imageName := testNodeImage
 	containerName := name
 
-	sidecarPort := sidecarPort
-	queryServicePort := queryServicePort
-
-	channelName := channelName
 	queryServiceEndpoint := ":" + queryServicePort
 	ordererEndpoint := "host.docker.internal:" + ordererPort
 
-	containerEnvOverride := []string{
-		"SC_SIDECAR_ORDERER_CHANNEL_ID=" + channelName,
-		"SC_SIDECAR_ORDERER_CONNECTION_ENDPOINTS=" + ordererEndpoint,
-		"METANS_SIG_SCHEME=ECDSA",
-		"METANS_SIG_VERIFICATION_KEY_PATH=/sc_pubkey.pem",
-		"SC_QUERY_SERVICE_SERVER_ENDPOINT=" + queryServiceEndpoint,
-	}
+	_, pubKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+		ChannelID: channelName,
+		OrdererEndpoints: []*connection.OrdererEndpoint{
+			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},
+		},
+		MetaNamespaceVerificationKey: pubKey,
+	})
+	require.FileExists(t, configBlockPath)
 
 	containerCfg := &container.Config{
 		Image: imageName,
@@ -141,58 +143,56 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 			nat.Port(sidecarPort + "/tcp"):      struct{}{},
 			nat.Port(queryServicePort + "/tcp"): struct{}{},
 		},
-		Env: containerEnvOverride,
+		Env: []string{
+			"SC_SIDECAR_ORDERER_CHANNEL_ID=" + channelName,
+			"SC_SIDECAR_ORDERER_CONNECTION_ENDPOINTS=" + ordererEndpoint,
+			"SC_QUERY_SERVICE_SERVER_ENDPOINT=" + queryServiceEndpoint,
+		},
 		Tty: true,
 	}
 
+	// TODO: we want to replace this with `config/templates` in the future
 	configPath := filepath.Join(testdataPath, "config-sidecar.yaml")
-	keyPath := filepath.Join(testdataPath, "sc_pubkey.pem")
 	require.FileExists(t, configPath)
-	require.FileExists(t, keyPath)
+
 	hostCfg := &container.HostConfig{
 		Mounts: []mount.Mount{
-			{
-				// configuration
-				Type:   mount.TypeBind,
-				Source: keyPath,
-				Target: "/sc_pubkey.pem",
+			{ // config block
+				Type:     mount.TypeBind,
+				Source:   configBlockPath,
+				Target:   "/root/config/sc-genesis-block.proto.bin",
+				ReadOnly: true,
 			},
-			{
-				// configuration
-				Type: mount.TypeBind,
-				// TODO: we want to replace this with `config/templates` in the future
-				Source: configPath,
-				Target: "/root/config/config-sidecar.yaml",
+			{ // configuration
+				Type:     mount.TypeBind,
+				Source:   configPath,
+				Target:   "/root/config/config-sidecar.yaml",
+				ReadOnly: true,
 			},
 		},
 		PortBindings: nat.PortMap{
 			// sidecar port binding
-			nat.Port(sidecarPort + "/tcp"): []nat.PortBinding{
-				{
-					HostIP:   "0.0.0.0",
-					HostPort: sidecarPort,
-				},
-			},
+			nat.Port(sidecarPort + "/tcp"): []nat.PortBinding{{
+				HostIP:   "0.0.0.0",
+				HostPort: sidecarPort,
+			}},
 			// query service port bindings
-			nat.Port(queryServicePort + "/tcp"): []nat.PortBinding{
-				{
-					HostIP:   "0.0.0.0",
-					HostPort: queryServicePort,
-				},
-			},
+			nat.Port(queryServicePort + "/tcp"): []nat.PortBinding{{
+				HostIP:   "0.0.0.0",
+				HostPort: queryServicePort,
+			}},
 		},
 	}
 
-	endpoint := "localhost:" + sidecarPort
-
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
-	defer cancel()
+	t.Cleanup(cancel)
 
 	options := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(grpcConfig),
 	}
 
+	endpoint := "localhost:" + sidecarPort
 	conn, err := grpc.NewClient(endpoint, options...)
 	require.NoError(t, err)
 
@@ -231,7 +231,7 @@ func startContainer(
 	go func() {
 		_, err = io.Copy(os.Stdout, logs)
 		if err != nil {
-			t.Logf("logs ended with: %v", err)
+			t.Logf("[%s] logs ended with: %v", containerName, err)
 		}
 	}()
 

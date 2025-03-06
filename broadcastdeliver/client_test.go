@@ -199,7 +199,7 @@ func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
 	instanceCount := idCount * serverPerID
 	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
 	ordererService, ordererServer := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: instanceCount, BlockSize: 1},
+		t, &mock.OrdererConfig{NumService: instanceCount, BlockSize: 1, SendConfigBlock: true},
 	)
 	require.Len(t, ordererServer.Servers, instanceCount)
 

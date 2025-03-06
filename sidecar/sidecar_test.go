@@ -11,26 +11,27 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type sidecarTestEnv struct {
@@ -52,6 +53,11 @@ type sidecarTestConfig struct {
 	WithConfigBlock bool
 }
 
+const (
+	blockSize              = 100
+	expectedProcessingTime = 15 * time.Second
+)
+
 func (c *sidecarTestConfig) String() string {
 	var b []string
 	if c.NumService > 1 {
@@ -71,54 +77,54 @@ func (c *sidecarTestConfig) String() string {
 
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	t.Helper()
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 	orderer, ordererServers := mock.StartMockOrderingServices(
-		// We want each block to contain 100 transactions. Therefore, we set a higher block timeout
-		// so that we have enough time to send 100 transactions to the orderer and create a block.
-		t, &mock.OrdererConfig{NumService: conf.NumService, BlockSize: 100, BlockTimeout: 5 * time.Minute},
-	)
-	id := uint32(0)
-	msp := "org"
-	ordererEndpoints := make([]*connection.OrdererEndpoint, len(ordererServers.Configs))
-	for i, c := range ordererServers.Configs {
-		ordererEndpoints[i] = &connection.OrdererEndpoint{
-			ID:       id,
-			MspID:    msp,
-			API:      []string{connection.Broadcast, connection.Deliver},
-			Endpoint: c.Endpoint,
-		}
-	}
-	for range conf.NumFakeService {
-		fakeServer := &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
+		t,
+		&mock.OrdererConfig{
+			NumService: conf.NumService,
+			BlockSize:  blockSize,
+			// We want each block to contain exactly <blockSize> transactions.
+			// Therefore, we set a higher block timeout so that we have enough time to send all the
+			// transactions to the orderer and create a block.
+			BlockTimeout:    5 * time.Minute,
+			SendConfigBlock: false,
+		})
+	fakeConfigs := make([]*connection.ServerConfig, conf.NumFakeService)
+	for i := range fakeConfigs {
+		fakeConfigs[i] = &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
 		healthcheck := health.NewServer()
 		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-		test.RunGrpcServerForTest(t.Context(), t, fakeServer, func(server *grpc.Server) {
+		test.RunGrpcServerForTest(t.Context(), t, fakeConfigs[i], func(server *grpc.Server) {
 			healthgrpc.RegisterHealthServer(server, healthcheck)
 		})
-		ordererEndpoints = append(ordererEndpoints, &connection.OrdererEndpoint{
-			ID:       id,
-			MspID:    msp,
-			API:      []string{connection.Broadcast, connection.Deliver},
-			Endpoint: fakeServer.Endpoint,
-		})
 	}
-	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
+	ordererEndpoints := append(
+		connection.NewOrdererEndpoints(0, "org", ordererServers.Configs...),
+		connection.NewOrdererEndpoints(0, "org", fakeConfigs...)...,
+	)
 
-	configBlockPath := ""
 	chanID := "ch1"
+	configBlock, err := workload.CreateDefaultConfigBlock(&configtempl.ConfigBlock{
+		ChannelID:        chanID,
+		OrdererEndpoints: ordererEndpoints,
+	})
+	require.NoError(t, err)
+	orderer.SubmitBlock(t.Context(), configBlock)
+
+	var genesisBlockFilePath string
+	initOrdererEndpoints := ordererEndpoints
 	if conf.WithConfigBlock {
-		configBlockPath = configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
-			ChannelID:        chanID,
-			OrdererEndpoints: ordererEndpoints,
-		})
+		genesisBlockFilePath = configtempl.WriteConfigBlock(t, configBlock)
+		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
 		Server: &connection.ServerConfig{
 			Endpoint: connection.Endpoint{Host: "localhost"},
 		},
 		Orderer: broadcastdeliver.Config{
-			ChannelID: "ch1",
+			ChannelID: chanID,
 			Connection: broadcastdeliver.ConnectionConfig{
-				Endpoints: ordererEndpoints,
+				Endpoints: initOrdererEndpoints,
 			},
 		},
 		Committer: CoordinatorConfig{
@@ -127,10 +133,9 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
-		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+		Bootstrap: Bootstrap{
+			GenesisBlockFilePath: genesisBlockFilePath,
 		},
-		ConfigBlockPath: configBlockPath,
 	}
 	sidecar, err := New(sidecarConf)
 	require.NoError(t, err)
@@ -179,12 +184,86 @@ func TestSidecar(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 			t.Cleanup(cancel)
 			env.start(ctx, t, 0)
-
-			configBlock := <-env.committedBlock
-			require.Equal(t, uint64(0), configBlock.Header.Number)
+			env.requireBlock(ctx, t, 0)
 			sendTransactionsAndEnsureCommitted(ctx, t, env, 1)
 		})
 	}
+}
+
+func TestSidecarConfigUpdate(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{NumService: 3})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 0)
+	env.requireBlock(ctx, t, 0)
+
+	// Sanity check
+	expectedBlock := uint64(1)
+	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+	expectedBlock++
+
+	// Update the sidecar to use a second orderer group.
+	holder := &mock.HoldingOrderer{
+		Orderer: env.orderer,
+	}
+	holder.HoldBlock.Store(expectedBlock + 2)
+	holderServers := test.StartGrpcServersForTest(
+		ctx, t, 3, func(server *grpc.Server, _ int) {
+			ab.RegisterAtomicBroadcastServer(server, holder)
+		},
+	)
+
+	submitConfigBlock := func(endpoints []*connection.OrdererEndpoint) {
+		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+			ChannelID:        env.chanID,
+			OrdererEndpoints: endpoints,
+		})
+		require.NoError(t, err)
+		env.orderer.SubmitBlock(ctx, configBlock)
+	}
+	submitConfigBlock(connection.NewOrdererEndpoints(0, "org", holderServers.Configs...))
+	env.requireBlock(ctx, t, expectedBlock)
+	expectedBlock++
+
+	// Sanity check
+	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+	expectedBlock++
+
+	// We submit the config that returns to the non-holding orderer.
+	// But it should not be processed as the sidecar should have switched to the holding
+	// orderer.
+	submitConfigBlock(env.ordererEndpoints)
+	select {
+	case <-ctx.Done():
+		t.Fatal("context deadline exceeded")
+	case <-env.committedBlock:
+		t.Fatal("the sidecar cannot receive blocks since its orderer holds them")
+	case <-time.After(expectedProcessingTime):
+		// Fantastic.
+	}
+
+	// We expect the block to be held.
+	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, expectedBlock-1, lastBlock.Number)
+
+	// We advance the holder by one to allow the config block to pass through, but not other blocks.
+	holder.HoldBlock.Add(1)
+	env.requireBlock(ctx, t, expectedBlock)
+	expectedBlock++
+	// The sidecar should use the non-holding orderer, so the holding should not affect the processing.
+	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+}
+
+func TestSidecarConfigRecovery(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{NumService: 3})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 0)
+	env.requireBlock(ctx, t, 0)
+	// TODO: implement
 }
 
 func TestSidecarRecovery(t *testing.T) {
@@ -192,7 +271,8 @@ func TestSidecarRecovery(t *testing.T) {
 	env := newSidecarTestEnv(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t, 1)
+	env.start(ctx, t, 0)
+	env.requireBlock(ctx, t, 0)
 
 	// 1. Commit block 1 to 10
 	for i := range 10 {
@@ -241,7 +321,7 @@ func TestSidecarRecovery(t *testing.T) {
 		env.sidecar.committedBlock,
 	)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), env.sidecar.ledgerService.GetBlockHeight()) // back to block 0
+	ledger.EnsureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
 
 	// 4. Make coordinator not idle to ensure sidecar is waiting
 	env.coordinator.SetWaitingTxsCount(10)
@@ -275,10 +355,10 @@ func sendTransactionsAndEnsureCommitted(
 	expectedBlockNumber uint64,
 ) {
 	t.Helper()
-	// mockorderer expects 100 txs to create the next block
 	txIDPrefix := uuid.New().String()
-	txs := make([]*protoblocktx.Tx, 100)
-	for i := range 100 {
+	// mock-orderer expects <blockSize> txs to create the next block.
+	txs := make([]*protoblocktx.Tx, blockSize)
+	for i := range txs {
 		txs[i] = &protoblocktx.Tx{
 			Id:         txIDPrefix + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}},
@@ -286,14 +366,10 @@ func sendTransactionsAndEnsureCommitted(
 		_, err := env.orderer.SubmitPayload(ctx, env.chanID, txs[i])
 		require.NoErrorf(t, err, "block %d, tx %d", expectedBlockNumber, i)
 	}
-
-	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
-
-	block := <-env.committedBlock
-	require.Equal(t, expectedBlockNumber, block.Header.Number)
-
-	for i := range 100 {
+	block := env.requireBlock(ctx, t, expectedBlockNumber)
+	require.NotNil(t, block.Data)
+	require.Len(t, block.Data.Data, blockSize)
+	for i := range block.Data.Data {
 		actualEnv, err := protoutil.ExtractEnvelope(block, i)
 		require.NoError(t, err)
 		payload, _, err := serialization.ParseEnvelope(actualEnv)
@@ -302,22 +378,28 @@ func sendTransactionsAndEnsureCommitted(
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i], tx))
 	}
+	require.NotNil(t, block.Metadata)
+	require.Len(t, block.Metadata.Metadata, 3)
+	require.Len(t, block.Metadata.Metadata[2], blockSize)
+	for _, status := range block.Metadata.Metadata[2] {
+		require.Equal(t, valid, status)
+	}
 }
 
-func TestSidecarMetaNamespaceVerificationKey(t *testing.T) {
-	t.Parallel()
-	env := newSidecarTestEnv(t, sidecarTestConfig{
-		WithConfigBlock: true,
-	})
-	p := env.config.Policies
-	require.NotNil(t, p)
-	require.Len(t, p.Policies, 1)
-	require.Equal(t, types.MetaNamespaceID, p.Policies[0].Namespace)
-	nsp := protoblocktx.NamespacePolicy{}
-	require.NoError(t, proto.Unmarshal(p.Policies[0].Policy, &nsp))
-	nsVerifier, err := signature.NewNsVerifier(nsp.Scheme, nsp.PublicKey)
-	require.NoError(t, err)
-	require.NotNil(t, nsVerifier)
+func (env *sidecarTestEnv) requireBlock(
+	ctx context.Context,
+	t *testing.T,
+	expectedBlockNumber uint64,
+) *common.Block {
+	t.Helper()
+	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
+	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
+
+	block := <-env.committedBlock
+	require.NotNil(t, block)
+	require.NotNil(t, block.Header)
+	require.Equal(t, expectedBlockNumber, block.Header.Number)
+	return block
 }
 
 func TestConstructStatuses(t *testing.T) {
@@ -381,5 +463,5 @@ func checkLastCommittedBlock(
 			return false
 		}
 		return expectedBlockNumber == lastBlock.Number
-	}, 15*time.Second, 1*time.Second)
+	}, expectedProcessingTime, 1*time.Second)
 }

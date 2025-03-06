@@ -205,6 +205,8 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 				NamespacePolicies: make(map[string]*workload.Policy),
 			},
 		}
+		// We create the crypto profile for the generated namespace to ensure consistency.
+		c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
 		for _, cr := range c.GetAllCrypto() {
 			loadgenConfig.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
 		}

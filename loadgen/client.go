@@ -2,9 +2,10 @@ package loadgen
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
+
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
@@ -13,7 +14,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -31,46 +31,39 @@ type (
 		RunWorkload(ctx context.Context, txStream adapters.TxStream) error
 		// Progress returns a value that indicates progress as the number grows.
 		Progress() uint64
+		// Supports specify which phases an adapter supports.
+		Supports() adapters.Phases
 	}
 
 	// clientStream implements the TxStream interface.
 	clientStream struct {
-		metaChan  channel.Reader[*protoblocktx.Tx]
-		txStream  *workload.TxStream
-		blockSize uint64
+		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
+		txStream         *workload.TxStream
+		blockSize        uint64
 	}
 
-	// clientBlockGenerator is a block generator that first submit blocks from the metaChan,
+	// clientBlockGenerator is a block generator that first submit blocks from the workloadSetupTXs,
 	// and blocks until indicated that it was committed.
 	// Then, it submits blocks from the tx stream.
 	clientBlockGenerator struct {
-		metaChan channel.Reader[*protoblocktx.Tx]
-		blockGen workload.Generator[*protoblocktx.Block]
+		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
+		blockGen         workload.Generator[*protoblocktx.Block]
 	}
 
-	// clientTxGenerator is a TX generator that first submit TXs from the metaChan,
+	// clientTxGenerator is a TX generator that first submit TXs from the workloadSetupTXs,
 	// and blocks until indicated that it was committed.
 	// Then, it submits transactions from the tx stream.
 	clientTxGenerator struct {
-		metaChan channel.Reader[*protoblocktx.Tx]
-		txGen    workload.Generator[*protoblocktx.Tx]
+		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
+		txGen            workload.Generator[*protoblocktx.Tx]
 	}
 )
 
-var (
-	logger          = logging.New("load-gen-client")
-	defaultGenerate = Generate{
-		Namespaces: true,
-		Load:       true,
-	}
-)
+var logger = logging.New("load-gen-client")
 
 // NewLoadGenClient creates a new client instance.
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	logger.Infof("Config passed: %s", utils.LazyJson(conf))
-	if conf.Generate == nil || !(conf.Generate.Load || conf.Generate.Namespaces) {
-		conf.Generate = &defaultGenerate
-	}
 
 	c := &Client{
 		conf:     conf,
@@ -85,8 +78,8 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	c.adapter = adapter
+	conf.Generate = adapters.PhasesIntersect(conf.Generate, adapter.Supports())
 	return c, nil
 }
 
@@ -121,10 +114,10 @@ func (c *Client) Run(ctx context.Context) error {
 	})
 	c.txStream.WaitForReady(gCtx)
 
-	metaChan := make(chan *protoblocktx.Tx, 1)
+	workloadSetupTXs := make(chan *protoblocktx.Tx, 1)
 	cs := &clientStream{
-		blockSize: c.conf.LoadProfile.Block.Size,
-		metaChan:  channel.NewReader(gCtx, metaChan),
+		blockSize:        c.conf.LoadProfile.Block.Size,
+		workloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
 	}
 	if c.conf.Generate.Load {
 		cs.txStream = c.txStream
@@ -133,11 +126,11 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.adapter.RunWorkload(gCtx, cs)
 	})
 
-	if err := c.submitMetaTXs(ctx, metaChan); err != nil {
-		logger.Errorf("Failed to process meta tx: %v", err)
+	if err := c.submitWorkloadSetupTXs(gCtx, workloadSetupTXs); err != nil {
+		logger.Errorf("Failed to process tx: %v", err)
 		cancel()
 		if gErr := g.Wait(); gErr != nil {
-			return fmt.Errorf("failed to process meta TX: %w", gErr)
+			return errors.Wrap(gErr, "failed to process TX")
 		}
 		return err
 	}
@@ -148,41 +141,58 @@ func (c *Client) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-// submitMetaTXs writes the meta TXs to the channel, and waits for them to be committed.
-func (c *Client) submitMetaTXs(ctx context.Context, metaChanIn chan *protoblocktx.Tx) error {
-	defer close(metaChanIn)
-	if !c.conf.Generate.Namespaces {
-		return nil
-	}
+// submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.
+func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoblocktx.Tx) error {
+	defer close(txs)
 
-	metaChan := channel.NewWriter(ctx, metaChanIn)
-	curProgress := c.adapter.Progress()
-
-	meta, err := workload.CreateNamespaces(c.conf.LoadProfile.Transaction.Policy)
+	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Submitting meta TX. Progress: %d", curProgress)
-	if !metaChan.Write(meta) {
-		return errors.New("context ended before submitting meta TX")
-	}
-
-	for lastProgress := curProgress; curProgress == lastProgress; curProgress = c.adapter.Progress() {
-		select {
-		case <-ctx.Done():
-			return errors.New("context ended before acknowledging meta TX")
-		case <-time.Tick(time.Second):
+	txChan := channel.NewWriter(ctx, txs)
+	curProgress := c.adapter.Progress()
+	for _, tx := range workloadSetupTXs {
+		logger.Infof("Submitting TX [%s]. Progress: %d", tx.Id, curProgress)
+		if !txChan.Write(tx) {
+			return errors.New("context ended before submitting TX")
 		}
+
+		for lastProgress := curProgress; curProgress == lastProgress; curProgress = c.adapter.Progress() {
+			select {
+			case <-ctx.Done():
+				return errors.New("context ended before acknowledging TX")
+			case <-time.Tick(time.Second):
+			}
+		}
+		logger.Infof("TX [%s] submitted. Progress: %d", tx.Id, curProgress)
 	}
-	logger.Infof("Meta TX submitted. Progress: %d", curProgress)
 	return nil
+}
+
+func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoblocktx.Tx, error) {
+	workloadSetupTXs := make([]*protoblocktx.Tx, 0, 2)
+	if config.Generate.Config {
+		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create a config tx")
+		}
+		workloadSetupTXs = append(workloadSetupTXs, configTX)
+	}
+	if config.Generate.Namespaces {
+		metaNsTX, err := workload.CreateNamespaces(config.LoadProfile.Transaction.Policy)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create namespaces meta tx")
+		}
+		workloadSetupTXs = append(workloadSetupTXs, metaNsTX)
+	}
+	return workloadSetupTXs, nil
 }
 
 // MakeBlocksGenerator instantiate clientBlockGenerator.
 func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protoblocktx.Block] {
 	cg := &clientBlockGenerator{
-		metaChan: c.metaChan,
+		workloadSetupTXs: c.workloadSetupTXs,
 	}
 	if c.txStream != nil {
 		cg.blockGen = &workload.BlockGenerator{
@@ -196,7 +206,7 @@ func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protoblocktx.Bl
 // MakeTxGenerator instantiate clientTxGenerator.
 func (c *clientStream) MakeTxGenerator() workload.Generator[*protoblocktx.Tx] {
 	cg := &clientTxGenerator{
-		metaChan: c.metaChan,
+		workloadSetupTXs: c.workloadSetupTXs,
 	}
 	if c.txStream != nil {
 		cg.txGen = c.txStream.MakeGenerator()
@@ -206,14 +216,14 @@ func (c *clientStream) MakeTxGenerator() workload.Generator[*protoblocktx.Tx] {
 
 // Next generate the next block.
 func (g *clientBlockGenerator) Next() *protoblocktx.Block {
-	if g.metaChan != nil {
-		if metaTX, ok := g.metaChan.Read(); ok {
+	if g.workloadSetupTXs != nil {
+		if tx, ok := g.workloadSetupTXs.Read(); ok {
 			return &protoblocktx.Block{
-				Txs:    []*protoblocktx.Tx{metaTX},
+				Txs:    []*protoblocktx.Tx{tx},
 				TxsNum: []uint32{0},
 			}
 		}
-		g.metaChan = nil
+		g.workloadSetupTXs = nil
 	}
 	if g.blockGen != nil {
 		return g.blockGen.Next()
@@ -223,11 +233,11 @@ func (g *clientBlockGenerator) Next() *protoblocktx.Block {
 
 // Next generate the next TX.
 func (g *clientTxGenerator) Next() *protoblocktx.Tx {
-	if g.metaChan != nil {
-		if metaTx, ok := g.metaChan.Read(); ok {
-			return metaTx
+	if g.workloadSetupTXs != nil {
+		if tx, ok := g.workloadSetupTXs.Read(); ok {
+			return tx
 		}
-		g.metaChan = nil
+		g.workloadSetupTXs = nil
 	}
 	if g.txGen != nil {
 		return g.txGen.Next()

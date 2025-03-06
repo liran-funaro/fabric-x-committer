@@ -1,35 +1,34 @@
 package sidecar
 
 import (
-	"errors"
-
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/common/channelconfig"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/protoutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"google.golang.org/protobuf/proto"
 )
 
 // Config holds the configuration of the sidecar service. This includes
-// sidecar endpoint, orderer endpoint from which the sidecar pulls the block,
-// committer endpoint to which the sidecar pushes the block and pulls statuses,
-// and the config of ledger service.
+// sidecar endpoint, committer endpoint to which the sidecar pushes the block and pulls statuses,
+// and the config of ledger service, and the orderer setup.
+// It may contain the orderer endpoint from which the sidecar pulls blocks.
 type Config struct {
-	Server     *connection.ServerConfig `mapstructure:"server"`
-	Monitoring monitoring.Config        `mapstructure:"monitoring"`
-	Orderer    broadcastdeliver.Config  `mapstructure:"orderer"`
-	Committer  CoordinatorConfig        `mapstructure:"committer"`
-	Ledger     LedgerConfig             `mapstructure:"ledger"`
-	// ConfigBlockPath if set, it will overwrite the above configurations with the ones from the config block.
-	ConfigBlockPath string `mapstructure:"config-block-path"`
-	// Policies are used internally, but cannot be passed via the yaml file.
-	// It will be removed once the coordinator process config TXs.
-	Policies *protoblocktx.Policies
+	Server    *connection.ServerConfig `mapstructure:"server"`
+	Committer CoordinatorConfig        `mapstructure:"committer"`
+	Ledger    LedgerConfig             `mapstructure:"ledger"`
+	Orderer   broadcastdeliver.Config  `mapstructure:"orderer"`
+	Bootstrap Bootstrap                `mapstructure:"bootstrap"`
+}
+
+// Bootstrap configures how to obtain the bootstrap configuration.
+type Bootstrap struct {
+	// GenesisBlockFilePath is the path for the genesis block.
+	// If omitted, the local configuration will be used.
+	GenesisBlockFilePath string `mapstructure:"genesis-block-file-path" yaml:"genesis-block-file-path,omitempty"`
 }
 
 // CoordinatorConfig holds the endpoint of the coordinator component in the
@@ -42,62 +41,46 @@ type LedgerConfig struct {
 	Path string `mapstructure:"path"`
 }
 
-// OverwriteConfigFromBlock overwrites the sidecar configuration with relevant fields from the config block.
-// For now, it fetches the following:
-// - Policies.
-// - Orderer endpoints.
-func OverwriteConfigFromBlock(conf *Config, configBlock *cb.Block) error {
-	bundle, err := bundleFromConfigBlock(configBlock)
-	if err != nil {
-		return err
+// LoadBootstrapConfig loads the bootstrap config according to the bootstrap method.
+func LoadBootstrapConfig(conf *Config) error {
+	if conf.Bootstrap.GenesisBlockFilePath == "" {
+		return nil
 	}
-	conf.Policies, err = policiesFromConfigBlock(bundle)
+	return OverwriteConfigFromBlockFile(conf)
+}
+
+// OverwriteConfigFromBlockFile overwrites the orderer connection with fields from the bootstrap config block.
+func OverwriteConfigFromBlockFile(conf *Config) error {
+	configBlock, err := configtxgen.ReadBlock(conf.Bootstrap.GenesisBlockFilePath)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "read config block")
+	}
+	return OverwriteConfigFromBlock(conf, configBlock)
+}
+
+// OverwriteConfigFromBlock overwrites the orderer connection with fields from a config block.
+func OverwriteConfigFromBlock(conf *Config, configBlock *common.Block) error {
+	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed to extract envelope")
+	}
+	return OverwriteConfigFromEnvelope(conf, envelope)
+}
+
+// OverwriteConfigFromEnvelope overwrites the orderer connection with fields from a config transaction.
+// For now, it fetches the following:
+// - Orderer endpoints.
+// TODO: Fetch Root CAs.
+func OverwriteConfigFromEnvelope(conf *Config, envelope *common.Envelope) error {
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	if err != nil {
+		return errors.Wrap(err, "failed to create config bundle")
 	}
 	conf.Orderer.Connection.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-func bundleFromConfigBlock(configBlock *cb.Block) (*channelconfig.Bundle, error) {
-	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
-	if err != nil {
-		return nil, err
-	}
-	return channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
-}
-
-// policiesFromConfigBlock will be removed once the coordinator will process config TXs.
-func policiesFromConfigBlock(bundle *channelconfig.Bundle) (*protoblocktx.Policies, error) {
-	ac, ok := bundle.ApplicationConfig()
-	if !ok {
-		return nil, errors.New("application configuration is missing")
-	}
-	acx, ok := ac.(*channelconfig.ApplicationConfig)
-	if !ok {
-		return nil, errors.New("application configuration of incorrect type")
-	}
-	key := acx.MetaNamespaceVerificationKey()
-	p := &protoblocktx.NamespacePolicy{
-		// We use existing proto here to avoid introducing new once.
-		// So we encode the key schema as the identifier.
-		// This will be replaced in the future with a generic policy mechanism.
-		Scheme:    key.KeyIdentifier,
-		PublicKey: key.KeyMaterial,
-	}
-	pBytes, err := proto.Marshal(p)
-	if err != nil {
-		return nil, err
-	}
-	return &protoblocktx.Policies{
-		Policies: []*protoblocktx.PolicyItem{{
-			Namespace: types.MetaNamespaceID,
-			Policy:    pBytes,
-		}},
-	}, nil
 }
 
 func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*connection.OrdererEndpoint, error) {

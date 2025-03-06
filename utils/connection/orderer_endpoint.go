@@ -34,6 +34,20 @@ var (
 	ErrorInvalidEndpoint    = errors.New("invalid endpoint")
 )
 
+// NewOrdererEndpoints is a helper function to generate a list of OrdererEndpoint(s) from ServerConfig(s).
+func NewOrdererEndpoints(id uint32, msp string, configs ...*ServerConfig) []*OrdererEndpoint {
+	ordererEndpoints := make([]*OrdererEndpoint, len(configs))
+	for i, c := range configs {
+		ordererEndpoints[i] = &OrdererEndpoint{
+			ID:       id,
+			MspID:    msp,
+			API:      []string{Broadcast, Deliver},
+			Endpoint: c.Endpoint,
+		}
+	}
+	return ordererEndpoints
+}
+
 // String returns a deterministic representation of the endpoint.
 func (e *OrdererEndpoint) String() string {
 	var output strings.Builder

@@ -141,7 +141,7 @@ $(cache_dir) $(mod_cache_dir):
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
 BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor \
-			  loadgen coordinator_setup mockvcservice mocksigservice mockorderingservice
+			  loadgen mockvcservice mocksigservice mockorderingservice
 
 build: $(output_dir) $(BUILD_TARGETS)
 
@@ -172,9 +172,6 @@ queryexecutor: FORCE $(output_dir)
 loadgen: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/loadgen" ./cmd/loadgen
 
-coordinator_setup: FORCE $(output_dir)
-	$(go_build) "$(output_dir)/coordinator_setup" ./cmd/coordinatorservice/setup_helper
-
 mockvcservice: FORCE $(output_dir)
 	$(go_build) "$(output_dir)/mockvcservice" ./cmd/mockvcservice
 
@@ -196,7 +193,7 @@ build-docker: FORCE $(cache_dir) $(mod_cache_dir)
     make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
-build-test-node-image: build-arch
+build-test-node-image: build-arch pull-db-image
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
 		-t ${image_namespace}/committer-test-node:${version} \
@@ -216,6 +213,9 @@ build-mock-orderer-image: build-arch
 		--build-arg PORTS=4001 \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		.
+
+pull-db-image: FORCE
+	${docker_cmd} pull ${db_image}
 
 lint: FORCE
 	@echo "Running Go Linters..."

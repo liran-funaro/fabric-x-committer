@@ -12,8 +12,7 @@ service Coordinator {
     rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {}
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
-    // This method will be removed once the config block is processed by the coordinator.
-    rpc UpdatePolicies(protoblocktx.Policies) returns (Empty);
+    rpc GetPolicies(Empty) returns (protoblocktx.Policies) {};
     rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
 }
 

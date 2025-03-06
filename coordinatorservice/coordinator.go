@@ -218,7 +218,7 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return g.Wait()
 	}
 
-	if err := c.validatorCommitterMgr.getPolicies(ctx); err != nil {
+	if err := c.validatorCommitterMgr.fetchPoliciesAndUpdatePolicyManager(ctx); err != nil {
 		return err
 	}
 
@@ -251,11 +251,11 @@ func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
 	return c.initializationDone.WaitForReady(ctx)
 }
 
-// UpdatePolicies updates the verification policies.
-func (c *CoordinatorService) UpdatePolicies(
-	ctx context.Context, p *protoblocktx.Policies,
-) (*protocoordinatorservice.Empty, error) {
-	return &protocoordinatorservice.Empty{}, c.policyMgr.updatePolicies(ctx, p)
+// GetPolicies updates the verification policies.
+func (c *CoordinatorService) GetPolicies(
+	ctx context.Context, _ *protocoordinatorservice.Empty,
+) (*protoblocktx.Policies, error) {
+	return c.validatorCommitterMgr.getPolicies(ctx)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

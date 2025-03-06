@@ -157,15 +157,12 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 		// namespace in question should be included in the readOnlyKeys of these subsequent normal
 		// transactions. This method establishes a dependency from normal transactions to the namespace
 		// lifecycle transaction, maintaining the correct sequence of operations.
-		// NOTE: if ns.NsID is a types.MetaNamespaceID, we should use the config namespaceID instead
-		//       of types.MetaNamespaceID when constructing the composite key. This approach would introduce
-		//       dependency between the namespace lifecycle transaction and the config transaction.
-		if ns.NsId != types.MetaNamespaceID {
-			readOnlyKeys = append(
-				readOnlyKeys,
-				constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId)),
-			)
-		}
+		// For types.MetaNamespaceID, This approach introduce dependency between the namespace lifecycle transaction
+		// and config transaction.
+		readOnlyKeys = append(
+			readOnlyKeys,
+			constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId)),
+		)
 
 		for _, ro := range ns.ReadsOnly {
 			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(ns.NsId, ro.Key))

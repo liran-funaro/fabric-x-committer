@@ -9,7 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
@@ -19,7 +22,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
-	"google.golang.org/grpc"
 )
 
 func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
@@ -124,7 +126,7 @@ func GenerateNamespacesUnderTest(t *testing.T, namespaces []string) *yuga.Connec
 		}
 	}
 	clientConf.LoadProfile.Transaction.Policy = policy
-	clientConf.Generate = &Generate{Namespaces: true}
+	clientConf.Generate = adapters.Phases{Namespaces: true}
 	runLoadGenerator(t, clientConf)
 	return conn
 }
@@ -139,11 +141,11 @@ func defaultClientConf() *ClientConfig {
 				ReadWriteCount: workload.NewConstantDistribution(2),
 				Policy: &workload.PolicyProfile{
 					NamespacePolicies: map[string]*workload.Policy{
-						"0": {
+						workload.GeneratedNamespaceID: {
 							Scheme: signature.Ecdsa,
 							Seed:   10,
 						},
-						"_meta": {
+						types.MetaNamespaceID: {
 							Scheme: signature.Ecdsa,
 							Seed:   11,
 						},
@@ -163,7 +165,8 @@ func defaultClientConf() *ClientConfig {
 			BuffersSize: 1,
 			GenBatch:    1,
 		},
-		Generate: &Generate{
+		Generate: adapters.Phases{
+			Config:     true,
 			Namespaces: true,
 			Load:       true,
 		},

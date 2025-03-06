@@ -148,9 +148,17 @@ func (vcm *validatorCommitterManager) getTransactionsStatus(
 	return nil, errors.Wrap(err, "failed to get transactions status")
 }
 
+func (vcm *validatorCommitterManager) fetchPoliciesAndUpdatePolicyManager(ctx context.Context) error {
+	policyMsg, err := vcm.getPolicies(ctx)
+	if err != nil {
+		return err
+	}
+	return vcm.config.policyMgr.updatePolicies(ctx, policyMsg)
+}
+
 func (vcm *validatorCommitterManager) getPolicies(
 	ctx context.Context,
-) error {
+) (*protoblocktx.Policies, error) {
 	var errs []error
 	for _, vc := range vcm.validatorCommitter {
 		policyMsg, err := vc.client.GetPolicies(ctx, nil)
@@ -158,9 +166,9 @@ func (vcm *validatorCommitterManager) getPolicies(
 			errs = append(errs, err)
 			continue
 		}
-		return vcm.config.policyMgr.updatePolicies(ctx, policyMsg)
+		return policyMsg, nil
 	}
-	return errors.Wrap(errors.Join(errs...), "failed loading policy: %w")
+	return nil, errors.Wrap(errors.Join(errs...), "failed loading policy")
 }
 
 func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfMetrics, policyMgr *policyManager) (

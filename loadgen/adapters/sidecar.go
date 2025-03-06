@@ -5,14 +5,13 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -33,18 +32,6 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) *Sidec
 
 // RunWorkload applies load on the sidecar.
 func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	coordinatorConn, err := connection.Connect(connection.NewDialConfig(c.config.Coordinator.Endpoint))
-	if err != nil {
-		return fmt.Errorf(
-			"failed to connect to coordinator on %s: %w", c.config.Coordinator.Endpoint.String(), err,
-		)
-	}
-	defer connection.CloseConnectionsLog(coordinatorConn)
-	coordinatorClient := protocoordinatorservice.NewCoordinatorClient(coordinatorConn)
-	if err = c.setupCoordinator(ctx, coordinatorClient); err != nil {
-		return err
-	}
-
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
 		ChannelID: c.config.Orderer.ChannelID,
 		Endpoint:  c.config.Endpoint,
@@ -94,6 +81,17 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 	return g.Wait()
 }
 
+// Supports specify which phases an adapter supports.
+// The sidecar does not support config transactions as it filters them.
+// To generate a config TX, the orderer must submit a config block.
+func (*SidecarAdapter) Supports() Phases {
+	return Phases{
+		Config:     false,
+		Namespaces: true,
+		Load:       true,
+	}
+}
+
 func (c *SidecarAdapter) sendTransactions(
 	ctx context.Context, txStream TxStream, stream *broadcastdeliver.EnvelopedStream,
 ) error {
@@ -123,9 +121,19 @@ func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue c
 		}
 
 		statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
-		logger.Infof("Received block [%d:%d] with %d status codes: %+v",
-			block.Header.Number, len(block.Data.Data), len(statusCodes), statusCodes,
+
+		logger.Infof("Received block [%d:%d] with %d status codes",
+			block.Header.Number, len(block.Data.Data), len(statusCodes),
 		)
+		// Recap of the status codes.
+		codes := make(map[byte]uint64)
+		for _, code := range statusCodes {
+			codes[code]++
+		}
+		for code, count := range codes {
+			logger.Infof("  * Code: %s x %d", protoblocktx.Status(code).String(), count)
+		}
+
 		for i, data := range block.Data.Data {
 			_, channelHeader, err := serialization.UnwrapEnvelope(data)
 			if err != nil {
@@ -133,7 +141,7 @@ func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue c
 				continue
 			}
 			if common.HeaderType(channelHeader.Type) == common.HeaderType_CONFIG {
-				// We can ignore config blocks as we only count data transactions.
+				// We can ignore config transactions as we only count data transactions.
 				continue
 			}
 			c.res.Metrics.OnReceiveTransaction(
