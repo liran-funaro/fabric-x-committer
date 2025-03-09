@@ -161,10 +161,10 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		monitoring.SetQueueSize(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
-		monitoring.SetQueueSize(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
-		monitoring.SetQueueSize(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
-		monitoring.SetQueueSize(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
+		monitoring.SetGauge(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
+		monitoring.SetGauge(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
+		monitoring.SetGauge(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
+		monitoring.SetGauge(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
 	}
 }
 

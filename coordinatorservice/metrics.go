@@ -101,15 +101,3 @@ func newPerformanceMetrics() *perfMetrics {
 		}),
 	}
 }
-
-func (s *perfMetrics) transactionReceived(n int) {
-	s.transactionReceivedTotal.Add(float64(n))
-}
-
-func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
-	c.Add(float64(n))
-}
-
-func (s *perfMetrics) setQueueSize(queue prometheus.Gauge, size int) {
-	queue.Set(float64(size))
-}

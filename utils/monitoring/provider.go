@@ -192,13 +192,13 @@ func AddToCounter(c prometheus.Counter, n int) {
 }
 
 // AddToGauge adds a value to a prometheus gauge.
-func AddToGauge(c prometheus.Gauge, n int) {
-	c.Add(float64(n))
+func AddToGauge(g prometheus.Gauge, n int) {
+	g.Add(float64(n))
 }
 
-// SetQueueSize sets a prometheus gauge to a value.
-func SetQueueSize(queue prometheus.Gauge, size int) {
-	queue.Set(float64(size))
+// SetGauge sets a prometheus gauge to a value.
+func SetGauge(g prometheus.Gauge, size int) {
+	g.Set(float64(size))
 }
 
 // Observe observes a prometheus histogram.

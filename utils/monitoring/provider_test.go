@@ -113,7 +113,7 @@ func TestNewGuage(t *testing.T) {
 	g.Sub(3)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 7"})
 
-	SetQueueSize(g, 5)
+	SetGauge(g, 5)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 5"})
 }
 

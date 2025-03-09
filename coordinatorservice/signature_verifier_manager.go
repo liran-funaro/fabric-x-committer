@@ -18,6 +18,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type (
@@ -384,7 +385,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return
 		}
 
-		sv.metrics.addToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
+		monitoring.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
 	}
 }
 
