@@ -14,8 +14,8 @@ scrape_configs:
     static_configs:
       - targets:
           - vcservice:2110
-  - job_name: blockgens_service
+  - job_name: loadgens_service
     static_configs:
       - targets:
-          - blockgen:2110
+          - loadgen:2110
 

@@ -162,14 +162,14 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 
 // Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	addr := util.ExtractRemoteAddress(stream.Context())
-	logger.Infof("Starting delivery with %s", addr)
-	defer logger.Infof("Finished delivery with %s", addr)
-
 	start, end, err := readSeekInfo(stream)
 	if err != nil {
 		return status.Errorf(codes.InvalidArgument, "failed reading seek request: %s", err)
 	}
+
+	addr := util.ExtractRemoteAddress(stream.Context())
+	logger.Infof("Starting delivery with %s [%d -> %d]", addr, start, end)
+	defer logger.Infof("Finished delivery with %s", addr)
 
 	ctx := stream.Context()
 	// Ensures releasing the waiters when this context ends.

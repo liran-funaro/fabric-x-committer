@@ -139,5 +139,5 @@ docker run --name sc_yugabyte_unit_tests \
 bin/sigservice --configs config/config-sigservice.yaml
 bin/shardsservice --configs config/config-shardsservice.yaml
 bin/coordinator --configs config/config-coordinator.yaml
-bin/blockgen stream --configs config/config-blockgen.yaml
+bin/loadgen stream --configs config/config-loadgen.yaml
 ```

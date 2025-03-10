@@ -56,7 +56,7 @@ func (p *Provider) StartPrometheusServer(
 		Handler:     mux,
 	}
 
-	l, err := connection.Listen(serverConfig)
+	l, err := serverConfig.Listener()
 	if err != nil {
 		return errors.Wrap(err, "failed to start prometheus server")
 	}

@@ -3,6 +3,7 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
@@ -29,39 +30,39 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 	m := &PerfMetrics{
 		Provider: p,
 		blockSentTotal: p.NewIntCounter(prometheus.CounterOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Name:      "block_sent_total",
 			Help:      "Total number of blocks sent by the block generator",
 		}),
 		transactionSentTotal: p.NewIntCounter(prometheus.CounterOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Name:      "transaction_sent_total",
 			Help:      "Total number of transactions sent by the block generator",
 		}),
 		transactionReceivedTotal: p.NewIntCounter(prometheus.CounterOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
 		}),
 		transactionCommittedTotal: p.NewIntCounter(prometheus.CounterOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Name:      "transaction_committed_total",
 			Help:      "Total number of transaction commit statuses received by the block generator",
 		}),
 		transactionAbortedTotal: p.NewIntCounter(prometheus.CounterOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
 		validTransactionLatencySecond: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Subsystem: "",
 			Name:      "valid_transaction_latency_seconds",
 			Help:      "Latency of transactions in seconds",
 			Buckets:   buckets,
 		}),
 		invalidTransactionLatencySecond: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "blockgen",
+			Namespace: "loadgen",
 			Subsystem: "",
 			Name:      "invalid_transaction_latency_seconds",
 			Help:      "Latency of invalid transactions in seconds",

@@ -2,15 +2,18 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
@@ -32,53 +35,59 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) *Sidec
 
 // RunWorkload applies load on the sidecar.
 func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
-		ChannelID: c.config.Orderer.ChannelID,
-		Endpoint:  c.config.Endpoint,
+	if len(c.config.OrdererServers) == 0 {
+		return errors.New("no orderer servers configured")
+	}
+	orderer, err := mock.NewMockOrderer(&mock.OrdererConfig{
+		ServerConfigs: c.config.OrdererServers,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create listener: %w", err)
+		return errors.Wrap(err, "failed to create orderer")
 	}
-	logger.Info("Listener created")
-
-	broadcastSubmitter, err := broadcastdeliver.New(&c.config.Orderer)
-	if err != nil {
-		return fmt.Errorf("failed to create orderer clients: %w", err)
-	}
-	defer broadcastSubmitter.Close()
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	committedBlock := make(chan *common.Block, 100)
 	g.Go(func() error {
-		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
-			OutputBlock: committedBlock,
+		return connection.StartService(gCtx, orderer, nil, nil)
+	})
+	for _, conf := range c.config.OrdererServers {
+		conf := conf
+		g.Go(func() error {
+			return connection.RunGrpcServerMainWithError(gCtx, conf, func(s *grpc.Server) {
+				ab.RegisterAtomicBroadcastServer(s, orderer)
+			})
+		})
+	}
+
+	// The sidecar adapter submits a config block manually.
+	policy := *c.res.Profile.Transaction.Policy
+	policy.OrdererEndpoints = connection.NewOrdererEndpoints(0, "msp", c.config.OrdererServers...)
+	configBlock, err := workload.CreateConfigBlock(&policy)
+	if err != nil {
+		return errors.Wrap(err, "failed to create config block")
+	}
+	orderer.SubmitBlock(ctx, configBlock)
+
+	g.Go(func() error {
+		return runReceiver(gCtx, &receiverConfig{
+			ChannelID: c.config.ChannelID,
+			Endpoint:  c.config.SidecarEndpoint,
+			Res:       c.res,
 		})
 	})
 	g.Go(func() error {
-		c.receiveCommittedBlock(gCtx, committedBlock)
-		return nil
-	})
-
-	for range c.config.BroadcastParallelism {
-		g.Go(func() error {
-			stream, err := broadcastSubmitter.Broadcast(gCtx)
+		return c.sendBlocks(gCtx, txStream, func(block *protoblocktx.Block) error {
+			fabricBlock, err := c.mapSidecarBlock(block)
 			if err != nil {
 				return err
 			}
-			g.Go(func() error {
-				err := c.sendTransactions(gCtx, txStream, stream)
-				// Insufficient quorum may happen when the context ends due to unavailable servers.
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				return err
-			})
+			if !orderer.SubmitBlock(gCtx, fabricBlock) {
+				return errors.New("failed to submit block")
+			}
 			return nil
 		})
-	}
-	return g.Wait()
+	})
+	return errors.Wrap(g.Wait(), "failed running workload")
 }
 
 // Supports specify which phases an adapter supports.
@@ -92,61 +101,24 @@ func (*SidecarAdapter) Supports() Phases {
 	}
 }
 
-func (c *SidecarAdapter) sendTransactions(
-	ctx context.Context, txStream TxStream, stream *broadcastdeliver.EnvelopedStream,
-) error {
-	txGen := txStream.MakeTxGenerator()
-	for ctx.Err() == nil {
-		tx := txGen.Next()
-		if tx == nil {
-			// If the context ended, the generator returns nil.
-			break
-		}
-		txID, resp, err := stream.SubmitWithEnv(tx)
+func (c *SidecarAdapter) mapSidecarBlock(block *protoblocktx.Block) (*common.Block, error) {
+	data := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		env, _, err := serialization.CreateEnvelope(c.config.ChannelID, nil, tx)
 		if err != nil {
-			return err
+			return nil, errors.Wrap(err, "failed creating envelope")
 		}
-		logger.Debugf("Sent TX %s, got ack: %s", txID, resp.Info)
-		c.res.Metrics.OnSendTransaction(txID)
-	}
-	return nil
-}
-
-func (c *SidecarAdapter) receiveCommittedBlock(ctx context.Context, blockQueue chan *common.Block) {
-	committedBlock := channel.NewReader(ctx, blockQueue)
-	for ctx.Err() == nil {
-		block, ok := committedBlock.Read()
-		if !ok {
-			return
-		}
-
-		statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
-
-		logger.Infof("Received block [%d:%d] with %d status codes",
-			block.Header.Number, len(block.Data.Data), len(statusCodes),
-		)
-		// Recap of the status codes.
-		codes := make(map[byte]uint64)
-		for _, code := range statusCodes {
-			codes[code]++
-		}
-		for code, count := range codes {
-			logger.Infof("  * Code: %s x %d", protoblocktx.Status(code).String(), count)
-		}
-
-		for i, data := range block.Data.Data {
-			_, channelHeader, err := serialization.UnwrapEnvelope(data)
-			if err != nil {
-				logger.Warnf("Failed to unmarshal envelope: %v", err)
-				continue
-			}
-			if common.HeaderType(channelHeader.Type) == common.HeaderType_CONFIG {
-				// We can ignore config transactions as we only count data transactions.
-				continue
-			}
-			c.res.Metrics.OnReceiveTransaction(
-				channelHeader.TxId, protoblocktx.Status(statusCodes[i]),
-			)
+		data[i], err = proto.Marshal(env)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed marshaling envelope")
 		}
 	}
+	return &common.Block{
+		Header: &common.BlockHeader{
+			Number: block.Number,
+		},
+		Data: &common.BlockData{
+			Data: data,
+		},
+	}, nil
 }

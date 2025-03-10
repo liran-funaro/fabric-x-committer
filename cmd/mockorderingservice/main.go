@@ -70,14 +70,11 @@ func startCmd() *cobra.Command {
 			cmd.Printf("Starting %v service\n", serviceName)
 			g, gCtx := errgroup.WithContext(cmd.Context())
 
-			// We run the main server, and only start GRPC service for the others.
-			mainServer := conf.ServerConfigs[0]
+			// We run the main worker, and start GRPC servers.
 			g.Go(func() error {
-				return connection.StartService(gCtx, service, mainServer, func(s *grpc.Server) {
-					ab.RegisterAtomicBroadcastServer(s, service)
-				})
+				return connection.StartService(gCtx, service, nil, nil)
 			})
-			for _, subServer := range conf.ServerConfigs[1:] {
+			for _, subServer := range conf.ServerConfigs {
 				subServer := subServer
 				g.Go(func() error {
 					return connection.RunGrpcServerMainWithError(gCtx, subServer, func(s *grpc.Server) {

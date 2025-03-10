@@ -17,8 +17,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -29,6 +27,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -92,11 +91,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	fakeConfigs := make([]*connection.ServerConfig, conf.NumFakeService)
 	for i := range fakeConfigs {
 		fakeConfigs[i] = &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
-		healthcheck := health.NewServer()
-		healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-		test.RunGrpcServerForTest(t.Context(), t, fakeConfigs[i], func(server *grpc.Server) {
-			healthgrpc.RegisterHealthServer(server, healthcheck)
-		})
+		test.RunGrpcServerForTest(t.Context(), t, fakeConfigs[i])
 	}
 	ordererEndpoints := append(
 		connection.NewOrdererEndpoints(0, "org", ordererServers.Configs...),
@@ -274,12 +269,12 @@ func TestSidecarRecovery(t *testing.T) {
 	env.start(ctx, t, 0)
 	env.requireBlock(ctx, t, 0)
 
-	// 1. Commit block 1 to 10
+	t.Log("1. Commit block 1 to 10")
 	for i := range 10 {
 		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) //nolint:gosec
 	}
 
-	// 2. Stop the sidecar service and ledger service
+	t.Log("2. Stop the sidecar service and ledger service")
 	cancel()
 	require.Eventually(t, func() bool {
 		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
@@ -300,7 +295,7 @@ func TestSidecarRecovery(t *testing.T) {
 	//       Therefore, to simulate it, we use certain Fabric utilities
 	//       to artificially create a situation where the block store
 	//       falls behind the state database by removing blocks.
-	// 3. Remove all blocks from the ledger except block 0
+	t.Log("3. Remove all blocks from the ledger except block 0")
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel2)
@@ -323,24 +318,24 @@ func TestSidecarRecovery(t *testing.T) {
 	require.NoError(t, err)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
 
-	// 4. Make coordinator not idle to ensure sidecar is waiting
+	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
 	env.coordinator.SetWaitingTxsCount(10)
 
-	// 5. Restart the sidecar service and ledger service
+	t.Log("5. Restart the sidecar service and ledger service")
 	env.start(ctx2, t, 11)
 
-	// 6. Recovery should not happen when coordinator is not idle.
+	t.Log("6. Recovery should not happen when coordinator is not idle.")
 	require.Never(t, func() bool {
 		return env.sidecar.ledgerService.GetBlockHeight() > 1
 	}, 3*time.Second, 1*time.Second)
 
-	// 7. Make coordinator idle
+	t.Log("7. Make coordinator idle")
 	env.coordinator.SetWaitingTxsCount(0)
 
-	// 8. Blockstore would recover lost blocks
+	t.Log("8. Blockstore would recover lost blocks")
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
 
-	// 9. Send the next expected block by the coordinator.
+	t.Log("9. Send the next expected block by the coordinator.")
 	sendTransactionsAndEnsureCommitted(ctx2, t, env, 11)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
@@ -395,7 +390,8 @@ func (env *sidecarTestEnv) requireBlock(
 	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
 
-	block := <-env.committedBlock
+	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
+	require.True(t, ok)
 	require.NotNil(t, block)
 	require.NotNil(t, block.Header)
 	require.Equal(t, expectedBlockNumber, block.Header.Number)

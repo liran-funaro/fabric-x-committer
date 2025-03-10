@@ -8,17 +8,25 @@ import (
 type (
 	// AdapterConfig contains all adapters configurations.
 	AdapterConfig struct {
-		VCClient          *VCClientConfig          `mapstructure:"vc-client"`
-		CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
+		OrdererClient     *OrdererClientConfig     `mapstructure:"orderer-client"`
 		SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
+		CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
+		VCClient          *VCClientConfig          `mapstructure:"vc-client"`
 		SigVerifierClient *SVClientConfig          `mapstructure:"sig-verifier-client"`
+	}
+
+	// OrdererClientConfig is a struct that contains the configuration for the orderer client.
+	OrdererClientConfig struct {
+		Orderer              broadcastdeliver.Config `mapstructure:"orderer"`
+		SidecarEndpoint      *connection.Endpoint    `mapstructure:"sidecar-endpoint"`
+		BroadcastParallelism int                     `mapstructure:"broadcast-parallelism"`
 	}
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		Endpoint             *connection.Endpoint    `mapstructure:"endpoint"`
-		Orderer              broadcastdeliver.Config `mapstructure:"orderer"`
-		BroadcastParallelism int                     `mapstructure:"broadcast-parallelism"`
+		ChannelID       string                     `mapstructure:"channel-id"`
+		SidecarEndpoint *connection.Endpoint       `mapstructure:"sidecar-endpoint"`
+		OrdererServers  []*connection.ServerConfig `mapstructure:"orderer-servers"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.

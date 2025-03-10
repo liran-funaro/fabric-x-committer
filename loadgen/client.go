@@ -89,6 +89,8 @@ func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (Se
 		return adapters.NewCoordinatorAdapter(conf.CoordinatorClient, res), nil
 	case conf.VCClient != nil:
 		return adapters.NewVCAdapter(conf.VCClient, res), nil
+	case conf.OrdererClient != nil:
+		return adapters.NewOrdererAdapter(conf.OrdererClient, res), nil
 	case conf.SidecarClient != nil:
 		return adapters.NewSidecarAdapter(conf.SidecarClient, res), nil
 	case conf.SigVerifierClient != nil:

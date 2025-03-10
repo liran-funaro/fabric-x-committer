@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	"io"
-	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -15,7 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -100,14 +103,23 @@ func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, t TestingT, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+	ctx context.Context, t TestingT, serverConfig *connection.ServerConfig, register ...func(server *grpc.Server),
 ) *grpc.Server {
 	t.Helper()
-	server, listener, err := connection.NewGrpcServer(serverConfig)
+	listener, err := serverConfig.Listener()
 	require.NoError(t, err)
+	server := serverConfig.GrpcServer()
 
-	serverConfig.Endpoint.Port = listener.Addr().(*net.TCPAddr).Port
-	register(server)
+	// We register a health check service for all servers in tests to allow waiting for readiness.
+	healthcheck := health.NewServer()
+	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+	healthgrpc.RegisterHealthServer(server, healthcheck)
+
+	// We support instantiating a server with multiple APIs for testing.
+	// We also support no APIs (only the health check API).
+	for _, r := range register {
+		r(server)
+	}
 
 	var wg sync.WaitGroup
 	t.Cleanup(wg.Wait)
@@ -203,7 +215,26 @@ func RunServiceAndGrpcForTest(
 	RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
+	if serverConfig == nil || register == nil {
+		return nil
+	}
 	return RunGrpcServerForTest(ctx, t, serverConfig, register)
+}
+
+// WaitUntilGrpcServerIsReady uses the health check API to check a service readiness.
+func WaitUntilGrpcServerIsReady(
+	ctx context.Context,
+	t TestingT,
+	conn grpc.ClientConnInterface,
+) {
+	if conn == nil {
+		return
+	}
+	healthClient := healthgrpc.NewHealthClient(conn)
+	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{}, grpc.WaitForReady(true))
+	assert.NotEqual(t, codes.Canceled, status.Code(err))
+	require.NoError(t, err)
+	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
 }
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.

@@ -10,8 +10,6 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
@@ -86,17 +84,12 @@ func TestServers(t *testing.T) {
 	})
 
 	// One incorrect server.
-	healthcheck := health.NewServer()
-	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-	fakeServer := test.RunGrpcServerForTest(
-		ctx,
-		t, &connection.ServerConfig{
-			Endpoint: servers[2].Configs[0].Endpoint,
-		}, func(server *grpc.Server) {
-			healthgrpc.RegisterHealthServer(server, healthcheck)
-		},
-	)
-	time.Sleep(3 * time.Second)
+	fakeServer := test.RunGrpcServerForTest(ctx, t, &connection.ServerConfig{
+		Endpoint: servers[2].Configs[0].Endpoint,
+	})
+	newConn, err := connection.LazyConnect(connection.NewDialConfig(&servers[2].Configs[0].Endpoint))
+	require.NoError(t, err)
+	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:            "4",
 		success:       2,
@@ -109,7 +102,9 @@ func TestServers(t *testing.T) {
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], func(server *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(server, ordererService)
 	})
-	time.Sleep(3 * time.Second)
+	newConn, err = connection.LazyConnect(connection.NewDialConfig(&servers[2].Configs[0].Endpoint))
+	require.NoError(t, err)
+	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:      "5",
 		success: 3,

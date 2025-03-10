@@ -35,4 +35,3 @@ monitoring:
 rate-limit:
   endpoint: :6997
   initial-limit: 1000
-

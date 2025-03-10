@@ -24,6 +24,8 @@ type (
 		Endpoint  Endpoint               `mapstructure:"endpoint"`
 		Creds     *ServerCredsConfig     `mapstructure:"creds"`
 		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+
+		preAllocatedListener net.Listener
 	}
 
 	// ServerKeepAliveConfig describes the keep alive parameters.
@@ -68,7 +70,8 @@ func NewLocalHostServer() *ServerConfig {
 	return &ServerConfig{Endpoint: *NewLocalHost()}
 }
 
-func (c *ServerConfig) opts() []grpc.ServerOption {
+// GrpcServer instantiate a [grpc.Server].
+func (c *ServerConfig) GrpcServer() *grpc.Server {
 	var opts []grpc.ServerOption
 	if c.Creds != nil {
 		cert, err := tls.LoadX509KeyPair(c.Creds.CertPath, c.Creds.KeyPath)
@@ -94,12 +97,15 @@ func (c *ServerConfig) opts() []grpc.ServerOption {
 			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
 		}))
 	}
-	return opts
+	return grpc.NewServer(opts...)
 }
 
-// Listen instantiate a [net.Listener] and updates the config port with the effective port.
-func Listen(config *ServerConfig) (net.Listener, error) {
-	listener, err := net.Listen(grpcProtocol, config.Endpoint.Address())
+// Listener instantiate a [net.Listener] and updates the config port with the effective port.
+func (c *ServerConfig) Listener() (net.Listener, error) {
+	if c.preAllocatedListener != nil {
+		return c.preAllocatedListener, nil
+	}
+	listener, err := net.Listen(grpcProtocol, c.Endpoint.Address())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
@@ -109,20 +115,21 @@ func Listen(config *ServerConfig) (net.Listener, error) {
 	if !ok {
 		return nil, errors.Join(errors.New("failed to cast to TCP address"), listener.Close())
 	}
-	config.Endpoint.Port = tcpAddress.Port
+	c.Endpoint.Port = tcpAddress.Port
 
-	logger.Infof("Running server at: %s://%s", grpcProtocol, config.Endpoint.String())
+	logger.Infof("Listening on: %s://%s", grpcProtocol, c.Endpoint.String())
 	return listener, nil
 }
 
-// NewGrpcServer instantiate a [grpc.Server] and [net.Listener].
-func NewGrpcServer(config *ServerConfig) (*grpc.Server, net.Listener, error) {
-	listener, err := Listen(config)
+// PreAllocateListener is used to allocate a port and bind to ahead of the server initialization.
+// It stores the listener object internally to be reused on subsequent calls to Listener().
+func (c *ServerConfig) PreAllocateListener() (net.Listener, error) {
+	listener, err := c.Listener()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	server := grpc.NewServer(config.opts()...)
-	return server, listener, nil
+	c.preAllocatedListener = listener
+	return listener, nil
 }
 
 // RunGrpcServerMainWithError runs a server and returns error if failed.
@@ -131,10 +138,11 @@ func RunGrpcServerMainWithError(
 	serverConfig *ServerConfig,
 	register func(server *grpc.Server),
 ) error {
-	server, listener, err := NewGrpcServer(serverConfig)
+	listener, err := serverConfig.Listener()
 	if err != nil {
 		return err
 	}
+	server := serverConfig.GrpcServer()
 	register(server)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -172,12 +180,14 @@ func StartService(
 		return fmt.Errorf("service is not ready: %w", g.Wait())
 	}
 
-	g.Go(func() error {
-		// If the GRPC server stops, there is no reason to continue the service.
-		defer cancel()
-		return RunGrpcServerMainWithError(gCtx, serverConfig, func(server *grpc.Server) {
-			register(server)
+	if register != nil && serverConfig != nil {
+		g.Go(func() error {
+			// If the GRPC server stops, there is no reason to continue the service.
+			defer cancel()
+			return RunGrpcServerMainWithError(gCtx, serverConfig, func(server *grpc.Server) {
+				register(server)
+			})
 		})
-	})
+	}
 	return g.Wait()
 }

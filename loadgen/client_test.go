@@ -2,6 +2,7 @@ package loadgen
 
 import (
 	_ "embed"
+	"net/http"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
+// We expect at least 3 blocks for a valid test run.
+const defaultExpectedTXs = defaultBlockSize * 3
+
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
 	_, endpoints := activateVcServiceForTest(t, 2)
@@ -30,13 +34,7 @@ func TestLoadGenForVCService(t *testing.T) {
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
 		Endpoints: endpoints,
 	}
-	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
-		return m.TransactionSentTotal > 100 &&
-			m.TransactionReceivedTotal > 100 &&
-			m.TransactionCommittedTotal > 100 &&
-			// We do not expect aborted TXs because the VC does not verify the TXs.
-			m.TransactionAbortedTotal == 0
-	})
+	testLoadGenerator(t, clientConf)
 }
 
 func TestLoadGenForSigVerifier(t *testing.T) {
@@ -65,15 +63,10 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
 		Endpoints: endpoints,
 	}
-	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
-		return m.TransactionSentTotal > 100 &&
-			m.TransactionReceivedTotal > 100 &&
-			m.TransactionCommittedTotal > 100 &&
-			m.TransactionAbortedTotal > 0
-	})
+	testLoadGenerator(t, clientConf)
 }
 
-func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
+func TestLoadGenForCoordinator(t *testing.T) {
 	t.Parallel()
 	_, sigVerServer := mock.StartMockSVService(t, 1)
 	_, vcServer := mock.StartMockVCService(t, 1)
@@ -113,16 +106,66 @@ func TestLoadGenForCoordinator(t *testing.T) { // nolint: gocognit
 	clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
 		Endpoint: &cConf.ServerConfig.Endpoint,
 	}
-	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
-		return m.TransactionSentTotal > 100 &&
-			m.TransactionReceivedTotal > 100 &&
-			m.TransactionCommittedTotal > 100 &&
-			// We do not expect aborted TXs because we use mock sig ver.
-			m.TransactionAbortedTotal == 0
-	})
+	testLoadGenerator(t, clientConf)
 }
 
-func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
+func TestLoadGenForSidecar(t *testing.T) {
+	t.Parallel()
+
+	_, coordinatorServer := mock.StartMockCoordinatorService(t)
+
+	// When using the sidecar adapter, the load generator and the sidecar
+	// should have each other's endpoints.
+	// To avoid manually pre-choosing ports that might conflict with other tests,
+	// we pre allocate them by starting a listener that picks a port automatically and bind to it.
+	// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
+	sidecarServerConf := connection.NewLocalHostServer()
+	preAllocatePorts(t, sidecarServerConf)
+
+	ordererServers := make([]*connection.ServerConfig, 3)
+	for i := range ordererServers {
+		ordererServers[i] = &connection.ServerConfig{
+			Endpoint: connection.Endpoint{Host: "localhost"},
+		}
+		preAllocatePorts(t, ordererServers[i])
+	}
+
+	// Start server under test
+	chanID := "channel"
+	sidecarConf := &sidecar.Config{
+		Server: sidecarServerConf,
+		Orderer: broadcastdeliver.Config{
+			Connection: broadcastdeliver.ConnectionConfig{
+				Endpoints: connection.NewOrdererEndpoints(0, "org", ordererServers...),
+			},
+			ChannelID:     chanID,
+			ConsensusType: broadcastdeliver.Bft,
+		},
+		Committer: sidecar.CoordinatorConfig{
+			Endpoint: coordinatorServer.Configs[0].Endpoint,
+		},
+		Ledger: sidecar.LedgerConfig{
+			Path: t.TempDir(),
+		},
+	}
+	service, err := sidecar.New(sidecarConf)
+	require.NoError(t, err)
+	t.Cleanup(service.Close)
+	test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
+		peer.RegisterDeliverServer(server, service.GetLedgerService())
+	})
+
+	// Start client
+	clientConf := defaultClientConf()
+	clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
+		SidecarEndpoint: &sidecarServerConf.Endpoint,
+		ChannelID:       chanID,
+		OrdererServers:  ordererServers,
+	}
+	testLoadGenerator(t, clientConf)
+}
+
+func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
 	// Start dependencies
 	orderer, ordererServer := mock.StartMockOrderingServices(
@@ -131,16 +174,15 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
 	endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
-	ordererConfig := broadcastdeliver.Config{
-		Connection: broadcastdeliver.ConnectionConfig{
-			Endpoints: endpoints,
-		},
-		ChannelID:     "mychannel",
-		ConsensusType: broadcastdeliver.Bft,
-	}
 	sidecarConf := &sidecar.Config{
-		Server:  connection.NewLocalHostServer(),
-		Orderer: ordererConfig,
+		Server: connection.NewLocalHostServer(),
+		Orderer: broadcastdeliver.Config{
+			Connection: broadcastdeliver.ConnectionConfig{
+				Endpoints: endpoints,
+			},
+			ChannelID:     "mychannel",
+			ConsensusType: broadcastdeliver.Bft,
+		},
 		Committer: sidecar.CoordinatorConfig{
 			Endpoint: coordinatorServer.Configs[0].Endpoint,
 		},
@@ -149,7 +191,7 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 		},
 	}
 
-	// Start server under test
+	// Start sidecar.
 	service, err := sidecar.New(sidecarConf)
 	require.NoError(t, err)
 	t.Cleanup(service.Close)
@@ -166,16 +208,39 @@ func TestLoadGenForSidecar(t *testing.T) { // nolint: gocognit
 	orderer.SubmitBlock(t.Context(), configBlock)
 
 	// Start client
-	clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-		Endpoint:             &sidecarConf.Server.Endpoint,
-		Orderer:              ordererConfig,
+	clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+		SidecarEndpoint:      &sidecarConf.Server.Endpoint,
+		Orderer:              sidecarConf.Orderer,
 		BroadcastParallelism: 5,
 	}
-	testLoadGenerator(t, clientConf, func(m metrics.Values) bool {
-		return m.TransactionSentTotal > 100 &&
-			m.TransactionReceivedTotal > 100 &&
-			m.TransactionCommittedTotal > 100 &&
-			// We do not expect aborted TXs because we use mock sig ver.
+	testLoadGenerator(t, clientConf)
+}
+
+func preAllocatePorts(t *testing.T, server *connection.ServerConfig) {
+	t.Helper()
+	listener, err := server.PreAllocateListener()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+}
+
+func testLoadGenerator(t *testing.T, c *ClientConfig) {
+	t.Helper()
+	client := runLoadGenerator(t, c)
+
+	test.CheckMetrics(t, &http.Client{}, metrics.GetMetricsForTests(t, client.resources.Metrics).URL, []string{
+		"loadgen_block_sent_total",
+		"loadgen_transaction_sent_total",
+		"loadgen_transaction_received_total",
+		"loadgen_valid_transaction_latency_seconds",
+		"loadgen_invalid_transaction_latency_seconds",
+	})
+
+	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
+		return m.TransactionSentTotal > defaultExpectedTXs &&
+			m.TransactionReceivedTotal > defaultExpectedTXs &&
+			m.TransactionCommittedTotal > defaultExpectedTXs &&
 			m.TransactionAbortedTotal == 0
 	})
 }

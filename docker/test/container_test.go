@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
@@ -19,15 +18,13 @@ import (
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/status"
 
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 const (
@@ -236,25 +233,7 @@ func startContainer(
 	}()
 
 	// return if we don't want wait for the health check to pass
-	require.NoError(t, waitUntilReady(ctx, conn))
-}
-
-func waitUntilReady(ctx context.Context, conn grpc.ClientConnInterface) error {
-	if conn == nil {
-		return nil
-	}
-	healthClient := healthgrpc.NewHealthClient(conn)
-	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{}, grpc.WaitForReady(true))
-	if status.Code(err) == codes.Canceled {
-		return errors.Wrap(err, "healthcheck canceled")
-	}
-	if err != nil {
-		return errors.Wrap(err, "healthcheck failed")
-	}
-	if res.Status != healthgrpc.HealthCheckResponse_SERVING {
-		return errors.Newf("invalid status: %s", res.Status)
-	}
-	return nil
+	test.WaitUntilGrpcServerIsReady(ctx, t, conn)
 }
 
 func stopAndRemoveContainersByName(ctx context.Context, t *testing.T, dockerClient *client.Client, names ...string) {

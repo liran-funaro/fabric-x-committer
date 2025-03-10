@@ -1,0 +1,94 @@
+package adapters
+
+import (
+	"context"
+
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+)
+
+type (
+	// OrdererAdapter applies load on the sidecar.
+	OrdererAdapter struct {
+		commonAdapter
+		config *OrdererClientConfig
+	}
+)
+
+// NewOrdererAdapter instantiate OrdererAdapter.
+func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *OrdererAdapter {
+	return &OrdererAdapter{
+		commonAdapter: commonAdapter{res: res},
+		config:        config,
+	}
+}
+
+// RunWorkload applies load on the sidecar.
+func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
+	broadcastSubmitter, err := broadcastdeliver.New(&c.config.Orderer)
+	if err != nil {
+		return errors.Wrap(err, "failed to create orderer clients")
+	}
+	defer broadcastSubmitter.Close()
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return runReceiver(gCtx, &receiverConfig{
+			ChannelID: c.config.Orderer.ChannelID,
+			Endpoint:  c.config.SidecarEndpoint,
+			Res:       c.res,
+		})
+	})
+
+	for range c.config.BroadcastParallelism {
+		g.Go(func() error {
+			stream, err := broadcastSubmitter.Broadcast(gCtx)
+			if err != nil {
+				return errors.Wrap(err, "failed to create a broadcast stream")
+			}
+			g.Go(func() error {
+				err := c.sendTransactions(gCtx, txStream, stream)
+				// Insufficient quorum may happen when the context ends due to unavailable servers.
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return err
+			})
+			return nil
+		})
+	}
+	return errors.Wrap(g.Wait(), "failed running orderer workload")
+}
+
+// Supports specify which phases an adapter supports.
+// The sidecar does not support config transactions as it filters them.
+// To generate a config TX, the orderer must submit a config block.
+func (*OrdererAdapter) Supports() Phases {
+	return Phases{
+		Config:     false,
+		Namespaces: true,
+		Load:       true,
+	}
+}
+
+func (c *OrdererAdapter) sendTransactions(
+	ctx context.Context, txStream TxStream, stream *broadcastdeliver.EnvelopedStream,
+) error {
+	txGen := txStream.MakeTxGenerator()
+	for ctx.Err() == nil {
+		tx := txGen.Next()
+		if tx == nil {
+			// If the context ended, the generator returns nil.
+			break
+		}
+		txID, resp, err := stream.SubmitWithEnv(tx)
+		if err != nil {
+			return errors.Wrap(err, "failed to submit transaction")
+		}
+		logger.Debugf("Sent TX %s, got ack: %s", txID, resp.Info)
+		c.res.Metrics.OnSendTransaction(txID)
+	}
+	return nil
+}

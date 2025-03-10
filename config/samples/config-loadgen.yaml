@@ -1,5 +1,5 @@
-sidecar-client:
-  endpoint: localhost:5000
+orderer-client:
+  sidecar-endpoint: localhost:5000
   coordinator:
     endpoint: localhost:5001
   orderer:

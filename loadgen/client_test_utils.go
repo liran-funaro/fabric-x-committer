@@ -3,7 +3,6 @@ package loadgen
 import (
 	"context"
 	_ "embed"
-	"net/http"
 	"testing"
 	"time"
 
@@ -24,6 +23,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
+const defaultBlockSize = 500
+
 func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
@@ -38,22 +39,6 @@ func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 			m.TransactionAbortedTotal == 0
 	})
 	return client
-}
-
-func testLoadGenerator(
-	t *testing.T, c *ClientConfig, condition func(m metrics.Values) bool,
-) {
-	client := runLoadGenerator(t, c)
-
-	test.CheckMetrics(t, &http.Client{}, metrics.GetMetricsForTests(t, client.resources.Metrics).URL, []string{
-		"blockgen_block_sent_total",
-		"blockgen_transaction_sent_total",
-		"blockgen_transaction_received_total",
-		"blockgen_valid_transaction_latency_seconds",
-		"blockgen_invalid_transaction_latency_seconds",
-	})
-
-	eventuallyMetrics(t, client.resources.Metrics, condition)
 }
 
 func eventuallyMetrics(
@@ -136,7 +121,7 @@ func defaultClientConf() *ClientConfig {
 	return &ClientConfig{
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},
-			Block: workload.BlockProfile{Size: 500},
+			Block: workload.BlockProfile{Size: defaultBlockSize},
 			Transaction: workload.TransactionProfile{
 				ReadWriteCount: workload.NewConstantDistribution(2),
 				Policy: &workload.PolicyProfile{
@@ -151,9 +136,6 @@ func defaultClientConf() *ClientConfig {
 						},
 					},
 				},
-			},
-			Conflicts: workload.ConflictProfile{
-				InvalidSignatures: 0.1,
 			},
 			Seed: 12345,
 			// We use small number of workers to reduce the CPU load during tests.

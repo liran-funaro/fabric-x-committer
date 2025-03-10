@@ -73,6 +73,7 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	logger.Infof("Connecting to %s", conn.Target())
 	stream, err := c.StreamCreator(ctx, conn)
 	if err != nil {
+		logger.Infof("failed connecting to %s: %s", conn.Target(), err)
 		return errors.Wrap(err, "failed to create stream")
 	}
 
@@ -84,7 +85,7 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	if err := stream.Send(seekEnv); err != nil {
 		return errors.Wrap(err, "failed to send seek request")
 	}
-	logger.Infof("Seek request sent.")
+	logger.Info("Seek request sent.")
 
 	// If we managed to send a request, we can reset the connection's backoff.
 	conn.ResetBackoff()

@@ -1,5 +1,5 @@
-sidecar-client:
-  endpoint: {{ .SidecarEndpoint }}
+orderer-client:
+  sidecar-endpoint: {{ .SidecarEndpoint }}
   coordinator:
     endpoint: {{ .CoordinatorEndpoint }}
   orderer:
