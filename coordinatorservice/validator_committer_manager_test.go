@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -74,6 +75,33 @@ func newVcMgrTestEnv(t *testing.T, numVCService int, expectedEndErrorMsg ...byte
 		mockVCGrpcServers:         servers,
 		sigVerTestEnv:             svEnv,
 	}
+}
+
+func (e *vcMgrTestEnv) requireConnectionMetrics(
+	t *testing.T,
+	vcIndex, expectedConnStatus, expectedConnFailureTotal int,
+) {
+	t.Helper()
+	require.Less(t, vcIndex, len(e.validatorCommitterManager.validatorCommitter))
+	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
+	label := sv.conn.CanonicalTarget()
+	connStatus, err := sv.metrics.vcservicesConnectionStatus.GetMetricWithLabelValues(label)
+	require.NoError(t, err)
+
+	connFailure, err := sv.metrics.vcservicesConnectionFailureTotal.GetMetricWithLabelValues(label)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus) &&
+			test.GetMetricValue(t, connFailure) == float64(expectedConnFailureTotal)
+	}, 2*time.Second, 200*time.Millisecond)
+}
+
+func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, e.validatorCommitterManager.config.metrics.vcservicesRetriedTransactionTotal) ==
+			float64(expectedRetridTxsTotal)
+	}, 5*time.Second, 250*time.Millisecond)
 }
 
 func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
@@ -296,6 +324,9 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env := newVcMgrTestEnv(t, 1)
 	env.mockVcServices[0].MockFaultyNodeDropSize = 4
 
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
+	env.requireRetriedTxsTotal(t, 0)
+
 	numTxs := 10
 	txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, numTxs, 0, 0)
 	env.inputTxs <- txBatch
@@ -310,12 +341,15 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}, 4*time.Second, 100*time.Millisecond)
 
 	env.mockVCGrpcServers.Servers[0].Stop()
-	time.Sleep(2 * time.Second) // replace with test.CheckServerStopped
+	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].Endpoint.Address())
+	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
 
 	env.mockVcServices[0].MockFaultyNodeDropSize = 0
 	env.mockVCGrpcServers = mock.StartMockVCServiceFromListWithConfig(
 		t, env.mockVcServices, env.mockVCGrpcServers.Configs,
 	)
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
+	env.requireRetriedTxsTotal(t, 4)
 
 	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for range 2 {

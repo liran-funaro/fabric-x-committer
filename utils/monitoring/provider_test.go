@@ -85,8 +85,8 @@ func TestCounterVec(t *testing.T) {
 	cv := env.provider.NewCounterVec(opts, labels)
 
 	cv.With(prometheus.Labels{"namespace": "ns_1"}).Inc()
-	cv.WithLabelValues("ns_2").Inc()
-	cv.WithLabelValues("ns_1").Inc()
+	AddToCounterVec(cv, []string{"ns_2"}, 1)
+	AddToCounterVec(cv, []string{"ns_1"}, 1)
 
 	test.CheckMetrics(t, env.client, env.provider.url, []string{
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
@@ -142,7 +142,7 @@ func TestNewGuageVec(t *testing.T) {
 		},
 	)
 
-	gv.WithLabelValues("ns_1").Sub(3)
+	SetGaugeVec(gv, []string{"ns_1"}, 4)
 	test.CheckMetrics(
 		t,
 		env.client,

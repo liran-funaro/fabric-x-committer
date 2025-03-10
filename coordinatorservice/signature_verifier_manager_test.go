@@ -15,6 +15,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -75,6 +76,34 @@ func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs depende
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive block from output after timeout")
 	}
+}
+
+//nolint:unparam // for now svIndex is always 0 but it can change in the future.
+func (e *svMgrTestEnv) requireConnectionMetrics(
+	t *testing.T,
+	svIndex, expectedConnStatus, expectedConnFailureTotal int,
+) {
+	t.Helper()
+	require.Less(t, svIndex, len(e.signVerifierManager.signVerifier))
+	sv := e.signVerifierManager.signVerifier[svIndex]
+	label := sv.conn.CanonicalTarget()
+	connStatus, err := sv.metrics.verifiersConnectionStatus.GetMetricWithLabelValues(label)
+	require.NoError(t, err)
+
+	connFailure, err := sv.metrics.verifiersConnectionFailureTotal.GetMetricWithLabelValues(label)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus) &&
+			test.GetMetricValue(t, connFailure) == float64(expectedConnFailureTotal)
+	}, 2*time.Second, 200*time.Millisecond)
+}
+
+func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return test.GetMetricValue(t,
+			e.signVerifierManager.metrics.verifiersRetriedTransactionTotal) == float64(expectedRetridTxsTotal)
+	}, 5*time.Second, 250*time.Millisecond)
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
@@ -254,6 +283,9 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		sv.MockFaultyNodeDropSize = 4
 	}
 
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
+	env.requireRetriedTxsTotal(t, 0)
+
 	blkNum := 0
 	numTxs := 10
 	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs)
@@ -271,6 +303,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		s.Stop()
 		test.CheckServerStopped(t, env.grpcServers.Configs[i].Endpoint.Address())
 	}
+	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
 
 	for _, sv := range env.mockSvService {
 		sv.MockFaultyNodeDropSize = 0
@@ -278,6 +311,8 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
+	env.requireRetriedTxsTotal(t, 4)
 
 	env.requireTxBatch(t, expectedValidatedTxs[4:])
 	env.requireTxBatch(t, expectedValidatedTxs[:4])
@@ -287,8 +322,10 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSvMgrTestEnv(t, 1, []byte("invalid argument")...)
 
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
 	env.grpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
+	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
 
 	allNsPolicies := env.signVerifierManager.signVerifier[0].allNsPolicies
 	require.Empty(t, allNsPolicies)
@@ -327,6 +364,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)
+	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
 
 	require.Eventually(t, func() bool {
 		return !env.signVerifierManager.signVerifier[0].pendingNsPolicies
@@ -350,6 +388,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 
 	env.grpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
+	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 2)
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)

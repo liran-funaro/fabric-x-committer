@@ -19,6 +19,10 @@ import (
 const (
 	scheme         = "http://"
 	metricsSubPath = "/metrics"
+	// Connected indicates that the connection to the service is currently established.
+	Connected = 1
+	// Disconnected indicates that the connection to the service is currently not established.
+	Disconnected = 0
 )
 
 // Provider is a prometheus metrics provider.
@@ -191,14 +195,24 @@ func AddToCounter(c prometheus.Counter, n int) {
 	c.Add(float64(n))
 }
 
+// AddToCounterVec add a value to given labels on a prometheus counter vector.
+func AddToCounterVec(c *prometheus.CounterVec, labels []string, n int) {
+	c.WithLabelValues(labels...).Add(float64(n))
+}
+
 // AddToGauge adds a value to a prometheus gauge.
 func AddToGauge(g prometheus.Gauge, n int) {
 	g.Add(float64(n))
 }
 
-// SetGauge sets a prometheus gauge to a value.
-func SetGauge(g prometheus.Gauge, size int) {
-	g.Set(float64(size))
+// SetGaugeVec sets a value to given labels on the prometheus gauge vector.
+func SetGaugeVec(c *prometheus.GaugeVec, labels []string, n int) {
+	c.WithLabelValues(labels...).Set(float64(n))
+}
+
+// SetGauge sets a value to a prometheus gauge.
+func SetGauge(queue prometheus.Gauge, n int) {
+	queue.Set(float64(n))
 }
 
 // Observe observes a prometheus histogram.

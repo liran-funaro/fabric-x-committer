@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -104,15 +105,20 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to create verifier client with %s", serverConfig.Endpoint.Address())
 		}
+		label := []string{sv.conn.CanonicalTarget()}
+		monitoring.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, monitoring.Connected)
 
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
+
 		g.Go(func() error {
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
 			err := sv.sendTransactionsAndForwardStatus(eCtx, txBatchQueue, channel.NewWriter(
 				eCtx,
 				c.outgoingValidatedTxs,
 			))
+			_ = sv.conn.Close() // it does not matter whether it returns an error.
+			monitoring.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, monitoring.Disconnected)
 			return errors.Wrap(err, "failed to send transactions and receive verification statuses from verifiers")
 		})
 	}
@@ -207,10 +213,12 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 		sv.txMu.Unlock()
 
 		if len(pendingTxs) > 0 {
+			monitoring.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
 			inputTxBatch.Write(pendingTxs)
 		}
 
-		waitForConnection(ctx, sv.conn)
+		waitForConnection(ctx, sv.conn, sv.metrics.verifiersConnectionStatus,
+			sv.metrics.verifiersConnectionFailureTotal)
 
 		// NOTE: To simplify the implementation, we do not distinguish between transient connection failures
 		//       and verifier process failures/restarts. Consequently, every time a connection is established
@@ -264,10 +272,21 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	return nil
 }
 
-func waitForConnection(ctx context.Context, conn *grpc.ClientConn) {
+func waitForConnection(
+	ctx context.Context,
+	conn *grpc.ClientConn,
+	connStatus *prometheus.GaugeVec,
+	failureCount *prometheus.CounterVec,
+) {
 	if conn.GetState() == connectivity.Ready {
 		return
 	}
+
+	label := []string{conn.CanonicalTarget()}
+	monitoring.AddToCounterVec(failureCount, label, 1)
+	monitoring.SetGaugeVec(connStatus, label, monitoring.Disconnected)
+
+	defer monitoring.SetGaugeVec(connStatus, label, monitoring.Connected)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()

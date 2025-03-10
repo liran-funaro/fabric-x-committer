@@ -86,6 +86,9 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to create validator client with %s", serverConfig.Endpoint.Address())
 		}
+		label := []string{vc.conn.CanonicalTarget()}
+		monitoring.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, label, monitoring.Connected)
+
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 		vcm.validatorCommitter[i] = vc
 
@@ -96,6 +99,9 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 				channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
 				channel.NewWriter(eCtx, c.outgoingTxsStatus),
 			)
+			_ = vc.conn.Close() // it does not matter whether it returns an error
+			monitoring.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, []string{vc.conn.CanonicalTarget()},
+				monitoring.Disconnected)
 			return errors.Wrap(err, "failed to send transactions and receive commit status from validator-committers")
 		})
 	}
@@ -218,10 +224,12 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 		vc.txBeingValidated = &sync.Map{}
 
 		if len(pendingTxs) > 0 {
+			monitoring.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
 			inputTxBatch.Write(pendingTxs)
 		}
 
-		waitForConnection(ctx, vc.conn)
+		waitForConnection(ctx, vc.conn, vc.metrics.vcservicesConnectionStatus,
+			vc.metrics.vcservicesConnectionFailureTotal)
 
 		sCtx, sCancel := context.WithCancel(ctx)
 		stream, err := vc.client.StartValidateAndCommitStream(sCtx)
