@@ -12,5 +12,5 @@ func EnsureAtLeastHeight(t *testing.T, s *Service, height uint64) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		return s.GetBlockHeight() >= height
-	}, 15*time.Second, 500*time.Millisecond)
+	}, 15*time.Second, 10*time.Millisecond)
 }

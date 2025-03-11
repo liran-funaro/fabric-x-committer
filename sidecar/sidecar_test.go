@@ -128,6 +128,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
+		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		Bootstrap: Bootstrap{
 			GenesisBlockFilePath: genesisBlockFilePath,
 		},
@@ -459,5 +460,5 @@ func checkLastCommittedBlock(
 			return false
 		}
 		return expectedBlockNumber == lastBlock.Number
-	}, expectedProcessingTime, 1*time.Second)
+	}, expectedProcessingTime, 50*time.Millisecond)
 }

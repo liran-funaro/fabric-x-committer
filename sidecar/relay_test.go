@@ -3,6 +3,7 @@ package sidecar
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
@@ -36,9 +37,9 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	incomingBlockToBeCommitted := make(chan *common.Block, 10)
 	committedBlock := make(chan *common.Block, 10)
 	relayService := newRelay(
-		&CoordinatorConfig{Endpoint: coordinatorEndpoint},
 		incomingBlockToBeCommitted,
 		committedBlock,
+		time.Second,
 	)
 
 	conn, err := connection.Connect(connection.NewDialConfig(&coordinatorEndpoint))

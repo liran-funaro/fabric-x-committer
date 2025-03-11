@@ -19,7 +19,6 @@ import (
 
 type (
 	relay struct {
-		coordConfig                   *CoordinatorConfig
 		incomingBlockToBeCommitted    <-chan *common.Block
 		outgoingCommittedBlock        chan<- *common.Block
 		nextBlockNumberToBeCommitted  atomic.Uint64
@@ -43,16 +42,20 @@ type (
 	}
 )
 
+const defaultLastCommittedBlockSetInterval = 5 * time.Second
+
 func newRelay(
-	config *CoordinatorConfig,
 	incomingBlockToBeCommitted <-chan *common.Block,
 	committedBlock chan<- *common.Block,
+	lastCommittedBlockSetInterval time.Duration,
 ) *relay {
+	if lastCommittedBlockSetInterval == 0 {
+		lastCommittedBlockSetInterval = defaultLastCommittedBlockSetInterval
+	}
 	return &relay{
-		coordConfig:                   config,
 		incomingBlockToBeCommitted:    incomingBlockToBeCommitted,
 		outgoingCommittedBlock:        committedBlock,
-		lastCommittedBlockSetInterval: 5 * time.Second, // TODO: make it configurable.
+		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 	}
 }
 

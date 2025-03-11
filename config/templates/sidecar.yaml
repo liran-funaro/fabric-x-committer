@@ -27,6 +27,8 @@ sidecar:
     server:
       endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
+  last-committed-block-set-interval: 5s
+
   bootstrap:
     genesis-block-file-path: {{ .ConfigBlockPath }}
 

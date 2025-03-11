@@ -1,6 +1,8 @@
 package sidecar
 
 import (
+	"time"
+
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -17,11 +19,12 @@ import (
 // and the config of ledger service, and the orderer setup.
 // It may contain the orderer endpoint from which the sidecar pulls blocks.
 type Config struct {
-	Server    *connection.ServerConfig `mapstructure:"server"`
-	Committer CoordinatorConfig        `mapstructure:"committer"`
-	Ledger    LedgerConfig             `mapstructure:"ledger"`
-	Orderer   broadcastdeliver.Config  `mapstructure:"orderer"`
-	Bootstrap Bootstrap                `mapstructure:"bootstrap"`
+	Server                        *connection.ServerConfig `mapstructure:"server"`
+	Committer                     CoordinatorConfig        `mapstructure:"committer"`
+	Ledger                        LedgerConfig             `mapstructure:"ledger"`
+	Orderer                       broadcastdeliver.Config  `mapstructure:"orderer"`
+	LastCommittedBlockSetInterval time.Duration            `mapstructure:"last-committed-block-set-interval"`
+	Bootstrap                     Bootstrap                `mapstructure:"bootstrap"`
 }
 
 // Bootstrap configures how to obtain the bootstrap configuration.

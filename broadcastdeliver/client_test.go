@@ -84,12 +84,8 @@ func TestServers(t *testing.T) {
 	})
 
 	// One incorrect server.
-	fakeServer := test.RunGrpcServerForTest(ctx, t, &connection.ServerConfig{
-		Endpoint: servers[2].Configs[0].Endpoint,
-	})
-	newConn, err := connection.LazyConnect(connection.NewDialConfig(&servers[2].Configs[0].Endpoint))
-	require.NoError(t, err)
-	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
+	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0])
+	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:            "4",
 		success:       2,
@@ -102,9 +98,7 @@ func TestServers(t *testing.T) {
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], func(server *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(server, ordererService)
 	})
-	newConn, err = connection.LazyConnect(connection.NewDialConfig(&servers[2].Configs[0].Endpoint))
-	require.NoError(t, err)
-	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
+	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:      "5",
 		success: 3,
@@ -226,4 +220,12 @@ func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
 		t.Logf("ENDPOINT [%02d] %s", i, e.String())
 	}
 	return ordererService, servers, conf
+}
+
+func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
+	t.Helper()
+	newConn, err := connection.LazyConnect(connection.NewDialConfig(endpoint))
+	require.NoError(t, err)
+	defer connection.CloseConnectionsLog(newConn)
+	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 }

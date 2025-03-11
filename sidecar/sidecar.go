@@ -49,7 +49,7 @@ func New(c *Config) (*Service, error) {
 	// 2. Relay the blocks to committer and receive the transaction status.
 	blockToBeCommitted := make(chan *common.Block, 100)
 	committedBlock := make(chan *common.Block, 100)
-	relayService := newRelay(&c.Committer, blockToBeCommitted, committedBlock)
+	relayService := newRelay(blockToBeCommitted, committedBlock, c.LastCommittedBlockSetInterval)
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)

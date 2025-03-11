@@ -8,12 +8,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	sidecartest "github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc"
 )
 
 func TestLedgerService(t *testing.T) {
@@ -44,7 +45,6 @@ func TestLedgerService(t *testing.T) {
 
 	require.Zero(t, ledgerService.GetBlockHeight())
 	inputBlock <- blk0
-
 	EnsureAtLeastHeight(t, ledgerService, 1)
 
 	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(context.Background(), t, &sidecarclient.Config{
