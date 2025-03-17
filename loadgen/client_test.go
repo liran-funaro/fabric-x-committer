@@ -144,6 +144,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 		Committer: sidecar.CoordinatorConfig{
 			Endpoint: coordinatorServer.Configs[0].Endpoint,
 		},
+		Monitoring: defaultMonitoring(),
 		Ledger: sidecar.LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -186,6 +187,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 		Committer: sidecar.CoordinatorConfig{
 			Endpoint: coordinatorServer.Configs[0].Endpoint,
 		},
+		Monitoring: defaultMonitoring(),
 		Ledger: sidecar.LedgerConfig{
 			Path: t.TempDir(),
 		},

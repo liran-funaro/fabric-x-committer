@@ -23,6 +23,7 @@ type relayTestEnv struct {
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
 	configBlocks               []*common.Block
+	metrics                    *perfMetrics
 }
 
 const (
@@ -31,15 +32,18 @@ const (
 )
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
+	t.Helper()
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 	coordinatorEndpoint := coordinatorServer.Configs[0].Endpoint
 
 	incomingBlockToBeCommitted := make(chan *common.Block, 10)
 	committedBlock := make(chan *common.Block, 10)
+	metrics := newPerformanceMetrics()
 	relayService := newRelay(
 		incomingBlockToBeCommitted,
 		committedBlock,
 		time.Second,
+		metrics,
 	)
 
 	conn, err := connection.Connect(connection.NewDialConfig(&coordinatorEndpoint))
@@ -52,10 +56,11 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		relay:                      relayService,
 		incomingBlockToBeCommitted: incomingBlockToBeCommitted,
 		committedBlock:             committedBlock,
+		metrics:                    metrics,
 	}
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(relayService.Run(ctx, &relayRunConfig{
 			coordClient:                    client,
 			nextExpectedBlockByCoordinator: 0,
@@ -68,19 +73,34 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 }
 
 func TestRelayNormalBlock(t *testing.T) {
+	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
 	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"tx1", "tx2", "tx3"})
 	require.Nil(t, blk0.Metadata)
 	relayEnv.incomingBlockToBeCommitted <- blk0
+	require.Eventually(t, func() bool {
+		return float64(3) == test.GetMetricValue(t, relayEnv.metrics.transactionsSentTotal)
+	}, 5*time.Second, 10*time.Millisecond)
 	committedBlock0 := <-relayEnv.committedBlock
+	require.InEpsilon(
+		t,
+		float64(3),
+		test.GetMetricValue(t, relayEnv.metrics.transactionsStatusReceivedTotal.WithLabelValues(
+			protoblocktx.Status_COMMITTED.String())),
+		1e-10,
+	)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}
 	require.Equal(t, expectedMetadata, committedBlock0.Metadata)
 	require.Equal(t, blk0, committedBlock0)
+
+	require.Greater(t, test.GetMetricValue(t, relayEnv.metrics.blockProcessingInRelaySeconds), float64(0))
+	require.Greater(t, test.GetMetricValue(t, relayEnv.metrics.transactionStatusesProcessingInRelaySeconds), float64(0))
 }
 
 func TestBlockWithDuplicateTransactions(t *testing.T) {
+	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
 	blk0 := sidecartest.CreateBlockForTest(nil, 0, nil, [3]string{"tx1", "tx1", "tx1"})
 	require.Nil(t, blk0.Metadata)
@@ -104,6 +124,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 }
 
 func TestRelayConfigBlock(t *testing.T) {
+	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
 	configBlk := createConfigBlockForTest(nil, 0)
 	relayEnv.incomingBlockToBeCommitted <- configBlk

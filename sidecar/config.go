@@ -12,6 +12,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 // Config holds the configuration of the sidecar service. This includes
@@ -24,6 +25,7 @@ type Config struct {
 	Ledger                        LedgerConfig             `mapstructure:"ledger"`
 	Orderer                       broadcastdeliver.Config  `mapstructure:"orderer"`
 	LastCommittedBlockSetInterval time.Duration            `mapstructure:"last-committed-block-set-interval"`
+	Monitoring                    monitoring.Config        `mapstructure:"monitoring"`
 	Bootstrap                     Bootstrap                `mapstructure:"bootstrap"`
 }
 

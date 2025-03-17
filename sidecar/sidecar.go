@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var logger = logging.New("sidecar")
@@ -31,6 +32,7 @@ type Service struct {
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
 	config             *Config
+	metrics            *perfMetrics
 }
 
 // New creates a sidecar service.
@@ -49,7 +51,8 @@ func New(c *Config) (*Service, error) {
 	// 2. Relay the blocks to committer and receive the transaction status.
 	blockToBeCommitted := make(chan *common.Block, 100)
 	committedBlock := make(chan *common.Block, 100)
-	relayService := newRelay(blockToBeCommitted, committedBlock, c.LastCommittedBlockSetInterval)
+	metrics := newPerformanceMetrics()
+	relayService := newRelay(blockToBeCommitted, committedBlock, c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)
@@ -64,6 +67,7 @@ func New(c *Config) (*Service, error) {
 		blockToBeCommitted: blockToBeCommitted,
 		committedBlock:     committedBlock,
 		config:             c,
+		metrics:            metrics,
 	}, nil
 }
 
@@ -75,6 +79,10 @@ func (s *Service) WaitForReady(ctx context.Context) bool {
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
 func (s *Service) Run(ctx context.Context) error {
+	go func() {
+		_ = s.metrics.StartPrometheusServer(ctx, s.config.Monitoring.Server, s.monitorQueues)
+	}()
+
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
 	conn, err := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint))
 	if err != nil {
@@ -128,7 +136,7 @@ func (s *Service) Run(ctx context.Context) error {
 	// 1. Fetch blocks from the ordering service.
 	g.Go(func() error {
 		return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
-			StartBlkNum: int64(blkInfo.GetNumber()), // nolint:gosec
+			StartBlkNum: int64(blkInfo.GetNumber()), //nolint:gosec
 			EndBlkNum:   broadcastdeliver.MaxBlockNum,
 			OutputBlock: s.blockToBeCommitted,
 		})
@@ -281,6 +289,21 @@ func (s *Service) appendMissingBlock(
 	s.committedBlock <- blk
 
 	return nil
+}
+
+func (s *Service) monitorQueues(ctx context.Context) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	m := s.metrics
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		monitoring.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(s.blockToBeCommitted))
+		monitoring.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
+	}
 }
 
 // Close closes the ledger.

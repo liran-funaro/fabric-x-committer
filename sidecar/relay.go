@@ -8,13 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 type (
@@ -26,6 +27,7 @@ type (
 		blkNumToBlkWithStatus         sync.Map
 		txIDToBlkNum                  sync.Map
 		lastCommittedBlockSetInterval time.Duration
+		metrics                       *perfMetrics
 	}
 
 	blockWithStatus struct {
@@ -48,6 +50,7 @@ func newRelay(
 	incomingBlockToBeCommitted <-chan *common.Block,
 	committedBlock chan<- *common.Block,
 	lastCommittedBlockSetInterval time.Duration,
+	metrics *perfMetrics,
 ) *relay {
 	if lastCommittedBlockSetInterval == 0 {
 		lastCommittedBlockSetInterval = defaultLastCommittedBlockSetInterval
@@ -56,6 +59,7 @@ func newRelay(
 		incomingBlockToBeCommitted:    incomingBlockToBeCommitted,
 		outgoingCommittedBlock:        committedBlock,
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
+		metrics:                       metrics,
 	}
 }
 
@@ -68,7 +72,7 @@ func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
 
 	stream, err := config.coordClient.BlockProcessing(rCtx)
 	if err != nil {
-		return fmt.Errorf("failed to open stream for block processing: %w", err)
+		return errors.Wrap(err, "failed to open stream for block processing")
 	}
 
 	logger.Infof("Starting coordinator sender and receiver")
@@ -93,10 +97,10 @@ func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
 		return r.setLastCommittedBlockNumber(gCtx, config.coordClient, expectedNextBlockToBeCommitted)
 	})
 
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "stream with the coordinator has ended")
 }
 
-func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
+func (r *relay) preProcessBlockAndSendToCoordinator( //nolint:gocognit
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
 	configUpdater func(*common.Block),
@@ -112,6 +116,8 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 			logger.Warn("Received a block without header")
 			continue
 		}
+
+		startTime := time.Now()
 		blockNum := block.Header.Number
 		logger.Debugf("Block %d arrived in the relay", blockNum)
 
@@ -130,6 +136,9 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 				continue
 			}
 			logger.Debugf("txID [%s] is duplicate", tx.GetId())
+			monitoring.AddToCounterVec(r.metrics.transactionsStatusReceivedTotal, []string{
+				protoblocktx.Status_ABORTED_DUPLICATE_TXID.String(),
+			}, 1)
 			mappedBlock.withStatus.pendingCount--
 			mappedBlock.withStatus.txStatus[txIndex] = validationCode(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 			dupIdx = append(dupIdx, txIndex)
@@ -143,15 +152,18 @@ func (r *relay) preProcessBlockAndSendToCoordinator( // nolint:gocognit
 
 		r.activeBlocksCount.Add(1)
 
-		if len(mappedBlock.block.Txs) == 0 && mappedBlock.withStatus.pendingCount == 0 {
+		txsCount := len(mappedBlock.block.Txs)
+		if txsCount == 0 && mappedBlock.withStatus.pendingCount == 0 {
 			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
 		}
 
 		if err := stream.Send(mappedBlock.block); err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(err, "failed to send a block to the coordinator")
 		}
+		monitoring.AddToCounter(r.metrics.transactionsSentTotal, txsCount)
 		logger.Debugf("Sent SC block %d with %d transactions to Coordinator",
-			mappedBlock.block.Number, len(mappedBlock.block.Txs))
+			mappedBlock.block.Number, txsCount)
+		monitoring.Observe(r.metrics.blockProcessingInRelaySeconds, time.Since(startTime))
 	}
 }
 
@@ -164,7 +176,7 @@ func receiveStatusFromCoordinator(
 	for {
 		response, err := stream.Recv()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to receive statuses from the coordinator")
 		}
 		logger.Debugf("Received status batch (%d updates) from coordinator", len(response.GetStatus()))
 
@@ -184,6 +196,7 @@ func (r *relay) processStatusBatch(
 			return nil
 		}
 
+		startTime := time.Now()
 		for txID, txStatus := range tStatus.GetStatus() {
 			blockNum, ok := r.txIDToBlkNum.Load(txID)
 			if !ok {
@@ -194,7 +207,7 @@ func (r *relay) processStatusBatch(
 			if !ok {
 				return fmt.Errorf("block %d has never been submitted", blockNum)
 			}
-			blkWithStatus, _ := v.(*blockWithStatus) // nolint:revive
+			blkWithStatus, _ := v.(*blockWithStatus) //nolint:revive
 
 			txIndex := blkWithStatus.txIDToTxIndex[txID]
 
@@ -204,12 +217,15 @@ func (r *relay) processStatusBatch(
 			}
 
 			blkWithStatus.txStatus[txIndex] = byte(txStatus.GetCode())
+			monitoring.AddToCounterVec(r.metrics.transactionsStatusReceivedTotal,
+				[]string{txStatus.GetCode().String()}, 1)
 
 			r.txIDToBlkNum.Delete(txID)
 			blkWithStatus.pendingCount--
 		}
 
 		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
+		monitoring.Observe(r.metrics.transactionStatusesProcessingInRelaySeconds, time.Since(startTime))
 	}
 }
 
@@ -269,7 +285,7 @@ func (r *relay) setLastCommittedBlockNumber(
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
 		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: blkNum})
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}

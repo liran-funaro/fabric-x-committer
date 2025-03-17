@@ -29,6 +29,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -129,6 +130,9 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 			Path: t.TempDir(),
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
+		Monitoring: monitoring.Config{
+			Server: connection.NewLocalHostServer(),
+		},
 		Bootstrap: Bootstrap{
 			GenesisBlockFilePath: genesisBlockFilePath,
 		},
