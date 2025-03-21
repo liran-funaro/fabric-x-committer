@@ -12,6 +12,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,7 +41,8 @@ func commonGrpcRetryTest(
 	t *testing.T,
 	connectionSetup func(config *connection.DialConfig) (*grpc.ClientConn, error),
 ) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
 	regService := func(server *grpc.Server, _ int) {
@@ -51,36 +54,58 @@ func commonGrpcRetryTest(
 	conn, err := connectionSetup(connection.NewDialConfig(&vcGrpc.Configs[0].Endpoint))
 	require.NoError(t, err)
 
+	connStatus := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "conn_status",
+		Help: "connection status: 0 --- disconnected, 1 --- connected.",
+	}, []string{"target"})
+
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 	_, err = client.GetPolicies(ctx, nil)
 	require.NoError(t, err)
 
-	cancel() // stopping the grpc server
+	failureCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "failure_total",
+		Help: "total number of connection failures.",
+	}, []string{"target"})
 
-	// ensure that the server is down
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel2()
-	require.Eventually(t, func() bool {
-		_, err := client.GetPolicies(ctx2, nil)
-		return err != nil
-	}, 5*time.Second, 250*time.Millisecond)
-	time.Sleep(5 * time.Second)
+	connection.WaitForConnection(ctx, conn, connStatus, failureCount)
+
+	label := []string{conn.CanonicalTarget()}
+	connStatusM, err := connStatus.GetMetricWithLabelValues(label...)
+	require.NoError(t, err)
+	require.InDelta(t, connection.Connected, testutil.ToFloat64(connStatusM), 0)
+
+	connFailureM, err := failureCount.GetMetricWithLabelValues(label...)
+	require.NoError(t, err)
+	require.Zero(t, testutil.ToFloat64(connFailureM))
+
+	// stopping the grpc server
+	cancel()
+	vcGrpc.Servers[0].Stop()
+	test.CheckServerStopped(t, vcGrpc.Configs[0].Endpoint.Address())
+
+	_, err = client.GetPolicies(ctx, nil)
+	require.Error(t, err)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel2()
 	go func() {
 		defer wg.Done()
-		require.Eventually(t, func() bool {
-			_, err := client.GetPolicies(ctx2, nil)
-			return err == nil
-		}, 2*time.Minute, 5*time.Second)
+		connection.WaitForConnection(ctx2, conn, connStatus, failureCount)
 	}()
 
-	time.Sleep(30 * time.Second)
+	time.Sleep(5 * time.Second)
+
+	require.InDelta(t, float64(1), testutil.ToFloat64(connFailureM), 0)
+	require.InDelta(t, connection.Disconnected, testutil.ToFloat64(connStatusM), 0)
+
 	test.StartGrpcServersWithConfigForTest(ctx2, t, vcGrpc.Configs, regService)
 
 	wg.Wait()
+	require.InDelta(t, connection.Connected, testutil.ToFloat64(connStatusM), 0)
 }
 
 type fakeBroadcastDeliver struct{}
@@ -133,12 +158,13 @@ type filterTestEnv struct {
 }
 
 func newFilterTestEnv(t *testing.T) *filterTestEnv {
+	t.Helper()
 	env := &filterTestEnv{
 		service:    &fakeBroadcastDeliver{},
 		serverConf: &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}},
 	}
 
-	serviceCtx, serviceCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	serviceCtx, serviceCancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(serviceCancel)
 	env.serviceCancel = serviceCancel
 
@@ -149,7 +175,7 @@ func newFilterTestEnv(t *testing.T) *filterTestEnv {
 	require.NoError(t, err)
 	env.client = peer.NewDeliverClient(conn)
 
-	clientCtx, clientCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	clientCtx, clientCancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(clientCancel)
 	env.clientCancel = clientCancel
 	env.deliver, err = env.client.Deliver(clientCtx)
@@ -190,7 +216,7 @@ func TestFilterStreamRPCError(t *testing.T) {
 
 	t.Run("client ctx timeout", func(t *testing.T) {
 		t.Parallel()
-		clientCtx, clientCancel := context.WithTimeout(context.Background(), time.Second)
+		clientCtx, clientCancel := context.WithTimeout(t.Context(), time.Second)
 		t.Cleanup(clientCancel)
 		env := newFilterTestEnv(t)
 		deliver, err := env.client.Deliver(clientCtx)
@@ -250,6 +276,7 @@ func TestFilterStreamRPCError(t *testing.T) {
 }
 
 func requireNoWrappedError(t *testing.T, err error) {
+	t.Helper()
 	require.NoError(t, connection.FilterStreamRPCError(err))
 	if err == nil {
 		return
@@ -259,6 +286,7 @@ func requireNoWrappedError(t *testing.T, err error) {
 }
 
 func requireErrorIsRPC(t *testing.T, rpcErr error, code codes.Code) {
+	t.Helper()
 	errStatus, ok := status.FromError(rpcErr)
 	require.True(t, ok)
 	rpcErrCode := errStatus.Code()

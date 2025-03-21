@@ -19,7 +19,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -324,7 +323,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env := newVcMgrTestEnv(t, 1)
 	env.mockVcServices[0].MockFaultyNodeDropSize = 4
 
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
 	env.requireRetriedTxsTotal(t, 0)
 
 	numTxs := 10
@@ -342,13 +341,13 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	env.mockVCGrpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].Endpoint.Address())
-	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	env.mockVcServices[0].MockFaultyNodeDropSize = 0
 	env.mockVCGrpcServers = mock.StartMockVCServiceFromListWithConfig(
 		t, env.mockVcServices, env.mockVCGrpcServers.Configs,
 	)
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
 	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)

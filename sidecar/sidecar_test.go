@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -35,12 +37,13 @@ import (
 )
 
 type sidecarTestEnv struct {
-	config           Config
-	coordinator      *mock.Coordinator
-	orderer          *mock.Orderer
-	ordererServers   *test.GrpcServers
-	ordererEndpoints []*connection.OrdererEndpoint
-	chanID           string
+	config            Config
+	coordinator       *mock.Coordinator
+	coordinatorServer *test.GrpcServers
+	orderer           *mock.Orderer
+	ordererServers    *test.GrpcServers
+	ordererEndpoints  []*connection.OrdererEndpoint
+	chanID            string
 
 	sidecar        *Service
 	gServer        *grpc.Server
@@ -142,13 +145,14 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	t.Cleanup(sidecar.Close)
 
 	return &sidecarTestEnv{
-		sidecar:          sidecar,
-		coordinator:      coordinator,
-		orderer:          orderer,
-		ordererServers:   ordererServers,
-		ordererEndpoints: ordererEndpoints,
-		chanID:           chanID,
-		config:           *sidecarConf,
+		sidecar:           sidecar,
+		coordinator:       coordinator,
+		coordinatorServer: coordinatorServer,
+		orderer:           orderer,
+		ordererServers:    ordererServers,
+		ordererEndpoints:  ordererEndpoints,
+		chanID:            chanID,
+		config:            *sidecarConf,
 	}
 }
 
@@ -318,7 +322,6 @@ func TestSidecarRecovery(t *testing.T) {
 	env.sidecar.ledgerService, err = ledger.New(
 		env.config.Orderer.ChannelID,
 		env.config.Ledger.Path,
-		env.sidecar.committedBlock,
 	)
 	require.NoError(t, err)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
@@ -346,6 +349,66 @@ func TestSidecarRecovery(t *testing.T) {
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
 	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
 	cancel2()
+}
+
+func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t, 0)
+	env.requireBlock(ctx, t, 0)
+
+	conn, err := connection.Connect(connection.NewDialConfig(&env.config.Committer.Endpoint))
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	label := conn.CanonicalTarget()
+	connStatus := env.sidecar.metrics.coordConnectionStatus.WithLabelValues(label)
+	require.InDelta(t, connection.Connected, testutil.ToFloat64(connStatus), 0)
+
+	connFailureCount := env.sidecar.metrics.coordConnectionFailureTotal.WithLabelValues(label)
+	require.InDelta(t, float64(0), testutil.ToFloat64(connFailureCount), 0)
+
+	t.Log("1. Commit block 1 to 10")
+	for i := range 10 {
+		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) //nolint:gosec
+	}
+
+	t.Log("2. Stop the coordinator")
+	env.coordinatorServer.Servers[0].Stop()
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(connStatus) == connection.Disconnected &&
+			testutil.ToFloat64(connFailureCount) == float64(1)
+	}, 5*time.Second, 10*time.Millisecond)
+
+	t.Log("3. Send transactions to ordering service in background to create block 11 after stopping the coordinator")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sendTransactionsAndEnsureCommitted(ctx, t, env, 11) //nolint:testifylint
+	}()
+
+	t.Log("4. Enqueue an incorrect block 11 to the queue which would be dropped eventually")
+	env.sidecar.blockToBeCommitted <- &common.Block{
+		Header: &common.BlockHeader{
+			Number: 11,
+		},
+		Data: &common.BlockData{
+			Data: [][]byte{[]byte("A")},
+		},
+	} // this should not have any impact as the sidecar would drop all enqueued blocks on reconnection to the sidecar.
+
+	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+		env.coordinatorServer.Configs[0])
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(connStatus) == connection.Connected &&
+			testutil.ToFloat64(connFailureCount) == float64(1)
+	}, 10*time.Second, 10*time.Millisecond)
+
+	wg.Wait()
 }
 
 func sendTransactionsAndEnsureCommitted(

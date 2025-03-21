@@ -22,17 +22,23 @@ import (
 
 var logger = logging.New("ledger")
 
-// Service implements peer.DeliverServer.
-type Service struct {
-	ledger                       blockledger.ReadWriter
-	ledgerProvider               blockledger.Factory
-	channelID                    string
-	committedBlock               <-chan *common.Block
-	nextToBeCommittedBlockNumber uint64
-}
+type (
+	// Service implements peer.DeliverServer.
+	Service struct {
+		ledger                       blockledger.ReadWriter
+		ledgerProvider               blockledger.Factory
+		channelID                    string
+		nextToBeCommittedBlockNumber uint64
+	}
+
+	// RunConfig holds the configuraion needed to run the ledger service.
+	RunConfig struct {
+		IncomingCommittedBlock <-chan *common.Block
+	}
+)
 
 // New creates a new ledger service.
-func New(channelID, ledgerDir string, input <-chan *common.Block) (*Service, error) {
+func New(channelID, ledgerDir string) (*Service, error) {
 	logger.Infof("Create ledger files for channel %s under %s", channelID, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	if err != nil {
@@ -48,14 +54,13 @@ func New(channelID, ledgerDir string, input <-chan *common.Block) (*Service, err
 		ledger:                       ledger,
 		ledgerProvider:               factory,
 		channelID:                    channelID,
-		committedBlock:               input,
 		nextToBeCommittedBlockNumber: ledger.Height(),
 	}, nil
 }
 
 // Run starts the ledger service. The call to Run blocks until an error occurs or the context is canceled.
-func (s *Service) Run(ctx context.Context) error {
-	inputBlock := channel.NewReader(ctx, s.committedBlock)
+func (s *Service) Run(ctx context.Context, config *RunConfig) error {
+	inputBlock := channel.NewReader(ctx, config.IncomingCommittedBlock)
 	for {
 		block, ok := inputBlock.Read()
 		if !ok {

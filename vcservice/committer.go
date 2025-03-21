@@ -9,7 +9,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -80,7 +80,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
 
-		monitoring.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
+		promutil.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
 		outgoingTransactionsStatus.Write(txsStatus)
 		logger.Debugf("Batch of TXs sent from the committer to the output")
 	}

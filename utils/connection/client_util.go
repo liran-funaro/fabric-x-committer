@@ -9,14 +9,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
-const maxMsgSize = 100 * 1024 * 1024
+const (
+	maxMsgSize = 100 * 1024 * 1024
+	// Connected indicates that the connection to the service is currently established.
+	Connected = 1.0
+	// Disconnected indicates that the connection to the service is currently not established.
+	Disconnected = 0
+)
 
 type (
 	DialConfig struct {
@@ -168,6 +178,42 @@ func openConnections[T WithAddress](
 	}
 	logger.Infof("Opened %d connections", len(connections))
 	return connections, nil
+}
+
+// WaitForConnection waits for the given connection to be in the ready state.
+func WaitForConnection(
+	ctx context.Context,
+	conn *grpc.ClientConn,
+	connStatus *prometheus.GaugeVec,
+	failureCount *prometheus.CounterVec,
+) {
+	label := []string{conn.CanonicalTarget()}
+	defer func() {
+		promutil.SetGaugeVec(connStatus, label, Connected)
+	}()
+
+	if conn.GetState() == connectivity.Ready {
+		return
+	}
+
+	promutil.AddToCounterVec(failureCount, label, 1)
+	promutil.SetGaugeVec(connStatus, label, Disconnected)
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			logger.Debug("Reconnecting to service.")
+			conn.Connect()
+			if conn.GetState() == connectivity.Ready {
+				return
+			}
+			logger.Debug("service connection is not ready.")
+		}
+	}
 }
 
 // FilterStreamRPCError filters RPC errors that caused due to ending stream.

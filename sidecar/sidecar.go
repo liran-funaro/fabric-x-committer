@@ -2,7 +2,6 @@ package sidecar
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -16,8 +15,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 var logger = logging.New("sidecar")
@@ -49,25 +49,21 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
-	blockToBeCommitted := make(chan *common.Block, 100)
-	committedBlock := make(chan *common.Block, 100)
 	metrics := newPerformanceMetrics()
-	relayService := newRelay(blockToBeCommitted, committedBlock, c.LastCommittedBlockSetInterval, metrics)
+	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)
-	ledgerService, err := ledger.New(c.Orderer.ChannelID, c.Ledger.Path, committedBlock)
+	ledgerService, err := ledger.New(c.Orderer.ChannelID, c.Ledger.Path)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create ledger")
 	}
 	return &Service{
-		ordererClient:      ordererClient,
-		relay:              relayService,
-		ledgerService:      ledgerService,
-		blockToBeCommitted: blockToBeCommitted,
-		committedBlock:     committedBlock,
-		config:             c,
-		metrics:            metrics,
+		ordererClient: ordererClient,
+		relay:         relayService,
+		ledgerService: ledgerService,
+		config:        c,
+		metrics:       metrics,
 	}, nil
 }
 
@@ -78,13 +74,16 @@ func (s *Service) WaitForReady(ctx context.Context) bool {
 }
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
-func (s *Service) Run(ctx context.Context) error {
+func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
+	pCtx, pCancel := context.WithCancel(ctx)
+	defer pCancel()
+	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
 	go func() {
-		_ = s.metrics.StartPrometheusServer(ctx, s.config.Monitoring.Server, s.monitorQueues)
+		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring.Server, s.monitorQueues)
 	}()
 
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
-	conn, err := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint))
+	conn, err := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint)) //nolint:contextcheck
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to coordinator")
 	}
@@ -93,76 +92,96 @@ func (s *Service) Run(ctx context.Context) error {
 
 	coordClient := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	// If the sidecar fails but the coordinator remains active, the sidecar
-	// must wait for the coordinator to become idle (i.e., to finish
-	// processing all previously submitted transactions) before attempting
-	// recovery. This ensures proper block store recovery in the sidecar.
-	// For example, suppose blocks 100 through 200 were sent to the coordinator.
-	// Some of these blocks might be partially committed, with the sidecar
-	// having received partial status updates, when the sidecar crashes and
-	// restarts. Upon restart, the sidecar can easily determine the
-	// coordinator's next expected block. However, it needs to reconstruct
-	// its block store to fill any gaps.
-	// The sidecar can identify missing blocks using its current block store
-	// height and the coordinator's next expected block number. It can then
-	// fetch these missing blocks from the ordering service and their statuses
-	// from the coordinator, finally committing them to its local block store.
-	// However, if the coordinator has not fully committed these blocks,
-	// the sidecar might not be able to retrieve all necessary status updates.
-	// To prevent this, the sidecar waits for the coordinator to complete all
-	// pending transactions before attempting recovery. This ensures that the
-	// sidecar retrieves complete status information and avoids inconsistencies
-	// in its block store.
-	if err = waitForIdleCoordinator(ctx, coordClient); err != nil {
-		return err
-	}
+	for ctx.Err() == nil {
+		connection.WaitForConnection(ctx, conn, s.metrics.coordConnectionStatus, s.metrics.coordConnectionFailureTotal)
 
-	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to fetch the next expected block number from coordinator: %w", err)
-	}
-	logger.Infof("next expected block number by coordinator is %d", blkInfo.GetNumber())
+		// we should drop all enqueued block if any.
+		s.blockToBeCommitted = make(chan *common.Block, 100)
+		s.committedBlock = make(chan *common.Block, 100)
 
-	if err := s.recoverLedgerStore(ctx, coordClient, blkInfo.Number); err != nil {
-		return errors.Wrap(err, "failed to recover block store")
-	}
-
-	if err := s.recoverPolicies(ctx, coordClient); err != nil {
-		return errors.Wrap(err, "failed to recover policies")
-	}
-
-	g, eCtx := errgroup.WithContext(ctx)
-
-	// 1. Fetch blocks from the ordering service.
-	g.Go(func() error {
-		return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
-			StartBlkNum: int64(blkInfo.GetNumber()), //nolint:gosec
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
-			OutputBlock: s.blockToBeCommitted,
-		})
-	})
-
-	// 2. Relay the blocks to committer and receive the transaction status.
-	g.Go(func() error {
-		return s.relay.Run(eCtx, &relayRunConfig{
-			coordClient:                    coordClient,
-			nextExpectedBlockByCoordinator: blkInfo.GetNumber(),
-			configUpdater:                  s.configUpdater,
-		})
-	})
-
-	// 3. Deliver the block with status to client.
-	g.Go(func() error {
-		return s.ledgerService.Run(eCtx)
-	})
-
-	if err := g.Wait(); err != nil {
-		if !connection.IsStreamContextEnd(err) {
-			logger.Errorf("sidecar processing has been stopped due to err [%v]", err)
-		} else {
-			logger.Info("sidecar processing has been stopped due to context end")
+		// If the sidecar fails but the coordinator remains active, the sidecar
+		// must wait for the coordinator to become idle (i.e., to finish
+		// processing all previously submitted transactions) before attempting
+		// recovery. This ensures proper block store recovery in the sidecar.
+		// For example, suppose blocks 100 through 200 were sent to the coordinator.
+		// Some of these blocks might be partially committed, with the sidecar
+		// having received partial status updates, when the sidecar crashes and
+		// restarts. Upon restart, the sidecar can easily determine the
+		// coordinator's next expected block. However, it needs to reconstruct
+		// its block store to fill any gaps.
+		// The sidecar can identify missing blocks using its current block store
+		// height and the coordinator's next expected block number. It can then
+		// fetch these missing blocks from the ordering service and their statuses
+		// from the coordinator, finally committing them to its local block store.
+		// However, if the coordinator has not fully committed these blocks,
+		// the sidecar might not be able to retrieve all necessary status updates.
+		// To prevent this, the sidecar waits for the coordinator to complete all
+		// pending transactions before attempting recovery. This ensures that the
+		// sidecar retrieves complete status information and avoids inconsistencies
+		// in its block store.
+		if err = waitForIdleCoordinator(ctx, coordClient); err != nil {
+			return err
 		}
-		return err
+
+		blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
+		if err != nil {
+			return errors.Newf("failed to fetch the next expected block number from coordinator: %w", err)
+		}
+		logger.Infof("next expected block number by coordinator is %d", blkInfo.GetNumber())
+
+		if err = s.recoverLedgerStore(ctx, coordClient, blkInfo.Number); err != nil {
+			return errors.Wrap(err, "failed to recover block store")
+		}
+
+		if err = s.recoverPolicies(ctx, coordClient); err != nil {
+			return errors.Wrap(err, "failed to recover policies")
+		}
+
+		g, eCtx := errgroup.WithContext(ctx)
+
+		// 1. Fetch blocks from the ordering service.
+		g.Go(func() error {
+			return s.ordererClient.Deliver(eCtx, &broadcastdeliver.DeliverConfig{
+				StartBlkNum: int64(blkInfo.GetNumber()), //nolint:gosec
+				EndBlkNum:   broadcastdeliver.MaxBlockNum,
+				OutputBlock: s.blockToBeCommitted,
+			})
+		})
+
+		// 2. Relay the blocks to committer and receive the transaction status.
+		g.Go(func() error {
+			return s.relay.Run(eCtx, &relayRunConfig{
+				coordClient:                    coordClient,
+				nextExpectedBlockByCoordinator: blkInfo.GetNumber(),
+				configUpdater:                  s.configUpdater,
+				incomingBlockToBeCommitted:     s.blockToBeCommitted,
+				outgoingCommittedBlock:         s.committedBlock,
+			})
+		})
+
+		// 3. Deliver the block with status to client.
+		g.Go(func() error {
+			return s.ledgerService.Run(eCtx, &ledger.RunConfig{
+				IncomingCommittedBlock: s.committedBlock,
+			})
+		})
+
+		err = g.Wait()
+		if connection.IsStreamContextEnd(err) {
+			logger.Info("sidecar processing has been stopped due to context end")
+			return nil
+		}
+
+		var rErr *relayError
+		if !errors.As(err, &rErr) {
+			return errors.Wrap(err, "sidecar has been stopped")
+		}
+
+		if nonConnErr := grpcerror.FilterUnavailableErrorCode(err); nonConnErr != nil {
+			logger.Errorf("sidecar processing has been stopped due to err [%v]", nonConnErr)
+			return nonConnErr
+		}
+		logger.Info("sidecar has been stopped due to a connection issue with the coordinator [%v]", err)
 	}
 	return nil
 }
@@ -235,7 +254,7 @@ func (s *Service) recoverLedgerStore(
 		logger.Infof("starting delivery service with the orderer to receive block %d to %d",
 			blockStoreHeight, stateDBHeight-1)
 		return s.ordererClient.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
-			StartBlkNum: int64(blockStoreHeight), // nolint:gosec
+			StartBlkNum: int64(blockStoreHeight), //nolint:gosec
 			EndBlkNum:   stateDBHeight - 1,
 			OutputBlock: blockCh,
 		})
@@ -257,7 +276,7 @@ func (s *Service) recoverLedgerStore(
 		return nil
 	})
 
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
 }
 
 func (s *Service) appendMissingBlock(
@@ -275,7 +294,7 @@ func (s *Service) appendMissingBlock(
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}
 
 	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
@@ -301,8 +320,8 @@ func (s *Service) monitorQueues(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		monitoring.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(s.blockToBeCommitted))
-		monitoring.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
+		promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(s.blockToBeCommitted))
+		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
 	}
 }
 
@@ -320,7 +339,7 @@ func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.
 	for {
 		waitingTxs, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to get the number of transactions waiting in the coordinator for statuses")
 		}
 		if waitingTxs.Count == 0 {
 			break
@@ -340,7 +359,7 @@ func fillStatuses(
 	for txID, height := range expectedHeight {
 		s, ok := statuses[txID]
 		if !ok {
-			return fmt.Errorf("committer should have the status of txID [%s] but it does not", txID)
+			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
 		}
 		if types.AreSame(height, types.NewHeight(s.BlockNumber, s.TxNumber)) {
 			finalStatuses[height.TxNum] = byte(s.Code)

@@ -36,12 +36,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	_, coordinatorServer := mock.StartMockCoordinatorService(t)
 	coordinatorEndpoint := coordinatorServer.Configs[0].Endpoint
 
-	incomingBlockToBeCommitted := make(chan *common.Block, 10)
-	committedBlock := make(chan *common.Block, 10)
 	metrics := newPerformanceMetrics()
 	relayService := newRelay(
-		incomingBlockToBeCommitted,
-		committedBlock,
 		time.Second,
 		metrics,
 	)
@@ -54,8 +50,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 
 	env := &relayTestEnv{
 		relay:                      relayService,
-		incomingBlockToBeCommitted: incomingBlockToBeCommitted,
-		committedBlock:             committedBlock,
+		incomingBlockToBeCommitted: make(chan *common.Block, 10),
+		committedBlock:             make(chan *common.Block, 10),
 		metrics:                    metrics,
 	}
 
@@ -67,6 +63,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 			configUpdater: func(block *common.Block) {
 				env.configBlocks = append(env.configBlocks, block)
 			},
+			incomingBlockToBeCommitted: env.incomingBlockToBeCommitted,
+			outgoingCommittedBlock:     env.committedBlock,
 		}))
 	}, nil)
 	return env

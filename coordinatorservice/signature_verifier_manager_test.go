@@ -15,7 +15,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -283,7 +282,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		sv.MockFaultyNodeDropSize = 4
 	}
 
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
 	env.requireRetriedTxsTotal(t, 0)
 
 	blkNum := 0
@@ -303,7 +302,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		s.Stop()
 		test.CheckServerStopped(t, env.grpcServers.Configs[i].Endpoint.Address())
 	}
-	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	for _, sv := range env.mockSvService {
 		sv.MockFaultyNodeDropSize = 0
@@ -311,7 +310,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
 	env.requireTxBatch(t, expectedValidatedTxs[4:])
@@ -322,10 +321,10 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSvMgrTestEnv(t, 1, []byte("invalid argument")...)
 
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 0)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
 	env.grpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
-	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	allNsPolicies := env.signVerifierManager.signVerifier[0].allNsPolicies
 	require.Empty(t, allNsPolicies)
@@ -364,7 +363,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)
-	env.requireConnectionMetrics(t, 0, monitoring.Connected, 1)
+	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 
 	require.Eventually(t, func() bool {
 		return !env.signVerifierManager.signVerifier[0].pendingNsPolicies
@@ -388,7 +387,7 @@ func TestSignatureVerifierManagerPolicyUpdateRecovery(t *testing.T) {
 
 	env.grpcServers.Servers[0].Stop()
 	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
-	env.requireConnectionMetrics(t, 0, monitoring.Disconnected, 2)
+	env.requireConnectionMetrics(t, 0, connection.Disconnected, 2)
 	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
 		t, env.mockSvService, env.grpcServers.Configs,
 	)

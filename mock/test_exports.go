@@ -75,6 +75,19 @@ func StartMockCoordinatorService(t *testing.T) (
 	return mockCoordinator, coordinatorGrpc
 }
 
+// StartMockCoordinatorServiceFromListWithConfig starts a mock coordinator service using the given config.
+func StartMockCoordinatorServiceFromListWithConfig(
+	t *testing.T,
+	coordService *Coordinator,
+	sc *connection.ServerConfig,
+) *test.GrpcServers {
+	t.Helper()
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, []*connection.ServerConfig{sc},
+		func(server *grpc.Server, _ int) {
+			protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
+		})
+}
+
 // StartMockOrderingServices starts a specified number of mock ordering service and register cancellation.
 func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	*Orderer, *test.GrpcServers,

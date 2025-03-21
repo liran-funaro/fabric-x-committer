@@ -17,7 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
@@ -122,7 +122,7 @@ func (s *VerifierServer) handleInputs(
 		logger.Debugf("Received input from client with %v requests", len(batch.Requests))
 
 		s.metrics.VerifierServerInTxs.Add(len(batch.Requests))
-		monitoring.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
+		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
 		for _, r := range batch.Requests {
 			if ok := input.Write(r); !ok {
 				return errors.Wrap(stream.Context().Err(), "context ended")
@@ -144,7 +144,7 @@ func (s *VerifierServer) handleOutputs(
 			return errors.Wrap(stream.Context().Err(), "context ended")
 		}
 		s.metrics.VerifierServerOutTxs.Add(len(outputs))
-		monitoring.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
+		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
 		rpcErr := stream.Send(&protosigverifierservice.ResponseBatch{Responses: outputs})
 		if rpcErr != nil {

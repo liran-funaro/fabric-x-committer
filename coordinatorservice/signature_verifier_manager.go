@@ -3,13 +3,10 @@ package coordinatorservice
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -19,7 +16,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -106,7 +103,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 			return errors.Wrapf(err, "failed to create verifier client with %s", serverConfig.Endpoint.Address())
 		}
 		label := []string{sv.conn.CanonicalTarget()}
-		monitoring.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, monitoring.Connected)
+		promutil.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, connection.Connected)
 
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
@@ -118,7 +115,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 				c.outgoingValidatedTxs,
 			))
 			_ = sv.conn.Close() // it does not matter whether it returns an error.
-			monitoring.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, monitoring.Disconnected)
+			promutil.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, connection.Disconnected)
 			return errors.Wrap(err, "failed to send transactions and receive verification statuses from verifiers")
 		})
 	}
@@ -213,11 +210,11 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 		sv.txMu.Unlock()
 
 		if len(pendingTxs) > 0 {
-			monitoring.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
+			promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
 			inputTxBatch.Write(pendingTxs)
 		}
 
-		waitForConnection(ctx, sv.conn, sv.metrics.verifiersConnectionStatus,
+		connection.WaitForConnection(ctx, sv.conn, sv.metrics.verifiersConnectionStatus,
 			sv.metrics.verifiersConnectionFailureTotal)
 
 		// NOTE: To simplify the implementation, we do not distinguish between transient connection failures
@@ -270,39 +267,6 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	}
 
 	return nil
-}
-
-func waitForConnection(
-	ctx context.Context,
-	conn *grpc.ClientConn,
-	connStatus *prometheus.GaugeVec,
-	failureCount *prometheus.CounterVec,
-) {
-	if conn.GetState() == connectivity.Ready {
-		return
-	}
-
-	label := []string{conn.CanonicalTarget()}
-	monitoring.AddToCounterVec(failureCount, label, 1)
-	monitoring.SetGaugeVec(connStatus, label, monitoring.Disconnected)
-
-	defer monitoring.SetGaugeVec(connStatus, label, monitoring.Connected)
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			logger.Debug("Reconnecting to service.")
-			conn.Connect()
-			if conn.GetState() == connectivity.Ready {
-				return
-			}
-			logger.Debug("service connection is not ready.")
-		}
-	}
 }
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
@@ -404,7 +368,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return
 		}
 
-		monitoring.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
+		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
 	}
 }
 

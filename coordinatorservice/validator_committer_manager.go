@@ -14,7 +14,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -87,7 +87,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 			return errors.Wrapf(err, "failed to create validator client with %s", serverConfig.Endpoint.Address())
 		}
 		label := []string{vc.conn.CanonicalTarget()}
-		monitoring.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, label, monitoring.Connected)
+		promutil.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, label, connection.Connected)
 
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 		vcm.validatorCommitter[i] = vc
@@ -100,8 +100,8 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 				channel.NewWriter(eCtx, c.outgoingTxsStatus),
 			)
 			_ = vc.conn.Close() // it does not matter whether it returns an error
-			monitoring.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, []string{vc.conn.CanonicalTarget()},
-				monitoring.Disconnected)
+			promutil.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, []string{vc.conn.CanonicalTarget()},
+				connection.Disconnected)
 			return errors.Wrap(err, "failed to send transactions and receive commit status from validator-committers")
 		})
 	}
@@ -224,11 +224,11 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 		vc.txBeingValidated = &sync.Map{}
 
 		if len(pendingTxs) > 0 {
-			monitoring.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
+			promutil.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
 			inputTxBatch.Write(pendingTxs)
 		}
 
-		waitForConnection(ctx, vc.conn, vc.metrics.vcservicesConnectionStatus,
+		connection.WaitForConnection(ctx, vc.conn, vc.metrics.vcservicesConnectionStatus,
 			vc.metrics.vcservicesConnectionFailureTotal)
 
 		sCtx, sCancel := context.WithCancel(ctx)
@@ -330,7 +330,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
 
-		monitoring.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
+		promutil.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
 		for txID, status := range txsStatus.Status {

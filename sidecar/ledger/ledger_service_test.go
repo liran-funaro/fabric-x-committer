@@ -19,17 +19,23 @@ import (
 
 func TestLedgerService(t *testing.T) {
 	ledgerPath := t.TempDir()
-	inputBlock := make(chan *common.Block, 10)
 	channelID := "ch1"
 
-	ledgerService, err := New(channelID, ledgerPath, inputBlock)
+	ledgerService, err := New(channelID, ledgerPath)
 	require.NoError(t, err)
 	t.Cleanup(ledgerService.Close)
 
 	config := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost"},
 	}
-	test.RunServiceAndGrpcForTest(context.Background(), t, ledgerService, config, func(server *grpc.Server) {
+
+	inputBlock := make(chan *common.Block, 10)
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(ledgerService.Run(ctx, &RunConfig{
+			IncomingCommittedBlock: inputBlock,
+		}))
+	}, nil)
+	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, ledgerService)
 	})
 

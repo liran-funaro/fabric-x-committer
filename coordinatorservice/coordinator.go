@@ -17,7 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
@@ -381,7 +381,7 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 		}
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
-		monitoring.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs))
+		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs))
 		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
 
 		if len(blk.Txs) == 0 {
@@ -429,13 +429,13 @@ func (c *CoordinatorService) sendTxStatus(
 		for _, status := range txStatus.Status {
 			switch status.Code {
 			case protoblocktx.Status_COMMITTED:
-				monitoring.AddToCounter(m.transactionCommittedStatusSentTotal, 1)
+				promutil.AddToCounter(m.transactionCommittedStatusSentTotal, 1)
 			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
-				monitoring.AddToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
+				promutil.AddToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
 			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
-				monitoring.AddToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
+				promutil.AddToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
 			case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
-				monitoring.AddToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
+				promutil.AddToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
 			}
 		}
 	}
@@ -453,9 +453,9 @@ func (c *CoordinatorService) monitorQueues(ctx context.Context) {
 
 		m := c.metrics
 		q := c.queues
-		monitoring.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
-		monitoring.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
-		monitoring.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
-		monitoring.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
+		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
+		promutil.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
+		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
+		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
@@ -115,7 +115,7 @@ func (q *QueryService) GetRows(
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
 	defer q.requestLatency(grpcGetRows, time.Now())
 	for _, ns := range query.Namespaces {
-		monitoring.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
+		promutil.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
 	}
 
 	batches, err := q.assignRequest(ctx, query)
@@ -135,7 +135,7 @@ func (q *QueryService) GetRows(
 			NsId: ns.NsId,
 			Rows: resRows,
 		}
-		monitoring.AddToCounter(q.metrics.keysResponded, len(resRows))
+		promutil.AddToCounter(q.metrics.keysResponded, len(resRows))
 	}
 	return res, err
 }
@@ -152,7 +152,7 @@ func (q *QueryService) assignRequest(
 	ctx context.Context, query *protoqueryservice.Query,
 ) ([]*namespaceQueryBatch, error) {
 	defer func(start time.Time) {
-		monitoring.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))
+		promutil.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))
 	}(time.Now())
 	batcher, err := q.batcher.getBatcher(ctx, query.View)
 	if err != nil {
@@ -178,5 +178,5 @@ func getUUID() (string, error) {
 }
 
 func (q *QueryService) requestLatency(method string, start time.Time) {
-	monitoring.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
+	promutil.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
 }

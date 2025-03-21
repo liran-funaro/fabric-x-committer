@@ -21,6 +21,9 @@ type perfMetrics struct {
 	// queue sizes
 	yetToBeCommittedBlocksQueueSize prometheus.Gauge
 	committedBlocksQueueSize        prometheus.Gauge
+
+	coordConnectionStatus       *prometheus.GaugeVec
+	coordConnectionFailureTotal *prometheus.CounterVec
 }
 
 func newPerformanceMetrics() *perfMetrics {
@@ -67,5 +70,18 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "output_committed_block_queue_size",
 			Help:      "Size of the output committed block queue of the relay service.",
 		}),
+		coordConnectionStatus: p.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "grpc_coordinator",
+			Name:      "connection_status",
+			Help:      "Connection status to coordinator service by grpc target (1 = connected, 0 = disconnected).",
+		}, []string{"grpc_target"}),
+		coordConnectionFailureTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "sidecar",
+			Subsystem: "grpc_coordinator",
+			Name:      "connection_failure_total",
+			Help: "Total number of connection failures to coordinator service." +
+				"Short-lived failures may not always be captured.",
+		}, []string{"grpc_target"}),
 	}
 }

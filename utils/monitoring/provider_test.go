@@ -9,7 +9,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -19,13 +21,14 @@ type metricsProviderTestEnv struct {
 }
 
 func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
+	t.Helper()
 	p := NewProvider()
 	client := &http.Client{}
 	t.Cleanup(func() {
 		client.CloseIdleConnections()
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
 	c := connection.NewLocalHostServer()
@@ -66,7 +69,7 @@ func TestCounter(t *testing.T) {
 
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_committed_transaction_total 2"})
 
-	AddToCounter(c, 10)
+	promutil.AddToCounter(c, 10)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_committed_transaction_total 12"})
 }
 
@@ -85,8 +88,8 @@ func TestCounterVec(t *testing.T) {
 	cv := env.provider.NewCounterVec(opts, labels)
 
 	cv.With(prometheus.Labels{"namespace": "ns_1"}).Inc()
-	AddToCounterVec(cv, []string{"ns_2"}, 1)
-	AddToCounterVec(cv, []string{"ns_1"}, 1)
+	promutil.AddToCounterVec(cv, []string{"ns_2"}, 1)
+	promutil.AddToCounterVec(cv, []string{"ns_1"}, 1)
 
 	test.CheckMetrics(t, env.client, env.provider.url, []string{
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
@@ -113,7 +116,7 @@ func TestNewGuage(t *testing.T) {
 	g.Sub(3)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 7"})
 
-	SetGauge(g, 5)
+	promutil.SetGauge(g, 5)
 	test.CheckMetrics(t, env.client, env.provider.url, []string{"vcservice_preparer_transactions_queued 5"})
 }
 
@@ -142,7 +145,7 @@ func TestNewGuageVec(t *testing.T) {
 		},
 	)
 
-	SetGaugeVec(gv, []string{"ns_1"}, 4)
+	promutil.SetGaugeVec(gv, []string{"ns_1"}, 4)
 	test.CheckMetrics(
 		t,
 		env.client,
@@ -169,7 +172,7 @@ func TestNewHistogram(t *testing.T) {
 
 	h.Observe(500 * time.Millisecond.Seconds())
 	h.Observe(time.Second.Seconds())
-	Observe(h, 10*time.Second)
+	promutil.Observe(h, 10*time.Second)
 	test.CheckMetrics(
 		t,
 		env.client,

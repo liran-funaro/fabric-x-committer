@@ -14,7 +14,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 var logger = logging.New("validator and committer service")
@@ -161,10 +161,10 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		monitoring.SetGauge(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
-		monitoring.SetGauge(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
-		monitoring.SetGauge(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
-		monitoring.SetGauge(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
+		promutil.SetGauge(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
+		promutil.SetGauge(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
+		promutil.SetGauge(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
+		promutil.SetGauge(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
 	}
 }
 
@@ -263,7 +263,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 			return errors.Wrap(err, "failed to receive transactions from the coordinator")
 		}
 		txCount := len(b.Transactions)
-		monitoring.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
+		promutil.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 		vc.receivedTxBatch <- b
 	}
 
@@ -341,10 +341,10 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 			}
 		}
 
-		monitoring.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
-		monitoring.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
-		monitoring.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
-		monitoring.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
+		promutil.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
+		promutil.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
+		promutil.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
+		promutil.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
 }
 
