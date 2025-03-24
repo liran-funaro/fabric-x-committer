@@ -55,6 +55,8 @@ type (
 		streamActive sync.RWMutex
 
 		numWaitingTxsForStatus *atomic.Int32
+
+		txBatchIDToDepGraph uint64
 	}
 
 	channels struct {
@@ -173,6 +175,7 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		metrics:                        metrics,
 		initializationDone:             channel.NewReady(),
 		numWaitingTxsForStatus:         &atomic.Int32{},
+		txBatchIDToDepGraph:            1,
 	}
 }
 
@@ -307,7 +310,7 @@ func (c *CoordinatorService) NumberOfWaitingTransactionsForStatus(
 	defer c.streamActive.Unlock()
 
 	return &protocoordinatorservice.WaitingTransactions{
-		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), // nolint:gosec
+		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), //nolint:gosec
 	}, nil
 }
 
@@ -347,20 +350,19 @@ func (c *CoordinatorService) BlockProcessing(
 		return nil
 	})
 
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "stream with the sidecar has ended")
 }
 
-func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
+func (c *CoordinatorService) receiveAndProcessBlock(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
-	txBatchID := uint64(1)
 	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
 
 	for ctx.Err() == nil {
 		blk, err := stream.Recv()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to receive blocks from the sidecar")
 		}
 
 		// NOTE: Block processing is decoupled from the stream's lifecycle.
@@ -392,12 +394,12 @@ func (c *CoordinatorService) receiveAndProcessBlock( // nolint:gocognit
 			end := min(i+chunkSizeForDepGraph, len(blk.Txs))
 			txsBatchForDependencyGraph.Write(
 				&dependencygraph.TransactionBatch{
-					ID:          txBatchID,
+					ID:          c.txBatchIDToDepGraph,
 					BlockNumber: blk.Number,
 					Txs:         blk.Txs[i:end],
 					TxsNum:      blk.TxsNum[i:end],
 				})
-			txBatchID++
+			c.txBatchIDToDepGraph++
 		}
 	}
 
@@ -414,10 +416,10 @@ func (c *CoordinatorService) sendTxStatus(
 		if !ctxAlive {
 			return nil
 		}
-		c.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) // nolint:gosec
+		c.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) //nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
-			return err
+			return errors.Wrap(err, "failed to send transaction status batch to the sidecar")
 		}
 
 		logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txStatus.Status))

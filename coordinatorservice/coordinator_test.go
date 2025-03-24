@@ -270,14 +270,9 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == preMetricsValue+1
 	}, 1*time.Second, 100*time.Millisecond)
 
-	txStatus, err := env.csStream.Recv()
-	require.NoError(t, err)
-	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
-	}
-
-	require.Equal(t, expectedTxStatus, txStatus.Status)
-	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx1"}, expectedTxStatus)
+	}, nil)
 
 	require.InEpsilon(
 		t,
@@ -420,15 +415,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= expectedReceived
 	}, time.Minute, 500*time.Millisecond)
 
-	status := make(map[string]*protoblocktx.StatusWithHeight)
-	require.Eventually(t, func() bool {
-		txStatus, err := env.csStream.Recv()
-		if !assert.NoError(t, err) {
-			return false
-		}
-		maps.Insert(status, maps.All(txStatus.Status))
-		return len(status) == len(b1.Txs)
-	}, time.Minute, 10*time.Millisecond)
+	status := env.receiveStatus(t, len(b1.Txs))
 	for txID, txStatus := range status {
 		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}
@@ -520,13 +507,9 @@ func TestCoordinatorRecovery(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	txStatus, err := env.csStream.Recv()
-	require.NoError(t, err)
-	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
-	}
-	require.Equal(t, expectedTxStatus, txStatus.Status)
-	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx1"}, expectedTxStatus)
+	}, nil)
 
 	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
@@ -603,18 +586,15 @@ func TestCoordinatorRecovery(t *testing.T) {
 	}
 	require.NoError(t, env.csStream.Send(block2))
 
-	txStatus, err = env.csStream.Recv()
-	require.NoError(t, err)
-	expectedTxStatus = map[string]*protoblocktx.StatusWithHeight{
+	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
 		"tx2":           types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
 		"mvcc conflict": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
 		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
 	}
-	require.Equal(t, expectedTxStatus, txStatus.Status)
+	env.requireStatus(ctx, t, expectedTxStatus, map[string]*protoblocktx.StatusWithHeight{
+		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+	})
 	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
-
-	expectedTxStatus["tx1"] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0)
-	test.EnsurePersistedTxStatus(ctx, t, env.client, []string{"tx2", "mvcc conflict", "tx1"}, expectedTxStatus)
 
 	cancel()
 
@@ -743,29 +723,112 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.NoError(t, env.csStream.Send(block2))
 
-	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	for len(actualTxsStatus) < 5 {
-		statusBatch, err := env.csStream.Recv()
-		require.NoError(t, err)
-		for id, s := range statusBatch.Status {
-			actualTxsStatus[id] = s
-		}
-	}
-	expectedTxStatus = map[string]*protoblocktx.StatusWithHeight{
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
 		"tx2":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
 		"tx3":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
 		"mvcc conflict":       types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
 		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 4),
 		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
+	}, map[string]*protoblocktx.StatusWithHeight{
+		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+	})
+	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
+}
+
+func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
+
+	env.createNamespaces(t, 0, "1")
+
+	blk := &protocoordinatorservice.Block{
+		Number: 1,
+		Txs: []*protoblocktx.Tx{
+			{
+				Id: "tx1",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      "1",
+						NsVersion: types.VersionNumber(0).Bytes(),
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Key: []byte("key1"),
+							},
+						},
+					},
+				},
+				Signatures: [][]byte{
+					[]byte("dummy"),
+				},
+			},
+		},
+		TxsNum: []uint32{0},
+	}
+	require.NoError(t, env.csStream.Send(blk))
+
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
+		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
+	}, nil)
+
+	env.streamCancel() // simulate the failure of sidecar
+
+	// only when the stream is inactive, we do not get an error for NumberOfWaitingTransactionsForStatus.
+	require.Eventually(t, func() bool {
+		_, err := env.client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		return err == nil
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// simulate the restart of sidecar
+	sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
+	t.Cleanup(sCancel)
+	csStream, err := env.client.BlockProcessing(sCtx)
+	require.NoError(t, err)
+
+	env.csStream = csStream
+	env.streamCancel = sCancel
+
+	blk.Number = 2
+	blk.Txs[0].Id = "tx2"
+	require.NoError(t, env.csStream.Send(blk))
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
+		"tx2": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 2},
+	}, nil)
+}
+
+func (e *coordinatorTestEnv) requireStatus(
+	ctx context.Context,
+	t *testing.T,
+	expectedTxStatus, differentPersisted map[string]*protoblocktx.StatusWithHeight,
+) {
+	t.Helper()
+	require.Equal(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
+	var txIDs []string //nolint:prealloc
+	for txID := range expectedTxStatus {
+		txIDs = append(txIDs, txID)
 	}
 
-	require.Len(t, actualTxsStatus, len(expectedTxStatus))
-	require.Equal(t, expectedTxStatus, actualTxsStatus)
-	require.Equal(t, uint64(3), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
+	for txID, s := range differentPersisted {
+		expectedTxStatus[txID] = s
+	}
+	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
+}
 
-	expectedTxStatus["tx1"] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0)
-	test.EnsurePersistedTxStatus(ctx, t,
-		env.client, []string{"tx2", "tx3", "mvcc conflict", "duplicate namespace", "tx1"}, expectedTxStatus)
+func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*protoblocktx.StatusWithHeight {
+	t.Helper()
+	status := make(map[string]*protoblocktx.StatusWithHeight)
+	require.Eventually(t, func() bool {
+		txStatus, err := e.csStream.Recv()
+		if !assert.NoError(t, err) {
+			return false
+		}
+		maps.Insert(status, maps.All(txStatus.Status))
+		return len(status) == count
+	}, time.Minute, 500*time.Millisecond)
+
+	return status
 }
 
 func TestConnectionReadyWithTimeout(t *testing.T) {
