@@ -14,7 +14,7 @@ import (
 // policyManager is responsible for locally holding the latest namespace policies and config transaction
 // according to the processed TXs. It does not parse these policies.
 type policyManager struct {
-	version           atomic.Uint64
+	latestVersion     atomic.Uint64
 	nsPolicies        map[string]*protoblocktx.PolicyItem
 	nsVersions        map[string]uint64
 	configTransaction *protoblocktx.ConfigTransaction
@@ -41,10 +41,18 @@ func (pm *policyManager) updateFromTx(namespaces []*protoblocktx.TxNamespace) {
 }
 
 func (pm *policyManager) update(update ...*protosigverifierservice.Update) {
+	// Prevent unnecessary version increments.
+	if isUpdateEmpty(update...) {
+		return
+	}
+
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
-	version := pm.version.Add(1)
+	version := pm.latestVersion.Add(1)
 	for _, u := range update {
+		if u == nil {
+			continue
+		}
 		if u.Config != nil {
 			pm.configTransaction = u.Config
 			pm.configVersion = version
@@ -58,6 +66,15 @@ func (pm *policyManager) update(update ...*protosigverifierservice.Update) {
 	}
 }
 
+func isUpdateEmpty(update ...*protosigverifierservice.Update) bool {
+	for _, u := range update {
+		if u != nil && (u.Config != nil || u.NamespacePolicies != nil) {
+			return false
+		}
+	}
+	return true
+}
+
 func (pm *policyManager) getAll() (*protosigverifierservice.Update, uint64) {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
@@ -66,11 +83,11 @@ func (pm *policyManager) getAll() (*protosigverifierservice.Update, uint64) {
 			Policies: slices.Collect(maps.Values(pm.nsPolicies)),
 		},
 		Config: pm.configTransaction,
-	}, pm.version.Load()
+	}, pm.latestVersion.Load()
 }
 
 func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.Update, uint64) {
-	if version == pm.version.Load() {
+	if version == pm.latestVersion.Load() {
 		return nil, version
 	}
 
@@ -91,5 +108,5 @@ func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.Up
 		ret.NamespacePolicies = &protoblocktx.NamespacePolicies{Policies: nsUpdates}
 	}
 
-	return ret, pm.version.Load()
+	return ret, pm.latestVersion.Load()
 }

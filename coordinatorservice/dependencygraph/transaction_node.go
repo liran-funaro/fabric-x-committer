@@ -167,7 +167,7 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 		case types.MetaNamespaceID:
 			key = constructCompositeKey(types.ConfigNamespaceID, []byte(types.ConfigKey))
 		case types.ConfigNamespaceID:
-			// Meta TX is dependent on the config TX, but no the other way around.
+			// Meta TX is dependent on the config TX, but not the other way around.
 			// The above dependency for meta TX is sufficed to force an order between config and meta transactions.
 		default:
 			key = constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId))
