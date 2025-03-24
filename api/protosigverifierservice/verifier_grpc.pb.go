@@ -8,7 +8,6 @@ package protosigverifierservice
 
 import (
 	context "context"
-	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,15 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Verifier_UpdatePolicies_FullMethodName = "/protosigverifierservice.Verifier/UpdatePolicies"
-	Verifier_StartStream_FullMethodName    = "/protosigverifierservice.Verifier/StartStream"
+	Verifier_StartStream_FullMethodName = "/protosigverifierservice.Verifier/StartStream"
 )
 
 // VerifierClient is the client API for Verifier service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VerifierClient interface {
-	UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error)
 	StartStream(ctx context.Context, opts ...grpc.CallOption) (Verifier_StartStreamClient, error)
 }
 
@@ -38,15 +35,6 @@ type verifierClient struct {
 
 func NewVerifierClient(cc grpc.ClientConnInterface) VerifierClient {
 	return &verifierClient{cc}
-}
-
-func (c *verifierClient) UpdatePolicies(ctx context.Context, in *protoblocktx.Policies, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, Verifier_UpdatePolicies_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *verifierClient) StartStream(ctx context.Context, opts ...grpc.CallOption) (Verifier_StartStreamClient, error) {
@@ -84,7 +72,6 @@ func (x *verifierStartStreamClient) Recv() (*ResponseBatch, error) {
 // All implementations must embed UnimplementedVerifierServer
 // for forward compatibility
 type VerifierServer interface {
-	UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error)
 	StartStream(Verifier_StartStreamServer) error
 	mustEmbedUnimplementedVerifierServer()
 }
@@ -93,9 +80,6 @@ type VerifierServer interface {
 type UnimplementedVerifierServer struct {
 }
 
-func (UnimplementedVerifierServer) UpdatePolicies(context.Context, *protoblocktx.Policies) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdatePolicies not implemented")
-}
 func (UnimplementedVerifierServer) StartStream(Verifier_StartStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartStream not implemented")
 }
@@ -110,24 +94,6 @@ type UnsafeVerifierServer interface {
 
 func RegisterVerifierServer(s grpc.ServiceRegistrar, srv VerifierServer) {
 	s.RegisterService(&Verifier_ServiceDesc, srv)
-}
-
-func _Verifier_UpdatePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(protoblocktx.Policies)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VerifierServer).UpdatePolicies(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Verifier_UpdatePolicies_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VerifierServer).UpdatePolicies(ctx, req.(*protoblocktx.Policies))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Verifier_StartStream_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -162,12 +128,7 @@ func (x *verifierStartStreamServer) Recv() (*RequestBatch, error) {
 var Verifier_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "protosigverifierservice.Verifier",
 	HandlerType: (*VerifierServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "UpdatePolicies",
-			Handler:    _Verifier_UpdatePolicies_Handler,
-		},
-	},
+	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "StartStream",

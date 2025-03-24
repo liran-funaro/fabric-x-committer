@@ -15,7 +15,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
@@ -26,10 +25,9 @@ type (
 	// 2. Receiving the status of the transactions from the signature verifier servers.
 	// 3. Forwarding the status of the transactions to the coordinator.
 	signatureVerifierManager struct {
-		config          *signVerifierManagerConfig
-		signVerifier    []*signatureVerifier
-		metrics         *perfMetrics
-		connectionReady *channel.Ready
+		config       *signVerifierManagerConfig
+		signVerifier []*signatureVerifier
+		metrics      *perfMetrics
 	}
 
 	// signatureVerifier is responsible for managing the communication with a single
@@ -46,21 +44,16 @@ type (
 		txBeingValidated map[types.Height]*dependencygraph.TransactionNode
 		txMu             *sync.Mutex
 
-		// pendingNsPolicies indicates whether a policy update is pending. We do not maintain a detailed
-		// list of pending policies; instead, we send all policies because verifier restarts and transient
-		// connection issues occur very infrequently. This infrequency allows us to simplify the logic.
-		pendingNsPolicies bool
-		allNsPolicies     nsToPolicy
-		nsPolicyMu        *sync.Mutex
+		policyManager *policyManager
+		lifecycle     *RemoteServiceLifecycle
 	}
-
-	nsToPolicy map[string]*protoblocktx.PolicyItem
 
 	signVerifierManagerConfig struct {
 		serversConfig            []*connection.ServerConfig
 		incomingTxsForValidation <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxs     chan<- dependencygraph.TxNodeBatch
 		metrics                  *perfMetrics
+		policyManager            *policyManager
 	}
 )
 
@@ -70,14 +63,12 @@ var sigInvalidTxStatus = &protovcservice.InvalidTxStatus{
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	return &signatureVerifierManager{
-		config:          config,
-		metrics:         config.metrics,
-		connectionReady: channel.NewReady(),
+		config:  config,
+		metrics: config.metrics,
 	}
 }
 
 func (svm *signatureVerifierManager) run(ctx context.Context) error {
-	defer svm.connectionReady.Reset()
 	c := svm.config
 	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.serversConfig))
 	svm.signVerifier = make([]*signatureVerifier, len(c.serversConfig))
@@ -97,60 +88,31 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	})
 
 	for i, serverConfig := range c.serversConfig {
-		logger.Debugf("sv manager creates client to sv [%d] listening on %s", i, &serverConfig.Endpoint)
-		sv, err := newSignatureVerifier(serverConfig, svm.metrics) //nolint:contextcheck // issue #693
+		conn, err := connection.LazyConnect(connection.NewDialConfig(&serverConfig.Endpoint))
 		if err != nil {
-			return errors.Wrapf(err, "failed to create verifier client with %s", serverConfig.Endpoint.Address())
+			return errors.Wrapf(err, "failed to create connection to signature verifier [%d] at %s",
+				i, &serverConfig.Endpoint)
 		}
-		label := []string{sv.conn.CanonicalTarget()}
-		promutil.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, connection.Connected)
+		logger.Infof("connected to signature verifier [%d] at %s", i, &serverConfig.Endpoint)
+		label := []string{conn.CanonicalTarget()}
+		promutil.SetGaugeVec(c.metrics.verifiersConnectionStatus, label, connection.Disconnected)
 
+		sv := newSignatureVerifier(c, conn)
 		svm.signVerifier[i] = sv
 		logger.Debugf("Client [%d] successfully created and connected to sv", i)
 
 		g.Go(func() error {
+			defer connection.CloseConnectionsLog(conn)
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
 			err := sv.sendTransactionsAndForwardStatus(eCtx, txBatchQueue, channel.NewWriter(
 				eCtx,
 				c.outgoingValidatedTxs,
 			))
-			_ = sv.conn.Close() // it does not matter whether it returns an error.
 			promutil.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, connection.Disconnected)
 			return errors.Wrap(err, "failed to send transactions and receive verification statuses from verifiers")
 		})
 	}
-
-	svm.connectionReady.SignalReady()
 	return g.Wait()
-}
-
-func (svm *signatureVerifierManager) updatePolicies(
-	ctx context.Context,
-	policies *protoblocktx.Policies,
-) error {
-	for i, sv := range svm.signVerifier {
-		logger.Infof("Updating policy for sv [%d]", i)
-
-		err := grpcerror.FilterUnavailableErrorCode(sv.updatePolicies(ctx, false, policies.Policies...))
-		if err != nil {
-			logger.ErrorStackTrace(err)
-			// we reach here only if we receive an internal error but it is quite rare.
-			return errors.Wrap(err, "failed to update verifiers with new policies")
-		}
-	}
-
-	// NOTE: Returning immediately is safe, even if some or all verifiers have not yet been updated
-	//       with the latest policies. Once the connection is re-established, sendTransactionsToSVService
-	//       will update the verifier; without this update, the requests would not be sent. Returning now
-	//       prompts the vcservice manager to forward the transaction node to the dependency graph,
-	//       thereby releasing any transactions that depend on it. These transactions will not be validated
-	//       against outdated policies because sendTransactionsToSVService updates the verifier with the pending
-	//       policies before sending the verification requests. If the update fails, the requests will eventually
-	//       be requeued. However, if the connection is not re-established promptly, the transaction queue
-	//       may eventually fill up, potentially throttling the flow from the sidecar to the coordinator.
-	//       Even so, re-establishing a single verifier connection will allow transaction commits to progress.
-
-	return nil
 }
 
 func ingestIncomingTxsToInternalQueue(
@@ -170,35 +132,55 @@ func ingestIncomingTxsToInternalQueue(
 	}
 }
 
-func newSignatureVerifier(serverConfig *connection.ServerConfig, metrics *perfMetrics) (*signatureVerifier, error) {
-	conn, err := connection.Connect(connection.NewDialConfig(&serverConfig.Endpoint))
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create connection to signature verifier running at %s: %w",
-			&serverConfig.Endpoint)
-	}
-	logger.Infof("signature verifier manager connected to signature verifier at %s", &serverConfig.Endpoint)
-
+func newSignatureVerifier(
+	config *signVerifierManagerConfig,
+	conn *grpc.ClientConn,
+) *signatureVerifier {
 	return &signatureVerifier{
 		conn:             conn,
 		client:           protosigverifierservice.NewVerifierClient(conn),
-		metrics:          metrics,
+		metrics:          config.metrics,
 		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
 		txMu:             &sync.Mutex{},
-		allNsPolicies:    make(nsToPolicy),
-		nsPolicyMu:       &sync.Mutex{},
-	}, nil
+		policyManager:    config.policyManager,
+		lifecycle: &RemoteServiceLifecycle{
+			Name:         conn.CanonicalTarget(),
+			ConnStatus:   config.metrics.verifiersConnectionStatus,
+			FailureTotal: config.metrics.verifiersConnectionFailureTotal,
+			// TODO: initialize retry from config.
+		},
+	}
 }
 
-// sendTransactionsAndReceiveStatus initiates a stream to a verifier
+// sendTransactionsAndForwardStatus initiates a stream to a verifier
 // and use it to send transactions, and receive the results.
 // It reconnects the stream in case of failure.
-// It stops only when the context was cancelled, i.e., the SVM have closed.
+// It stops when the context was cancelled, i.e., the SVM have closed, or according to the retry policy.
 func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
-	for ctx.Err() == nil {
+	return sv.lifecycle.RunLifecycle(ctx, func(sCtx context.Context) error {
+		stream, err := sv.client.StartStream(sCtx)
+		if err != nil {
+			return errors.Wrap(err, "failed to start stream")
+		}
+		sv.lifecycle.Go(func() error {
+			// NOTE: outputValidatedTxs should not use the stream context.
+			//       Otherwise, there is a possibility of losing validation results forever.
+			return sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs)
+		})
+		//nolint:contextcheck // we are passing a non-inherited context. If we need to send an
+		// inherited context such as sCtx, we should make the above goroutine to explicitly
+		// cancel the context so that the sendTransactionsAndForwardStatus can terminate. We defer
+		// this to issue #704 as we might use errgroup and error categorization which might
+		// make this linter happy.
+		sv.lifecycle.Go(func() error {
+			return sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(stream.Context()))
+		})
+		return nil
+	}, func() error {
 		// Re-enter pending transactions to the queue so other workers can fetch them.
 		pendingTxs := dependencygraph.TxNodeBatch{}
 		sv.txMu.Lock()
@@ -213,60 +195,8 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 			promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
 			inputTxBatch.Write(pendingTxs)
 		}
-
-		connection.WaitForConnection(ctx, sv.conn, sv.metrics.verifiersConnectionStatus,
-			sv.metrics.verifiersConnectionFailureTotal)
-
-		// NOTE: To simplify the implementation, we do not distinguish between transient connection failures
-		//       and verifier process failures/restarts. Consequently, every time a connection is established
-		//       with a signature verifier, we send all namespace policies. This may cause the verifier to
-		//       unnecessarily create new namespace verifiers, but the tradeoff is acceptable as it is an
-		//       infrequent operation.
-		if err := grpcerror.FilterUnavailableErrorCode(sv.updatePolicies(ctx, true)); err != nil {
-			logger.ErrorStackTrace(err)
-			return errors.Wrap(err, "failed to update verifiers with new policies")
-		}
-		// If the failure is due to a transient connection issue, pendingNsPolicies will update the verifier.
-		// Otherwise, if it's not a transient issue, the subsequent start stream execution will fail, and the
-		// connection will be retried.
-
-		sCtx, sCancel := context.WithCancel(ctx)
-		stream, err := sv.client.StartStream(sCtx)
-		if err != nil {
-			logger.Warnf("Failed starting stream with error: %s", err)
-			sCancel()
-			continue
-		}
-		logger.Debugf("SV stream is connected")
-
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// NOTE: outputValidatedTxs should not use the stream context.
-			//       Otherwise, there is a possibility of losing validation results forever.
-			sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs)
-			logger.Warnf("receiveStatusAndForwardToOutput returned")
-		}()
-
-		//nolint:contextcheck // we are passing a non-inherited context. If we need to send an
-		// inherited context such as sCtx, we should make the above goroutine to explicitly
-		// cancel the context so that the sendTransactionsAndForwardStatus can terminate. We defer
-		// this to issue #704 as we might use errgroup and error categorization which might
-		// make this linter happy.
-		err = sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(stream.Context()))
-		sCancel() // if sendTransactionsAndForwardStatus fails due to an internal error in
-		// the verifier, the receiveStatusAndForwardToOutput wouldn't return unless we cancel the stream context.
-
-		wg.Wait()
-		if err != nil {
-			logger.ErrorStackTrace(err)
-			return errors.Wrap(err, "failed sending transactions to verifier") // reaching here is rare
-		}
-		logger.Debug("Stream ended")
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
@@ -274,12 +204,12 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 	stream protosigverifierservice.Verifier_StartStreamClient,
 	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
+	var policyVersion uint64
 	for {
 		logger.Debug("waiting to read from inputTxBatch")
 		txBatch, ctxAlive := inputTxBatch.Read()
 		if !ctxAlive {
-			logger.Warnf("context has ended: %s", inputTxBatch.Context().Err())
-			return nil
+			return errors.Wrap(inputTxBatch.Context().Err(), "context ended")
 		}
 		logger.Debug("done reading")
 
@@ -296,6 +226,9 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		request := &protosigverifierservice.RequestBatch{
 			Requests: make([]*protosigverifierservice.Request, batchSize),
 		}
+
+		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
+
 		for idx, txNode := range txBatch {
 			request.Requests[idx] = &protosigverifierservice.Request{
 				BlockNum: txNode.Tx.BlockNumber,
@@ -308,22 +241,8 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 			}
 		}
 
-		// NOTE: Dependent transactions are released only after the policy has been updated.
-		//       In rare cases, the updatePolicy method on the SVM might enqueue policy updates due
-		//       to connection issues with this verifier, eventually releasing the dependent transactions.
-		//       As a result, these transactions could be provided as input to the same verifier client.
-		//       To avoid using an outdated policy, any pending policy updates must be cleared before
-		//       sending requests to the verifier.
-		//       Pending policies, unsent due to a transient connection failure, are released here.
-		//       This failure may have been isolated from the stream.
-		if err := sv.updatePolicies(stream.Context(), false); err != nil {
-			logger.ErrorStackTrace(err)
-			return errors.Wrap(grpcerror.FilterUnavailableErrorCode(err), "failed to update policies in verifier")
-		}
-
 		if err := stream.Send(request); err != nil {
-			logger.Warnf("Send to stream ended with error: %s. Reconnecting.", err)
-			return nil
+			return errors.Wrap(err, "send to stream ended with error")
 		}
 		logger.Debugf("Batch contains %d TXs, and was stored in the accumulator and sent to a sv", batchSize)
 	}
@@ -332,16 +251,18 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	stream protosigverifierservice.Verifier_StartStreamClient,
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
-) {
+) error {
 	for {
 		response, err := stream.Recv()
 		if err != nil {
 			// The stream ended or the SVM was closed.
-			logger.Warnf("Receive from stream ended with error: %s. Reconnecting.", err)
-			return
+			return errors.Wrap(err, "receive from stream ended with error")
 		}
 
 		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Responses))
+		// We view a successful stream.Recv() as the fist indication of successful interaction.
+		sv.lifecycle.ReportInteraction()
+
 		validatedTxs := dependencygraph.TxNodeBatch{}
 		// TODO: introduce metrics to measure the lock wait/holding duration.
 		sv.txMu.Lock()
@@ -364,46 +285,9 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 		sv.txMu.Unlock()
 
 		if !outputValidatedTxs.Write(validatedTxs) {
-			logger.Warnf("context has ended: %s", outputValidatedTxs.Context().Err())
-			return
+			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
 		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
 	}
-}
-
-//nolint:revive // control flag is used to force update all policies.
-func (sv *signatureVerifier) updatePolicies(
-	ctx context.Context,
-	forceUpdateAllPolicies bool,
-	newPolicyItems ...*protoblocktx.PolicyItem,
-) error {
-	sv.nsPolicyMu.Lock()
-	defer sv.nsPolicyMu.Unlock()
-	for _, p := range newPolicyItems {
-		sv.allNsPolicies[p.Namespace] = p
-	}
-
-	if sv.pendingNsPolicies || forceUpdateAllPolicies {
-		newPolicyItems = []*protoblocktx.PolicyItem{}
-		for ns, pItem := range sv.allNsPolicies { // allNsPolicies holds both the pending and new policies
-			newPolicyItems = append(newPolicyItems, &protoblocktx.PolicyItem{
-				Namespace: ns,
-				Policy:    pItem.Policy,
-			})
-		}
-	}
-
-	sv.pendingNsPolicies = false
-	if len(newPolicyItems) == 0 {
-		return nil
-	}
-
-	_, err := sv.client.UpdatePolicies(ctx, &protoblocktx.Policies{Policies: newPolicyItems})
-	if err == nil {
-		return nil
-	}
-
-	sv.pendingNsPolicies = true
-	return errors.Wrap(err, "failed to update a verifier")
 }

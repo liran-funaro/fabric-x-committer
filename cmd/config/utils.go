@@ -3,9 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"regexp"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,7 +23,7 @@ func MergeYamlConfigs(filePaths ...string) ([]byte, error) {
 }
 
 func readYamlConfig(filePath string) (configMap, error) {
-	content, err := utils.ReadFile(filePath)
+	content, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return nil, err
 	}
@@ -51,22 +48,4 @@ func reduceMerge(accumulator, current configMap) configMap {
 		accumulator[key] = currentValue
 	}
 	return accumulator
-}
-
-func FilePaths(dir string, filePattern *regexp.Regexp) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	absoluteDir, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-	var filePaths []string
-	for _, entry := range entries {
-		if !entry.IsDir() && filePattern.MatchString(entry.Name()) {
-			filePaths = append(filePaths, filepath.Join(absoluteDir, entry.Name()))
-		}
-	}
-	return filePaths, nil
 }

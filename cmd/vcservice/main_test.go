@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
@@ -41,9 +41,9 @@ func TestVCServiceCmd(t *testing.T) {
 		},
 		{
 			Name:            "clear the " + serviceName,
-			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", types.MetaNamespaceID},
+			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0"},
 			CmdStdOutput:    "Clearing database",
-			CmdLoggerOutput: fmt.Sprintf("Table 'ns_%s' is cleared", types.MetaNamespaceID),
+			CmdLoggerOutput: fmt.Sprintf("Table 'ns_%s' is cleared", "0"),
 			Err:             nil,
 		},
 		{

@@ -4,7 +4,9 @@ import (
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 // IndependentTxGenerator generates a new valid TX given key generators.
@@ -116,7 +118,7 @@ type BlockGenerator struct {
 }
 
 // Next generate a new block.
-func (g *BlockGenerator) Next() *protoblocktx.Block {
+func (g *BlockGenerator) Next() *protocoordinatorservice.Block {
 	txs := NextN(g.TxGenerator, int(g.BlockSize)) //nolint:gosec // integer overflow conversion uint64 -> int
 	// Generators return nil when their stream is done.
 	// This indicates that the block generator should also be done.
@@ -126,13 +128,10 @@ func (g *BlockGenerator) Next() *protoblocktx.Block {
 
 	// Lazy initialization of the tx numbers.
 	if len(g.txNums) < len(txs) {
-		g.txNums = make([]uint32, len(txs))
-		for i := range g.txNums {
-			g.txNums[i] = uint32(i) //nolint:gosec // integer overflow conversion uint64 -> uint32
-		}
+		g.txNums = utils.Range(0, uint32(len(txs))) //nolint:gosec // integer overflow conversion int -> uint32
 	}
 
-	return &protoblocktx.Block{
+	return &protocoordinatorservice.Block{
 		Txs:    txs,
 		TxsNum: g.txNums[:len(txs)],
 	}

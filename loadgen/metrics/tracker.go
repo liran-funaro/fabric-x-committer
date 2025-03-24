@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
@@ -21,7 +22,7 @@ type Receiver interface {
 }
 
 type Sender interface {
-	OnSendBlock(block *protoblocktx.Block)
+	OnSendBlock(block *protocoordinatorservice.Block)
 	OnSendTransaction(txId string)
 }
 

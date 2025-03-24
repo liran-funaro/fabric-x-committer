@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
@@ -14,7 +15,7 @@ import (
 type (
 	validationCode    = byte
 	scBlockWithStatus struct {
-		block      *protoblocktx.Block
+		block      *protocoordinatorservice.Block
 		withStatus *blockWithStatus
 		isConfig   bool
 	}
@@ -29,7 +30,7 @@ func mapBlock(block *common.Block) *scBlockWithStatus {
 	if block.Data == nil {
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
 		return &scBlockWithStatus{
-			block: &protoblocktx.Block{
+			block: &protocoordinatorservice.Block{
 				Number: block.Header.Number,
 			},
 			withStatus: &blockWithStatus{
@@ -40,7 +41,7 @@ func mapBlock(block *common.Block) *scBlockWithStatus {
 	}
 	txCount := len(block.Data.Data)
 	mappedBlock := &scBlockWithStatus{
-		block: &protoblocktx.Block{
+		block: &protocoordinatorservice.Block{
 			Number: block.Header.Number,
 			Txs:    make([]*protoblocktx.Tx, 0, txCount),
 			TxsNum: make([]uint32, 0, txCount),
@@ -71,13 +72,13 @@ func mapBlock(block *common.Block) *scBlockWithStatus {
 				mappedBlock.excludeTx(txNum, hdr, err.Error())
 				continue
 			}
-			if !preValidateTx(tx) {
-				mappedBlock.excludeTx(txNum, hdr, "pre-validation error")
+			if isApplicationConfigTx(tx) {
+				mappedBlock.excludeTx(txNum, hdr, "application's config tx")
 				continue
 			}
 			mappedBlock.appendTx(txNum, hdr, tx)
 		default:
-			mappedBlock.excludeTx(txNum, hdr, "unsupported type")
+			mappedBlock.excludeTx(txNum, hdr, "unsupported message type")
 		}
 	}
 	return mappedBlock
@@ -120,25 +121,24 @@ func configTx(id string, value []byte) *protoblocktx.Tx {
 	return &protoblocktx.Tx{
 		Id: id,
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
+			NsId:      types.ConfigNamespaceID,
 			NsVersion: types.VersionNumber(0).Bytes(),
 			BlindWrites: []*protoblocktx.Write{{
-				Key:   []byte(types.MetaNamespaceID),
+				Key:   []byte(types.ConfigKey),
 				Value: value,
 			}},
 		}},
-		// This flags the verifier that this is a valid config TX.
-		// Any other TX that will have this signature format, will be filtered by the sidecar.
+		// A valid TX must have a signature per namespace.
 		Signatures: make([][]byte, 1),
 	}
 }
 
-// preValidateTx the sidecar does not sign the config TX, and thus the policy verifier only verify that a
-// config TX has a single empty signature.
-// To ensure clients cannot abuse this to send such unsigned transaction, we pre-validate that the transaction
-// does not have a single empty signature.
-// This way, even if the client sends a config TX, it will be ignored.
-func preValidateTx(tx *protoblocktx.Tx) bool {
-	signatures := tx.GetSignatures()
-	return len(signatures) != 1 || len(signatures[0]) > 0
+// isApplicationConfigTx checks the application does not submit a config TX.
+func isApplicationConfigTx(tx *protoblocktx.Tx) bool {
+	for _, ns := range tx.Namespaces {
+		if ns.NsId == types.ConfigNamespaceID {
+			return true
+		}
+	}
+	return false
 }

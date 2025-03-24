@@ -3,7 +3,7 @@ package metrics
 import (
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
@@ -17,7 +17,7 @@ type latencySenderTracker struct {
 	txSampler      monitoring.KeyTracingSampler
 }
 
-func (c *latencySenderTracker) OnSendBlock(block *protoblocktx.Block) {
+func (c *latencySenderTracker) OnSendBlock(block *protocoordinatorservice.Block) {
 	logger.Debugf("Sent block [%d:%d]", block.Number, len(block.Txs))
 	if !c.blockSampler(block.Number) {
 		return

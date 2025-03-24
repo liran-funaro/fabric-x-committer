@@ -6,9 +6,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -31,7 +34,7 @@ func NewSVAdapter(config *SVClientConfig, res *ClientResources) *SvAdapter {
 
 // RunWorkload applies load on the SV.
 func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	policyMsg, err := workload.CreatePolicies(c.res.Profile.Transaction.Policy)
+	updateMsg, err := createUpdate(c.res.Profile.Transaction.Policy)
 	if err != nil {
 		return errors.Wrap(err, "failed creating verification policy")
 	}
@@ -47,21 +50,22 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
 
-		logger.Infof("Set verification verification policy")
-		if _, err = client.UpdatePolicies(ctx, policyMsg); err != nil {
-			return errors.Wrap(err, "failed setting verification policy")
-		}
-
 		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Endpoints[i])
 		}
+
+		logger.Infof("Set verification verification policy")
+		err = streams[i].Send(&protosigverifierservice.RequestBatch{Update: updateMsg})
+		if err != nil {
+			return errors.Wrap(err, "failed submitting verification policy")
+		}
 	}
 
 	for _, stream := range streams {
 		g.Go(func() error {
-			return c.sendBlocks(gCtx, txStream, func(block *protoblocktx.Block) error {
+			return c.sendBlocks(gCtx, txStream, func(block *protocoordinatorservice.Block) error {
 				return stream.Send(mapVSBatch(block))
 			})
 		})
@@ -70,6 +74,42 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		})
 	}
 	return g.Wait()
+}
+
+func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Update, error) {
+	txSigner := workload.NewTxSignerVerifier(policy)
+
+	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed creating config")
+	}
+	updateMsg := &protosigverifierservice.Update{
+		Config: &protoblocktx.ConfigTransaction{
+			Envelope: envelopeBytes,
+		},
+		NamespacePolicies: &protoblocktx.NamespacePolicies{
+			Policies: make([]*protoblocktx.PolicyItem, 0, len(txSigner.HashSigners)),
+		},
+	}
+
+	for ns, p := range txSigner.HashSigners {
+		if ns == types.MetaNamespaceID {
+			continue
+		}
+		policyBytes, err := proto.Marshal(p.GetVerificationPolicy())
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to serialize policy")
+		}
+		updateMsg.NamespacePolicies.Policies = append(
+			updateMsg.NamespacePolicies.Policies,
+			&protoblocktx.PolicyItem{
+				Namespace: ns,
+				Policy:    policyBytes,
+			},
+		)
+	}
+
+	return updateMsg, nil
 }
 
 func (c *SvAdapter) receiveStatus(
@@ -90,7 +130,7 @@ func (c *SvAdapter) receiveStatus(
 	return nil
 }
 
-func mapVSBatch(b *protoblocktx.Block) *protosigverifierservice.RequestBatch {
+func mapVSBatch(b *protocoordinatorservice.Block) *protosigverifierservice.RequestBatch {
 	reqs := make([]*protosigverifierservice.Request, len(b.Txs))
 	for i, tx := range b.Txs {
 		reqs[i] = &protosigverifierservice.Request{

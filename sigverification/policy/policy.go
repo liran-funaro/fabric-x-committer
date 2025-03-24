@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
@@ -37,36 +38,54 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 // ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
-// ListPolicyItems translates key-value list to policy items.
-func ListPolicyItems[T KeyValue](rws []T) []*protoblocktx.PolicyItem {
-	pd := make([]*protoblocktx.PolicyItem, len(rws))
-	for i, rw := range rws {
-		pd[i] = &protoblocktx.PolicyItem{
-			Namespace: string(rw.GetKey()),
-			Policy:    rw.GetValue(),
+// GetUpdatesFromNamespace translates a namespace TX to policy updates.
+func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierservice.Update {
+	switch nsTx.NsId {
+	case types.MetaNamespaceID:
+		pd := make([]*protoblocktx.PolicyItem, len(nsTx.ReadWrites))
+		for i, rw := range nsTx.ReadWrites {
+			pd[i] = &protoblocktx.PolicyItem{
+				Namespace: string(rw.Key),
+				Policy:    rw.Value,
+			}
+		}
+		return &protosigverifierservice.Update{
+			NamespacePolicies: &protoblocktx.NamespacePolicies{
+				Policies: pd,
+			},
+		}
+	case types.ConfigNamespaceID:
+		for _, rw := range nsTx.BlindWrites {
+			if string(rw.Key) == types.ConfigKey {
+				return &protosigverifierservice.Update{
+					Config: &protoblocktx.ConfigTransaction{
+						Envelope: rw.Value,
+					},
+				}
+			}
 		}
 	}
-	return pd
+	return nil
 }
 
-// ParsePolicyItem parses policy item to a namespace policy.
-func ParsePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
+// ParseNamespacePolicyItem parses policy item to a namespace policy.
+func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
 	if err := validateNamespaceID(pd.Namespace); err != nil {
 		return nil, err
 	}
-	switch pd.Namespace {
-	case types.MetaNamespaceID:
-		return policyFromConfigTx(pd.Policy)
-	default:
-		return policyFromMetaNamespaceTx(pd.Policy)
+	p := &protoblocktx.NamespacePolicy{}
+	err := proto.Unmarshal(pd.Policy, p)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
 	}
+	return p, nil
 }
 
 // validateNamespaceID checks that a given namespace fulfills namespace naming conventions.
 func validateNamespaceID(nsID string) error {
-	// if it matches our holy MetaNamespaceID it is valid.
-	if nsID == types.MetaNamespaceID {
-		return nil
+	// If it matches one of the system's namespaces it is invalid.
+	if nsID == types.MetaNamespaceID || nsID == types.ConfigNamespaceID {
+		return ErrInvalidNamespaceID
 	}
 
 	// length checks.
@@ -82,17 +101,8 @@ func validateNamespaceID(nsID string) error {
 	return nil
 }
 
-// policyFromMetaNamespaceTx parse a namespace policy.
-func policyFromMetaNamespaceTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
-	p := &protoblocktx.NamespacePolicy{}
-	err := proto.Unmarshal(value, p)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
-	}
-	return p, nil
-}
-
-func policyFromConfigTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
+// ParsePolicyFromConfigTx parses the meta namespace policy from a config transaction.
+func ParsePolicyFromConfigTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
 	envelope, err := protoutil.UnmarshalEnvelope(value)
 	if err != nil {
 		return nil, errors.Wrap(err, "error unmarshalling envelope")

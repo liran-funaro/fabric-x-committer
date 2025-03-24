@@ -10,12 +10,12 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 const (
@@ -34,7 +34,10 @@ const (
 	commitNewWritesSQLTemplate = "SELECT commit_new_ns_%s($1::bytea[], $2::bytea[]);"
 )
 
-var queryPolicies = fmt.Sprintf("SELECT key, value from ns_%s;", types.MetaNamespaceID)
+var (
+	queryPolicies = fmt.Sprintf("SELECT key, value from ns_%s;", types.MetaNamespaceID)
+	queryConfig   = fmt.Sprintf("SELECT key, value from ns_%s;", types.ConfigNamespaceID)
+)
 
 // ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
 var ErrMetadataEmpty = errors.New("metadata value is empty")
@@ -491,12 +494,12 @@ func (db *database) readStatusWithHeight(
 	return rows, errors.Wrap(retryErr, "error occurred while reading")
 }
 
-func (db *database) readPolicies(ctx context.Context) (*protoblocktx.Policies, error) {
+func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.NamespacePolicies, error) {
 	keys, values, err := db.retryQueryAndReadRows(ctx, queryPolicies)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read from rows of meta namespace")
 	}
-	policy := &protoblocktx.Policies{
+	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
 	}
 	for i, key := range keys {
@@ -506,6 +509,18 @@ func (db *database) readPolicies(ctx context.Context) (*protoblocktx.Policies, e
 		}
 	}
 	return policy, nil
+}
+
+func (db *database) readConfigTX(ctx context.Context) (*protoblocktx.ConfigTransaction, error) {
+	_, values, err := db.retryQueryAndReadRows(ctx, queryConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read from rows of meta namespace")
+	}
+	configTX := &protoblocktx.ConfigTransaction{}
+	for _, v := range values {
+		configTX.Envelope = v
+	}
+	return configTX, nil
 }
 
 func (db *database) retryQueryAndReadRows(

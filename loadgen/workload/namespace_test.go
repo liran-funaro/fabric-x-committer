@@ -20,13 +20,13 @@ func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 		policyProfile := makePolicyProfile(scheme)
 		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
-			mainNsTx, err := CreateNamespaces(policyProfile)
+			mainNsTx, err := CreateNamespacesTX(policyProfile)
 			require.NoError(t, err)
 			mainRw := getReadWritesFromNamespaceTx(t, mainNsTx)
 
 			// Check for consistency.
 			for range 1000 {
-				nsTx, err2 := CreateNamespaces(policyProfile)
+				nsTx, err2 := CreateNamespacesTX(policyProfile)
 				require.NoError(t, err2)
 				curRw := getReadWritesFromNamespaceTx(t, nsTx)
 				require.ElementsMatch(t, curRw, mainRw)
@@ -36,7 +36,7 @@ func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 			for _, p := range policyProfile.NamespacePolicies {
 				p.Seed += 100
 			}
-			nsTx, err := CreateNamespaces(policyProfile)
+			nsTx, err := CreateNamespacesTX(policyProfile)
 			require.NoError(t, err)
 			curRw := getReadWritesFromNamespaceTx(t, nsTx)
 			for _, rw := range mainRw {

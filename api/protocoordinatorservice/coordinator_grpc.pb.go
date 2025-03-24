@@ -25,7 +25,7 @@ const (
 	Coordinator_GetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
 	Coordinator_GetNextExpectedBlockNumber_FullMethodName           = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
 	Coordinator_GetTransactionsStatus_FullMethodName                = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
-	Coordinator_GetPolicies_FullMethodName                          = "/protocoordinatorservice.Coordinator/GetPolicies"
+	Coordinator_GetConfigTransaction_FullMethodName                 = "/protocoordinatorservice.Coordinator/GetConfigTransaction"
 	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protocoordinatorservice.Coordinator/NumberOfWaitingTransactionsForStatus"
 )
 
@@ -38,7 +38,7 @@ type CoordinatorClient interface {
 	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
-	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error)
+	GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
@@ -60,7 +60,7 @@ func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.Ca
 }
 
 type Coordinator_BlockProcessingClient interface {
-	Send(*protoblocktx.Block) error
+	Send(*Block) error
 	Recv() (*protoblocktx.TransactionsStatus, error)
 	grpc.ClientStream
 }
@@ -69,7 +69,7 @@ type coordinatorBlockProcessingClient struct {
 	grpc.ClientStream
 }
 
-func (x *coordinatorBlockProcessingClient) Send(m *protoblocktx.Block) error {
+func (x *coordinatorBlockProcessingClient) Send(m *Block) error {
 	return x.ClientStream.SendMsg(m)
 }
 
@@ -117,9 +117,9 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *proto
 	return out, nil
 }
 
-func (c *coordinatorClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error) {
-	out := new(protoblocktx.Policies)
-	err := c.cc.Invoke(ctx, Coordinator_GetPolicies_FullMethodName, in, out, opts...)
+func (c *coordinatorClient) GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error) {
+	out := new(protoblocktx.ConfigTransaction)
+	err := c.cc.Invoke(ctx, Coordinator_GetConfigTransaction_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ type CoordinatorServer interface {
 	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetNextExpectedBlockNumber(context.Context, *Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
-	GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error)
+	GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
@@ -168,8 +168,8 @@ func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedCoordinatorServer) GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPolicies not implemented")
+func (UnimplementedCoordinatorServer) GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetConfigTransaction not implemented")
 }
 func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *Empty) (*WaitingTransactions, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
@@ -193,7 +193,7 @@ func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStr
 
 type Coordinator_BlockProcessingServer interface {
 	Send(*protoblocktx.TransactionsStatus) error
-	Recv() (*protoblocktx.Block, error)
+	Recv() (*Block, error)
 	grpc.ServerStream
 }
 
@@ -205,8 +205,8 @@ func (x *coordinatorBlockProcessingServer) Send(m *protoblocktx.TransactionsStat
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *coordinatorBlockProcessingServer) Recv() (*protoblocktx.Block, error) {
-	m := new(protoblocktx.Block)
+func (x *coordinatorBlockProcessingServer) Recv() (*Block, error) {
+	m := new(Block)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -285,20 +285,20 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Coordinator_GetPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Coordinator_GetConfigTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CoordinatorServer).GetPolicies(ctx, in)
+		return srv.(CoordinatorServer).GetConfigTransaction(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Coordinator_GetPolicies_FullMethodName,
+		FullMethod: Coordinator_GetConfigTransaction_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).GetPolicies(ctx, req.(*Empty))
+		return srv.(CoordinatorServer).GetConfigTransaction(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -345,8 +345,8 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Coordinator_GetTransactionsStatus_Handler,
 		},
 		{
-			MethodName: "GetPolicies",
-			Handler:    _Coordinator_GetPolicies_Handler,
+			MethodName: "GetConfigTransaction",
+			Handler:    _Coordinator_GetConfigTransaction_Handler,
 		},
 		{
 			MethodName: "NumberOfWaitingTransactionsForStatus",

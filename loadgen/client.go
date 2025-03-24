@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
@@ -47,7 +48,7 @@ type (
 	// Then, it submits blocks from the tx stream.
 	clientBlockGenerator struct {
 		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
-		blockGen         workload.Generator[*protoblocktx.Block]
+		blockGen         workload.Generator[*protocoordinatorservice.Block]
 	}
 
 	// clientTxGenerator is a TX generator that first submit TXs from the workloadSetupTXs,
@@ -63,7 +64,7 @@ var logger = logging.New("load-gen-client")
 
 // NewLoadGenClient creates a new client instance.
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
-	logger.Infof("Config passed: %s", utils.LazyJson(conf))
+	logger.Infof("Config passed: %s", &utils.LazyJSON{O: conf})
 
 	c := &Client{
 		conf:     conf,
@@ -182,7 +183,7 @@ func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoblocktx.Tx, error) {
 		workloadSetupTXs = append(workloadSetupTXs, configTX)
 	}
 	if config.Generate.Namespaces {
-		metaNsTX, err := workload.CreateNamespaces(config.LoadProfile.Transaction.Policy)
+		metaNsTX, err := workload.CreateNamespacesTX(config.LoadProfile.Transaction.Policy)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create namespaces meta tx")
 		}
@@ -192,7 +193,7 @@ func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoblocktx.Tx, error) {
 }
 
 // MakeBlocksGenerator instantiate clientBlockGenerator.
-func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protoblocktx.Block] {
+func (c *clientStream) MakeBlocksGenerator() workload.Generator[*protocoordinatorservice.Block] {
 	cg := &clientBlockGenerator{
 		workloadSetupTXs: c.workloadSetupTXs,
 	}
@@ -217,10 +218,10 @@ func (c *clientStream) MakeTxGenerator() workload.Generator[*protoblocktx.Tx] {
 }
 
 // Next generate the next block.
-func (g *clientBlockGenerator) Next() *protoblocktx.Block {
+func (g *clientBlockGenerator) Next() *protocoordinatorservice.Block {
 	if g.workloadSetupTXs != nil {
 		if tx, ok := g.workloadSetupTXs.Read(); ok {
-			return &protoblocktx.Block{
+			return &protocoordinatorservice.Block{
 				Txs:    []*protoblocktx.Tx{tx},
 				TxsNum: []uint32{0},
 			}

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
@@ -200,6 +202,10 @@ var dropStatementsWithTemplate = []string{
 	dropCommitNewFuncStmtTemplate,
 }
 
+var systemNamespaces = []string{
+	types.MetaNamespaceID, types.ConfigNamespaceID,
+}
+
 // NewDatabasePool creates a new pool from a database config.
 func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool, error) {
 	logger.Infof("DB source: %s", config.DataSourceName())
@@ -233,8 +239,7 @@ func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []string) 
 	defer pool.Close()
 
 	if err = clearDatabaseTables(ctx, pool, nsIDs); err != nil {
-		// TODO: handle error gracefully
-		logger.Fatalf("Failed clearing database [%s] tables: %s", config.Database, err)
+		return errors.Wrapf(err, "failed clearing database [%s] tables: %s", config.Database)
 	}
 
 	return nil
@@ -295,7 +300,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 		return fmt.Errorf("failed initialization metadata table: %w", execErr)
 	}
 
-	nsIDs = append(nsIDs, types.MetaNamespaceID)
+	nsIDs = append(nsIDs, systemNamespaces...)
 	for _, nsID := range nsIDs {
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
@@ -326,7 +331,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 	}
 	logger.Info("tx status table is cleared.")
 
-	nsIDs = append(nsIDs, types.MetaNamespaceID)
+	nsIDs = append(nsIDs, systemNamespaces...)
 	for _, nsID := range nsIDs {
 		tableName := TableName(nsID)
 		logger.Infof("Dropping table '%s' and its methods.", tableName)

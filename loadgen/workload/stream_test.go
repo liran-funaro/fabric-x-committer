@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
@@ -455,7 +457,7 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	blockGen Generator[*protoblocktx.Block]
+	blockGen Generator[*protocoordinatorservice.Block]
 	queryGen Generator[*protoqueryservice.Query]
 }
 

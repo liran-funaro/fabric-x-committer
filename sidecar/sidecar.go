@@ -133,7 +133,7 @@ func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
 			return errors.Wrap(err, "failed to recover block store")
 		}
 
-		if err = s.recoverPolicies(ctx, coordClient); err != nil {
+		if err = s.recoverConfigTransactionFromStateDB(ctx, coordClient); err != nil {
 			return errors.Wrap(err, "failed to recover policies")
 		}
 
@@ -199,25 +199,17 @@ func (s *Service) configUpdater(block *common.Block) {
 	}
 }
 
-func (s *Service) recoverPolicies(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {
-	policyMsg, err := client.GetPolicies(ctx, nil)
+func (s *Service) recoverConfigTransactionFromStateDB(
+	ctx context.Context, client protocoordinatorservice.CoordinatorClient,
+) error {
+	configMsg, err := client.GetConfigTransaction(ctx, nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get policies from coordinator")
 	}
-	if policyMsg == nil {
+	if configMsg == nil || configMsg.Envelope == nil {
 		return nil
 	}
-	var mataPolicy []byte
-	for _, policy := range policyMsg.Policies {
-		if policy.Namespace == types.MetaNamespaceID {
-			mataPolicy = policy.Policy
-			break
-		}
-	}
-	if mataPolicy == nil {
-		return nil
-	}
-	envelope, err := protoutil.UnmarshalEnvelope(mataPolicy)
+	envelope, err := protoutil.UnmarshalEnvelope(configMsg.Envelope)
 	if err != nil {
 		return errors.Wrapf(err, "failed to unmarshal meta policy envelope")
 	}

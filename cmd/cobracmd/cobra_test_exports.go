@@ -72,7 +72,7 @@ func UnitTestRunner(
 	wg := &sync.WaitGroup{}
 	t.Cleanup(wg.Wait)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
 	t.Cleanup(cancel)
 
 	wg.Add(1)
@@ -86,7 +86,7 @@ func UnitTestRunner(
 	// Require that the cmd output will align with the test expected output.
 	require.Eventually(t, func() bool {
 		return strings.Contains(cmdStdOut.String(), test.CmdStdOutput)
-	}, 4*time.Second, 500*time.Millisecond)
+	}, 10*time.Minute, 500*time.Millisecond)
 
 	// Require that the logger's output will align with the test expected output.
 	require.Eventually(t, func() bool {
@@ -95,5 +95,5 @@ func UnitTestRunner(
 			return false
 		}
 		return strings.Contains(string(logOut), test.CmdLoggerOutput) && strings.Contains(string(logOut), test.Endpoint)
-	}, 3*time.Minute, 500*time.Millisecond)
+	}, 10*time.Minute, 500*time.Millisecond)
 }

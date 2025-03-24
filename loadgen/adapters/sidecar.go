@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -76,7 +76,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 		})
 	})
 	g.Go(func() error {
-		return c.sendBlocks(gCtx, txStream, func(block *protoblocktx.Block) error {
+		return c.sendBlocks(gCtx, txStream, func(block *protocoordinatorservice.Block) error {
 			fabricBlock, err := c.mapSidecarBlock(block)
 			if err != nil {
 				return err
@@ -101,7 +101,7 @@ func (*SidecarAdapter) Supports() Phases {
 	}
 }
 
-func (c *SidecarAdapter) mapSidecarBlock(block *protoblocktx.Block) (*common.Block, error) {
+func (c *SidecarAdapter) mapSidecarBlock(block *protocoordinatorservice.Block) (*common.Block, error) {
 	data := make([][]byte, len(block.Txs))
 	for i, tx := range block.Txs {
 		env, _, err := serialization.CreateEnvelope(c.config.ChannelID, nil, tx)

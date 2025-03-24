@@ -60,7 +60,7 @@ func commonGrpcRetryTest(
 	}, []string{"target"})
 
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
-	_, err = client.GetPolicies(ctx, nil)
+	_, err = client.GetNamespacePolicies(ctx, nil)
 	require.NoError(t, err)
 
 	failureCount := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -84,7 +84,7 @@ func commonGrpcRetryTest(
 	vcGrpc.Servers[0].Stop()
 	test.CheckServerStopped(t, vcGrpc.Configs[0].Endpoint.Address())
 
-	_, err = client.GetPolicies(ctx, nil)
+	_, err = client.GetNamespacePolicies(ctx, nil)
 	require.Error(t, err)
 
 	var wg sync.WaitGroup

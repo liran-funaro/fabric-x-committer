@@ -61,12 +61,20 @@ func (vc *VcService) GetLastCommittedBlockNumber(
 	return &protoblocktx.BlockInfo{Number: uint64(vc.lastCommittedBlock.Load())}, nil // nolint:gosec
 }
 
-// GetPolicies is a mock implementation of the protovcservice.GetPolicies.
-func (*VcService) GetPolicies(
+// GetNamespacePolicies is a mock implementation of the protovcservice.GetNamespacePolicies.
+func (*VcService) GetNamespacePolicies(
 	context.Context,
 	*protovcservice.Empty,
-) (*protoblocktx.Policies, error) {
-	return &protoblocktx.Policies{}, nil
+) (*protoblocktx.NamespacePolicies, error) {
+	return &protoblocktx.NamespacePolicies{}, nil
+}
+
+// GetConfigTransaction is a mock implementation of the protovcservice.GetConfigTransaction.
+func (*VcService) GetConfigTransaction(
+	context.Context,
+	*protovcservice.Empty,
+) (*protoblocktx.ConfigTransaction, error) {
+	return &protoblocktx.ConfigTransaction{}, nil
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.

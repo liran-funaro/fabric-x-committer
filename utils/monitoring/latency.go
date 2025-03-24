@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.com/cockroachdb/errors"
 )
 
 type (
@@ -64,11 +64,11 @@ const (
 func (c *BucketConfig) Buckets() []float64 {
 	switch c.Distribution {
 	case BucketUniform:
-		utils.Require(c.BucketCount >= 0, "invalid bucket count")
-		utils.Require(c.MaxLatency > 0, "invalid max latency")
-		return utils.UniformBuckets(c.BucketCount, 0, c.MaxLatency.Seconds())
+		required(c.BucketCount >= 0, "invalid bucket count")
+		required(c.MaxLatency > 0, "invalid max latency")
+		return uniformBuckets(c.BucketCount, 0, c.MaxLatency.Seconds())
 	case BucketFixed:
-		utils.Require(len(c.Values) > 0, "no fixed values provided")
+		required(len(c.Values) > 0, "no fixed values provided")
 		sort.Float64s(c.Values)
 		return c.Values
 	case BucketEmpty:
@@ -134,5 +134,24 @@ func (c *SamplerConfig) BlockSampler() NumberTracingSampler {
 		}
 	default:
 		panic("type " + c.Type + " not supported")
+	}
+}
+
+func uniformBuckets(count int, from, to float64) []float64 {
+	if to < from {
+		panic("invalid input")
+	}
+	result := make([]float64, 0, count)
+	step := (to - from) / float64(count-1)
+	for low := from; low < to; low += step {
+		result = append(result, low)
+	}
+	return append(result, to)
+}
+
+//nolint:revive // flag-parameter: parameter 'condition' seems to be a control flag, avoid control coupling.
+func required(condition bool, msg string) {
+	if !condition {
+		panic(errors.New(msg))
 	}
 }

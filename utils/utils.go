@@ -3,93 +3,65 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/exp/constraints"
 )
 
+// ErrActiveStream represents the error when attempting to create a new stream while one is already active.
+// The system only allows a single active stream at any given time.
+var ErrActiveStream = errors.New("a stream is already active. Only one active stream is allowed at a time")
+
+// FileExists returns true if a file path exists.
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
 }
 
-func OverwriteFile(path string) (*os.File, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return nil, fmt.Errorf("unable to open %s: %w", path, err)
-	}
-	return file, nil
+// LazyJSON will lazily marshal a struct for logging purposes.
+type LazyJSON struct {
+	O any
 }
 
-// LazyJson will lazily marshal a struct for logging purposes
-func LazyJson(v any) *lazyJson {
-	return &lazyJson{v: v}
-}
-
-type lazyJson struct {
-	v any
-}
-
-func (d *lazyJson) String() string {
-	if p, err := json.Marshal(d.v); err != nil {
+// String marshals the give object as JSON.
+func (lj *LazyJSON) String() string {
+	if p, err := json.Marshal(lj.O); err != nil {
 		return fmt.Sprintf("cannot marshal object: %v", err)
 	} else {
 		return string(p)
 	}
 }
 
-func WriteFile(path string, data []byte) error {
-	file, err := OverwriteFile(path)
-	defer file.Close()
-	if err != nil {
-		return err
-	}
-	_, err = file.Write(data)
-	return err
-}
-
+// Must panics given an error.
 func Must(err error, msg ...string) {
 	if err != nil {
 		panic(errors.Wrap(err, strings.Join(msg, " ")))
 	}
 }
 
-func Require(condition bool, msg string) {
-	if !condition {
-		panic(errors.New(msg))
+// FirstSuccessful returns the first successful call to method given the available operands.
+func FirstSuccessful[A, T any](operands []A, method func(A) (T, error)) (T, error) {
+	var errs []error //nolint:prealloc // error is unlikely.
+	for _, op := range operands {
+		retValue, err := method(op)
+		if err == nil {
+			return retValue, nil
+		}
+		errs = append(errs, err)
 	}
+	return *new(T), errors.Join(errs...)
 }
 
-func ReadFile(filePath string) ([]byte, error) {
-	absoluteFilePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
+// Range returns a slice containing integers in the range from start (including) to end (excluding).
+func Range[T constraints.Integer](start, end T) []T {
+	if start >= end {
+		return nil
 	}
-	file, err := os.Open(absoluteFilePath)
-	if err != nil {
-		return nil, err
+	results := make([]T, 0, end-start)
+	for i := start; i < end; i++ {
+		results = append(results, i)
 	}
-	defer func(file *os.File) {
-		_ = file.Close()
-	}(file)
-	return io.ReadAll(file)
+	return results
 }
-
-func UniformBuckets(count int, from, to float64) []float64 {
-	if to < from {
-		panic("invalid input")
-	}
-	result := make([]float64, 0, count)
-	step := (to - from) / float64(count-1)
-	for low := from; low < to; low += step {
-		result = append(result, low)
-	}
-	return append(result, to)
-}
-
-// ErrActiveStream represents the error when attempting to create a new stream while one is already active.
-// The system only allows a single active stream at any given time.
-var ErrActiveStream = errors.New("a stream is already active. Only one active stream is allowed at a time")

@@ -20,9 +20,9 @@ func TestLoadgenSidecar(t *testing.T) {
 			NumVCService:    2,
 			BlockTimeout:    2 * time.Second,
 			BlockSize:       500,
-			LoadGen:         true,
 		},
 	)
+	c.StartLoadGen(t)
 
 	require.Eventually(t, func() bool {
 		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)

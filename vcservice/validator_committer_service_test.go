@@ -2,10 +2,14 @@ package vcservice
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -14,7 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/grpc/codes"
 )
 
 type validatorAndCommitterServiceTestEnvWithClient struct {
@@ -60,6 +63,100 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	}
 
 	return vcsTestEnv
+}
+
+func TestCreateConfigAndTables(t *testing.T) {
+	t.Parallel()
+	ctx, _ := createContext(t)
+	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
+	p := &protoblocktx.NamespacePolicy{
+		Scheme:    "ECDSA",
+		PublicKey: []byte("public-key"),
+	}
+	pBytes, err := proto.Marshal(p)
+	require.NoError(t, err)
+	configID := "create config"
+	configValue := []byte("config")
+	txBatch1 := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{{
+			ID: configID,
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId:      types.ConfigNamespaceID,
+				NsVersion: types.VersionNumber(0).Bytes(),
+				BlindWrites: []*protoblocktx.Write{
+					{
+						Key:   []byte(types.ConfigKey),
+						Value: []byte("config"),
+					},
+				},
+			}},
+			BlockNumber: 0,
+			TxNum:       0,
+		}},
+	}
+
+	require.NoError(t, env.streams[0].Send(txBatch1))
+	txStatus1, err := env.streams[0].Recv()
+	require.NoError(t, err)
+	require.NotNil(t, txStatus1)
+	require.NotNil(t, txStatus1.Status)
+
+	require.Equal(t,
+		types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 0, 0),
+		txStatus1.Status[configID],
+	)
+
+	tx, err := env.dbEnv.DB.readConfigTX(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+	require.Equal(t, configValue, tx.Envelope)
+
+	metaID := "create namespace 1"
+	utNsID := "1"
+	txBatch2 := &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{{
+			ID: metaID,
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: types.VersionNumber(0).Bytes(),
+				ReadWrites: []*protoblocktx.ReadWrite{
+					{
+						Key:   []byte(utNsID),
+						Value: pBytes,
+					},
+				},
+			}},
+			BlockNumber: 1,
+			TxNum:       0,
+		}},
+	}
+	require.NoError(t, env.streams[0].Send(txBatch2))
+	txStatus2, err := env.streams[0].Recv()
+	require.NoError(t, err)
+	require.NotNil(t, txStatus2)
+	require.NotNil(t, txStatus2.Status)
+
+	require.Equal(t,
+		types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+		txStatus2.Status[metaID],
+	)
+
+	policies, err := env.dbEnv.DB.readNamespacePolicies(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, policies)
+	require.Len(t, policies.Policies, 1)
+	require.NotNil(t, policies.Policies[0])
+	require.Equal(t, utNsID, policies.Policies[0].Namespace)
+	require.Equal(t, pBytes, policies.Policies[0].Policy)
+
+	// Ensure the table exists.
+	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from ns_%s", utNsID))
+	require.NoError(t, err)
+	defer rows.Close()
+	keys, values, err := readKeysAndValues[[]byte, []byte](rows)
+	require.NoError(t, err)
+	require.Empty(t, keys)
+	require.Empty(t, values)
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {
@@ -385,7 +482,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		},
 		{
 			name: "GetPolicies returns an internal error",
-			fn:   func() (any, error) { return c.GetPolicies(ctx, nil) },
+			fn:   func() (any, error) { return c.GetNamespacePolicies(ctx, nil) },
 		},
 		{
 			name: "GetTransactionsStatus returns an internal error",

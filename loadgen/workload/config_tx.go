@@ -26,26 +26,25 @@ type ConfigBlock struct {
 
 // CreateConfigTx creating a config TX.
 func CreateConfigTx(policy *PolicyProfile) (*protoblocktx.Tx, error) {
-	metaPolicy, err := CreateMetaPolicy(policy)
+	envelopeBytes, err := CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
 	}
 	return &protoblocktx.Tx{
 		Id: "config tx",
 		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsId: types.ConfigNamespaceID,
 			BlindWrites: []*protoblocktx.Write{{
-				Key:   []byte(types.MetaNamespaceID),
-				Value: metaPolicy,
+				Key:   []byte(types.ConfigNamespaceID),
+				Value: envelopeBytes,
 			}},
 		}},
 		Signatures: make([][]byte, 1),
 	}, nil
 }
 
-// CreateMetaPolicy creating a meta policy.
-func CreateMetaPolicy(policy *PolicyProfile) ([]byte, error) {
+// CreateConfigEnvelope creating a meta policy.
+func CreateConfigEnvelope(policy *PolicyProfile) ([]byte, error) {
 	block, err := CreateConfigBlock(policy)
 	if err != nil {
 		return nil, err

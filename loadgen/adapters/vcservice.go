@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type (
@@ -58,7 +59,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, stream := range streams {
 		g.Go(func() error {
-			return c.sendBlocks(ctx, txStream, func(block *protoblocktx.Block) error {
+			return c.sendBlocks(ctx, txStream, func(block *protocoordinatorservice.Block) error {
 				return stream.Send(mapVCBatch(block))
 			})
 		})
@@ -86,7 +87,7 @@ func (c *VcAdapter) receiveStatus(
 	return nil
 }
 
-func mapVCBatch(block *protoblocktx.Block) *protovcservice.TransactionBatch {
+func mapVCBatch(block *protocoordinatorservice.Block) *protovcservice.TransactionBatch {
 	txBatch := &protovcservice.TransactionBatch{}
 	for i, tx := range block.Txs {
 		txBatch.Transactions = append(

@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -17,7 +18,10 @@ import (
 //go:embed query.sql
 var queryRowSQLTemplate string
 
-var queryPoliciesStmt = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
+var (
+	queryPoliciesStmt = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
+	queryConfigStmt   = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.ConfigNamespaceID)
+)
 
 // sharedPool and sharedLazyTx implements of sharedQuerier.
 // sharedPool returns a new connection (implements acquiredQuerier)
@@ -93,7 +97,7 @@ func unsafeQueryRows(
 	return readKeysAndValues(r, len(keys))
 }
 
-func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Policies, error) {
+func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.NamespacePolicies, error) {
 	r, err := queryObj.Query(ctx, queryPoliciesStmt)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query policies")
@@ -103,7 +107,7 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Policie
 	if err != nil {
 		return nil, err
 	}
-	policy := &protoblocktx.Policies{
+	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(rows)),
 	}
 	for i, row := range rows {
@@ -114,6 +118,24 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Policie
 		}
 	}
 	return policy, nil
+}
+
+func queryConfig(ctx context.Context, queryObj querier) (*protoblocktx.ConfigTransaction, error) {
+	r, err := queryObj.Query(ctx, queryConfigStmt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query policies")
+	}
+	defer r.Close()
+	rows, err := readKeysAndValues(r, 1)
+	if err != nil {
+		return nil, err
+	}
+	configTX := &protoblocktx.ConfigTransaction{}
+	for _, row := range rows {
+		configTX.Envelope = row.Value
+		configTX.Version = row.Version
+	}
+	return configTX, nil
 }
 
 func readKeysAndValues(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, error) {

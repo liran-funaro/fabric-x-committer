@@ -3,6 +3,7 @@ package mock
 import (
 	"context"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
@@ -11,7 +12,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 )
 
 // SigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -20,12 +20,14 @@ import (
 // - when the tx has non-empty signature, it is valid.
 type SigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	policies          *protoblocktx.Policies
+	updates           []*protosigverifierservice.Update
 	numBlocksReceived *atomic.Uint32
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize     int
 	requestBatch               chan *protosigverifierservice.RequestBatch
 	returnErrForUpdatePolicies atomic.Bool
+	latency                    time.Duration
+	policyUpdateCounter        atomic.Uint64
 }
 
 // NewMockSigVerifier returns a new mock verifier.
@@ -33,26 +35,20 @@ func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
 		UnimplementedVerifierServer: protosigverifierservice.UnimplementedVerifierServer{},
 		numBlocksReceived:           &atomic.Uint32{},
-		policies:                    &protoblocktx.Policies{},
 	}
 }
 
-// UpdatePolicies is a mock implementation of the protosignverifierservice.UpdatePolicies.
-func (m *SigVerifier) UpdatePolicies(_ context.Context, policies *protoblocktx.Policies) (
-	*protosigverifierservice.Empty, error,
-) {
-	if m.returnErrForUpdatePolicies.Load() {
-		return nil, grpcerror.WrapInvalidArgument(errors.New("invalid argument"))
+func (m *SigVerifier) updatePolicies(update *protosigverifierservice.Update) error {
+	if update == nil {
+		return nil
 	}
-	m.policies.Policies = append(m.policies.Policies, policies.Policies...)
-	logger.Info("policy has been updated")
-	return &protosigverifierservice.Empty{}, nil
-}
-
-// SetReturnErrorForUpdatePolicies configures the SigVerifier to return an error during policy updates.
-// When setError is true, the verifier will signal an error during the update policies process.
-func (m *SigVerifier) SetReturnErrorForUpdatePolicies(setError bool) {
-	m.returnErrForUpdatePolicies.Store(setError)
+	m.policyUpdateCounter.Add(1)
+	if m.returnErrForUpdatePolicies.CompareAndSwap(true, false) {
+		return errors.New("invalid argument")
+	}
+	m.updates = append(m.updates, update)
+	logger.Info("policies has been updated")
+	return nil
 }
 
 // StartStream is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -80,6 +76,11 @@ func (m *SigVerifier) receiveRequestBatch(
 		reqBatch, err := stream.Recv()
 		if err != nil {
 			return connection.FilterStreamRPCError(err)
+		}
+
+		err = m.updatePolicies(reqBatch.Update)
+		if err != nil {
+			return err
 		}
 
 		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
@@ -120,6 +121,9 @@ func (m *SigVerifier) sendResponseBatch(
 			})
 		}
 
+		if m.latency > 0 {
+			time.Sleep(m.latency)
+		}
 		if err := stream.Send(respBatch); err != nil {
 			return connection.FilterStreamRPCError(err)
 		}
@@ -133,9 +137,31 @@ func (m *SigVerifier) GetNumBlocksReceived() uint32 {
 	return m.numBlocksReceived.Load()
 }
 
-// GetPolicies returns the verification key of the mock verifier.
-func (m *SigVerifier) GetPolicies() *protoblocktx.Policies {
-	return m.policies
+// GetUpdates returns the updates received.
+func (m *SigVerifier) GetUpdates() []*protosigverifierservice.Update {
+	return m.updates
+}
+
+// SetReturnErrorForUpdatePolicies configures the SigVerifier to return an error during policy updates.
+// When setError is true, the verifier will signal an error during the update policies process.
+// It is a one time event, after which the flag will return to false.
+func (m *SigVerifier) SetReturnErrorForUpdatePolicies(setError bool) {
+	m.returnErrForUpdatePolicies.Store(setError)
+}
+
+// GetPolicyUpdateCounter returns the number of policy updates to check progress.
+func (m *SigVerifier) GetPolicyUpdateCounter() uint64 {
+	return m.policyUpdateCounter.Load()
+}
+
+// ClearPolicies allows resetting the known policies to mimic a new instance.
+func (m *SigVerifier) ClearPolicies() {
+	m.updates = nil
+}
+
+// SetLatency allows adding latency.
+func (m *SigVerifier) SetLatency(l time.Duration) {
+	m.latency = l
 }
 
 // SendRequestBatchWithoutStream allows the caller to bypass the stream to send

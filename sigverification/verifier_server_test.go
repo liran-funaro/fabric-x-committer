@@ -3,7 +3,6 @@ package sigverification
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -67,46 +66,23 @@ func TestNoInput(t *testing.T) {
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfig())
 
-	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
-
-	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-		Policies: []*protoblocktx.PolicyItem{
-			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
-				PublicKey: verificationKey,
-				Scheme:    signature.Ecdsa,
-			}),
-		},
-	})
-	require.NoError(t, err)
-
 	stream, _ := c.Client.StartStream(context.Background())
 
-	err = stream.Send(&protosigverifierservice.RequestBatch{})
-	gomega.Expect(err).ToNot(gomega.HaveOccurred())
+	update, _ := defaultUpdate(t)
+	err := stream.Send(&protosigverifierservice.RequestBatch{Update: update})
+	require.NoError(t, err)
 
 	output := outputChannel(stream)
-	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 	gomega.Eventually(output).WithTimeout(testTimeout).ShouldNot(gomega.Receive())
 }
 
 func TestMinimalInput(t *testing.T) {
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfig())
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txSigner, _ := factory.NewSigner(signingKey)
-
-	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-		Policies: []*protoblocktx.PolicyItem{
-			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
-				PublicKey: verificationKey,
-				Scheme:    signature.Ecdsa,
-			}),
-		},
-	})
-	require.NoError(t, err)
 
 	stream, _ := c.Client.StartStream(t.Context())
+
+	update, txSigner := defaultUpdate(t)
 
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -145,11 +121,14 @@ func TestMinimalInput(t *testing.T) {
 	s, _ = txSigner.SignNs(tx3, 0)
 	tx3.Signatures = append(tx3.Signatures, s)
 
-	err = stream.Send(&protosigverifierservice.RequestBatch{Requests: []*protosigverifierservice.Request{
-		{BlockNum: 1, TxNum: 1, Tx: tx1},
-		{BlockNum: 1, TxNum: 2, Tx: tx2},
-		{BlockNum: 1, TxNum: 3, Tx: tx3},
-	}})
+	err := stream.Send(&protosigverifierservice.RequestBatch{
+		Update: update,
+		Requests: []*protosigverifierservice.Request{
+			{BlockNum: 1, TxNum: 1, Tx: tx1},
+			{BlockNum: 1, TxNum: 2, Tx: tx2},
+			{BlockNum: 1, TxNum: 3, Tx: tx3},
+		},
+	})
 	require.NoError(t, err)
 
 	output := outputChannel(stream)
@@ -161,20 +140,13 @@ func TestBadTxFormat(t *testing.T) {
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
 
-	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
-	_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-		Policies: []*protoblocktx.PolicyItem{
-			policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
-				PublicKey: verificationKey,
-				Scheme:    signature.Ecdsa,
-			}),
-		},
-	})
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	t.Cleanup(cancel)
 	stream, _ := c.Client.StartStream(ctx)
+
+	update, _ := defaultUpdate(t)
+	err := stream.Send(&protosigverifierservice.RequestBatch{Update: update})
+	require.NoError(t, err)
 
 	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -378,55 +350,73 @@ func TestUpdatePolicies(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
-	stream, err := c.Client.StartStream(t.Context())
-	require.NoError(t, err)
 
 	ns1 := "ns1"
 	ns2 := "ns2"
 	tx := makeTX("update", ns1, ns2)
 
-	t.Run("no partial valid update", func(t *testing.T) {
-		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
-		ns2Policy, ns2Signer := makePolicyItem(t, ns2)
-		_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+	t.Run("invalid update stops stream", func(t *testing.T) {
+		t.Parallel()
+		stream, err := c.Client.StartStream(t.Context())
+		require.NoError(t, err)
+
+		ns1Policy, _ := makePolicyItem(t, ns1)
+		ns2Policy, _ := makePolicyItem(t, ns2)
+		err = stream.Send(&protosigverifierservice.RequestBatch{
+			Update: &protosigverifierservice.Update{
+				NamespacePolicies: &protoblocktx.NamespacePolicies{
+					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				},
+			},
 		})
 		require.NoError(t, err)
 
 		// We attempt a bad policies update.
 		// We expect no update since one of the given policies are invalid.
 		p3, _ := makePolicyItem(t, ns1)
-		_, err = c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-			Policies: []*protoblocktx.PolicyItem{
-				p3,
-				policy.MakePolicy(t, ns2, &protoblocktx.NamespacePolicy{
-					PublicKey: []byte("bad-key"),
-					Scheme:    signature.Ecdsa,
-				}),
+		err = stream.Send(&protosigverifierservice.RequestBatch{
+			Update: &protosigverifierservice.Update{
+				NamespacePolicies: &protoblocktx.NamespacePolicies{
+					Policies: []*protoblocktx.PolicyItem{
+						p3,
+						policy.MakePolicy(t, ns2, &protoblocktx.NamespacePolicy{
+							PublicKey: []byte("bad-key"),
+							Scheme:    signature.Ecdsa,
+						}),
+					},
+				},
 			},
 		})
-		require.Error(t, err)
+		require.NoError(t, err)
 
-		sign(t, tx, ns1Signer, ns2Signer)
-		requireTestCase(t, stream, &testCase{
-			blkNum:         1,
-			txNum:          1,
-			tx:             tx,
-			expectedStatus: protoblocktx.Status_COMMITTED,
-		})
+		_, err = stream.Recv()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), ErrUpdatePolicies.Error())
 	})
 
 	t.Run("partial update", func(t *testing.T) {
+		t.Parallel()
+		stream, err := c.Client.StartStream(t.Context())
+		require.NoError(t, err)
+
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		_, err := c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+		err = stream.Send(&protosigverifierservice.RequestBatch{
+			Update: &protosigverifierservice.Update{
+				NamespacePolicies: &protoblocktx.NamespacePolicies{
+					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				},
+			},
 		})
 		require.NoError(t, err)
 
 		ns2PolicyUpdate, ns2Signer := makePolicyItem(t, ns2)
-		_, err = c.Client.UpdatePolicies(t.Context(), &protoblocktx.Policies{
-			Policies: []*protoblocktx.PolicyItem{ns2PolicyUpdate},
+		err = stream.Send(&protosigverifierservice.RequestBatch{
+			Update: &protosigverifierservice.Update{
+				NamespacePolicies: &protoblocktx.NamespacePolicies{
+					Policies: []*protoblocktx.PolicyItem{ns2PolicyUpdate},
+				},
+			},
 		})
 		require.NoError(t, err)
 
@@ -440,7 +430,7 @@ func TestUpdatePolicies(t *testing.T) {
 	})
 }
 
-func TestParallelUpdatePolicies(t *testing.T) {
+func TestMultipleUpdatePolicies(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
@@ -450,12 +440,11 @@ func TestParallelUpdatePolicies(t *testing.T) {
 		ns[i] = fmt.Sprintf("%d", i)
 	}
 
+	stream, err := c.Client.StartStream(t.Context())
+	require.NoError(t, err)
+
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
-	endBarrier := sync.WaitGroup{}
-	endBarrier.Add(updateCount)
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
-	t.Cleanup(cancel)
 	uniqueNsSigners := make([]*sigtest.NsSigner, updateCount)
 	commonNsSigners := make([]*sigtest.NsSigner, updateCount)
 	for i := range updateCount {
@@ -463,19 +452,16 @@ func TestParallelUpdatePolicies(t *testing.T) {
 		uniqueNsSigners[i] = uniqueNsSigner
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
-		p := &protoblocktx.Policies{
-			Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
+		p := &protosigverifierservice.Update{
+			NamespacePolicies: &protoblocktx.NamespacePolicies{
+				Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
+			},
 		}
-		go func() {
-			defer endBarrier.Done()
-			_, err := c.Client.UpdatePolicies(ctx, p)
-			assert.NoError(t, err)
-		}()
+		err = stream.Send(&protosigverifierservice.RequestBatch{
+			Update: p,
+		})
+		require.NoError(t, err)
 	}
-	endBarrier.Wait()
-
-	stream, err := c.Client.StartStream(ctx)
-	require.NoError(t, err)
 
 	// The following TX updates all the namespaces.
 	// We attempt this TX with each of the attempted policies for the common namespace.
@@ -631,4 +617,22 @@ func outputChannel(
 		}
 	}()
 	return output
+}
+
+func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSigner) {
+	t.Helper()
+	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
+	signingKey, verificationKey := factory.NewKeys()
+	txSigner, _ := factory.NewSigner(signingKey)
+	update := &protosigverifierservice.Update{
+		NamespacePolicies: &protoblocktx.NamespacePolicies{
+			Policies: []*protoblocktx.PolicyItem{
+				policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
+					PublicKey: verificationKey,
+					Scheme:    signature.Ecdsa,
+				}),
+			},
+		},
+	}
+	return update, txSigner
 }

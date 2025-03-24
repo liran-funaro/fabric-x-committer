@@ -1,6 +1,9 @@
 package workload
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -8,8 +11,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
-// CreateNamespaces creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
+// CreateNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
+func CreateNamespacesTX(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 	txSigner := NewTxSignerVerifier(policy)
 	policyNamespaceSigner, ok := txSigner.HashSigners[types.MetaNamespaceID]
 	if !ok {
@@ -17,6 +20,7 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 	}
 
 	readWrites := make([]*protoblocktx.ReadWrite, 0, len(txSigner.HashSigners))
+	allNamespaces := make([]string, 0, len(txSigner.HashSigners))
 	for ns, p := range txSigner.HashSigners {
 		if ns == types.MetaNamespaceID {
 			continue
@@ -29,10 +33,11 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 			Key:   []byte(ns),
 			Value: policyBytes,
 		})
+		allNamespaces = append(allNamespaces, ns)
 	}
 
 	tx := &protoblocktx.Tx{
-		Id: "initial policy update",
+		Id: fmt.Sprintf("initial policy update: %v", strings.Join(allNamespaces, ",")),
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:       types.MetaNamespaceID,
 			NsVersion:  types.VersionNumber(0).Bytes(),
@@ -41,31 +46,4 @@ func CreateNamespaces(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 	}
 	tx.Signatures = [][]byte{policyNamespaceSigner.Sign(tx, 0)}
 	return tx, nil
-}
-
-// CreatePolicies generates all the policies.
-func CreatePolicies(policy *PolicyProfile) (*protoblocktx.Policies, error) {
-	txSigner := NewTxSignerVerifier(policy)
-
-	policyMsg := &protoblocktx.Policies{
-		Policies: make([]*protoblocktx.PolicyItem, 0, len(txSigner.HashSigners)),
-	}
-	for ns, p := range txSigner.HashSigners {
-		var policyBytes []byte
-		var err error
-		if ns == types.MetaNamespaceID {
-			policyBytes, err = CreateMetaPolicy(policy)
-		} else {
-			policyBytes, err = proto.Marshal(p.GetVerificationPolicy())
-		}
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to serialize policy")
-		}
-		policyMsg.Policies = append(policyMsg.Policies, &protoblocktx.PolicyItem{
-			Namespace: ns,
-			Policy:    policyBytes,
-		})
-	}
-
-	return policyMsg, nil
 }

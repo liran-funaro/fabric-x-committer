@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 type prepareTestEnv struct {
@@ -150,7 +150,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
-func TestPrepareTxWithBlidWritesOnly(t *testing.T) {
+func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)
@@ -495,6 +495,27 @@ func TestPrepareTx(t *testing.T) {
 				TxNum:       3,
 			},
 			{
+				// We ensure no duplicate reads with duplicated TX.
+				ID: "tx2.2",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      "1",
+						NsVersion: v3,
+						ReadsOnly: []*protoblocktx.Read{
+							{Key: k8, Version: v8},
+						},
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{Key: k9, Version: v9, Value: []byte("v9")},
+						},
+						BlindWrites: []*protoblocktx.Write{
+							{Key: k10, Value: []byte("v10")},
+						},
+					},
+				},
+				BlockNumber: 9,
+				TxNum:       4,
+			},
+			{
 				ID: "tx3",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_ABORTED_NO_WRITES,
@@ -508,6 +529,33 @@ func TestPrepareTx(t *testing.T) {
 					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 				},
 				BlockNumber: 5,
+				TxNum:       2,
+			},
+			{
+				ID: "tx5",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId:      types.MetaNamespaceID,
+						NsVersion: v4,
+						ReadWrites: []*protoblocktx.ReadWrite{
+							{Key: []byte("1"), Version: v1, Value: []byte("meta")},
+						},
+					},
+				},
+				BlockNumber: 6,
+				TxNum:       2,
+			},
+			{
+				ID: "tx6",
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						NsId: types.ConfigNamespaceID,
+						BlindWrites: []*protoblocktx.Write{
+							{Key: []byte(types.ConfigKey), Value: []byte("config")},
+						},
+					},
+				},
+				BlockNumber: 6,
 				TxNum:       2,
 			},
 		},
@@ -529,18 +577,23 @@ func TestPrepareTx(t *testing.T) {
 				},
 				versions: [][]byte{v1, v2, v3},
 			},
+			types.ConfigNamespaceID: &reads{
+				keys:     [][]byte{[]byte(types.ConfigKey)},
+				versions: [][]byte{v4},
+			},
 		},
 		readToTxIDs: readToTransactions{
-			comparableRead{"1", string(k1), string(v1)}:            []TxID{"tx1"},
-			comparableRead{"1", string(k2), string(v2)}:            []TxID{"tx1"},
-			comparableRead{"1", string(k3), string(v3)}:            []TxID{"tx1"},
-			comparableRead{"1", string(k8), string(v8)}:            []TxID{"tx2"},
-			comparableRead{"1", string(k9), string(v9)}:            []TxID{"tx2"},
-			comparableRead{"2", string(k5), ""}:                    []TxID{"tx1"},
-			comparableRead{"2", string(k6), ""}:                    []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, "2", string(v2)}: []TxID{"tx1"},
-			comparableRead{types.MetaNamespaceID, "1", string(v3)}: []TxID{"tx2"},
+			comparableRead{"1", string(k1), string(v1)}:                          []TxID{"tx1"},
+			comparableRead{"1", string(k2), string(v2)}:                          []TxID{"tx1"},
+			comparableRead{"1", string(k3), string(v3)}:                          []TxID{"tx1"},
+			comparableRead{"1", string(k8), string(v8)}:                          []TxID{"tx2", "tx2.2"},
+			comparableRead{"1", string(k9), string(v9)}:                          []TxID{"tx2", "tx2.2"},
+			comparableRead{"2", string(k5), ""}:                                  []TxID{"tx1"},
+			comparableRead{"2", string(k6), ""}:                                  []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "1", string(v1)}:               []TxID{"tx1", "tx5"},
+			comparableRead{types.MetaNamespaceID, "2", string(v2)}:               []TxID{"tx1"},
+			comparableRead{types.MetaNamespaceID, "1", string(v3)}:               []TxID{"tx2", "tx2.2"},
+			comparableRead{types.ConfigNamespaceID, types.ConfigKey, string(v4)}: []TxID{"tx5"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -555,6 +608,20 @@ func TestPrepareTx(t *testing.T) {
 					keys:     [][]byte{k9},
 					values:   [][]byte{[]byte("v9")},
 					versions: [][]byte{v10},
+				},
+			},
+			"tx2.2": namespaceToWrites{
+				"1": &namespaceWrites{
+					keys:     [][]byte{k9},
+					values:   [][]byte{[]byte("v9")},
+					versions: [][]byte{v10},
+				},
+			},
+			"tx5": namespaceToWrites{
+				types.MetaNamespaceID: &namespaceWrites{
+					keys:     [][]byte{[]byte("1")},
+					values:   [][]byte{[]byte("meta")},
+					versions: [][]byte{v2},
 				},
 			},
 		},
@@ -578,6 +645,20 @@ func TestPrepareTx(t *testing.T) {
 					versions: [][]byte{nil},
 				},
 			},
+			"tx2.2": namespaceToWrites{
+				"1": &namespaceWrites{
+					keys:     [][]byte{k10},
+					values:   [][]byte{[]byte("v10")},
+					versions: [][]byte{nil},
+				},
+			},
+			"tx6": namespaceToWrites{
+				types.ConfigNamespaceID: &namespaceWrites{
+					keys:     [][]byte{[]byte(types.ConfigKey)},
+					values:   [][]byte{[]byte("config")},
+					versions: [][]byte{nil},
+				},
+			},
 		},
 		txIDToNsNewWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -593,10 +674,11 @@ func TestPrepareTx(t *testing.T) {
 			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
 		},
 		txIDToHeight: transactionIDToHeight{
-			"tx1": types.NewHeight(8, 0),
-			"tx2": types.NewHeight(9, 3),
-			"tx3": types.NewHeight(6, 2),
-			"tx4": types.NewHeight(5, 2),
+			"tx1":   types.NewHeight(8, 0),
+			"tx2":   types.NewHeight(9, 3),
+			"tx2.2": types.NewHeight(9, 4),
+			"tx3":   types.NewHeight(6, 2),
+			"tx4":   types.NewHeight(5, 2),
 		},
 	}
 
@@ -606,10 +688,20 @@ func TestPrepareTx(t *testing.T) {
 }
 
 func ensurePreparedTx(t *testing.T, expectedPreparedTxs, actualPreparedTxs *preparedTransactions) {
+	t.Helper()
 	require.Equal(t, expectedPreparedTxs.nsToReads, actualPreparedTxs.nsToReads)
-	require.Equal(t, expectedPreparedTxs.readToTxIDs, actualPreparedTxs.readToTxIDs)
+	requireEqualMapOfLists(t, expectedPreparedTxs.readToTxIDs, actualPreparedTxs.readToTxIDs)
 	require.Equal(t, expectedPreparedTxs.txIDToNsNonBlindWrites, actualPreparedTxs.txIDToNsNonBlindWrites)
 	require.Equal(t, expectedPreparedTxs.txIDToNsBlindWrites, actualPreparedTxs.txIDToNsBlindWrites)
 	require.Equal(t, expectedPreparedTxs.txIDToNsNewWrites, actualPreparedTxs.txIDToNsNewWrites)
 	require.Equal(t, expectedPreparedTxs.invalidTxIDStatus, actualPreparedTxs.invalidTxIDStatus)
+}
+
+func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual map[K][]V) {
+	t.Helper()
+	for k, expectedV := range expected {
+		actualV, ok := actual[k]
+		require.True(t, ok, k)
+		require.ElementsMatch(t, expectedV, actualV, k)
+	}
 }

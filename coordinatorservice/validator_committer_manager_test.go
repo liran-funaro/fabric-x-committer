@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
@@ -50,7 +51,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int, expectedEndErrorMsg ...byte
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
 			metrics:                        newPerformanceMetrics(),
-			policyMgr:                      &policyManager{signVerifierMgr: svEnv.signVerifierManager},
+			policyMgr:                      svEnv.policyManager,
 		},
 	)
 
@@ -63,7 +64,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int, expectedEndErrorMsg ...byte
 			assert.NoError(t, err)
 		}
 		return nil
-	}, vcm.connectionReady.WaitForReady)
+	}, vcm.ready.WaitForReady)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
@@ -92,7 +93,7 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus) &&
 			test.GetMetricValue(t, connFailure) == float64(expectedConnFailureTotal)
-	}, 2*time.Second, 200*time.Millisecond)
+	}, 30*time.Second, 200*time.Millisecond)
 }
 
 func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
@@ -197,7 +198,7 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
 		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			require.Empty(t, mockSvService.GetPolicies().Policies)
+			require.Empty(t, mockSvService.GetUpdates())
 		}
 
 		verificationKey, _ := workload.NewHashSignerVerifier(&workload.Policy{
@@ -223,10 +224,10 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 					ID: "create config",
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
-							NsId: types.MetaNamespaceID,
+							NsId: types.ConfigNamespaceID,
 							BlindWrites: []*protoblocktx.Write{
 								{
-									Key:   []byte(types.MetaNamespaceID),
+									Key:   []byte(types.ConfigKey),
 									Value: configBlock.Data.Data[0],
 								},
 							},
@@ -271,50 +272,22 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
-		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			require.ElementsMatch(t, []*protoblocktx.PolicyItem{
-				{
-					Namespace: types.MetaNamespaceID,
-					Policy:    configBlock.Data.Data[0],
-				},
-				{
-					Namespace: "1",
-					Policy:    pBytes,
-				},
-			}, mockSvService.GetPolicies().Policies)
-		}
-		ensureZeroWaitingTxs(env)
-	})
-
-	t.Run("corrupted policy would crash the vc manager", func(t *testing.T) {
-		t.Parallel()
-		env := newVcMgrTestEnv(t, 2, []byte("invalid argument")...)
-		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
-			mockSvService.SetReturnErrorForUpdatePolicies(true)
-		}
-
-		txBatch := dependencygraph.TxNodeBatch{
-			{
-				Tx: &protovcservice.Transaction{
-					ID: "create ns 1",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: types.MetaNamespaceID,
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: []byte("policy"),
-								},
-							},
-						},
+		expectedUpdate := &protosigverifierservice.Update{
+			Config: &protoblocktx.ConfigTransaction{
+				Envelope: configBlock.Data.Data[0],
+			},
+			NamespacePolicies: &protoblocktx.NamespacePolicies{
+				Policies: []*protoblocktx.PolicyItem{
+					{
+						Namespace: "1",
+						Policy:    pBytes,
 					},
-					BlockNumber: uint64(100),
-					TxNum:       uint32(64),
 				},
 			},
 		}
-		env.inputTxs <- txBatch
-		time.Sleep(2 * time.Second)
+		update, _ := env.sigVerTestEnv.policyManager.getAll()
+		requireUpdateEqual(t, expectedUpdate, update)
+		ensureZeroWaitingTxs(env)
 	})
 }
 

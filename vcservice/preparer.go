@@ -4,12 +4,13 @@ import (
 	"context"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -131,9 +132,6 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
 			txIDToHeight:           make(transactionIDToHeight),
 		}
-		metaNs := &protoblocktx.TxNamespace{
-			NsId: types.MetaNamespaceID,
-		}
 
 		for _, tx := range txBatch.Transactions {
 			if _, ok := prepTxs.txIDToHeight[TxID(tx.ID)]; ok {
@@ -168,16 +166,27 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// we need to reject the transaction. This is done by
 				// adding the namespaceID, and version to the reads-only
 				// list of the metaNamespaceID.
-				if nsOperations.NsId == types.MetaNamespaceID {
-					continue
+				switch nsOperations.NsId {
+				case types.MetaNamespaceID:
+					// Meta TX is dependent on the config TX.
+					prepTxs.addReadsOnly(tID, &protoblocktx.TxNamespace{
+						NsId: types.ConfigNamespaceID,
+						ReadsOnly: []*protoblocktx.Read{{
+							Key:     []byte(types.ConfigKey),
+							Version: nsOperations.NsVersion,
+						}},
+					})
+				case types.ConfigNamespaceID:
+					// A config TX is independent.
+				default:
+					prepTxs.addReadsOnly(tID, &protoblocktx.TxNamespace{
+						NsId: types.MetaNamespaceID,
+						ReadsOnly: []*protoblocktx.Read{{
+							Key:     []byte(nsOperations.NsId),
+							Version: nsOperations.NsVersion,
+						}},
+					})
 				}
-				metaNs.ReadsOnly = []*protoblocktx.Read{
-					{
-						Key:     []byte(nsOperations.NsId),
-						Version: nsOperations.NsVersion,
-					},
-				}
-				prepTxs.addReadsOnly(tID, metaNs)
 			}
 		}
 
@@ -243,10 +252,13 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 			key:     string(rw.Key),
 			version: string(rw.Version),
 		}
-		p.readToTxIDs[cr] = append(p.readToTxIDs[cr], id)
+		v, present := p.readToTxIDs[cr]
+		p.readToTxIDs[cr] = append(v, id)
 
 		if rw.Version != nil {
-			nsReads.append(rw.Key, rw.Version)
+			if !present {
+				nsReads.append(rw.Key, rw.Version)
+			}
 			ver := types.VersionNumberFromBytes(rw.Version) + 1
 			nsWrites.append(rw.Key, rw.Value, ver.Bytes())
 		} else {

@@ -41,7 +41,6 @@ type (
 		queryService *processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
 		sigVerifier  []*processWithConfig[*configtempl.SigVerifierConfig]
 		vcService    []*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
-		loadGen      *processWithConfig[*configtempl.LoadGenConfig]
 
 		dbEnv *vcservice.DatabaseTestEnv
 
@@ -79,7 +78,6 @@ type (
 		InitializeNamespace []string
 		BlockSize           uint64
 		BlockTimeout        time.Duration
-		LoadGen             bool
 
 		// DBCluster configures the cluster to operate in DB cluster mode.
 		DBCluster *yuga.Connection
@@ -192,29 +190,30 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 
 	c.createNamespacesAndCommit(t, config.InitializeNamespace)
 
-	// We need to run the load gen after initializing because it will re-initialize.
-	if config.LoadGen {
-		loadgenConfig := &configtempl.LoadGenConfig{
-			CommonEndpoints:     newCommonEndpoints(t),
-			SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
-			CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
-			OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
-			ChannelID:           c.channelID,
-			BlockSize:           config.BlockSize,
-			Policy: &workload.PolicyProfile{
-				NamespacePolicies: make(map[string]*workload.Policy),
-			},
-		}
-		// We create the crypto profile for the generated namespace to ensure consistency.
-		c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
-		for _, cr := range c.GetAllCrypto() {
-			loadgenConfig.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
-		}
-		c.loadGen = newProcess(t, loadgenCmd, c.rootDir, loadgenConfig)
-		return c
-	}
-
 	return c
+}
+
+// StartLoadGen runs a load generation.
+// We need to run the load gen after initializing because it will re-initialize.
+func (c *CommitterRuntime) StartLoadGen(t *testing.T) {
+	t.Helper()
+	loadgenConfig := &configtempl.LoadGenConfig{
+		CommonEndpoints:     newCommonEndpoints(t),
+		SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
+		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
+		OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
+		ChannelID:           c.channelID,
+		BlockSize:           c.config.BlockSize,
+		Policy: &workload.PolicyProfile{
+			NamespacePolicies: make(map[string]*workload.Policy),
+		},
+	}
+	// We create the crypto profile for the generated namespace to ensure consistency.
+	c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
+	for _, cr := range c.GetAllCrypto() {
+		loadgenConfig.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
+	}
+	newProcess(t, loadgenCmd, c.rootDir, loadgenConfig)
 }
 
 // createClients utilize createClientConnection for connection creation

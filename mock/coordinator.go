@@ -51,11 +51,11 @@ func (c *Coordinator) Close() {
 	close(c.stop)
 }
 
-// GetPolicies retries the latest policies.
-func (*Coordinator) GetPolicies(
+// GetConfigTransaction implements [protocoordinatorservice.GetConfigTransaction].
+func (*Coordinator) GetConfigTransaction(
 	context.Context, *protocoordinatorservice.Empty,
-) (*protoblocktx.Policies, error) {
-	return &protoblocktx.Policies{}, nil
+) (*protoblocktx.ConfigTransaction, error) {
+	return nil, nil
 }
 
 // SetLastCommittedBlockNumber sets the last committed block number.
@@ -115,7 +115,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 	}
 	defer c.streamActive.Unlock()
 
-	input := make(chan *protoblocktx.Block, 1000)
+	input := make(chan *protocoordinatorservice.Block, 1000)
 	defer close(input)
 	defer logger.Infof("Closed mock coordinator")
 
@@ -180,7 +180,7 @@ func (c *Coordinator) IsStreamActive() bool {
 
 func (c *Coordinator) sendTxsValidationStatus(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	input chan *protoblocktx.Block,
+	input chan *protocoordinatorservice.Block,
 ) {
 	for scBlock := range input {
 		txs := scBlock.Txs

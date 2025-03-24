@@ -11,18 +11,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"golang.org/x/exp/slices"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"golang.org/x/exp/slices"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
 )
 
 type queryServiceTestEnv struct {
@@ -222,7 +225,7 @@ func TestQueryPolicies(t *testing.T) {
 	env := newQueryServiceTestEnv(t)
 
 	client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-	policies, err := client.GetPolicies(env.ctx, nil)
+	policies, err := client.GetNamespacePolicies(env.ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, policies)
 	require.Len(t, policies.Policies, len(env.ns))
@@ -236,10 +239,15 @@ func TestQueryPolicies(t *testing.T) {
 		_, ok := expectedNamespaces[p.Namespace]
 		require.True(t, ok)
 		delete(expectedNamespaces, p.Namespace)
-		item, err := policy.ParsePolicyItem(p)
-		require.NoError(t, err)
+		item, parseErr := policy.ParseNamespacePolicyItem(p)
+		require.NoError(t, parseErr)
 		require.Equal(t, signature.Ecdsa, item.Scheme)
 	}
+
+	configTX, err := client.GetConfigTransaction(env.ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, configTX)
+	require.NotEmpty(t, configTX.Envelope)
 }
 
 func requireMapSize(t *testing.T, expectedSize int, m *sync.Map) {
@@ -268,8 +276,9 @@ func verToBytes(ver ...int) [][]byte {
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
+	t.Log("generating config and namespaces")
 	namespacesToTest := []string{"0", "1", "2"}
-	cs := loadgen.GenerateNamespacesUnderTest(t, namespacesToTest)
+	dbConf := generateNamespacesUnderTest(t, namespacesToTest)
 
 	config := &Config{
 		MinBatchKeys:          5,
@@ -283,14 +292,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 				Port: 0,
 			},
 		},
-		Database: &vcservice.DatabaseConfig{
-			Endpoints:      cs.Endpoints,
-			Username:       cs.User,
-			Password:       cs.Password,
-			Database:       cs.Database,
-			MaxConnections: 10,
-			MinConnections: 1,
-		},
+		Database: dbConf,
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServer(),
 		},
@@ -326,6 +328,32 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 		clientConn: clientConn,
 		pool:       pool,
 	}
+}
+
+func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vcservice.DatabaseConfig {
+	t.Helper()
+	env := vcservice.NewValidatorAndCommitServiceTestEnv(t, 1)
+
+	clientConf := loadgen.DefaultClientConf()
+	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
+		Endpoints: env.Endpoints,
+	}
+	policies := &workload.PolicyProfile{
+		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
+	}
+	for i, ns := range append(namespaces, types.MetaNamespaceID) {
+		policies.NamespacePolicies[ns] = &workload.Policy{
+			Scheme: signature.Ecdsa,
+			Seed:   int64(i),
+		}
+	}
+	clientConf.LoadProfile.Transaction.Policy = policies
+	clientConf.Generate = adapters.Phases{Config: true, Namespaces: true}
+	client, err := loadgen.NewLoadGenClient(clientConf)
+	require.NoError(t, err)
+	err = client.Run(t.Context())
+	require.NoError(t, connection.FilterStreamRPCError(err))
+	return env.DBEnv.DBConf
 }
 
 type items struct {

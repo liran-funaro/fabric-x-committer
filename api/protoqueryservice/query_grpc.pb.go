@@ -20,10 +20,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	QueryService_GetRows_FullMethodName     = "/protoqueryservice.QueryService/GetRows"
-	QueryService_BeginView_FullMethodName   = "/protoqueryservice.QueryService/BeginView"
-	QueryService_EndView_FullMethodName     = "/protoqueryservice.QueryService/EndView"
-	QueryService_GetPolicies_FullMethodName = "/protoqueryservice.QueryService/GetPolicies"
+	QueryService_GetRows_FullMethodName              = "/protoqueryservice.QueryService/GetRows"
+	QueryService_BeginView_FullMethodName            = "/protoqueryservice.QueryService/BeginView"
+	QueryService_EndView_FullMethodName              = "/protoqueryservice.QueryService/EndView"
+	QueryService_GetNamespacePolicies_FullMethodName = "/protoqueryservice.QueryService/GetNamespacePolicies"
+	QueryService_GetConfigTransaction_FullMethodName = "/protoqueryservice.QueryService/GetConfigTransaction"
 )
 
 // QueryServiceClient is the client API for QueryService service.
@@ -33,7 +34,8 @@ type QueryServiceClient interface {
 	GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error)
 	BeginView(ctx context.Context, in *ViewParameters, opts ...grpc.CallOption) (*View, error)
 	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error)
-	GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error)
+	GetNamespacePolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
+	GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
 }
 
 type queryServiceClient struct {
@@ -71,9 +73,18 @@ func (c *queryServiceClient) EndView(ctx context.Context, in *View, opts ...grpc
 	return out, nil
 }
 
-func (c *queryServiceClient) GetPolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.Policies, error) {
-	out := new(protoblocktx.Policies)
-	err := c.cc.Invoke(ctx, QueryService_GetPolicies_FullMethodName, in, out, opts...)
+func (c *queryServiceClient) GetNamespacePolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error) {
+	out := new(protoblocktx.NamespacePolicies)
+	err := c.cc.Invoke(ctx, QueryService_GetNamespacePolicies_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryServiceClient) GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error) {
+	out := new(protoblocktx.ConfigTransaction)
+	err := c.cc.Invoke(ctx, QueryService_GetConfigTransaction_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +98,8 @@ type QueryServiceServer interface {
 	GetRows(context.Context, *Query) (*Rows, error)
 	BeginView(context.Context, *ViewParameters) (*View, error)
 	EndView(context.Context, *View) (*View, error)
-	GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error)
+	GetNamespacePolicies(context.Context, *Empty) (*protoblocktx.NamespacePolicies, error)
+	GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -104,8 +116,11 @@ func (UnimplementedQueryServiceServer) BeginView(context.Context, *ViewParameter
 func (UnimplementedQueryServiceServer) EndView(context.Context, *View) (*View, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EndView not implemented")
 }
-func (UnimplementedQueryServiceServer) GetPolicies(context.Context, *Empty) (*protoblocktx.Policies, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPolicies not implemented")
+func (UnimplementedQueryServiceServer) GetNamespacePolicies(context.Context, *Empty) (*protoblocktx.NamespacePolicies, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNamespacePolicies not implemented")
+}
+func (UnimplementedQueryServiceServer) GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetConfigTransaction not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -174,20 +189,38 @@ func _QueryService_EndView_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _QueryService_GetPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _QueryService_GetNamespacePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServiceServer).GetPolicies(ctx, in)
+		return srv.(QueryServiceServer).GetNamespacePolicies(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: QueryService_GetPolicies_FullMethodName,
+		FullMethod: QueryService_GetNamespacePolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServiceServer).GetPolicies(ctx, req.(*Empty))
+		return srv.(QueryServiceServer).GetNamespacePolicies(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QueryService_GetConfigTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).GetConfigTransaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QueryService_GetConfigTransaction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).GetConfigTransaction(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -212,8 +245,12 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _QueryService_EndView_Handler,
 		},
 		{
-			MethodName: "GetPolicies",
-			Handler:    _QueryService_GetPolicies_Handler,
+			MethodName: "GetNamespacePolicies",
+			Handler:    _QueryService_GetNamespacePolicies_Handler,
+		},
+		{
+			MethodName: "GetConfigTransaction",
+			Handler:    _QueryService_GetConfigTransaction_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

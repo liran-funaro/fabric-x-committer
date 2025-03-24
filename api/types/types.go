@@ -1,8 +1,9 @@
 package types
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 type (
@@ -10,8 +11,15 @@ type (
 	VersionNumber uint64
 )
 
-// MetaNamespaceID is an ID of a system namespace which holds information about user's namespaces.
-const MetaNamespaceID = "_meta"
+const (
+	// MetaNamespaceID is the system's namespace ID that holds information about application's namespaces.
+	MetaNamespaceID = "_meta"
+
+	// ConfigNamespaceID is the system's namespace ID that holds the config transaction.
+	ConfigNamespaceID = "_config"
+	// ConfigKey is the key of the config transaction.
+	ConfigKey = "_config"
+)
 
 // Bytes converts a version number representation to bytes representation.
 func (v VersionNumber) Bytes() []byte {

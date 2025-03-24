@@ -1,40 +1,95 @@
 package coordinatorservice
 
 import (
-	"context"
+	"maps"
+	"slices"
+	"sync"
+	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification/policy"
 )
 
-// policyManager is responsible for updating the committer policy and configuration according to the processed TXs.
+// policyManager is responsible for locally holding the latest namespace policies and config transaction
+// according to the processed TXs. It does not parse these policies.
 type policyManager struct {
-	signVerifierMgr *signatureVerifierManager
+	version           atomic.Uint64
+	nsPolicies        map[string]*protoblocktx.PolicyItem
+	nsVersions        map[string]uint64
+	configTransaction *protoblocktx.ConfigTransaction
+	configVersion     uint64
+	lock              sync.Mutex
 }
 
-func (p *policyManager) updatePoliciesFromTx(
-	ctx context.Context,
-	namespaces []*protoblocktx.TxNamespace,
-) error {
-	for _, ns := range namespaces {
-		if ns.NsId != types.MetaNamespaceID {
-			continue
-		}
-		pd := append(policy.ListPolicyItems(ns.ReadWrites), policy.ListPolicyItems(ns.BlindWrites)...)
-		if len(pd) == 0 {
-			return nil
-		}
-		return p.updatePolicies(ctx, &protoblocktx.Policies{
-			Policies: pd,
-		})
+func newPolicyManager() *policyManager {
+	return &policyManager{
+		nsPolicies: make(map[string]*protoblocktx.PolicyItem),
+		nsVersions: make(map[string]uint64),
 	}
-	return nil
 }
 
-func (p *policyManager) updatePolicies(
-	ctx context.Context,
-	policies *protoblocktx.Policies,
-) error {
-	return p.signVerifierMgr.updatePolicies(ctx, policies)
+func (pm *policyManager) updateFromTx(namespaces []*protoblocktx.TxNamespace) {
+	var updates []*protosigverifierservice.Update
+	for _, ns := range namespaces {
+		u := policy.GetUpdatesFromNamespace(ns)
+		if u != nil {
+			updates = append(updates, u)
+		}
+	}
+	pm.update(updates...)
+}
+
+func (pm *policyManager) update(update ...*protosigverifierservice.Update) {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+	version := pm.version.Add(1)
+	for _, u := range update {
+		if u.Config != nil {
+			pm.configTransaction = u.Config
+			pm.configVersion = version
+		}
+		if u.NamespacePolicies != nil {
+			for _, p := range u.NamespacePolicies.Policies {
+				pm.nsPolicies[p.Namespace] = p
+				pm.nsVersions[p.Namespace] = version
+			}
+		}
+	}
+}
+
+func (pm *policyManager) getAll() (*protosigverifierservice.Update, uint64) {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+	return &protosigverifierservice.Update{
+		NamespacePolicies: &protoblocktx.NamespacePolicies{
+			Policies: slices.Collect(maps.Values(pm.nsPolicies)),
+		},
+		Config: pm.configTransaction,
+	}, pm.version.Load()
+}
+
+func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.Update, uint64) {
+	if version == pm.version.Load() {
+		return nil, version
+	}
+
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+	ret := &protosigverifierservice.Update{}
+	if version < pm.configVersion {
+		ret.Config = pm.configTransaction
+	}
+
+	nsUpdates := make([]*protoblocktx.PolicyItem, 0, len(pm.nsPolicies))
+	for ns, v := range pm.nsVersions {
+		if version < v {
+			nsUpdates = append(nsUpdates, pm.nsPolicies[ns])
+		}
+	}
+	if len(nsUpdates) > 0 {
+		ret.NamespacePolicies = &protoblocktx.NamespacePolicies{Policies: nsUpdates}
+	}
+
+	return ret, pm.version.Load()
 }

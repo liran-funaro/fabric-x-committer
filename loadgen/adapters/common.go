@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -29,7 +30,7 @@ type (
 	// TxStream makes generators such that all can be used in parallel.
 	TxStream interface {
 		MakeTxGenerator() workload.Generator[*protoblocktx.Tx]
-		MakeBlocksGenerator() workload.Generator[*protoblocktx.Block]
+		MakeBlocksGenerator() workload.Generator[*protocoordinatorservice.Block]
 	}
 
 	// commonAdapter is used as a base class for the adapters.
@@ -88,7 +89,7 @@ func (*commonAdapter) Supports() Phases {
 func (c *commonAdapter) sendBlocks(
 	ctx context.Context,
 	txStream TxStream,
-	send func(*protoblocktx.Block) error,
+	send func(*protocoordinatorservice.Block) error,
 ) error {
 	blockGen := txStream.MakeBlocksGenerator()
 	for ctx.Err() == nil {

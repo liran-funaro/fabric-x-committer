@@ -8,9 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
@@ -19,8 +17,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 const defaultBlockSize = 500
@@ -29,7 +25,7 @@ func runLoadGenerator(t *testing.T, c *ClientConfig) *Client {
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
 
-	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(client.Run(ctx))
 	}, nil)
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
@@ -53,71 +49,8 @@ func eventuallyMetrics(
 	}
 }
 
-// activateVcServiceForTest activating the vc-service with the given ports for test purpose.
-func activateVcServiceForTest(t *testing.T, count int) (*yuga.Connection, []*connection.Endpoint) {
-	t.Helper()
-	conn := yuga.PrepareTestEnv(t)
-
-	endpoints := make([]*connection.Endpoint, count)
-
-	for i := range endpoints {
-		vcConf := &vcservice.ValidatorCommitterServiceConfig{
-			Server:     connection.NewLocalHostServer(),
-			Monitoring: defaultMonitoring(),
-			Database: &vcservice.DatabaseConfig{
-				Endpoints:      conn.Endpoints,
-				Username:       conn.User,
-				Password:       conn.Password,
-				Database:       conn.Database,
-				MaxConnections: 10,
-				MinConnections: 1,
-				LoadBalance:    false,
-			},
-			ResourceLimits: &vcservice.ResourceLimitsConfig{
-				MaxWorkersForPreparer:  2,
-				MaxWorkersForCommitter: 2,
-				MaxWorkersForValidator: 2,
-			},
-		}
-
-		initCtx, initCancel := context.WithTimeout(t.Context(), 5*time.Minute)
-		t.Cleanup(initCancel)
-		service, err := vcservice.NewValidatorCommitterService(initCtx, vcConf)
-		require.NoError(t, err)
-		t.Cleanup(service.Close)
-		test.RunServiceAndGrpcForTest(t.Context(), t, service, vcConf.Server, func(server *grpc.Server) {
-			protovcservice.RegisterValidationAndCommitServiceServer(server, service)
-		})
-		endpoints[i] = &vcConf.Server.Endpoint
-	}
-	return conn, endpoints
-}
-
-// GenerateNamespacesUnderTest is an export function that creates namespaces using the vc-service.
-func GenerateNamespacesUnderTest(t *testing.T, namespaces []string) *yuga.Connection {
-	conn, endpoints := activateVcServiceForTest(t, 1)
-
-	clientConf := defaultClientConf()
-	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-		Endpoints: endpoints,
-	}
-	policy := &workload.PolicyProfile{
-		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
-	}
-	for i, ns := range namespaces {
-		policy.NamespacePolicies[ns] = &workload.Policy{
-			Scheme: signature.Ecdsa,
-			Seed:   int64(i),
-		}
-	}
-	clientConf.LoadProfile.Transaction.Policy = policy
-	clientConf.Generate = adapters.Phases{Namespaces: true}
-	runLoadGenerator(t, clientConf)
-	return conn
-}
-
-// defaultClientConf returns default config values for client testing.
-func defaultClientConf() *ClientConfig {
+// DefaultClientConf returns default config values for client testing.
+func DefaultClientConf() *ClientConfig {
 	return &ClientConfig{
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},

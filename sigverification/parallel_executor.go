@@ -13,11 +13,21 @@ type (
 		inputCh        chan *protosigverifierservice.Request
 		outputSingleCh chan *protosigverifierservice.Response
 		outputCh       chan []*protosigverifierservice.Response
-		executor       executorFunc
+		verifier       *verifier
 		config         *ExecutorConfig
 	}
-	executorFunc = func(*protosigverifierservice.Request) *protosigverifierservice.Response
 )
+
+func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
+	channelCapacity := config.ChannelBufferSize * config.Parallelism
+	return &parallelExecutor{
+		config:         config,
+		inputCh:        make(chan *protosigverifierservice.Request, channelCapacity),
+		outputCh:       make(chan []*protosigverifierservice.Response),
+		outputSingleCh: make(chan *protosigverifierservice.Response, channelCapacity),
+		verifier:       newVerifier(),
+	}
+}
 
 func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 	chIn := channel.NewReader(ctx, e.inputCh)
@@ -28,7 +38,7 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 			return
 		}
 		logger.Debugf("Received request %v with in worker", input.Tx.Id)
-		output := e.executor(input)
+		output := e.verifier.verifyRequest(input)
 		logger.Debugf("Received output from executor: %v", output)
 		chOut.Write(output)
 	}

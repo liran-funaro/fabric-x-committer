@@ -7,6 +7,7 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
@@ -26,10 +27,10 @@ func TestDBNodeCrashHandling(t *testing.T) {
 			NumVCService:    2,
 			BlockTimeout:    2 * time.Second,
 			BlockSize:       500,
-			LoadGen:         true,
 			DBCluster:       clusterConnection,
 		},
 	)
+	c.StartLoadGen(t)
 
 	waitForCommittedTxs(t, c, 10_000)
 	clusterController.RemoveLastNode(t)

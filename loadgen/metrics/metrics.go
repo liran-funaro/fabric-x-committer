@@ -5,6 +5,7 @@ import (
 	promgo "github.com/prometheus/client_model/go"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
@@ -99,7 +100,7 @@ func (c *PerfMetrics) GetCommitted() (uint64, error) {
 }
 
 // OnSendBlock is a function that increments the block sent total and calls the latency tracker.
-func (c *PerfMetrics) OnSendBlock(block *protoblocktx.Block) {
+func (c *PerfMetrics) OnSendBlock(block *protocoordinatorservice.Block) {
 	c.blockSentTotal.Add(1)
 	c.transactionSentTotal.Add(len(block.Txs))
 	c.latencyTracker.OnSendBlock(block)

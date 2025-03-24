@@ -8,14 +8,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
@@ -29,6 +29,7 @@ type (
 		VCServices []*ValidatorCommitterService
 		DBEnv      *DatabaseTestEnv
 		Configs    []*ValidatorCommitterServiceConfig
+		Endpoints  []*connection.Endpoint
 	}
 
 	// ValueVersion contains a list of values and their matching versions.
@@ -60,6 +61,8 @@ func NewValidatorAndCommitServiceTestEnv(
 	t.Cleanup(initCancel)
 	vcservices := make([]*ValidatorCommitterService, numServices)
 	configs := make([]*ValidatorCommitterServiceConfig, numServices)
+
+	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
 		config := &ValidatorCommitterServiceConfig{
 			Server:   connection.NewLocalHostServer(),
@@ -84,12 +87,14 @@ func NewValidatorAndCommitServiceTestEnv(
 		})
 		vcservices[i] = vcs
 		configs[i] = config
+		endpoints[i] = &config.Server.Endpoint
 	}
 
 	return &ValidatorAndCommitterServiceTestEnv{
 		VCServices: vcservices,
 		DBEnv:      dbEnv,
 		Configs:    configs,
+		Endpoints:  endpoints,
 	}
 }
 

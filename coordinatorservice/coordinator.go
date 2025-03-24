@@ -139,16 +139,18 @@ func NewCoordinatorService(c *CoordinatorConfig) *CoordinatorService {
 		},
 	)
 
+	policyMgr := newPolicyManager()
+
 	svMgr := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
 			serversConfig:            c.SignVerifierConfig.ServerConfig,
 			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
 			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
 			metrics:                  metrics,
+			policyManager:            policyMgr,
 		},
 	)
 
-	policyMgr := &policyManager{signVerifierMgr: svMgr}
 	vcMgr := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
 			serversConfig:                  c.ValidatorCommitterConfig.ServerConfig,
@@ -211,15 +213,11 @@ func (c *CoordinatorService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	if !channel.WaitForAllReady(
-		eCtx,
-		c.validatorCommitterMgr.connectionReady,
-		c.signatureVerifierMgr.connectionReady,
-	) {
+	if !c.validatorCommitterMgr.ready.WaitForReady(eCtx) {
 		return g.Wait()
 	}
 
-	if err := c.validatorCommitterMgr.fetchPoliciesAndUpdatePolicyManager(ctx); err != nil {
+	if err := c.validatorCommitterMgr.recoverPolicyManagerFromStateDB(ctx); err != nil {
 		return err
 	}
 
@@ -252,11 +250,11 @@ func (c *CoordinatorService) WaitForReady(ctx context.Context) bool {
 	return c.initializationDone.WaitForReady(ctx)
 }
 
-// GetPolicies updates the verification policies.
-func (c *CoordinatorService) GetPolicies(
+// GetConfigTransaction get the config transaction from the state DB.
+func (c *CoordinatorService) GetConfigTransaction(
 	ctx context.Context, _ *protocoordinatorservice.Empty,
-) (*protoblocktx.Policies, error) {
-	return c.validatorCommitterMgr.getPolicies(ctx)
+) (*protoblocktx.ConfigTransaction, error) {
+	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

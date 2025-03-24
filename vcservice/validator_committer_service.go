@@ -215,12 +215,22 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	}, nil
 }
 
-// GetPolicies retrieves the policy data from the database.
-func (vc *ValidatorCommitterService) GetPolicies(
+// GetNamespacePolicies retrieves the policy data from the database.
+func (vc *ValidatorCommitterService) GetNamespacePolicies(
 	ctx context.Context,
 	_ *protovcservice.Empty,
-) (*protoblocktx.Policies, error) {
-	policies, err := vc.db.readPolicies(ctx)
+) (*protoblocktx.NamespacePolicies, error) {
+	policies, err := vc.db.readNamespacePolicies(ctx)
+	logger.ErrorStackTrace(err)
+	return policies, grpcerror.WrapInternalError(err)
+}
+
+// GetConfigTransaction retrieves the config block from the database.
+func (vc *ValidatorCommitterService) GetConfigTransaction(
+	ctx context.Context,
+	_ *protovcservice.Empty,
+) (*protoblocktx.ConfigTransaction, error) {
+	policies, err := vc.db.readConfigTX(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)
 }

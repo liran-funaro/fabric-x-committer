@@ -22,6 +22,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 // We expect at least 3 blocks for a valid test run.
@@ -29,10 +30,10 @@ const defaultExpectedTXs = defaultBlockSize * 3
 
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
-	_, endpoints := activateVcServiceForTest(t, 2)
-	clientConf := defaultClientConf()
+	env := vcservice.NewValidatorAndCommitServiceTestEnv(t, 2)
+	clientConf := DefaultClientConf()
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-		Endpoints: endpoints,
+		Endpoints: env.Endpoints,
 	}
 	testLoadGenerator(t, clientConf)
 }
@@ -59,7 +60,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	}
 
 	// Start client
-	clientConf := defaultClientConf()
+	clientConf := DefaultClientConf()
 	clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
 		Endpoints: endpoints,
 	}
@@ -102,7 +103,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 	})
 
 	// Start client
-	clientConf := defaultClientConf()
+	clientConf := DefaultClientConf()
 	clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
 		Endpoint: &cConf.ServerConfig.Endpoint,
 	}
@@ -157,7 +158,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 	})
 
 	// Start client
-	clientConf := defaultClientConf()
+	clientConf := DefaultClientConf()
 	clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 		SidecarEndpoint: &sidecarServerConf.Endpoint,
 		ChannelID:       chanID,
@@ -202,7 +203,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 	})
 
 	// Submit default config block.
-	clientConf := defaultClientConf()
+	clientConf := DefaultClientConf()
 	require.NotNil(t, clientConf.LoadProfile)
 	clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
 	configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)

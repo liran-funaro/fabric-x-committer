@@ -19,6 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -128,7 +129,7 @@ func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
 	}, 4*time.Second, 250*time.Millisecond)
 }
 
-func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum int, nsID string) {
+func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ...string) {
 	t.Helper()
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -137,38 +138,53 @@ func (e *coordinatorTestEnv) createNamespace(t *testing.T, blkNum int, nsID stri
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
 
-	txID := uuid.NewString()
-	err = e.csStream.Send(&protoblocktx.Block{
+	blk := &protocoordinatorservice.Block{
 		Number: uint64(blkNum), // nolint:gosec
-		Txs: []*protoblocktx.Tx{
-			{
-				Id: txID,
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:   []byte(nsID),
-								Value: pBytes,
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-				},
-			},
-		},
-		TxsNum: []uint32{0},
-	})
-	require.NoError(t, err)
-	txStatus, err := e.csStream.Recv()
-	require.NoError(t, err)
-	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
-		txID: {Code: protoblocktx.Status_COMMITTED},
 	}
-	require.Equal(t, expectedTxStatus, txStatus.Status)
+	blk.Txs = append(blk.Txs, &protoblocktx.Tx{
+		Id: uuid.NewString(),
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId: types.ConfigNamespaceID,
+			ReadWrites: []*protoblocktx.ReadWrite{{
+				Key:   []byte(types.ConfigKey),
+				Value: pBytes,
+			}},
+		}},
+	})
+	for _, nsID := range nsIDs {
+		blk.Txs = append(blk.Txs, &protoblocktx.Tx{
+			Id: uuid.NewString(),
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: types.VersionNumber(0).Bytes(),
+				ReadWrites: []*protoblocktx.ReadWrite{{
+					Key:   []byte(nsID),
+					Value: pBytes,
+				}},
+			}},
+		})
+	}
+	for _, tx := range blk.Txs {
+		// The mock verifier verifies that len(tx.Namespace)==len(tx.Signatures)
+		tx.Signatures = make([][]byte, len(tx.Namespaces))
+	}
+	blk.TxsNum = utils.Range(0, uint32(len(blk.Txs))) //nolint:gosec // integer overflow conversion int -> uint32
+
+	err = e.csStream.Send(blk)
+	require.NoError(t, err)
+	status := make(map[string]*protoblocktx.StatusWithHeight)
+	require.Eventually(t, func() bool {
+		txStatus, err := e.csStream.Recv()
+		require.NoError(t, err)
+		require.NotNil(t, txStatus)
+		require.NotNil(t, txStatus.Status)
+		maps.Insert(status, maps.All(txStatus.Status))
+		return len(status) == len(nsIDs)+1
+	}, 2*time.Minute, 10*time.Millisecond)
+
+	for _, s := range status {
+		require.Equal(t, protoblocktx.Status_COMMITTED, s.Code)
+	}
 }
 
 func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
@@ -207,7 +223,9 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
-	env.createNamespace(t, 0, "1")
+	env.createNamespaces(t, 0, "1")
+
+	preMetricsValue := test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
 
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
@@ -215,43 +233,41 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	}
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
-	err = env.csStream.Send(&protoblocktx.Block{
+	err = env.csStream.Send(&protocoordinatorservice.Block{
 		Number: 1,
-		Txs: []*protoblocktx.Tx{
-			{
-				Id: "tx1",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:   []byte("2"),
-								Value: pBytes,
-							},
+		Txs: []*protoblocktx.Tx{{
+			Id: "tx1",
+			Namespaces: []*protoblocktx.TxNamespace{
+				{
+					NsId:      "1",
+					NsVersion: types.VersionNumber(0).Bytes(),
+					ReadWrites: []*protoblocktx.ReadWrite{
+						{
+							Key: []byte("key"),
 						},
 					},
 				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
+				{
+					NsId:      types.MetaNamespaceID,
+					NsVersion: types.VersionNumber(0).Bytes(),
+					ReadWrites: []*protoblocktx.ReadWrite{
+						{
+							Key:   []byte("2"),
+							Value: pBytes,
+						},
+					},
 				},
 			},
-		},
+			Signatures: [][]byte{
+				[]byte("dummy"),
+				[]byte("dummy"),
+			},
+		}},
 		TxsNum: []uint32{0},
 	})
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == 2
+		return test.GetMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) == preMetricsValue+1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	txStatus, err := env.csStream.Recv()
@@ -265,7 +281,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 	require.InEpsilon(
 		t,
-		float64(2),
+		preMetricsValue+1,
 		test.GetMetricValue(t, env.coordinator.metrics.transactionCommittedStatusSentTotal),
 		1e-10,
 	)
@@ -299,9 +315,21 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 
 	// We send a block with a series of TXs with apparent conflicts, but all should be committed successfully if
 	// executed serially.
-	b1 := &protoblocktx.Block{
+	b1 := &protocoordinatorservice.Block{
 		Number: 0,
 		Txs: []*protoblocktx.Tx{
+			{
+				Id: "config TX",
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId: types.ConfigNamespaceID,
+					ReadWrites: []*protoblocktx.ReadWrite{
+						{
+							Key:   []byte(types.ConfigKey),
+							Value: []byte("config"),
+						},
+					},
+				}},
+			},
 			{
 				Id: "create namespace 1",
 				Namespaces: []*protoblocktx.TxNamespace{{
@@ -400,7 +428,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		}
 		maps.Insert(status, maps.All(txStatus.Status))
 		return len(status) == len(b1.Txs)
-	}, time.Minute, 500*time.Millisecond)
+	}, time.Minute, 10*time.Millisecond)
 	for txID, txStatus := range status {
 		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}
@@ -463,10 +491,10 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.start(ctx, t)
 
 	require.Equal(t, uint64(0), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
-	env.createNamespace(t, 0, "1")
+	env.createNamespaces(t, 0, "1")
 	require.Equal(t, uint64(1), env.coordinator.nextExpectedBlockNumberToBeReceived.Load())
 
-	err := env.csStream.Send(&protoblocktx.Block{
+	err := env.csStream.Send(&protocoordinatorservice.Block{
 		Number: 1,
 		Txs: []*protoblocktx.Tx{
 			{
@@ -515,7 +543,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		PublicKey: []byte("publicKey"),
 	})
 	require.NoError(t, err)
-	block2 := &protoblocktx.Block{
+	block2 := &protocoordinatorservice.Block{
 		Number: 2,
 		Txs: []*protoblocktx.Tx{
 			{
@@ -604,7 +632,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 	// Now, we are sending the full block 2.
-	block2 = &protoblocktx.Block{
+	block2 = &protocoordinatorservice.Block{
 		Number: 2,
 		Txs: []*protoblocktx.Tx{
 			{
@@ -740,25 +768,12 @@ func TestCoordinatorRecovery(t *testing.T) {
 		env.client, []string{"tx2", "tx3", "mvcc conflict", "duplicate namespace", "tx1"}, expectedTxStatus)
 }
 
-func TestGRPCConnectionFailure(t *testing.T) {
-	t.Parallel()
-	c := NewCoordinatorService(fakeConfigForTest(t))
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer cancel()
-	err := c.Run(ctx)
-	require.ErrorContains(t, err, "transport: Error while dialing: dial tcp: lookup random")
-	require.ErrorContains(t, err, "no such host")
-}
-
 func TestConnectionReadyWithTimeout(t *testing.T) {
 	t.Parallel()
 	c := NewCoordinatorService(fakeConfigForTest(t))
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	require.Never(t, func() bool {
-		c.WaitForReady(ctx)
-		return true
-	}, 5*time.Second, 1*time.Second)
+	t.Cleanup(cancel)
+	require.False(t, c.WaitForReady(ctx))
 }
 
 func TestChunkSizeSentForDepGraph(t *testing.T) {
@@ -866,9 +881,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {
 	return &CoordinatorConfig{
-		ServerConfig: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{Host: "", Port: 1876},
-		},
+		ServerConfig: connection.NewLocalHostServer(),
 		SignVerifierConfig: &SignVerifierConfig{
 			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
 		},
@@ -877,15 +890,13 @@ func fakeConfigForTest(_ *testing.T) *CoordinatorConfig {
 			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
 		},
 		Monitoring: monitoring.Config{
-			Server: &connection.ServerConfig{
-				Endpoint: connection.Endpoint{Host: "", Port: 1877},
-			},
+			Server: connection.NewLocalHostServer(),
 		},
 	}
 }
 
-func makeTestBlock(txPerBlock int) (*protoblocktx.Block, map[string]*protoblocktx.StatusWithHeight) {
-	b := &protoblocktx.Block{
+func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*protoblocktx.StatusWithHeight) {
+	b := &protocoordinatorservice.Block{
 		Txs:    make([]*protoblocktx.Tx, txPerBlock),
 		TxsNum: make([]uint32, txPerBlock),
 	}

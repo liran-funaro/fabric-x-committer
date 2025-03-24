@@ -7,10 +7,11 @@ package protoqueryservice;
 import "api/protoblocktx/block_tx.proto";
 
 service QueryService {
-  rpc GetRows(Query) returns (Rows) {}
-  rpc BeginView(ViewParameters) returns (View) {}
-  rpc EndView(View) returns (View) {}
-  rpc GetPolicies(Empty) returns (protoblocktx.Policies) {}
+  rpc GetRows(Query) returns (Rows) {};
+  rpc BeginView(ViewParameters) returns (View) {};
+  rpc EndView(View) returns (View) {};
+  rpc GetNamespacePolicies(Empty) returns (protoblocktx.NamespacePolicies) {};
+  rpc GetConfigTransaction(Empty) returns (protoblocktx.ConfigTransaction) {};
 }
 
 message View {

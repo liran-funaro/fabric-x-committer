@@ -140,12 +140,20 @@ func (q *QueryService) GetRows(
 	return res, err
 }
 
-// GetPolicies implements the query-service interface.
-func (q *QueryService) GetPolicies(
+// GetNamespacePolicies implements the query-service interface.
+func (q *QueryService) GetNamespacePolicies(
 	ctx context.Context,
 	_ *protoqueryservice.Empty,
-) (*protoblocktx.Policies, error) {
+) (*protoblocktx.NamespacePolicies, error) {
 	return queryPolicies(ctx, q.batcher.pool)
+}
+
+// GetConfigTransaction implements the query-service interface.
+func (q *QueryService) GetConfigTransaction(
+	ctx context.Context,
+	_ *protoqueryservice.Empty,
+) (*protoblocktx.ConfigTransaction, error) {
+	return queryConfig(ctx, q.batcher.pool)
 }
 
 func (q *QueryService) assignRequest(
