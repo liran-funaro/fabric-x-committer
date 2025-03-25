@@ -54,19 +54,19 @@ func TestServers(t *testing.T) {
 	}()
 	outputBlocks := channel.NewReader(ctx, outputBlocksChan)
 
-	// Read config block.
+	t.Log("Read config block")
 	b, ok := outputBlocks.Read()
 	require.True(t, ok)
 	require.NotNil(t, b)
 	require.Len(t, b.Data.Data, 1)
 
-	// All good.
+	t.Log("All good")
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:      "1",
 		success: 3,
 	})
 
-	// One server down.
+	t.Log("One server down")
 	servers[2].Servers[0].Stop()
 	time.Sleep(3 * time.Second)
 	submit(t, stream, outputBlocks, expectedSubmit{
@@ -74,7 +74,7 @@ func TestServers(t *testing.T) {
 		success: 3,
 	})
 
-	// Two servers down.
+	t.Log("Two servers down")
 	servers[2].Servers[1].Stop()
 	time.Sleep(3 * time.Second)
 	submit(t, stream, outputBlocks, expectedSubmit{
@@ -83,7 +83,7 @@ func TestServers(t *testing.T) {
 		unavailable: 2,
 	})
 
-	// One incorrect server.
+	t.Log("One incorrect server")
 	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0])
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, stream, outputBlocks, expectedSubmit{
@@ -93,7 +93,7 @@ func TestServers(t *testing.T) {
 		unimplemented: 1,
 	})
 
-	// All good again.
+	t.Log("All good again")
 	fakeServer.Stop()
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], func(server *grpc.Server) {
 		ab.RegisterAtomicBroadcastServer(server, ordererService)
@@ -104,7 +104,7 @@ func TestServers(t *testing.T) {
 		success: 3,
 	})
 
-	// Insufficient quorum.
+	t.Log("Insufficient quorum")
 	servers[0].Servers[0].Stop()
 	servers[0].Servers[1].Stop()
 	servers[1].Servers[0].Stop()
@@ -117,7 +117,7 @@ func TestServers(t *testing.T) {
 		unavailable: 4,
 	})
 
-	// Update endpoints.
+	t.Log("Update endpoints")
 	conf.Connection.Endpoints = allEndpoints[6:]
 	err = client.UpdateConnections(&conf.Connection)
 	require.NoError(t, err)
@@ -228,4 +228,7 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 	require.NoError(t, err)
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
+	t.Logf("%v is ready", endpoint)
+	// Wait a while to allow the GRPC connection enough time to make a new attempt.
+	time.Sleep(100 * time.Millisecond)
 }
