@@ -23,7 +23,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
@@ -80,7 +80,7 @@ type (
 		BlockTimeout        time.Duration
 
 		// DBCluster configures the cluster to operate in DB cluster mode.
-		DBCluster *yuga.Connection
+		DBCluster *dbtest.Connection
 	}
 )
 

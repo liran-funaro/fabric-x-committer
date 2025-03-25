@@ -21,7 +21,7 @@ stages:
 before_install:
   - export GO111MODULE=on
   - export GOPRIVATE=github.ibm.com
-  - export DB_INSTANCE=local
+  - export DB_DEPLOYMENT=local
   - git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.ibm.com".insteadOf "https://github.ibm.com"
 
 jobs:

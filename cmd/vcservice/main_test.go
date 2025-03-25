@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 )
 
 //go:embed vcservice-cmd-test-config.yaml
 var configTemplate string
 
 func TestVCServiceCmd(t *testing.T) {
-	conn := yuga.PrepareTestEnv(t)
+	conn := dbtest.PrepareTestEnv(t)
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(
 		configTemplate,

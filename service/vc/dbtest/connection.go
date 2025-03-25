@@ -1,4 +1,4 @@
-package yuga
+package dbtest
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
-var logger = logging.New("yuga connection")
+var logger = logging.New("db connection")
 
 const (
 	defaultUsername = "yugabyte"

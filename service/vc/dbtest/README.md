@@ -5,7 +5,7 @@ You can use VCService with a local Postgres instance as an alternative to Yugaby
 Run VCService with the following environment variables set and make sure your Postgres instance is running.
 
 ```bash
-export DB_INSTANCE=local
+export DB_DEPLOYMENT=local
 ```
 
 ## Start Postgres
@@ -31,6 +31,6 @@ docker ps -aq -f name=sc_postgres_unit_tests | xargs docker rm -f
 Once Postgres is up and running you can run the tests of VCService.
 (Note that command below assumes we are in `scalable-committer/vcservice/yuga`)
 ```bash
-DB_INSTANCE=local go test ..
+DB_DEPLOYMENT=local go test ..
 ```
 

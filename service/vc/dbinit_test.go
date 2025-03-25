@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -57,7 +56,7 @@ func TestRetry(t *testing.T) {
 }
 
 func TestConcurrentDatabaseTablesInit(t *testing.T) {
-	cs := yuga.PrepareTestEnv(t)
+	cs := dbtest.PrepareTestEnv(t)
 
 	config := &DatabaseConfig{
 		Endpoints:      cs.Endpoints,
@@ -79,9 +78,9 @@ func TestConcurrentDatabaseTablesInit(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			metrics := newVCServiceMetrics()
-			db, dbInitErr := newDatabase(ctx, config, metrics)
+			testDB, dbInitErr := newDatabase(ctx, config, metrics)
 			require.NoError(t, dbInitErr)
-			t.Cleanup(db.close)
+			t.Cleanup(testDB.close)
 		}()
 	}
 	wg.Wait()

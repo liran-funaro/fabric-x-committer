@@ -1,0 +1,286 @@
+package dbtest
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"testing"
+
+	docker "github.com/fsouza/go-dockerclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+)
+
+const (
+	defaultYugabyteImage            = "yugabytedb/yugabyte:2.20.7.0-b58"
+	defaultPostgresImage            = "postgres:16.1"
+	defaultDBDeploymentTemplateName = "sc_%s_unit_tests"
+
+	defaultHostIP  = "127.0.0.1"
+	defaultPortMap = "7000/tcp"
+)
+
+// YugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
+var YugabyteCMD = []string{
+	"bin/yugabyted", "start",
+	"--callhome", "false",
+	"--background", "false",
+	"--ui", "false",
+	"--tserver_flags", "ysql_max_connections=5000",
+	"--insecure",
+}
+
+// DatabaseContainer manages the execution of an instance of a dockerized DB for tests.
+type DatabaseContainer struct {
+	Name         string
+	Image        string
+	HostIP       string
+	Network      string
+	DatabaseType string
+	Cmd          []string
+	Env          []string
+	HostPort     int
+	DbPort       docker.Port
+	PortMap      docker.Port
+	PortBinds    map[docker.Port][]docker.PortBinding
+	NetToIP      map[string]*docker.EndpointConfig
+	AutoRm       bool
+
+	client      *docker.Client
+	containerID string
+}
+
+// StartContainer runs a DB container, if no specific container details provided, default values will be set.
+func (dc *DatabaseContainer) StartContainer(ctx context.Context, t *testing.T) {
+	t.Helper()
+
+	dc.initDefaults(t)
+
+	dc.createContainer(ctx, t)
+
+	// Starts the container
+	err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
+	if _, ok := err.(*docker.ContainerAlreadyRunning); ok {
+		t.Log("Container is already running")
+		return
+	}
+	require.NoError(t, err)
+
+	// Stream logs to stdout/stderr
+	go dc.streamLogs(t)
+}
+
+func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
+	t.Helper()
+
+	switch dc.DatabaseType {
+	case YugaDBType:
+		if dc.Image == "" {
+			dc.Image = defaultYugabyteImage
+		}
+
+		if dc.Cmd == nil {
+			dc.Cmd = YugabyteCMD
+		}
+
+		if dc.DbPort == "" {
+			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
+		}
+	case PostgresDBType:
+		if dc.Image == "" {
+			dc.Image = defaultPostgresImage
+		}
+
+		if dc.Env == nil {
+			dc.Env = []string{
+				"POSTGRES_PASSWORD=yugabyte",
+				"POSTGRES_USER=yugabyte",
+			}
+		}
+
+		if dc.DbPort == "" {
+			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", postgresDBPort))
+		}
+	default:
+		t.Fatalf("Unsupported database type: %s", dc.DatabaseType)
+	}
+
+	if dc.Name == "" {
+		dc.Name = fmt.Sprintf(defaultDBDeploymentTemplateName, dc.DatabaseType)
+	}
+
+	if dc.HostIP == "" {
+		dc.HostIP = defaultHostIP
+	}
+
+	if dc.PortMap == "" {
+		dc.PortMap = defaultPortMap
+	}
+
+	if dc.PortBinds == nil {
+		dc.PortBinds = map[docker.Port][]docker.PortBinding{
+			dc.PortMap: {{
+				HostIP:   dc.HostIP,
+				HostPort: strconv.Itoa(dc.HostPort),
+			}},
+		}
+	}
+	if dc.client == nil {
+		dc.client = GetDockerClient(t)
+	}
+}
+
+// createContainer attempts to create a container instance, or attach to an existing one.
+func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) {
+	t.Helper()
+	// If container exists, we don't have to create it.
+	found := dc.findContainer(t)
+
+	if found {
+		return
+	}
+
+	// Pull the image if not exist
+	require.NoError(t, dc.client.PullImage(docker.PullImageOptions{
+		Context:      ctx,
+		Repository:   dc.Image,
+		OutputStream: os.Stdout,
+	}, docker.AuthConfiguration{}))
+
+	// Create the container instance
+	container, err := dc.client.CreateContainer(
+		docker.CreateContainerOptions{
+			Context: ctx,
+			Name:    dc.Name,
+			Config: &docker.Config{
+				Image: dc.Image,
+				Cmd:   dc.Cmd,
+				Env:   dc.Env,
+			},
+			HostConfig: &docker.HostConfig{
+				AutoRemove:   dc.AutoRm,
+				PortBindings: dc.PortBinds,
+			},
+		},
+	)
+
+	// If container created successfully, finish.
+	if err == nil {
+		dc.containerID = container.ID
+		return
+	}
+	require.ErrorIs(t, err, docker.ErrContainerAlreadyExists)
+
+	// Try to find it again.
+	require.True(t, dc.findContainer(t), "cannot create container (already exists), but cannot find it")
+}
+
+// findContainer looks up a container with the same name.
+func (dc *DatabaseContainer) findContainer(t *testing.T) bool {
+	t.Helper()
+	allContainers, err := dc.client.ListContainers(docker.ListContainersOptions{All: true})
+	require.NoError(t, err, "could not load containers.")
+
+	for _, c := range allContainers {
+		for _, n := range c.Names {
+			if n == dc.Name || n == fmt.Sprintf("/%s", dc.Name) {
+				dc.containerID = c.ID
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// getConnectionOptions inspect the container and fetches the available connection options.
+func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testing.T) *Connection {
+	t.Helper()
+	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
+		Context: ctx,
+		ID:      dc.containerID,
+	})
+	require.NoError(t, err)
+
+	endpoints := []*connection.Endpoint{
+		connection.CreateEndpointHP(container.NetworkSettings.IPAddress, dc.DbPort.Port()),
+	}
+	for _, p := range container.NetworkSettings.Ports[dc.DbPort] {
+		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
+	}
+
+	return NewConnection(endpoints...)
+}
+
+// GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.
+func (dc *DatabaseContainer) GetContainerConnectionDetails(
+	ctx context.Context,
+	t *testing.T,
+) *connection.Endpoint {
+	t.Helper()
+	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
+		Context: ctx,
+		ID:      dc.containerID,
+	})
+	require.NoError(t, err)
+
+	return connection.CreateEndpointHP(container.NetworkSettings.IPAddress, dc.DbPort.Port())
+}
+
+// streamLogs streams the container output to the requested stream.
+func (dc *DatabaseContainer) streamLogs(t *testing.T) {
+	t.Helper()
+	logOptions := docker.LogsOptions{
+		//nolint:usetesting //t.Context finished after the function call, which is causing an unexpected crash.
+		Context:      context.Background(),
+		Container:    dc.containerID,
+		Follow:       true,
+		ErrorStream:  os.Stderr,
+		OutputStream: os.Stdout,
+		Stderr:       true,
+		Stdout:       true,
+	}
+
+	assert.NoError(t, dc.client.Logs(logOptions))
+}
+
+// GetContainerLogs return the output of the DatabaseContainer.
+func (dc *DatabaseContainer) GetContainerLogs(t *testing.T) string {
+	t.Helper()
+	var outputBuffer bytes.Buffer
+	require.NoError(t, dc.client.Logs(docker.LogsOptions{
+		Stdout:       true, // Capture standard output
+		Container:    dc.Name,
+		OutputStream: &outputBuffer, // Capture in a string
+	}))
+
+	return outputBuffer.String()
+}
+
+// StopAndRemoveContainer stops and removes the db container from the docker engine.
+func (dc *DatabaseContainer) StopAndRemoveContainer(t *testing.T) {
+	t.Helper()
+	require.NoError(t, dc.client.StopContainer(dc.ContainerID(), 10))
+	require.NoError(t, dc.client.RemoveContainer(docker.RemoveContainerOptions{
+		ID:    dc.ContainerID(),
+		Force: true,
+	}))
+	t.Logf("Container %s stopped and removed successfully", dc.ContainerID())
+}
+
+// ContainerID returns the container ID.
+func (dc *DatabaseContainer) ContainerID() string {
+	return dc.containerID
+}
+
+// GetDockerClient instantiate a new docker client.
+func GetDockerClient(t *testing.T) *docker.Client {
+	t.Helper()
+	client, err := docker.NewClientFromEnv()
+	require.NoError(t, err)
+	return client
+}

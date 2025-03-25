@@ -1,4 +1,4 @@
-package yuga
+package dbtest
 
 import (
 	"context"
@@ -18,11 +18,22 @@ import (
 )
 
 const (
-	defaultStartTimeout   = 5 * time.Minute
-	defaultDBPrefix       = "yuga_db_unit_tests_"
-	yugaInstanceLocal     = "local"
-	yugaInstanceContainer = "container"
-	yugaDBPort            = "5433"
+	defaultStartTimeout = 5 * time.Minute
+	defaultDBPrefix     = "sc_unit_tests_db_%s_%s"
+
+	deploymentLocal     = "local"
+	deploymentContainer = "container"
+
+	YugaDBType     = "yugabyte" //nolint:revive
+	PostgresDBType = "postgres"
+
+	yugaDBPort     = "5433"
+	postgresDBPort = "5432"
+
+	defaultLocalDBPort = "5433"
+
+	deploymentTypeEnv = "DB_DEPLOYMENT"
+	databaseTypeEnv   = "DB_TYPE"
 )
 
 // randDbName generates random DB name.
@@ -31,17 +42,26 @@ func randDbName(t *testing.T) string {
 	uuidObj, err := uuid.NewRandomFromReader(rand.Reader)
 	require.NoError(t, err)
 	uuidStr := strings.ReplaceAll(uuidObj.String(), "-", "_")
-	return fmt.Sprintf("%s%s", defaultDBPrefix, uuidStr)
+	return fmt.Sprintf(defaultDBPrefix, getDBTypeFromEnv(), uuidStr)
 }
 
-// getYugaInstanceType get the desired yuga instance type from the environment variable.
-func getYugaInstanceType() string {
-	val, found := os.LookupEnv("DB_INSTANCE")
+// getDBDeploymentFromEnv get the desired DB deployment type from the environment variable.
+func getDBDeploymentFromEnv() string {
+	val, found := os.LookupEnv(deploymentTypeEnv)
 	if found {
 		return strings.ToLower(val)
 	}
 
-	return yugaInstanceContainer
+	return deploymentContainer
+}
+
+// getDBTypeFromEnv get the desired DB type from the environment variable.
+func getDBTypeFromEnv() string {
+	val, found := os.LookupEnv(databaseTypeEnv)
+	if found {
+		return strings.ToLower(val)
+	}
+	return YugaDBType
 }
 
 // PrepareTestEnv initializes a test environment for an existing or uncontrollable db instance.
@@ -81,19 +101,22 @@ func PrepareTestEnvWithConnection(t *testing.T, conn *Connection) *Connection {
 // StartAndConnect connects to an existing Yugabyte instance or creates a containerized new one.
 func StartAndConnect(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
-	yugaInstance := getYugaInstanceType()
+	dbDeployment := getDBDeploymentFromEnv()
 
 	var connOptions *Connection
-	switch yugaInstance {
-	case yugaInstanceContainer:
-		container := YugabyteDBContainer{}
+	switch dbDeployment {
+	case deploymentContainer:
+		container := DatabaseContainer{
+			DatabaseType: getDBTypeFromEnv(),
+		}
 		container.StartContainer(ctx, t)
 		connOptions = container.getConnectionOptions(ctx, t)
-	case yugaInstanceLocal:
-		connOptions = NewConnection(connection.CreateEndpointHP("localhost", yugaDBPort))
+	case deploymentLocal:
+		connOptions = NewConnection(connection.CreateEndpointHP("localhost", defaultLocalDBPort))
 	default:
-		t.Logf("unknown yuga instance type: %s", yugaInstance)
+		t.Logf("unknown db deployment type: %s", dbDeployment)
 		return nil
 	}
+	t.Logf("connection endpoints: %+v", connOptions.Endpoints)
 	return connOptions
 }

@@ -13,7 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -115,17 +115,17 @@ type DatabaseTestEnv struct {
 // NewDatabaseTestEnv creates a new default database test environment.
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	// default parameters set.
-	return newDatabaseTestEnv(t, yuga.PrepareTestEnv(t), false)
+	return newDatabaseTestEnv(t, dbtest.PrepareTestEnv(t), false)
 }
 
 // NewDatabaseTestEnvWithCluster creates a new db cluster test environment.
-func NewDatabaseTestEnvWithCluster(t *testing.T, dbConnections *yuga.Connection) *DatabaseTestEnv {
+func NewDatabaseTestEnvWithCluster(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
 	t.Helper()
 	require.NotNil(t, dbConnections)
-	return newDatabaseTestEnv(t, yuga.PrepareTestEnvWithConnection(t, dbConnections), true)
+	return newDatabaseTestEnv(t, dbtest.PrepareTestEnvWithConnection(t, dbConnections), true)
 }
 
-func newDatabaseTestEnv(t *testing.T, cs *yuga.Connection, loadBalance bool) *DatabaseTestEnv {
+func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *DatabaseTestEnv {
 	t.Helper()
 	config := &DatabaseConfig{
 		Endpoints:      cs.Endpoints,
@@ -140,18 +140,18 @@ func newDatabaseTestEnv(t *testing.T, cs *yuga.Connection, loadBalance bool) *Da
 	m := newVCServiceMetrics()
 	sCtx, sCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(sCancel)
-	db, err := newDatabase(sCtx, config, m)
+	dbObject, err := newDatabase(sCtx, config, m)
 	require.NoError(t, err)
-	t.Cleanup(db.close)
+	t.Cleanup(dbObject.close)
 
 	// sets a default retry profile for tests.
-	db.retry = &connection.RetryProfile{
+	dbObject.retry = &connection.RetryProfile{
 		MaxElapsedTime:  3 * time.Minute,
 		InitialInterval: 100 * time.Millisecond,
 	}
 
 	return &DatabaseTestEnv{
-		DB:     db,
+		DB:     dbObject,
 		DBConf: config,
 	}
 }

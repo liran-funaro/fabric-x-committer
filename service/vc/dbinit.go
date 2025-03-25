@@ -9,7 +9,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 )
 
 const createTxTableStmt = `
@@ -286,12 +286,12 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range initStatements {
-		if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)); execErr != nil {
+		if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)); execErr != nil {
 			return fmt.Errorf("failed initializing tables: %w", execErr)
 		}
 	}
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := yuga.PoolExecOperation(ctx,
+	if execErr := dbtest.PoolExecOperation(ctx,
 		pool,
 		stmtFmt(initializeMetadataPrepStmt, "", dbType),
 		[]byte(lastCommittedBlockNumberKey),
@@ -304,7 +304,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 	for _, nsID := range nsIDs {
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
-			if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+			if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
 				return fmt.Errorf("failed creating meta-namespace: %w", execErr)
 			}
 			logger.Infof("Created table '%s' and its methods.", tableName)
@@ -322,7 +322,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 	logger.Infof("DBType: %v", dbType)
 
 	for _, stmt := range dropStatements {
-		if execErr := yuga.PoolExecOperation(ctx,
+		if execErr := dbtest.PoolExecOperation(ctx,
 			pool,
 			stmtFmt(stmt, "", dbType),
 		); execErr != nil {
@@ -337,7 +337,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			if execErr := yuga.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+			if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
 				return fmt.Errorf("failed clearing database tables: %w", execErr)
 			}
 		}
