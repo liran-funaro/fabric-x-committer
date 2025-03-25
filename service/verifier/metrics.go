@@ -1,0 +1,36 @@
+package verifier
+
+import (
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+)
+
+type metrics struct {
+	Provider             *monitoring.Provider
+	VerifierServerInTxs  *monitoring.IntCounter
+	VerifierServerOutTxs *monitoring.IntCounter
+	ActiveStreams        prometheus.Gauge
+	ActiveRequests       prometheus.Gauge
+}
+
+func newMonitoring() *metrics {
+	p := monitoring.NewProvider()
+	return &metrics{
+		Provider:             p,
+		VerifierServerInTxs:  p.NewThroughputCounter("verifier_server", "tx", monitoring.In),
+		VerifierServerOutTxs: p.NewThroughputCounter("verifier_server", "tx", monitoring.Out),
+		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "verifier_server",
+			Subsystem: "grpc",
+			Name:      "active_streams",
+			Help:      "The total number of started streams",
+		}),
+		ActiveRequests: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "verifier_server",
+			Subsystem: "parallel_executor",
+			Name:      "active_requests",
+			Help:      "The total number of active requests",
+		}),
+	}
+}

@@ -1,0 +1,17 @@
+sig-verification:
+  server:
+    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+  monitoring:
+    server:
+      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+
+  parallel-executor:
+    parallelism: 40
+    batch-time-cutoff: 10ms
+    batch-size-cutoff: 50
+    channel-buffer-size: 50
+
+logging:
+  enabled: true
+  level: INFO
+  development: true

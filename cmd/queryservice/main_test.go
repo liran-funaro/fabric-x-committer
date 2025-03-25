@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
 )
 
 //go:embed query-cmd-test-config.yaml

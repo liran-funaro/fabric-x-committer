@@ -6,32 +6,32 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 func TestConfig(t *testing.T) {
 	tests := []struct {
 		name                   string
 		configFilePath         string
-		expectedConfig         *vcservice.ValidatorCommitterServiceConfig
+		expectedConfig         *vc.ValidatorCommitterServiceConfig
 		expectedDataSourceName string
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "../../config/samples/config-vcservice.yaml",
-			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
+			configFilePath: "../config/samples/config-vcservice.yaml",
+			expectedConfig: &vc.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 6002,
 					},
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("localhost:5433"),
 					},
@@ -44,7 +44,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &vcservice.ResourceLimitsConfig{
+				ResourceLimits: &vc.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -65,14 +65,14 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "default config",
 			configFilePath: "testdata/default_config.yaml",
-			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
+			expectedConfig: &vc.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 6001,
 					},
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("localhost:5433"),
 					},
@@ -85,7 +85,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &vcservice.ResourceLimitsConfig{
+				ResourceLimits: &vc.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -106,8 +106,8 @@ func TestConfig(t *testing.T) {
 		{
 			name: "config with multiple sources",
 			configFilePath: runner.CreateConfigFromTemplate(t, "validatorpersister", t.TempDir(),
-				&configtempl.QueryServiceOrVCServiceConfig{
-					CommonEndpoints: configtempl.CommonEndpoints{
+				&config.QueryServiceOrVCServiceConfig{
+					CommonEndpoints: config.CommonEndpoints{
 						ServerEndpoint:  "localhost:6001",
 						MetricsEndpoint: "localhost:6002",
 					},
@@ -117,7 +117,7 @@ func TestConfig(t *testing.T) {
 					},
 					DatabaseName: "yugabyte",
 				}),
-			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
+			expectedConfig: &vc.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
@@ -125,7 +125,7 @@ func TestConfig(t *testing.T) {
 					},
 					Creds: nil,
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("host1:1111"),
 						connection.CreateEndpoint("host2:2222"),
@@ -139,7 +139,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &vcservice.ResourceLimitsConfig{
+				ResourceLimits: &vc.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,
@@ -160,14 +160,14 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "no config file",
 			configFilePath: "",
-			expectedConfig: &vcservice.ValidatorCommitterServiceConfig{
+			expectedConfig: &vc.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 6001,
 					},
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("localhost:5433"),
 					},
@@ -180,7 +180,7 @@ func TestConfig(t *testing.T) {
 						MaxElapsedTime: 20 * time.Second,
 					},
 				},
-				ResourceLimits: &vcservice.ResourceLimitsConfig{
+				ResourceLimits: &vc.ResourceLimitsConfig{
 					MaxWorkersForPreparer:             1,
 					MaxWorkersForValidator:            1,
 					MaxWorkersForCommitter:            20,

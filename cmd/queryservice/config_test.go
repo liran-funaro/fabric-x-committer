@@ -6,31 +6,32 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/query"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 func TestConfig(t *testing.T) {
 	tests := []struct {
 		name                   string
 		configFilePath         string
-		expectedConfig         *queryservice.Config
+		expectedConfig         *query.Config
 		expectedDataSourceName string
 	}{
 		{
 			name:           "valid config",
-			configFilePath: "../../config/samples/config-queryservice.yaml",
-			expectedConfig: &queryservice.Config{
+			configFilePath: "../config/samples/config-queryservice.yaml",
+			expectedConfig: &query.Config{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 7003,
 					},
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("localhost:5433"),
 					},
@@ -59,14 +60,14 @@ func TestConfig(t *testing.T) {
 		{
 			name:           "no config file",
 			configFilePath: "",
-			expectedConfig: &queryservice.Config{
+			expectedConfig: &query.Config{
 				Server: &connection.ServerConfig{
 					Endpoint: connection.Endpoint{
 						Host: "localhost",
 						Port: 7003,
 					},
 				},
-				Database: &vcservice.DatabaseConfig{
+				Database: &vc.DatabaseConfig{
 					Endpoints: []*connection.Endpoint{
 						connection.CreateEndpoint("localhost:5433"),
 					},

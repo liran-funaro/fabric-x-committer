@@ -70,7 +70,7 @@ MAKEFLAGS += --jobs=16
 # Quickstart
 #########################
 
-DB_PACKAGES_REGEXP = .*/scalable-committer/(coordinatorservice|vcservice|queryservice|loadgen|cmd)
+DB_PACKAGES_REGEXP = .*/scalable-committer/(service/(coordinator|vc|query)|loadgen|cmd)
 HEAVY_PACKAGES_REGEXP = .*/scalable-committer/(docker|integration)
 
 test: build

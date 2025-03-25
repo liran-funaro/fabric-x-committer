@@ -10,8 +10,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"

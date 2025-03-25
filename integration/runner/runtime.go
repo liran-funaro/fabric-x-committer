@@ -19,30 +19,30 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/yuga"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice/yuga"
 )
 
 type (
 	// CommitterRuntime represents a test system of Coordinator, SigVerifier, VCService and Query processes.
 	CommitterRuntime struct {
-		mockOrderer  *processWithConfig[*configtempl.OrdererConfig]
-		sidecar      *processWithConfig[*configtempl.SidecarConfig]
-		coordinator  *processWithConfig[*configtempl.CoordinatorConfig]
-		queryService *processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
-		sigVerifier  []*processWithConfig[*configtempl.SigVerifierConfig]
-		vcService    []*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig]
+		mockOrderer  *processWithConfig[*config.OrdererConfig]
+		sidecar      *processWithConfig[*config.SidecarConfig]
+		coordinator  *processWithConfig[*config.CoordinatorConfig]
+		queryService *processWithConfig[*config.QueryServiceOrVCServiceConfig]
+		sigVerifier  []*processWithConfig[*config.SigVerifierConfig]
+		vcService    []*processWithConfig[*config.QueryServiceOrVCServiceConfig]
 
-		dbEnv *vcservice.DatabaseTestEnv
+		dbEnv *vc.DatabaseTestEnv
 
 		ordererClient      *broadcastdeliver.EnvelopedStream
 		coordinatorClient  protocoordinatorservice.CoordinatorClient
@@ -85,26 +85,26 @@ type (
 )
 
 // NewRuntime creates a new test runtime˙.
-func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
+func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Helper()
 
-	var dbEnvironment *vcservice.DatabaseTestEnv
-	if config.DBCluster == nil {
-		dbEnvironment = vcservice.NewDatabaseTestEnv(t)
+	var dbEnvironment *vc.DatabaseTestEnv
+	if conf.DBCluster == nil {
+		dbEnvironment = vc.NewDatabaseTestEnv(t)
 	} else {
-		dbEnvironment = vcservice.NewDatabaseTestEnvWithCluster(t, config.DBCluster)
+		dbEnvironment = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
 	}
 
 	c := &CommitterRuntime{
-		sigVerifier: make([]*processWithConfig[*configtempl.SigVerifierConfig], config.NumSigVerifiers),
+		sigVerifier: make([]*processWithConfig[*config.SigVerifierConfig], conf.NumSigVerifiers),
 		vcService: make(
-			[]*processWithConfig[*configtempl.QueryServiceOrVCServiceConfig],
-			config.NumVCService,
+			[]*processWithConfig[*config.QueryServiceOrVCServiceConfig],
+			conf.NumVCService,
 		),
 		dbEnv:            dbEnvironment,
 		rootDir:          t.TempDir(),
 		nsToCrypto:       make(map[string]*Crypto),
-		config:           config,
+		config:           conf,
 		channelID:        "channel1",
 		committedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
@@ -113,35 +113,35 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 	// Start mock ordering service
 	ordererEndpoint := makeLocalListenAddress(findAvailablePortRange(t, 1)[0])
 	metaCrypto := c.CreateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
-	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+	configBlockPath := config.CreateConfigBlock(t, &config.ConfigBlock{
 		ChannelID: c.channelID,
 		OrdererEndpoints: []*connection.OrdererEndpoint{
 			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},
 		},
 		MetaNamespaceVerificationKey: metaCrypto.PubKey,
 	})
-	ordererConfig := &configtempl.OrdererConfig{
+	ordererConfig := &config.OrdererConfig{
 		ServerEndpoint:  ordererEndpoint,
-		BlockSize:       config.BlockSize,
-		BlockTimeout:    config.BlockTimeout,
+		BlockSize:       conf.BlockSize,
+		BlockTimeout:    conf.BlockTimeout,
 		ConfigBlockPath: configBlockPath,
 	}
 	c.mockOrderer = newProcess(t, mockordererCmd, c.rootDir, ordererConfig)
 
 	// Start signature-verifier
-	for i := range config.NumSigVerifiers {
-		c.sigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &configtempl.SigVerifierConfig{
+	for i := range conf.NumSigVerifiers {
+		c.sigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &config.SigVerifierConfig{
 			CommonEndpoints: newCommonEndpoints(t),
 		})
 	}
 
 	// Start validator-persister
-	for i := range config.NumVCService {
+	for i := range conf.NumVCService {
 		c.vcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 	}
 
 	// Start coordinator
-	coordConfig := &configtempl.CoordinatorConfig{
+	coordConfig := &config.CoordinatorConfig{
 		CommonEndpoints:      newCommonEndpoints(t),
 		SigVerifierEndpoints: make([]string, len(c.sigVerifier)),
 		VCServiceEndpoints:   make([]string, len(c.vcService)),
@@ -149,8 +149,8 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 	for i, sv := range c.sigVerifier {
 		coordConfig.SigVerifierEndpoints[i] = sv.config.ServerEndpoint
 	}
-	for i, vc := range c.vcService {
-		coordConfig.VCServiceEndpoints[i] = vc.config.ServerEndpoint
+	for i, vcServ := range c.vcService {
+		coordConfig.VCServiceEndpoints[i] = vcServ.config.ServerEndpoint
 	}
 	c.coordinator = newProcess(t, coordinatorCmd, c.rootDir, coordConfig)
 
@@ -158,7 +158,7 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 	c.queryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 
 	// Start sidecar. The meta namespace key and the orderer endpoints are passed via the config block.
-	sidecarConfig := &configtempl.SidecarConfig{
+	sidecarConfig := &config.SidecarConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
 		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
 		LedgerPath:          c.rootDir,
@@ -188,7 +188,7 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 		}
 	})
 
-	c.createNamespacesAndCommit(t, config.InitializeNamespace)
+	c.createNamespacesAndCommit(t, conf.InitializeNamespace)
 
 	return c
 }
@@ -197,7 +197,7 @@ func NewRuntime(t *testing.T, config *Config) *CommitterRuntime {
 // We need to run the load gen after initializing because it will re-initialize.
 func (c *CommitterRuntime) StartLoadGen(t *testing.T) {
 	t.Helper()
-	loadgenConfig := &configtempl.LoadGenConfig{
+	loadgenConfig := &config.LoadGenConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
 		SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
 		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,

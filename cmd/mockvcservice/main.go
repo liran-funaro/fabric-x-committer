@@ -6,13 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -69,11 +70,11 @@ func startCmd() *cobra.Command {
 // readConfig reads the configuration from the viper instance.
 // If the configuration file is used, the caller should call
 // config.ReadFromYamlFile() before calling this function.
-func readConfig() *vcservice.ValidatorCommitterServiceConfig {
+func readConfig() *vc.ValidatorCommitterServiceConfig {
 	setDefaults()
 
 	wrapper := new(struct {
-		Config vcservice.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
+		Config vc.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

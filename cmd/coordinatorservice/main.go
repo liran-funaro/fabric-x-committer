@@ -11,7 +11,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -54,7 +54,7 @@ func startCmd() *cobra.Command { //nolint:gocognit
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			service := coordinatorservice.NewCoordinatorService(conf)
+			service := coordinator.NewCoordinatorService(conf)
 
 			// As we do not have recovery mechanism for vcservice and sigverifier service, we stop the
 			// coordinator service if any of them fails. In the future, we can add recovery mechanism
@@ -72,11 +72,11 @@ func startCmd() *cobra.Command { //nolint:gocognit
 // readConfig reads the configuration from the viper instance.
 // If the configuration file is used, the caller should call
 // config.ReadFromYamlFile() before calling this function.
-func readConfig() *coordinatorservice.CoordinatorConfig {
+func readConfig() *coordinator.Config {
 	setDefaults()
 
 	wrapper := new(struct {
-		Config coordinatorservice.CoordinatorConfig `mapstructure:"coordinator-service"`
+		Config coordinator.Config `mapstructure:"coordinator-service"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

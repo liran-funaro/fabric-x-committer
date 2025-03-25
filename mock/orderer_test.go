@@ -10,11 +10,12 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestPayloadCache(t *testing.T) {

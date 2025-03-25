@@ -6,12 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -55,7 +56,7 @@ func startCmd() *cobra.Command {
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			service := sigverification.New(conf)
+			service := verifier.New(conf)
 			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
 				protosigverifierservice.RegisterVerifierServer(server, service)
 			})
@@ -104,10 +105,10 @@ func setFlags(cmd *cobra.Command) {
 	)
 }
 
-func readConfig() *sigverification.Config {
+func readConfig() *verifier.Config {
 	setDefaults()
 	wrapper := new(struct {
-		Config sigverification.Config `mapstructure:"sig-verification"`
+		Config verifier.Config `mapstructure:"sig-verification"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

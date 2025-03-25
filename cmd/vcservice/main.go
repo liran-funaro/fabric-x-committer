@@ -7,12 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -55,7 +56,7 @@ func startCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-			vc, err := vcservice.NewValidatorCommitterService(cmd.Context(), conf)
+			vc, err := vc.NewValidatorCommitterService(cmd.Context(), conf)
 			if err != nil {
 				return err
 			}
@@ -87,7 +88,7 @@ func clearCmd() *cobra.Command {
 
 			cmd.Printf("Clearing database: %v\n", namespaces)
 
-			return vcservice.ClearDatabase(cmd.Context(), vcConfig.Database, namespaces)
+			return vc.ClearDatabase(cmd.Context(), vcConfig.Database, namespaces)
 		},
 	}
 
@@ -99,11 +100,11 @@ func clearCmd() *cobra.Command {
 // readConfig reads the configuration from the viper instance.
 // If the configuration file is used, the caller should call
 // config.ReadFromYamlFile() before calling this function.
-func readConfig() *vcservice.ValidatorCommitterServiceConfig {
+func readConfig() *vc.ValidatorCommitterServiceConfig {
 	setDefaults()
 
 	wrapper := new(struct {
-		Config vcservice.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
+		Config vc.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

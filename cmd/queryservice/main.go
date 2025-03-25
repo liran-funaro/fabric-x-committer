@@ -7,12 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/queryservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/query"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -54,7 +55,7 @@ func startCmd() *cobra.Command {
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
-			qs := queryservice.NewQueryService(conf)
+			qs := query.NewQueryService(conf)
 			return connection.StartService(cmd.Context(), qs, conf.Server, func(server *grpc.Server) {
 				protoqueryservice.RegisterQueryServiceServer(server, qs)
 			})
@@ -67,11 +68,11 @@ func startCmd() *cobra.Command {
 // readConfig reads the configuration from the viper instance.
 // If the configuration file is used, the caller should call
 // config.ReadFromYamlFile() before calling this function.
-func readConfig() *queryservice.Config {
+func readConfig() *query.Config {
 	setDefaults()
 
 	wrapper := new(struct {
-		Config queryservice.Config `mapstructure:"query-service"`
+		Config query.Config `mapstructure:"query-service"`
 	})
 	config.Unmarshal(wrapper)
 	return &wrapper.Config

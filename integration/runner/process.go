@@ -10,8 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
-	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 )
 
 type (
@@ -30,9 +31,9 @@ const (
 	sidecarCmd            = "sidecar"
 	loadgenCmd            = "loadgen"
 
-	configTemplateRootPath = "../../config/templates"
 	configFileExtension    = ".yaml"
 	executableRootPath     = "../../bin"
+	configTemplateRootPath = "../../cmd/config/templates"
 )
 
 func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *processWithConfig[T] {
@@ -53,11 +54,11 @@ func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *process
 }
 
 // CreateConfigFromTemplate creates a config file using template yaml and returning the output config path.
-func CreateConfigFromTemplate[T any](t *testing.T, cmdName, rootDir string, config T) string {
+func CreateConfigFromTemplate[T any](t *testing.T, cmdName, rootDir string, configObj T) string {
 	t.Helper()
 	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
 	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
-	configtempl.CreateConfigFile(t, config, inputConfigTemplateFilePath, outputConfigFilePath)
+	config.CreateConfigFile(t, configObj, inputConfigTemplateFilePath, outputConfigFilePath)
 
 	return outputConfigFilePath
 }
@@ -90,9 +91,9 @@ func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
 
 func newQueryServiceOrVCServiceConfig(
 	t *testing.T,
-	dbEnv *vcservice.DatabaseTestEnv,
-) *configtempl.QueryServiceOrVCServiceConfig {
-	return &configtempl.QueryServiceOrVCServiceConfig{
+	dbEnv *vc.DatabaseTestEnv,
+) *config.QueryServiceOrVCServiceConfig {
+	return &config.QueryServiceOrVCServiceConfig{
 		CommonEndpoints:   newCommonEndpoints(t),
 		DatabaseEndpoints: dbEnv.DBConf.Endpoints,
 		DatabaseName:      dbEnv.DBConf.Database,
@@ -100,9 +101,10 @@ func newQueryServiceOrVCServiceConfig(
 	}
 }
 
-func newCommonEndpoints(t *testing.T) configtempl.CommonEndpoints {
+func newCommonEndpoints(t *testing.T) config.CommonEndpoints {
+	t.Helper()
 	ports := findAvailablePortRange(t, 2)
-	return configtempl.CommonEndpoints{
+	return config.CommonEndpoints{
 		ServerEndpoint:  makeLocalListenAddress(ports[0]),
 		MetricsEndpoint: makeLocalListenAddress(ports[1]),
 	}

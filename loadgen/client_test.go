@@ -12,17 +12,17 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/coordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sigverification"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 // We expect at least 3 blocks for a valid test run.
@@ -30,7 +30,7 @@ const defaultExpectedTXs = defaultBlockSize * 3
 
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
-	env := vcservice.NewValidatorAndCommitServiceTestEnv(t, 2)
+	env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
 	clientConf := DefaultClientConf()
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
 		Endpoints: env.Endpoints,
@@ -42,9 +42,9 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	t.Parallel()
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
-		sConf := &sigverification.Config{
+		sConf := &verifier.Config{
 			Server: connection.NewLocalHostServer(),
-			ParallelExecutor: sigverification.ExecutorConfig{
+			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
 				ChannelBufferSize: 50,
@@ -52,7 +52,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 			},
 		}
 
-		service := sigverification.New(sConf)
+		service := verifier.New(sConf)
 		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, func(server *grpc.Server) {
 			protosigverifierservice.RegisterVerifierServer(server, service)
 		})
@@ -72,24 +72,24 @@ func TestLoadGenForCoordinator(t *testing.T) {
 	_, sigVerServer := mock.StartMockSVService(t, 1)
 	_, vcServer := mock.StartMockVCService(t, 1)
 
-	cConf := &coordinatorservice.CoordinatorConfig{
+	cConf := &coordinator.Config{
 		ServerConfig: connection.NewLocalHostServer(),
 		Monitoring:   defaultMonitoring(),
-		SignVerifierConfig: &coordinatorservice.SignVerifierConfig{
+		SignVerifierConfig: &coordinator.SignVerifierConfig{
 			ServerConfig: []*connection.ServerConfig{
 				{
 					Endpoint: sigVerServer.Configs[0].Endpoint,
 				},
 			},
 		},
-		ValidatorCommitterConfig: &coordinatorservice.ValidatorCommitterConfig{
+		ValidatorCommitterConfig: &coordinator.ValidatorCommitterConfig{
 			ServerConfig: []*connection.ServerConfig{
 				{
 					Endpoint: vcServer.Configs[0].Endpoint,
 				},
 			},
 		},
-		DependencyGraphConfig: &coordinatorservice.DependencyGraphConfig{
+		DependencyGraphConfig: &coordinator.DependencyGraphConfig{
 			NumOfLocalDepConstructors:       1,
 			WaitingTxsLimit:                 10_000,
 			NumOfWorkersForGlobalDepManager: 1,
@@ -97,7 +97,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 		ChannelBufferSizePerGoroutine: 10,
 	}
 
-	service := coordinatorservice.NewCoordinatorService(cConf)
+	service := coordinator.NewCoordinatorService(cConf)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.ServerConfig, func(server *grpc.Server) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, service)
 	})

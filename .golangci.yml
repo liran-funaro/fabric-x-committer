@@ -206,6 +206,9 @@ linters-settings:
     # ignoreInterfaceRegexps:
     #   - ^(?i)c(?-i)ach(ing|e)
   goimports:
+    # A comma-separated list of prefixes, which, if set, checks import paths
+    # with the given prefixes are grouped after 3rd-party packages.
+    # Default: ""
     local-prefixes: github.ibm.com/decentralized-trust-research/scalable-committer
 
 issues:

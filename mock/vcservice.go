@@ -12,9 +12,9 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/vcservice"
 )
 
 // VcService implements the protovcservice.ValidationAndCommitServiceServer interface.
@@ -42,23 +42,23 @@ func NewMockVcService() *VcService {
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
-func (vc *VcService) SetLastCommittedBlockNumber(
+func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
 	lastBlock *protoblocktx.BlockInfo,
 ) (*protovcservice.Empty, error) {
-	vc.lastCommittedBlock.Store(int64(lastBlock.Number)) // nolint:gosec
+	v.lastCommittedBlock.Store(int64(lastBlock.Number)) //nolint:gosec
 	return nil, nil
 }
 
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
-func (vc *VcService) GetLastCommittedBlockNumber(
+func (v *VcService) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protovcservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	if vc.lastCommittedBlock.Load() == -1 {
-		return nil, grpcerror.WrapNotFound(vcservice.ErrMetadataEmpty)
+	if v.lastCommittedBlock.Load() == -1 {
+		return nil, grpcerror.WrapNotFound(vc.ErrMetadataEmpty)
 	}
-	return &protoblocktx.BlockInfo{Number: uint64(vc.lastCommittedBlock.Load())}, nil // nolint:gosec
+	return &protoblocktx.BlockInfo{Number: uint64(v.lastCommittedBlock.Load())}, nil //nolint:gosec
 }
 
 // GetNamespacePolicies is a mock implementation of the protovcservice.GetNamespacePolicies.
@@ -78,16 +78,21 @@ func (*VcService) GetConfigTransaction(
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.
-func (vc *VcService) GetTransactionsStatus(
+func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *protoblocktx.QueryStatus,
 ) (*protoblocktx.TransactionsStatus, error) {
 	s := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
 	for _, id := range query.TxIDs {
-		v, ok := vc.txsStatus.Load(id)
-		if ok {
-			s.Status[id] = &protoblocktx.StatusWithHeight{Code: v.(protoblocktx.Status)} //nolint
+		statusObj, ok := v.txsStatus.Load(id)
+		if !ok {
+			continue
 		}
+		statusCode, ok := statusObj.(protoblocktx.Status)
+		if !ok {
+			continue
+		}
+		s.Status[id] = &protoblocktx.StatusWithHeight{Code: statusCode}
 	}
 
 	return s, nil
@@ -95,23 +100,23 @@ func (vc *VcService) GetTransactionsStatus(
 
 // StartValidateAndCommitStream is the mock implementation of the
 // protovcservice.ValidationAndCommitServiceServer interface.
-func (vc *VcService) StartValidateAndCommitStream(
+func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
-		return vc.receiveAndProcessTransactions(gCtx, stream)
+		return v.receiveAndProcessTransactions(gCtx, stream)
 	})
 	g.Go(func() error {
-		return vc.sendTransactionStatus(gCtx, stream)
+		return v.sendTransactionStatus(gCtx, stream)
 	})
 	return errors.Wrap(g.Wait(), "VC ended")
 }
 
-func (vc *VcService) receiveAndProcessTransactions(
+func (v *VcService) receiveAndProcessTransactions(
 	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := channel.NewWriter(ctx, vc.txBatchChan)
+	txBatchChan := channel.NewWriter(ctx, v.txBatchChan)
 	for {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -128,7 +133,7 @@ func (vc *VcService) receiveAndProcessTransactions(
 			}
 		}
 
-		vc.numBatchesReceived.Add(1)
+		v.numBatchesReceived.Add(1)
 
 		if !txBatchChan.Write(txBatch) {
 			return nil
@@ -136,10 +141,11 @@ func (vc *VcService) receiveAndProcessTransactions(
 	}
 }
 
-func (vc *VcService) sendTransactionStatus(
+//nolint:gocognit // cognitive complexity 16 of func is high (> 15)
+func (v *VcService) sendTransactionStatus(
 	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := channel.NewReader(ctx, vc.txBatchChan)
+	txBatchChan := channel.NewReader(ctx, v.txBatchChan)
 	for {
 		txBatch, ok := txBatchChan.Read()
 		if !ok {
@@ -151,7 +157,7 @@ func (vc *VcService) sendTransactionStatus(
 
 		// We simulate a faulty node by not responding to the first X TXs.
 		for i, tx := range txBatch.Transactions {
-			if i < vc.MockFaultyNodeDropSize {
+			if i < v.MockFaultyNodeDropSize {
 				continue
 			}
 			code := protoblocktx.Status_COMMITTED
@@ -159,7 +165,7 @@ func (vc *VcService) sendTransactionStatus(
 				code = tx.PrelimInvalidTxStatus.Code
 			}
 			txsStatus.Status[tx.ID] = types.CreateStatusWithHeight(code, tx.BlockNumber, int(tx.TxNum))
-			vc.txsStatus.Store(tx.ID, code)
+			v.txsStatus.Store(tx.ID, code)
 		}
 
 		err := stream.Send(txsStatus)
@@ -173,6 +179,6 @@ func (vc *VcService) sendTransactionStatus(
 }
 
 // GetNumBatchesReceived returns the number of batches received by VcService.
-func (vc *VcService) GetNumBatchesReceived() uint32 {
-	return vc.numBatchesReceived.Load()
+func (v *VcService) GetNumBatchesReceived() uint32 {
+	return v.numBatchesReceived.Load()
 }

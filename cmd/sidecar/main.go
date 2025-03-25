@@ -7,13 +7,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/sidecar"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (

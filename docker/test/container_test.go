@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	configtempl "github.ibm.com/decentralized-trust-research/scalable-committer/config/templates"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
@@ -125,7 +125,7 @@ func startCommitter(ctx context.Context, t *testing.T, dockerClient *client.Clie
 	ordererEndpoint := "host.docker.internal:" + ordererPort
 
 	_, pubKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
-	configBlockPath := configtempl.CreateConfigBlock(t, &configtempl.ConfigBlock{
+	configBlockPath := config.CreateConfigBlock(t, &config.ConfigBlock{
 		ChannelID: channelName,
 		OrdererEndpoints: []*connection.OrdererEndpoint{
 			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},

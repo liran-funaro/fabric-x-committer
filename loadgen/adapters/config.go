@@ -1,7 +1,7 @@
 package adapters
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/broadcastdeliver"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
