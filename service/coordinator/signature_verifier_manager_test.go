@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -37,7 +36,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	svs, sc := mock.StartMockSVService(t, numSvService)
 	for _, sv := range svs {
 		// We add some latency to allow equal distribution of work.
-		sv.SetLatency(time.Millisecond)
+		sv.SetRequestLatency(time.Millisecond)
 	}
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
@@ -129,10 +128,12 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 
 	connFailure, err := e.signVerifierManager.metrics.verifiersConnectionFailureTotal.GetMetricWithLabelValues(label)
 	require.NoError(t, err)
+
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus) &&
-			test.GetMetricValue(t, connFailure) == float64(expectedConnFailureTotal)
+		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus)
 	}, 30*time.Second, 200*time.Millisecond)
+	require.InDelta(t, float64(expectedConnFailureTotal), test.GetMetricValue(t, connFailure), 1e-10)
+	require.InDelta(t, float64(expectedConnStatus), test.GetMetricValue(t, connStatus), 1e-10)
 }
 
 func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
@@ -394,6 +395,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 		t, env.mockSvService[:1], env.grpcServers.Configs[:1],
 	).Servers[0]
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
+	t.Log("New instance is up")
 
 	newExpectedUpdate := &protosigverifierservice.Update{
 		NamespacePolicies: &protoblocktx.NamespacePolicies{
@@ -404,15 +406,13 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 		},
 	}
 
+	env.mockSvService[0].SetRequestHolder(nil)
+	holder := channel.NewReady()
+	t.Cleanup(holder.SignalReady)
 	for _, sv := range env.mockSvService[1:] {
-		sv.SetLatency(time.Second)
+		sv.SetRequestHolder(holder)
 	}
-	require.Eventually(t, func() bool {
-		// Process some batches to force progress
-		defer env.submitTxBatch(t, 1)
-		u := env.mockSvService[0].GetUpdates()
-		return len(u) > 0 && proto.Equal(newExpectedUpdate, u[0])
-	}, 2*time.Minute, 10*time.Millisecond)
+	env.requireAllUpdate(t, env.mockSvService[:1], 1, newExpectedUpdate)
 }
 
 func (e *svMgrTestEnv) requireAllUpdate(
@@ -422,16 +422,22 @@ func (e *svMgrTestEnv) requireAllUpdate(
 	expected *protosigverifierservice.Update,
 ) {
 	t.Helper()
-	// We initialize some latency to allow equal distribution of work.
+	// We initialize all the workers to not hold requests.
 	for _, sv := range svs {
-		sv.SetLatency(time.Millisecond)
+		sv.SetRequestHolder(nil)
 	}
 	defer func() {
-		// We re-initialize the latency to avoid affecting future steps.
+		// We re-initialize all the workers to not hold requests.
 		for _, sv := range svs {
-			sv.SetLatency(time.Millisecond)
+			sv.SetRequestHolder(nil)
 		}
 	}()
+
+	holder := channel.NewReady()
+	t.Cleanup(holder.SignalReady)
+	defer holder.SignalReady()
+
+	updates := make([][]*protosigverifierservice.Update, len(svs))
 
 	// verify that all mock policy verifiers have the same verification key.
 	require.Eventually(t, func() bool {
@@ -441,17 +447,30 @@ func (e *svMgrTestEnv) requireAllUpdate(
 				e.submitTxBatch(t, 1)
 			}
 		}()
-		for _, sv := range svs {
+
+		// We iterate all of them everytime to ensure we hold the quick workers.
+		isDone := true
+		for i, sv := range svs {
+			if updates[i] != nil {
+				continue
+			}
+
 			u := sv.GetUpdates()
-			if len(u) != expectedCount {
-				return false
+			if len(u) < expectedCount {
+				isDone = false
+				continue
 			}
-			if !proto.Equal(expected, u[expectedCount-1]) {
-				return false
-			}
-			// We set some high latency to ensure the work will distributed to other workers.
-			sv.SetLatency(time.Second)
+			updates[i] = u
+			// We hold the requests to ensure the work will distributed to other workers.
+			sv.SetRequestHolder(holder)
 		}
-		return true
+		return isDone
 	}, 2*time.Minute, 10*time.Millisecond)
+
+	holder.SignalReady()
+
+	for _, u := range updates {
+		require.Len(t, u, expectedCount)
+		requireUpdateEqual(t, expected, u[expectedCount-1])
+	}
 }

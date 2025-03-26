@@ -4,12 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 func TestPolicyManager(t *testing.T) {
@@ -126,23 +126,24 @@ func TestPolicyManager(t *testing.T) {
 
 func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.Update) {
 	t.Helper()
+	if expected == nil {
+		require.Nil(t, actual)
+		return
+	}
+	require.NotNil(t, actual)
 	if expected.Config != nil {
 		require.NotNil(t, actual.Config)
-		requireProtoEqual(t, expected.Config, actual.Config)
+		test.RequireProtoEqual(t, expected.Config, actual.Config)
 	} else {
 		require.Nil(t, actual.Config)
 	}
 	if expected.NamespacePolicies != nil {
 		require.NotNil(t, actual.NamespacePolicies)
-		require.ElementsMatch(t, actual.NamespacePolicies.Policies, expected.NamespacePolicies.Policies)
+		// The policies may appear out of order due to the policy manager implementation.
+		test.RequireProtoElementsMatch(t, actual.NamespacePolicies.Policies, expected.NamespacePolicies.Policies)
 	} else {
 		require.Nil(t, actual.NamespacePolicies)
 	}
-}
-
-func requireProtoEqual(t *testing.T, expected, actual proto.Message) {
-	t.Helper()
-	require.Truef(t, proto.Equal(expected, actual), "exepected:\n%v\nactual:\n%v", expected, actual)
 }
 
 func makeFakePolicy(t *testing.T, ns, key string) *protoblocktx.PolicyItem {

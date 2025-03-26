@@ -26,8 +26,11 @@ type SigVerifier struct {
 	MockFaultyNodeDropSize     int
 	requestBatch               chan *protosigverifierservice.RequestBatch
 	returnErrForUpdatePolicies atomic.Bool
-	latency                    time.Duration
 	policyUpdateCounter        atomic.Uint64
+
+	// Helpers for tests.
+	requestLatency atomic.Pointer[time.Duration]
+	requestHolder  atomic.Pointer[channel.Ready]
 }
 
 // NewMockSigVerifier returns a new mock verifier.
@@ -73,6 +76,14 @@ func (m *SigVerifier) receiveRequestBatch(
 ) error {
 	requestBatch := channel.NewWriter(ctx, m.requestBatch)
 	for ctx.Err() == nil {
+		if holder := m.requestHolder.Load(); holder != nil {
+			if holder.WaitForReady(ctx) {
+				m.requestHolder.CompareAndSwap(holder, nil)
+			}
+		}
+		if latency := m.requestLatency.Load(); latency != nil && *latency > 0 {
+			time.Sleep(*latency)
+		}
 		reqBatch, err := stream.Recv()
 		if err != nil {
 			return connection.FilterStreamRPCError(err)
@@ -121,9 +132,6 @@ func (m *SigVerifier) sendResponseBatch(
 			})
 		}
 
-		if m.latency > 0 {
-			time.Sleep(m.latency)
-		}
 		if err := stream.Send(respBatch); err != nil {
 			return connection.FilterStreamRPCError(err)
 		}
@@ -159,9 +167,22 @@ func (m *SigVerifier) ClearPolicies() {
 	m.updates = nil
 }
 
-// SetLatency allows adding latency.
-func (m *SigVerifier) SetLatency(l time.Duration) {
-	m.latency = l
+// SetRequestLatency allows adding request latency.
+func (m *SigVerifier) SetRequestLatency(l time.Duration) {
+	m.requestLatency.Store(&l)
+}
+
+// SetRequestHolder allows holding the request processing.
+func (m *SigVerifier) SetRequestHolder(wh *channel.Ready) {
+	for {
+		holder := m.requestHolder.Load()
+		if holder != nil {
+			holder.SignalReady()
+		}
+		if m.requestHolder.CompareAndSwap(holder, wh) {
+			return
+		}
+	}
 }
 
 // SendRequestBatchWithoutStream allows the caller to bypass the stream to send
