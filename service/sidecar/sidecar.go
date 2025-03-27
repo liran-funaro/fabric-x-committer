@@ -12,7 +12,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
@@ -28,7 +27,7 @@ var logger = logging.New("sidecar")
 type Service struct {
 	ordererClient      *broadcastdeliver.Client
 	relay              *relay
-	ledgerService      *ledger.Service
+	ledgerService      *LedgerService
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
 	config             *Config
@@ -54,7 +53,7 @@ func New(c *Config) (*Service, error) {
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)
-	ledgerService, err := ledger.New(c.Orderer.ChannelID, c.Ledger.Path)
+	ledgerService, err := newLedgerService(c.Orderer.ChannelID, c.Ledger.Path)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create ledger")
 	}
@@ -69,8 +68,8 @@ func New(c *Config) (*Service, error) {
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
 // If the context ended before the service is ready, returns false.
-func (s *Service) WaitForReady(ctx context.Context) bool {
-	return s.ledgerService.WaitForReady(ctx)
+func (*Service) WaitForReady(context.Context) bool {
+	return true
 }
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
@@ -150,7 +149,7 @@ func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
 
 		// 2. Relay the blocks to committer and receive the transaction status.
 		g.Go(func() error {
-			return s.relay.Run(eCtx, &relayRunConfig{
+			return s.relay.run(eCtx, &relayRunConfig{
 				coordClient:                    coordClient,
 				nextExpectedBlockByCoordinator: blkInfo.GetNumber(),
 				configUpdater:                  s.configUpdater,
@@ -161,7 +160,7 @@ func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
 
 		// 3. Deliver the block with status to client.
 		g.Go(func() error {
-			return s.ledgerService.Run(eCtx, &ledger.RunConfig{
+			return s.ledgerService.run(eCtx, &ledgerRunConfig{
 				IncomingCommittedBlock: s.committedBlock,
 			})
 		})
@@ -319,11 +318,11 @@ func (s *Service) monitorQueues(ctx context.Context) {
 
 // Close closes the ledger.
 func (s *Service) Close() {
-	s.ledgerService.Close()
+	s.ledgerService.close()
 }
 
 // GetLedgerService returns the ledger that implements peer.DeliverServer.
-func (s *Service) GetLedgerService() *ledger.Service {
+func (s *Service) GetLedgerService() *LedgerService {
 	return s.ledgerService
 }
 

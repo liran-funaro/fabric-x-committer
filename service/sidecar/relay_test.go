@@ -57,7 +57,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(relayService.Run(ctx, &relayRunConfig{
+		return connection.FilterStreamRPCError(relayService.run(ctx, &relayRunConfig{
 			coordClient:                    client,
 			nextExpectedBlockByCoordinator: 0,
 			configUpdater: func(block *common.Block) {

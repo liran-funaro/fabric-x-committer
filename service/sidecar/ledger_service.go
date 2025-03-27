@@ -1,4 +1,4 @@
-package ledger
+package sidecar
 
 import (
 	"context"
@@ -16,29 +16,26 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
-var logger = logging.New("ledger")
-
 type (
-	// Service implements peer.DeliverServer.
-	Service struct {
+	// LedgerService implements peer.DeliverServer.
+	LedgerService struct {
 		ledger                       blockledger.ReadWriter
 		ledgerProvider               blockledger.Factory
 		channelID                    string
 		nextToBeCommittedBlockNumber uint64
 	}
 
-	// RunConfig holds the configuraion needed to run the ledger service.
-	RunConfig struct {
+	// ledgerRunConfig holds the configuration needed to run the ledger service.
+	ledgerRunConfig struct {
 		IncomingCommittedBlock <-chan *common.Block
 	}
 )
 
-// New creates a new ledger service.
-func New(channelID, ledgerDir string) (*Service, error) {
+// newLedgerService creates a new ledger service.
+func newLedgerService(channelID, ledgerDir string) (*LedgerService, error) {
 	logger.Infof("Create ledger files for channel %s under %s", channelID, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	if err != nil {
@@ -50,7 +47,7 @@ func New(channelID, ledgerDir string) (*Service, error) {
 		return nil, err
 	}
 
-	return &Service{
+	return &LedgerService{
 		ledger:                       ledger,
 		ledgerProvider:               factory,
 		channelID:                    channelID,
@@ -58,8 +55,8 @@ func New(channelID, ledgerDir string) (*Service, error) {
 	}, nil
 }
 
-// Run starts the ledger service. The call to Run blocks until an error occurs or the context is canceled.
-func (s *Service) Run(ctx context.Context, config *RunConfig) error {
+// run starts the ledger service. The call to run blocks until an error occurs or the context is canceled.
+func (s *LedgerService) run(ctx context.Context, config *ledgerRunConfig) error {
 	inputBlock := channel.NewReader(ctx, config.IncomingCommittedBlock)
 	for {
 		block, ok := inputBlock.Read()
@@ -90,19 +87,13 @@ func (s *Service) Run(ctx context.Context, config *RunConfig) error {
 	}
 }
 
-// WaitForReady wait for service to be ready to be exposed as gRPC service.
-// If the context ended before the service is ready, returns false.
-func (*Service) WaitForReady(context.Context) bool {
-	return true
-}
-
-// Close releases the ledger directory.
-func (s *Service) Close() {
+// close releases the ledger directory.
+func (s *LedgerService) close() {
 	s.ledgerProvider.Close()
 }
 
 // Deliver delivers the requested blocks.
-func (s *Service) Deliver(srv peer.Deliver_DeliverServer) error {
+func (s *LedgerService) Deliver(srv peer.Deliver_DeliverServer) error {
 	addr := util.ExtractRemoteAddress(srv.Context())
 	logger.Infof("Starting new deliver loop for %s", addr)
 	for {
@@ -138,24 +129,24 @@ func (s *Service) Deliver(srv peer.Deliver_DeliverServer) error {
 // DeliverFiltered implements an API in peer.DeliverServer.
 // Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
 // can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
-func (*Service) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
+func (*LedgerService) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
 	return errors.New("method is deprecated")
 }
 
 // DeliverWithPrivateData implements an API in peer.DeliverServer.
 // Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
 // can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
-func (*Service) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
+func (*LedgerService) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
 	return errors.New("method is deprecated")
 }
 
 // GetBlockHeight returns the height of the block store, i.e., the last committed block + 1. The +1 is needed
 // to include block 0 as well.
-func (s *Service) GetBlockHeight() uint64 {
+func (s *LedgerService) GetBlockHeight() uint64 {
 	return s.ledger.Height()
 }
 
-func (s *Service) deliverBlocks(
+func (s *LedgerService) deliverBlocks(
 	srv peer.Deliver_DeliverServer,
 	envelope *common.Envelope,
 ) (common.Status, error) {
@@ -195,7 +186,7 @@ func (s *Service) deliverBlocks(
 	return common.Status_SUCCESS, nil
 }
 
-func (s *Service) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
+func (s *LedgerService) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
 	seekInfo := &ab.SeekInfo{}
 	if err := proto.Unmarshal(payload, seekInfo); err != nil {
 		return nil, 0, errors.New("malformed seekInfo payload")

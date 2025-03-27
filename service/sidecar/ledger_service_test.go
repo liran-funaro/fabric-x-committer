@@ -1,8 +1,9 @@
-package ledger
+package sidecar
 
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
@@ -21,9 +22,9 @@ func TestLedgerService(t *testing.T) {
 	ledgerPath := t.TempDir()
 	channelID := "ch1"
 
-	ledgerService, err := New(channelID, ledgerPath)
+	ls, err := newLedgerService(channelID, ledgerPath)
 	require.NoError(t, err)
-	t.Cleanup(ledgerService.Close)
+	t.Cleanup(ls.close)
 
 	config := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost"},
@@ -31,12 +32,12 @@ func TestLedgerService(t *testing.T) {
 
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(ledgerService.Run(ctx, &RunConfig{
+		return connection.FilterStreamRPCError(ls.run(ctx, &ledgerRunConfig{
 			IncomingCommittedBlock: inputBlock,
 		}))
 	}, nil)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, ledgerService)
+		peer.RegisterDeliverServer(server, ls)
 	})
 
 	// NOTE: if we start the deliver client without even the 0'th block, it would
@@ -49,9 +50,9 @@ func TestLedgerService(t *testing.T) {
 	}
 	blk0.Metadata = metadata
 
-	require.Zero(t, ledgerService.GetBlockHeight())
+	require.Zero(t, ls.GetBlockHeight())
 	inputBlock <- blk0
-	EnsureAtLeastHeight(t, ledgerService, 1)
+	ensureAtLeastHeight(t, ls, 1)
 
 	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(context.Background(), t, &sidecarclient.Config{
 		ChannelID: channelID,
@@ -65,7 +66,7 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk1
 	inputBlock <- blk2
 
-	EnsureAtLeastHeight(t, ledgerService, 3)
+	ensureAtLeastHeight(t, ls, 3)
 	for i := range 3 {
 		blk := <-receivedBlocksFromLedgerService
 		require.Equal(t, uint64(i), blk.Header.Number) // nolint:gosec
@@ -73,5 +74,13 @@ func TestLedgerService(t *testing.T) {
 
 	// if we input the already stored block, it would simply skip.
 	inputBlock <- blk2
-	EnsureAtLeastHeight(t, ledgerService, 3)
+	ensureAtLeastHeight(t, ls, 3)
+}
+
+// ensureAtLeastHeight checks if the ledger is at or above the specified height.
+func ensureAtLeastHeight(t *testing.T, s *LedgerService, height uint64) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return s.GetBlockHeight() >= height
+	}, 15*time.Second, 10*time.Millisecond)
 }

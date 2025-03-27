@@ -26,7 +26,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/ledger"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -163,8 +162,8 @@ func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum 
 	})
 
 	// we need to wait for the sidecar to connect to ordering service and fetch the
-	// config block, i.e., block 0. EnsureAtLeastHeight waits for the block 0 to be committed.
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
+	// config block, i.e., block 0. ensureAtLeastHeight waits for the block 0 to be committed.
+	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  &env.config.Server.Endpoint,
@@ -319,12 +318,12 @@ func TestSidecarRecovery(t *testing.T) {
 	//       we reset the ledger service object so that its in-memory data
 	//       structure reflects the correct height.
 	var err error
-	env.sidecar.ledgerService, err = ledger.New(
+	env.sidecar.ledgerService, err = newLedgerService(
 		env.config.Orderer.ChannelID,
 		env.config.Ledger.Path,
 	)
 	require.NoError(t, err)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
 
 	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
 	env.coordinator.SetWaitingTxsCount(10)
@@ -341,13 +340,13 @@ func TestSidecarRecovery(t *testing.T) {
 	env.coordinator.SetWaitingTxsCount(0)
 
 	t.Log("8. Blockstore would recover lost blocks")
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
+	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
 
 	t.Log("9. Send the next expected block by the coordinator.")
 	sendTransactionsAndEnsureCommitted(ctx2, t, env, 11)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
+	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
 	cancel2()
 }
 
@@ -456,7 +455,7 @@ func (env *sidecarTestEnv) requireBlock(
 ) *common.Block {
 	t.Helper()
 	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
-	ledger.EnsureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
+	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
 	require.True(t, ok)

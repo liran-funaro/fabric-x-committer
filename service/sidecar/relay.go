@@ -64,8 +64,8 @@ func newRelay(
 	}
 }
 
-// Run starts the relay service. The call to Run blocks until an error occurs or the context is canceled.
-func (r *relay) Run(ctx context.Context, config *relayRunConfig) error {
+// run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
+func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
