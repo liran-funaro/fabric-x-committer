@@ -16,9 +16,13 @@ import (
 )
 
 type (
-	processWithConfig[T any] struct {
-		process ifrit.Process
-		config  T
+	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
+	ProcessWithConfig[T any] struct {
+		process        ifrit.Process
+		config         T
+		cmdName        string
+		rootDir        string
+		configFilePath string
 	}
 )
 
@@ -36,21 +40,41 @@ const (
 	configTemplateRootPath = "../../cmd/config/templates"
 )
 
-func newProcess[T any](t *testing.T, cmdName, rootDir string, config T) *processWithConfig[T] {
+func newProcess[T any](t *testing.T, cmdName, rootDir string, conf T) *ProcessWithConfig[T] {
 	t.Helper()
-	p := start(path.Join(executableRootPath, cmdName), CreateConfigFromTemplate(t, cmdName, rootDir, config), cmdName)
-	t.Cleanup(func() {
-		p.Signal(os.Kill)
-		select {
-		case <-p.Wait():
-		case <-time.After(30 * time.Second):
-			t.Errorf("Process [%s] did not terminate after 30 seconds", cmdName)
-		}
-	})
-	return &processWithConfig[T]{
-		process: p,
-		config:  config,
+	configFilePath := CreateConfigFromTemplate(t, cmdName, rootDir, conf)
+	p := &ProcessWithConfig[T]{
+		process:        start(path.Join(executableRootPath, cmdName), configFilePath, cmdName),
+		config:         conf,
+		cmdName:        cmdName,
+		rootDir:        rootDir,
+		configFilePath: configFilePath,
 	}
+
+	t.Cleanup(func() {
+		p.Stop(t)
+	})
+
+	return p
+}
+
+// Stop stops the running process.
+func (p *ProcessWithConfig[T]) Stop(t *testing.T) {
+	t.Helper()
+	p.process.Signal(os.Kill)
+	select {
+	case <-p.process.Wait():
+	case <-time.After(30 * time.Second):
+		t.Errorf("Process [%s] did not terminate after 30 seconds", p.cmdName)
+	}
+}
+
+// Restart stops the process if it running and then starts it.
+func (p *ProcessWithConfig[T]) Restart(t *testing.T) {
+	t.Helper()
+	p.Stop(t)
+	p.process = start(path.Join(executableRootPath, p.cmdName), p.configFilePath, p.cmdName)
+	t.Cleanup(func() { p.Stop(t) })
 }
 
 // CreateConfigFromTemplate creates a config file using template yaml and returning the output config path.
@@ -86,13 +110,14 @@ func Run(cmd *exec.Cmd, name, startCheck string) ifrit.Process {
 
 func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
 	c := exec.Command(cmd, "start", "--configs", configFilePath)
-	return Run(c, name, "Serving")
+	return Run(c, name, "")
 }
 
 func newQueryServiceOrVCServiceConfig(
 	t *testing.T,
 	dbEnv *vc.DatabaseTestEnv,
 ) *config.QueryServiceOrVCServiceConfig {
+	t.Helper()
 	return &config.QueryServiceOrVCServiceConfig{
 		CommonEndpoints:   newCommonEndpoints(t),
 		DatabaseEndpoints: dbEnv.DBConf.Endpoints,

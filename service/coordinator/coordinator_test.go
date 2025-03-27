@@ -23,6 +23,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -217,6 +218,12 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
+	logging.SetupWithConfig(
+		&logging.Config{
+			Enabled: true,
+			Level:   logging.Debug,
+		},
+	)
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)

@@ -254,6 +254,9 @@ func EnsurePersistedTxStatus( // nolint:revive
 	expected map[string]*protoblocktx.StatusWithHeight,
 ) {
 	t.Helper()
+	if len(txIDs) == 0 {
+		return
+	}
 	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
 	require.Equal(t, expected, actualStatus.Status)

@@ -35,12 +35,12 @@ import (
 type (
 	// CommitterRuntime represents a test system of Coordinator, SigVerifier, VCService and Query processes.
 	CommitterRuntime struct {
-		mockOrderer  *processWithConfig[*config.OrdererConfig]
-		sidecar      *processWithConfig[*config.SidecarConfig]
-		coordinator  *processWithConfig[*config.CoordinatorConfig]
-		queryService *processWithConfig[*config.QueryServiceOrVCServiceConfig]
-		sigVerifier  []*processWithConfig[*config.SigVerifierConfig]
-		vcService    []*processWithConfig[*config.QueryServiceOrVCServiceConfig]
+		mockOrderer  *ProcessWithConfig[*config.OrdererConfig]
+		Sidecar      *ProcessWithConfig[*config.SidecarConfig]
+		Coordinator  *ProcessWithConfig[*config.CoordinatorConfig]
+		QueryService *ProcessWithConfig[*config.QueryServiceOrVCServiceConfig]
+		SigVerifier  []*ProcessWithConfig[*config.SigVerifierConfig]
+		VcService    []*ProcessWithConfig[*config.QueryServiceOrVCServiceConfig]
 
 		dbEnv *vc.DatabaseTestEnv
 
@@ -59,6 +59,8 @@ type (
 
 		channelID        string
 		seedForCryptoGen *rand.Rand
+
+		lastReceivedBlockNumber uint64
 	}
 
 	// Crypto holds crypto material for a namespace.
@@ -96,9 +98,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	}
 
 	c := &CommitterRuntime{
-		sigVerifier: make([]*processWithConfig[*config.SigVerifierConfig], conf.NumSigVerifiers),
-		vcService: make(
-			[]*processWithConfig[*config.QueryServiceOrVCServiceConfig],
+		SigVerifier: make([]*ProcessWithConfig[*config.SigVerifierConfig], conf.NumSigVerifiers),
+		VcService: make(
+			[]*ProcessWithConfig[*config.QueryServiceOrVCServiceConfig],
 			conf.NumVCService,
 		),
 		dbEnv:            dbEnvironment,
@@ -130,42 +132,42 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	// Start signature-verifier
 	for i := range conf.NumSigVerifiers {
-		c.sigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &config.SigVerifierConfig{
+		c.SigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &config.SigVerifierConfig{
 			CommonEndpoints: newCommonEndpoints(t),
 		})
 	}
 
 	// Start validator-persister
 	for i := range conf.NumVCService {
-		c.vcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
+		c.VcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 	}
 
 	// Start coordinator
 	coordConfig := &config.CoordinatorConfig{
 		CommonEndpoints:      newCommonEndpoints(t),
-		SigVerifierEndpoints: make([]string, len(c.sigVerifier)),
-		VCServiceEndpoints:   make([]string, len(c.vcService)),
+		SigVerifierEndpoints: make([]string, len(c.SigVerifier)),
+		VCServiceEndpoints:   make([]string, len(c.VcService)),
 	}
-	for i, sv := range c.sigVerifier {
+	for i, sv := range c.SigVerifier {
 		coordConfig.SigVerifierEndpoints[i] = sv.config.ServerEndpoint
 	}
-	for i, vcServ := range c.vcService {
+	for i, vcServ := range c.VcService {
 		coordConfig.VCServiceEndpoints[i] = vcServ.config.ServerEndpoint
 	}
-	c.coordinator = newProcess(t, coordinatorCmd, c.rootDir, coordConfig)
+	c.Coordinator = newProcess(t, coordinatorCmd, c.rootDir, coordConfig)
 
 	// Start query-executor
-	c.queryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
+	c.QueryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
 
 	// Start sidecar. The meta namespace key and the orderer endpoints are passed via the config block.
 	sidecarConfig := &config.SidecarConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
-		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
+		CoordinatorEndpoint: c.Coordinator.config.ServerEndpoint,
 		LedgerPath:          c.rootDir,
 		ChannelID:           c.channelID,
 		ConfigBlockPath:     configBlockPath,
 	}
-	c.sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
+	c.Sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	t.Cleanup(cancel)
@@ -199,8 +201,8 @@ func (c *CommitterRuntime) StartLoadGen(t *testing.T) {
 	t.Helper()
 	loadgenConfig := &config.LoadGenConfig{
 		CommonEndpoints:     newCommonEndpoints(t),
-		SidecarEndpoint:     c.sidecar.config.ServerEndpoint,
-		CoordinatorEndpoint: c.coordinator.config.ServerEndpoint,
+		SidecarEndpoint:     c.Sidecar.config.ServerEndpoint,
+		CoordinatorEndpoint: c.Coordinator.config.ServerEndpoint,
 		OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
 		ChannelID:           c.channelID,
 		BlockSize:           c.config.BlockSize,
@@ -220,10 +222,10 @@ func (c *CommitterRuntime) StartLoadGen(t *testing.T) {
 // and responsible for the creation of the clients.
 func (c *CommitterRuntime) createClients(ctx context.Context, t *testing.T) {
 	t.Helper()
-	coordConn := createClientConnection(t, c.coordinator.config.ServerEndpoint)
+	coordConn := createClientConnection(t, c.Coordinator.config.ServerEndpoint) //nolint:contextcheck
 	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
-	qsConn := createClientConnection(t, c.queryService.config.ServerEndpoint)
+	qsConn := createClientConnection(t, c.QueryService.config.ServerEndpoint) //nolint:contextcheck
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
 
 	ordererSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
@@ -239,11 +241,31 @@ func (c *CommitterRuntime) createClients(ctx context.Context, t *testing.T) {
 	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
 	require.NoError(t, err)
 
+	c.CreateSidecarDeliverClient(t)
+}
+
+// CreateSidecarDeliverClient creates a sidecar deliver client.
+func (c *CommitterRuntime) CreateSidecarDeliverClient(t *testing.T) {
+	t.Helper()
+	var err error
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: c.channelID,
-		Endpoint:  connection.CreateEndpoint(c.sidecar.config.ServerEndpoint),
+		Endpoint:  connection.CreateEndpoint(c.Sidecar.config.ServerEndpoint),
 	})
 	require.NoError(t, err)
+}
+
+// StartSidecarDeliverClient starts a block deliver stream with the sidecar.
+func (c *CommitterRuntime) StartSidecarDeliverClient(ctx context.Context, t *testing.T) {
+	t.Helper()
+	c.committedBlock = make(chan *common.Block, 100)
+	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
+			StartBlkNum: int64(c.lastReceivedBlockNumber) + 1, //nolint:gosec // uint64 -> int64
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+			OutputBlock: c.committedBlock,
+		}))
+	}, nil)
 }
 
 // createNamespacesAndCommit creates namespaces in the committer.
@@ -387,6 +409,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	if !ok {
 		return
 	}
+	c.lastReceivedBlockNumber = blk.Header.Number
 
 	expectedStatuses := make([]byte, 0, len(expected.Statuses))
 	for _, s := range expected.Statuses {
@@ -423,7 +446,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	// transaction status table.
 	c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
 	test.EnsurePersistedTxStatus(ctx, t, c.coordinatorClient, nonDupTxIDs, nonDuplicateTxIDsStatus)
 }
@@ -442,7 +465,7 @@ func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status protoblockt
 
 func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
 
 	require.Eventually(t, func() bool {
