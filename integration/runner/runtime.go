@@ -2,9 +2,7 @@ package runner
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -35,14 +33,18 @@ import (
 type (
 	// CommitterRuntime represents a test system of Coordinator, SigVerifier, VCService and Query processes.
 	CommitterRuntime struct {
-		mockOrderer  *ProcessWithConfig[*config.OrdererConfig]
-		Sidecar      *ProcessWithConfig[*config.SidecarConfig]
-		Coordinator  *ProcessWithConfig[*config.CoordinatorConfig]
-		QueryService *ProcessWithConfig[*config.QueryServiceOrVCServiceConfig]
-		SigVerifier  []*ProcessWithConfig[*config.SigVerifierConfig]
-		VcService    []*ProcessWithConfig[*config.QueryServiceOrVCServiceConfig]
+		systemConfig config.SystemConfig
+
+		MockOrderer  *ProcessWithConfig
+		Sidecar      *ProcessWithConfig
+		Coordinator  *ProcessWithConfig
+		QueryService *ProcessWithConfig
+		Verifier     []*ProcessWithConfig
+		VcService    []*ProcessWithConfig
 
 		dbEnv *vc.DatabaseTestEnv
+
+		ordererEndpoints []*connection.OrdererEndpoint
 
 		ordererClient      *broadcastdeliver.EnvelopedStream
 		coordinatorClient  protocoordinatorservice.CoordinatorClient
@@ -50,14 +52,12 @@ type (
 		sidecarClient      *sidecarclient.Client
 
 		committedBlock chan *common.Block
-		rootDir        string
 
 		nsToCrypto     map[string]*Crypto
 		nsToCryptoLock sync.Mutex
 
 		config *Config
 
-		channelID        string
 		seedForCryptoGen *rand.Rand
 
 		lastReceivedBlockNumber uint64
@@ -75,7 +75,7 @@ type (
 
 	// Config represents the runtime configuration.
 	Config struct {
-		NumSigVerifiers     int
+		NumVerifiers        int
 		NumVCService        int
 		InitializeNamespace []string
 		BlockSize           uint64
@@ -86,95 +86,114 @@ type (
 	}
 )
 
-// NewRuntime creates a new test runtime˙.
+// NewRuntime creates a new test runtime.
 func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Helper()
 
-	var dbEnvironment *vc.DatabaseTestEnv
-	if conf.DBCluster == nil {
-		dbEnvironment = vc.NewDatabaseTestEnv(t)
-	} else {
-		dbEnvironment = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
-	}
-
 	c := &CommitterRuntime{
-		SigVerifier: make([]*ProcessWithConfig[*config.SigVerifierConfig], conf.NumSigVerifiers),
-		VcService: make(
-			[]*ProcessWithConfig[*config.QueryServiceOrVCServiceConfig],
-			conf.NumVCService,
-		),
-		dbEnv:            dbEnvironment,
-		rootDir:          t.TempDir(),
+		config: conf,
+		systemConfig: config.SystemConfig{
+			ChannelID:    "channel1",
+			BlockSize:    conf.BlockSize,
+			BlockTimeout: conf.BlockTimeout,
+		},
 		nsToCrypto:       make(map[string]*Crypto),
-		config:           conf,
-		channelID:        "channel1",
 		committedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
 
-	// Start mock ordering service
-	ordererEndpoint := makeLocalListenAddress(findAvailablePortRange(t, 1)[0])
+	t.Log("Making DB env")
+	if conf.DBCluster == nil {
+		c.dbEnv = vc.NewDatabaseTestEnv(t)
+	} else {
+		c.dbEnv = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
+	}
+
+	t.Log("Allocating ports")
+	s := &c.systemConfig
+	s.Endpoints.Database = c.dbEnv.DBConf.Endpoints
+
+	ports := portAllocator{}
+	defer ports.close()
+	s.Endpoints.Orderer = ports.allocatePorts(t, 1)
+	s.Endpoints.Verifier = ports.allocatePorts(t, conf.NumVerifiers)
+	s.Endpoints.VCService = ports.allocatePorts(t, conf.NumVCService)
+	s.Endpoints.Query = ports.allocatePorts(t, 1)[0]
+	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
+	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
+	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
+	s.DB.Name = c.dbEnv.DBConf.Database
+	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
+	s.LedgerPath = t.TempDir()
+
+	t.Log("Creating config block")
+	c.ordererEndpoints = make([]*connection.OrdererEndpoint, len(s.Endpoints.Orderer))
+	for i, endpoint := range s.Endpoints.Orderer {
+		c.ordererEndpoints[i] = &connection.OrdererEndpoint{MspID: "org", Endpoint: *endpoint}
+	}
 	metaCrypto := c.CreateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
-	configBlockPath := config.CreateConfigBlock(t, &config.ConfigBlock{
-		ChannelID: c.channelID,
-		OrdererEndpoints: []*connection.OrdererEndpoint{
-			{MspID: "org", Endpoint: *connection.CreateEndpoint(ordererEndpoint)},
-		},
+	s.ConfigBlockPath = config.CreateConfigBlock(t, &config.ConfigBlock{
+		ChannelID:                    s.ChannelID,
+		OrdererEndpoints:             c.ordererEndpoints,
 		MetaNamespaceVerificationKey: metaCrypto.PubKey,
 	})
-	ordererConfig := &config.OrdererConfig{
-		ServerEndpoint:  ordererEndpoint,
-		BlockSize:       conf.BlockSize,
-		BlockTimeout:    conf.BlockTimeout,
-		ConfigBlockPath: configBlockPath,
-	}
-	c.mockOrderer = newProcess(t, mockordererCmd, c.rootDir, ordererConfig)
 
-	// Start signature-verifier
-	for i := range conf.NumSigVerifiers {
-		c.SigVerifier[i] = newProcess(t, signatureverifierCmd, c.rootDir, &config.SigVerifierConfig{
-			CommonEndpoints: newCommonEndpoints(t),
-		})
+	c.MockOrderer = newProcess(t, mockordererCMD, config.TemplateMockOrderer, s)
+	for _, e := range s.Endpoints.Verifier {
+		c.Verifier = append(c.Verifier, newProcess(t, verifierCMD, config.TemplateVerifier, s.WithEndpoint(e)))
 	}
+	for _, e := range s.Endpoints.VCService {
+		c.VcService = append(c.VcService, newProcess(t, vcCMD, config.TemplateVC, s.WithEndpoint(e)))
+	}
+	c.Coordinator = newProcess(t, coordinatorCMD, config.TemplateCoordinator, s.WithEndpoint(s.Endpoints.Coordinator))
+	c.QueryService = newProcess(t, queryexecutorCMD, config.TemplateQueryService, s.WithEndpoint(s.Endpoints.Query))
+	c.Sidecar = newProcess(t, sidecarCMD, config.TemplateSidecar, s.WithEndpoint(s.Endpoints.Sidecar))
+	return c
+}
 
-	// Start validator-persister
-	for i := range conf.NumVCService {
-		c.VcService[i] = newProcess(t, validatorpersisterCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
-	}
+// StartSystem runs all the system services.
+func (c *CommitterRuntime) StartSystem(t *testing.T) {
+	t.Helper()
 
-	// Start coordinator
-	coordConfig := &config.CoordinatorConfig{
-		CommonEndpoints:      newCommonEndpoints(t),
-		SigVerifierEndpoints: make([]string, len(c.SigVerifier)),
-		VCServiceEndpoints:   make([]string, len(c.VcService)),
+	t.Log("Running services")
+	c.MockOrderer.Restart(t)
+	for _, p := range c.Verifier {
+		p.Restart(t)
 	}
-	for i, sv := range c.SigVerifier {
-		coordConfig.SigVerifierEndpoints[i] = sv.config.ServerEndpoint
+	for _, p := range c.VcService {
+		p.Restart(t)
 	}
-	for i, vcServ := range c.VcService {
-		coordConfig.VCServiceEndpoints[i] = vcServ.config.ServerEndpoint
-	}
-	c.Coordinator = newProcess(t, coordinatorCmd, c.rootDir, coordConfig)
+	c.Coordinator.Restart(t)
+	c.QueryService.Restart(t)
+	c.Sidecar.Restart(t)
 
-	// Start query-executor
-	c.QueryService = newProcess(t, queryexecutorCmd, c.rootDir, newQueryServiceOrVCServiceConfig(t, c.dbEnv))
+	t.Log("Create clients")
+	coordConn := createClientConnection(t, c.systemConfig.Endpoints.Coordinator)
+	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
 
-	// Start sidecar. The meta namespace key and the orderer endpoints are passed via the config block.
-	sidecarConfig := &config.SidecarConfig{
-		CommonEndpoints:     newCommonEndpoints(t),
-		CoordinatorEndpoint: c.Coordinator.config.ServerEndpoint,
-		LedgerPath:          c.rootDir,
-		ChannelID:           c.channelID,
-		ConfigBlockPath:     configBlockPath,
-	}
-	c.Sidecar = newProcess(t, sidecarCmd, c.rootDir, sidecarConfig)
+	qsConn := createClientConnection(t, c.systemConfig.Endpoints.Query)
+	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
+
+	ordererSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
+		Connection: broadcastdeliver.ConnectionConfig{
+			Endpoints: c.ordererEndpoints,
+		},
+		ChannelID:     c.systemConfig.ChannelID,
+		ConsensusType: broadcastdeliver.Bft,
+	})
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	t.Cleanup(cancel)
+	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
+	require.NoError(t, err)
 
-	c.createClients(ctx, t)
+	c.CreateSidecarDeliverClient(t)
+
+	t.Log("Validate state")
 	c.ensureLastCommittedBlockNumber(t, 0)
 
+	t.Log("Running delivery client")
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
 			EndBlkNum:   broadcastdeliver.MaxBlockNum,
@@ -190,58 +209,46 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		}
 	})
 
-	c.createNamespacesAndCommit(t, conf.InitializeNamespace)
-
-	return c
+	t.Log("Creating namespaces")
+	c.createNamespacesAndCommit(t, c.config.InitializeNamespace)
 }
 
-// StartLoadGen runs a load generation.
+// StartLoadGenOrderer applies load on the orderer.
 // We need to run the load gen after initializing because it will re-initialize.
-func (c *CommitterRuntime) StartLoadGen(t *testing.T) {
+func (c *CommitterRuntime) StartLoadGenOrderer(t *testing.T) {
 	t.Helper()
-	loadgenConfig := &config.LoadGenConfig{
-		CommonEndpoints:     newCommonEndpoints(t),
-		SidecarEndpoint:     c.Sidecar.config.ServerEndpoint,
-		CoordinatorEndpoint: c.Coordinator.config.ServerEndpoint,
-		OrdererEndpoints:    []string{c.mockOrderer.config.ServerEndpoint},
-		ChannelID:           c.channelID,
-		BlockSize:           c.config.BlockSize,
-		Policy: &workload.PolicyProfile{
-			NamespacePolicies: make(map[string]*workload.Policy),
-		},
+	c.startLoadGenWithTemplate(t, config.TemplateLoadGenOrderer)
+}
+
+// StartLoadGenCommitter applies load on the sidecar.
+// We need to run the load gen after initializing because it will re-initialize.
+func (c *CommitterRuntime) StartLoadGenCommitter(t *testing.T) {
+	t.Helper()
+	// We kill the orderer so the sidecar will connect to the loadgen.
+	c.MockOrderer.Stop(t)
+	c.startLoadGenWithTemplate(t, config.TemplateLoadGenCommitter)
+}
+
+func (c *CommitterRuntime) startLoadGenWithTemplate(t *testing.T, template string) {
+	t.Helper()
+	s := c.systemConfig
+	s.Policy = &workload.PolicyProfile{
+		NamespacePolicies: make(map[string]*workload.Policy),
 	}
 	// We create the crypto profile for the generated namespace to ensure consistency.
 	c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
 	for _, cr := range c.GetAllCrypto() {
-		loadgenConfig.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
+		s.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
 	}
-	newProcess(t, loadgenCmd, c.rootDir, loadgenConfig)
+	newProcess(t, loadgenCMD, template, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
 }
 
-// createClients utilize createClientConnection for connection creation
-// and responsible for the creation of the clients.
-func (c *CommitterRuntime) createClients(ctx context.Context, t *testing.T) {
+// createClientConnection creates a service connection using its given server endpoint.
+func createClientConnection(t *testing.T, e *connection.Endpoint) *grpc.ClientConn {
 	t.Helper()
-	coordConn := createClientConnection(t, c.Coordinator.config.ServerEndpoint) //nolint:contextcheck
-	c.coordinatorClient = protocoordinatorservice.NewCoordinatorClient(coordConn)
-
-	qsConn := createClientConnection(t, c.QueryService.config.ServerEndpoint) //nolint:contextcheck
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(qsConn)
-
-	ordererSubmitter, err := broadcastdeliver.New(&broadcastdeliver.Config{
-		Connection: broadcastdeliver.ConnectionConfig{
-			Endpoints: []*connection.OrdererEndpoint{
-				{MspID: "org", Endpoint: *connection.CreateEndpoint(c.mockOrderer.config.ServerEndpoint)},
-			},
-		},
-		ChannelID:     c.channelID,
-		ConsensusType: broadcastdeliver.Bft,
-	})
+	serviceConnection, err := connection.LazyConnect(connection.NewDialConfig(e))
 	require.NoError(t, err)
-	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
-	require.NoError(t, err)
-
-	c.CreateSidecarDeliverClient(t)
+	return serviceConnection
 }
 
 // CreateSidecarDeliverClient creates a sidecar deliver client.
@@ -249,8 +256,8 @@ func (c *CommitterRuntime) CreateSidecarDeliverClient(t *testing.T) {
 	t.Helper()
 	var err error
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
-		ChannelID: c.channelID,
-		Endpoint:  connection.CreateEndpoint(c.Sidecar.config.ServerEndpoint),
+		ChannelID: c.systemConfig.ChannelID,
+		Endpoint:  c.systemConfig.Endpoints.Sidecar,
 	})
 	require.NoError(t, err)
 }
@@ -309,8 +316,7 @@ func (c *CommitterRuntime) createNamespacesAndCommit(t *testing.T, namespaces []
 	c.ValidateExpectedResultsInCommittedBlock(t, &ExpectedStatusInBlock{
 		TxIDs:    []string{txID},
 		Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
-	},
-	)
+	})
 }
 
 // AddSignatures adds signature for each namespace in a given transaction.
@@ -378,20 +384,6 @@ func (c *CommitterRuntime) GetAllCrypto() []*Crypto {
 		ret = append(ret, cr)
 	}
 	return ret
-}
-
-// createClientConnection creates a service connection using its given server endpoint.
-func createClientConnection(t *testing.T, serverEndPoint string) *grpc.ClientConn {
-	serviceEndpoint, err := connection.NewEndpoint(serverEndPoint)
-	require.NoError(t, err)
-	serviceConnection, err := connection.Connect(connection.NewDialConfig(serviceEndpoint))
-	require.NoError(t, err)
-
-	return serviceConnection
-}
-
-func constructConfigFilePath(rootDir, name, endpoint string) string {
-	return path.Join(rootDir, name+"-"+endpoint+"-config.yaml")
 }
 
 // ExpectedStatusInBlock holds pairs of expected txID and the corresponding status in a block. The order of statuses
@@ -475,9 +467,4 @@ func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum u
 		}
 		return lastBlock.Number == blkNum
 	}, 15*time.Second, 250*time.Millisecond)
-}
-
-// makeLocalListenAddress returning the endpoint's address together with the port chosen.
-func makeLocalListenAddress(port int) string {
-	return fmt.Sprintf("localhost:%d", port)
 }

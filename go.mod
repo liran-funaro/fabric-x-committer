@@ -10,6 +10,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/fsouza/go-dockerclient v1.12.0
 	github.com/gin-gonic/gin v1.10.0
+	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240918034325-94590aa4332b

@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func TestDBNodeCrashHandling(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Container IP access not supported on non-linux Docker")
+	}
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
@@ -20,17 +24,15 @@ func TestDBNodeCrashHandling(t *testing.T) {
 	clusterController, clusterConnection := runner.StartYugaCluster(ctx, t, 3)
 
 	gomega.RegisterTestingT(t)
-	c := runner.NewRuntime(
-		t,
-		&runner.Config{
-			NumSigVerifiers: 2,
-			NumVCService:    2,
-			BlockTimeout:    2 * time.Second,
-			BlockSize:       500,
-			DBCluster:       clusterConnection,
-		},
-	)
-	c.StartLoadGen(t)
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers: 2,
+		NumVCService: 2,
+		BlockTimeout: 2 * time.Second,
+		BlockSize:    500,
+		DBCluster:    clusterConnection,
+	})
+	c.StartSystem(t)
+	c.StartLoadGenOrderer(t)
 
 	waitForCommittedTxs(t, c, 10_000)
 	clusterController.RemoveLastNode(t)

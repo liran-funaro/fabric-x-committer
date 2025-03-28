@@ -1,31 +1,29 @@
 validator-committer-service:
   server:
-    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+  monitoring:
+    server:
+      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
 
   database:
     endpoints:
-      {{- range .DatabaseEndpoints }}
-      - host: {{ .Host }}
-        port: {{ .Port }}
+      {{- range .Endpoints.Database }}
+      - {{ . }}
       {{- end }}
 
     username: "yugabyte"
     # TODO: pass password via environment variable
     password: "yugabyte"
-    database: {{ .DatabaseName }}
+    database: {{ .DB.Name }}
     max-connections: 10
     min-connections: 5
-    load-balance: {{ .LoadBalance }}
+    load-balance: {{ .DB.LoadBalance }}
 
   resource-limits:
     max-workers-for-preparer: 1
     max-workers-for-validator: 1
     max-workers-for-committer: 20
     min-transaction-batch-size: 1
-
-  monitoring:
-    server:
-      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
 logging:
   development: true

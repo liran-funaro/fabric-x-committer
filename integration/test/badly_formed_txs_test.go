@@ -16,15 +16,13 @@ import (
 
 func TestBadlyFormedTxs(t *testing.T) {
 	gomega.RegisterTestingT(t)
-	c := runner.NewRuntime(
-		t,
-		&runner.Config{
-			NumSigVerifiers: 2,
-			NumVCService:    2,
-			BlockSize:       5,
-			BlockTimeout:    2 * time.Second,
-		},
-	)
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers: 2,
+		NumVCService: 2,
+		BlockSize:    5,
+		BlockTimeout: 2 * time.Second,
+	})
+	c.StartSystem(t)
 
 	cr := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 	ns1Policy := cr.HashSigner.GetVerificationPolicy()

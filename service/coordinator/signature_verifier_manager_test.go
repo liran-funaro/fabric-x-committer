@@ -17,6 +17,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -63,26 +64,10 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 			}
 			return nil
 		},
-		func(ctx context.Context) bool {
-			// We wait for the array to be initialized.
-			// We don't add ready flag to the production implementation as it is not needed for the production flow.
-			for ctx.Err() == nil {
-				time.Sleep(100 * time.Millisecond)
-				if svm.signVerifier == nil {
-					continue
-				}
-				ready := true
-				for _, sv := range svs {
-					if sv == nil {
-						ready = false
-					}
-				}
-				if ready {
-					return true
-				}
-			}
-			return false
-		},
+		nil,
+	)
+	monitoring.WaitForConnections(
+		t, svm.metrics.Provider, "coordinator_grpc_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{

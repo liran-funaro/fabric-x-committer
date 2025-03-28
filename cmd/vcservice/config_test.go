@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -105,17 +104,19 @@ func TestConfig(t *testing.T) {
 		},
 		{
 			name: "config with multiple sources",
-			configFilePath: runner.CreateConfigFromTemplate(t, "validatorpersister", t.TempDir(),
-				&config.QueryServiceOrVCServiceConfig{
-					CommonEndpoints: config.CommonEndpoints{
-						ServerEndpoint:  "localhost:6001",
-						MetricsEndpoint: "localhost:6002",
+			configFilePath: config.CreateTempConfigFromTemplate(t, config.TemplateVC,
+				&config.SystemConfig{
+					ServerEndpoint:  connection.CreateEndpoint("localhost:6001"),
+					MetricsEndpoint: connection.CreateEndpoint("localhost:6002"),
+					Endpoints: config.SystemEndpoints{
+						Database: []*connection.Endpoint{
+							connection.CreateEndpoint("host1:1111"),
+							connection.CreateEndpoint("host2:2222"),
+						},
 					},
-					DatabaseEndpoints: []*connection.Endpoint{
-						connection.CreateEndpoint("host1:1111"),
-						connection.CreateEndpoint("host2:2222"),
+					DB: config.DatabaseConfig{
+						Name: "yugabyte",
 					},
-					DatabaseName: "yugabyte",
 				}),
 			expectedConfig: &vc.ValidatorCommitterServiceConfig{
 				Server: &connection.ServerConfig{

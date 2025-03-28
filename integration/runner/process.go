@@ -7,60 +7,58 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 )
 
 type (
 	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
-	ProcessWithConfig[T any] struct {
+	ProcessWithConfig struct {
 		process        ifrit.Process
-		config         T
+		config         *config.SystemConfig
 		cmdName        string
-		rootDir        string
 		configFilePath string
 	}
 )
 
 const (
-	mockordererCmd        = "mockorderingservice"
-	queryexecutorCmd      = "queryexecutor"
-	signatureverifierCmd  = "signatureverifier"
-	validatorpersisterCmd = "validatorpersister"
-	coordinatorCmd        = "coordinator"
-	sidecarCmd            = "sidecar"
-	loadgenCmd            = "loadgen"
-
-	configFileExtension    = ".yaml"
-	executableRootPath     = "../../bin"
-	configTemplateRootPath = "../../cmd/config/templates"
+	mockordererCMD   = "mockorderingservice"
+	queryexecutorCMD = "queryexecutor"
+	verifierCMD      = "signatureverifier"
+	vcCMD            = "validatorpersister"
+	coordinatorCMD   = "coordinator"
+	sidecarCMD       = "sidecar"
+	loadgenCMD       = "loadgen"
 )
 
-func newProcess[T any](t *testing.T, cmdName, rootDir string, conf T) *ProcessWithConfig[T] {
+func newProcess(
+	t *testing.T,
+	cmdName string,
+	cmdTemplate string,
+	conf *config.SystemConfig,
+) *ProcessWithConfig {
 	t.Helper()
-	configFilePath := CreateConfigFromTemplate(t, cmdName, rootDir, conf)
-	p := &ProcessWithConfig[T]{
-		process:        start(path.Join(executableRootPath, cmdName), configFilePath, cmdName),
+	configFilePath := config.CreateTempConfigFromTemplate(t, cmdTemplate, conf)
+	p := &ProcessWithConfig{
 		config:         conf,
 		cmdName:        cmdName,
-		rootDir:        rootDir,
 		configFilePath: configFilePath,
 	}
-
 	t.Cleanup(func() {
 		p.Stop(t)
 	})
-
 	return p
 }
 
 // Stop stops the running process.
-func (p *ProcessWithConfig[T]) Stop(t *testing.T) {
+func (p *ProcessWithConfig) Stop(t *testing.T) {
 	t.Helper()
+	if p.process == nil {
+		return
+	}
 	p.process.Signal(os.Kill)
 	select {
 	case <-p.process.Wait():
@@ -69,22 +67,16 @@ func (p *ProcessWithConfig[T]) Stop(t *testing.T) {
 	}
 }
 
-// Restart stops the process if it running and then starts it.
-func (p *ProcessWithConfig[T]) Restart(t *testing.T) {
+// Restart stops the process if it is running and then starts it.
+func (p *ProcessWithConfig) Restart(t *testing.T) {
 	t.Helper()
 	p.Stop(t)
-	p.process = start(path.Join(executableRootPath, p.cmdName), p.configFilePath, p.cmdName)
-	t.Cleanup(func() { p.Stop(t) })
-}
-
-// CreateConfigFromTemplate creates a config file using template yaml and returning the output config path.
-func CreateConfigFromTemplate[T any](t *testing.T, cmdName, rootDir string, configObj T) string {
-	t.Helper()
-	inputConfigTemplateFilePath := path.Join(configTemplateRootPath, cmdName+configFileExtension)
-	outputConfigFilePath := constructConfigFilePath(rootDir, cmdName, uuid.NewString())
-	config.CreateConfigFile(t, configObj, inputConfigTemplateFilePath, outputConfigFilePath)
-
-	return outputConfigFilePath
+	cmdPath := path.Join("bin", p.cmdName)
+	c := exec.Command(cmdPath, "start", "--configs", p.configFilePath)
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	c.Dir = path.Clean(path.Join(dir, "../.."))
+	p.process = Run(c, p.cmdName, "")
 }
 
 // Run executes the specified command and returns the corresponding process.
@@ -95,7 +87,7 @@ func CreateConfigFromTemplate[T any](t *testing.T, cmdName, rootDir string, conf
 //
 //nolint:ireturn
 func Run(cmd *exec.Cmd, name, startCheck string) ifrit.Process {
-	p := ginkgomon.New(ginkgomon.Config{
+	return ifrit.Invoke(ginkgomon.New(ginkgomon.Config{
 		Command:           cmd,
 		Name:              name,
 		AnsiColorCode:     "",
@@ -103,34 +95,5 @@ func Run(cmd *exec.Cmd, name, startCheck string) ifrit.Process {
 		StartCheckTimeout: 0,
 		Cleanup: func() {
 		},
-	})
-	process := ifrit.Invoke(p)
-	return process
-}
-
-func start(cmd, configFilePath, name string) ifrit.Process { //nolint:ireturn
-	c := exec.Command(cmd, "start", "--configs", configFilePath)
-	return Run(c, name, "")
-}
-
-func newQueryServiceOrVCServiceConfig(
-	t *testing.T,
-	dbEnv *vc.DatabaseTestEnv,
-) *config.QueryServiceOrVCServiceConfig {
-	t.Helper()
-	return &config.QueryServiceOrVCServiceConfig{
-		CommonEndpoints:   newCommonEndpoints(t),
-		DatabaseEndpoints: dbEnv.DBConf.Endpoints,
-		DatabaseName:      dbEnv.DBConf.Database,
-		LoadBalance:       dbEnv.DBConf.LoadBalance,
-	}
-}
-
-func newCommonEndpoints(t *testing.T) config.CommonEndpoints {
-	t.Helper()
-	ports := findAvailablePortRange(t, 2)
-	return config.CommonEndpoints{
-		ServerEndpoint:  makeLocalListenAddress(ports[0]),
-		MetricsEndpoint: makeLocalListenAddress(ports[1]),
-	}
+	}))
 }

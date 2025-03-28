@@ -2,24 +2,23 @@ query-service:
   # Configuration for the server
   server:
     # The server's endpoint configuration
-    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
-    # Credentials for the server
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+  monitoring:
+    server:
+      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+
   database:
     endpoints:
-      {{- range .DatabaseEndpoints }}
-      - host: {{ .Host }}
-        port: {{ .Port }}
+      {{- range .Endpoints.Database }}
+      - {{ . }}
       {{- end }}
 
     username: "yugabyte"                       # The username for the database
     password: "yugabyte"                       # The password for the database
-    database: {{ .DatabaseName }}
+    database: {{ .DB.Name }}
     max-connections: 10                        # The maximum size of the connection pool
     min-connections: 5                         # The minimum size of the connection pool.
-  # Resource limit configurations
-  monitoring:
-    server:
-      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+
 logging:
   development: true
   enabled: true

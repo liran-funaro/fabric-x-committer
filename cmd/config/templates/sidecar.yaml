@@ -1,6 +1,6 @@
 sidecar:
   server:
-    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
     keep-alive:
       params:
         time: 300s
@@ -8,24 +8,23 @@ sidecar:
       enforcement-policy:
         min-time: 60s
         permit-without-stream: false
+  monitoring:
+    server:
+      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
 
   orderer:
     connection:
       endpoints:
-        {{- range .OrdererEndpoints }}
+        {{- range .Endpoints.Orderer }}
         - {{ . }}
         {{- end }}
     channel-id: {{ .ChannelID }}
     consensus-type: BFT
   committer:
-    endpoint: {{ .CoordinatorEndpoint }}
+    endpoint: {{ .Endpoints.Coordinator }}
 
   ledger:
     path: {{ .LedgerPath }}
-
-  monitoring:
-    server:
-      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
   last-committed-block-set-interval: 5s
 

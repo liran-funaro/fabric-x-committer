@@ -1,14 +1,18 @@
 coordinator-service:
   server:
-    endpoint: {{ .CommonEndpoints.ServerEndpoint}}
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+  monitoring:
+    server:
+      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+
   sign-verifier:
     server: 
-      {{- range .SigVerifierEndpoints }}
+      {{- range .Endpoints.Verifier }}
       - endpoint: {{ . }}
       {{- end }}
   validator-committer:
     server: 
-     {{- range .VCServiceEndpoints }}
+     {{- range .Endpoints.VCService }}
       - endpoint: {{ . }}
       {{- end }}
   dependency-graph:
@@ -17,10 +21,6 @@ coordinator-service:
     num-of-workers-for-global-dep-manager: 1
     # Add monitoring configuration here if applicable
   per-channel-buffer-size-per-goroutine: 10
-
-  monitoring:
-    server:
-      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
 
 # For debugging, change the output to "xxx.log" and the level to "DEBUG"
 logging:

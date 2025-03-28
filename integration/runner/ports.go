@@ -1,42 +1,34 @@
 package runner
 
 import (
-	"math/rand"
 	"net"
-	"slices"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
-const (
-	minPort = 49152
-	maxPort = 65535
-)
-
-// findAvailablePortRange finds a range of available ports.
-func findAvailablePortRange(t *testing.T, numPorts int) []int {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	var availablePorts []int
-
-	for len(availablePorts) < numPorts {
-		randomPort := r.Intn(maxPort-minPort+1) + minPort
-		if isPortAvailable(randomPort) && !slices.Contains(availablePorts, randomPort) {
-			availablePorts = append(availablePorts, randomPort)
-		}
-	}
-	require.GreaterOrEqual(t, len(availablePorts), numPorts, "not enough available ports")
-	return availablePorts
+type portAllocator struct {
+	listeners []net.Listener
 }
 
-// Check if a port is available for use.
-func isPortAvailable(port int) bool {
-	addr := makeLocalListenAddress(port)
-	conn, err := net.Listen("tcp", addr)
-	if err != nil {
-		return false
+// allocatePorts finds a range of available ports.
+func (p *portAllocator) allocatePorts(t *testing.T, count int) []*connection.Endpoint {
+	t.Helper()
+	endpoints := make([]*connection.Endpoint, count)
+	for i := range endpoints {
+		s := connection.NewLocalHostServer()
+		listener, err := s.Listener()
+		require.NoError(t, err)
+		p.listeners = append(p.listeners, listener)
+		endpoints[i] = &s.Endpoint
 	}
-	_ = conn.Close()
-	return true
+	return endpoints
+}
+
+// close releases the ports to be used for their intended purpose.
+func (p *portAllocator) close() {
+	connection.CloseConnectionsLog(p.listeners...)
+	p.listeners = nil
 }

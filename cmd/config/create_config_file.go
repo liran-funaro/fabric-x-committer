@@ -2,12 +2,17 @@ package config
 
 import (
 	"bytes"
+	_ "embed"
+	"fmt"
 	"html/template"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
+	sprig "github.com/go-task/slim-sprig/v3"
+	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
@@ -17,82 +22,86 @@ import (
 )
 
 type (
-	// OrdererConfig represents the configuration of the orderer process.
-	OrdererConfig struct {
-		ServerEndpoint  string
-		BlockSize       uint64
-		BlockTimeout    time.Duration
-		ConfigBlockPath string
+	// SystemConfig represents the configuration of the one of the committer's components.
+	SystemConfig struct {
+		// Instance endpoints.
+		ServerEndpoint  *connection.Endpoint
+		MetricsEndpoint *connection.Endpoint
+
+		// System's resources.
+		Endpoints SystemEndpoints
+		DB        DatabaseConfig
+
+		// Per service configurations.
+		BlockSize       uint64                  // orderer, loadgen
+		BlockTimeout    time.Duration           // orderer
+		ConfigBlockPath string                  // orderer, sidecar, loadgen
+		LedgerPath      string                  // sidecar
+		ChannelID       string                  // sidecar, loadgen
+		Policy          *workload.PolicyProfile // loadgen
 	}
 
-	// CommonEndpoints holds commonly used endpoints across services.
-	CommonEndpoints struct {
-		ServerEndpoint  string
-		MetricsEndpoint string
+	// SystemEndpoints represents the endpoints of the system.
+	SystemEndpoints struct {
+		Database    []*connection.Endpoint
+		Verifier    []*connection.Endpoint
+		VCService   []*connection.Endpoint
+		Orderer     []*connection.Endpoint
+		Query       *connection.Endpoint
+		Coordinator *connection.Endpoint
+		Sidecar     *connection.Endpoint
+		LoadGen     *connection.Endpoint
 	}
 
-	// SigVerifierConfig represents the configuration of the sigverifier process.
-	SigVerifierConfig struct {
-		CommonEndpoints
-	}
-
-	// QueryServiceOrVCServiceConfig represents either the configuration of a query-service or a vc service.
-	QueryServiceOrVCServiceConfig struct {
-		CommonEndpoints
-		DatabaseEndpoints []*connection.Endpoint
-		DatabaseName      string
-		LoadBalance       bool
-	}
-
-	// CoordinatorConfig represents the configuration of the coordinator process.
-	CoordinatorConfig struct {
-		CommonEndpoints
-		SigVerifierEndpoints []string
-		VCServiceEndpoints   []string
-	}
-
-	// SidecarConfig represents the configuration of the sidecar process.
-	SidecarConfig struct {
-		CommonEndpoints
-		OrdererEndpoints    []string
-		CoordinatorEndpoint string
-		ChannelID           string
-		LedgerPath          string
-		ConfigBlockPath     string
-	}
-
-	// LoadGenConfig represents the configuration of the load generator.
-	LoadGenConfig struct {
-		CommonEndpoints
-		OrdererEndpoints    []string
-		CoordinatorEndpoint string
-		SidecarEndpoint     string
-		ChannelID           string
-		BlockSize           uint64
-		Policy              *workload.PolicyProfile
+	// DatabaseConfig represents the used DB.
+	DatabaseConfig struct {
+		Name        string
+		LoadBalance bool
 	}
 
 	// ConfigBlock represents the configuration of the config block.
-	ConfigBlock = workload.ConfigBlock
+	ConfigBlock = workload.ConfigBlock //nolint:revive
 )
 
-// CreateConfigFile creates a configuration file by applying the given config on a template.
-func CreateConfigFile(t *testing.T, config any, templateFilePath, outputFilePath string) {
+// Config templates.
+var (
+	//go:embed templates/coordinator.yaml
+	TemplateCoordinator string
+	//go:embed templates/mockorderingservice.yaml
+	TemplateMockOrderer string
+	//go:embed templates/queryexecutor.yaml
+	TemplateQueryService string
+	//go:embed templates/sidecar.yaml
+	TemplateSidecar string
+	//go:embed templates/validatorpersister.yaml
+	TemplateVC string
+	//go:embed templates/signatureverifier.yaml
+	TemplateVerifier string
+	//go:embed templates/loadgen_orderer.yaml
+	TemplateLoadGenOrderer string
+	//go:embed templates/loadgen_committer.yaml
+	TemplateLoadGenCommitter string
+)
+
+// CreateConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
+func CreateConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
 	t.Helper()
-	tmpl, err := template.ParseFiles(templateFilePath)
+	tmpl := template.New("").Funcs(sprig.FuncMap())
+	tmpl, err := tmpl.Parse(templateString)
 	require.NoError(t, err)
 
 	var renderedConfig bytes.Buffer
-	require.NoError(t, tmpl.Execute(&renderedConfig, config))
-
-	outputFile, err := os.Create(outputFilePath) // nolint:gosec
+	require.NoError(t, tmpl.Execute(&renderedConfig, conf))
+	err = os.WriteFile(outputPath, renderedConfig.Bytes(), 0o644)
 	require.NoError(t, err)
-	defer func() {
-		_ = outputFile.Close()
-	}()
+}
 
-	_, err = outputFile.Write(renderedConfig.Bytes())
-	require.NoError(t, err)
+// CreateTempConfigFromTemplate creates a temporary config file and returning the temporary output config path.
+func CreateTempConfigFromTemplate(t *testing.T, cmdTemplate string, conf *SystemConfig) string {
+	t.Helper()
+	outputConfigFilePath := path.Join(t.TempDir(), fmt.Sprintf("config-%s.yaml", uuid.NewString()))
+	CreateConfigFromTemplate(t, cmdTemplate, outputConfigFilePath, conf)
+	return outputConfigFilePath
 }
 
 // CreateConfigBlock create and writes a config block to file.
@@ -110,4 +119,11 @@ func WriteConfigBlock(t *testing.T, block *common.Block) string {
 	configBlockPath := filepath.Join(blockDir, "config.block")
 	require.NoError(t, configtxgen.WriteOutputBlock(block, configBlockPath))
 	return configBlockPath
+}
+
+// WithEndpoint creates a new SystemConfig with a modified ServerEndpoint.
+func (c *SystemConfig) WithEndpoint(e *connection.Endpoint) *SystemConfig {
+	s := *c
+	s.ServerEndpoint = e
+	return &s
 }

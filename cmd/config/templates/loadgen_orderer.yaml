@@ -1,11 +1,11 @@
 orderer-client:
-  sidecar-endpoint: {{ .SidecarEndpoint }}
+  sidecar-endpoint: {{ .Endpoints.Sidecar }}
   coordinator:
-    endpoint: {{ .CoordinatorEndpoint }}
+    endpoint: {{ .Endpoints.Coordinator }}
   orderer:
     connection:
       endpoints:
-        {{- range .OrdererEndpoints }}
+        {{- range .Endpoints.Orderer }}
         - {{ . }}
         {{- end }}
     consensus-type: BFT
@@ -14,7 +14,7 @@ orderer-client:
 
 monitoring:
   server:
-    endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+    endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
   latency:
     sampler:
       type: hash
@@ -46,6 +46,7 @@ load-profile:
           scheme: {{ $element.Scheme }}
           seed: {{ $element.Seed }}
         {{ end }}
+      config-block-path: {{ .ConfigBlockPath }}
   query:
     query-size:
     min-invalid-keys-portion:
@@ -58,7 +59,7 @@ load-profile:
 
 stream:
   rate-limit:
-    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
     initial-limit: 1000
   gen-batch: 1
   buffers-size: 1

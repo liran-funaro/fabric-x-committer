@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -10,6 +11,9 @@ import (
 )
 
 func TestClusterController(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Container IP access not supported on non-linux Docker")
+	}
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
@@ -29,6 +33,9 @@ func TestClusterController(t *testing.T) {
 }
 
 func TestClusterControllerConcurrency(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Container IP access not supported on non-linux Docker")
+	}
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)

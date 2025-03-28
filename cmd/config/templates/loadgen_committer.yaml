@@ -1,0 +1,69 @@
+sidecar-client:
+  sidecar-endpoint: {{ .Endpoints.Sidecar }}
+  orderer-servers:
+    {{- range .Endpoints.Orderer }}
+    - endpoint: {{ . }}
+    {{- end }}
+  channel-id: {{ .ChannelID }}
+
+monitoring:
+  server:
+    endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+  latency:
+    sampler:
+      type: hash
+      ratio: 10
+      sample-size: 100
+      sample-period: 100000
+    buckets:
+      type: uniform
+      max-latency: 5s
+      bucket-count: 1000
+buffer-size: 0
+
+load-profile:
+  block:
+    size: {{ .BlockSize }}
+  key:
+    size: 32
+  transaction:
+    read-write-value-size:
+    blind-write-value-size:
+    read-only-count:
+    read-write-count:
+      type: constant
+      const: 2
+    policy:
+      namespace-policies:
+        {{ range $nsID, $element := .Policy.NamespacePolicies }}
+        {{ $nsID }}:
+          scheme: {{ $element.Scheme }}
+          seed: {{ $element.Seed }}
+        {{ end }}
+      config-block-path: {{ .ConfigBlockPath }}
+  query:
+    query-size:
+    min-invalid-keys-portion:
+    shuffle: false
+  conflicts:
+    invalid-signatures: 0
+    dependencies:
+  seed: 12345
+  workers: 1
+
+stream:
+  rate-limit:
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+    initial-limit: 1000
+  gen-batch: 1
+  buffers-size: 1
+
+generate:
+  # The sidecar does not support config TX from the stream.
+  config: false
+  namespaces: true
+  load: true
+
+logging:
+  enabled: true
+  level: INFO 

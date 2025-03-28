@@ -16,12 +16,13 @@
 # Constants
 #########################
 
+go_cmd          ?= go
 version         := 0.0.2
 project_dir     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 output_dir      ?= $(project_dir)/bin
 arch_output_dir ?= $(project_dir)/archbin
-cache_dir       ?= $(shell go env GOCACHE)
-mod_cache_dir   ?= $(shell go env GOMODCACHE)
+cache_dir       ?= $(shell $(go_cmd) env GOCACHE)
+mod_cache_dir   ?= $(shell $(go_cmd) env GOMODCACHE)
 go_version      ?= 1.24
 golang_image    ?= golang:$(go_version)-bookworm
 db_image        ?= yugabytedb/yugabyte:2.20.7.0-b58
@@ -43,11 +44,11 @@ image_namespace=icr.io/cbdc
 
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64
-os             ?= $(shell go env GOOS)
-arch           ?= $(shell go env GOARCH)
+os             ?= $(shell $(go_cmd) env GOOS)
+arch           ?= $(shell $(go_cmd) env GOARCH)
 multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
-go_build       ?= $(env) go build -buildvcs=false -o
+go_build       ?= $(env) $(go_cmd) build -buildvcs=false -o
 
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
@@ -75,34 +76,34 @@ HEAVY_PACKAGES_REGEXP = .*/scalable-committer/(docker|integration)
 
 test: build
 	@# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
-	@go test -v $(shell go list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
+	@$(go_cmd) test -timeout 30m -v $(shell $(go_cmd) list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
 
 integration-test: build
-	go test -timeout 30m -v ./integration/...
+	$(go_cmd) test -timeout 30m -v ./integration/...
 
 container-test: build-test-node-image build-mock-orderer-image
-	go test -v ./docker/...
+	$(go_cmd) test -v ./docker/...
 
 test-package-%: build
-	go test -v ./$*/...
+	$(go_cmd) test -timeout 30m -v ./$*/...
 
 test-db-packages: build
-	@go test -v $(shell go list ./... | grep -E "$(DB_PACKAGES_REGEXP)")
+	@$(go_cmd) test -timeout 30m -v $(shell $(go_cmd) list ./... | grep -E "$(DB_PACKAGES_REGEXP)")
 
 test-non-db-packages: build
-	@go test -v $(shell go list ./... | grep -vE "$(DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
+	@$(go_cmd) test -timeout 30m -v $(shell $(go_cmd) list ./... | grep -vE "$(DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
 test-cover: build
-	go test -v -coverprofile=coverage.profile ./...
+	$(go_cmd) test -v -coverprofile=coverage.profile ./...
 
 test-cover-%: build
-	go test -v -coverprofile=$*.coverage.profile "./$*/..."
+	$(go_cmd) test -v -coverprofile=$*.coverage.profile "./$*/..."
 
 cover-report: FORCE
-	go tool cover -html=coverage.profile
+	$(go_cmd) tool cover -html=coverage.profile
 
 cover-report-%: FORCE
-	go tool cover -html=$*.coverage.profile
+	$(go_cmd) tool cover -html=$*.coverage.profile
 
 clean: FORCE
 	@rm -rf $(output_dir)

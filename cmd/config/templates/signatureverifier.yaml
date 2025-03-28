@@ -1,9 +1,9 @@
 sig-verification:
   server:
-    endpoint: {{ .CommonEndpoints.ServerEndpoint }}
+    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
   monitoring:
     server:
-      endpoint: {{ .CommonEndpoints.MetricsEndpoint }}
+      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
 
   parallel-executor:
     parallelism: 40

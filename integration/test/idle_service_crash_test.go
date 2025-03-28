@@ -15,16 +15,14 @@ import (
 //nolint:paralleltest
 func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 	gomega.RegisterTestingT(t)
-	c := runner.NewRuntime(
-		t,
-		&runner.Config{
-			NumSigVerifiers:     2,
-			NumVCService:        2,
-			InitializeNamespace: []string{"1"},
-			BlockSize:           5,
-			BlockTimeout:        2 * time.Second,
-		},
-	)
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers:        2,
+		NumVCService:        2,
+		InitializeNamespace: []string{"1"},
+		BlockSize:           5,
+		BlockTimeout:        2 * time.Second,
+	})
+	c.StartSystem(t)
 
 	// Scenario:
 	// 1. Submit two transactions and verify their commitment.
@@ -79,7 +77,7 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 		{"sidecar"},
 		{"coordinator", "sidecar"},
 		{"vcservices", "verifiers"},
-		// We fails all four services but we test the order too.
+		// We fail all four services, but we test the order too.
 		// However, the order of vcservices and verifiers do not matter.
 		{"coordinator", "vcservices", "verifiers", "sidecar"},
 		{"verifiers", "vcservices", "coordinator", "sidecar"},
@@ -93,7 +91,7 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 			case "coordinator":
 				c.Coordinator.Stop(t)
 			case "verifiers":
-				for _, verifier := range c.SigVerifier {
+				for _, verifier := range c.Verifier {
 					verifier.Stop(t)
 				}
 			case "vcservices":
@@ -119,7 +117,7 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 			case "coordinator":
 				c.Coordinator.Restart(t)
 			case "verifiers":
-				for _, verifier := range c.SigVerifier {
+				for _, verifier := range c.Verifier {
 					verifier.Restart(t)
 				}
 			case "vcservices":
