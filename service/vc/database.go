@@ -45,7 +45,6 @@ var ErrMetadataEmpty = errors.New("metadata value is empty")
 type (
 	// database handles the database operations.
 	database struct {
-		name    string
 		pool    *pgxpool.Pool
 		metrics *perfMetrics
 		retry   *connection.RetryProfile
@@ -86,24 +85,18 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 		}
 	}()
 
-	dbType, err := getDbType(ctx, pool)
-	if err != nil {
-		return nil, err
-	}
-
 	if err = initDatabaseTables(ctx, pool, nil); err != nil {
 		return nil, err
 	}
 
 	return &database{
-		name:    dbType,
 		pool:    pool,
 		metrics: metrics,
 	}, nil
 }
 
 func (db *database) close() {
-	logger.Infof("closing %s database connection", db.name)
+	logger.Info("closing database connection")
 	db.pool.Close()
 }
 
@@ -382,7 +375,7 @@ func (db *database) createTablesAndFunctionsForNamespace(tx pgx.Tx, newNs *names
 
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
-			if _, err := tx.Exec(context.Background(), stmtFmt(stmt, tableName, db.name)); err != nil {
+			if _, err := tx.Exec(context.Background(), fmt.Sprintf(stmt, tableName)); err != nil {
 				return err
 			}
 		}

@@ -3,7 +3,6 @@ package vc
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
@@ -17,7 +16,7 @@ CREATE TABLE IF NOT EXISTS tx_status (
 	tx_id bytea NOT NULL PRIMARY KEY,
 	status integer,
   height bytea NOT NULL
-) %[2]s;
+);
 `
 
 const queryTxIDsStatus = `
@@ -89,10 +88,8 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	key bytea NOT NULL PRIMARY KEY,
 	value bytea DEFAULT NULL,
 	version bytea DEFAULT '\x00'::bytea
-) %[2]s;
+);
 `
-
-const tableSplit = "SPLIT INTO 120 tablets"
 
 // We avoid using index for now as it slows down inserts
 // const createIndexStmtTemplate = `CREATE INDEX idx_%[1]s ON %[1]s(version);`
@@ -245,58 +242,15 @@ func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []string) 
 	return nil
 }
 
-func getDbType(ctx context.Context, pool *pgxpool.Pool) (string, error) {
-	rows, err := pool.Query(ctx, "SELECT version();")
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var out string
-		err = rows.Scan(&out)
-		if err != nil {
-			return "", err
-		}
-		out = strings.ToLower(out)
-		if strings.Contains(out, "yugabyte") {
-			return "yugabyte", nil
-		} else if strings.Contains(out, "postgresql") {
-			return "postgresql", nil
-		}
-	}
-	return "", nil
-}
-
-func stmtFmt(stmtTemplate, tableName, dbType string) string {
-	splitStmt := ""
-	if dbType == "yugabyte" {
-		splitStmt = tableSplit
-	}
-	// We add a fake template at the end, so we always consume both parameters.
-	return fmt.Sprintf(stmtTemplate+"%.0[1]s%.0[2]s", tableName, splitStmt)
-}
-
 func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string) error {
-	logger.Infof("Starting DB tables initialization. Already performed action will be ignored.")
-	dbType, err := getDbType(ctx, pool)
-	if err != nil {
-		return err
-	}
-	logger.Infof("DBType: %v", dbType)
-
 	for _, stmt := range initStatements {
-		if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, "", dbType)); execErr != nil {
+		if execErr := dbtest.PoolExecOperation(ctx, pool, stmt); execErr != nil {
 			return fmt.Errorf("failed initializing tables: %w", execErr)
 		}
 	}
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := dbtest.PoolExecOperation(ctx,
-		pool,
-		stmtFmt(initializeMetadataPrepStmt, "", dbType),
-		[]byte(lastCommittedBlockNumberKey),
-		nil,
-	); execErr != nil {
+	if execErr := dbtest.PoolExecOperation(ctx, pool,
+		initializeMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), nil); execErr != nil {
 		return fmt.Errorf("failed initialization metadata table: %w", execErr)
 	}
 
@@ -304,7 +258,7 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 	for _, nsID := range nsIDs {
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
-			if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+			if execErr := dbtest.PoolExecOperation(ctx, pool, fmt.Sprintf(stmt, tableName)); execErr != nil {
 				return fmt.Errorf("failed creating meta-namespace: %w", execErr)
 			}
 			logger.Infof("Created table '%s' and its methods.", tableName)
@@ -315,17 +269,8 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 
 func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string) error {
 	logger.Info("Dropping tx status table and its methods.")
-	dbType, err := getDbType(ctx, pool)
-	if err != nil {
-		return err
-	}
-	logger.Infof("DBType: %v", dbType)
-
 	for _, stmt := range dropStatements {
-		if execErr := dbtest.PoolExecOperation(ctx,
-			pool,
-			stmtFmt(stmt, "", dbType),
-		); execErr != nil {
+		if execErr := dbtest.PoolExecOperation(ctx, pool, stmt); execErr != nil {
 			return fmt.Errorf("failed clearing database tables: %w", execErr)
 		}
 	}
@@ -337,7 +282,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 		logger.Infof("Dropping table '%s' and its methods.", tableName)
 
 		for _, stmt := range dropStatementsWithTemplate {
-			if execErr := dbtest.PoolExecOperation(ctx, pool, stmtFmt(stmt, tableName, dbType)); execErr != nil {
+			if execErr := dbtest.PoolExecOperation(ctx, pool, fmt.Sprintf(stmt, tableName)); execErr != nil {
 				return fmt.Errorf("failed clearing database tables: %w", execErr)
 			}
 		}
