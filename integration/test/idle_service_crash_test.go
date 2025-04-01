@@ -126,10 +126,6 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 				}
 			case "sidecar":
 				c.Sidecar.Restart(t)
-				// only for the sidecar restart, the deliver client needs to be restarted
-				// because the stream at the sidecar would not exist after the restart.
-				c.CreateSidecarDeliverClient(t)
-				c.StartSidecarDeliverClient(t.Context(), t)
 			}
 			time.Sleep(5 * time.Second) // between restart, wait for 5 seconds
 		}

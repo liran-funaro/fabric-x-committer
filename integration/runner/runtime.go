@@ -188,7 +188,11 @@ func (c *CommitterRuntime) StartSystem(t *testing.T) {
 	c.ordererClient, err = ordererSubmitter.Broadcast(ctx)
 	require.NoError(t, err)
 
-	c.CreateSidecarDeliverClient(t)
+	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
+		ChannelID: c.systemConfig.ChannelID,
+		Endpoint:  c.systemConfig.Endpoints.Sidecar,
+	})
+	require.NoError(t, err)
 
 	t.Log("Validate state")
 	c.ensureLastCommittedBlockNumber(t, 0)
@@ -249,30 +253,6 @@ func createClientConnection(t *testing.T, e *connection.Endpoint) *grpc.ClientCo
 	serviceConnection, err := connection.LazyConnect(connection.NewDialConfig(e))
 	require.NoError(t, err)
 	return serviceConnection
-}
-
-// CreateSidecarDeliverClient creates a sidecar deliver client.
-func (c *CommitterRuntime) CreateSidecarDeliverClient(t *testing.T) {
-	t.Helper()
-	var err error
-	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
-		ChannelID: c.systemConfig.ChannelID,
-		Endpoint:  c.systemConfig.Endpoints.Sidecar,
-	})
-	require.NoError(t, err)
-}
-
-// StartSidecarDeliverClient starts a block deliver stream with the sidecar.
-func (c *CommitterRuntime) StartSidecarDeliverClient(ctx context.Context, t *testing.T) {
-	t.Helper()
-	c.committedBlock = make(chan *common.Block, 100)
-	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
-			StartBlkNum: int64(c.lastReceivedBlockNumber) + 1, //nolint:gosec // uint64 -> int64
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
-			OutputBlock: c.committedBlock,
-		}))
-	}, nil)
 }
 
 // createNamespacesAndCommit creates namespaces in the committer.
