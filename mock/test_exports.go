@@ -2,8 +2,10 @@ package mock
 
 import (
 	"context"
+	"slices"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -11,6 +13,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -101,7 +105,7 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 
 	if len(conf.ServerConfigs) == conf.NumService {
 		return service, test.StartGrpcServersWithConfigForTest(
-			context.Background(),
+			t.Context(),
 			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
 				ab.RegisterAtomicBroadcastServer(server, service)
 			},
@@ -109,9 +113,91 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	}
 
 	servers := test.StartGrpcServersForTest(
-		context.Background(), t, conf.NumService, func(server *grpc.Server, index int) {
+		t.Context(), t, conf.NumService, func(server *grpc.Server, _ int) {
 			ab.RegisterAtomicBroadcastServer(server, service)
 		},
 	)
 	return service, servers
+}
+
+// OrdererTestEnv allows starting fake and holder services in addition to the regular mock orderer services.
+type OrdererTestEnv struct {
+	Orderer        *Orderer
+	Holder         *HoldingOrderer
+	OrdererServers *test.GrpcServers
+	FakeServers    *test.GrpcServers
+	HolderServers  *test.GrpcServers
+	TestConfig     *OrdererTestConfig
+}
+
+// OrdererTestConfig describes the configuration for OrdererTestEnv.
+type OrdererTestConfig struct {
+	ChanID                       string
+	Config                       *OrdererConfig
+	NumFake                      int
+	NumHolders                   int
+	MetaNamespaceVerificationKey []byte
+}
+
+// NewOrdererTestEnv creates and starts a new OrdererTestEnv.
+func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
+	t.Helper()
+	orderer, ordererServers := StartMockOrderingServices(t, conf.Config)
+	holder := &HoldingOrderer{Orderer: orderer}
+	holder.Release()
+	return &OrdererTestEnv{
+		TestConfig:     conf,
+		Orderer:        orderer,
+		Holder:         holder,
+		OrdererServers: ordererServers,
+		HolderServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, func(s *grpc.Server, _ int) {
+			ab.RegisterAtomicBroadcastServer(s, holder)
+		}),
+		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake),
+	}
+}
+
+// SubmitConfigBlock creates and submits a config block.
+func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *config.ConfigBlock) *common.Block {
+	t.Helper()
+	if conf == nil {
+		conf = &config.ConfigBlock{}
+	}
+	if conf.ChannelID == "" {
+		conf.ChannelID = e.TestConfig.ChanID
+	}
+	if len(conf.OrdererEndpoints) == 0 {
+		conf.OrdererEndpoints = e.AllEndpoints()
+	}
+	if conf.MetaNamespaceVerificationKey == nil {
+		conf.MetaNamespaceVerificationKey = e.TestConfig.MetaNamespaceVerificationKey
+	}
+	configBlock, err := workload.CreateDefaultConfigBlock(conf)
+	require.NoError(t, err)
+	e.Orderer.SubmitBlock(t.Context(), configBlock)
+	return configBlock
+}
+
+// AllEndpoints returns a list of all the endpoints (real, fake, and holders).
+func (e *OrdererTestEnv) AllEndpoints() []*connection.OrdererEndpoint {
+	return slices.Concat(
+		e.AllRealOrdererEndpoints(),
+		e.AllHolderEndpoints(),
+		e.AllFakeEndpoints(),
+	)
+}
+
+// AllRealOrdererEndpoints returns a list of the real orderer endpoints.
+func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*connection.OrdererEndpoint {
+	return connection.NewOrdererEndpoints(0, "org", e.OrdererServers.Configs...)
+}
+
+// AllFakeEndpoints returns a list of the fake orderer endpoints.
+func (e *OrdererTestEnv) AllFakeEndpoints() []*connection.OrdererEndpoint {
+	return connection.NewOrdererEndpoints(0, "org", e.FakeServers.Configs...)
+}
+
+// AllHolderEndpoints returns a list of the holder orderer endpoints.
+func (e *OrdererTestEnv) AllHolderEndpoints() []*connection.OrdererEndpoint {
+	return connection.NewOrdererEndpoints(0, "org", e.HolderServers.Configs...)
 }

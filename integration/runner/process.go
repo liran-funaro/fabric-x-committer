@@ -18,7 +18,6 @@ type (
 	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
 	ProcessWithConfig struct {
 		process        ifrit.Process
-		config         *config.SystemConfig
 		cmdName        string
 		configFilePath string
 	}
@@ -43,7 +42,6 @@ func newProcess(
 	t.Helper()
 	configFilePath := config.CreateTempConfigFromTemplate(t, cmdTemplate, conf)
 	p := &ProcessWithConfig{
-		config:         conf,
 		cmdName:        cmdName,
 		configFilePath: configFilePath,
 	}

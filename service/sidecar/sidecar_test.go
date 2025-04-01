@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
@@ -39,10 +38,7 @@ type sidecarTestEnv struct {
 	config            Config
 	coordinator       *mock.Coordinator
 	coordinatorServer *test.GrpcServers
-	orderer           *mock.Orderer
-	ordererServers    *test.GrpcServers
-	ordererEndpoints  []*connection.OrdererEndpoint
-	chanID            string
+	ordererEnv        *mock.OrdererTestEnv
 
 	sidecar        *Service
 	gServer        *grpc.Server
@@ -52,6 +48,7 @@ type sidecarTestEnv struct {
 type sidecarTestConfig struct {
 	NumService      int
 	NumFakeService  int
+	NumHolders      int
 	WithConfigBlock bool
 }
 
@@ -80,9 +77,9 @@ func (c *sidecarTestConfig) String() string {
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	t.Helper()
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
-	orderer, ordererServers := mock.StartMockOrderingServices(
-		t,
-		&mock.OrdererConfig{
+	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
+		ChanID: "ch1",
+		Config: &mock.OrdererConfig{
 			NumService: conf.NumService,
 			BlockSize:  blockSize,
 			// We want each block to contain exactly <blockSize> transactions.
@@ -90,24 +87,15 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 			// transactions to the orderer and create a block.
 			BlockTimeout:    5 * time.Minute,
 			SendConfigBlock: false,
-		})
-	fakeConfigs := make([]*connection.ServerConfig, conf.NumFakeService)
-	for i := range fakeConfigs {
-		fakeConfigs[i] = &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}}
-		test.RunGrpcServerForTest(t.Context(), t, fakeConfigs[i])
-	}
-	ordererEndpoints := append(
-		connection.NewOrdererEndpoints(0, "org", ordererServers.Configs...),
-		connection.NewOrdererEndpoints(0, "org", fakeConfigs...)...,
-	)
+		},
+		NumFake:    conf.NumFakeService,
+		NumHolders: conf.NumHolders,
+	})
 
-	chanID := "ch1"
-	configBlock, err := workload.CreateDefaultConfigBlock(&config.ConfigBlock{
-		ChannelID:        chanID,
+	ordererEndpoints := ordererEnv.AllEndpoints()
+	configBlock := ordererEnv.SubmitConfigBlock(t, &config.ConfigBlock{
 		OrdererEndpoints: ordererEndpoints,
 	})
-	require.NoError(t, err)
-	orderer.SubmitBlock(t.Context(), configBlock)
 
 	var genesisBlockFilePath string
 	initOrdererEndpoints := ordererEndpoints
@@ -120,7 +108,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 			Endpoint: connection.Endpoint{Host: "localhost"},
 		},
 		Orderer: broadcastdeliver.Config{
-			ChannelID: chanID,
+			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: broadcastdeliver.ConnectionConfig{
 				Endpoints: initOrdererEndpoints,
 			},
@@ -147,10 +135,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		sidecar:           sidecar,
 		coordinator:       coordinator,
 		coordinatorServer: coordinatorServer,
-		orderer:           orderer,
-		ordererServers:    ordererServers,
-		ordererEndpoints:  ordererEndpoints,
-		chanID:            chanID,
+		ordererEnv:        ordererEnv,
 		config:            *sidecarConf,
 	}
 }
@@ -195,67 +180,58 @@ func TestSidecar(t *testing.T) {
 
 func TestSidecarConfigUpdate(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnv(t, sidecarTestConfig{NumService: 3})
+	env := newSidecarTestEnv(t, sidecarTestConfig{NumService: 3, NumHolders: 3})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t, 0)
 	env.requireBlock(ctx, t, 0)
 
-	// Sanity check
+	t.Log("Sanity check")
 	expectedBlock := uint64(1)
 	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
 	expectedBlock++
 
-	// Update the sidecar to use a second orderer group.
-	holder := &mock.HoldingOrderer{
-		Orderer: env.orderer,
-	}
-	holder.HoldBlock.Store(expectedBlock + 2)
-	holderServers := test.StartGrpcServersForTest(
-		ctx, t, 3, func(server *grpc.Server, _ int) {
-			ab.RegisterAtomicBroadcastServer(server, holder)
-		},
-	)
-
 	submitConfigBlock := func(endpoints []*connection.OrdererEndpoint) {
-		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
-			ChannelID:        env.chanID,
+		env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			OrdererEndpoints: endpoints,
 		})
-		require.NoError(t, err)
-		env.orderer.SubmitBlock(ctx, configBlock)
 	}
-	submitConfigBlock(connection.NewOrdererEndpoints(0, "org", holderServers.Configs...))
+
+	t.Log("Update the sidecar to use a second orderer group")
+	env.ordererEnv.Holder.HoldFromBlock.Store(expectedBlock + 2)
+	submitConfigBlock(env.ordererEnv.AllHolderEndpoints())
 	env.requireBlock(ctx, t, expectedBlock)
 	expectedBlock++
 
-	// Sanity check
+	t.Log("Sanity check")
 	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
 	expectedBlock++
 
+	t.Log("Submit new config block, and ensure it was not received")
 	// We submit the config that returns to the non-holding orderer.
 	// But it should not be processed as the sidecar should have switched to the holding
 	// orderer.
-	submitConfigBlock(env.ordererEndpoints)
+	submitConfigBlock(env.ordererEnv.AllRealOrdererEndpoints())
 	select {
 	case <-ctx.Done():
 		t.Fatal("context deadline exceeded")
 	case <-env.committedBlock:
 		t.Fatal("the sidecar cannot receive blocks since its orderer holds them")
 	case <-time.After(expectedProcessingTime):
-		// Fantastic.
+		t.Log("Fantastic")
 	}
 
-	// We expect the block to be held.
+	t.Log("We expect the block to be held")
 	lastBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, expectedBlock-1, lastBlock.Number)
 
-	// We advance the holder by one to allow the config block to pass through, but not other blocks.
-	holder.HoldBlock.Add(1)
+	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
+	env.ordererEnv.Holder.HoldFromBlock.Add(1)
 	env.requireBlock(ctx, t, expectedBlock)
 	expectedBlock++
-	// The sidecar should use the non-holding orderer, so the holding should not affect the processing.
+
+	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
 	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
 }
 
@@ -425,7 +401,7 @@ func sendTransactionsAndEnsureCommitted(
 			Id:         txIDPrefix + strconv.Itoa(i),
 			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}},
 		}
-		_, err := env.orderer.SubmitPayload(ctx, env.chanID, txs[i])
+		_, err := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, txs[i])
 		require.NoErrorf(t, err, "block %d, tx %d", expectedBlockNumber, i)
 	}
 	block := env.requireBlock(ctx, t, expectedBlockNumber)

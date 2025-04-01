@@ -51,7 +51,7 @@ type (
 	// HoldingOrderer allows holding a block.
 	HoldingOrderer struct {
 		*Orderer
-		HoldBlock atomic.Uint64
+		HoldFromBlock atomic.Uint64
 	}
 
 	holdingStream struct {
@@ -199,8 +199,13 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	return o.Orderer.Deliver(&holdingStream{
 		AtomicBroadcast_DeliverServer: stream,
-		holdBlock:                     &o.HoldBlock,
+		holdBlock:                     &o.HoldFromBlock,
 	})
+}
+
+// Release blocks.
+func (o *HoldingOrderer) Release() {
+	o.HoldFromBlock.Store(math.MaxUint64)
 }
 
 func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
@@ -297,7 +302,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 				continue
 			}
 			data = append(data, protoutil.MarshalOrPanic(env))
-			if len(data) >= int(o.config.BlockSize) {
+			if len(data) >= o.config.BlockSize {
 				sendBlockData("size")
 			}
 		}

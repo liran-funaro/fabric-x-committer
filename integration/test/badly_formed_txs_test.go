@@ -22,7 +22,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 		BlockSize:    5,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t)
+	c.StartSystem(t, runner.All)
 
 	cr := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 	ns1Policy := cr.HashSigner.GetVerificationPolicy()

@@ -20,7 +20,7 @@ func TestLoadGenOrderer(t *testing.T) {
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
 	})
-	c.StartSystem(t)
+	c.StartSystem(t, runner.All)
 	c.StartLoadGenOrderer(t)
 
 	require.Eventually(t, func() bool {
@@ -40,13 +40,13 @@ func TestLoadGenCommitter(t *testing.T) {
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
 	})
-	c.StartSystem(t)
 	c.StartLoadGenCommitter(t)
+	c.StartSystem(t, runner.All-runner.Orderer)
 
 	require.Eventually(t, func() bool {
 		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
 		t.Logf("count %d", count)
 		return count > 1_000
-	}, 90*time.Second, 3*time.Second)
+	}, 90*time.Second, 500*time.Millisecond)
 	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
 }

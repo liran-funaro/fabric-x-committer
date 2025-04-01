@@ -30,12 +30,12 @@ func requireQueryResults(
 func TestQueryService(t *testing.T) {
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers:        2,
-		NumVCService:        2,
-		InitializeNamespace: []string{"1", "2"},
-		BlockTimeout:        2 * time.Second,
+		NumVerifiers: 2,
+		NumVCService: 2,
+		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t)
+	c.StartSystem(t, runner.All)
+	c.CreateNamespacesAndCommit(t, "1", "2")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	t.Cleanup(cancel)

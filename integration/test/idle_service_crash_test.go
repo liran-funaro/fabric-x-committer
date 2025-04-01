@@ -16,13 +16,13 @@ import (
 func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers:        2,
-		NumVCService:        2,
-		InitializeNamespace: []string{"1"},
-		BlockSize:           5,
-		BlockTimeout:        2 * time.Second,
+		NumVerifiers: 2,
+		NumVCService: 2,
+		BlockSize:    5,
+		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t)
+	c.StartSystem(t, runner.All)
+	c.CreateNamespacesAndCommit(t, "1")
 
 	// Scenario:
 	// 1. Submit two transactions and verify their commitment.

@@ -21,7 +21,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t)
+	c.StartSystem(t, runner.All)
 
 	cr1 := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 	ns1Policy := cr1.HashSigner.GetVerificationPolicy()

@@ -142,24 +142,26 @@ func StartGrpcServersForTest(
 	ctx context.Context,
 	t TestingT,
 	numService int,
-	register func(*grpc.Server, int),
+	register ...func(*grpc.Server, int),
 ) *GrpcServers {
 	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
 		sc[i] = connection.NewLocalHostServer()
 	}
-	return StartGrpcServersWithConfigForTest(ctx, t, sc, register)
+	return StartGrpcServersWithConfigForTest(ctx, t, sc, register...)
 }
 
 // StartGrpcServersWithConfigForTest starts multiple GRPC servers with given configurations.
 func StartGrpcServersWithConfigForTest(
-	ctx context.Context, t TestingT, sc []*connection.ServerConfig, register func(*grpc.Server, int),
+	ctx context.Context, t TestingT, sc []*connection.ServerConfig, register ...func(*grpc.Server, int),
 ) *GrpcServers {
 	grpcServers := make([]*grpc.Server, len(sc))
 	for i, s := range sc {
 		grpcServers[i] = RunGrpcServerForTest(ctx, t, s, func(server *grpc.Server) {
-			register(server, i)
+			for _, r := range register {
+				r(server, i)
+			}
 		})
 	}
 	return &GrpcServers{
@@ -209,7 +211,7 @@ func RunServiceAndGrpcForTest(
 	t TestingT,
 	service connection.Service,
 	serverConfig *connection.ServerConfig,
-	register func(server *grpc.Server),
+	register ...func(server *grpc.Server),
 ) *grpc.Server {
 	t.Helper()
 	RunServiceForTest(ctx, t, func(ctx context.Context) error {
@@ -218,7 +220,7 @@ func RunServiceAndGrpcForTest(
 	if serverConfig == nil || register == nil {
 		return nil
 	}
-	return RunGrpcServerForTest(ctx, t, serverConfig, register)
+	return RunGrpcServerForTest(ctx, t, serverConfig, register...)
 }
 
 // WaitUntilGrpcServerIsReady uses the health check API to check a service readiness.
