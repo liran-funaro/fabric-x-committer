@@ -15,7 +15,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -176,12 +175,6 @@ func submit(
 
 func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
 	t.Helper()
-	logging.SetupWithConfig(&logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-	})
 
 	idCount := 3
 	serverPerID := 4

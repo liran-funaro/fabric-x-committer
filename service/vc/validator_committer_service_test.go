@@ -16,7 +16,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -439,12 +438,6 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 
 func TestGRPCStatusCode(t *testing.T) {
 	t.Parallel()
-	logging.SetupWithConfig(
-		&logging.Config{
-			Enabled: true,
-			Level:   logging.Debug,
-		},
-	)
 	ctx, _ := createContext(t)
 	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 	c := env.clients[0]
@@ -699,10 +692,6 @@ func TestTransactionResubmission(t *testing.T) {
 
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
 		ctx, env := setup()
-		logging.SetupWithConfig(&logging.Config{
-			Enabled: true,
-			Level:   logging.Debug,
-		})
 		txBatchWithDup := &protovcservice.TransactionBatch{}
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
