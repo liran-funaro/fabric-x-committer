@@ -35,10 +35,6 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	t.Helper()
 	expectedEndError := string(expectedEndErrorMsg)
 	svs, sc := mock.StartMockSVService(t, numSvService)
-	for _, sv := range svs {
-		// We add some latency to allow equal distribution of work.
-		sv.SetRequestLatency(time.Millisecond)
-	}
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -197,8 +193,8 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
-				BlockNumber: uint64(i), // nolint:gosec
-				TxNum:       uint32(i), // nolint:gosec
+				BlockNumber: uint64(i), //nolint:gosec
+				TxNum:       uint32(i), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
@@ -391,12 +387,6 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 		},
 	}
 
-	env.mockSvService[0].SetRequestHolder(nil)
-	holder := channel.NewReady()
-	t.Cleanup(holder.SignalReady)
-	for _, sv := range env.mockSvService[1:] {
-		sv.SetRequestHolder(holder)
-	}
 	env.requireAllUpdate(t, env.mockSvService[:1], 1, newExpectedUpdate)
 }
 
@@ -407,21 +397,6 @@ func (e *svMgrTestEnv) requireAllUpdate(
 	expected *protosigverifierservice.Update,
 ) {
 	t.Helper()
-	// We initialize all the workers to not hold requests.
-	for _, sv := range svs {
-		sv.SetRequestHolder(nil)
-	}
-	defer func() {
-		// We re-initialize all the workers to not hold requests.
-		for _, sv := range svs {
-			sv.SetRequestHolder(nil)
-		}
-	}()
-
-	holder := channel.NewReady()
-	t.Cleanup(holder.SignalReady)
-	defer holder.SignalReady()
-
 	updates := make([][]*protosigverifierservice.Update, len(svs))
 
 	// verify that all mock policy verifiers have the same verification key.
@@ -446,13 +421,9 @@ func (e *svMgrTestEnv) requireAllUpdate(
 				continue
 			}
 			updates[i] = u
-			// We hold the requests to ensure the work will distributed to other workers.
-			sv.SetRequestHolder(holder)
 		}
 		return isDone
 	}, 2*time.Minute, 10*time.Millisecond)
-
-	holder.SignalReady()
 
 	for _, u := range updates {
 		require.Len(t, u, expectedCount)

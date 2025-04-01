@@ -166,19 +166,15 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 		if err != nil {
 			return errors.Wrap(err, "failed to start stream")
 		}
-		sv.lifecycle.Go(func() error {
-			// NOTE: outputValidatedTxs should not use the stream context.
-			//       Otherwise, there is a possibility of losing validation results forever.
-			return sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs)
+
+		sv.lifecycle.Go(func() error { //nolint:contextcheck
+			return sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs.WithContext(stream.Context()))
 		})
-		//nolint:contextcheck // we are passing a non-inherited context. If we need to send an
-		// inherited context such as sCtx, we should make the above goroutine to explicitly
-		// cancel the context so that the sendTransactionsAndForwardStatus can terminate. We defer
-		// this to issue #704 as we might use errgroup and error categorization which might
-		// make this linter happy.
-		sv.lifecycle.Go(func() error {
+
+		sv.lifecycle.Go(func() error { //nolint:contextcheck
 			return sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(stream.Context()))
 		})
+
 		return nil
 	}, func() error {
 		// Re-enter pending transactions to the queue so other workers can fetch them.
@@ -206,19 +202,12 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 ) error {
 	var policyVersion uint64
 	for {
-		logger.Debug("waiting to read from inputTxBatch")
 		txBatch, ctxAlive := inputTxBatch.Read()
 		if !ctxAlive {
 			return errors.Wrap(inputTxBatch.Context().Err(), "context ended")
 		}
-		logger.Debug("done reading")
 
-		// TODO: introduce metrics to measure the lock wait/holding duration.
-		sv.txMu.Lock()
-		for _, txNode := range txBatch {
-			sv.txBeingValidated[types.Height{BlockNum: txNode.Tx.BlockNumber, TxNum: txNode.Tx.TxNum}] = txNode
-		}
-		sv.txMu.Unlock()
+		sv.addTxsBeingValidated(txBatch)
 
 		batchSize := len(txBatch)
 		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
@@ -267,10 +256,6 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 		// TODO: introduce metrics to measure the lock wait/holding duration.
 		sv.txMu.Lock()
 		for _, resp := range response.Responses {
-			// Since transactions are loaded and deleted before validation results are added to the output queues,
-			// a signature verifier failure after processing a response should not cause this function to return.
-			// As a result, the caller must ensure that outputValidatedTxs does not use the
-			// signatureVerifier's stream context.
 			k := types.Height{BlockNum: resp.BlockNum, TxNum: uint32(resp.TxNum)} //nolint:gosec
 			txNode, ok := sv.txBeingValidated[k]
 			if !ok {
@@ -284,10 +269,23 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 		}
 		sv.txMu.Unlock()
 
+		logger.Info("Waiting to add")
 		if !outputValidatedTxs.Write(validatedTxs) {
+			// Since transactions are loaded and deleted from txBeingValidated before their
+			// validation results are queued, we must re-queue the transaction to txBeingValidated
+			// if its result cannot be added to the outputValidatedTxs queue.
+			sv.addTxsBeingValidated(validatedTxs)
 			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
 		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
 	}
+}
+
+func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
+	sv.txMu.Lock()
+	for _, txNode := range txBatch {
+		sv.txBeingValidated[types.Height{BlockNum: txNode.Tx.BlockNumber, TxNum: txNode.Tx.TxNum}] = txNode
+	}
+	sv.txMu.Unlock()
 }
