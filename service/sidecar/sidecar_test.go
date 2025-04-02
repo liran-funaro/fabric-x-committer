@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -145,10 +143,6 @@ func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum 
 	env.gServer = test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
 	})
-
-	// we need to wait for the sidecar to connect to ordering service and fetch the
-	// config block, i.e., block 0. ensureAtLeastHeight waits for the block 0 to be committed.
-	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 1)
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  &env.config.Server.Endpoint,
@@ -173,7 +167,7 @@ func TestSidecar(t *testing.T) {
 			t.Cleanup(cancel)
 			env.start(ctx, t, 0)
 			env.requireBlock(ctx, t, 0)
-			sendTransactionsAndEnsureCommitted(ctx, t, env, 1)
+			env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
 		})
 	}
 }
@@ -188,7 +182,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 
 	t.Log("Sanity check")
 	expectedBlock := uint64(1)
-	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 	expectedBlock++
 
 	submitConfigBlock := func(endpoints []*connection.OrdererEndpoint) {
@@ -204,7 +198,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	expectedBlock++
 
 	t.Log("Sanity check")
-	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 	expectedBlock++
 
 	t.Log("Submit new config block, and ensure it was not received")
@@ -232,7 +226,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	expectedBlock++
 
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
-	sendTransactionsAndEnsureCommitted(ctx, t, env, expectedBlock)
+	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 }
 
 func TestSidecarConfigRecovery(t *testing.T) {
@@ -255,7 +249,7 @@ func TestSidecarRecovery(t *testing.T) {
 
 	t.Log("1. Commit block 1 to 10")
 	for i := range 10 {
-		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) //nolint:gosec
+		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+1)) //nolint:gosec
 	}
 
 	t.Log("2. Stop the sidecar service and ledger service")
@@ -319,7 +313,7 @@ func TestSidecarRecovery(t *testing.T) {
 	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
 
 	t.Log("9. Send the next expected block by the coordinator.")
-	sendTransactionsAndEnsureCommitted(ctx2, t, env, 11)
+	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
 	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
@@ -334,64 +328,102 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	env.start(ctx, t, 0)
 	env.requireBlock(ctx, t, 0)
 
-	conn, err := connection.Connect(connection.NewDialConfig(&env.config.Committer.Endpoint))
-	require.NoError(t, err)
-	require.NoError(t, conn.Close())
-	label := conn.CanonicalTarget()
-	connStatus := env.sidecar.metrics.coordConnectionStatus.WithLabelValues(label)
-	require.InDelta(t, connection.Connected, testutil.ToFloat64(connStatus), 0)
-
-	connFailureCount := env.sidecar.metrics.coordConnectionFailureTotal.WithLabelValues(label)
-	require.InDelta(t, float64(0), testutil.ToFloat64(connFailureCount), 0)
+	coordLabel := env.getCoordinatorLabel(t)
+	monitoring.RequireConnectionMetrics(
+		t, coordLabel,
+		env.sidecar.metrics.coordConnection,
+		monitoring.ExpectedConn{Status: connection.Connected},
+	)
 
 	t.Log("1. Commit block 1 to 10")
 	for i := range 10 {
-		sendTransactionsAndEnsureCommitted(ctx, t, env, uint64(i+1)) //nolint:gosec
+		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+1)) //nolint:gosec
 	}
 
 	t.Log("2. Stop the coordinator")
 	env.coordinatorServer.Servers[0].Stop()
 
-	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(connStatus) == connection.Disconnected &&
-			testutil.ToFloat64(connFailureCount) == float64(1)
-	}, 5*time.Second, 10*time.Millisecond)
+	monitoring.RequireConnectionMetrics(
+		t, coordLabel,
+		env.sidecar.metrics.coordConnection,
+		monitoring.ExpectedConn{Status: connection.Disconnected, FailureTotal: 1},
+	)
 
-	t.Log("3. Send transactions to ordering service in background to create block 11 after stopping the coordinator")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		sendTransactionsAndEnsureCommitted(ctx, t, env, 11) //nolint:testifylint
-	}()
+	t.Log("3. Send transactions to ordering service to create block 11 after stopping the coordinator")
+	txs := env.sendTransactions(ctx, t)
 
-	t.Log("4. Enqueue an incorrect block 11 to the queue which would be dropped eventually")
-	env.sidecar.blockToBeCommitted <- &common.Block{
-		Header: &common.BlockHeader{
-			Number: 11,
-		},
-		Data: &common.BlockData{
-			Data: [][]byte{[]byte("A")},
-		},
-	} // this should not have any impact as the sidecar would drop all enqueued blocks on reconnection to the sidecar.
-
+	t.Log("4. Restart the coordinator and validate processing block 11")
 	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 
-	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(connStatus) == connection.Connected &&
-			testutil.ToFloat64(connFailureCount) == float64(1)
-	}, 10*time.Second, 10*time.Millisecond)
+	monitoring.RequireConnectionMetrics(
+		t, coordLabel,
+		env.sidecar.metrics.coordConnection,
+		monitoring.ExpectedConn{Status: connection.Connected, FailureTotal: 1},
+	)
 
-	wg.Wait()
+	env.requireBlockWithTXs(ctx, t, 11, txs)
 }
 
-func sendTransactionsAndEnsureCommitted(
+func TestSidecarStartWithoutCoordinator(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnv(t, sidecarTestConfig{})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	t.Log("Stop the coordinator")
+	env.coordinatorServer.Servers[0].Stop()
+	coordLabel := env.getCoordinatorLabel(t)
+	test.CheckServerStopped(t, coordLabel)
+
+	t.Log("Start the service")
+	env.start(ctx, t, 0)
+	monitoring.RequireConnectionMetrics(
+		t, coordLabel,
+		env.sidecar.metrics.coordConnection,
+		monitoring.ExpectedConn{Status: connection.Disconnected},
+	)
+
+	t.Log("Restart the coordinator")
+	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+		env.coordinatorServer.Configs[0])
+	monitoring.RequireConnectionMetrics(
+		t, coordLabel,
+		env.sidecar.metrics.coordConnection,
+		monitoring.ExpectedConn{Status: connection.Connected},
+	)
+
+	t.Log("Wait for block 0")
+	env.requireBlock(ctx, t, 0)
+
+	t.Log("Commit blocks")
+	for i := range 10 {
+		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+1)) //nolint:gosec
+	}
+}
+
+func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
+	t.Helper()
+	conn, err := connection.LazyConnect(connection.NewDialConfig(&env.config.Committer.Endpoint))
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	return conn.CanonicalTarget()
+}
+
+func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 	ctx context.Context,
 	t *testing.T,
-	env *sidecarTestEnv,
 	expectedBlockNumber uint64,
 ) {
+	t.Helper()
+	txs := env.sendTransactions(ctx, t)
+	env.requireBlockWithTXs(ctx, t, expectedBlockNumber, txs)
+}
+
+func (env *sidecarTestEnv) sendTransactions(
+	ctx context.Context,
+	t *testing.T,
+) []*protoblocktx.Tx {
 	t.Helper()
 	txIDPrefix := uuid.New().String()
 	// mock-orderer expects <blockSize> txs to create the next block.
@@ -402,8 +434,18 @@ func sendTransactionsAndEnsureCommitted(
 			Namespaces: []*protoblocktx.TxNamespace{{NsId: strconv.Itoa(i)}},
 		}
 		_, err := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, txs[i])
-		require.NoErrorf(t, err, "block %d, tx %d", expectedBlockNumber, i)
+		require.NoErrorf(t, err, "tx %d", i)
 	}
+	return txs
+}
+
+func (env *sidecarTestEnv) requireBlockWithTXs(
+	ctx context.Context,
+	t *testing.T,
+	expectedBlockNumber uint64,
+	txs []*protoblocktx.Tx,
+) {
+	t.Helper()
 	block := env.requireBlock(ctx, t, expectedBlockNumber)
 	require.NotNil(t, block.Data)
 	require.Len(t, block.Data.Data, blockSize)

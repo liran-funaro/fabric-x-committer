@@ -45,7 +45,7 @@ type (
 		txMu             *sync.Mutex
 
 		policyManager *policyManager
-		lifecycle     *RemoteServiceLifecycle
+		lifecycle     *connection.RemoteServiceLifecycle
 	}
 
 	signVerifierManagerConfig struct {
@@ -94,8 +94,8 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 				i, &serverConfig.Endpoint)
 		}
 		logger.Infof("connected to signature verifier [%d] at %s", i, &serverConfig.Endpoint)
-		label := []string{conn.CanonicalTarget()}
-		promutil.SetGaugeVec(c.metrics.verifiersConnectionStatus, label, connection.Disconnected)
+		label := conn.CanonicalTarget()
+		c.metrics.verifiersConnection.Disconnected(label)
 
 		sv := newSignatureVerifier(c, conn)
 		svm.signVerifier[i] = sv
@@ -108,7 +108,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 				eCtx,
 				c.outgoingValidatedTxs,
 			))
-			promutil.SetGaugeVec(sv.metrics.verifiersConnectionStatus, label, connection.Disconnected)
+			c.metrics.verifiersConnection.Disconnected(label)
 			return errors.Wrap(err, "failed to send transactions and receive verification statuses from verifiers")
 		})
 	}
@@ -143,10 +143,9 @@ func newSignatureVerifier(
 		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
 		txMu:             &sync.Mutex{},
 		policyManager:    config.policyManager,
-		lifecycle: &RemoteServiceLifecycle{
-			Name:         conn.CanonicalTarget(),
-			ConnStatus:   config.metrics.verifiersConnectionStatus,
-			FailureTotal: config.metrics.verifiersConnectionFailureTotal,
+		lifecycle: &connection.RemoteServiceLifecycle{
+			Name:        conn.CanonicalTarget(),
+			ConnMetrics: config.metrics.verifiersConnection,
 			// TODO: initialize retry from config.
 		},
 	}

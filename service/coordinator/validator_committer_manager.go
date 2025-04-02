@@ -40,7 +40,7 @@ type (
 		client    protovcservice.ValidationAndCommitServiceClient
 		metrics   *perfMetrics
 		policyMgr *policyManager
-		lifecycle *RemoteServiceLifecycle
+		lifecycle *connection.RemoteServiceLifecycle
 
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
@@ -89,22 +89,19 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to create validator client with %s", serverConfig.Endpoint.Address())
 		}
-		label := []string{vc.conn.CanonicalTarget()}
-		promutil.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, label, connection.Connected)
 
 		logger.Debugf("Client [%d] successfully created and connected to vc", i)
 		vcm.validatorCommitter[i] = vc
 
 		g.Go(func() error {
+			defer connection.CloseConnectionsLog(vc.conn)
 			err := vc.sendTransactionsAndForwardStatus(
 				eCtx,
 				txBatchQueue,
 				channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
 				channel.NewWriter(eCtx, c.outgoingTxsStatus),
 			)
-			_ = vc.conn.Close() // it does not matter whether it returns an error
-			promutil.SetGaugeVec(vc.metrics.vcservicesConnectionStatus, []string{vc.conn.CanonicalTarget()},
-				connection.Disconnected)
+			c.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 			return errors.Wrap(err, "failed to send transactions and receive commit status from validator-committers")
 		})
 	}
@@ -203,7 +200,8 @@ func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfM
 			&serverConfig.Endpoint)
 	}
 	logger.Infof("validator persister manager connected to validator persister at %s", &serverConfig.Endpoint)
-
+	label := conn.CanonicalTarget()
+	metrics.vcservicesConnection.Disconnected(label)
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 
 	return &validatorCommitter{
@@ -212,10 +210,9 @@ func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfM
 		metrics:          metrics,
 		policyMgr:        policyMgr,
 		txBeingValidated: &sync.Map{},
-		lifecycle: &RemoteServiceLifecycle{
-			Name:         conn.CanonicalTarget(),
-			ConnStatus:   metrics.vcservicesConnectionStatus,
-			FailureTotal: metrics.vcservicesConnectionFailureTotal,
+		lifecycle: &connection.RemoteServiceLifecycle{
+			Name:        conn.CanonicalTarget(),
+			ConnMetrics: metrics.vcservicesConnection,
 			// TODO: initialize retry from config.
 		},
 	}, nil
@@ -347,7 +344,8 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 			txNode, ok := v.(*dependencygraph.TransactionNode)
 			if !ok {
 				// NOTE: This error should never occur.
-				return errors.Wrap(ErrLifecycleCritical, "failed to cast txNode from the txBeingValidated map")
+				return errors.Wrap(connection.ErrLifecycleCritical,
+					"failed to cast txNode from the txBeingValidated map")
 			}
 			txsNode = append(txsNode, txNode)
 

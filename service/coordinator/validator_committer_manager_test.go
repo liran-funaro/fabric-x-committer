@@ -20,6 +20,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -84,16 +85,11 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	t.Helper()
 	require.Less(t, vcIndex, len(e.validatorCommitterManager.validatorCommitter))
 	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
-	label := sv.conn.CanonicalTarget()
-	connStatus, err := sv.metrics.vcservicesConnectionStatus.GetMetricWithLabelValues(label)
-	require.NoError(t, err)
-
-	connFailure, err := sv.metrics.vcservicesConnectionFailureTotal.GetMetricWithLabelValues(label)
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus) &&
-			test.GetMetricValue(t, connFailure) == float64(expectedConnFailureTotal)
-	}, 30*time.Second, 200*time.Millisecond)
+	monitoring.RequireConnectionMetrics(
+		t, sv.conn.CanonicalTarget(),
+		sv.metrics.vcservicesConnection,
+		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
+	)
 }
 
 func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {

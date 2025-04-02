@@ -1,4 +1,4 @@
-package coordinator
+package connection
 
 import (
 	"context"
@@ -8,24 +8,27 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/errors"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
-// RemoteServiceLifecycle manages the lifecycle of connection and interaction with a remote service.
-type RemoteServiceLifecycle struct {
-	Name         string
-	Retry        *connection.RetryProfile
-	ConnStatus   *prometheus.GaugeVec
-	FailureTotal *prometheus.CounterVec
+type (
+	// RemoteServiceLifecycle manages the lifecycle of connection and interaction with a remote service.
+	RemoteServiceLifecycle struct {
+		Name        string
+		Retry       *RetryProfile
+		ConnMetrics Metrics
 
-	backoff       *backoff.ExponentialBackOff
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	criticalError atomic.Bool
-}
+		backoff       *backoff.ExponentialBackOff
+		cancel        context.CancelFunc
+		wg            sync.WaitGroup
+		criticalError atomic.Bool
+	}
+
+	// Metrics is used to prevent cyclic dependency.
+	Metrics interface {
+		Connected(string)
+		Disconnected(string)
+	}
+)
 
 var (
 	// ErrLifecycleCritical should be returned (or wrapped/joined) when the lifecycle should end due to critical error.
@@ -45,7 +48,7 @@ func (r *RemoteServiceLifecycle) RunLifecycle(
 	recovery func() error,
 ) error {
 	// We initialized according to the current status.
-	promutil.SetGaugeVec(r.ConnStatus, []string{r.Name}, connection.Disconnected)
+	r.ConnMetrics.Disconnected(r.Name)
 
 	// We call recovery once before starting in case previous interaction stopped incorrectly.
 	initialRecoveryErr := errors.Wrapf(recovery(), "[%s] failed to recover", r.Name)
@@ -63,7 +66,7 @@ func (r *RemoteServiceLifecycle) RunLifecycle(
 		r.logErrorIsCritical(connectionErr)
 		if connectionErr == nil {
 			logger.Infof("[%s] connected", r.Name)
-			promutil.SetGaugeVec(r.ConnStatus, []string{r.Name}, connection.Connected)
+			r.ConnMetrics.Connected(r.Name)
 		}
 
 		// We continue to the next phase only after the background activities are finished.
@@ -71,11 +74,7 @@ func (r *RemoteServiceLifecycle) RunLifecycle(
 		r.wg.Wait()
 		sCancel()
 
-		if connectionErr == nil {
-			// We count failures only if they happen after a successful connection attempt.
-			promutil.AddToCounterVec(r.FailureTotal, []string{r.Name}, 1)
-			promutil.SetGaugeVec(r.ConnStatus, []string{r.Name}, connection.Disconnected)
-		}
+		r.ConnMetrics.Disconnected(r.Name)
 
 		// We always run recovery, regardless of the work outcome.
 		recoveryErr := errors.Wrapf(recovery(), "[%s] failed to recover", r.Name)

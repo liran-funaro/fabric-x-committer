@@ -22,6 +22,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 type (
@@ -281,4 +282,14 @@ func CheckServerStopped(_ *testing.T, addr string) bool {
 	}
 	_ = conn.Close()
 	return false
+}
+
+// SetupDebugging can be added for development to tests that required additional debugging info.
+func SetupDebugging() {
+	logging.SetupWithConfig(&logging.Config{
+		Enabled:     true,
+		Level:       logging.Debug,
+		Caller:      true,
+		Development: true,
+	})
 }

@@ -181,6 +181,29 @@ func (p *Provider) NewChannelBufferGauge(opts BufferGaugeOpts) *IntGauge {
 	})
 }
 
+// NewConnectionMetrics supports common connection metrics.
+func (p *Provider) NewConnectionMetrics(opts ConnectionMetricsOpts) *ConnectionMetrics {
+	subsystem := fmt.Sprintf("grpc_%s", opts.RemoteNamespace)
+	return &ConnectionMetrics{
+		Status: p.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: opts.Namespace,
+			Subsystem: subsystem,
+			Name:      "connection_status",
+			Help: fmt.Sprintf(
+				"Connection status to %s service by grpc target (1 = connected, 0 = disconnected).",
+				opts.RemoteNamespace,
+			),
+		}, []string{"grpc_target"}),
+		FailureTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: opts.Namespace,
+			Subsystem: subsystem,
+			Name:      "connection_failure_total",
+			Help: fmt.Sprintf("Total number of connection failures to %s service.", opts.RemoteNamespace) +
+				"Short-lived failures may not always be captured.",
+		}, []string{"grpc_target"}),
+	}
+}
+
 // Registry returns the prometheus registry.
 func (p *Provider) Registry() *prometheus.Registry {
 	return p.registry

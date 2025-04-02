@@ -27,11 +27,9 @@ type perfMetrics struct {
 	vcserviceTransactionProcessedTotal   prometheus.Counter
 
 	// connection failure
-	verifiersConnectionStatus         *prometheus.GaugeVec
-	verifiersConnectionFailureTotal   *prometheus.CounterVec
+	verifiersConnection               *monitoring.ConnectionMetrics
 	verifiersRetriedTransactionTotal  prometheus.Counter
-	vcservicesConnectionStatus        *prometheus.GaugeVec
-	vcservicesConnectionFailureTotal  *prometheus.CounterVec
+	vcservicesConnection              *monitoring.ConnectionMetrics
 	vcservicesRetriedTransactionTotal prometheus.Counter
 }
 
@@ -111,39 +109,20 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "transaction_processed_total",
 			Help:      "Total number of transactions processed by the validation and committer service manager.",
 		}),
-		verifiersConnectionStatus: p.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc_verifier",
-			Name:      "connection_status",
-			Help:      "Connection status to verifier services by grpc target (1 = connected, 0 = disconnected).",
-		}, []string{"grpc_target"}),
-		verifiersConnectionFailureTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc_verifier",
-			Name:      "connection_failure_total",
-			Help: "Total number of connection failures to verifier services." +
-				"Short-lived failures may not always be captured.",
-		}, []string{"grpc_target"}),
+		verifiersConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
+			Namespace:       "coordinator",
+			RemoteNamespace: "verifier",
+		}),
 		verifiersRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "vcservice",
 			Name:      "retired_transaction_total",
 			Help:      "Total number of transactions retried by the validation and committer service manager.",
 		}),
-		vcservicesConnectionStatus: p.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc_vcservice",
-			Name:      "connection_status",
-			Help: "Connection status to validator-committer services by grpc target " +
-				" (1 = connected, 0 = disconnected).",
-		}, []string{"grpc_targe"}),
-		vcservicesConnectionFailureTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc_vcservice",
-			Name:      "connection_failure_total",
-			Help: "Total number of connection failures to validator-committer services." +
-				"Short-lived failures may not always be captured.",
-		}, []string{"grpc_target"}),
+		vcservicesConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
+			Namespace:       "coordinator",
+			RemoteNamespace: "vcservice",
+		}),
 		vcservicesRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "sigverifier",

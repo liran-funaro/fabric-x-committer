@@ -2,10 +2,9 @@ package sidecar
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
@@ -74,7 +73,7 @@ func (s *LedgerService) run(ctx context.Context, config *ledgerRunConfig) error 
 			//       coordinator recovers after a failure.
 			continue
 		} else if block.Header.Number > s.nextToBeCommittedBlockNumber {
-			return fmt.Errorf("block store expects block number [%d] but received a greater block number [%d]",
+			return errors.Newf("block store expects block number [%d] but received a greater block number [%d]",
 				s.nextToBeCommittedBlockNumber, block.Header.Number)
 		}
 		s.nextToBeCommittedBlockNumber++
@@ -152,7 +151,7 @@ func (s *LedgerService) deliverBlocks(
 ) (common.Status, error) {
 	payload, chdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
-		return common.Status_BAD_REQUEST, fmt.Errorf("error parsing envelope: %w", err)
+		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
 	}
 
 	if chdr.ChannelId != s.channelID {
@@ -175,7 +174,7 @@ func (s *LedgerService) deliverBlocks(
 		}
 
 		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
-			return common.Status_INTERNAL_SERVER_ERROR, fmt.Errorf("error sending response: %w", err)
+			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
 		}
 		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
 

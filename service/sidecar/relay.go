@@ -43,10 +43,6 @@ type (
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
 	}
-
-	relayError struct {
-		err error
-	}
 )
 
 const defaultLastCommittedBlockSetInterval = 5 * time.Second
@@ -100,7 +96,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 		return r.setLastCommittedBlockNumber(gCtx, config.coordClient, expectedNextBlockToBeCommitted)
 	})
 
-	return &relayError{errors.Wrap(g.Wait(), "stream with the coordinator has ended")}
+	return errors.Wrap(g.Wait(), "stream with the coordinator has ended")
 }
 
 func (r *relay) preProcessBlockAndSendToCoordinator( //nolint:gocognit
@@ -113,7 +109,7 @@ func (r *relay) preProcessBlockAndSendToCoordinator( //nolint:gocognit
 	for {
 		block, ok := incomingBlockToBeCommitted.Read()
 		if !ok {
-			return nil
+			return errors.Wrap(ctx.Err(), "context ended")
 		}
 		if block.Header == nil {
 			logger.Warn("Received a block without header")
@@ -196,7 +192,7 @@ func (r *relay) processStatusBatch(
 	for {
 		tStatus, ok := txsStatus.Read()
 		if !ok {
-			return nil
+			return errors.Wrap(ctx.Err(), "context ended")
 		}
 
 		startTime := time.Now()
@@ -299,7 +295,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		select {
 		case <-ctx.Done():
-			return nil
+			return errors.Wrap(ctx.Err(), "context ended")
 		case <-time.After(r.lastCommittedBlockSetInterval):
 		}
 
@@ -315,14 +311,4 @@ func (r *relay) setLastCommittedBlockNumber(
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}
-}
-
-// Error implements the error interface.
-func (e *relayError) Error() string {
-	return e.err.Error()
-}
-
-// Unwrap allows errors.Is and errors.As to work with relayError.
-func (e *relayError) Unwrap() error {
-	return e.err
 }

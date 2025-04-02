@@ -103,18 +103,11 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 	t.Helper()
 	require.Less(t, svIndex, len(e.signVerifierManager.signVerifier))
 	sv := e.signVerifierManager.signVerifier[svIndex]
-	label := sv.conn.CanonicalTarget()
-	connStatus, err := e.signVerifierManager.metrics.verifiersConnectionStatus.GetMetricWithLabelValues(label)
-	require.NoError(t, err)
-
-	connFailure, err := e.signVerifierManager.metrics.verifiersConnectionFailureTotal.GetMetricWithLabelValues(label)
-	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, connStatus) == float64(expectedConnStatus)
-	}, 30*time.Second, 200*time.Millisecond)
-	require.InDelta(t, float64(expectedConnFailureTotal), test.GetMetricValue(t, connFailure), 1e-10)
-	require.InDelta(t, float64(expectedConnStatus), test.GetMetricValue(t, connStatus), 1e-10)
+	monitoring.RequireConnectionMetrics(
+		t, sv.conn.CanonicalTarget(),
+		e.signVerifierManager.metrics.verifiersConnection,
+		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
+	)
 }
 
 func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
