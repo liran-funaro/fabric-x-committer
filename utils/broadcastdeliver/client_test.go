@@ -19,7 +19,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
-func TestServers(t *testing.T) {
+func TestBroadcastDeliver(t *testing.T) {
 	t.Parallel()
 	ordererService, servers, conf := makeConfig(t)
 
@@ -223,5 +223,5 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 	t.Logf("%v is ready", endpoint)
 	// Wait a while to allow the GRPC connection enough time to make a new attempt.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Second)
 }
