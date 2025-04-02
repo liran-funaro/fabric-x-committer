@@ -18,16 +18,17 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,
 		NumVCService: 2,
-		BlockSize:    5,
+		// We use a single TX per block to ensure we always get "all" the expected TXs in one block.
+		BlockSize:    1,
 		BlockTimeout: 2 * time.Second,
 	})
 	c.StartSystem(t, runner.All)
 	c.CreateNamespacesAndCommit(t, "1")
 
 	// Scenario:
-	// 1. Submit two transactions and verify their commitment.
+	// 1. Submit one transaction and verify its commitment.
 	// 2. Terminate one or more services (excluding the ordering service).
-	// 3. Resubmit the same transactions to the ordering service while some services remain offline.
+	// 3. Resubmit the same transaction to the ordering service while some services remain offline.
 	// 4. Restart the terminated services and confirm that all transactions are processed successfully,
 	//    with the client receiving duplicate transaction ID statuses.
 	txs := []*protoblocktx.Tx{
@@ -43,18 +44,6 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 				},
 			},
 		},
-		{
-			Id: "tx2",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					BlindWrites: []*protoblocktx.Write{
-						{
-							Key: []byte("k2"),
-						},
-					},
-				},
-			},
-		},
 	}
 
 	i := 1
@@ -62,9 +51,8 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 	addSignAndSendTransactions(t, c, txs)
 
 	expectedResults := &runner.ExpectedStatusInBlock{
-		TxIDs: []string{"tx1", "tx2"},
+		TxIDs: []string{"tx1"},
 		Statuses: []protoblocktx.Status{
-			protoblocktx.Status_COMMITTED,
 			protoblocktx.Status_COMMITTED,
 		},
 	}
@@ -133,9 +121,8 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 		i++
 		t.Logf("\n%d. Ensure that the last block is committed after restarting "+services+"\n", i)
 		expectedResults = &runner.ExpectedStatusInBlock{
-			TxIDs: []string{"tx1", "tx2"},
+			TxIDs: []string{"tx1"},
 			Statuses: []protoblocktx.Status{
-				protoblocktx.Status_ABORTED_DUPLICATE_TXID,
 				protoblocktx.Status_ABORTED_DUPLICATE_TXID,
 			},
 		}
