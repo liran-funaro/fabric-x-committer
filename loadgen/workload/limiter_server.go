@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"go.uber.org/ratelimit"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 // LimiterConfig is used to create a limiter.

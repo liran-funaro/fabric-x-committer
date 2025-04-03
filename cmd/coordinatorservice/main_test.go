@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 )
@@ -15,6 +16,7 @@ import (
 //go:embed coordinator-cmd-test-config.yaml
 var configTemplate string
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestCoordinatorServiceCmd(t *testing.T) {
 	_, sigVerServers := mock.StartMockSVService(t, 1)
 	_, vcServers := mock.StartMockVCService(t, 1)

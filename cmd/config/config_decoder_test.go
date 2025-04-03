@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -30,13 +31,14 @@ yaml-orderer-endpoint:
 `
 
 func TestEndpoints(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, LoadYamlConfigs(config))
 	conf := new(struct {
 		Endpoint                     connection.Endpoint        `mapstructure:"endpoint"`
 		OrdererEndpoint              connection.OrdererEndpoint `mapstructure:"orderer-endpoint"`
-		JsonOrdererEndpoint          connection.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
-		MultilineJsonOrdererEndpoint connection.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
-		YamlJsonOrdererEndpoint      connection.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
+		JSONOrdererEndpoint          connection.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
+		MultilineJSONOrdererEndpoint connection.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
+		YamlJSONOrdererEndpoint      connection.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
 	})
 	Unmarshal(conf)
 	expected := connection.OrdererEndpoint{
@@ -50,7 +52,7 @@ func TestEndpoints(t *testing.T) {
 	}
 	require.Equal(t, expected.Endpoint, conf.Endpoint)
 	require.Equal(t, expected, conf.OrdererEndpoint)
-	require.Equal(t, expected, conf.JsonOrdererEndpoint)
-	require.Equal(t, expected, conf.MultilineJsonOrdererEndpoint)
-	require.Equal(t, expected, conf.YamlJsonOrdererEndpoint)
+	require.Equal(t, expected, conf.JSONOrdererEndpoint)
+	require.Equal(t, expected, conf.MultilineJSONOrdererEndpoint)
+	require.Equal(t, expected, conf.YamlJSONOrdererEndpoint)
 }

@@ -8,12 +8,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 )
 
 //go:embed mockorderingservice-test-config.yaml
 var configTemplate string
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestMockOrderingService(t *testing.T) {
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(configTemplate, loggerOutputPath)

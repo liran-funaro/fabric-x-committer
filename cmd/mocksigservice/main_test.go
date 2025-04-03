@@ -15,6 +15,7 @@ import (
 //go:embed mocksigservice-cmd-test-config.yaml
 var configTemplate string
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestMockSigVerifierServiceCmd(t *testing.T) {
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
 	config := fmt.Sprintf(configTemplate, loggerOutputPath)

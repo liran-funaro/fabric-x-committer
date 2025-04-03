@@ -4,17 +4,20 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/spf13/viper"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
-type DecoderFunc = func(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error)
+type decoderFunc = func(dataType, targetType reflect.Type, rawData any) (any, bool, error)
 
-var decoders = []DecoderFunc{durationDecoder, endpointDecoder, ordererEndpointDecoder}
+var decoders = []decoderFunc{durationDecoder, endpointDecoder, ordererEndpointDecoder}
 
-// decoderHook contains custom unmarshalling for types not supported by default by mapstructure, e.g. time.Duration, connection.Endpoint
-func decoderHook(hooks ...DecoderFunc) viper.DecoderConfigOption {
-	return viper.DecodeHook(func(dataType, targetType reflect.Type, rawData interface{}) (interface{}, error) {
+// decoderHook contains custom unmarshalling for types not supported by default by mapstructure.
+// I.e., [time.Duration], [connection.Endpoint], [connection.OrdererEndpoint].
+func decoderHook(hooks ...decoderFunc) viper.DecoderConfigOption {
+	return viper.DecodeHook(func(dataType, targetType reflect.Type, rawData any) (any, error) {
 		for _, hook := range hooks {
 			if result, done, err := hook(dataType, targetType, rawData); done {
 				return result, err
@@ -24,44 +27,37 @@ func decoderHook(hooks ...DecoderFunc) viper.DecoderConfigOption {
 	})
 }
 
-func durationDecoder(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error) {
-	if targetType.Kind() != reflect.Int64 {
-		return rawData, false, nil
+func durationDecoder(dataType, targetType reflect.Type, rawData any) (result any, done bool, err error) {
+	stringData, ok := getStringData(dataType, rawData)
+	if !ok || targetType.Kind() != reflect.Int64 {
+		return nil, false, nil
 	}
-	if dataType.Kind() != reflect.String {
-		return rawData, false, nil
-	}
-	duration, err := time.ParseDuration(rawData.(string))
-	if err != nil {
-		return nil, true, err
-	}
-	return duration, true, nil
+	duration, err := time.ParseDuration(stringData)
+	return duration, true, errors.Wrap(err, "failed to parse duration")
 }
 
-func endpointDecoder(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error) {
-	if targetType != reflect.TypeOf(connection.Endpoint{}) {
-		return rawData, false, nil
+func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any, done bool, err error) {
+	stringData, ok := getStringData(dataType, rawData)
+	if !ok || targetType != reflect.TypeOf(connection.Endpoint{}) {
+		return nil, false, nil
 	}
-	if dataType.Kind() != reflect.String {
-		return rawData, false, nil
-	}
-	endpoint, err := connection.NewEndpoint(rawData.(string))
-	if err != nil {
-		return nil, true, err
-	}
-	return endpoint, true, nil
+	endpoint, err := connection.NewEndpoint(stringData)
+	return endpoint, true, errors.Wrap(err, "failed to parse endpoint")
 }
 
-func ordererEndpointDecoder(dataType, targetType reflect.Type, rawData interface{}) (interface{}, bool, error) {
-	if targetType != reflect.TypeOf(connection.OrdererEndpoint{}) {
-		return rawData, false, nil
+func ordererEndpointDecoder(dataType, targetType reflect.Type, rawData any) (result any, done bool, err error) {
+	stringData, ok := getStringData(dataType, rawData)
+	if !ok || targetType != reflect.TypeOf(connection.OrdererEndpoint{}) {
+		return nil, false, nil
 	}
+	endpoint, err := connection.ParseOrdererEndpoint(stringData)
+	return endpoint, true, errors.Wrap(err, "failed to parse orderer endpoint")
+}
+
+func getStringData(dataType reflect.Type, rawData any) (stringData string, isStringData bool) {
 	if dataType.Kind() != reflect.String {
-		return rawData, false, nil
+		return stringData, false
 	}
-	endpoint, err := connection.ParseOrdererEndpoint(rawData.(string))
-	if err != nil {
-		return nil, true, err
-	}
-	return endpoint, true, nil
+	stringData, isStringData = rawData.(string)
+	return stringData, isStringData
 }

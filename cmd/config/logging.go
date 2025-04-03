@@ -4,10 +4,11 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
-func initializeLoggerViaConfig() error {
+func initializeLoggerViaConfig() {
 	loggerConfig := &logging.Config{
 		Enabled:     viper.GetBool("logging.enabled"),
 		Level:       strings.ToUpper(viper.GetString("logging.level")),
@@ -15,17 +16,5 @@ func initializeLoggerViaConfig() error {
 		Development: viper.GetBool("logging.Development"),
 		Output:      viper.GetString("logging.Output"),
 	}
-
 	logging.SetupWithConfig(loggerConfig)
-
-	return nil
-}
-
-func initializeLoggerForLevel(level logging.Level) {
-	logging.SetupWithConfig(&logging.Config{
-		Enabled:     true,
-		Level:       level,
-		Caller:      true,
-		Development: true,
-	})
 }

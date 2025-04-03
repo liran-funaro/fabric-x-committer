@@ -13,6 +13,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestConfig(t *testing.T) {
 	tests := []struct {
 		name                   string
@@ -206,7 +207,7 @@ func TestConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
 			if tt.configFilePath != "" {
-				require.NoError(t, config.ReadYamlConfigs([]string{tt.configFilePath}))
+				require.NoError(t, config.ReadYamlConfigFile(tt.configFilePath))
 			}
 
 			c := readConfig()

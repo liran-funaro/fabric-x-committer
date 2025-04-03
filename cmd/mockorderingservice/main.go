@@ -1,10 +1,10 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -50,7 +50,7 @@ func startCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			wrapper := new(struct {
@@ -61,7 +61,7 @@ func startCmd() *cobra.Command {
 
 			service, err := mock.NewMockOrderer(conf)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to create mock ordering service")
 			}
 			if len(conf.ServerConfigs) == 0 {
 				return errors.New("missing server configuration")

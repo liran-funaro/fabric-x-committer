@@ -2,8 +2,9 @@ package serialization
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"google.golang.org/protobuf/proto"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 )
 
 // UnmarshalTx unmarshals data bytes to protoblocktx.Tx.

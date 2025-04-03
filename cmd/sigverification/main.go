@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -50,7 +51,7 @@ func startCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			conf := readConfig()

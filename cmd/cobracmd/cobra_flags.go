@@ -1,12 +1,12 @@
 package cobracmd
 
 import (
-	"context"
-	"errors"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
@@ -61,16 +61,6 @@ func SetDefaultFlags(cmd *cobra.Command, serviceName string, configPath *string)
 	)
 }
 
-// WaitUntilServiceDone blocks until the service done and classifying the cause of termination.
-func WaitUntilServiceDone(ctx context.Context) error {
-	<-ctx.Done()
-	err := context.Cause(ctx)
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil
-	}
-	return err
-}
-
 // VersionCmd creates a version command.
 func VersionCmd(serviceName, serviceVersion string) *cobra.Command {
 	return &cobra.Command{
@@ -90,5 +80,5 @@ func ReadYaml(configPath string) error {
 	if configPath == "" {
 		return errors.New("--configs flag must be set to the path of the configuration file")
 	}
-	return config.ReadYamlConfigs([]string{configPath})
+	return errors.Wrap(config.ReadYamlConfigFile(configPath), "failed to read configuration")
 }

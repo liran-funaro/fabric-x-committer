@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -51,7 +52,7 @@ func startCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			conf := readConfig()
@@ -59,7 +60,7 @@ func startCmd() *cobra.Command {
 
 			service, err := sidecar.New(&conf)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to create sidecar service")
 			}
 			defer service.Close()
 

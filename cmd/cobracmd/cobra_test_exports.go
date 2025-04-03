@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -33,6 +34,7 @@ func PrepareTestDirs(t *testing.T) (
 	logPath string,
 	testPath string,
 ) {
+	t.Helper()
 	tmpDir := t.TempDir()
 	loggerOutputPath := filepath.Clean(path.Join(tmpDir, "logger-output.txt"))
 	testConfigPath := filepath.Clean(path.Join(tmpDir, "test-config.yaml"))
@@ -47,6 +49,7 @@ func UnitTestRunner(
 	loggerOutputPath string,
 	test CommandTest,
 ) {
+	t.Helper()
 	// Set new logger with the config setup.
 	logger := &logging.Config{
 		Enabled:     true,
@@ -80,7 +83,7 @@ func UnitTestRunner(
 		defer wg.Done()
 		_, err := cmd.ExecuteContextC(ctx)
 		err = connection.FilterStreamRPCError(err)
-		require.Equal(t, test.Err, err)
+		assert.Equal(t, test.Err, err)
 	}()
 
 	// Require that the cmd output will align with the test expected output.

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 )
@@ -17,6 +18,7 @@ import (
 //go:embed sidecar-cmd-test-config.yaml
 var serverTemplate string
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestSidecarCmd(t *testing.T) {
 	_, ordererServer := mock.StartMockOrderingServices(
 		t, &mock.OrdererConfig{NumService: 1, BlockSize: 100},

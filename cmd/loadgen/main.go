@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
@@ -48,7 +49,7 @@ func startCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			conf := readConfig()
@@ -63,7 +64,7 @@ func startCmd() *cobra.Command {
 
 			client, err := loadgen.NewLoadGenClient(conf)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to create loadgen client")
 			}
 			return client.Run(cmd.Context())
 		},

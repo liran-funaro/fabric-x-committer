@@ -1,7 +1,6 @@
 package workload
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -78,63 +77,6 @@ func defaultBenchStreamOptions() *StreamOptions {
 	return o
 }
 
-func genericBlockBench(b *testing.B, p *Profile) {
-	t := NewTxStream(p, defaultBenchStreamOptions())
-
-	b.ResetTimer()
-	test.RunServiceForTest(context.Background(), b, t.Run, t.WaitForReady)
-	g := &BlockGenerator{
-		TxGenerator: t.MakeGenerator(),
-		BlockSize:   p.Block.Size,
-	}
-
-	var sum float64
-	for i := 0; i < b.N; i++ {
-		blk := g.Next()
-		sum += float64(len(blk.Txs))
-	}
-	b.StopTimer()
-
-	// Prevent compiler optimizations.
-	result += sum
-}
-
-func genericTxBench(b *testing.B, p *Profile) {
-	c := NewTxStream(p, defaultBenchStreamOptions())
-
-	b.ResetTimer()
-	test.RunServiceForTest(context.Background(), b, c.Run, c.WaitForReady)
-	g := c.MakeGenerator()
-
-	var sum float64
-	for i := 0; i < b.N; i++ {
-		tx := g.Next()
-		sum += float64(len(tx.Namespaces))
-	}
-	b.StopTimer()
-
-	// Prevent compiler optimizations.
-	result += sum
-}
-
-func genericQueryBench(b *testing.B, p *Profile) {
-	c := NewQueryGenerator(p, defaultBenchStreamOptions())
-
-	b.ResetTimer()
-	test.RunServiceForTest(context.Background(), b, c.Run, c.WaitForReady)
-	g := c.MakeGenerator()
-
-	var sum float64
-	for i := 0; i < b.N; i++ {
-		q := g.Next()
-		sum += float64(len(q.Namespaces))
-	}
-	b.StopTimer()
-
-	// Prevent compiler optimizations.
-	result += sum
-}
-
 func benchWorkersProfiles() (profiles []*Profile) {
 	for _, workers := range []uint32{1, 2, 4, 8, 16, 32, 64} {
 		profiles = append(profiles, defaultBenchProfile(workers))
@@ -155,6 +97,7 @@ func benchTxProfiles() (profiles []*Profile) {
 }
 
 func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
+	b.Helper()
 	for _, p := range benchTxProfiles() {
 		name := fmt.Sprintf("workers-%d-sign-%s",
 			p.Workers, p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme)
@@ -166,20 +109,74 @@ func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 }
 
 func BenchmarkGenBlock(b *testing.B) {
-	genericBench(b, genericBlockBench)
+	//nolint:thelper // false positive.
+	genericBench(b, func(b *testing.B, p *Profile) {
+		t := NewTxStream(p, defaultBenchStreamOptions())
+
+		b.ResetTimer()
+		test.RunServiceForTest(b.Context(), b, t.Run, t.WaitForReady)
+		g := &BlockGenerator{
+			TxGenerator: t.MakeGenerator(),
+			BlockSize:   p.Block.Size,
+		}
+
+		var sum float64
+		for range b.N {
+			blk := g.Next()
+			sum += float64(len(blk.Txs))
+		}
+		b.StopTimer()
+
+		// Prevent compiler optimizations.
+		result += sum
+	})
 }
 
 func BenchmarkGenTx(b *testing.B) {
-	genericBench(b, genericTxBench)
+	//nolint:thelper // false positive.
+	genericBench(b, func(b *testing.B, p *Profile) {
+		c := NewTxStream(p, defaultBenchStreamOptions())
+
+		b.ResetTimer()
+		test.RunServiceForTest(b.Context(), b, c.Run, c.WaitForReady)
+		g := c.MakeGenerator()
+
+		var sum float64
+		for range b.N {
+			tx := g.Next()
+			sum += float64(len(tx.Namespaces))
+		}
+		b.StopTimer()
+
+		// Prevent compiler optimizations.
+		result += sum
+	})
 }
 
 func BenchmarkGenQuery(b *testing.B) {
-	genericBench(b, genericQueryBench)
+	//nolint:thelper // false positive.
+	genericBench(b, func(b *testing.B, p *Profile) {
+		c := NewQueryGenerator(p, defaultBenchStreamOptions())
+
+		b.ResetTimer()
+		test.RunServiceForTest(b.Context(), b, c.Run, c.WaitForReady)
+		g := c.MakeGenerator()
+
+		var sum float64
+		for range b.N {
+			q := g.Next()
+			sum += float64(len(q.Namespaces))
+		}
+		b.StopTimer()
+
+		// Prevent compiler optimizations.
+		result += sum
+	})
 }
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Len(t, key, int(profile.Key.Size))
-	require.Greater(t, SumInt(key), int64(0))
+	require.Positive(t, SumInt(key))
 }
 
 func requireValidTx(t *testing.T, tx *protoblocktx.Tx, profile *Profile, signer *TxSignerVerifier) {
@@ -245,7 +242,7 @@ func startTxGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	g := NewTxStream(profile, options, modifierGenerators...)
-	test.RunServiceForTest(context.Background(), t, g.Run, g.WaitForReady)
+	test.RunServiceForTest(t.Context(), t, g.Run, g.WaitForReady)
 	return g
 }
 
@@ -253,7 +250,7 @@ func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
 ) Generator[*protoqueryservice.Query] {
 	g := NewQueryGenerator(profile, options)
-	test.RunServiceForTest(context.Background(), t, g.Run, g.WaitForReady)
+	test.RunServiceForTest(t.Context(), t, g.Run, g.WaitForReady)
 	return g.MakeGenerator()
 }
 

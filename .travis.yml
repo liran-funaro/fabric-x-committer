@@ -36,7 +36,7 @@ jobs:
         # Fetch main to only detect issues from changes to main
         - git fetch origin main:main
         # Apply formatting
-        - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
+        - find . -name \*.go -not -name \*.pb.go -exec goimports -d -e -local "github.ibm.com/decentralized-trust-research/scalable-committer" {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
         - find . -name \*.go -not -name \*.pb.go -exec gofmt -d -e  {} \; | tee /dev/stderr | [ $(wc -c) -eq 0 ]
         - PATH="$HOME/bin:$PATH" make proto
       script:

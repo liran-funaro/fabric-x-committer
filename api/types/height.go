@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 

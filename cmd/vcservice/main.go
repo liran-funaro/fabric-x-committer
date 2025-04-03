@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -51,18 +52,18 @@ func startCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
-			vc, err := vc.NewValidatorCommitterService(cmd.Context(), conf)
+			service, err := vc.NewValidatorCommitterService(cmd.Context(), conf)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to create validator committer service")
 			}
-			defer vc.Close()
-			return connection.StartService(cmd.Context(), vc, conf.Server, func(server *grpc.Server) {
-				protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+			defer service.Close()
+			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
+				protovcservice.RegisterValidationAndCommitServiceServer(server, service)
 			})
 		},
 	}
@@ -81,13 +82,11 @@ func clearCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return err
+				return errors.Wrap(err, "failed to read config")
 			}
 			cmd.SilenceUsage = true
 			vcConfig := readConfig()
-
 			cmd.Printf("Clearing database: %v\n", namespaces)
-
 			return vc.ClearDatabase(cmd.Context(), vcConfig.Database, namespaces)
 		},
 	}
@@ -112,28 +111,27 @@ func readConfig() *vc.ValidatorCommitterServiceConfig {
 
 func setDefaults() {
 	// defaults for ServerConfig
-	prefix := "validator-committer-service.server.endpoint."
 	viper.SetDefault("validator-committer-service.server.endpoint", "localhost:6001")
 
 	// defaults for DatabaseConfig
-	prefix = "validator-committer-service.database."
-	viper.SetDefault(prefix+"endpoints", []*connection.Endpoint{
+	dbPrefix := "validator-committer-service.database."
+	viper.SetDefault(dbPrefix+"endpoints", []*connection.Endpoint{
 		{Host: "localhost", Port: 5433},
 	})
-	viper.SetDefault(prefix+"username", "yugabyte")
-	viper.SetDefault(prefix+"password", "yugabyte")
-	viper.SetDefault(prefix+"database", "yugabyte")
-	viper.SetDefault(prefix+"max-connections", 20)
-	viper.SetDefault(prefix+"min-connections", 10)
-	viper.SetDefault(prefix+"retry.max-elapsed-time", 20*time.Second)
+	viper.SetDefault(dbPrefix+"username", "yugabyte")
+	viper.SetDefault(dbPrefix+"password", "yugabyte")
+	viper.SetDefault(dbPrefix+"database", "yugabyte")
+	viper.SetDefault(dbPrefix+"max-connections", 20)
+	viper.SetDefault(dbPrefix+"min-connections", 10)
+	viper.SetDefault(dbPrefix+"retry.max-elapsed-time", 20*time.Second)
 
 	// defaults for ResourceLimitsConfig
-	prefix = "validator-committer-service.resource-limits."
-	viper.SetDefault(prefix+"max-workers-for-preparer", 1)
-	viper.SetDefault(prefix+"max-workers-for-validator", 1)
-	viper.SetDefault(prefix+"max-workers-for-committer", 20)
-	viper.SetDefault(prefix+"min-transaction-batch-size", 1)
-	viper.SetDefault(prefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
+	limitPrefix := "validator-committer-service.resource-limits."
+	viper.SetDefault(limitPrefix+"max-workers-for-preparer", 1)
+	viper.SetDefault(limitPrefix+"max-workers-for-validator", 1)
+	viper.SetDefault(limitPrefix+"max-workers-for-committer", 20)
+	viper.SetDefault(limitPrefix+"min-transaction-batch-size", 1)
+	viper.SetDefault(limitPrefix+"timeout-for-min-transaction-batch-size", 5*time.Second)
 
 	// defaults for monitoring.config
 	viper.SetDefault("validator-committer-service.monitoring.server.endpoint", "localhost:6002")

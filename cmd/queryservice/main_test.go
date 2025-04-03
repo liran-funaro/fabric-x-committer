@@ -16,6 +16,7 @@ import (
 //go:embed query-cmd-test-config.yaml
 var configTemplate string
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestQueryServiceCmd(t *testing.T) {
 	conn := dbtest.PrepareTestEnv(t)
 	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)

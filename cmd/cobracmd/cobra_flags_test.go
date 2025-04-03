@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 )
 
@@ -20,6 +21,7 @@ type TestConfig struct {
 	StringFlag   string        `mapstructure:"string-flag"`
 }
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestReadConfig(t *testing.T) {
 	defaultYamlValuesConfig := TestConfig{
 		BoolFlag:     false,
@@ -31,13 +33,14 @@ func TestReadConfig(t *testing.T) {
 	testCmd := startCmd(t, defaultYamlValuesConfig)
 	testCmd.SetArgs([]string{})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 
 	_, err := testCmd.ExecuteContextC(ctx)
 	require.NoError(t, err)
 }
 
+//nolint:paralleltest // Cannot parallelize due to viper.
 func TestCobraFlags(t *testing.T) {
 	expectedConfig := TestConfig{
 		BoolFlag:     true,
@@ -57,7 +60,7 @@ func TestCobraFlags(t *testing.T) {
 
 	testCmd.SetArgs(args)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 
 	_, err := testCmd.ExecuteContextC(ctx)
@@ -65,6 +68,7 @@ func TestCobraFlags(t *testing.T) {
 }
 
 func startCmd(t *testing.T, expectedConfig TestConfig) *cobra.Command {
+	t.Helper()
 	cmd := &cobra.Command{
 		Use:   "Test-Cmd",
 		Short: "Test command to check the binding between Cobra and Viper.",
