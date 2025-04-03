@@ -71,6 +71,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 		txStream: workload.NewTxStream(conf.LoadProfile, conf.Stream),
 		resources: adapters.ClientResources{
 			Profile: conf.LoadProfile,
+			Limit:   conf.Limit,
 		},
 	}
 	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring)
@@ -126,6 +127,7 @@ func (c *Client) Run(ctx context.Context) error {
 		cs.txStream = c.txStream
 	}
 	g.Go(func() error {
+		defer cancel() // We should stop if the workload is over.
 		return c.adapter.RunWorkload(gCtx, cs)
 	})
 

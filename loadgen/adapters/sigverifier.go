@@ -12,6 +12,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
@@ -45,7 +46,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
-	g, gCtx := errgroup.WithContext(ctx)
+	dCtx, dCancel := context.WithCancel(ctx)
+	defer dCancel()
+	g, gCtx := errgroup.WithContext(dCtx)
 	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
@@ -70,6 +73,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 			})
 		})
 		g.Go(func() error {
+			defer dCancel() // We stop sending if we can't track the received items.
 			return c.receiveStatus(gCtx, stream)
 		})
 	}
@@ -122,9 +126,14 @@ func (c *SvAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))
-		for _, response := range responseBatch.Responses {
-			logger.Infof("Received response: %s", response.Status)
-			c.res.Metrics.OnReceiveTransaction(response.TxId, response.Status)
+		statusBatch := make([]metrics.TxStatus, len(responseBatch.Responses))
+		for i, response := range responseBatch.Responses {
+			logger.Debugf("Received Responses: %s", response.Status)
+			statusBatch[i] = metrics.TxStatus{TxID: response.TxId, Status: response.Status}
+		}
+		c.res.Metrics.OnReceiveBatch(statusBatch)
+		if c.res.isReceiveLimit() {
+			return nil
 		}
 	}
 	return nil

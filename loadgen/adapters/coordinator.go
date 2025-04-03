@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"golang.org/x/sync/errgroup"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 type (
@@ -46,11 +48,14 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream)
 		return fmt.Errorf("failed creating stream to coordinator: %w", err)
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
+	dCtx, dCancel := context.WithCancel(ctx)
+	defer dCancel()
+	g, gCtx := errgroup.WithContext(dCtx)
 	g.Go(func() error {
 		return c.sendBlocks(gCtx, txStream, stream.Send)
 	})
 	g.Go(func() error {
+		defer dCancel() // We stop sending if we can't track the received items.
 		return c.receiveStatus(gCtx, stream)
 	})
 	return g.Wait()
@@ -71,8 +76,13 @@ func (c *CoordinatorAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))
-		for txID, status := range txStatus.Status {
-			c.res.Metrics.OnReceiveTransaction(txID, status.Code)
+		statusBatch := make([]metrics.TxStatus, 0, len(txStatus.Status))
+		for id, status := range txStatus.Status {
+			statusBatch = append(statusBatch, metrics.TxStatus{TxID: id, Status: status.Code})
+		}
+		c.res.Metrics.OnReceiveBatch(statusBatch)
+		if c.res.isReceiveLimit() {
+			return nil
 		}
 	}
 	return nil

@@ -13,45 +13,53 @@ import (
 
 var logger = logging.New("tracker")
 
-type TransactionReceiver interface {
-	RegisterLatency(duration time.Duration, success bool)
-}
-
-type Receiver interface {
-	OnReceiveTransaction(txID string, success bool)
-}
-
-type Sender interface {
-	OnSendBlock(block *protocoordinatorservice.Block)
-	OnSendTransaction(txId string)
-}
-
-type ReceiverSender interface {
-	Receiver
-	Sender
-}
-
+// latencyReceiverSender is used to track TX E2E latency.
 type latencyReceiverSender struct {
-	Receiver
-	Sender
+	latencyTracker sync.Map
+	validLatency   prometheus.Histogram
+	invalidLatency prometheus.Histogram
+	blockSampler   monitoring.NumberTracingSampler
+	txSampler      monitoring.KeyTracingSampler
 }
 
-// NewReceiverSender instantiate latencyReceiverSender.
-func NewReceiverSender(
-	sampler *monitoring.SamplerConfig,
-	validLatency, invalidLatency prometheus.Histogram,
-) ReceiverSender {
-	latencyTracker := &sync.Map{}
-	return &latencyReceiverSender{
-		Receiver: &latencyReceiverTracker{
-			latencyTracker: latencyTracker,
-			validLatency:   validLatency,
-			invalidLatency: invalidLatency,
-		},
-		Sender: &latencySenderTracker{
-			latencyTracker: latencyTracker,
-			blockSampler:   sampler.BlockSampler(),
-			txSampler:      sampler.TxSampler(),
-		},
+// onReceiveTransaction is called when a TX is received.
+//
+//nolint:revive // parameter 'success' seems to be a control flag, but it is not.
+func (c *latencyReceiverSender) onReceiveTransaction(txID string, success bool) {
+	t, loaded := c.latencyTracker.LoadAndDelete(txID)
+	if !loaded {
+		return
+	}
+	logger.Debugf("Tracked transaction %s returned with status: %v", txID, success)
+	start, okCast := t.(time.Time)
+	if !okCast {
+		// Should never happen.
+		return
+	}
+	duration := time.Since(start).Seconds()
+	if success {
+		c.validLatency.Observe(duration)
+	} else {
+		c.invalidLatency.Observe(duration)
+	}
+}
+
+// onSendBlock is called when a block is submitted.
+func (c *latencyReceiverSender) onSendBlock(block *protocoordinatorservice.Block) {
+	logger.Debugf("Sent block [%d:%d]", block.Number, len(block.Txs))
+	if !c.blockSampler(block.Number) {
+		return
+	}
+	logger.Debugf("Block [%d:%d] is tracked.", block.Number, len(block.Txs))
+	t := time.Now()
+	for _, tx := range block.Txs {
+		c.latencyTracker.Store(tx.Id, t)
+	}
+}
+
+// onSendTransaction is called when a TX is submitted.
+func (c *latencyReceiverSender) onSendTransaction(txID string) {
+	if c.txSampler(txID) {
+		c.latencyTracker.Store(txID, time.Now())
 	}
 }

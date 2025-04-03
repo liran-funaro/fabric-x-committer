@@ -18,6 +18,7 @@ type (
 	ClientResources struct {
 		Metrics *metrics.PerfMetrics
 		Profile *workload.Profile
+		Limit   *GenerateLimit
 	}
 
 	// Phases specify the generation phases to enable.
@@ -25,6 +26,19 @@ type (
 		Config     bool `mapstructure:"config" yaml:"config"`
 		Namespaces bool `mapstructure:"namespaces" yaml:"namespaces"`
 		Load       bool `mapstructure:"load" yaml:"load"`
+	}
+
+	// GenerateLimit describes a stopping condition for generating load according to the collected metrics.
+	// Zero value indicate no limit.
+	// The limit on the number of TXs is applied at block granularity. I.e., more TXs might be created than expected
+	// if a block overshot.
+	// The load generator stops when both requirements are met, i.e., one of them might overshoot.
+	// For the orderer adapter, the blocks limit is ignored for broadcasting as we don't track submitted blocks.
+	// For adapters that use concurrent submitters, we cannot enforce exact limits.
+	// The sidecar and coordinator adapters are sequential, so they don't have these issues.
+	GenerateLimit struct {
+		Blocks       uint64 `mapstructure:"blocks" yaml:"blocks"`
+		Transactions uint64 `mapstructure:"transactions" yaml:"transactions"`
 	}
 
 	// TxStream makes generators such that all can be used in parallel.
@@ -70,11 +84,7 @@ func (p *Phases) Empty() bool {
 
 // Progress a committed transaction indicate progress for most adapters.
 func (c *commonAdapter) Progress() uint64 {
-	committed, err := c.res.Metrics.GetCommitted()
-	if err != nil {
-		return 0
-	}
-	return committed
+	return c.res.Metrics.GetState().TransactionsCommitted
 }
 
 // Supports specify which phases an adapter supports.
@@ -96,7 +106,7 @@ func (c *commonAdapter) sendBlocks(
 		block := blockGen.Next()
 		if block == nil {
 			// If the context ended, the generator returns nil.
-			break
+			return nil
 		}
 		block.Number = c.nextBlockNum.Add(1) - 1
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
@@ -104,6 +114,39 @@ func (c *commonAdapter) sendBlocks(
 			return connection.FilterStreamRPCError(err)
 		}
 		c.res.Metrics.OnSendBlock(block)
+		if c.res.isSendLimit() {
+			return nil
+		}
 	}
 	return nil
+}
+
+func (r *ClientResources) isSendLimit() bool {
+	if r.Limit == nil || (r.Limit.Blocks == 0 && r.Limit.Transactions == 0) {
+		return false
+	}
+	state := r.Metrics.GetState()
+	return isReachedLimit(state.BlocksSent, r.Limit.Blocks) &&
+		isReachedLimit(state.TransactionsSent, r.Limit.Transactions)
+}
+
+func (r *ClientResources) isTXSendLimit() bool {
+	if r.Limit == nil || r.Limit.Transactions == 0 {
+		return false
+	}
+	state := r.Metrics.GetState()
+	return isReachedLimit(state.TransactionsSent, r.Limit.Transactions)
+}
+
+func (r *ClientResources) isReceiveLimit() bool {
+	if r.Limit == nil || (r.Limit.Blocks == 0 && r.Limit.Transactions == 0) {
+		return false
+	}
+	state := r.Metrics.GetState()
+	return isReachedLimit(state.BlocksReceived, r.Limit.Blocks) &&
+		isReachedLimit(state.TransactionsReceived, r.Limit.Transactions)
+}
+
+func isReachedLimit(value, limit uint64) bool {
+	return limit == 0 || value >= limit
 }

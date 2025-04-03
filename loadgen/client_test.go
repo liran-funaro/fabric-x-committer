@@ -1,12 +1,16 @@
 package loadgen
 
 import (
+	"context"
 	_ "embed"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -28,211 +32,260 @@ import (
 // We expect at least 3 blocks for a valid test run.
 const defaultExpectedTXs = defaultBlockSize * 3
 
+// We can enforce exact limits only for the sidecar and the coordinator.
+// The other adapters runs concurrent workers that might overshoot.
+// So we test both requirements together and enforce that the result is greater.
+var defaultLimits = []*adapters.GenerateLimit{
+	nil, {}, {Blocks: 5, Transactions: 5 * defaultBlockSize},
+}
+
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
-	env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
-	clientConf := DefaultClientConf()
-	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-		Endpoints: env.Endpoints,
+	for _, limit := range defaultLimits {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
+			clientConf.Adapter.VCClient = &adapters.VCClientConfig{
+				Endpoints: env.Endpoints,
+			}
+			testLoadGenerator(t, clientConf)
+		})
 	}
-	testLoadGenerator(t, clientConf)
 }
 
 func TestLoadGenForSigVerifier(t *testing.T) {
 	t.Parallel()
-	endpoints := make([]*connection.Endpoint, 2)
-	for i := range endpoints {
-		sConf := &verifier.Config{
-			Server: connection.NewLocalHostServer(),
-			ParallelExecutor: verifier.ExecutorConfig{
-				BatchSizeCutoff:   50,
-				BatchTimeCutoff:   10 * time.Millisecond,
-				ChannelBufferSize: 50,
-				Parallelism:       40,
-			},
-		}
+	for _, limit := range defaultLimits {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			endpoints := make([]*connection.Endpoint, 2)
+			for i := range endpoints {
+				sConf := &verifier.Config{
+					Server: connection.NewLocalHostServer(),
+					ParallelExecutor: verifier.ExecutorConfig{
+						BatchSizeCutoff:   50,
+						BatchTimeCutoff:   10 * time.Millisecond,
+						ChannelBufferSize: 50,
+						Parallelism:       40,
+					},
+				}
 
-		service := verifier.New(sConf)
-		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, func(server *grpc.Server) {
-			protosigverifierservice.RegisterVerifierServer(server, service)
+				service := verifier.New(sConf)
+				test.RunGrpcServerForTest(t.Context(), t, sConf.Server, func(server *grpc.Server) {
+					protosigverifierservice.RegisterVerifierServer(server, service)
+				})
+				endpoints[i] = &sConf.Server.Endpoint
+			}
+
+			// Start client
+			clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
+				Endpoints: endpoints,
+			}
+			testLoadGenerator(t, clientConf)
 		})
-		endpoints[i] = &sConf.Server.Endpoint
 	}
-
-	// Start client
-	clientConf := DefaultClientConf()
-	clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
-		Endpoints: endpoints,
-	}
-	testLoadGenerator(t, clientConf)
 }
 
 func TestLoadGenForCoordinator(t *testing.T) {
 	t.Parallel()
-	_, sigVerServer := mock.StartMockSVService(t, 1)
-	_, vcServer := mock.StartMockVCService(t, 1)
+	for _, limit := range append(
+		defaultLimits,
+		&adapters.GenerateLimit{Blocks: 5},
+		&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 2}, // +2 for the config and meta namespace TXs.
+	) {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			_, sigVerServer := mock.StartMockSVService(t, 1)
+			_, vcServer := mock.StartMockVCService(t, 1)
 
-	cConf := &coordinator.Config{
-		ServerConfig: connection.NewLocalHostServer(),
-		Monitoring:   defaultMonitoring(),
-		SignVerifierConfig: &coordinator.SignVerifierConfig{
-			ServerConfig: []*connection.ServerConfig{
-				{
-					Endpoint: sigVerServer.Configs[0].Endpoint,
+			cConf := &coordinator.Config{
+				ServerConfig: connection.NewLocalHostServer(),
+				Monitoring:   defaultMonitoring(),
+				SignVerifierConfig: &coordinator.SignVerifierConfig{
+					ServerConfig: []*connection.ServerConfig{{
+						Endpoint: sigVerServer.Configs[0].Endpoint,
+					}},
 				},
-			},
-		},
-		ValidatorCommitterConfig: &coordinator.ValidatorCommitterConfig{
-			ServerConfig: []*connection.ServerConfig{
-				{
-					Endpoint: vcServer.Configs[0].Endpoint,
+				ValidatorCommitterConfig: &coordinator.ValidatorCommitterConfig{
+					ServerConfig: []*connection.ServerConfig{{
+						Endpoint: vcServer.Configs[0].Endpoint,
+					}},
 				},
-			},
-		},
-		DependencyGraphConfig: &coordinator.DependencyGraphConfig{
-			NumOfLocalDepConstructors:       1,
-			WaitingTxsLimit:                 10_000,
-			NumOfWorkersForGlobalDepManager: 1,
-		},
-		ChannelBufferSizePerGoroutine: 10,
-	}
+				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+					NumOfLocalDepConstructors:       1,
+					WaitingTxsLimit:                 10_000,
+					NumOfWorkersForGlobalDepManager: 1,
+				},
+				ChannelBufferSizePerGoroutine: 10,
+			}
 
-	service := coordinator.NewCoordinatorService(cConf)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.ServerConfig, func(server *grpc.Server) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, service)
-	})
+			service := coordinator.NewCoordinatorService(cConf)
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.ServerConfig, func(server *grpc.Server) {
+				protocoordinatorservice.RegisterCoordinatorServer(server, service)
+			})
 
-	// Start client
-	clientConf := DefaultClientConf()
-	clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
-		Endpoint: &cConf.ServerConfig.Endpoint,
+			// Start client
+			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
+				Endpoint: &cConf.ServerConfig.Endpoint,
+			}
+			testLoadGenerator(t, clientConf)
+		})
 	}
-	testLoadGenerator(t, clientConf)
 }
 
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
 
-	_, coordinatorServer := mock.StartMockCoordinatorService(t)
+	for _, limit := range append(
+		defaultLimits,
+		&adapters.GenerateLimit{Blocks: 5},
+		&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 1}, // +1 for the meta namespace TX.
+	) {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	// When using the sidecar adapter, the load generator and the sidecar
-	// should have each other's endpoints.
-	// To avoid manually pre-choosing ports that might conflict with other tests,
-	// we pre allocate them by starting a listener that picks a port automatically and bind to it.
-	// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
-	sidecarServerConf := connection.NewLocalHostServer()
-	preAllocatePorts(t, sidecarServerConf)
+			// When using the sidecar adapter, the load generator and the sidecar
+			// should have each other's endpoints.
+			// To avoid manually pre-choosing ports that might conflict with other tests,
+			// we pre allocate them by starting a listener that picks a port automatically and bind to it.
+			// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
+			sidecarServerConf := preAllocatePorts(t)
+			ordererServers := make([]*connection.ServerConfig, 3)
+			for i := range ordererServers {
+				ordererServers[i] = preAllocatePorts(t)
+			}
 
-	ordererServers := make([]*connection.ServerConfig, 3)
-	for i := range ordererServers {
-		ordererServers[i] = &connection.ServerConfig{
-			Endpoint: connection.Endpoint{Host: "localhost"},
-		}
-		preAllocatePorts(t, ordererServers[i])
+			// Start server under test
+			chanID := "channel"
+			sidecarConf := &sidecar.Config{
+				Server: sidecarServerConf,
+				Orderer: broadcastdeliver.Config{
+					Connection: broadcastdeliver.ConnectionConfig{
+						Endpoints: connection.NewOrdererEndpoints(0, "org", ordererServers...),
+					},
+					ChannelID:     chanID,
+					ConsensusType: broadcastdeliver.Bft,
+				},
+				Committer: sidecar.CoordinatorConfig{
+					Endpoint: coordinatorServer.Configs[0].Endpoint,
+				},
+				Monitoring: defaultMonitoring(),
+				Ledger: sidecar.LedgerConfig{
+					Path: t.TempDir(),
+				},
+			}
+			service, err := sidecar.New(sidecarConf)
+			require.NoError(t, err)
+			t.Cleanup(service.Close)
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
+				peer.RegisterDeliverServer(server, service.GetLedgerService())
+			})
+
+			// Start client
+			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
+				SidecarEndpoint: &sidecarServerConf.Endpoint,
+				ChannelID:       chanID,
+				OrdererServers:  ordererServers,
+			}
+			testLoadGenerator(t, clientConf)
+		})
 	}
-
-	// Start server under test
-	chanID := "channel"
-	sidecarConf := &sidecar.Config{
-		Server: sidecarServerConf,
-		Orderer: broadcastdeliver.Config{
-			Connection: broadcastdeliver.ConnectionConfig{
-				Endpoints: connection.NewOrdererEndpoints(0, "org", ordererServers...),
-			},
-			ChannelID:     chanID,
-			ConsensusType: broadcastdeliver.Bft,
-		},
-		Committer: sidecar.CoordinatorConfig{
-			Endpoint: coordinatorServer.Configs[0].Endpoint,
-		},
-		Monitoring: defaultMonitoring(),
-		Ledger: sidecar.LedgerConfig{
-			Path: t.TempDir(),
-		},
-	}
-	service, err := sidecar.New(sidecarConf)
-	require.NoError(t, err)
-	t.Cleanup(service.Close)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, service.GetLedgerService())
-	})
-
-	// Start client
-	clientConf := DefaultClientConf()
-	clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-		SidecarEndpoint: &sidecarServerConf.Endpoint,
-		ChannelID:       chanID,
-		OrdererServers:  ordererServers,
-	}
-	testLoadGenerator(t, clientConf)
 }
 
 func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
-	// Start dependencies
-	orderer, ordererServer := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
-	)
-	_, coordinatorServer := mock.StartMockCoordinatorService(t)
+	for _, limit := range defaultLimits {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			// Start dependencies
+			orderer, ordererServer := mock.StartMockOrderingServices(
+				t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
+			)
+			_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-	endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
-	sidecarConf := &sidecar.Config{
-		Server: connection.NewLocalHostServer(),
-		Orderer: broadcastdeliver.Config{
-			Connection: broadcastdeliver.ConnectionConfig{
-				Endpoints: endpoints,
-			},
-			ChannelID:     "mychannel",
-			ConsensusType: broadcastdeliver.Bft,
-		},
-		Committer: sidecar.CoordinatorConfig{
-			Endpoint: coordinatorServer.Configs[0].Endpoint,
-		},
-		Monitoring: defaultMonitoring(),
-		Ledger: sidecar.LedgerConfig{
-			Path: t.TempDir(),
-		},
+			endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
+			sidecarConf := &sidecar.Config{
+				Server: connection.NewLocalHostServer(),
+				Orderer: broadcastdeliver.Config{
+					Connection: broadcastdeliver.ConnectionConfig{
+						Endpoints: endpoints,
+					},
+					ChannelID:     "mychannel",
+					ConsensusType: broadcastdeliver.Bft,
+				},
+				Committer: sidecar.CoordinatorConfig{
+					Endpoint: coordinatorServer.Configs[0].Endpoint,
+				},
+				Monitoring: defaultMonitoring(),
+				Ledger: sidecar.LedgerConfig{
+					Path: t.TempDir(),
+				},
+			}
+
+			// Start sidecar.
+			service, err := sidecar.New(sidecarConf)
+			require.NoError(t, err)
+			t.Cleanup(service.Close)
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
+				peer.RegisterDeliverServer(server, service.GetLedgerService())
+			})
+
+			// Submit default config block.
+			require.NotNil(t, clientConf.LoadProfile)
+			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
+			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+			require.NoError(t, err)
+			orderer.SubmitBlock(t.Context(), configBlock)
+
+			// Start client
+			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+				SidecarEndpoint:      &sidecarConf.Server.Endpoint,
+				Orderer:              sidecarConf.Orderer,
+				BroadcastParallelism: 5,
+			}
+			testLoadGenerator(t, clientConf)
+		})
 	}
-
-	// Start sidecar.
-	service, err := sidecar.New(sidecarConf)
-	require.NoError(t, err)
-	t.Cleanup(service.Close)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, service.GetLedgerService())
-	})
-
-	// Submit default config block.
-	clientConf := DefaultClientConf()
-	require.NotNil(t, clientConf.LoadProfile)
-	clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
-	configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
-	require.NoError(t, err)
-	orderer.SubmitBlock(t.Context(), configBlock)
-
-	// Start client
-	clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-		SidecarEndpoint:      &sidecarConf.Server.Endpoint,
-		Orderer:              sidecarConf.Orderer,
-		BroadcastParallelism: 5,
-	}
-	testLoadGenerator(t, clientConf)
 }
 
-func preAllocatePorts(t *testing.T, server *connection.ServerConfig) {
+func preAllocatePorts(t *testing.T) *connection.ServerConfig {
 	t.Helper()
+	server := connection.NewLocalHostServer()
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = listener.Close()
 	})
+	return server
 }
 
 func testLoadGenerator(t *testing.T, c *ClientConfig) {
 	t.Helper()
-	client := runLoadGenerator(t, c)
+	client, err := NewLoadGenClient(c)
+	require.NoError(t, err)
 
-	test.CheckMetrics(t, &http.Client{}, metrics.GetMetricsForTests(t, client.resources.Metrics).URL, []string{
+	ready := test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(client.Run(ctx))
+	}, nil)
+	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
+		return m.TransactionsSent > 0 &&
+			m.TransactionsReceived > 0 &&
+			m.TransactionsCommitted > 0 &&
+			m.TransactionsAborted == 0
+	})
+
+	test.CheckMetrics(t, &http.Client{}, client.resources.Metrics.URL(), []string{
 		"loadgen_block_sent_total",
 		"loadgen_transaction_sent_total",
 		"loadgen_transaction_received_total",
@@ -240,10 +293,60 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 		"loadgen_invalid_transaction_latency_seconds",
 	})
 
-	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.Values) bool {
-		return m.TransactionSentTotal > defaultExpectedTXs &&
-			m.TransactionReceivedTotal > defaultExpectedTXs &&
-			m.TransactionCommittedTotal > defaultExpectedTXs &&
-			m.TransactionAbortedTotal == 0
+	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
+		return m.TransactionsSent > defaultExpectedTXs &&
+			m.TransactionsReceived > defaultExpectedTXs &&
+			m.TransactionsCommitted > defaultExpectedTXs &&
+			m.TransactionsAborted == 0
 	})
+
+	if c.Limit == nil || (c.Limit.Blocks == 0 && c.Limit.Transactions == 0) {
+		return
+	}
+
+	// If there is a limit, we expect the load generator to terminate.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	t.Cleanup(cancel)
+	if !assert.True(t, ready.WaitForReady(ctx)) {
+		t.Fatalf("Did not finish. State: %+v", client.resources.Metrics.GetState())
+	}
+
+	m := client.resources.Metrics.GetState()
+
+	if c.Limit.Blocks == 0 || c.Limit.Transactions == 0 {
+		if c.Limit.Blocks > 0 {
+			require.Equal(t, c.Limit.Blocks, m.BlocksSent)
+			require.Equal(t, c.Limit.Blocks, m.BlocksReceived)
+		}
+		if c.Limit.Transactions > 0 {
+			require.Equal(t, c.Limit.Transactions, m.TransactionsSent)
+			require.Equal(t, c.Limit.Transactions, m.TransactionsReceived)
+		}
+	} else {
+		// We cant enforce exact limits for both requirements.
+		if c.Adapter.OrdererClient == nil {
+			// The orderer does not track sent blocks.
+			require.GreaterOrEqual(t, m.BlocksSent, c.Limit.Blocks)
+		}
+		require.GreaterOrEqual(t, m.BlocksReceived, c.Limit.Blocks)
+		require.GreaterOrEqual(t, m.TransactionsSent, c.Limit.Transactions)
+		require.GreaterOrEqual(t, m.TransactionsReceived, c.Limit.Transactions)
+	}
+}
+
+func limitToString(m *adapters.GenerateLimit) string {
+	if m == nil {
+		return "<nil>"
+	}
+	var out []string
+	if m.Blocks > 0 {
+		out = append(out, fmt.Sprintf("block=%d", m.Blocks))
+	}
+	if m.Transactions > 0 {
+		out = append(out, fmt.Sprintf("tx=%d", m.Transactions))
+	}
+	if len(out) == 0 {
+		return "<empty>"
+	}
+	return strings.Join(out, ",")
 }

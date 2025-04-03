@@ -9,8 +9,8 @@ import (
 
 // QueryGenerator generates a new query for keys.
 type QueryGenerator struct {
-	ValidKeyGenerator   Generator[[]byte]
-	InvalidKeyGenerator Generator[[]byte]
+	ValidKeyGenerator   *ByteArrayGenerator
+	InvalidKeyGenerator *ByteArrayGenerator
 	Size                Generator[int]
 	InvalidPortion      Generator[float64]
 	ShuffleRnd          *rand.Rand
@@ -18,7 +18,7 @@ type QueryGenerator struct {
 }
 
 // newIndependentTxGenerator creates a new QueryGenerator.
-func newQueryGenerator(rnd *rand.Rand, keys Generator[Key], profile *Profile) *QueryGenerator {
+func newQueryGenerator(rnd *rand.Rand, keys *ByteArrayGenerator, profile *Profile) *QueryGenerator {
 	return &QueryGenerator{
 		ValidKeyGenerator:   keys,
 		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: rnd},

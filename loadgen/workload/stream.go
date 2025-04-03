@@ -157,7 +157,7 @@ func (s *QueryStream) Run(ctx context.Context) error {
 
 type workerData struct {
 	seed   *rand.Rand
-	keyGen Generator[Key]
+	keyGen *ByteArrayGenerator
 }
 
 func makeWorkersData(profile *Profile) []workerData {

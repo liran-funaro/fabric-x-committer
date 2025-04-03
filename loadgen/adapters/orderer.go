@@ -33,8 +33,11 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 	}
 	defer broadcastSubmitter.Close()
 
-	g, gCtx := errgroup.WithContext(ctx)
+	dCtx, dCancel := context.WithCancel(ctx)
+	defer dCancel()
+	g, gCtx := errgroup.WithContext(dCtx)
 	g.Go(func() error {
+		defer dCancel() // We stop sending if we can't track the received items.
 		return runReceiver(gCtx, &receiverConfig{
 			ChannelID: c.config.Orderer.ChannelID,
 			Endpoint:  c.config.SidecarEndpoint,
@@ -81,7 +84,7 @@ func (c *OrdererAdapter) sendTransactions(
 		tx := txGen.Next()
 		if tx == nil {
 			// If the context ended, the generator returns nil.
-			break
+			return nil
 		}
 		txID, resp, err := stream.SubmitWithEnv(tx)
 		if err != nil {
@@ -89,6 +92,9 @@ func (c *OrdererAdapter) sendTransactions(
 		}
 		logger.Debugf("Sent TX %s, got ack: %s", txID, resp.Info)
 		c.res.Metrics.OnSendTransaction(txID)
+		if c.res.isTXSendLimit() {
+			return nil
+		}
 	}
 	return nil
 }

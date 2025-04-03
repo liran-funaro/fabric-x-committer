@@ -45,7 +45,9 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 		return errors.Wrap(err, "failed to create orderer")
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
+	dCtx, dCancel := context.WithCancel(ctx)
+	defer dCancel()
+	g, gCtx := errgroup.WithContext(dCtx)
 
 	g.Go(func() error {
 		return connection.StartService(gCtx, orderer, nil, nil)
@@ -67,8 +69,10 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 		return errors.Wrap(err, "failed to create config block")
 	}
 	orderer.SubmitBlock(ctx, configBlock)
+	c.nextBlockNum.Add(1)
 
 	g.Go(func() error {
+		defer dCancel() // We stop sending if we can't track the received items.
 		return runReceiver(gCtx, &receiverConfig{
 			ChannelID: c.config.ChannelID,
 			Endpoint:  c.config.SidecarEndpoint,

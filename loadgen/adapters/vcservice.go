@@ -9,6 +9,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -56,7 +57,9 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		streams = append(streams, stream)
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
+	dCtx, dCancel := context.WithCancel(ctx)
+	defer dCancel()
+	g, gCtx := errgroup.WithContext(dCtx)
 	for _, stream := range streams {
 		g.Go(func() error {
 			return c.sendBlocks(ctx, txStream, func(block *protocoordinatorservice.Block) error {
@@ -64,6 +67,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 			})
 		})
 		g.Go(func() error {
+			defer dCancel() // We stop sending if we can't track the received items.
 			return c.receiveStatus(gCtx, stream)
 		})
 	}
@@ -80,8 +84,14 @@ func (c *VcAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received VC batch with %d items", len(responseBatch.Status))
+
+		statusBatch := make([]metrics.TxStatus, 0, len(responseBatch.Status))
 		for id, status := range responseBatch.Status {
-			c.res.Metrics.OnReceiveTransaction(id, status.Code)
+			statusBatch = append(statusBatch, metrics.TxStatus{TxID: id, Status: status.Code})
+		}
+		c.res.Metrics.OnReceiveBatch(statusBatch)
+		if c.res.isReceiveLimit() {
+			return nil
 		}
 	}
 	return nil

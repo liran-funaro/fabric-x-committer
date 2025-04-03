@@ -50,3 +50,28 @@ func TestLoadGenCommitter(t *testing.T) {
 	}, 90*time.Second, 500*time.Millisecond)
 	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
 }
+
+func TestLoadGenCommitterWithLimit(t *testing.T) {
+	t.Parallel()
+	gomega.RegisterTestingT(t)
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers: 2,
+		NumVCService: 2,
+		BlockTimeout: 2 * time.Second,
+		BlockSize:    500,
+	})
+	c.SystemConfig.LoadGenBlockLimit = 4
+	c.StartLoadGenCommitter(t)
+	c.StartSystem(t, runner.All-runner.Orderer)
+
+	expectedTXs := 500*3 + 2 // +2 for config and namespace TXs
+	require.Eventually(t, func() bool {
+		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+		t.Logf("count %d", count)
+		return count >= expectedTXs
+	}, 90*time.Second, 500*time.Millisecond)
+	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
+
+	count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+	require.Equal(t, expectedTXs, count)
+}

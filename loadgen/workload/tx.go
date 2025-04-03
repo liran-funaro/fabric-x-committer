@@ -12,16 +12,16 @@ import (
 // IndependentTxGenerator generates a new valid TX given key generators.
 type (
 	IndependentTxGenerator struct {
-		TxIDGenerator            Generator[string]
-		ReadOnlyKeyGenerator     Generator[[][]byte]
-		ReadWriteKeyGenerator    Generator[[][]byte]
-		BlindWriteKeyGenerator   Generator[[][]byte]
-		ReadWriteValueGenerator  Generator[[]byte]
-		BlindWriteValueGenerator Generator[[]byte]
+		TxIDGenerator            *UUIDGenerator
+		ReadOnlyKeyGenerator     *MultiGenerator[[]byte]
+		ReadWriteKeyGenerator    *MultiGenerator[[]byte]
+		BlindWriteKeyGenerator   *MultiGenerator[[]byte]
+		ReadWriteValueGenerator  *ByteArrayGenerator
+		BlindWriteValueGenerator *ByteArrayGenerator
 	}
 
 	txModifierDecorator struct {
-		txGen     Generator[*protoblocktx.Tx]
+		txGen     *IndependentTxGenerator
 		modifiers []Modifier
 	}
 
@@ -35,7 +35,7 @@ const GeneratedNamespaceID = "0"
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(
-	rnd *rand.Rand, keys Generator[Key], profile *TransactionProfile,
+	rnd *rand.Rand, keys *ByteArrayGenerator, profile *TransactionProfile,
 ) *IndependentTxGenerator {
 	return &IndependentTxGenerator{
 		TxIDGenerator:            &UUIDGenerator{Rnd: rnd},
@@ -102,10 +102,7 @@ func multiKeyGenerator(rnd *rand.Rand, keyGen Generator[Key], keyCount *Distribu
 	return ret
 }
 
-func valueGenerator(rnd *rand.Rand, valueSize uint32) Generator[[]byte] {
-	if valueSize == 0 {
-		return &NilByteArrayGenerator{}
-	}
+func valueGenerator(rnd *rand.Rand, valueSize uint32) *ByteArrayGenerator {
 	return &ByteArrayGenerator{Size: valueSize, Rnd: rnd}
 }
 
@@ -138,7 +135,7 @@ func (g *BlockGenerator) Next() *protocoordinatorservice.Block {
 }
 
 // newTxModifierTxDecorator wraps a TX generator and apply one or more modification methods.
-func newTxModifierTxDecorator(txGen Generator[*protoblocktx.Tx], modifiers ...Modifier) *txModifierDecorator {
+func newTxModifierTxDecorator(txGen *IndependentTxGenerator, modifiers ...Modifier) *txModifierDecorator {
 	return &txModifierDecorator{
 		txGen:     txGen,
 		modifiers: modifiers,

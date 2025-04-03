@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -67,6 +68,7 @@ func receiveCommittedBlock(
 			block.Header.Number, len(block.Data.Data), len(statusCodes), recapStatusCodes(statusCodes),
 		)
 
+		statusBatch := make([]metrics.TxStatus, 0, len(block.Data.Data))
 		for i, data := range block.Data.Data {
 			_, channelHeader, err := serialization.UnwrapEnvelope(data)
 			if err != nil {
@@ -77,7 +79,14 @@ func receiveCommittedBlock(
 				// We can ignore config transactions as we only count data transactions.
 				continue
 			}
-			res.Metrics.OnReceiveTransaction(channelHeader.TxId, protoblocktx.Status(statusCodes[i]))
+			statusBatch = append(statusBatch, metrics.TxStatus{
+				TxID:   channelHeader.TxId,
+				Status: protoblocktx.Status(statusCodes[i]),
+			})
+		}
+		res.Metrics.OnReceiveBatch(statusBatch)
+		if res.isReceiveLimit() {
+			return
 		}
 	}
 }

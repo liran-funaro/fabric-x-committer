@@ -33,12 +33,14 @@ type (
 		DB        DatabaseConfig
 
 		// Per service configurations.
-		BlockSize       uint64                  // orderer, loadgen
-		BlockTimeout    time.Duration           // orderer
-		ConfigBlockPath string                  // orderer, sidecar, loadgen
-		LedgerPath      string                  // sidecar
-		ChannelID       string                  // sidecar, loadgen
-		Policy          *workload.PolicyProfile // loadgen
+		BlockSize         uint64                  // orderer, loadgen
+		BlockTimeout      time.Duration           // orderer
+		ConfigBlockPath   string                  // orderer, sidecar, loadgen
+		LedgerPath        string                  // sidecar
+		ChannelID         string                  // sidecar, loadgen
+		Policy            *workload.PolicyProfile // loadgen
+		LoadGenBlockLimit uint64                  // loadgen
+		LoadGenTXLimit    uint64                  // loadgen
 	}
 
 	// SystemEndpoints represents the endpoints of the system.

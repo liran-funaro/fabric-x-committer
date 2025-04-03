@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
@@ -176,13 +177,15 @@ func StartGrpcServersWithConfigForTest(
 // It handles the cleanup of the service at the end of a test, and ensure the test is ended
 // only when the service return.
 // The method asserts that the service did not end with failure.
+// Returns a ready flag that indicate that the service is done.
 func RunServiceForTest(
 	ctx context.Context,
 	t TestingT,
 	service func(ctx context.Context) error,
 	waitFunc func(ctx context.Context) bool,
-) {
+) *channel.Ready {
 	t.Helper()
+	ready := channel.NewReady()
 	var wg sync.WaitGroup
 	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
 	//       order of cleanup matters, which is last added first called.
@@ -192,17 +195,19 @@ func RunServiceForTest(
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer ready.SignalReady()
 		// We use assert to prevent panicking for cleanup errors.
 		assert.NoError(t, service(dCtx))
 	}()
 
 	if waitFunc == nil {
-		return
+		return ready
 	}
 
 	initCtx, initCancel := context.WithTimeout(dCtx, 2*time.Minute)
 	t.Cleanup(initCancel)
 	require.True(t, waitFunc(initCtx))
+	return ready
 }
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
