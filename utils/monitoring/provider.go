@@ -85,8 +85,8 @@ func (p *Provider) StartPrometheusServer(
 	// The following ensures the method does not return before the close procedure is complete.
 	stopAfter := context.AfterFunc(ctx, func() {
 		g.Go(func() error {
-			if err := server.Close(); err != nil {
-				return errors.Wrap(err, "failed to close prometheus server")
+			if errClose := server.Close(); err != nil {
+				return errors.Wrap(errClose, "failed to close prometheus server")
 			}
 			return nil
 		})
@@ -146,38 +146,16 @@ func (p *Provider) NewHistogramVec(opts prometheus.HistogramOpts, labels []strin
 	return hv
 }
 
-// NewIntCounter creates a new prometheus integer counter.
-func (p *Provider) NewIntCounter(opts prometheus.CounterOpts) *IntCounter {
-	return &IntCounter{Counter: p.NewCounter(opts)}
-}
-
-// NewIntGauge creates a new prometheus integer gauge.
-func (p *Provider) NewIntGauge(opts prometheus.GaugeOpts) *IntGauge {
-	return &IntGauge{Gauge: p.NewGauge(opts)}
-}
-
-// NewDurationHistogram creates a new prometheus duration histogram.
-func (p *Provider) NewDurationHistogram(opts prometheus.HistogramOpts) *DurationHistogram {
-	return &DurationHistogram{Histogram: p.NewHistogram(opts)}
-}
-
 // NewThroughputCounter creates a new prometheus throughput counter.
-func (p *Provider) NewThroughputCounter(component, subComponent string, direction ThroughputDirection) *IntCounter {
-	return p.NewIntCounter(prometheus.CounterOpts{
+func (p *Provider) NewThroughputCounter(
+	component, subComponent string,
+	direction ThroughputDirection,
+) prometheus.Counter {
+	return p.NewCounter(prometheus.CounterOpts{
 		Namespace: component,
 		Subsystem: subComponent,
 		Name:      fmt.Sprintf("%s_throughput", direction),
 		Help:      "Incoming requests/Outgoing responses for a component",
-	})
-}
-
-// NewChannelBufferGauge creates a new prometheus buffer size counter.
-func (p *Provider) NewChannelBufferGauge(opts BufferGaugeOpts) *IntGauge {
-	return p.NewIntGauge(prometheus.GaugeOpts{
-		Namespace: opts.Namespace,
-		Subsystem: opts.Subsystem,
-		Name:      fmt.Sprintf("%s_channel_size", opts.Channel),
-		Help:      "The pending objects in a channel buffer",
 	})
 }
 

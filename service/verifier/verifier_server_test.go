@@ -578,7 +578,7 @@ func requireTestCase(
 
 // State test state.
 type State struct {
-	Service *VerifierServer
+	Service *Server
 	Client  protosigverifierservice.VerifierClient
 }
 

@@ -14,8 +14,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
-// VerifierServer implements verifier.VerifierServer.
-type VerifierServer struct {
+// Server implements verifier.Server.
+type Server struct {
 	protosigverifierservice.UnimplementedVerifierServer
 	config  *Config
 	metrics *metrics
@@ -31,9 +31,9 @@ var (
 )
 
 // New instantiate a new VerifierServer.
-func New(config *Config) *VerifierServer {
+func New(config *Config) *Server {
 	m := newMonitoring()
-	s := &VerifierServer{
+	s := &Server{
 		config:  config,
 		metrics: m,
 	}
@@ -41,7 +41,7 @@ func New(config *Config) *VerifierServer {
 }
 
 // Run the verifier background service.
-func (s *VerifierServer) Run(ctx context.Context) error {
+func (s *Server) Run(ctx context.Context) error {
 	_ = s.metrics.Provider.StartPrometheusServer(ctx, s.config.Monitoring.Server)
 	// We don't return error here to avoid stopping the service due to monitoring error.
 	// But we use the errgroup to ensure the method returns only when the server exits.
@@ -50,12 +50,12 @@ func (s *VerifierServer) Run(ctx context.Context) error {
 
 // WaitForReady wait for service to be ready to be exposed as gRPC service.
 // If the context ended before the service is ready, returns false.
-func (*VerifierServer) WaitForReady(context.Context) bool {
+func (*Server) WaitForReady(context.Context) bool {
 	return true
 }
 
 // StartStream starts a verification stream.
-func (s *VerifierServer) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
+func (s *Server) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
 	logger.Infof("Starting new stream.")
 	defer logger.Debug("Interrupted stream.")
 	s.metrics.ActiveStreams.Inc()
@@ -83,7 +83,7 @@ func (s *VerifierServer) StartStream(stream protosigverifierservice.Verifier_Sta
 	return grpcerror.WrapInternalError(g.Wait())
 }
 
-func (s *VerifierServer) handleInputs(
+func (s *Server) handleInputs(
 	ctx context.Context,
 	stream protosigverifierservice.Verifier_StartStreamServer,
 	executor *parallelExecutor,
@@ -100,7 +100,7 @@ func (s *VerifierServer) handleInputs(
 		if err != nil {
 			return errors.Join(ErrUpdatePolicies, err)
 		}
-		s.metrics.VerifierServerInTxs.Add(len(batch.Requests))
+		promutil.AddToCounter(s.metrics.VerifierServerInTxs, len(batch.Requests))
 		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
 		for _, r := range batch.Requests {
 			if ok := input.Write(r); !ok {
@@ -110,7 +110,7 @@ func (s *VerifierServer) handleInputs(
 	}
 }
 
-func (s *VerifierServer) handleOutputs(
+func (s *Server) handleOutputs(
 	ctx context.Context,
 	stream protosigverifierservice.Verifier_StartStreamServer,
 	executor *parallelExecutor,
@@ -122,7 +122,7 @@ func (s *VerifierServer) handleOutputs(
 		if !ok {
 			return errors.Wrap(stream.Context().Err(), "context ended")
 		}
-		s.metrics.VerifierServerOutTxs.Add(len(outputs))
+		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
 		rpcErr := stream.Send(&protosigverifierservice.ResponseBatch{Responses: outputs})

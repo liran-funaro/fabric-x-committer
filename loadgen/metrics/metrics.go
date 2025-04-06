@@ -7,6 +7,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -14,12 +15,12 @@ type (
 	PerfMetrics struct {
 		*monitoring.Provider
 
-		blockSentTotal            *monitoring.IntCounter
-		blockReceivedTotal        *monitoring.IntCounter
-		transactionSentTotal      *monitoring.IntCounter
-		transactionReceivedTotal  *monitoring.IntCounter
-		transactionCommittedTotal *monitoring.IntCounter
-		transactionAbortedTotal   *monitoring.IntCounter
+		blockSentTotal            prometheus.Counter
+		blockReceivedTotal        prometheus.Counter
+		transactionSentTotal      prometheus.Counter
+		transactionReceivedTotal  prometheus.Counter
+		transactionCommittedTotal prometheus.Counter
+		transactionAbortedTotal   prometheus.Counter
 
 		latencyTracker *latencyReceiverSender
 	}
@@ -48,32 +49,32 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 	sampler := &c.Latency.SamplerConfig
 	return &PerfMetrics{
 		Provider: p,
-		blockSentTotal: p.NewIntCounter(prometheus.CounterOpts{
+		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "block_sent_total",
 			Help:      "Total number of blocks sent by the block generator",
 		}),
-		blockReceivedTotal: p.NewIntCounter(prometheus.CounterOpts{
+		blockReceivedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "block_received_total",
 			Help:      "Total number of blocks received by the block generator",
 		}),
-		transactionSentTotal: p.NewIntCounter(prometheus.CounterOpts{
+		transactionSentTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_sent_total",
 			Help:      "Total number of transactions sent by the block generator",
 		}),
-		transactionReceivedTotal: p.NewIntCounter(prometheus.CounterOpts{
+		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
 		}),
-		transactionCommittedTotal: p.NewIntCounter(prometheus.CounterOpts{
+		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_committed_total",
 			Help:      "Total number of transaction commit statuses received by the block generator",
 		}),
-		transactionAbortedTotal: p.NewIntCounter(prometheus.CounterOpts{
+		transactionAbortedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
@@ -109,7 +110,7 @@ func (c *PerfMetrics) GetState() MetricState {
 	}
 }
 
-func getCounterValue(c *monitoring.IntCounter) uint64 {
+func getCounterValue(c prometheus.Counter) uint64 {
 	gm := promgo.Metric{}
 	if err := c.Write(&gm); err != nil {
 		logger.Infof("Failed reading counter value: %v", err)
@@ -120,14 +121,14 @@ func getCounterValue(c *monitoring.IntCounter) uint64 {
 
 // OnSendBlock is a function that increments the block sent total and calls the latency tracker.
 func (c *PerfMetrics) OnSendBlock(block *protocoordinatorservice.Block) {
-	c.blockSentTotal.Add(1)
-	c.transactionSentTotal.Add(len(block.Txs))
+	promutil.AddToCounter(c.blockSentTotal, 1)
+	promutil.AddToCounter(c.transactionSentTotal, len(block.Txs))
 	c.latencyTracker.onSendBlock(block)
 }
 
 // OnSendTransaction is a function that increments the transaction sent total and calls the latency tracker.
 func (c *PerfMetrics) OnSendTransaction(txID string) {
-	c.transactionSentTotal.Add(1)
+	promutil.AddToCounter(c.transactionSentTotal, 1)
 	c.latencyTracker.onSendTransaction(txID)
 }
 
@@ -136,8 +137,8 @@ func (c *PerfMetrics) OnReceiveBatch(batch []TxStatus) {
 	if len(batch) == 0 {
 		return
 	}
-	c.blockReceivedTotal.Add(1)
-	c.transactionReceivedTotal.Add(len(batch))
+	promutil.AddToCounter(c.blockReceivedTotal, 1)
+	promutil.AddToCounter(c.transactionReceivedTotal, len(batch))
 	successCount := 0
 	for _, b := range batch {
 		success := b.Status == protoblocktx.Status_COMMITTED
@@ -146,6 +147,6 @@ func (c *PerfMetrics) OnReceiveBatch(batch []TxStatus) {
 		}
 		c.latencyTracker.onReceiveTransaction(b.TxID, success)
 	}
-	c.transactionCommittedTotal.Add(successCount)
-	c.transactionAbortedTotal.Add(len(batch) - successCount)
+	promutil.AddToCounter(c.transactionCommittedTotal, successCount)
+	promutil.AddToCounter(c.transactionAbortedTotal, len(batch)-successCount)
 }

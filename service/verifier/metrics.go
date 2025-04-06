@@ -8,8 +8,8 @@ import (
 
 type metrics struct {
 	Provider             *monitoring.Provider
-	VerifierServerInTxs  *monitoring.IntCounter
-	VerifierServerOutTxs *monitoring.IntCounter
+	VerifierServerInTxs  prometheus.Counter
+	VerifierServerOutTxs prometheus.Counter
 	ActiveStreams        prometheus.Gauge
 	ActiveRequests       prometheus.Gauge
 }
