@@ -70,7 +70,7 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierse
 
 // ParseNamespacePolicyItem parses policy item to a namespace policy.
 func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
-	if err := validateNamespaceID(pd.Namespace); err != nil {
+	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
 		return nil, err
 	}
 	p := &protoblocktx.NamespacePolicy{}
@@ -81,13 +81,18 @@ func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.Namesp
 	return p, nil
 }
 
-// validateNamespaceID checks that a given namespace fulfills namespace naming conventions.
-func validateNamespaceID(nsID string) error {
+// validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
+func validateNamespaceIDInPolicy(nsID string) error {
 	// If it matches one of the system's namespaces it is invalid.
 	if nsID == types.MetaNamespaceID || nsID == types.ConfigNamespaceID {
 		return ErrInvalidNamespaceID
 	}
 
+	return ValidateNamespaceID(nsID)
+}
+
+// ValidateNamespaceID checkes that a given namespace has the required length and allowed characters.
+func ValidateNamespaceID(nsID string) error {
 	// length checks.
 	if len(nsID) == 0 || len(nsID) > maxNamespaceIDLength {
 		return ErrInvalidNamespaceID

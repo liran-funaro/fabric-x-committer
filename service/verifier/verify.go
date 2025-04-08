@@ -137,12 +137,19 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 		return protoblocktx.Status_ABORTED_MISSING_TXID
 	}
 
+	if len(tx.Namespaces) == 0 {
+		return protoblocktx.Status_ABORTED_EMPTY_NAMESPACES
+	}
+
 	if len(tx.Namespaces) != len(tx.Signatures) {
 		return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 	}
 
 	nsIDs := make(map[string]any)
 	for _, ns := range tx.Namespaces {
+		if policy.ValidateNamespaceID(ns.NsId) != nil {
+			return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
+		}
 		if _, ok := nsIDs[ns.NsId]; ok {
 			return protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE
 		}
@@ -167,7 +174,19 @@ func checkNamespaceFormation(ns *protoblocktx.TxNamespace) protoblocktx.Status {
 	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
 		return protoblocktx.Status_ABORTED_NO_WRITES
 	}
-	return retValid
+
+	keys := make([][]byte, 0, len(ns.ReadsOnly)+len(ns.ReadWrites)+len(ns.BlindWrites))
+	for _, r := range ns.ReadsOnly {
+		keys = append(keys, r.Key)
+	}
+	for _, r := range ns.ReadWrites {
+		keys = append(keys, r.Key)
+	}
+	for _, r := range ns.BlindWrites {
+		keys = append(keys, r.Key)
+	}
+
+	return checkKeys(keys)
 }
 
 func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
@@ -224,6 +243,23 @@ func checkConfigNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 	if err != nil {
 		return protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID
 	}
+	return retValid
+}
+
+func checkKeys(keys [][]byte) protoblocktx.Status {
+	seenKeys := make(map[string]any, len(keys))
+	for _, k := range keys {
+		if k == nil {
+			return protoblocktx.Status_ABORTED_NIL_KEY
+		}
+
+		sK := string(k)
+		if _, ok := seenKeys[sK]; ok {
+			return protoblocktx.Status_ABORTED_DUPLICATE_KEY_IN_READ_WRITE_SET
+		}
+		seenKeys[sK] = nil
+	}
+
 	return retValid
 }
 

@@ -5,16 +5,15 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
 func TestBadlyFormedTxs(t *testing.T) {
+	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,
@@ -24,221 +23,15 @@ func TestBadlyFormedTxs(t *testing.T) {
 	})
 	c.StartSystem(t, runner.All)
 
-	cr := c.CreateCryptoForNs(t, "1", signature.Ecdsa)
-	ns1Policy := cr.HashSigner.GetVerificationPolicy()
-	policyBytes, err := proto.Marshal(ns1Policy)
-	require.NoError(t, err)
+	c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 
-	tests := []struct {
-		name            string
-		txs             []*protoblocktx.Tx
-		expectedResults *runner.ExpectedStatusInBlock
-	}{
-		{
-			name: "missing entries",
-			txs: []*protoblocktx.Tx{
-				{
-					Id: "",
-				},
-				{
-					Id: "missing signature",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: "1",
-						},
-					},
-				},
-				{
-					Id: "missing namespace",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: "1",
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
-					Id: "no writes",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      "1",
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadsOnly: []*protoblocktx.Read{
-								{
-									Key:     []byte("k3"),
-									Version: nil,
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-			},
-			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs: []string{"", "missing signature", "missing namespace", "no writes"},
-				Statuses: []protoblocktx.Status{
-					protoblocktx.Status_ABORTED_MISSING_TXID,
-					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-					protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
-					protoblocktx.Status_ABORTED_NO_WRITES,
-				},
-			},
-		},
-		{
-			name: "invalid namespace tx",
-			txs: []*protoblocktx.Tx{
-				{
-					Id: "blind writes not allowed in ns lifecycle",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key: []byte("key1"),
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
-					Id: "invalid namespace id in ns lifecycle",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									// empty namespaces are invalid
-									Key: []byte(""),
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
-					Id: "invalid signature",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: policyBytes,
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
-					Id: "invalid policy in ns lifecycle",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: []byte("policy"),
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-			},
-			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs: []string{
-					"blind writes not allowed in ns lifecycle",
-					"invalid namespace id in ns lifecycle",
-					"invalid signature",
-					"invalid policy in ns lifecycle",
-				},
-				Statuses: []protoblocktx.Status{
-					protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-					protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-					protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
-				},
-			},
-		},
-		{
-			name: "duplicate namespace and duplicate tx id",
-			txs: []*protoblocktx.Tx{
-				{
-					Id: "duplicate namespace",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: policyBytes,
-								},
-							},
-						},
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: policyBytes,
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature"), []byte("signature")},
-				},
-				{
-					Id: "duplicate namespace",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      types.MetaNamespaceID,
-							NsVersion: types.VersionNumber(0).Bytes(),
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: policyBytes,
-								},
-							},
-						},
-					},
-					Signatures: [][]byte{[]byte("signature")},
-				},
-				{
-					Id: "missing signature",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: "1",
-						},
-					},
-				},
-			},
-			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs: []string{
-					"duplicate namespace",
-					"duplicate namespace",
-					"missing signature",
-				},
-				Statuses: []protoblocktx.Status{
-					protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-					protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-					protoblocktx.Status_ABORTED_DUPLICATE_TXID,
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c.SendTransactionsToOrderer(t, tt.txs)
-			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
+	//nolint:paralleltest
+	for _, tt := range verifier.BadTxFormatTestCases {
+		t.Run(tt.Tx.Id, func(t *testing.T) {
+			c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{tt.Tx})
+			c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
+				TxIDs: []string{tt.Tx.Id}, Statuses: []protoblocktx.Status{tt.ExpectedStatus},
+			})
 		})
 	}
 }

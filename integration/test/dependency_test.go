@@ -245,7 +245,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 						ReadsOnly: tt.readsOnly,
 						BlindWrites: []*protoblocktx.Write{
 							{
-								Key: []byte("k2"),
+								Key: []byte("k3"),
 							},
 						},
 					},

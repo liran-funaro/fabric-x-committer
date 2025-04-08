@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -136,10 +135,11 @@ func TestMinimalInput(t *testing.T) {
 }
 
 func TestBadTxFormat(t *testing.T) {
+	t.Parallel()
 	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
 
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
 	t.Cleanup(cancel)
 	stream, _ := c.Client.StartStream(ctx)
 
@@ -147,198 +147,14 @@ func TestBadTxFormat(t *testing.T) {
 	err := stream.Send(&protosigverifierservice.RequestBatch{Update: update})
 	require.NoError(t, err)
 
-	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("publicKey"),
-	})
-	require.NoError(t, err)
-
 	blockNumber := uint64(1)
-	for _, tt := range []struct {
-		tx             *protoblocktx.Tx
-		expectedStatus protoblocktx.Status
-	}{
-		{
-			tx:             &protoblocktx.Tx{Namespaces: []*protoblocktx.TxNamespace{}},
-			expectedStatus: protoblocktx.Status_ABORTED_MISSING_TXID,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id:         "invalid signature",
-				Signatures: [][]byte{[]byte("dummy")},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "missing namespace version",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId: "1",
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "no writes",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadsOnly: []*protoblocktx.Read{
-							{
-								Key: []byte("k1"),
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_NO_WRITES,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "namespace id is invalid in metaNs tx",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								// empty namespaceIDs are not allowed
-								Key: []byte(""),
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_ID_INVALID,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "namespace policy is invalid in metaNs tx",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:   []byte("2"),
-								Value: []byte("value"),
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_NAMESPACE_POLICY_INVALID,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "duplicate namespace",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key:   []byte("2"),
-								Value: nsPolicy,
-							},
-						},
-					},
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-		},
-		{
-			tx: &protoblocktx.Tx{
-				Id: "blind writes not allowed in metaNs tx",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
-						ReadWrites: []*protoblocktx.ReadWrite{
-							{
-								Key: []byte("key"),
-							},
-						},
-					},
-					{
-						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Key:   []byte("2"),
-								Value: nsPolicy,
-							},
-						},
-					},
-				},
-				Signatures: [][]byte{
-					[]byte("dummy"),
-					[]byte("dummy"),
-				},
-			},
-			expectedStatus: protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
-		},
-	} {
-		t.Run(tt.tx.Id, func(t *testing.T) {
+	for _, tt := range BadTxFormatTestCases { //nolint:paralleltest
+		t.Run(tt.Tx.Id, func(t *testing.T) {
 			requireTestCase(t, stream, &testCase{
 				blkNum:         blockNumber,
 				txNum:          0,
-				tx:             tt.tx,
-				expectedStatus: tt.expectedStatus,
+				tx:             tt.Tx,
+				expectedStatus: tt.ExpectedStatus,
 			})
 			blockNumber++
 		})
@@ -553,6 +369,7 @@ func requireTestCase(
 	stream protosigverifierservice.Verifier_StartStreamClient,
 	tt *testCase,
 ) {
+	t.Helper()
 	err := stream.Send(&protosigverifierservice.RequestBatch{
 		Requests: []*protosigverifierservice.Request{
 			{
@@ -573,6 +390,7 @@ func requireTestCase(
 	require.Equal(t, tt.blkNum, resp.BlockNum)
 	require.Equal(t, tt.txNum, resp.TxNum)
 	require.Equal(t, tt.tx.Id, resp.TxId)
+	t.Logf(tt.expectedStatus.String(), resp.Status.String())
 	require.Equal(t, tt.expectedStatus, resp.Status)
 }
 
