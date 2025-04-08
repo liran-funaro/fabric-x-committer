@@ -22,7 +22,7 @@ func TestCrashWhenIdle(t *testing.T) { //nolint:gocognit
 		BlockSize:    1,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t, runner.All)
+	c.Start(t, runner.FullTxPath)
 	c.CreateNamespacesAndCommit(t, "1")
 
 	// Scenario:

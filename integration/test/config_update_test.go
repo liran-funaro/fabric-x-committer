@@ -52,7 +52,7 @@ func TestConfigUpdate(t *testing.T) {
 	t.Log(c.SystemConfig.Endpoints.Orderer)
 	t.Log(ordererEnv.AllRealOrdererEndpoints())
 
-	c.StartSystem(t, runner.All-runner.Orderer)
+	c.Start(t, runner.CommitterTxPath)
 
 	c.CreateNamespacesAndCommit(t, "1")
 

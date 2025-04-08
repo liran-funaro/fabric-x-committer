@@ -95,7 +95,15 @@ const (
 	Verifier
 	VC
 	QueryService
-	All = Orderer | Sidecar | Coordinator | Verifier | VC | QueryService
+	LoadGenForOrderer
+	LoadGenForCommitter
+
+	FullTxPath            = Orderer | Sidecar | Coordinator | Verifier | VC
+	FullTxPathWithLoadGen = FullTxPath | LoadGenForOrderer
+	FullTxPathWithQuery   = FullTxPath | QueryService
+
+	CommitterTxPath            = Sidecar | Coordinator | Verifier | VC
+	CommitterTxPathWithLoadGen = CommitterTxPath | LoadGenForCommitter
 )
 
 // NewRuntime creates a new test runtime.
@@ -190,11 +198,14 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	return c
 }
 
-// StartSystem runs all the system services.
-func (c *CommitterRuntime) StartSystem(t *testing.T, serviceFlags int) {
+// Start runs all services and load generator as configured by the serviceFlags.
+func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	t.Helper()
 
 	t.Log("Running services")
+	if LoadGenForCommitter&serviceFlags != 0 {
+		c.StartLoadGenCommitter(t)
+	}
 	if Orderer&serviceFlags != 0 {
 		c.MockOrderer.Restart(t)
 	}
@@ -216,6 +227,9 @@ func (c *CommitterRuntime) StartSystem(t *testing.T, serviceFlags int) {
 	}
 	if QueryService&serviceFlags != 0 {
 		c.QueryService.Restart(t)
+	}
+	if LoadGenForOrderer&serviceFlags != 0 {
+		c.StartLoadGenOrderer(t)
 	}
 
 	t.Log("Validate state")

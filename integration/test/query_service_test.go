@@ -14,19 +14,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
-// requireQueryResults requires that the items retrieved by the Query service
-// equals to the test items that added to the DB.
-func requireQueryResults(
-	t *testing.T,
-	requiredItems []*protoqueryservice.RowsNamespace,
-	retNamespaces []*protoqueryservice.RowsNamespace,
-) {
-	require.Len(t, retNamespaces, len(requiredItems))
-	for idx := range retNamespaces {
-		require.ElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
-	}
-}
-
 func TestQueryService(t *testing.T) {
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
@@ -34,7 +21,7 @@ func TestQueryService(t *testing.T) {
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t, runner.All)
+	c.Start(t, runner.FullTxPathWithQuery)
 	c.CreateNamespacesAndCommit(t, "1", "2")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
@@ -158,4 +145,18 @@ func TestQueryService(t *testing.T) {
 			ret.Namespaces,
 		)
 	})
+}
+
+// requireQueryResults requires that the items retrieved by the Query service
+// equals to the test items that added to the DB.
+func requireQueryResults(
+	t *testing.T,
+	requiredItems []*protoqueryservice.RowsNamespace,
+	retNamespaces []*protoqueryservice.RowsNamespace,
+) {
+	t.Helper()
+	require.Len(t, retNamespaces, len(requiredItems))
+	for idx := range retNamespaces {
+		require.ElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
+	}
 }

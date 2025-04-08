@@ -21,7 +21,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 		BlockSize:    5,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t, runner.All)
+	c.Start(t, runner.FullTxPath)
 
 	c.CreateCryptoForNs(t, "1", signature.Ecdsa)
 

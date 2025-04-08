@@ -21,7 +21,7 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 		BlockSize:    5,
 		BlockTimeout: 2 * time.Second,
 	})
-	c.StartSystem(t, runner.All)
+	c.Start(t, runner.FullTxPath)
 	c.CreateNamespacesAndCommit(t, "1")
 
 	initTx := &protoblocktx.Tx{

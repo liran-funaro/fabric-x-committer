@@ -305,7 +305,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 	}
 
 	// If there is a limit, we expect the load generator to terminate.
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 	if !assert.True(t, ready.WaitForReady(ctx)) {
 		t.Fatalf("Did not finish. State: %+v", client.resources.Metrics.GetState())

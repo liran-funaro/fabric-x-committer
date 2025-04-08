@@ -31,7 +31,7 @@ func TestDBNodeCrashHandling(t *testing.T) {
 		BlockSize:    500,
 		DBCluster:    clusterConnection,
 	})
-	c.StartSystem(t, runner.All)
+	c.Start(t, runner.FullTxPath)
 	c.StartLoadGenOrderer(t)
 
 	waitForCommittedTxs(t, c, 10_000)
