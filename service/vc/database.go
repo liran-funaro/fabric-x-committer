@@ -93,6 +93,7 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 	return &database{
 		pool:    pool,
 		metrics: metrics,
+		retry:   config.Retry,
 	}, nil
 }
 

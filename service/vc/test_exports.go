@@ -135,6 +135,10 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 		MaxConnections: 10,
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
+		Retry: &connection.RetryProfile{
+			MaxElapsedTime:  3 * time.Minute,
+			InitialInterval: 100 * time.Millisecond,
+		},
 	}
 
 	m := newVCServiceMetrics()
@@ -143,12 +147,6 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 	dbObject, err := newDatabase(sCtx, config, m)
 	require.NoError(t, err)
 	t.Cleanup(dbObject.close)
-
-	// sets a default retry profile for tests.
-	dbObject.retry = &connection.RetryProfile{
-		MaxElapsedTime:  3 * time.Minute,
-		InitialInterval: 100 * time.Millisecond,
-	}
 
 	return &DatabaseTestEnv{
 		DB:     dbObject,

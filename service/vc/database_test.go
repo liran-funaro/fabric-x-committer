@@ -230,6 +230,8 @@ func diffReads(readA, readB *reads) (extraA, extraB *reads) {
 func TestDBCommit(t *testing.T) {
 	dbEnv := NewDatabaseTestEnv(t)
 
+	require.Equal(t, dbEnv.DBConf.Retry, dbEnv.DB.retry)
+
 	dbEnv.populateDataWithCleanup(
 		t,
 		[]string{ns1, ns2},
