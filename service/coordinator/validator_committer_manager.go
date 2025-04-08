@@ -310,26 +310,9 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 		}
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
-		// NOTE: The sidecar reads transactions from the ordering service stream and sends
-		//       them to the coordinator. The coordinator then forwards the transactions to the
-		//       dependency graph manager. The dependency graph manager forwards the transactions
-		//       to the validator committer manager. The validator committer manager sends the
-		//       transactions to the VC services. The VC services validate and commit the
-		//       transactions, sending the status back to the validator committer manager.
-		//       The validator committer manager then sends the status to the coordinator.
-		//       The coordinator sends the status back to the sidecar. The sidecar accumulates
-		//       the transaction statuses at the block level and sends them to all connected clients.
-		//       There is no cycle in the producer-consumer flow. If the sidecar becomes bottlenecked
-		//       and cannot receive the statuses quickly, the gRPC flow control will activate and
-		//       slow down the whole system, allowing the sidecar to catch up.
-		if ok := outputTxsStatus.Write(txsStatus); !ok {
-			return errors.Wrap(outputTxsStatus.Context().Err(), "context ended")
-		}
-		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
-
-		promutil.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
+		var untrackedTxIDs []string
 		for txID, txStatus := range txsStatus.Status {
 			v, ok := vc.txBeingValidated.LoadAndDelete(txID)
 			if !ok {
@@ -338,6 +321,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 				// receive duplicate responses.  However, the txBeingValidated lookup will succeed only once.
 				// Therefore, if the transaction ID is not found in txBeingValidated, we must proceed to
 				// the next status.
+				untrackedTxIDs = append(untrackedTxIDs, txID)
 				continue
 			}
 
@@ -358,6 +342,35 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 			// might be validated against a stale policy.
 			vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
 		}
+
+		for _, txID := range untrackedTxIDs {
+			// untrackedTxIDs can be non-empty only when the coordinator restarts.
+			delete(txsStatus.Status, txID)
+		}
+
+		if len(txsStatus.Status) == 0 {
+			continue
+		}
+
+		// NOTE: The sidecar reads transactions from the ordering service stream and sends
+		//       them to the coordinator. The coordinator then forwards the transactions to the
+		//       dependency graph manager. The dependency graph manager forwards the transactions
+		//       to the validator committer manager. The validator committer manager sends the
+		//       transactions to the VC services. The VC services validate and commit the
+		//       transactions, sending the status back to the validator committer manager.
+		//       The validator committer manager then sends the status to the coordinator.
+		//       The coordinator sends the status back to the sidecar. The sidecar accumulates
+		//       the transaction statuses at the block level and sends them to all connected clients.
+		//       Although there is a cycle in the producer-consumer flow (sidecar -> coordinator -> sidecar),
+		//       this is not an issue. If the sidecar becomes bottlenecked and cannot receive
+		//       the statuses quickly, the gRPC flow control will activate and slow down the
+		//       whole system, allowing the sidecar to catch up.
+		if ok := outputTxsStatus.Write(txsStatus); !ok {
+			return errors.Wrap(outputTxsStatus.Context().Err(), "context ended")
+		}
+		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
+
+		promutil.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		if len(txsNode) > 0 && !outputTxsNode.Write(txsNode) {
 			return errors.Wrap(outputTxsNode.Context().Err(), "context ended")

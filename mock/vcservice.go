@@ -182,3 +182,10 @@ func (v *VcService) sendTransactionStatus(
 func (v *VcService) GetNumBatchesReceived() uint32 {
 	return v.numBatchesReceived.Load()
 }
+
+// SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
+// This methods helps the test code to bypass the stream to submit transactions to the mock
+// vcservice.
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.TransactionBatch) {
+	channel.NewWriter(ctx, v.txBatchChan).Write(txsBatch)
+}

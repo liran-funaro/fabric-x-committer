@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"testing"
 	"time"
@@ -163,14 +164,8 @@ func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
 				txsStatus2 *protoblocktx.TransactionsStatus,
 			) map[string]*protoblocktx.StatusWithHeight {
 				txsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-
-				for id, status := range txsStatus1.Status {
-					txsStatus[id] = status
-				}
-				for id, status := range txsStatus2.Status {
-					txsStatus[id] = status
-				}
-
+				maps.Copy(txsStatus, txsStatus1.Status)
+				maps.Copy(txsStatus, txsStatus2.Status)
 				return txsStatus
 			}
 
@@ -322,11 +317,24 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for range 2 {
 		result := <-env.outputTxsStatus
-		for txID, height := range result.Status {
-			actualTxsStatus[txID] = height
-		}
+		maps.Copy(actualTxsStatus, result.Status)
 	}
 	require.Equal(t, expectedTxsStatus.Status, actualTxsStatus)
+
+	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal
+	txTotal := test.GetMetricValue(t, txProcessedTotalMetric)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.mockVcServices[0].SubmitTransactions(ctx, &protovcservice.TransactionBatch{
+		Transactions: []*protovcservice.Transaction{
+			{ID: "untrackedTxID1", BlockNumber: 1, TxNum: 1},
+			{ID: "untrackedTxID2", BlockNumber: 2, TxNum: 2},
+		},
+	})
+	require.Never(t, func() bool {
+		return test.GetMetricValue(t, txProcessedTotalMetric) > txTotal
+	}, 2*time.Second, 1*time.Second)
 }
 
 func createInputTxsNodeForTest(_ *testing.T, numTxs, startIndex int, blkNum uint64) (
