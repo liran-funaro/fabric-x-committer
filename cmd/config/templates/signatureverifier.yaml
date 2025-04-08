@@ -11,7 +11,4 @@ sig-verification:
     batch-size-cutoff: 50
     channel-buffer-size: 50
 
-logging:
-  enabled: true
-  level: INFO
-  development: true
+{{ template "loggingBlock" . }}

@@ -31,7 +31,4 @@ sidecar:
   bootstrap:
     genesis-block-file-path: {{ .ConfigBlockPath }}
 
-logging:
-  development: true
-  enabled: true
-  level: INFO
+{{ template "loggingBlock" . }}

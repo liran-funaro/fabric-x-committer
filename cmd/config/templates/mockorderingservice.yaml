@@ -7,7 +7,5 @@ mock-ordering-service:
   block-timeout: {{ .BlockTimeout }}
   config-block-path: {{ .ConfigBlockPath }}
   send-config-block: true
-logging:
-  Development: true
-  enabled: true
-  level: INFO
+
+{{ template "loggingBlock" . }}

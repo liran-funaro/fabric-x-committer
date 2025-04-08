@@ -19,7 +19,4 @@ query-service:
     max-connections: 10                        # The maximum size of the connection pool
     min-connections: 5                         # The minimum size of the connection pool.
 
-logging:
-  development: true
-  enabled: true
-  level: INFO
+{{ template "loggingBlock" . }}

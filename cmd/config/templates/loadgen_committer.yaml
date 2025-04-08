@@ -75,6 +75,4 @@ limit:
   blocks: {{ .LoadGenBlockLimit }}
   transactions: {{ .LoadGenTXLimit }}
 
-logging:
-  enabled: true
-  level: INFO 
+{{ template "loggingBlock" . }}

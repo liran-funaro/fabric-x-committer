@@ -25,7 +25,4 @@ validator-committer-service:
     max-workers-for-committer: 20
     min-transaction-batch-size: 1
 
-logging:
-  development: true
-  enabled: true
-  level: INFO
+{{ template "loggingBlock" . }}

@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
@@ -117,6 +118,9 @@ func TestConfig(t *testing.T) {
 					},
 					DB: config.DatabaseConfig{
 						Name: "yugabyte",
+					},
+					Logging: &logging.Config{
+						Enabled: false,
 					},
 				}),
 			expectedConfig: &vc.ValidatorCommitterServiceConfig{

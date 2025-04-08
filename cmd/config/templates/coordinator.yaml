@@ -22,9 +22,4 @@ coordinator-service:
     # Add monitoring configuration here if applicable
   per-channel-buffer-size-per-goroutine: 10
 
-# For debugging, change the output to "xxx.log" and the level to "DEBUG"
-logging:
-  development: true
-  enabled: true
-  level: INFO
-  output:
+{{ template "loggingBlock" . }}

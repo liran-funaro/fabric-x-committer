@@ -19,6 +19,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 type (
@@ -41,6 +42,7 @@ type (
 		Policy            *workload.PolicyProfile // loadgen
 		LoadGenBlockLimit uint64                  // loadgen
 		LoadGenTXLimit    uint64                  // loadgen
+		Logging           *logging.Config         // for all
 	}
 
 	// SystemEndpoints represents the endpoints of the system.
@@ -83,13 +85,15 @@ var (
 	TemplateLoadGenOrderer string
 	//go:embed templates/loadgen_committer.yaml
 	TemplateLoadGenCommitter string
+	//go:embed templates/logging_block.yaml
+	TemplateLogging string
 )
 
 // CreateConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
 func CreateConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
 	t.Helper()
 	tmpl := template.New("").Funcs(sprig.FuncMap())
-	tmpl, err := tmpl.Parse(templateString)
+	tmpl, err := tmpl.Parse(templateString + TemplateLogging)
 	require.NoError(t, err)
 
 	var renderedConfig bytes.Buffer

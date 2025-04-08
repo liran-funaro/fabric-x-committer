@@ -24,6 +24,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
@@ -107,6 +108,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			ChannelID:    "channel1",
 			BlockSize:    conf.BlockSize,
 			BlockTimeout: conf.BlockTimeout,
+			Logging: &logging.Config{
+				Enabled: false,
+			},
 		},
 		nsToCrypto:       make(map[string]*Crypto),
 		CommittedBlock:   make(chan *common.Block, 100),
