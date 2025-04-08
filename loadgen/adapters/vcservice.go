@@ -2,8 +2,8 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -31,9 +31,9 @@ func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
 
 // RunWorkload applies load on the VC.
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
-	if err != nil {
-		return fmt.Errorf("failed opening connection to vc-service: %w", err)
+	connections, connErr := connection.OpenLazyConnections(c.config.Endpoints, insecure.NewCredentials())
+	if connErr != nil {
+		return errors.Wrap(connErr, "failed opening connection to vc-service")
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
@@ -50,9 +50,9 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		}
 
 		logger.Info("Opening VC stream")
-		stream, err := client.StartValidateAndCommitStream(ctx)
-		if err != nil {
-			return fmt.Errorf("failed opening stream to %s: %w", conn.Target(), err)
+		stream, streamErr := client.StartValidateAndCommitStream(ctx)
+		if streamErr != nil {
+			return errors.Wrapf(streamErr, "failed opening stream to %s", conn.Target())
 		}
 		streams = append(streams, stream)
 	}
@@ -71,7 +71,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 			return c.receiveStatus(gCtx, stream)
 		})
 	}
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "workload done")
 }
 
 func (c *VcAdapter) receiveStatus(
@@ -80,7 +80,7 @@ func (c *VcAdapter) receiveStatus(
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving response batch")
 		}
 
 		logger.Debugf("Received VC batch with %d items", len(responseBatch.Status))
@@ -98,17 +98,14 @@ func (c *VcAdapter) receiveStatus(
 }
 
 func mapVCBatch(block *protocoordinatorservice.Block) *protovcservice.TransactionBatch {
-	txBatch := &protovcservice.TransactionBatch{}
+	txs := make([]*protovcservice.Transaction, len(block.Txs))
 	for i, tx := range block.Txs {
-		txBatch.Transactions = append(
-			txBatch.Transactions,
-			&protovcservice.Transaction{
-				ID:          tx.Id,
-				Namespaces:  tx.Namespaces,
-				BlockNumber: block.Number,
-				TxNum:       block.TxsNum[i],
-			},
-		)
+		txs[i] = &protovcservice.Transaction{
+			ID:          tx.Id,
+			Namespaces:  tx.Namespaces,
+			BlockNumber: block.Number,
+			TxNum:       block.TxsNum[i],
+		}
 	}
-	return txBatch
+	return &protovcservice.TransactionBatch{Transactions: txs}
 }

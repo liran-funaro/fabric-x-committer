@@ -48,7 +48,7 @@ func runReceiver(ctx context.Context, config *receiverConfig) error {
 		receiveCommittedBlock(gCtx, committedBlock, config.Res)
 		return context.Canceled
 	})
-	return errors.Wrap(g.Wait(), "failed running sidecar receiver")
+	return errors.Wrap(g.Wait(), "sidecar receiver done")
 }
 
 func receiveCommittedBlock(

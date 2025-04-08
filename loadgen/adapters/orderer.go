@@ -62,7 +62,7 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream TxStream) err
 			return nil
 		})
 	}
-	return errors.Wrap(g.Wait(), "failed running orderer workload")
+	return errors.Wrap(g.Wait(), "workload done")
 }
 
 // Supports specify which phases an adapter supports.

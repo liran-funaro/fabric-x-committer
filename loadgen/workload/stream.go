@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 
+	"github.com/cockroachdb/errors"
 	"go.uber.org/ratelimit"
 	"golang.org/x/sync/errgroup"
 
@@ -15,29 +16,22 @@ import (
 type (
 	// TxStream yields transactions from the  stream.
 	TxStream struct {
-		Stream[*protoblocktx.Tx]
-		gens    []*txModifierDecorator
-		txQueue chan []*protoblocktx.Tx
-		options *StreamOptions
-		ready   *channel.Ready
+		stream
+		gens  []*txModifierDecorator
+		queue chan []*protoblocktx.Tx
 	}
 
 	// QueryStream generates stream's queries consumers.
 	QueryStream struct {
-		Stream[*protoqueryservice.Query]
-		gen     []*QueryGenerator
-		queue   chan []*protoqueryservice.Query
-		options *StreamOptions
-		ready   *channel.Ready
+		stream
+		gen   []*QueryGenerator
+		queue chan []*protoqueryservice.Query
 	}
 
-	// Stream makes generators that consume from a stream (BatchQueue).
-	// Each generator cannot be used concurrently by different goroutines.
-	// To consume the stream by multiple goroutines, generate a consumer
-	// for each goroutine.
-	Stream[T any] struct {
-		Limiter    ratelimit.Limiter
-		BatchQueue channel.ReaderWriter[[]T]
+	stream struct {
+		options *StreamOptions
+		ready   *channel.Ready
+		limiter ratelimit.Limiter
 	}
 )
 
@@ -53,11 +47,7 @@ func NewTxStream(
 	modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	signer := NewTxSignerVerifier(profile.Transaction.Policy)
-	txStream := &TxStream{
-		ready:   channel.NewReady(),
-		txQueue: make(chan []*protoblocktx.Tx, max(options.BuffersSize, 1)),
-		options: options,
-	}
+	txStream := &TxStream{stream: newStream(options)}
 	for _, w := range makeWorkersData(profile) {
 		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
 		if len(profile.Conflicts.Dependencies) > 0 {
@@ -76,52 +66,40 @@ func NewTxStream(
 	return txStream
 }
 
-// WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
-// If the context ended before the service is ready, returns false.
-func (s *TxStream) WaitForReady(ctx context.Context) bool {
-	return s.ready.WaitForReady(ctx)
-}
-
 // Run starts the stream workers.
 func (s *TxStream) Run(ctx context.Context) error {
 	logger.Debugf("Starting %d workers to generate load", len(s.gens))
 
+	s.queue = make(chan []*protoblocktx.Tx, max(s.options.BuffersSize, 1))
+	defer func() {
+		// It is safe to close the channel as we only exit this method once all the ingesters are done.
+		close(s.queue)
+	}()
+	s.ready.SignalReady()
+
 	g, gCtx := errgroup.WithContext(ctx)
-	txQueue := channel.NewReaderWriter(gCtx, s.txQueue)
 	for _, gen := range s.gens {
 		g.Go(func() error {
-			ingestBatchesToQueue(txQueue, gen, int(s.options.GenBatch))
+			ingestBatchesToQueue(gCtx, s.queue, gen, int(s.options.GenBatch))
 			return nil
 		})
 	}
-
-	s.Stream = Stream[*protoblocktx.Tx]{
-		Limiter:    NewLimiter(s.options.RateLimit),
-		BatchQueue: txQueue,
-	}
-	s.ready.SignalReady()
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "stream finished")
 }
 
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *Stream[T]) MakeGenerator() Generator[T] {
-	return &RateLimiterGenerator[T]{
-		Generator: &BatchChanGenerator[T]{
-			Chan: s.BatchQueue,
-		},
-		Limiter: s.Limiter,
+func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*protoblocktx.Tx] {
+	return &RateLimiterGenerator[*protoblocktx.Tx]{
+		Chan:    s.queue,
+		Limiter: s.limiter,
 	}
 }
 
 // NewQueryGenerator creates workers that generates queries into a queue.
 func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
-	qs := &QueryStream{
-		options: options,
-		queue:   make(chan []*protoqueryservice.Query, max(options.BuffersSize, 1)),
-		ready:   channel.NewReady(),
-	}
+	qs := &QueryStream{stream: newStream(options)}
 	for _, w := range makeWorkersData(profile) {
 		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
 		qs.gen = append(qs.gen, queryGen)
@@ -129,30 +107,35 @@ func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
 	return qs
 }
 
-// WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
-// If the context ended before the service is ready, returns false.
-func (s *QueryStream) WaitForReady(ctx context.Context) bool {
-	return s.ready.WaitForReady(ctx)
-}
-
 // Run starts the workers.
 func (s *QueryStream) Run(ctx context.Context) error {
 	logger.Debugf("Starting %d workers to generate query load", len(s.gen))
 
+	s.queue = make(chan []*protoqueryservice.Query, max(s.options.BuffersSize, 1))
+	defer func() {
+		// It is safe to close the channel as we only exit this method once all the ingesters are done.
+		close(s.queue)
+	}()
+	s.ready.SignalReady()
+
 	g, gCtx := errgroup.WithContext(ctx)
-	queue := channel.NewReaderWriter(gCtx, s.queue)
 	for _, gen := range s.gen {
 		g.Go(func() error {
-			ingestBatchesToQueue(queue, gen, int(s.options.GenBatch))
+			ingestBatchesToQueue(gCtx, s.queue, gen, int(s.options.GenBatch))
 			return nil
 		})
 	}
-	s.Stream = Stream[*protoqueryservice.Query]{
-		Limiter:    NewLimiter(s.options.RateLimit),
-		BatchQueue: queue,
+	return errors.Wrap(g.Wait(), "stream finished")
+}
+
+// MakeGenerator creates a new generator that consumes from the stream.
+// Each generator must be used from a single goroutine, but different
+// generators from the same Stream can be used concurrently.
+func (s *QueryStream) MakeGenerator() *RateLimiterGenerator[*protoqueryservice.Query] {
+	return &RateLimiterGenerator[*protoqueryservice.Query]{
+		Chan:    s.queue,
+		Limiter: s.limiter,
 	}
-	s.ready.SignalReady()
-	return g.Wait()
 }
 
 type workerData struct {
@@ -177,11 +160,26 @@ func makeWorkersData(profile *Profile) []workerData {
 	return workers
 }
 
-func ingestBatchesToQueue[T any](q channel.Writer[[]T], g Generator[T], batchSize int) {
+func ingestBatchesToQueue[T any](ctx context.Context, c chan<- []T, g Generator[T], batchSize int) {
 	batchGen := &MultiGenerator[T]{
 		Gen:   g,
 		Count: &ConstGenerator[int]{Const: max(batchSize, 1)},
 	}
+	q := channel.NewWriter(ctx, c)
 	for q.Write(batchGen.Next()) {
 	}
+}
+
+func newStream(options *StreamOptions) stream {
+	return stream{
+		options: options,
+		ready:   channel.NewReady(),
+		limiter: NewLimiter(options.RateLimit),
+	}
+}
+
+// WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
+// If the context ended before the service is ready, returns false.
+func (s *stream) WaitForReady(ctx context.Context) bool {
+	return s.ready.WaitForReady(ctx)
 }

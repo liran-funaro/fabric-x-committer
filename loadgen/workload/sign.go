@@ -1,9 +1,9 @@
 package workload
 
 import (
-	"errors"
-	"fmt"
 	"os"
+
+	"github.com/cockroachdb/errors"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
@@ -130,33 +130,36 @@ func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (signature.PublicKey,
 	return e.pubKey, e.signer
 }
 
-func loadKeys(keyPath KeyPath) (signature.PrivateKey, signature.PublicKey, error) {
-	if !utils.FileExists(keyPath.SigningKey) {
-		return nil, nil, fmt.Errorf("signing key file not found in %s", keyPath.SigningKey)
-	}
-	signingKey, err := os.ReadFile(keyPath.SigningKey)
+func loadKeys(keyPath KeyPath) (signingKey signature.PrivateKey, verificationKey signature.PublicKey, err error) {
+	signingKey, err = os.ReadFile(keyPath.SigningKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not read private key from %s: %w", keyPath.SigningKey, err)
+		return nil, nil, errors.Wrapf(err,
+			"could not read private key from %s", keyPath.SigningKey,
+		)
 	}
 
-	if utils.FileExists(keyPath.VerificationKey) {
-		if verificationKey, err := os.ReadFile(keyPath.VerificationKey); err != nil {
-			return nil, nil, fmt.Errorf("could not read public key from %s: %w", keyPath.VerificationKey, err)
-		} else {
-			logger.Infof("Loaded private key and verification key from files %s and %s.",
-				keyPath.SigningKey, keyPath.VerificationKey)
-			return signingKey, verificationKey, nil
+	if keyPath.VerificationKey != "" && utils.FileExists(keyPath.VerificationKey) {
+		verificationKey, err = os.ReadFile(keyPath.VerificationKey)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err,
+				"could not read public key from %s", keyPath.VerificationKey,
+			)
 		}
+		logger.Infof("Loaded private key and verification key from files %s and %s.",
+			keyPath.SigningKey, keyPath.VerificationKey)
+		return signingKey, verificationKey, nil
 	}
 
-	if utils.FileExists(keyPath.SignCertificate) {
-		if verificationKey, err := sigtest.GetSerializedKeyFromCert(keyPath.SignCertificate); err != nil {
-			return nil, nil, fmt.Errorf("could not read sign cert from %s: %w", keyPath.SignCertificate, err)
-		} else {
-			logger.Infof("Sign cert and key found in files %s/%s. Importing...",
-				keyPath.SignCertificate, keyPath.SigningKey)
-			return signingKey, verificationKey, nil
+	if keyPath.SignCertificate != "" && utils.FileExists(keyPath.SignCertificate) {
+		verificationKey, err = sigtest.GetSerializedKeyFromCert(keyPath.SignCertificate)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err,
+				"could not read sign cert from %s", keyPath.SignCertificate,
+			)
 		}
+		logger.Infof("Sign cert and key found in files %s/%s. Importing...",
+			keyPath.SignCertificate, keyPath.SigningKey)
+		return signingKey, verificationKey, nil
 	}
 
 	return nil, nil, errors.New("could not find verification key or sign certificate")

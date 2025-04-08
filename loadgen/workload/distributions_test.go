@@ -19,6 +19,7 @@ func makeRand() *rand.Rand {
 }
 
 func requireMarshalUnmarshal(t *testing.T, expected string, in *Distribution) {
+	t.Helper()
 	values := make(map[string]any)
 	require.NoError(t, yaml.Unmarshal([]byte(expected), &values))
 	out := &Distribution{}
@@ -32,12 +33,14 @@ func requireMarshalUnmarshal(t *testing.T, expected string, in *Distribution) {
 }
 
 func requireAllInDelta[T any](t *testing.T, arr []T, expected T, delta float64) {
+	t.Helper()
 	for _, v := range arr {
 		require.InDelta(t, expected, v, delta)
 	}
 }
 
 func requireAllEqual[T any](t *testing.T, arr []T, expected T) {
+	t.Helper()
 	for _, v := range arr {
 		require.Equal(t, expected, v)
 	}
@@ -58,7 +61,8 @@ func TestConstDist(t *testing.T) {
 			d := NewConstantDistribution(float64(val))
 			requireAllInDelta(t, GenerateArray(d.MakeGenerator(makeRand()), int(1e3)), float64(val), 1e-10)
 			requireAllEqual(t, GenerateArray(d.MakeIntGenerator(makeRand()), int(1e3)), val)
-			requireAllEqual(t, GenerateArray(d.MakePositiveIntGenerator(makeRand()), int(1e3)), max(val, 1))
+			//nolint:gosec // integer overflow conversion int -> uint64.
+			requireAllEqual(t, GenerateArray(d.MakePositiveIntGenerator(makeRand()), 1e3), uint64(max(val, 1)))
 		})
 	}
 }
@@ -68,7 +72,7 @@ func TestNormDist(t *testing.T) {
 
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
-		requireMarshalUnmarshal(t, "mean: 0\nstd: 1\ntype: normal\n", NewNormalDistribution(0, 1))
+		requireMarshalUnmarshal(t, "normal:\n  mean: 0\n  std: 1\n", NewNormalDistribution(0, 1))
 	})
 
 	t.Run("generate", func(t *testing.T) {
@@ -86,7 +90,7 @@ func TestUniformDist(t *testing.T) {
 
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
-		requireMarshalUnmarshal(t, "max: 1\nmin: 0\ntype: uniform\n", NewUniformDistribution(0, 1))
+		requireMarshalUnmarshal(t, "uniform:\n  max: 1\n  min: 0\n", NewUniformDistribution(0, 1))
 	})
 
 	t.Run("generate", func(t *testing.T) {
@@ -106,7 +110,7 @@ func TestBernoulliDist(t *testing.T) {
 
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
-		requireMarshalUnmarshal(t, "probability: 0.2\ntype: bernoulli\n", NewBernoulliDistribution(0.2))
+		requireMarshalUnmarshal(t, "bernoulli: 0.2\n", NewBernoulliDistribution(0.2))
 	})
 
 	t.Run("generate", func(t *testing.T) {
@@ -120,6 +124,7 @@ func TestBernoulliDist(t *testing.T) {
 func requireDiscreteDist[S, D constraints.Float | constraints.Integer](
 	t *testing.T, sample []S, distValues []DiscreteValue[D], delta float64,
 ) {
+	t.Helper()
 	options := Map(distValues, func(_ int, v DiscreteValue[D]) int { return int(v.Value) })
 	buckets := make([]uint64, len(options))
 	for _, v := range sample {
@@ -137,6 +142,7 @@ func requireDiscreteDist[S, D constraints.Float | constraints.Integer](
 }
 
 func requireBernoulliDist(t *testing.T, sample []float64, probability Probability, delta float64) {
+	t.Helper()
 	requireDiscreteDist(t, sample, []DiscreteValue[float64]{
 		{Value: 1, Probability: probability},
 		{Value: 0, Probability: Always},
@@ -149,7 +155,7 @@ func TestDiscreteDistMarshal(t *testing.T) {
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
 		requireMarshalUnmarshal(t,
-			"type: discrete\nvalues:\n    - value: 0\n      probability: 1\n",
+			"discrete:\n  - value: 0\n    probability: 1\n",
 			NewDiscreteDistribution([]DiscreteValue[float64]{{Value: 0, Probability: 1}}),
 		)
 	})

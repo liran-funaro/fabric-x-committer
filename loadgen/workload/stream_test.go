@@ -175,29 +175,31 @@ func BenchmarkGenQuery(b *testing.B) {
 }
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
+	t.Helper()
 	require.Len(t, key, int(profile.Key.Size))
 	require.Positive(t, SumInt(key))
 }
 
 func requireValidTx(t *testing.T, tx *protoblocktx.Tx, profile *Profile, signer *TxSignerVerifier) {
+	t.Helper()
 	require.Len(t, tx.Namespaces, 1)
 
 	if profile.Transaction.ReadOnlyCount != nil {
 		require.Len(t, tx.Namespaces[0].ReadsOnly, 1)
 	} else {
-		require.Len(t, tx.Namespaces[0].ReadsOnly, 0)
+		require.Empty(t, tx.Namespaces[0].ReadsOnly)
 	}
 
 	if profile.Transaction.ReadWriteCount != nil {
 		require.Len(t, tx.Namespaces[0].ReadWrites, 2)
 	} else {
-		require.Len(t, tx.Namespaces[0].ReadWrites, 0)
+		require.Empty(t, tx.Namespaces[0].ReadWrites)
 	}
 
 	if profile.Transaction.BlindWriteCount != nil {
 		require.Len(t, tx.Namespaces[0].BlindWrites, 3)
 	} else {
-		require.Len(t, tx.Namespaces[0].BlindWrites, 0)
+		require.Empty(t, tx.Namespaces[0].BlindWrites)
 	}
 
 	for _, v := range tx.Namespaces[0].ReadsOnly {
@@ -241,6 +243,7 @@ func testTxProfiles() (profiles []*Profile) {
 func startTxGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
 ) *TxStream {
+	t.Helper()
 	g := NewTxStream(profile, options, modifierGenerators...)
 	test.RunServiceForTest(t.Context(), t, g.Run, g.WaitForReady)
 	return g
@@ -249,6 +252,7 @@ func startTxGeneratorUnderTest(
 func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
 ) Generator[*protoqueryservice.Query] {
+	t.Helper()
 	g := NewQueryGenerator(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, g.WaitForReady)
 	return g.MakeGenerator()
@@ -267,7 +271,7 @@ func TestGenValidTx(t *testing.T) {
 			g := c.MakeGenerator()
 			signer := NewTxSignerVerifier(p.Transaction.Policy)
 
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				requireValidTx(t, g.Next(), p, signer)
 			}
 		})
@@ -290,7 +294,7 @@ func TestGenValidBlock(t *testing.T) {
 			}
 			signer := NewTxSignerVerifier(p.Transaction.Policy)
 
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				block := g.Next()
 				for _, tx := range block.Txs {
 					requireValidTx(t, tx, p, signer)
@@ -307,7 +311,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
-	txs := NextN(g, 1e4)
+	txs := GenerateArray(g, 1e4)
 	signer := NewTxSignerVerifier(p.Transaction.Policy)
 	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
 		if !signer.Verify(g.Next()) {
@@ -352,7 +356,7 @@ func TestGenDependentTx(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 
-	txs := NextN(g, 1e6)
+	txs := GenerateArray(g, 1e6)
 	m := make(map[string]uint64)
 	for _, tx := range txs {
 		for _, ns := range tx.Namespaces {
@@ -416,7 +420,7 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, options)
 	g := c.MakeGenerator()
 	start := time.Now()
-	NextN(g, expectedSeconds*limit)
+	GenerateArray(g, expectedSeconds*limit)
 	duration := time.Since(start)
 	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1)
 }
@@ -459,6 +463,7 @@ type queryTestEnv struct {
 }
 
 func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
+	t.Helper()
 	q := &queryTestEnv{
 		p:    p,
 		keys: make(map[string]*struct{}),
@@ -468,7 +473,7 @@ func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
 		},
 		queryGen: startQueryGeneratorUnderTest(t, p, o),
 	}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		q.addBlock()
 	}
 	return q
@@ -517,7 +522,7 @@ func TestQuery(t *testing.T) {
 			t.Parallel()
 			env := newQueryTestEnv(t, p, defaultStreamOptions())
 
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				query := env.queryGen.Next()
 				// Since the blocks are generated in parallel, the order of the
 				// keys in the block might not be the same as in the query.
@@ -543,7 +548,7 @@ func TestQueryWithInvalid(t *testing.T) {
 
 			existing := 0
 			total := 0
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				query := env.queryGen.Next()
 				total += len(query.Namespaces[0].Keys)
 				existing += env.countExistingKeys(query.Namespaces[0].Keys)
@@ -564,7 +569,7 @@ func TestQueryShuffle(t *testing.T) {
 		p.Query.Shuffle = false
 		env := newQueryTestEnv(t, p, defaultStreamOptions())
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			query := env.queryGen.Next()
 			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
 			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
@@ -579,7 +584,7 @@ func TestQueryShuffle(t *testing.T) {
 		p.Query.Shuffle = true
 		env := newQueryTestEnv(t, p, defaultStreamOptions())
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			query := env.queryGen.Next()
 			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
 			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys))

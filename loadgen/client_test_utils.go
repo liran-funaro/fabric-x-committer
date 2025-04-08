@@ -1,7 +1,6 @@
 package loadgen
 
 import (
-	_ "embed"
 	"testing"
 	"time"
 
@@ -23,6 +22,7 @@ func eventuallyMetrics(
 	m *metrics.PerfMetrics,
 	condition func(m metrics.MetricState) bool,
 ) {
+	t.Helper()
 	if !assert.Eventually(t, func() bool {
 		return condition(m.GetState())
 	}, 2*time.Minute, time.Second) {

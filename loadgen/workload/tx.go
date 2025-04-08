@@ -9,13 +9,13 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
-// IndependentTxGenerator generates a new valid TX given key generators.
 type (
+	// IndependentTxGenerator generates a new valid TX given key generators.
 	IndependentTxGenerator struct {
 		TxIDGenerator            *UUIDGenerator
-		ReadOnlyKeyGenerator     *MultiGenerator[[]byte]
-		ReadWriteKeyGenerator    *MultiGenerator[[]byte]
-		BlindWriteKeyGenerator   *MultiGenerator[[]byte]
+		ReadOnlyKeyGenerator     *MultiGenerator[Key]
+		ReadWriteKeyGenerator    *MultiGenerator[Key]
+		BlindWriteKeyGenerator   *MultiGenerator[Key]
 		ReadWriteValueGenerator  *ByteArrayGenerator
 		BlindWriteValueGenerator *ByteArrayGenerator
 	}
@@ -25,9 +25,13 @@ type (
 		modifiers []Modifier
 	}
 
+	// Modifier modifies a TX.
 	Modifier interface {
 		Modify(*protoblocktx.Tx) (*protoblocktx.Tx, error)
 	}
+
+	// Key is an alias for byte array.
+	Key = []byte
 )
 
 // GeneratedNamespaceID for now we're only generating transactions for a single namespace.
@@ -87,19 +91,11 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 	return tx
 }
 
-// Key is an alias for byte array.
-type Key = []byte
-
 func multiKeyGenerator(rnd *rand.Rand, keyGen Generator[Key], keyCount *Distribution) *MultiGenerator[Key] {
-	ret := &MultiGenerator[Key]{Gen: keyGen}
-
-	if keyCount == nil {
-		ret.Count = &ConstGenerator[int]{Const: 0}
-	} else {
-		ret.Count = keyCount.MakeIntGenerator(rnd)
+	return &MultiGenerator[Key]{
+		Gen:   keyGen,
+		Count: keyCount.MakeIntGenerator(rnd),
 	}
-
-	return ret
 }
 
 func valueGenerator(rnd *rand.Rand, valueSize uint32) *ByteArrayGenerator {
@@ -109,14 +105,14 @@ func valueGenerator(rnd *rand.Rand, valueSize uint32) *ByteArrayGenerator {
 // BlockGenerator generates new blocks given a TX generator.
 // It does not set the block number. It is to be set by the receiver.
 type BlockGenerator struct {
-	TxGenerator Generator[*protoblocktx.Tx]
+	TxGenerator *RateLimiterGenerator[*protoblocktx.Tx]
 	BlockSize   uint64
 	txNums      []uint32
 }
 
 // Next generate a new block.
 func (g *BlockGenerator) Next() *protocoordinatorservice.Block {
-	txs := NextN(g.TxGenerator, int(g.BlockSize)) //nolint:gosec // integer overflow conversion uint64 -> int
+	txs := GenerateArray(g.TxGenerator, int(g.BlockSize)) //nolint:gosec // integer overflow conversion uint64 -> int
 	// Generators return nil when their stream is done.
 	// This indicates that the block generator should also be done.
 	if txs[len(txs)-1] == nil {

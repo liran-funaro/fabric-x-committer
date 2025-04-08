@@ -1,22 +1,11 @@
 package workload
 
 import (
-	"fmt"
 	"math/rand"
 )
 
 // Probability is a float in the closed interval [0,1].
 type Probability = float64
-
-type DistributionType string
-
-const (
-	constant  DistributionType = "constant"
-	uniform   DistributionType = "uniform"
-	normal    DistributionType = "normal"
-	bernoulli DistributionType = "bernoulli"
-	discrete  DistributionType = "discrete"
-)
 
 const (
 	// Always is 100%.
@@ -25,113 +14,109 @@ const (
 	Never Probability = 0
 )
 
-// Distribution is a descriptor of a distribution.
-type Distribution struct {
-	// DistributionType is the type of the distribution.
-	Type DistributionType `mapstructure:"type"`
-
-	Const float64 `mapstructure:"const"`
-
-	Min float64 `mapstructure:"min"`
-	Max float64 `mapstructure:"max"`
-
-	Mean float64 `mapstructure:"mean"`
-	Std  float64 `mapstructure:"std"`
-
-	Probability Probability `mapstructure:"probability"`
-
-	Values []DiscreteValue[float64] `mapstructure:"values"`
-}
+type (
+	// Distribution descriptor for the available distributions.
+	Distribution struct {
+		Const     float64                  `mapstructure:"const" yaml:"const,omitempty"`
+		Uniform   *UniformDist             `mapstructure:"uniform" yaml:"uniform,omitempty"`
+		Normal    *NormalDist              `mapstructure:"normal" yaml:"normal,omitempty"`
+		Bernoulli Probability              `mapstructure:"bernoulli" yaml:"bernoulli,omitempty"`
+		Discrete  []DiscreteValue[float64] `mapstructure:"discrete" yaml:"discrete,omitempty"`
+	}
+	// UniformDist describes uniform.
+	UniformDist struct {
+		Min float64 `mapstructure:"min" yaml:"min,omitempty"`
+		Max float64 `mapstructure:"max" yaml:"max,omitempty"`
+	}
+	// NormalDist describes normal.
+	NormalDist struct {
+		Mean float64 `mapstructure:"mean" yaml:"mean,omitempty"`
+		Std  float64 `mapstructure:"std" yaml:"std,omitempty"`
+	}
+)
 
 // MakeGenerator returns a new generator according to the distribution description.
+// The default distribution is const=0.
 func (d *Distribution) MakeGenerator(rnd *rand.Rand) Generator[float64] {
-	switch d.Type {
-	case constant:
-		return &ConstGenerator[float64]{
-			Const: d.Const,
-		}
-	case uniform:
+	if d == nil {
+		return &ConstGenerator[float64]{Const: 0}
+	}
+	switch {
+	case d.Uniform != nil:
 		return &UniformGenerator{
 			Rnd: rnd,
-			Min: d.Min,
-			Max: d.Max,
+			Min: d.Uniform.Min,
+			Max: d.Uniform.Max,
 		}
-	case normal:
+	case d.Normal != nil:
 		return &NormalGenerator{
 			Rnd:  rnd,
-			Mean: d.Mean,
-			Std:  d.Std,
+			Mean: d.Normal.Mean,
+			Std:  d.Normal.Std,
 		}
-	case bernoulli:
-		return &BernoulliGenerator{
-			Rnd:         rnd,
-			Probability: d.Probability,
-		}
-	case discrete:
+	case d.Discrete != nil:
 		return &DiscreteGenerator[float64]{
 			Rnd:    rnd,
-			Values: d.Values,
+			Values: d.Discrete,
+		}
+	case d.Bernoulli > 0:
+		return &BernoulliGenerator{
+			Rnd:         rnd,
+			Probability: d.Bernoulli,
 		}
 	default:
-		panic(fmt.Sprintf("unsupported distribution: %s", d.Type))
+		return &ConstGenerator[float64]{Const: d.Const}
 	}
 }
 
 // MakeIntGenerator returns a new integer generator according to the distribution description.
-func (d *Distribution) MakeIntGenerator(rnd *rand.Rand) Generator[int] {
+func (d *Distribution) MakeIntGenerator(rnd *rand.Rand) *FloatToIntGenerator {
 	return &FloatToIntGenerator{FloatGen: d.MakeGenerator(rnd)}
 }
 
 // MakePositiveIntGenerator returns a new positive (>=1) integer generator according to the distribution description.
-func (d *Distribution) MakePositiveIntGenerator(rnd *rand.Rand) Generator[int] {
+func (d *Distribution) MakePositiveIntGenerator(rnd *rand.Rand) *FloatToPositiveIntGenerator {
 	return &FloatToPositiveIntGenerator{FloatGen: d.MakeGenerator(rnd)}
 }
 
 // MakeBooleanGenerator returns a new boolean generator according to the distribution description.
-func (d *Distribution) MakeBooleanGenerator(rnd *rand.Rand) Generator[bool] {
+func (d *Distribution) MakeBooleanGenerator(rnd *rand.Rand) *FloatToBooleanGenerator {
 	return &FloatToBooleanGenerator{FloatGen: d.MakeGenerator(rnd)}
 }
 
 // NewConstantDistribution creates a constant value distribution.
 func NewConstantDistribution(value float64) *Distribution {
-	return &Distribution{
-		Type:  constant,
-		Const: value,
-	}
+	return &Distribution{Const: value}
 }
 
 // NewNormalDistribution creates a normal distribution.
 func NewNormalDistribution(mean, std float64) *Distribution {
 	return &Distribution{
-		Type: normal,
-		Mean: mean,
-		Std:  std,
+		Normal: &NormalDist{
+			Mean: mean,
+			Std:  std,
+		},
 	}
 }
 
 // NewUniformDistribution creates a uniform distribution.
-func NewUniformDistribution(min, max float64) *Distribution {
+func NewUniformDistribution(minVal, maxVal float64) *Distribution {
 	return &Distribution{
-		Type: uniform,
-		Min:  min,
-		Max:  max,
+		Uniform: &UniformDist{
+			Min: minVal,
+			Max: maxVal,
+		},
 	}
 }
 
 // NewDiscreteDistribution creates a discrete distribution.
 func NewDiscreteDistribution(values []DiscreteValue[float64]) *Distribution {
-	return &Distribution{
-		Type:   discrete,
-		Values: values,
-	}
+	return &Distribution{Discrete: values}
 }
 
 // NewBernoulliDistribution creates a Bernoulli distribution.
 func NewBernoulliDistribution(probability Probability) *Distribution {
-	return &Distribution{
-		Type:        bernoulli,
-		Probability: probability,
-	}
+	return &Distribution{Bernoulli: probability}
 }
 
 // UniformGenerator generates values with a uniform distribution.

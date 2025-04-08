@@ -48,7 +48,7 @@ type (
 	// Then, it submits blocks from the tx stream.
 	clientBlockGenerator struct {
 		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
-		blockGen         workload.Generator[*protocoordinatorservice.Block]
+		blockGen         *workload.BlockGenerator
 	}
 
 	// clientTxGenerator is a TX generator that first submit TXs from the workloadSetupTXs,
@@ -56,7 +56,7 @@ type (
 	// Then, it submits transactions from the tx stream.
 	clientTxGenerator struct {
 		workloadSetupTXs channel.Reader[*protoblocktx.Tx]
-		txGen            workload.Generator[*protoblocktx.Tx]
+		txGen            *workload.RateLimiterGenerator[*protoblocktx.Tx]
 	}
 )
 
@@ -143,7 +143,7 @@ func (c *Client) Run(ctx context.Context) error {
 	if !c.conf.Generate.Load {
 		cancel()
 	}
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "workload done")
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.

@@ -5,71 +5,11 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/ratelimit"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 )
 
 // Generator generates new T each time Next() is called.
 type Generator[T any] interface {
 	Next() T
-}
-
-// NextN returns the next N values from the generator.
-func NextN[T any](g Generator[T], num int) []T {
-	txs := make([]T, 0, num)
-	for i := 0; i < num; i++ {
-		txs = append(txs, g.Next())
-	}
-	return txs
-}
-
-// ChanGenerator pull values from a channel.
-type ChanGenerator[T any] struct {
-	Chan channel.Reader[T]
-}
-
-// Next yields a new value from the channel.
-// If the channel is closed, a default value is returned.
-func (g *ChanGenerator[T]) Next() T {
-	if g.Chan == nil {
-		return *new(T)
-	}
-	val, ok := g.Chan.Read()
-	if !ok {
-		g.Chan = nil
-		return *new(T)
-	}
-	return val
-}
-
-// BatchChanGenerator pull batch of values from a channel and yield them one by one.
-type BatchChanGenerator[T any] struct {
-	Chan      channel.Reader[[]T]
-	lastBatch []T
-	index     int
-}
-
-// Next yields a new value from the channel.
-// If the channel is closed, a default value is returned.
-func (g *BatchChanGenerator[T]) Next() T {
-	if g.Chan == nil {
-		return *new(T)
-	}
-	if g.index >= len(g.lastBatch) {
-		var ok bool
-		g.lastBatch, ok = g.Chan.Read()
-		g.index = 0
-		if !ok {
-			g.Chan = nil
-			return *new(T)
-		}
-		if len(g.lastBatch) == 0 {
-			return *new(T)
-		}
-	}
-	next := g.lastBatch[g.index]
-	g.index++
-	return next
 }
 
 // FloatToIntGenerator wraps a float generator and produces integers.
@@ -88,8 +28,8 @@ type FloatToPositiveIntGenerator struct {
 }
 
 // Next yields a new integer.
-func (g *FloatToPositiveIntGenerator) Next() int {
-	return max(int(g.FloatGen.Next()), 1)
+func (g *FloatToPositiveIntGenerator) Next() uint64 {
+	return uint64(max(g.FloatGen.Next(), 1))
 }
 
 // FloatToBooleanGenerator wraps a float generator and produces boolean (true when >=1).
@@ -137,16 +77,7 @@ type MultiGenerator[T any] struct {
 
 // Next yields an array of items.
 func (g *MultiGenerator[T]) Next() []T {
-	return GenerateArray[T](g.Gen, g.Count.Next())
-}
-
-// GenerateArray generates an array of items of the requested size given a generator.
-func GenerateArray[T any](g Generator[T], size int) []T {
-	arr := make([]T, size)
-	for i := range arr {
-		arr[i] = g.Next()
-	}
-	return arr
+	return GenerateArray(g.Gen, g.Count.Next())
 }
 
 // UUIDGenerator generates UUIDs.
@@ -161,15 +92,49 @@ func (g *UUIDGenerator) Next() string {
 	return uuidObj.String()
 }
 
-// RateLimiterGenerator limits the generator's rate.
+// RateLimiterGenerator pull batch of values from Chan and yield them one by one.
+// It limits the generated rate using Limiter.
+// It will finish once Chan is closed.
 type RateLimiterGenerator[T any] struct {
-	Generator[T]
-	Limiter ratelimit.Limiter
+	Chan      <-chan []T
+	Limiter   ratelimit.Limiter
+	lastBatch []T
+	index     int
 }
 
 // Next yields a value at the required rate.
 func (g *RateLimiterGenerator[T]) Next() T {
-	val := g.Generator.Next()
+	if g.Chan == nil {
+		return *new(T)
+	}
+	if g.index >= len(g.lastBatch) {
+		var ok bool
+		g.lastBatch, ok = <-g.Chan
+		g.index = 0
+		if !ok {
+			g.Chan = nil
+			return *new(T)
+		}
+		if len(g.lastBatch) == 0 {
+			return *new(T)
+		}
+	}
+	next := g.lastBatch[g.index]
+	g.index++
 	g.Limiter.Take()
-	return val
+	return next
+}
+
+// NextN returns the next N values from the generator.
+func (g *RateLimiterGenerator[T]) NextN(num int) []T {
+	return GenerateArray(g, num)
+}
+
+// GenerateArray generates an array of items of the requested size given a generator.
+func GenerateArray[G Generator[T], T any](g G, size int) []T {
+	arr := make([]T, size)
+	for i := range arr {
+		arr[i] = g.Next()
+	}
+	return arr
 }

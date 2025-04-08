@@ -40,9 +40,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 		return errors.Wrap(err, "failed creating verification policy")
 	}
 
-	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
+	connections, err := connection.OpenLazyConnections(c.config.Endpoints, insecure.NewCredentials())
 	if err != nil {
-		return errors.Newf("failed opening connections: %w", err)
+		return errors.Wrap(err, "failed opening connections")
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
@@ -77,7 +77,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 			return c.receiveStatus(gCtx, stream)
 		})
 	}
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "workload done")
 }
 
 func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Update, error) {
@@ -122,7 +122,7 @@ func (c *SvAdapter) receiveStatus(
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving verification status")
 		}
 
 		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))

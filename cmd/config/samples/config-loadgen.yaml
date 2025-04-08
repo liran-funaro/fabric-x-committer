@@ -27,7 +27,6 @@ load-profile:
     size: 500
   transaction:
     read-write-count:
-      type: constant
       const: 2
     policy:
       namespace-policies:

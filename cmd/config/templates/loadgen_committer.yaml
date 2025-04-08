@@ -31,7 +31,6 @@ load-profile:
     blind-write-value-size:
     read-only-count:
     read-write-count:
-      type: constant
       const: 2
     policy:
       namespace-policies:

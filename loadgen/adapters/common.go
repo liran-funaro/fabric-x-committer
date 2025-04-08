@@ -2,8 +2,9 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -111,7 +112,7 @@ func (c *commonAdapter) sendBlocks(
 		block.Number = c.nextBlockNum.Add(1) - 1
 		logger.Debugf("Sending block %d with %d TXs", block.Number, len(block.Txs))
 		if err := send(block); err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(connection.FilterStreamRPCError(err), "failed sending block")
 		}
 		c.res.Metrics.OnSendBlock(block)
 		if c.res.isSendLimit() {

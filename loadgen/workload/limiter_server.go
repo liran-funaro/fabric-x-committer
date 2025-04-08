@@ -28,11 +28,9 @@ func getLimiter(limit int) ratelimit.Limiter {
 	if limit < 1 {
 		logger.Infof("Setting to unlimited (value passed: %d).", limit)
 		return ratelimit.NewUnlimited()
-	} else {
-		logger.Infof("Setting limit to %d requests per second.", limit)
-		// create our new limiter
-		return ratelimit.New(limit)
 	}
+	logger.Infof("Setting limit to %d requests per second.", limit)
+	return ratelimit.New(limit)
 }
 
 // NewLimiter instantiate a new rate limiter with optional remote control capabilities.

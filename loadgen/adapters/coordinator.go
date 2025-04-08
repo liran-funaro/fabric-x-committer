@@ -2,8 +2,8 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -31,7 +31,7 @@ func NewCoordinatorAdapter(config *CoordinatorClientConfig, res *ClientResources
 func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	conn, err := connection.LazyConnect(connection.NewDialConfig(c.config.Endpoint))
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", c.config.Endpoint.String(), err)
+		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}
 	defer connection.CloseConnectionsLog(conn)
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
@@ -45,7 +45,7 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream)
 	logger.Info("Opening stream")
 	stream, err := client.BlockProcessing(ctx)
 	if err != nil {
-		return fmt.Errorf("failed creating stream to coordinator: %w", err)
+		return errors.Wrap(err, "failed creating stream to coordinator")
 	}
 
 	dCtx, dCancel := context.WithCancel(ctx)
@@ -58,7 +58,7 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream TxStream)
 		defer dCancel() // We stop sending if we can't track the received items.
 		return c.receiveStatus(gCtx, stream)
 	})
-	return g.Wait()
+	return errors.Wrap(g.Wait(), "workload done")
 }
 
 // Progress a submitted block indicates progress for the coordinator as it guaranteed to preserve the order.
@@ -72,7 +72,7 @@ func (c *CoordinatorAdapter) receiveStatus(
 	for ctx.Err() == nil {
 		txStatus, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving block status")
 		}
 
 		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))

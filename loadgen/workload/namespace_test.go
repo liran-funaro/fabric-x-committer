@@ -56,6 +56,7 @@ func TestCreateConfigTx(t *testing.T) {
 }
 
 func getReadWritesFromNamespaceTx(t *testing.T, tx *protoblocktx.Tx) []*protoblocktx.ReadWrite {
+	t.Helper()
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)
 	require.Equal(t, types.MetaNamespaceID, tx.Namespaces[0].NsId)

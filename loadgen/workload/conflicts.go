@@ -18,21 +18,21 @@ type (
 	// signTxModifier signs transactions according to the conflicts profile.
 	signTxModifier struct {
 		Signer               *TxSignerVerifier
-		invalidSignGenerator Generator[bool]
+		invalidSignGenerator *FloatToBooleanGenerator
 		invalidSignature     [][]byte
 	}
 
 	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
 	dependenciesModifier struct {
-		keyGenerator    Generator[[]byte]
+		keyGenerator    *ByteArrayGenerator
 		dependencies    []dependencyDesc
 		dependenciesMap map[uint64][]dependency
 		index           uint64
 	}
 
 	dependencyDesc struct {
-		bernoulliGenerator Generator[int]
-		gapGenerator       Generator[int]
+		bernoulliGenerator *FloatToIntGenerator
+		gapGenerator       *FloatToPositiveIntGenerator
 		src                string
 		dst                string
 	}
@@ -86,18 +86,12 @@ func newTxDependenciesModifier(
 		dependencies: Map(profile.Conflicts.Dependencies, func(
 			_ int, value DependencyDescription,
 		) dependencyDesc {
-			var gapGen Generator[int]
-			if value.Gap == nil {
-				gapGen = &ConstGenerator[int]{Const: 1}
-			} else {
-				gapGen = value.Gap.MakePositiveIntGenerator(rnd)
-			}
 			return dependencyDesc{
 				bernoulliGenerator: &FloatToIntGenerator{FloatGen: &BernoulliGenerator{
 					Rnd:         rnd,
 					Probability: value.Probability,
 				}},
-				gapGenerator: gapGen,
+				gapGenerator: value.Gap.MakePositiveIntGenerator(rnd),
 				src:          value.Src,
 				dst:          value.Dst,
 			}
@@ -121,8 +115,7 @@ func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, er
 			continue
 		}
 
-		//nolint:gosec // integer overflow conversion int -> uint64
-		gap := uint64(max(depDesc.gapGenerator.Next(), 1))
+		gap := depDesc.gapGenerator.Next()
 		d := dependency{
 			key: g.keyGenerator.Next(),
 			src: depDesc.src,
