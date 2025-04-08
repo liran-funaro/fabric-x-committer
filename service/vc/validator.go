@@ -57,7 +57,7 @@ func newValidator(
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
 ) *transactionValidator { // nolint:revive
-	logger.Debugf("Creating new validator")
+	logger.Info("Initializing new validator")
 	return &transactionValidator{
 		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
@@ -68,6 +68,7 @@ func newValidator(
 
 // start starts the validator with the given number of workers.
 func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
+	logger.Infof("Starting Validator with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
@@ -117,7 +118,8 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
 		outgoingValidatedTransactions.Write(vTxs)
 
-		logger.Debugf("Validator sent batch of validated TXs to the committer")
+		logger.Debugf("Validator sent batch validated TXs to the committer (%d non blide writes and %d blind writes)",
+			len(vTxs.validTxNonBlindWrites), len(vTxs.validTxBlindWrites))
 		vTxs.Debug()
 	}
 }

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
@@ -35,7 +35,7 @@ func newCommitter(
 	txsStatus chan<- *protoblocktx.TransactionsStatus,
 	metrics *perfMetrics,
 ) *transactionCommitter {
-	logger.Debugf("Creating committer")
+	logger.Info("Initializing new committer")
 	return &transactionCommitter{
 		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
@@ -45,6 +45,7 @@ func newCommitter(
 }
 
 func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
+	logger.Infof("Starting transactionCommitter with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
@@ -68,7 +69,9 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 			return nil
 		}
 
-		logger.Debugf("Batch of validated TXs in the committer")
+		logger.Debugf("Batch of %d new writes, %d new non blind writes and %d blind writes "+
+			"validated TXs in the committer.",
+			len(vTx.newWrites), len(vTx.validTxNonBlindWrites), len(vTx.validTxBlindWrites))
 		start := time.Now()
 		// There are certain errors for which we need to retry the commit operation.
 		// Refer to YugabyteDB documentation for retryable error.
@@ -77,13 +80,14 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// TODO: Add test to ensure commit is retried.
 		txsStatus, err = c.commitTransactions(ctx, vTx)
 		if err != nil {
-			logger.Errorf("failed to commit transactions: %s", err)
-			return fmt.Errorf("failed to commit transactions: %w", err)
+			return utils.ProcessErr(logger, err, "failed to commit transactions") //nolint:wrapcheck
 		}
 
 		promutil.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
 		outgoingTransactionsStatus.Write(txsStatus)
-		logger.Debugf("Batch of TXs sent from the committer to the output")
+		logger.Debugf("Batch of %d new writes, %d new non blind writes and %d blind writes "+
+			"sent from the committer to the output.",
+			len(vTx.newWrites), len(vTx.validTxNonBlindWrites), len(vTx.validTxBlindWrites))
 	}
 }
 
@@ -135,7 +139,7 @@ func (c *transactionCommitter) commitTransactions(
 			mismatch, duplicated, err = c.db.commit(ctx, info)
 			return err
 		}); retryErr != nil {
-			return nil, errors.Wrap(retryErr, "failed to commit transactions")
+			return nil, utils.ProcessErr(logger, retryErr, "failed to commit transactions") //nolint:wrapcheck
 		}
 
 		if mismatch.empty() && len(duplicated) == 0 {

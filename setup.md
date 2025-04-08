@@ -102,7 +102,7 @@ make test
 ## Golang Linter Check Installation
 
 ```shell
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.0
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.4
 ```
 
 #### Note on YugabyteDB

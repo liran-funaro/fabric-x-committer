@@ -87,7 +87,7 @@ func newPreparer(
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
-	logger.Debugf("Creating new preparer")
+	logger.Info("Initializing new preparer")
 	return &transactionPreparer{
 		incomingTransactionBatch:     txBatch,
 		outgoingPreparedTransactions: preparedTxs,
@@ -96,6 +96,7 @@ func newPreparer(
 }
 
 func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
+	logger.Infof("Starting transaction preparer with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 
 	for i := 0; i < numWorkers; i++ {
@@ -150,12 +151,15 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.
 			if tx.PrelimInvalidTxStatus != nil {
+				logger.Debugf("Transaction %s marked as preliminarily invalid with status: %v",
+					tx.ID, tx.PrelimInvalidTxStatus.Code)
 				prepTxs.invalidTxIDStatus[TxID(tx.ID)] = tx.PrelimInvalidTxStatus.Code
 				continue
 			}
 
 			for _, nsOperations := range tx.Namespaces {
 				tID := TxID(tx.ID)
+				logger.Debugf("Preparing namespace %s in transaction with ID %s ", nsOperations.NsId, tx.ID)
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)
@@ -212,9 +216,12 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 // addReadsOnly adds reads-only to the prepared transactions.
 func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadsOnly) == 0 {
+		logger.Debugf("No read-only entries found in namespace %s", ns.NsId)
 		return
 	}
 
+	logger.Debugf("Adding %d read-only entries found in namespace %s to the prepared transaction",
+		len(ns.ReadsOnly), ns.NsId)
 	nsReads := p.nsToReads.getOrCreate(ns.NsId)
 
 	for _, r := range ns.ReadsOnly {
@@ -236,9 +243,12 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 // addReadWrites adds read-writes to the prepared transactions.
 func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.ReadWrites) == 0 {
+		logger.Debugf("No read-write entries found in namespace %s", ns.NsId)
 		return
 	}
 
+	logger.Debugf("Adding %d read-write entries found in namespace %s to the prepared transaction",
+		len(ns.ReadWrites), ns.NsId)
 	nsReads := p.nsToReads.getOrCreate(ns.NsId)
 	nsWrites := p.txIDToNsNonBlindWrites.getOrCreate(id, ns.NsId)
 	newWrites := p.txIDToNsNewWrites.getOrCreate(id, ns.NsId)
@@ -270,9 +280,12 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 // addBlindWrites adds the blind writes to the prepared transactions.
 func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamespace) {
 	if len(ns.BlindWrites) == 0 {
+		logger.Debugf("No blind writes entries found in namespace %s", ns.NsId)
 		return
 	}
 
+	logger.Debugf("Adding %d bline writes entries found in namespace %s to the prepared transaction",
+		len(ns.BlindWrites), ns.NsId)
 	nsWrites := p.txIDToNsBlindWrites.getOrCreate(id, ns.NsId)
 
 	for _, w := range ns.BlindWrites {

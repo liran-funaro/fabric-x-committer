@@ -68,6 +68,7 @@ func NewValidatorCommitterService(
 	ctx context.Context,
 	config *ValidatorCommitterServiceConfig,
 ) (*ValidatorCommitterService, error) {
+	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits
 
 	// TODO: make queueMultiplier configurable
@@ -81,7 +82,7 @@ func NewValidatorCommitterService(
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
 	if err != nil {
-		return nil, err
+		return nil, utils.ProcessErr(logger, err, "failed to initialize database") //nolint:wrapcheck
 	}
 
 	vc := &ValidatorCommitterService{
@@ -105,10 +106,12 @@ func NewValidatorCommitterService(
 
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
+	logger.Info("Starting ValidatorCommitterService")
 	defer vc.Close()
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		logger.Info("Starting Prometheus monitoring server")
 		_ = vc.metrics.StartPrometheusServer(
 			eCtx, vc.config.Monitoring.Server, vc.monitorQueues,
 		)
@@ -118,6 +121,7 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
+		logger.Info("Starting transaction batching and forwarding process")
 		vc.batchReceivedTransactionsAndForwardForProcessing(eCtx)
 		return nil
 	})
@@ -139,9 +143,10 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.Errorf("vcservice processing has been stopped due to err [%v]", err)
+		logger.ErrorStackTrace(errors.Wrap(err, "vcservice processing has been stopped due to err"))
 		return err
 	}
+	logger.Info("ValidatorCommitterService stopped gracefully")
 	return nil
 }
 
@@ -185,6 +190,7 @@ func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 ) (*protoblocktx.BlockInfo, error) {
 	blkInfo, err := vc.db.getLastCommittedBlockNumber(ctx)
 	if err != nil && errors.Is(err, ErrMetadataEmpty) {
+		logger.ErrorStackTrace(errors.Wrap(err, "GetLastCommittedBlockNumber, error"))
 		return nil, grpcerror.WrapNotFound(err)
 	}
 	logger.ErrorStackTrace(err)
@@ -270,9 +276,11 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
 		if err != nil {
-			return errors.Wrap(err, "failed to receive transactions from the coordinator")
+			return utils.ProcessErr(logger, err, //nolint:wrapcheck
+				"failed to receive transactions from the coordinator")
 		}
 		txCount := len(b.Transactions)
+		logger.Debugf("Received batch of %d transactions", txCount)
 		promutil.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
 		vc.receivedTxBatch <- b
 	}
@@ -334,9 +342,9 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		}
 
 		if err := stream.Send(txStatus); err != nil {
-			return errors.Wrap(err, "failed to send transactions status to the coordinator")
+			return utils.ProcessErr(logger, err, //nolint:wrapcheck
+				"failed to send transactions status to the coordinator")
 		}
-
 		committed := 0
 		mvcc := 0
 		dup := 0
@@ -351,6 +359,8 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 			}
 		}
 
+		logger.Debug("Sent transaction status update: Committed: %d, MVCC Conflicts: %d, Duplicates: %d, Total: %d",
+			committed, mvcc, dup, len(txStatus.Status))
 		promutil.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
 		promutil.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
 		promutil.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)

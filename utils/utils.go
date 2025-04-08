@@ -8,6 +8,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/exp/constraints"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.
@@ -64,4 +66,12 @@ func Range[T constraints.Integer](start, end T) []T {
 		results = append(results, i)
 	}
 	return results
+}
+
+// ProcessErr wraps the given error with additional context, logs the full stack trace,
+// and returns the wrapped error. Useful for consistent error handling and debugging data.
+func ProcessErr(logger *logging.Logger, err error, format string, args ...any) error {
+	errMsg := errors.Wrapf(err, format, args...)
+	logger.ErrorStackTrace(errMsg)
+	return errMsg
 }
