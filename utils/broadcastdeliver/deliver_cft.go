@@ -102,7 +102,7 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 
 		//nolint:gosec // integer overflow conversion uint64 -> int64
 		config.StartBlkNum = int64(block.Header.Number) + 1
-		logger.Infof("next expected block number is %d", config.StartBlkNum)
+		logger.Debugf("next expected block number is %d", config.StartBlkNum)
 		outputBlock.Write(block)
 	}
 

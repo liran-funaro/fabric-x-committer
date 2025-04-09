@@ -268,7 +268,6 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 		}
 		sv.txMu.Unlock()
 
-		logger.Info("Waiting to add")
 		if !outputValidatedTxs.Write(validatedTxs) {
 			// Since transactions are loaded and deleted from txBeingValidated before their
 			// validation results are queued, we must re-queue the transaction to txBeingValidated

@@ -77,10 +77,11 @@ type (
 
 	// Config represents the runtime configuration.
 	Config struct {
-		NumVerifiers int
-		NumVCService int
-		BlockSize    uint64
-		BlockTimeout time.Duration
+		NumVerifiers      int
+		NumVCService      int
+		BlockSize         uint64
+		BlockTimeout      time.Duration
+		LoadgenBlockLimit uint64
 
 		// DBCluster configures the cluster to operate in DB cluster mode.
 		DBCluster *dbtest.Connection
@@ -113,9 +114,10 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c := &CommitterRuntime{
 		config: conf,
 		SystemConfig: config.SystemConfig{
-			ChannelID:    "channel1",
-			BlockSize:    conf.BlockSize,
-			BlockTimeout: conf.BlockTimeout,
+			ChannelID:         "channel1",
+			BlockSize:         conf.BlockSize,
+			BlockTimeout:      conf.BlockTimeout,
+			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			Logging: &logging.Config{
 				Enabled: false,
 			},

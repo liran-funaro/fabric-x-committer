@@ -198,10 +198,10 @@ func diffReads(readA, readB *reads) (extraA, extraB *reads) {
 
 	// Mark indexes in bValue that we already used
 	visited := make([]bool, bLen)
-	for i := 0; i < aLen; i++ {
+	for i := range aLen {
 		key, version := readA.keys[i], readA.versions[i]
 		found := false
-		for j := 0; j < bLen; j++ {
+		for j := range bLen {
 			if visited[j] {
 				continue
 			}
@@ -217,7 +217,7 @@ func diffReads(readA, readB *reads) (extraA, extraB *reads) {
 		}
 	}
 
-	for j := 0; j < bLen; j++ {
+	for j := range bLen {
 		if visited[j] {
 			continue
 		}
@@ -265,11 +265,8 @@ func TestDBCommit(t *testing.T) {
 		},
 	}
 
-	_, _, err := dbEnv.DB.commit(t.Context(), &statesToBeCommitted{newWrites: nsToWrites})
-	require.NoError(t, err)
-
-	_, _, err = dbEnv.DB.commit(t.Context(), &statesToBeCommitted{updateWrites: nsToWrites})
-	require.NoError(t, err)
+	commit(t, dbEnv, &statesToBeCommitted{newWrites: nsToWrites})
+	commit(t, dbEnv, &statesToBeCommitted{updateWrites: nsToWrites})
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
 	dbEnv.rowExists(t, types.MetaNamespaceID, *nsToWrites[types.MetaNamespaceID])
@@ -288,8 +285,16 @@ func TestDBCommit(t *testing.T) {
 			versions: [][]byte{v0, v0},
 		},
 	}
-	_, _, err = dbEnv.DB.commit(t.Context(), &statesToBeCommitted{newWrites: nsToWrites})
-	require.NoError(t, err)
+
+	commit(t, dbEnv, &statesToBeCommitted{newWrites: nsToWrites})
 	dbEnv.rowExists(t, "3", *nsToWrites["3"])
 	dbEnv.rowExists(t, "4", *nsToWrites["4"])
+}
+
+func commit(t *testing.T, dbEnv *DatabaseTestEnv, states *statesToBeCommitted) {
+	t.Helper()
+	require.NoError(t, dbEnv.DBConf.Retry.Execute(t.Context(), func() error {
+		_, _, err := dbEnv.DB.commit(t.Context(), states)
+		return err
+	}))
 }
