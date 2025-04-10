@@ -3,10 +3,18 @@
 1. [Labeling Review Comments](#labeling-review-comments)
 2. [The Importance of Politeness in Code Reviews](#the-importance-of-politeness-in-code-reviews)
 3. [GoLang Coding Standards](#golang-coding-standards)
-4. [Test Coverage and Use of Mocks](#test-coverage-and-use-of-mocks)
-5. [Performance Considerations](#performance-considerations)
-6. [Code Owners](#code-owners)
-7. [Pre-Pull Request Checklist](#pre-pull-request-checklist)
+4. [The Arguments for Simplicity](#the-argument-for-simplicity)
+   - [Prioritize Simple and Readable Code over "Clever" Code](#prioritize-simple-and-readable-code-over-clever-code)
+   - [Avoid Premature Optimization](#avoid-premature-optimization)
+   - [Apply YAGNI (You Ain't Gonna Need It)](#apply-yagni-you-aint-gonna-need-it)
+5. [The Downsides and Complexities Introduced By Interfaces, Generics, and Function Arguments](#the-downsides-and-complexities-introduced-by-interfaces-generics-and-function-arguments)
+   - [Interfaces (Layers of Indirection and Obscurity)](#interfaces-layers-of-indirection-and-obscurity)
+   - [Generics (complexity and obfuscation)](#generics-complexity-and-obfuscation)
+   - [Passing Functions as Arguments (Destroyed Control Flow and Debugging Nightmares)](#passing-functions-as-arguments-destroyed-control-flow-and-debugging-nightmares)
+8. [Test Coverage and Use of Mocks](#test-coverage-and-use-of-mocks)
+9. [Performance Considerations](#performance-considerations)
+10. [Code Owners](#code-owners)
+11. [Pre-Pull Request Checklist](#pre-pull-request-checklist)
 
 # Labeling Review Comments
 
@@ -129,6 +137,140 @@ reviewing code, you should keep these guidelines in mind and refer to them as ne
 4. [Uber's Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md): This style guide from
    Uber demonstrates how a large organization applies Go best practices. It's a useful reference for
    structuring and formatting your Go code.
+
+
+# The Argument for Simplicity
+
+Simple code is generally:
+
+1. *Easier to Read*: Follows a predictable path.
+2. *Easier to Understand*: Less indirection and abstraction mean the intent and execution are clearer.
+3. *Easier to Debug*: Errors are easier to trace when the execution path is linear.
+4. *Easier to Maintain*: Modifications are often more localized and less likely to have unforeseen
+  consequences across disparate parts of the codebase via complex contracts or distributed behavior.
+
+Introducing interfaces, generics, and higher-order functions adds layers of complexity that, while 
+sometimes necessary, invariably make the code harder to read, navigate, and maintain compared to a 
+simpler, more direct implementation. They raise the barrier to entry for understanding and 
+contributing to the codebase.
+
+## Prioritize Simple and Readable Code over "Clever" Code
+
+1. *Guideline*: Always favor code that is simple, explicit, and easy to understand over code that is overly concise
+   or uses "clever" tricks. Aim for code that a new team member could understand quickly without needing deep context
+   or specialized language knowledge. When faced with a choice between simple/longer and clever/shorter, default to simple.
+2. *Rationale*: Code is read far more often than it is written. While clever solutions might seem elegant or efficient
+   at first glance, they often increase the cognitive load required to understand, debug, and modify them later. 
+   Maintainability and readability are paramount for the long-term health of the codebase.   
+3. *Acceptable Trade-off*: It is perfectly acceptable for simple, straightforward code to require a few extra lines
+   compared to a more compact but complex ("clever") alternative. For example, choosing an explicit `if/else` structure 
+   or breaking down a complex operation into intermediate variables might add 5-10 lines but drastically improve clarity. 
+   This trade-off is worthwhile if it makes the code's intent immediately obvious.
+
+## Avoid Premature Optimization
+
+1. *Guideline*: Write code that is clear and correct first. Only optimize when performance profiling indicates a 
+   genuine bottleneck.
+2. *Rationale*: Optimizations often involve writing more complex, less readable code ("clever" code). Such efforts 
+   are wasted if there isn't a real performance issue, and they increase the maintenance burden. This aligns directly
+   with the "Simple over Clever" principle.
+3. *Process*: 1. Make it work. 2. Make it right (clear, maintainable). 3. Then, if necessary based on data, make it fast.
+
+## Apply YAGNI (You Ain't Gonna Need It)
+
+1. *Guideline*: Do not implement functionality or add abstractions based on anticipated future needs. Focus only on the
+   requirements that exist now.
+2. *Rationale*: Building speculative features adds complexity and maintenance overhead for code that might never be used
+   or might need to be implemented differently when the actual requirement arises. This directly supports avoiding
+   unnecessary interfaces, generics, or complex structures.
+
+# The Downsides and Complexities Introduced By Interfaces, Generics, and Function Arguments
+
+While often touted for flexibility and reuse, interfaces, generics, and function arguments can significantly
+hinder readability, complicate maintenance, and make code navigation a chore.
+
+## Interfaces (Layers of Indirection and Obscurity)
+
+1. *Readability*: Interfaces introduce indirection. With interface variables, the actual running code
+   isn't immediately known. You see the contract, not the concrete behavior, forcing you to track 
+   potential implementations. This obscures logic flow and increases cognitive load compared to 
+   concrete types. Overuse can lead to excessive abstraction hiding simple operations. 
+2. *Maintainability*: Despite promising decoupling, interfaces create rigid dependency on the contract
+   itself. An interface change can trigger cascading required changes across all implementing objects. 
+   Debugging is harder because determining the runtime type is needed first to understand the executed
+   code path, adding steps to diagnosis.
+3. *Code Browse*: Navigation is fragmented. "Go to Definition" on an interface method leads to the
+   abstract definition, not running code. Extra steps (like "Find Implementations") are needed to
+   find concrete objects, slowing exploration compared to navigating direct calls on concrete types.
+
+### Minimize the Use of interfaces
+
+1. *Guideline*: Avoid introducing interfaces unless there is a clear, compelling need. Always attempt to 
+   solve the problem using concrete types first.
+2. *Rationale*: While interfaces enable polymorphism and decoupling, they also add a layer of abstraction
+   that can sometimes obscure behavior and increase complexity.
+3. *Allowed Usage*: Interfaces are appropriate when implementing truly pluggable architectures or defining 
+   contracts for components where multiple implementations are expected and necessary (e.g., database adapters).
+
+## Generics (Complexity and Obfuscation)
+
+1. *Readability*: Generics introduce parameterized types, often creating complex, hard-to-read signatures
+   with brackets and multiple type parameters (e.g., Copy[M ~map[K]V, K comparable, V any](dst M, src M)).
+   These signatures significantly reduce readability compared to straightforward type names.
+2. *Maintainability*: Even with Go's relatively simple generics, writing and debugging generic code using
+   type parameters/constraints adds complexity over non-generic code. Modifying generic functions/types
+   is harder, as changes to constraints or parameters need validation against type rules for all potential
+   instantiations. Complex generic interaction errors can still be challenging to resolve. Furthermore,
+   inappropriate use can create overly abstract code, making it hard for team members (especially those
+   newer to Go generics) to grasp, debug, and modify safely.
+3. *Code Browse*: While Go tools help, navigating and understanding generic code demands extra mental
+   effort. Developers must constantly track the meaning and limits of type constraints (e.g., [T any],
+   [S comparable]) and trace how generic types propagate. This need to reason about abstract type parameters
+   and constraints, instead of concrete types, adds a significant layer of complexity to understanding the
+   program's logic compared to non-generic code.
+
+### Limit the Use of Generics
+
+1. *Guideline*: Use generics sparingly, prioritizing code readability. Overuse of generics is discouraged.
+   If a generic function becomes difficult to understand or reason about, prefer a non-generic implementation.
+2. *Rationale*: Generics can significantly increase code complexity and reduce readability, especially when used with
+   complex type constraints or nested structures.
+3. *Allowed Usage*: Generics are acceptable for simple, well-defined utility or helper functions where they clearly
+   reduce boilerplate code without obscuring the function's core purpose (e.g., a function operating on a slice of
+   any comparable type). Avoid generics for core business logic or complex data transformations where explicitness
+   is preferred.
+
+## Passing Functions as Arguments
+
+1. *Readability*: This pattern shatters linear control flow. Execution jumps from call sites to potentially
+   distant/anonymous functions, making the sequence hard to follow and breaking top-to-bottom reading. Deeply
+   nested callbacks exemplify the resulting poor readability and reasoning.
+2. *Maintainability*: 
+    - Unhelpful Error Reports (Stack Traces): Errors inside anonymous functions often yield stack traces
+      lacking specific function names. The trace might point to a generic executor, making it much harder
+      to quickly pinpoint faulty code compared to errors in named functions. When an error happens inside an
+      anonymous function, the error report
+    - Complexity of Captured Variables: Anonymous functions capture variables from their creation scope.
+      Debugging requires understanding the exact state of these variables when the function runs (potentially
+      later). Analyzing this requires care and often causes subtle bugs. Anonymous functions can access and
+      use variables from the surrounding code 
+    - Difficult Refactoring: When logic is in many anonymous functions passed as arguments, behavior becomes
+      distributed and context-dependent. This makes refactoring code significantly harder and riskier than
+      modifying logic within a single named function.
+3. *Code Browse*: Static analysis and code navigation suffer. "Go to Definition" frequently fails for anonymous
+   functions or functions passed as variables, not leading to the runtime implementation. Seeing the next
+   executed code becomes harder, forcing more reliance on runtime debugging or mental tracing.
+
+### Restrict Passing Functions as Arguments
+
+1. *Guideline*: Avoid passing functions (callbacks, closures, higher-order functions) as arguments to other functions.
+   If logic needed to be pluggable, define an interface and pass concrete implementations (Strategy Pattern).
+2. *Rationale*: Passing executable logic as arguments can make control flow harder to follow, increase cognitive 
+   load during debugging, and tightly couple the calling context to the function's internal implementation details. 
+   We prioritize designs where the sequence of operations is more explicit.
+3. *Allowed Usage*: This pattern is strongly discouraged. Before using it, explore alternative designs thoroughly
+   (e.g., using concrete types, state machines, or interfaces where appropriate per Guideline 1). Any exceptions 
+   must be clearly justified and discussed with the team, demonstrating why simpler alternatives are insufficient.
 
 # Test Coverage and Use of Mocks
 
