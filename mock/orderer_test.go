@@ -18,24 +18,24 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
-func TestPayloadCache(t *testing.T) {
+func TestAddEnvelopeToCache(t *testing.T) {
 	t.Parallel()
-	c := newPayloadCache(10)
+	c := newFifoCache[any](10)
 	for i := range 10 {
-		require.Truef(t, c.addEnvelope(makeEnv(i)), "insert %d", i)
+		require.Truef(t, addEnvelope(c, makeEnv(i)), "insert %d", i)
 	}
 	for i := range 10 {
-		require.Falsef(t, c.addEnvelope(makeEnv(i)), "insert %d", i)
+		require.Falsef(t, addEnvelope(c, makeEnv(i)), "insert %d", i)
 	}
 
 	for i := range 3 {
-		require.Truef(t, c.addEnvelope(makeEnv(i+10)), "insert %d", i)
+		require.Truef(t, addEnvelope(c, makeEnv(i+10)), "insert %d", i)
 	}
 	for i := range 3 {
-		require.Truef(t, c.addEnvelope(makeEnv(i)), "insert %d", i)
+		require.Truef(t, addEnvelope(c, makeEnv(i)), "insert %d", i)
 	}
 	for i := range 4 {
-		require.Falsef(t, c.addEnvelope(makeEnv(i+6)), "insert %d", i)
+		require.Falsef(t, addEnvelope(c, makeEnv(i+6)), "insert %d", i)
 	}
 }
 

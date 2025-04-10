@@ -23,12 +23,13 @@ import (
 func StartMockSVService(t *testing.T, numService int) (
 	[]*SigVerifier, *test.GrpcServers,
 ) {
+	t.Helper()
 	mockSigVer := make([]*SigVerifier, numService)
-	for i := 0; i < numService; i++ {
+	for i := range numService {
 		mockSigVer[i] = NewMockSigVerifier()
 	}
 
-	sigVerServers := test.StartGrpcServersForTest(context.Background(), t, len(mockSigVer),
+	sigVerServers := test.StartGrpcServersForTest(t.Context(), t, len(mockSigVer),
 		func(server *grpc.Server, index int) {
 			protosigverifierservice.RegisterVerifierServer(server, mockSigVer[index])
 		})
@@ -39,7 +40,8 @@ func StartMockSVService(t *testing.T, numService int) (
 func StartMockSVServiceFromListWithConfig(
 	t *testing.T, svs []*SigVerifier, sc []*connection.ServerConfig,
 ) *test.GrpcServers {
-	return test.StartGrpcServersWithConfigForTest(context.Background(), t, sc, func(server *grpc.Server, index int) {
+	t.Helper()
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
 		protosigverifierservice.RegisterVerifierServer(server, svs[index])
 	})
 }
@@ -48,12 +50,13 @@ func StartMockSVServiceFromListWithConfig(
 func StartMockVCService(t *testing.T, numService int) (
 	[]*VcService, *test.GrpcServers,
 ) {
+	t.Helper()
 	vcServices := make([]*VcService, numService)
-	for i := 0; i < numService; i++ {
+	for i := range numService {
 		vcServices[i] = NewMockVcService()
 	}
 
-	vcGrpc := test.StartGrpcServersForTest(context.Background(), t, numService, func(server *grpc.Server, index int) {
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
 		protovcservice.RegisterValidationAndCommitServiceServer(server, vcServices[index])
 	})
 	return vcServices, vcGrpc
@@ -63,7 +66,8 @@ func StartMockVCService(t *testing.T, numService int) (
 func StartMockVCServiceFromListWithConfig(
 	t *testing.T, vcs []*VcService, sc []*connection.ServerConfig,
 ) *test.GrpcServers {
-	return test.StartGrpcServersWithConfigForTest(context.Background(), t, sc, func(server *grpc.Server, index int) {
+	t.Helper()
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
 		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs[index])
 	})
 }
@@ -72,9 +76,9 @@ func StartMockVCServiceFromListWithConfig(
 func StartMockCoordinatorService(t *testing.T) (
 	*Coordinator, *test.GrpcServers,
 ) {
+	t.Helper()
 	mockCoordinator := NewMockCoordinator()
-	t.Cleanup(mockCoordinator.Close)
-	coordinatorGrpc := test.StartGrpcServersForTest(context.Background(), t, 1, func(server *grpc.Server, _ int) {
+	coordinatorGrpc := test.StartGrpcServersForTest(t.Context(), t, 1, func(server *grpc.Server, _ int) {
 		protocoordinatorservice.RegisterCoordinatorServer(server, mockCoordinator)
 	})
 	return mockCoordinator, coordinatorGrpc
@@ -97,6 +101,7 @@ func StartMockCoordinatorServiceFromListWithConfig(
 func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	*Orderer, *test.GrpcServers,
 ) {
+	t.Helper()
 	service, err := NewMockOrderer(conf)
 	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
@@ -106,7 +111,7 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	if len(conf.ServerConfigs) == conf.NumService {
 		return service, test.StartGrpcServersWithConfigForTest(
 			t.Context(),
-			t, conf.ServerConfigs, func(server *grpc.Server, index int) {
+			t, conf.ServerConfigs, func(server *grpc.Server, _ int) {
 				ab.RegisterAtomicBroadcastServer(server, service)
 			},
 		)

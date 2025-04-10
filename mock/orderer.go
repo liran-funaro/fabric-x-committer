@@ -4,24 +4,22 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
 )
 
@@ -63,12 +61,6 @@ type (
 		storage           []*common.Block
 		maxDeliveredBlock int64
 		mu                *sync.Cond
-	}
-
-	payloadCache struct {
-		cache       map[string]any
-		insertQueue []string
-		insertIndex int
 	}
 )
 
@@ -127,7 +119,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		var err error
 		configBlock, err = configtxgen.ReadBlock(config.ConfigBlockPath)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to read config block")
 		}
 	}
 
@@ -151,20 +143,24 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 	for {
 		env, err := stream.Recv()
 		if err != nil {
-			return err
+			return err //nolint:wrapcheck // already a GRPC error.
 		}
 		inEnvs.Write(env)
 		if err = stream.Send(&repsSuccess); err != nil {
-			return err
+			return err //nolint:wrapcheck // already a GRPC error.
 		}
 	}
 }
 
 // Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	start, end, err := readSeekInfo(stream)
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "failed reading seek request: %s", err)
+	env, streamErr := stream.Recv()
+	if streamErr != nil {
+		return streamErr //nolint:wrapcheck // already a GRPC error.
+	}
+	start, end, seekErr := readSeekInfo(env)
+	if seekErr != nil {
+		return grpcerror.WrapInvalidArgument(seekErr)
 	}
 
 	addr := util.ExtractRemoteAddress(stream.Context())
@@ -184,15 +180,15 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 			b = &common.Block{Data: &common.BlockData{}}
 			addBlockHeader(prevBlock, b)
 		} else if err != nil {
-			return err
+			return grpcerror.WrapCancelled(err)
 		}
 		if err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: b}}); err != nil {
-			return err
+			return err //nolint:wrapcheck // already a GRPC error.
 		}
 		logger.Debugf("Emitted block %d", b.Header.Number)
 		prevBlock = b
 	}
-	return status.Errorf(codes.Canceled, "context ended: %s", ctx.Err())
+	return grpcerror.WrapCancelled(ctx.Err())
 }
 
 // Deliver calls Orderer.Deliver, but with a holding stream.
@@ -225,21 +221,17 @@ func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
 	return s.AtomicBroadcast_DeliverServer.Send(msg)
 }
 
-func readSeekInfo(stream ab.AtomicBroadcast_DeliverServer) (start, end uint64, err error) {
+func readSeekInfo(env *common.Envelope) (start, end uint64, err error) {
 	start = 0
 	end = math.MaxUint64
 
-	env, err := stream.Recv()
-	if err != nil {
-		return start, end, fmt.Errorf("failed reading seek request: %w", err)
-	}
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	if err != nil {
-		return start, end, fmt.Errorf("failed unmarshalling payload: %w", err)
+		return start, end, errors.Wrap(err, "failed unmarshalling payload")
 	}
 	seekInfo := &ab.SeekInfo{}
 	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
-		return start, end, fmt.Errorf("failed unmarshalling seek info: %w", err)
+		return start, end, errors.Wrap(err, "failed unmarshalling seek info")
 	}
 
 	if startMsg := seekInfo.Start.GetSpecified(); startMsg != nil {
@@ -249,7 +241,7 @@ func readSeekInfo(stream ab.AtomicBroadcast_DeliverServer) (start, end uint64, e
 		end = endMsg.Number
 	}
 	if start > end {
-		return start, end, fmt.Errorf("invalid block range: (start) [%d] > [%d] (end)", start, end)
+		return start, end, errors.Newf("invalid block range: (start) [%d] > [%d] (end)", start, end)
 	}
 	return start, end, nil
 }
@@ -286,11 +278,11 @@ func (o *Orderer) Run(ctx context.Context) error {
 		sendBlock(&common.Block{Data: &common.BlockData{Data: data}})
 		data = make([][]byte, 0, o.config.BlockSize)
 	}
-	envCache := newPayloadCache(o.config.PayloadCacheSize)
+	envCache := newFifoCache[any](o.config.PayloadCacheSize)
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Wrapf(ctx.Err(), "context ended")
 		case b := <-o.inBlocks:
 			sendBlock(b)
 		case <-o.cutBlock:
@@ -298,7 +290,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 		case <-tick.C:
 			sendBlockData("timeout")
 		case env := <-o.inEnvs:
-			if !envCache.addEnvelope(env) {
+			if !addEnvelope(envCache, env) {
 				continue
 			}
 			data = append(data, protoutil.MarshalOrPanic(env))
@@ -329,7 +321,7 @@ func (o *Orderer) SubmitEnv(ctx context.Context, e *common.Envelope) bool {
 func (o *Orderer) SubmitPayload(ctx context.Context, channelID string, protoMsg proto.Message) (string, error) {
 	env, txID, err := serialization.CreateEnvelope(channelID, nil, protoMsg)
 	if err != nil {
-		return txID, fmt.Errorf("failed creating envelope: %w", err)
+		return txID, errors.Wrap(err, "failed creating envelope")
 	}
 	if ok := o.SubmitEnv(ctx, env); !ok {
 		return txID, errors.New("failed to submit envelope")
@@ -423,31 +415,16 @@ func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Blo
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("context ended: %w", ctx.Err())
-}
-
-func newPayloadCache(size int) *payloadCache {
-	return &payloadCache{
-		cache:       make(map[string]any, size),
-		insertQueue: make([]string, size),
-		insertIndex: 0,
-	}
+	return nil, errors.Wrapf(ctx.Err(), "context ended")
 }
 
 // addEnvelope returns true if the entry is unique.
 // It employs a FIFO eviction policy.
-func (c *payloadCache) addEnvelope(e *common.Envelope) bool {
+func addEnvelope(c *fifoCache[any], e *common.Envelope) bool {
 	if e == nil {
 		return false
 	}
 	digestRaw := sha256.Sum256(e.Payload)
 	digest := base64.StdEncoding.EncodeToString(digestRaw[:])
-	if _, ok := c.cache[digest]; ok {
-		return false
-	}
-	delete(c.cache, c.insertQueue[c.insertIndex])
-	c.cache[digest] = nil
-	c.insertQueue[c.insertIndex] = digest
-	c.insertIndex = (c.insertIndex + 1) % len(c.insertQueue)
-	return true
+	return c.addIfNotExist(digest, nil)
 }

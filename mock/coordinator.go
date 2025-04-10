@@ -2,18 +2,18 @@ package mock
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
+	"golang.org/x/sync/errgroup"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 )
 
 // Coordinator is a mock coordinator.
@@ -21,37 +21,26 @@ type Coordinator struct {
 	protocoordinatorservice.CoordinatorServer
 	lastCommittedBlockNumber atomic.Int64
 	nextExpectedBlockNumber  atomic.Uint64
-	streamActive             *sync.Mutex
-	stop                     chan any
+	streamActive             atomic.Bool
 	numWaitingTxs            atomic.Int32
-
-	txsStatus   map[string]*protoblocktx.StatusWithHeight
-	txsStatusMu *sync.Mutex
+	txsStatus                *fifoCache[*protoblocktx.StatusWithHeight]
+	txsStatusMu              sync.Mutex
 }
 
 // We don't want to utilize unlimited memory for storing the transactions status.
-// A value of 1000 is adequate for most of the unit-test.
-var defaultTxStatusStorageCleanupBlockInterval = 1000
+// A value of 100,000 TXs is adequate for most of the unit-test.
+var defaultTxStatusStorageSize = 100_000
 
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	c := &Coordinator{
-		streamActive: &sync.Mutex{},
-		stop:         make(chan any),
-		txsStatus:    make(map[string]*protoblocktx.StatusWithHeight),
-		txsStatusMu:  &sync.Mutex{},
+		txsStatus: newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
 	}
 	c.lastCommittedBlockNumber.Store(-1)
 	return c
 }
 
-// Close closes the mock coordinator.
-func (c *Coordinator) Close() {
-	logger.Infof("Closing mock coordinator")
-	close(c.stop)
-}
-
-// GetConfigTransaction implements [protocoordinatorservice.GetConfigTransaction].
+// GetConfigTransaction return the latest configuration transaction.
 func (*Coordinator) GetConfigTransaction(
 	context.Context, *protocoordinatorservice.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
@@ -62,8 +51,8 @@ func (*Coordinator) GetConfigTransaction(
 func (c *Coordinator) SetLastCommittedBlockNumber(
 	_ context.Context, lastBlock *protoblocktx.BlockInfo,
 ) (*protocoordinatorservice.Empty, error) {
-	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number)) // nolint:gosec
-	return &protocoordinatorservice.Empty{}, nil
+	c.lastCommittedBlockNumber.Store(int64(lastBlock.Number)) //nolint:gosec
+	return nil, nil
 }
 
 // GetLastCommittedBlockNumber returns the last committed block number.
@@ -71,7 +60,7 @@ func (c *Coordinator) GetLastCommittedBlockNumber(
 	_ context.Context,
 	_ *protocoordinatorservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil // nolint:gosec
+	return &protoblocktx.BlockInfo{Number: uint64(c.lastCommittedBlockNumber.Load())}, nil //nolint:gosec
 }
 
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
@@ -87,14 +76,13 @@ func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
 	q *protoblocktx.QueryStatus,
 ) (*protoblocktx.TransactionsStatus, error) {
-	status := make(map[string]*protoblocktx.StatusWithHeight)
-
+	status := make(map[string]*protoblocktx.StatusWithHeight, len(q.TxIDs))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for _, txID := range q.TxIDs {
-		status[txID] = c.txsStatus[txID]
+		v, _ := c.txsStatus.get(txID)
+		status[txID] = v
 	}
-
 	return &protoblocktx.TransactionsStatus{Status: status}, nil
 }
 
@@ -103,112 +91,110 @@ func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
 	_ context.Context,
 	_ *protocoordinatorservice.Empty,
 ) (*protocoordinatorservice.WaitingTransactions, error) {
-	return &protocoordinatorservice.WaitingTransactions{
-		Count: c.numWaitingTxs.Load(),
-	}, nil
-}
-
-// BlockProcessing processes a block.
-func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
-	if !c.streamActive.TryLock() {
-		return errors.New("stream is already active. Only one stream is allowed")
-	}
-	defer c.streamActive.Unlock()
-
-	input := make(chan *protocoordinatorservice.Block, 1000)
-	defer close(input)
-	defer logger.Infof("Closed mock coordinator")
-
-	go c.sendTxsValidationStatus(stream, input)
-
-	// start listening
-	for {
-		select {
-		case <-c.stop:
-			logger.Infof("Stopping server")
-			return nil
-		default:
-		}
-		block, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
-		}
-
-		if block.Number != c.nextExpectedBlockNumber.Load() {
-			return fmt.Errorf(
-				"the received block [%d] is different from the expected block [%d]",
-				block.Number,
-				c.nextExpectedBlockNumber.Load(),
-			)
-		}
-		c.nextExpectedBlockNumber.Add(1)
-
-		if c.nextExpectedBlockNumber.Load()%uint64(defaultTxStatusStorageCleanupBlockInterval) == 0 { // nolint:gosec
-			c.txsStatusMu.Lock()
-			c.txsStatus = make(map[string]*protoblocktx.StatusWithHeight)
-			c.txsStatusMu.Unlock()
-		}
-
-		if len(block.Txs) != len(block.TxsNum) {
-			return fmt.Errorf("the block doesn't have the correct number of transactions set")
-		}
-
-		logger.Debugf("Received block %d with %d transactions", block.Number, len(block.Txs))
-		c.numWaitingTxs.Add(int32(len(block.Txs))) // nolint:gosec
-
-		// send to the validation
-		select {
-		case <-c.stop:
-			logger.Infof("Stopping server")
-			return nil
-		case input <- block:
-		}
-	}
+	return &protocoordinatorservice.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
 }
 
 // IsStreamActive returns true if the stream from the sidecar is active.
 func (c *Coordinator) IsStreamActive() bool {
-	if c.streamActive.TryLock() {
-		defer c.streamActive.Unlock()
-		return false
+	return c.streamActive.Load()
+}
+
+// BlockProcessing processes a block.
+func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+	if !c.streamActive.CompareAndSwap(false, true) {
+		return errors.New("stream is already active. Only one stream is allowed")
 	}
-	return true
+	defer c.streamActive.CompareAndSwap(true, false)
+	logger.Info("Starting block processing stream")
+	defer logger.Info("Closed block processing stream")
+
+	g, gCtx := errgroup.WithContext(stream.Context())
+	blockQueue := channel.Make[*protocoordinatorservice.Block](gCtx, 1000)
+	g.Go(func() error {
+		return c.receiveBlocks(gCtx, stream, blockQueue)
+	})
+	g.Go(func() error {
+		return c.sendTxsValidationStatus(gCtx, stream, blockQueue)
+	})
+	return grpcerror.WrapCancelled(g.Wait())
+}
+
+func (c *Coordinator) receiveBlocks(
+	ctx context.Context,
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	blockQueue channel.Writer[*protocoordinatorservice.Block],
+) error {
+	for ctx.Err() == nil {
+		block, err := stream.Recv()
+		if err != nil {
+			return errors.Wrap(err, "receive block failed")
+		}
+
+		if !c.nextExpectedBlockNumber.CompareAndSwap(block.Number, block.Number+1) {
+			return errors.Newf(
+				"the received block [%d] is different from the expected block [%d]",
+				block.Number, c.nextExpectedBlockNumber.Load(),
+			)
+		}
+
+		if len(block.Txs) != len(block.TxsNum) {
+			return errors.New("the block doesn't have the correct number of transactions set")
+		}
+
+		logger.Debugf("Received block %d with %d transactions", block.Number, len(block.Txs))
+		c.numWaitingTxs.Add(int32(len(block.Txs))) //nolint:gosec
+
+		// send to the validation
+		blockQueue.Write(block)
+	}
+	return errors.Wrap(ctx.Err(), "context cancelled")
 }
 
 func (c *Coordinator) sendTxsValidationStatus(
+	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	input chan *protocoordinatorservice.Block,
-) {
-	for scBlock := range input {
+	blockQueue channel.Reader[*protocoordinatorservice.Block],
+) error {
+	for ctx.Err() == nil {
+		scBlock, ok := blockQueue.Read()
+		if !ok {
+			break
+		}
 		txs := scBlock.Txs
-		txCount := 0
-		c.txsStatusMu.Lock()
+		txNums := scBlock.TxsNum
 		for len(txs) > 0 {
 			chunkSize := rand.Intn(len(txs)) + 1
-			b := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
-			for _, tx := range txs[:chunkSize] {
-				s := types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, scBlock.Number,
-					int(scBlock.TxsNum[txCount]))
-				b.Status[tx.GetId()] = s
-				c.txsStatus[tx.GetId()] = s
-				txCount++
+			if err := c.sendTxsStatusChunk(stream, txs[:chunkSize], txNums[:chunkSize], scBlock.Number); err != nil {
+				return errors.Wrap(err, "submit chunk failed")
 			}
-
-			if rpcErr := stream.Send(b); connection.IsStreamEnd(rpcErr) {
-				logger.Debugf("stream ended")
-			} else {
-				utils.Must(connection.FilterStreamRPCError(rpcErr))
-			}
-			logger.Debugf("Sent back batch with %d TXs", len(b.Status))
-			c.numWaitingTxs.Add(-int32(len(b.Status))) // nolint:gosec
-
 			txs = txs[chunkSize:]
+			txNums = txNums[chunkSize:]
 		}
-		c.txsStatusMu.Unlock()
 	}
+	return errors.Wrap(ctx.Err(), "context cancelled")
+}
+
+func (c *Coordinator) sendTxsStatusChunk(
+	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	txs []*protoblocktx.Tx,
+	txNum []uint32, blockNum uint64,
+) error {
+	b := &protoblocktx.TransactionsStatus{
+		Status: make(map[string]*protoblocktx.StatusWithHeight, len(txs)),
+	}
+	c.txsStatusMu.Lock()
+	defer c.txsStatusMu.Unlock()
+	for i, tx := range txs {
+		s := types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, blockNum, int(txNum[i]))
+		b.Status[tx.Id] = s
+		c.txsStatus.addIfNotExist(tx.Id, s)
+	}
+	if err := stream.Send(b); err != nil {
+		return errors.Wrap(err, "failed to send status")
+	}
+	logger.Debugf("Sent back batch with %d TXs", len(b.Status))
+	c.numWaitingTxs.Add(-int32(len(b.Status))) //nolint:gosec
+	return nil
 }
 
 // SetWaitingTxsCount sets the waiting transactions count. The purpose

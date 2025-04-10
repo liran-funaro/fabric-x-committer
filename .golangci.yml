@@ -116,6 +116,8 @@ linters:
             - 120
         - name: file-header
           disabled: true
+        - name: package-comments
+          disabled: true
         - name: max-public-structs
           disabled: true
         - name: banned-characters
@@ -165,7 +167,8 @@ linters:
         - errors.Join(
         - .Wrap(
         - .Wrapf(
-        - .Wait() # The error reported by errorgroup.Wait() (external) actually 
+        - status.Error(
+        - .Wait() # The error reported by errorgroup.Wait() (external) actually
                   # originates from the internal code.
       # An array of strings that specify regular expressions of signatures to ignore.
       # Default: []

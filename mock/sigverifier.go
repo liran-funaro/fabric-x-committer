@@ -10,7 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 )
 
 // SigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
@@ -19,20 +19,19 @@ import (
 // - when the tx has non-empty signature, it is valid.
 type SigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	updates           []*protosigverifierservice.Update
-	numBlocksReceived *atomic.Uint32
-	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize     int
+	updates                    []*protosigverifierservice.Update
 	requestBatch               chan *protosigverifierservice.RequestBatch
+	numBlocksReceived          atomic.Uint32
 	returnErrForUpdatePolicies atomic.Bool
 	policyUpdateCounter        atomic.Uint64
+	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
+	MockFaultyNodeDropSize int
 }
 
 // NewMockSigVerifier returns a new mock verifier.
 func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
-		UnimplementedVerifierServer: protosigverifierservice.UnimplementedVerifierServer{},
-		numBlocksReceived:           &atomic.Uint32{},
+		requestBatch: make(chan *protosigverifierservice.RequestBatch, 10),
 	}
 }
 
@@ -49,20 +48,18 @@ func (m *SigVerifier) updatePolicies(update *protosigverifierservice.Update) err
 	return nil
 }
 
-// StartStream is a mock implementation of the protosignverifierservice.VerifierServer.
+// StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].
 func (m *SigVerifier) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
-	m.requestBatch = make(chan *protosigverifierservice.RequestBatch, 10)
+	logger.Info("Starting verifier stream")
+	defer logger.Info("Closed verifier stream")
 	g, eCtx := errgroup.WithContext(stream.Context())
-
 	g.Go(func() error {
 		return m.receiveRequestBatch(eCtx, stream)
 	})
-
 	g.Go(func() error {
 		return m.sendResponseBatch(eCtx, stream)
 	})
-
-	return g.Wait()
+	return grpcerror.WrapCancelled(g.Wait())
 }
 
 func (m *SigVerifier) receiveRequestBatch(
@@ -73,20 +70,19 @@ func (m *SigVerifier) receiveRequestBatch(
 	for ctx.Err() == nil {
 		reqBatch, err := stream.Recv()
 		if err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(err, "error receiving request batch")
 		}
 
 		err = m.updatePolicies(reqBatch.Update)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "error updating policies")
 		}
 
 		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
 		requestBatch.Write(reqBatch)
 		m.numBlocksReceived.Add(1)
 	}
-
-	return nil
+	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (m *SigVerifier) sendResponseBatch(
@@ -97,15 +93,15 @@ func (m *SigVerifier) sendResponseBatch(
 	for ctx.Err() == nil {
 		reqBatch, ok := requestBatch.Read()
 		if !ok {
-			return errors.Wrap(ctx.Err(), "context ended")
+			break
 		}
 		respBatch := &protosigverifierservice.ResponseBatch{
 			Responses: make([]*protosigverifierservice.Response, 0, len(reqBatch.Requests)),
 		}
 
 		for i, req := range reqBatch.Requests {
-			// We simulate a faulty node by not responding to the first X TXs.
 			if i < m.MockFaultyNodeDropSize {
+				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
 			status := protoblocktx.Status_COMMITTED
@@ -120,11 +116,10 @@ func (m *SigVerifier) sendResponseBatch(
 		}
 
 		if err := stream.Send(respBatch); err != nil {
-			return connection.FilterStreamRPCError(err)
+			return errors.Wrap(err, "error sending response batch")
 		}
 	}
-
-	return nil
+	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 // GetNumBlocksReceived returns the number of blocks received by the mock verifier.
