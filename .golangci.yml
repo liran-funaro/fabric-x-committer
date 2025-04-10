@@ -1,243 +1,215 @@
+version: "2"
 linters:
   enable:
+    - containedctx
+    - contextcheck
+    - depguard
     - dupl
     - errname
     - errorlint
-    - errcheck
-    # The linter 'execinquery' is deprecated (since v1.58.0) due to: The repository of the linter has been archived by the owner.
+    - fatcontext
     - forcetypeassert
     - ginkgolinter
+    - gocognit
     - goconst
     - gocritic
     - godot
-    - gosimple
-    - gofumpt
     - gosec
-    - govet
-    - goimports
+    - intrange
     - ireturn
-    - ineffassign
     - lll
+    - maintidx
+    - mirror
     - misspell
     - nilerr
+    - nilnesserr
+    - nolintlint
+    - paralleltest
     - prealloc
     - promlinter
     - revive
     - rowserrcheck
-    - staticcheck
+    - sqlclosecheck
+    - testifylint
+    - thelper
     - unconvert
     - unparam
-    - unused
+    - usetesting
     - wastedassign
     - whitespace
-    - gocognit
-    - depguard
-    - nolintlint
-    - rowserrcheck
-    - testifylint
     - wrapcheck
-    - usetesting
-    - thelper
-    - maintidx
-    - sqlclosecheck
-    - paralleltest
-    - mirror
-    - intrange
-    - fatcontext
-    - containedctx
-    - contextcheck
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/pkg/errors
+              desc: github.com/pkg/errors is no longer maintained
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+      # Such cases aren't reported by default.
+      # Default: false
+      check-type-assertions: true
+    errorlint:
+      # Check whether fmt.Errorf uses the %w verb for formatting errors.
+      # See the https://github.com/polyfloyd/go-errorlint for caveats.
+      # Default: true
+      errorf: true
+      # Check for plain type assertions and type switches.
+      # Default: true
+      asserts: false
+      # Check for plain error comparisons.
+      # Default: true
+      comparison: true
+    fatcontext:
+      check-struct-pointers: true
+    gocognit:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G204
+        - G404
+        - G306
+    govet:
+      disable:
+        - fieldalignment
+      # Enable all analyzers.
+      # Default: false
+      enable-all: true
+    iface:
+      enable:
+        - identical # Identifies interfaces in the same package that have identical method sets.
+        - unused # Identifies interfaces that are not used anywhere in the same package where the interface is defined.
+        - opaque # Identifies functions that return interfaces, but the actual returned value is always a single concrete implementation.
+    ireturn:
+      # By default, it allows using errors, empty interfaces, anonymous interfaces,
+      # and interfaces provided by the standard library.
+      allow:
+        - error
+        - empty
+        - anon
+        - stdlib
+        - generic
+        - (or|er)$
+        - T
+        - github.com/prometheus/client_golang/prometheus.Counter
+        - github.com/prometheus/client_golang/prometheus.Gauge
+        - github.com/prometheus/client_golang/prometheus.Histogram
+    lll:
 
-linters-settings:
-  errcheck:
-    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
-    # Such cases aren't reported by default.
-    # Default: false
-    check-type-assertions: true
-  errorlint:
-    # Check whether fmt.Errorf uses the %w verb for formatting errors.
-    # See the https://github.com/polyfloyd/go-errorlint for caveats.
-    # Default: true
-    errorf: true
-    # Check for plain type assertions and type switches.
-    # Default: true
-    asserts: false
-    # Check for plain error comparisons.
-    # Default: true
-    comparison: true
-  govet:
-    # Enable all analyzers.
-    # Default: false
-    enable-all: true
-    disable:
-      - fieldalignment
-  lll:
-    # Max line length, lines longer will be reported.
-    # '\t' is counted as 1 character by default, and can be changed with the tab-width option.
-    # Default: 120.
-    line-length: 120
-  gofumpt:
-    # Choose whether to use the extra rules.
-    # Default: false
-    extra-rules: true
-  gosec:
-    # To specify a set of rules to explicitly exclude.
-    # Available rules: https://github.com/securego/gosec#available-rules
-    excludes:
-      - G204
-      # G404: Use of weak random number generator (math/rand instead of crypto/rand)
-      - G404
-      # G306: Expect WriteFile permissions to be 0600 or less
-      - G306
-  gocognit:
-    # Minimal code complexity to report.
-    # Default: 30 (but we recommend 10-20)
-    min-complexity: 15
-  revive:
-    ignore-generated-header: true
-    enable-all-rules: true
-    rules:
-      - name: argument-limit
-        arguments: [4]
-      - name: line-length-limit
-        arguments: [120]
-      - name: file-header
-        disabled: true
-      - name: max-public-structs
-        disabled: true
-      - name: banned-characters
-        disabled: true
-      - name: cognitive-complexity
-        disabled: true
-      - name: cyclomatic
-        disabled: true
-      - name: function-length
-        disabled: true
-      - name: function-result-limit
-        arguments: [3]
-      - name: add-constant
-        disabled: true
-      - name: unhandled-error
-        arguments: ["fmt.Printf", "fmt.Println"]
-      - name: confusing-naming
-        # Due to a bug, this rule fails multiple implementations of the same interface.
-        disabled: true
-      - name: comment-spacings
-        arguments: ["nolint:"]
-  ireturn:
-    # By default, it allows using errors, empty interfaces, anonymous interfaces,
-    # and interfaces provided by the standard library.
-    allow:
-      - error
-      - empty
-      - anon
-      - stdlib
-      - generic
-      - (or|er)$
-      - T
-      - github.com/prometheus/client_golang/prometheus.Counter
-      - github.com/prometheus/client_golang/prometheus.Gauge
-      - github.com/prometheus/client_golang/prometheus.Histogram
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: github.com/pkg/errors
-            desc: github.com/pkg/errors is no longer maintained
-  fatcontext:
-    # Check for potential fat contexts in struct pointers.
-    # May generate false positives.
-    # Default: false
-    check-struct-pointers: true
-  maintidx:
-    # Show functions with maintainability index lower than N.
-    # A high index indicates better maintainability (it's kind of the opposite of complexity).
-    # Default: 20
-    under: 20
-  rowserrcheck:
-    # database/sql is always checked
-    # Default: []
-    packages:
-      - github.com/jackc/pgx/v5
-      - github.com/jackc/pgx/v4
-  nolintlint:
-    # Exclude following linters from requiring an explanation.
-    # Default: []
-    allow-no-explanation: []
-    # Enable to require nolint directives to mention the specific linter being suppressed.
-    # Default: false
-    require-specific: true
-  iface:
-    # List of analyzers.
-    # Default: ["identical"]
-    enable:
-      - identical # Identifies interfaces in the same package that have identical method sets.
-      - unused # Identifies interfaces that are not used anywhere in the same package where the interface is defined.
-      - opaque # Identifies functions that return interfaces, but the actual returned value is always a single concrete implementation.
-  wrapcheck:
-    # An array of strings specifying additional substrings of signatures to ignore.
-    # Unlike 'ignoreSigs', this option extends the default set (or the set specified in 'ignoreSigs') without replacing it entirely.
-    # This allows you to add specific signatures to the ignore list
-    # while retaining the defaults or any items in 'ignoreSigs'.
-    # Default: []
-    extra-ignore-sigs:
-      - .CustomError(
-      - .SpecificWrap(
-    # An array of strings that specify substrings of signatures to ignore.
-    # If this set, it will override the default set of ignored signatures.
-    # See https://github.com/tomarrell/wrapcheck#configuration for more information.
-    # Default: [".Errorf(", "errors.New(", "errors.Unwrap(", "errors.Join(", ".Wrap(", ".Wrapf(", ".WithMessage(", ".WithMessagef(", ".WithStack("]
-    ignoreSigs:
-      - errors.New(
-      - errors.Newf(
-      - errors.Unwrap(
-      - errors.Join(
-      - .Wrap(
-      - .Wrapf(
-    # An array of strings that specify regular expressions of signatures to ignore.
-    # Default: []
-    ignoreSigRegexps:
-      - \.New.*Error\(
-    # An array of strings that specify globs of packages to ignore.
-    # Default: []
-    ignorePackageGlobs:
-      - github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror
-    # An array of strings that specify regular expressions of interfaces to ignore.
-    # Default: []
-    # ignoreInterfaceRegexps:
-    #   - ^(?i)c(?-i)ach(ing|e)
-  goimports:
-    # A comma-separated list of prefixes, which, if set, checks import paths
-    # with the given prefixes are grouped after 3rd-party packages.
-    # Default: ""
-    local-prefixes: github.ibm.com/decentralized-trust-research/scalable-committer
+      # Max line length, lines longer will be reported.
+      # '\t' is counted as 1 character by default, and can be changed with the tab-width option.
+      # Default: 120.
+      line-length: 120
+    maintidx:
+      under: 20
+    nolintlint:
+      require-specific: true
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: argument-limit
+          arguments:
+            - 4
+        - name: line-length-limit
+          arguments:
+            - 120
+        - name: file-header
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 3
+        - name: add-constant
+          disabled: true
+        - name: unhandled-error
+          arguments:
+            - fmt.Printf
+            - fmt.Println
+        - name: confusing-naming
+          disabled: true
+        - name: comment-spacings
+          arguments:
+            - 'nolint:'
+    rowserrcheck:
+      packages:
+        - github.com/jackc/pgx/v5
+        - github.com/jackc/pgx/v4
+    wrapcheck:
+      # An array of strings specifying additional substrings of signatures to ignore.
+      # Unlike 'ignoreSigs', this option extends the default set (or the set specified in 'ignoreSigs') without replacing it entirely.
+      # This allows you to add specific signatures to the ignore list
+      # while retaining the defaults or any items in 'ignoreSigs'.
+      # Default: []
+      extra-ignore-sigs:
+        - .CustomError(
+        - .SpecificWrap(
 
-issues:
-  # The list of ids of default excludes to include or disable.
-  # https://golangci-lint.run/usage/false-positives/#default-exclusions
-  # Default: []
-  include:
-    - EXC0001
-    - EXC0002
-    - EXC0003
-    - EXC0004
-    - EXC0005
-    - EXC0006
-    - EXC0007
-    - EXC0009
-    - EXC0010
-    - EXC0011
-    - EXC0012
-    - EXC0013
-    - EXC0014
-  # Which dirs to skip: issues from them won't be reported.
-  # Can use regexp here: `generated.*`, regexp is applied on full path,
-  # including the path prefix if one is set.
-  # Default value is empty list,
-  # but default dirs are skipped independently of this option's value (see skip-dirs-use-default).
-  # "/" will be replaced by current OS file path separator to properly work on Windows.
-  exclude-dirs: []
-
-  # Enables skipping of directories:
-  # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
-  # Default: true
-  exclude-dirs-use-default: false
+      # An array of strings that specify substrings of signatures to ignore.
+      # If this set, it will override the default set of ignored signatures.
+      # See https://github.com/tomarrell/wrapcheck#configuration for more information.
+      # Default: [".Errorf(", "errors.New(", "errors.Unwrap(", "errors.Join(", ".Wrap(", ".Wrapf(", ".WithMessage(", ".WithMessagef(", ".WithStack("]
+      ignore-sigs:
+        - errors.New(
+        - errors.Newf(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .Wait() # The error reported by errorgroup.Wait() (external) actually 
+                  # originates from the internal code.
+      # An array of strings that specify regular expressions of signatures to ignore.
+      # Default: []
+      ignore-sig-regexps:
+        - \.New.*Error\(
+      # An array of strings that specify globs of packages to ignore.
+      # Default: []
+      ignore-package-globs:
+        - github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror
+      # An array of strings that specify regular expressions of interfaces to ignore.
+      # Default: []
+      # ignoreInterfaceRegexps:
+      #   - ^(?i)c(?-i)ach(ing|e)
+  exclusions:
+      # Mode of the generated files analysis.
+      #
+      # - `strict`: sources are excluded by strictly following the Go generated file convention.
+      #    Source files that have lines matching only the following regular expression will be excluded: `^// Code generated .* DO NOT EDIT\.$`
+      #    This line must appear before the first non-comment, non-blank text in the file.
+      #    https://go.dev/s/generatedcode
+      # - `lax`: sources are excluded if they contain lines like `autogenerated file`, `code generated`, `do not edit`, etc.
+      # - `disable`: disable the generated files exclusion.
+      #
+      # Default: lax
+      generated: lax
+      # Log a warning if an exclusion rule is unused.
+      # Default: false
+      warn-unused: true
+      # Predefined exclusion rules.
+      # Default: []
+      presets:
+        - common-false-positives
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      # A comma-separated list of prefixes, which, if set, checks import paths
+      # with the given prefixes are grouped after 3rd-party packages.
+      # Default: ""
+      local-prefixes:
+        - github.ibm.com/decentralized-trust-research/scalable-committer
+  exclusions:
+    generated: lax

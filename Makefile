@@ -220,7 +220,7 @@ pull-db-image: FORCE
 
 lint: FORCE
 	@echo "Running Go Linters..."
-	golangci-lint run --color=always --sort-results --new-from-rev=main --timeout=4m
+	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Linting Complete. Parsing Errors..."
 
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
