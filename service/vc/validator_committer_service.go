@@ -143,7 +143,7 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	})
 
 	if err := g.Wait(); err != nil {
-		logger.ErrorStackTrace(errors.Wrap(err, "vcservice processing has been stopped due to err"))
+		logger.Errorf("vcservice processing has been stopped due to err [%+v]", err)
 		return err
 	}
 	logger.Info("ValidatorCommitterService stopped gracefully")
@@ -190,7 +190,6 @@ func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 ) (*protoblocktx.BlockInfo, error) {
 	blkInfo, err := vc.db.getLastCommittedBlockNumber(ctx)
 	if err != nil && errors.Is(err, ErrMetadataEmpty) {
-		logger.ErrorStackTrace(errors.Wrap(err, "GetLastCommittedBlockNumber, error"))
 		return nil, grpcerror.WrapNotFound(err)
 	}
 	logger.ErrorStackTrace(err)
@@ -276,8 +275,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
 		if err != nil {
-			return utils.ProcessErr(logger, err, //nolint:wrapcheck
-				"failed to receive transactions from the coordinator")
+			return errors.Wrap(err, "failed to receive transactions from the coordinator")
 		}
 		txCount := len(b.Transactions)
 		logger.Debugf("Received batch of %d transactions", txCount)
@@ -342,8 +340,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		}
 
 		if err := stream.Send(txStatus); err != nil {
-			return utils.ProcessErr(logger, err, //nolint:wrapcheck
-				"failed to send transactions status to the coordinator")
+			return errors.Wrap(err, "failed to send transactions status to the coordinator")
 		}
 		committed := 0
 		mvcc := 0

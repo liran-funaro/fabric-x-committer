@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 const createTxTableStmt = `
@@ -208,7 +208,7 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	logger.Infof("DB source: %s", config.DataSourceName())
 	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed parsing datasource") //nolint:wrapcheck
+		return nil, errors.Wrapf(err, "failed parsing datasource")
 	}
 
 	poolConfig.MaxConns = config.MaxConnections
@@ -217,9 +217,9 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	var pool *pgxpool.Pool
 	if retryErr := config.Retry.Execute(ctx, func() error {
 		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
-		return err
+		return errors.Wrap(err, "failed to connect to the database")
 	}); retryErr != nil {
-		return nil, utils.ProcessErr(logger, err, "failed making pool") //nolint:wrapcheck
+		return nil, fmt.Errorf("hint: failed making pool: %w", retryErr) //nolint:wrapcheck
 	}
 
 	logger.Info("DB pool created")
@@ -230,12 +230,12 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []string) error {
 	pool, err := NewDatabasePool(ctx, config)
 	if err != nil {
-		return utils.ProcessErr(logger, err, "failed clear database") //nolint:wrapcheck
+		return fmt.Errorf("failed clearing database: %w", err) //nolint:wrapcheck
 	}
 	defer pool.Close()
 
 	if err = clearDatabaseTables(ctx, pool, nsIDs); err != nil {
-		return utils.ProcessErr(logger, err, "failed clearing database "+config.Database+" tables") //nolint:wrapcheck
+		return fmt.Errorf("failed clearing database %s tables: %w", config.Database, err) //nolint:wrapcheck
 	}
 
 	return nil
@@ -244,13 +244,13 @@ func ClearDatabase(ctx context.Context, config *DatabaseConfig, nsIDs []string) 
 func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string) error {
 	for _, stmt := range initStatements {
 		if execErr := dbtest.PoolExecOperation(ctx, pool, stmt); execErr != nil {
-			return utils.ProcessErr(logger, execErr, "failed initializing tables") //nolint:wrapcheck
+			return fmt.Errorf("failed initializing tables: %w", execErr) //nolint:wrapcheck
 		}
 	}
 	logger.Info("Created tx status table, metadata table, and its methods.")
 	if execErr := dbtest.PoolExecOperation(ctx, pool,
 		initializeMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), nil); execErr != nil {
-		return utils.ProcessErr(logger, execErr, "failed initialization metadata table") //nolint:wrapcheck
+		return fmt.Errorf("failed initialization metadata table: %w", execErr) //nolint:wrapcheck
 	}
 
 	nsIDs = append(nsIDs, systemNamespaces...)
@@ -258,8 +258,8 @@ func initDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string)
 		tableName := TableName(nsID)
 		for _, stmt := range initStatementsWithTemplate {
 			if execErr := dbtest.PoolExecOperation(ctx, pool, fmt.Sprintf(stmt, tableName)); execErr != nil {
-				return utils.ProcessErr(logger, execErr, //nolint:wrapcheck
-					"failed creating meta-namespace for namespace %s", nsID)
+				return fmt.Errorf("failed creating meta-namespace for namespace %s: %w", //nolint:wrapcheck
+					nsID, execErr)
 			}
 		}
 		logger.Infof("namespace %s: created table '%s' and its methods.", nsID, tableName)
@@ -271,7 +271,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 	logger.Info("Dropping tx status table and its methods.")
 	for _, stmt := range dropStatements {
 		if execErr := dbtest.PoolExecOperation(ctx, pool, stmt); execErr != nil {
-			return utils.ProcessErr(logger, execErr, "failed clearing database tables") //nolint:wrapcheck
+			return fmt.Errorf("failed clearing database tables: %w", execErr) //nolint:wrapcheck
 		}
 	}
 	logger.Info("tx status table is cleared.")
@@ -283,8 +283,7 @@ func clearDatabaseTables(ctx context.Context, pool *pgxpool.Pool, nsIDs []string
 
 		for _, stmt := range dropStatementsWithTemplate {
 			if execErr := dbtest.PoolExecOperation(ctx, pool, fmt.Sprintf(stmt, tableName)); execErr != nil {
-				return utils.ProcessErr(logger, execErr, //nolint:wrapcheck
-					"namespace %s: failed clearing database tables", nsID)
+				return fmt.Errorf("namespace %s: failed clearing database tables: %w", nsID, execErr) //nolint:wrapcheck
 			}
 		}
 

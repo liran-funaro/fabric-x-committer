@@ -14,7 +14,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
@@ -120,7 +119,7 @@ func (db *database) validateNamespaceReads(
 
 	keys, values, err := db.retryQueryAndReadRows(ctx, query, r.keys, r.versions)
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed reading key and version") //nolint:wrapcheck
+		return nil, fmt.Errorf("failed reading key and version: %w", err) //nolint:wrapcheck
 	}
 
 	mismatchingReads := &reads{}
@@ -137,7 +136,7 @@ func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (key
 
 	foundKeys, foundVersions, err := db.retryQueryAndReadRows(context.Background(), query, queryKeys)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed reading key and version: %w", err) //nolint:wrapcheck
 	}
 
 	kToV := make(keyToVersion)
@@ -161,8 +160,7 @@ func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*prot
 		r = db.pool.QueryRow(ctx, getMetadataPrepStmt, []byte(key))
 		return r.Scan(&value)
 	}); retryErr != nil {
-		return nil, utils.ProcessErr(logger, retryErr, //nolint:wrapcheck
-			"failed to query key "+key+" from metadata table")
+		return nil, errors.Wrap(retryErr, "failed to query key "+key+" from metadata table")
 	}
 	if len(value) == 0 {
 		return nil, ErrMetadataEmpty
@@ -189,7 +187,10 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
 		return err
 	})
-	return utils.ProcessErr(logger, retryErr, "failed to set the last committed block number") //nolint:wrapcheck
+	if retryErr != nil {
+		return fmt.Errorf("failed to set the last committed block number: %w", retryErr) //nolint:wrapcheck
+	}
+	return nil
 }
 
 // commit commits the writes to the database.
@@ -212,7 +213,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (na
 
 	mismatched, duplicated, err := db.commitStatesByGroup(ctx, tx, states)
 	if err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx commitInner") //nolint:wrapcheck
+		return nil, nil, fmt.Errorf("failed tx commitInner: %w", err) //nolint:wrapcheck
 	}
 	if !mismatched.empty() || len(duplicated) > 0 {
 		// rollback
@@ -222,7 +223,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (na
 	err = tx.Commit(ctx)
 	promutil.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx commit") //nolint:wrapcheck
+		return nil, nil, errors.Wrap(err, "failed tx commit")
 	}
 
 	return nil, nil, nil
@@ -241,7 +242,7 @@ func (db *database) commitStatesByGroup(
 	// to the readToTxIDs map, but committing the IDs upfront is a cleaner solution.
 	duplicated, err := db.commitTxStatus(ctx, tx, states)
 	if err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx execCommitTxStatus") //nolint:wrapcheck
+		return nil, nil, fmt.Errorf("failed tx execCommitTxStatus: %w", err) //nolint:wrapcheck
 	}
 
 	if len(duplicated) > 0 {
@@ -252,7 +253,7 @@ func (db *database) commitStatesByGroup(
 
 	mismatched, err := db.commitNewKeys(tx, states.newWrites)
 	if err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx commitNewKeys") //nolint:wrapcheck
+		return nil, nil, fmt.Errorf("failed tx commitNewKeys: %w", err) //nolint:wrapcheck
 	}
 
 	if !mismatched.empty() {
@@ -263,7 +264,7 @@ func (db *database) commitStatesByGroup(
 
 	// Updates cannot have a mismatch because their versions are validated beforehand.
 	if err = db.commitUpdates(ctx, tx, states.updateWrites); err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx execCommitUpdate") //nolint:wrapcheck
+		return nil, nil, fmt.Errorf("failed tx execCommitUpdate: %w", err) //nolint:wrapcheck
 	}
 
 	return nil, nil, nil
@@ -300,7 +301,7 @@ func (db *database) commitTxStatus(
 	ret := tx.QueryRow(ctx, commitTxStatusSQLTemplate, ids, statues, heights)
 	duplicated, err := readInsertResult(ret, ids)
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed fetching results from query") //nolint:wrapcheck
+		return nil, fmt.Errorf("failed fetching results from query: %w", err) //nolint:wrapcheck
 	}
 	if len(duplicated) == 0 {
 		promutil.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
@@ -337,8 +338,7 @@ func (db *database) commitNewKeys(
 		ret := tx.QueryRow(context.Background(), q, writes.keys, writes.values)
 		violating, err := readInsertResult(ret, writes.keys)
 		if err != nil {
-			return nil, utils.ProcessErr(logger, err, //nolint:wrapcheck
-				"namespace "+nsID+": failed fetching results from query")
+			return nil, fmt.Errorf("namespace "+nsID+": failed fetching results from query: %w", err) //nolint:wrapcheck
 		}
 
 		if len(violating) > 0 {
@@ -366,7 +366,7 @@ func (db *database) commitUpdates(ctx context.Context, tx pgx.Tx, nsToWrites nam
 		query := fmt.Sprintf(commitUpdateWritesSQLTemplate, nsID)
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
 		if err != nil {
-			return utils.ProcessErr(logger, err, fmt.Sprintf("namespace %s: failed tx exec", nsID)) //nolint:wrapcheck
+			return errors.Wrap(err, "namespace "+nsID+": failed tx exec")
 		}
 	}
 	promutil.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
@@ -397,7 +397,7 @@ func (db *database) createTablesAndFunctionsForNamespace(tx pgx.Tx, newNs *names
 func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
-		return nil, nil, utils.ProcessErr(logger, err, "failed tx begin") //nolint:wrapcheck
+		return nil, nil, errors.Wrap(err, "failed tx begin")
 	}
 
 	return tx, func() {
@@ -421,7 +421,7 @@ func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
 		var key K
 		var value V
 		if err := r.Scan(&key, &value); err != nil {
-			return nil, nil, utils.ProcessErr(logger, err, "failed while scaning a row") //nolint:wrapcheck
+			return nil, nil, errors.Wrap(err, "failed while scaning a row")
 		}
 		keys = append(keys, key)
 		values = append(values, value)
@@ -438,7 +438,7 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 
 	var result string
 	if err := res[0].AssignTo(&result); err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed reading result") //nolint:wrapcheck
+		return nil, errors.Wrap(err, "failed reading result")
 	}
 	switch result {
 	case "success":
@@ -450,7 +450,7 @@ func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 
 	var violating [][]byte
 	if err := res[1].AssignTo(&violating); err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed reading violating") //nolint:wrapcheck
+		return nil, errors.Wrap(err, "failed reading violating")
 	}
 
 	return violating, nil
@@ -469,7 +469,7 @@ func (db *database) readStatusWithHeight(
 	retryErr := db.retry.Execute(ctx, func() error {
 		r, err := db.pool.Query(ctx, queryTxIDsStatus, txIDs)
 		if err != nil {
-			return utils.ProcessErr(logger, err, "failed to query txIDs from the tx_status table")
+			return errors.Wrap(err, "failed to query txIDs from the tx_status table")
 		}
 		defer r.Close()
 
@@ -481,13 +481,12 @@ func (db *database) readStatusWithHeight(
 			var height []byte
 
 			if err = r.Scan(&id, &status, &height); err != nil {
-				return utils.ProcessErr(logger, err, "failed to read rows from the query result")
+				return errors.Wrap(err, "failed to read rows from the query result")
 			}
 
 			ht, _, err := types.NewHeightFromBytes(height)
 			if err != nil {
-				return utils.ProcessErr(logger, err,
-					fmt.Sprintf("failed to create height from encoded bytes [%v]", height))
+				return errors.Wrap(err, fmt.Sprintf("failed to create height from encoded bytes [%v]", height))
 			}
 
 			rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
@@ -501,7 +500,7 @@ func (db *database) readStatusWithHeight(
 func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.NamespacePolicies, error) {
 	keys, values, err := db.retryQueryAndReadRows(ctx, queryPolicies)
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed to read from rows of meta namespace") //nolint:wrapcheck
+		return nil, fmt.Errorf("failed to read from rows of meta namespace: %w", err) //nolint:wrapcheck
 	}
 	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
@@ -519,7 +518,7 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 func (db *database) readConfigTX(ctx context.Context) (*protoblocktx.ConfigTransaction, error) {
 	_, values, err := db.retryQueryAndReadRows(ctx, queryConfig)
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed to read from rows of meta namespace") //nolint:wrapcheck
+		return nil, fmt.Errorf("failed to read from rows of meta namespace: %w", err) //nolint:wrapcheck
 	}
 	configTX := &protoblocktx.ConfigTransaction{}
 	for _, v := range values {
@@ -541,7 +540,7 @@ func (db *database) retryQueryAndReadRows(
 	retryErr := db.retry.Execute(ctx, func() error {
 		rows, err := db.pool.Query(ctx, query, args...)
 		if err != nil {
-			return utils.ProcessErr(logger, err, "failed to query rows")
+			return errors.Wrap(err, "failed to query rows")
 		}
 		defer rows.Close()
 		keys, values, err = readKeysAndValues[[]byte, []byte](rows)

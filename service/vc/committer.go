@@ -9,7 +9,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
@@ -80,7 +79,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// TODO: Add test to ensure commit is retried.
 		txsStatus, err = c.commitTransactions(ctx, vTx)
 		if err != nil {
-			return utils.ProcessErr(logger, err, "failed to commit transactions") //nolint:wrapcheck
+			return fmt.Errorf("failed to commit transactions: %w", err) //nolint:wrapcheck
 		}
 
 		promutil.Observe(c.metrics.committerTxBatchLatencySeconds, time.Since(start))
@@ -139,7 +138,7 @@ func (c *transactionCommitter) commitTransactions(
 			mismatch, duplicated, err = c.db.commit(ctx, info)
 			return err
 		}); retryErr != nil {
-			return nil, utils.ProcessErr(logger, retryErr, "failed to commit transactions") //nolint:wrapcheck
+			return nil, fmt.Errorf("failed to commit transactions: %w", err) //nolint:wrapcheck
 		}
 
 		if mismatch.empty() && len(duplicated) == 0 {

@@ -158,10 +158,9 @@ func execDropIfExitsDB(ctx context.Context, pool *pgxpool.Pool, dbName string) e
 	return nil
 }
 
-// PoolExecOperation activating pool execution operation utilizing the retry mechanism.
 func PoolExecOperation(ctx context.Context, pool *pgxpool.Pool, stmt string, args ...any) error {
 	return DefaultRetry.Execute(ctx, func() error {
 		_, err := pool.Exec(ctx, stmt, args...)
-		return err
+		return errors.Wrapf(err, "db exec failed: %s", stmt)
 	})
 }
