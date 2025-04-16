@@ -1,8 +1,6 @@
 package dependencygraph
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
@@ -149,16 +147,4 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 			Buckets:   bucket,
 		}),
 	}
-}
-
-func (s *perfMetrics) addToCounter(c prometheus.Counter, n int) {
-	c.Add(float64(n))
-}
-
-func (s *perfMetrics) setQueueSize(queue prometheus.Gauge, size int) {
-	queue.Set(float64(size))
-}
-
-func (s *perfMetrics) observe(h prometheus.Histogram, d time.Duration) {
-	h.Observe(d.Seconds())
 }

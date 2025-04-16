@@ -101,7 +101,7 @@ func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTot
 	}, 5*time.Second, 250*time.Millisecond)
 }
 
-func TestValidatorCommitterManager(t *testing.T) { //nolint:gocognit
+func TestValidatorCommitterManager(t *testing.T) {
 	t.Parallel()
 
 	ensureZeroWaitingTxs := func(env *vcMgrTestEnv) {

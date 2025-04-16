@@ -17,15 +17,15 @@ func Test_DbInit(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 
 	ns := []string{"0", "1", "2", "3"}
-	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, ns))
+	require.NoError(t, initDatabaseTables(t.Context(), env.DB.pool, ns))
 
-	_, err := env.DB.pool.Exec(context.Background(), `insert into ns_0 values (UNNEST($1::bytea[]));`, [][]byte{
+	_, err := env.DB.pool.Exec(t.Context(), `insert into ns_0 values (UNNEST($1::bytea[]));`, [][]byte{
 		[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4"),
 	})
 	require.NoError(t, err)
 
 	// Validate default values
-	r, err := env.DB.pool.Query(context.Background(), `select * from ns_0;`)
+	r, err := env.DB.pool.Query(t.Context(), `select * from ns_0;`)
 	require.NoError(t, err)
 	defer r.Close()
 	for r.Next() {
@@ -40,7 +40,7 @@ func Test_DbInit(t *testing.T) {
 }
 
 func TestRetry(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	pool, err := NewDatabasePool(
 		ctx,
@@ -71,7 +71,7 @@ func TestConcurrentDatabaseTablesInit(t *testing.T) {
 		},
 	}
 	var wg sync.WaitGroup
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 
 	for range 4 {

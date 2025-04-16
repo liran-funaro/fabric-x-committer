@@ -56,7 +56,7 @@ func newValidator(
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
-) *transactionValidator { // nolint:revive
+) *transactionValidator {
 	logger.Info("Initializing new validator")
 	return &transactionValidator{
 		db:                            db,
@@ -70,7 +70,7 @@ func newValidator(
 func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
 	logger.Infof("Starting Validator with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		g.Go(func() error {
 			return v.validate(eCtx)
 		})

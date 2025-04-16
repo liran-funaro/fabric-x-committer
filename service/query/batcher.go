@@ -97,7 +97,7 @@ type (
 func (q *viewsBatcher) makeView(
 	viewID string, p *protoqueryservice.ViewParameters,
 ) bool {
-	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) // nolint:gosec
+	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) //nolint:gosec
 	v := &viewHolder{
 		ctx:    ctx,
 		cancel: cancel,
@@ -263,7 +263,7 @@ func (b *batcher) isStale() bool {
 func (b *batcher) join(v *viewHolder) bool {
 	b.m.Lock()
 	defer b.m.Unlock()
-	if b.isStale() || b.refCounter >= uint64(b.config.MaxAggregatedViews) { // nolint:gosec
+	if b.isStale() || b.refCounter >= uint64(b.config.MaxAggregatedViews) { //nolint:gosec
 		return false
 	}
 	b.refCounter++

@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
@@ -106,13 +107,7 @@ func (m *Manager) monitorQueues(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		m.metrics.setQueueSize(
-			m.metrics.ldgInputTxBatchQueueSize,
-			len(m.localDepConstructor.incomingTransactions),
-		)
-		m.metrics.setQueueSize(
-			m.metrics.gdgInputTxBatchQueueSize,
-			len(m.globalDepManager.incomingTransactionsNode),
-		)
+		promutil.SetGauge(m.metrics.ldgInputTxBatchQueueSize, len(m.localDepConstructor.incomingTransactions))
+		promutil.SetGauge(m.metrics.gdgInputTxBatchQueueSize, len(m.globalDepManager.incomingTransactionsNode))
 	}
 }

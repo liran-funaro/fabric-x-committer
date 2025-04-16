@@ -263,7 +263,7 @@ func (s *Service) recoverLedgerStore(
 			case <-gCtx.Done():
 				return gCtx.Err()
 			case blk := <-blockCh:
-				if err := s.appendMissingBlock(gCtx, client, blk, committedBlocks); err != nil {
+				if err := appendMissingBlock(gCtx, client, blk, committedBlocks); err != nil {
 					return err
 				}
 			}
@@ -275,7 +275,7 @@ func (s *Service) recoverLedgerStore(
 	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
 }
 
-func (s *Service) appendMissingBlock(
+func appendMissingBlock(
 	ctx context.Context,
 	client protocoordinatorservice.CoordinatorClient,
 	blk *common.Block,

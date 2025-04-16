@@ -20,6 +20,7 @@ type globalDependencyTestEnv struct {
 }
 
 func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
+	t.Helper()
 	env := &globalDependencyTestEnv{
 		incomingTxs:  make(chan *transactionNodeBatch, 10),
 		outgoingTxs:  make(chan TxNodeBatch, 10),
@@ -38,7 +39,7 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	)
 
 	env.dm = dm
-	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		dm.run(ctx)
 		return nil
 	}, nil)
@@ -103,13 +104,13 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t1, t2 becomes dependency free
 		require.Equal(t, TxNodeBatch{t2}, depFreeTxs)
-		require.Len(t, t2.dependsOnTxs, 0)
+		require.Empty(t, t2.dependsOnTxs)
 
 		env.validatedTxs <- TxNodeBatch{t2}
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t2, t3 becomes dependency free
 		require.Equal(t, TxNodeBatch{t3}, depFreeTxs)
-		require.Len(t, t3.dependsOnTxs, 0)
+		require.Empty(t, t3.dependsOnTxs)
 
 		env.validatedTxs <- TxNodeBatch{t3}
 
@@ -261,6 +262,7 @@ func createTxsNodeBatch(_ *testing.T, txsNode TxNodeBatch) *transactionNodeBatch
 }
 
 func ensureProcessedAndValidatedMetrics(t *testing.T, metrics *perfMetrics, processed, validated int) {
+	t.Helper()
 	require.Eventually(t, func() bool {
 		return test.GetMetricValue(t, metrics.gdgTxProcessedTotal) == float64(processed) &&
 			test.GetMetricValue(t, metrics.gdgValidatedTxProcessedTotal) == float64(validated)
@@ -268,6 +270,7 @@ func ensureProcessedAndValidatedMetrics(t *testing.T, metrics *perfMetrics, proc
 }
 
 func ensureEmptyDetector(t *testing.T, d *dependencyDetector) {
+	t.Helper()
 	require.Eventually(t, func() bool {
 		return len(d.readOnlyKeyToWaitingTxs) == 0 && len(d.writeOnlyKeyToWaitingTxs) == 0 &&
 			len(d.readWriteKeyToWaitingTxs) == 0

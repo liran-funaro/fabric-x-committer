@@ -139,7 +139,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	require.NoError(t, err)
 
 	blk := &protocoordinatorservice.Block{
-		Number: uint64(blkNum), // nolint:gosec
+		Number: uint64(blkNum), //nolint:gosec
 	}
 	blk.Txs = append(blk.Txs, &protoblocktx.Tx{
 		Id: uuid.NewString(),
@@ -810,9 +810,7 @@ func (e *coordinatorTestEnv) requireStatus(
 		txIDs = append(txIDs, txID)
 	}
 
-	for txID, s := range differentPersisted {
-		expectedTxStatus[txID] = s
-	}
+	maps.Copy(expectedTxStatus, differentPersisted)
 	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
 }
 
@@ -859,9 +857,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	for len(actualTxsStatus) < txPerBlock {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
-		for id, s := range txStatus.Status {
-			actualTxsStatus[id] = s
-		}
+		maps.Copy(actualTxsStatus, txStatus.Status)
 	}
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
@@ -915,9 +911,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	for len(actualTxsStatus) < txPerBlock {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
-		for id, s := range txStatus.Status {
-			actualTxsStatus[id] = s
-		}
+		maps.Copy(actualTxsStatus, txStatus.Status)
 	}
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)

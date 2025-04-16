@@ -26,7 +26,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
-	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return c.run(ctx, 1)
 	}, nil)
 	return &committerTestEnv{
@@ -43,7 +43,7 @@ type state struct {
 	updateSequence uint64
 }
 
-func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: revive
+func writes(isBlind bool, allWrites ...state) namespaceToWrites { //nolint: revive
 	ntw := make(namespaceToWrites)
 	for _, ww := range allWrites {
 		nw := ntw.getOrCreate(ww.namespace)
@@ -52,8 +52,8 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { // nolint: rev
 			ver = types.VersionNumber(ww.updateSequence).Bytes()
 		}
 		nw.append(
-			[]byte(fmt.Sprintf("key%s.%d", ww.namespace, ww.keySuffix)),
-			[]byte(fmt.Sprintf("value%s.%d.%d", ww.namespace, ww.keySuffix, ww.updateSequence)),
+			fmt.Appendf(nil, "key%s.%d", ww.namespace, ww.keySuffix),
+			fmt.Appendf(nil, "value%s.%d.%d", ww.namespace, ww.keySuffix, ww.updateSequence),
 			ver,
 		)
 	}

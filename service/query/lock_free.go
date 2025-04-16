@@ -32,7 +32,7 @@ type (
 )
 
 // mapUpdateOrCreate attempts to update or assign a key's value.
-func mapUpdateOrCreate[V any]( //nolint:gocognit,revive
+func mapUpdateOrCreate[V any]( //nolint:gocognit
 	ctx context.Context, m *sync.Map, key any, methods updateOrCreate[V],
 ) (*V, error) {
 	val, loaded := m.Load(key)

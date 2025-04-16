@@ -47,7 +47,7 @@ func newCommitter(
 func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
 	logger.Infof("Starting transactionCommitter with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		g.Go(func() error {
 			return c.commit(eCtx)
 		})
@@ -96,7 +96,7 @@ func (c *transactionCommitter) commitTransactions(
 	vTx *validatedTransactions,
 ) (*protoblocktx.TransactionsStatus, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
-	if err := c.populateVersionsAndCategorizeBlindWrites(vTx); err != nil {
+	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, vTx); err != nil {
 		return nil, err
 	}
 
@@ -121,7 +121,7 @@ func (c *transactionCommitter) commitTransactions(
 	// to reuse transaction IDs.
 	// However, we still limit the number of retries to some arbitrary number to avoid an endless loop due to a bug.
 	maxRetriesToRemoveAllInvalidTxs := 1024
-	for i := 0; i < maxRetriesToRemoveAllInvalidTxs; i++ {
+	for range maxRetriesToRemoveAllInvalidTxs {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
 			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
@@ -193,12 +193,14 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protoblocktx.Transactio
 
 // populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
 // to the appropriate category (new/update).
-func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(vTx *validatedTransactions) error {
+func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
+	ctx context.Context, vTx *validatedTransactions,
+) error {
 	state := make(map[string]keyToVersion)
 	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance
-		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(nsID, writes.keys)
+		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(ctx, nsID, writes.keys)
 		if err != nil {
 			return err
 		}

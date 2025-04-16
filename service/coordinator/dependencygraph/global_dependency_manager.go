@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -144,16 +145,12 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 			return
 		}
 
-		m.setQueueSize(
-			m.gdgWaitingTxQueueSize,
-			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
-		)
-
+		promutil.SetGauge(m.gdgWaitingTxQueueSize, dm.waitingTxsLimit-int(dm.waitingTxsSlots.availableSlots.Load()))
 		depFreeTxs := make(TxNodeBatch, 0, len(txsNode))
 
 		start := time.Now()
 		dm.mu.Lock()
-		m.observe(m.gdgConstructorWaitForLockSeconds, time.Since(start))
+		promutil.Observe(m.gdgConstructorWaitForLockSeconds, time.Since(start))
 
 		// Step 1: Detect dependencies of each transaction with the transactions
 		//         that are already in the dependency graph. After detection,
@@ -169,7 +166,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 				depFreeTxs = append(depFreeTxs, txNode)
 			}
 		}
-		m.observe(m.gdgAddTxToGraphSeconds, time.Since(start))
+		promutil.Observe(m.gdgAddTxToGraphSeconds, time.Since(start))
 
 		// Step 2: Add reads and writes of each input transaction to the global dependency
 		// 	       detector so that they can be used to detect correct dependencies
@@ -178,7 +175,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 		// 	       merging it with the global dependency detector.
 		start = time.Now()
 		dm.dependencyDetector.mergeWaitingTx(ctx, txsNodeBatch.localDepDetector)
-		m.observe(m.gdgUpdateDependencyDetectorSeconds, time.Since(start))
+		promutil.Observe(m.gdgUpdateDependencyDetectorSeconds, time.Since(start))
 
 		dm.mu.Unlock()
 
@@ -187,8 +184,8 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 		if len(depFreeTxs) > 0 {
 			dm.outgoingDepFreeTransactionsNode <- depFreeTxs
 		}
-		m.addToCounter(m.gdgTxProcessedTotal, len(txsNode))
-		m.observe(m.gdgConstructionSeconds, time.Since(constructionStart))
+		promutil.AddToCounter(m.gdgTxProcessedTotal, len(txsNode))
+		promutil.Observe(m.gdgConstructionSeconds, time.Since(constructionStart))
 	}
 }
 
@@ -203,14 +200,11 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		}
 		processValidatedStart := time.Now()
 		dm.waitingTxsSlots.release(int64(len(txsNode)))
-		m.setQueueSize(
-			m.gdgWaitingTxQueueSize,
-			int(int64(dm.waitingTxsLimit)-dm.waitingTxsSlots.availableSlots.Load()),
-		)
+		promutil.SetGauge(m.gdgWaitingTxQueueSize, dm.waitingTxsLimit-int(dm.waitingTxsSlots.availableSlots.Load()))
 
 		start := time.Now()
 		dm.mu.Lock()
-		m.observe(m.gdgValidatedTxProcessorWaitForLockSeconds, time.Since(start))
+		promutil.Observe(m.gdgValidatedTxProcessorWaitForLockSeconds, time.Since(start))
 
 		// Step 1: Remove the validated transactions from the dependency graph.
 		//         When a transaction becomes free of dependencies, it is added
@@ -221,7 +215,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			fullyFreedDependents = append(fullyFreedDependents, txNode.freeDependents()...)
 		}
 		dm.dependencyDetector.removeWaitingTx(ctx, txsNode)
-		m.observe(m.gdgRemoveDependentsOfValidatedTxSeconds, time.Since(start))
+		promutil.Observe(m.gdgRemoveDependentsOfValidatedTxSeconds, time.Since(start))
 		dm.mu.Unlock()
 
 		// Step 2: Send the fullyFreedDependents to the outgoingDepFreeTransactionsNode.
@@ -230,10 +224,10 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			dm.freedTransactionsSet.add(fullyFreedDependents)
 			fullyFreedDependents = nil
 		}
-		m.observe(m.gdgAddFreedTxSeconds, time.Since(start))
+		promutil.Observe(m.gdgAddFreedTxSeconds, time.Since(start))
 
-		dm.metrics.addToCounter(dm.metrics.gdgValidatedTxProcessedTotal, len(txsNode))
-		m.observe(m.gdgValidatedTxProcessingSeconds, time.Since(processValidatedStart))
+		promutil.AddToCounter(dm.metrics.gdgValidatedTxProcessedTotal, len(txsNode))
+		promutil.Observe(m.gdgValidatedTxProcessingSeconds, time.Since(processValidatedStart))
 	}
 }
 
@@ -251,7 +245,7 @@ func (dm *globalDependencyManager) outputFreedExistingTransactions(ctx context.C
 		if len(txsNode) > 0 {
 			dm.outgoingDepFreeTransactionsNode <- txsNode
 		}
-		dm.metrics.observe(dm.metrics.gdgOutputFreedTxSeconds, time.Since(start))
+		promutil.Observe(dm.metrics.gdgOutputFreedTxSeconds, time.Since(start))
 	}
 }
 

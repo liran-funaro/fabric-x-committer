@@ -19,8 +19,8 @@ import (
 var ErrInvalidOrStaleView = errors.New("invalid or stale view")
 
 type (
-	// QueryService is a gRPC service that implements the QueryServiceServer interface.
-	QueryService struct {
+	// Service is a gRPC service that implements the QueryServiceServer interface.
+	Service struct {
 		protoqueryservice.UnimplementedQueryServiceServer
 		batcher viewsBatcher
 		config  *Config
@@ -30,8 +30,8 @@ type (
 )
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) *QueryService {
-	return &QueryService{
+func NewQueryService(config *Config) *Service {
+	return &Service{
 		config:  config,
 		metrics: newQueryServiceMetrics(),
 		ready:   channel.NewReady(),
@@ -40,12 +40,12 @@ func NewQueryService(config *Config) *QueryService {
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
-func (q *QueryService) WaitForReady(ctx context.Context) bool {
+func (q *Service) WaitForReady(ctx context.Context) bool {
 	return q.ready.WaitForReady(ctx)
 }
 
 // Run starts the Prometheus server.
-func (q *QueryService) Run(ctx context.Context) error {
+func (q *Service) Run(ctx context.Context) error {
 	pool, poolErr := vc.NewDatabasePool(ctx, q.config.Database)
 	if poolErr != nil {
 		return poolErr
@@ -75,15 +75,15 @@ func (q *QueryService) Run(ctx context.Context) error {
 }
 
 // BeginView implements the query-service interface.
-func (q *QueryService) BeginView(
+func (q *Service) BeginView(
 	ctx context.Context, params *protoqueryservice.ViewParameters,
 ) (*protoqueryservice.View, error) {
 	q.metrics.requests.WithLabelValues(grpcBeginView).Inc()
 	defer q.requestLatency(grpcBeginView, time.Now())
 
 	if params.TimeoutMilliseconds == 0 ||
-		int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() { // nolint:gosec
-		params.TimeoutMilliseconds = uint64(q.config.MaxViewTimeout.Milliseconds()) // nolint:gosec
+		int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() { //nolint:gosec
+		params.TimeoutMilliseconds = uint64(q.config.MaxViewTimeout.Milliseconds()) //nolint:gosec
 	}
 
 	// We try again if we have view-id collision.
@@ -100,7 +100,7 @@ func (q *QueryService) BeginView(
 }
 
 // EndView implements the query-service interface.
-func (q *QueryService) EndView(
+func (q *Service) EndView(
 	_ context.Context, view *protoqueryservice.View,
 ) (*protoqueryservice.View, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
@@ -109,7 +109,7 @@ func (q *QueryService) EndView(
 }
 
 // GetRows implements the query-service interface.
-func (q *QueryService) GetRows(
+func (q *Service) GetRows(
 	ctx context.Context, query *protoqueryservice.Query,
 ) (*protoqueryservice.Rows, error) {
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
@@ -141,7 +141,7 @@ func (q *QueryService) GetRows(
 }
 
 // GetNamespacePolicies implements the query-service interface.
-func (q *QueryService) GetNamespacePolicies(
+func (q *Service) GetNamespacePolicies(
 	ctx context.Context,
 	_ *protoqueryservice.Empty,
 ) (*protoblocktx.NamespacePolicies, error) {
@@ -149,14 +149,14 @@ func (q *QueryService) GetNamespacePolicies(
 }
 
 // GetConfigTransaction implements the query-service interface.
-func (q *QueryService) GetConfigTransaction(
+func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *protoqueryservice.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
 	return queryConfig(ctx, q.batcher.pool)
 }
 
-func (q *QueryService) assignRequest(
+func (q *Service) assignRequest(
 	ctx context.Context, query *protoqueryservice.Query,
 ) ([]*namespaceQueryBatch, error) {
 	defer func(start time.Time) {
@@ -185,6 +185,6 @@ func getUUID() (string, error) {
 	return uuidObj.String(), nil
 }
 
-func (q *QueryService) requestLatency(method string, start time.Time) {
+func (q *Service) requestLatency(method string, start time.Time) {
 	promutil.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
 }

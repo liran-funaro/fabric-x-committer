@@ -54,7 +54,7 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk0
 	ensureAtLeastHeight(t, ls, 1)
 
-	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(context.Background(), t, &sidecarclient.Config{
+	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Config{
 		ChannelID: channelID,
 		Endpoint:  &config.Endpoint,
 	}, 0)
@@ -69,7 +69,7 @@ func TestLedgerService(t *testing.T) {
 	ensureAtLeastHeight(t, ls, 3)
 	for i := range 3 {
 		blk := <-receivedBlocksFromLedgerService
-		require.Equal(t, uint64(i), blk.Header.Number) // nolint:gosec
+		require.Equal(t, uint64(i), blk.Header.Number) //nolint:gosec
 	}
 
 	// if we input the already stored block, it would simply skip.

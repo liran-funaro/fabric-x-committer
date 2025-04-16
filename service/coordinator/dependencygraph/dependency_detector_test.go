@@ -25,7 +25,7 @@ func TestDependencyDetector(t *testing.T) {
 
 	tx1Node := createTxNode(t, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]})
 	dependsOnTx := dd.getDependenciesOf(tx1Node)
-	require.Len(t, dependsOnTx, 0)
+	require.Empty(t, dependsOnTx)
 
 	depDetect := newDependencyDetector()
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
@@ -129,5 +129,5 @@ func TestDependencyDetector(t *testing.T) {
 	// As we have removed tx1 to tx9, tx9Node should not be dependent on any transaction.
 	tx10Node := createTxNode(t, [][]byte{keys[3]}, [][]byte{keys[0], keys[2]}, [][]byte{keys[5]})
 	dependsOnTx = dd.getDependenciesOf(tx10Node)
-	require.Len(t, dependsOnTx, 0)
+	require.Empty(t, dependsOnTx)
 }

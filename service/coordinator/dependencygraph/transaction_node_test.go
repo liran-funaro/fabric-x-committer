@@ -78,10 +78,11 @@ func TestTransactionNode(t *testing.T) {
 
 	freedTxs := tx1Node.freeDependents()
 	require.Equal(t, TxNodeBatch{tx2Node}, freedTxs)
-	require.Len(t, tx2Node.dependsOnTxs, 0)
+	require.Empty(t, tx2Node.dependsOnTxs)
 }
 
 func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
+	t.Helper()
 	tx := createTxForTest(t, nsID1ForTest, readOnly, readWrite, blindWrite)
 	txNode := newTransactionNode(0, 0, tx)
 
@@ -121,7 +122,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	return txNode
 }
 
-func createTxForTest( // nolint: revive
+func createTxForTest( //nolint: revive
 	_ *testing.T, nsID string, readOnly, readWrite, blindWrite [][]byte,
 ) *protoblocktx.Tx {
 	reads := make([]*protoblocktx.Read, len(readOnly))
@@ -158,6 +159,7 @@ func checkNewTxNode(
 	readsWrites *readWriteKeys,
 	txNode *TransactionNode,
 ) {
+	t.Helper()
 	require.Equal(t, tx.Id, txNode.Tx.ID)
 	require.Equal(t, tx.Namespaces, txNode.Tx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
@@ -167,6 +169,7 @@ func checkNewTxNode(
 }
 
 func checkDependentTxs(t *testing.T, expectedTransactionList TxNodeBatch, dependentTxs *sync.Map) {
+	t.Helper()
 	actualLen := getLengthOfDependentTx(t, dependentTxs)
 	require.Len(t, expectedTransactionList, actualLen)
 

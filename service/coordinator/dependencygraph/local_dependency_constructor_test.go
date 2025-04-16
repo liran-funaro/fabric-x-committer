@@ -20,12 +20,13 @@ type localDependencyConstructorTestEnv struct {
 }
 
 func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstructorTestEnv {
+	t.Helper()
 	inComingTxs := make(chan *TransactionBatch, 5)
 	outGoingTxs := make(chan *transactionNodeBatch, 5)
 
 	metrics := newPerformanceMetrics(monitoring.NewProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
-	test.RunServiceForTest(context.Background(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 5)
 		return nil
 	}, nil)
@@ -42,9 +43,9 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 
 	keys := makeTestKeys(t, 24)
 
-	env := newLocalDependencyConstructorTestEnv(t)
-
 	t.Run("no dependencies between transactions", func(t *testing.T) {
+		t.Parallel()
+		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
 			ID: 1,
 			Txs: []*protoblocktx.Tx{
@@ -93,7 +94,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 		require.Len(t, txsNode, 5)
 		for _, txNode := range txsNode {
 			// as there are no dependencies, both the dependsOnTxs and dependents list should be empty
-			require.Len(t, txNode.dependsOnTxs, 0)
+			require.Empty(t, txNode.dependsOnTxs)
 			require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 		}
 
@@ -103,8 +104,10 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 	})
 
 	t.Run("linear dependency i and i+1 transaction", func(t *testing.T) {
+		t.Parallel()
+		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
-			ID: 2,
+			ID: 1,
 			Txs: []*protoblocktx.Tx{
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[1]}, [][]byte{keys[2]}, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, [][]byte{keys[3]}, nil),
@@ -122,7 +125,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			switch i {
 			case 0:
 				// tx1 should not have any dependencies
-				require.Len(t, txNode.dependsOnTxs, 0)
+				require.Empty(t, txNode.dependsOnTxs)
 			default:
 				// other transactions should be dependent on the previous transaction
 				require.Len(t, txNode.dependsOnTxs, 1)
@@ -142,8 +145,10 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 	})
 
 	t.Run("all txs depends on the metaNamespace tx", func(t *testing.T) {
+		t.Parallel()
+		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
-			ID: 3,
+			ID: 1,
 			Txs: []*protoblocktx.Tx{
 				createTxForTest(
 					t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
@@ -163,7 +168,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			switch i {
 			case 0:
 				// tx1 should not have any dependencies
-				require.Len(t, txNode.dependsOnTxs, 0)
+				require.Empty(t, txNode.dependsOnTxs)
 			default:
 				// other transactions should be dependent on the first transaction
 				require.Len(t, txNode.dependsOnTxs, 1)
@@ -173,8 +178,10 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 	})
 
 	t.Run("metaNamespace tx depends on all other txs", func(t *testing.T) {
+		t.Parallel()
+		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
-			ID: 4,
+			ID: 1,
 			Txs: []*protoblocktx.Tx{
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
 				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
@@ -199,7 +206,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				require.ElementsMatch(t, txsNode[0:lastElementIndex], txNode.dependsOnTxs)
 			default:
 				// other transactions should not have any dependencies
-				require.Len(t, txNode.dependsOnTxs, 0)
+				require.Empty(t, txNode.dependsOnTxs)
 			}
 		}
 	})
@@ -275,7 +282,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 		txsNode := tc.txsNodeBatch.txsNode
 		require.Len(t, txsNode, tc.len)
 		for _, txNode := range txsNode {
-			require.Len(t, txNode.dependsOnTxs, 0)
+			require.Empty(t, txNode.dependsOnTxs)
 			require.Equal(t, 0, getLengthOfDependentTx(t, txNode.dependentTxs))
 		}
 	}
@@ -283,7 +290,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 
 func makeTestKeys(_ *testing.T, numKeys int) [][]byte {
 	keys := make([][]byte, numKeys)
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		keys[i] = []byte{byte(i)}
 	}
 	return keys

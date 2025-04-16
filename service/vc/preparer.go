@@ -99,7 +99,7 @@ func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
 	logger.Infof("Starting transaction preparer with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		g.Go(func() error {
 			p.prepare(eCtx)
 			return nil

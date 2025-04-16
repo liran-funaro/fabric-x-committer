@@ -135,10 +135,8 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	env.requireTxBatch(t, expectedValidatedTxs)
 
 	require.Eventually(t, func() bool {
-		return 15 == test.GetMetricValue(
-			t,
-			env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
-		)
+		return test.GetMetricValue(t,
+			env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal) == 15
 	}, 30*time.Second, 10*time.Millisecond)
 }
 

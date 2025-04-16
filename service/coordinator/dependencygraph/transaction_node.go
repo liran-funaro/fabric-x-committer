@@ -2,6 +2,7 @@ package dependencygraph
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -116,7 +117,7 @@ func (n *TransactionNode) freeDependents() TxNodeBatch /* fully freed transactio
 
 		for i, tx := range dependentTx.dependsOnTxs {
 			if tx == n {
-				dependentTx.dependsOnTxs = append(dependentTx.dependsOnTxs[:i], dependentTx.dependsOnTxs[i+1:]...)
+				dependentTx.dependsOnTxs = slices.Delete(dependentTx.dependsOnTxs, i, i+1)
 				break
 			}
 		}

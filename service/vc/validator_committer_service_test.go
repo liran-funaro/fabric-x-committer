@@ -42,7 +42,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	}
 
 	for i := range numServices {
-		clientConn, err := connection.Connect(connection.NewDialConfig(&vcs.Configs[i].Server.Endpoint))
+		clientConn, err := connection.LazyConnect(connection.NewDialConfig(&vcs.Configs[i].Server.Endpoint))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, clientConn.Close())
@@ -728,7 +728,7 @@ func TestTransactionResubmission(t *testing.T) {
 }
 
 func createContext(t *testing.T) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(cancel)
 	return ctx, cancel
 }

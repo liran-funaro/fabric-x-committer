@@ -18,8 +18,8 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 	items := make([]*protoblocktx.ReadWrite, 5)
 	for i := range items {
 		items[i] = &protoblocktx.ReadWrite{
-			Key:   []byte(fmt.Sprintf("key-%d", i)),
-			Value: []byte(fmt.Sprintf("value-%d", i)),
+			Key:   fmt.Appendf(nil, "key-%d", i),
+			Value: fmt.Appendf(nil, "value-%d", i),
 		}
 	}
 	tx := &protoblocktx.TxNamespace{
@@ -55,6 +55,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 }
 
 func TestParsePolicyItem(t *testing.T) {
+	t.Parallel()
 	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    signature.Ecdsa,
@@ -87,6 +88,7 @@ func TestParsePolicyItem(t *testing.T) {
 		types.MetaNamespaceID, types.ConfigNamespaceID,
 	} {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
+			t.Parallel()
 			pd := MakePolicy(t, ns, p)
 			_, err := ParseNamespacePolicyItem(pd)
 			require.ErrorIs(t, err, ErrInvalidNamespaceID)

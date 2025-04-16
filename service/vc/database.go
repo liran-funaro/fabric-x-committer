@@ -130,11 +130,11 @@ func (db *database) validateNamespaceReads(
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (keyToVersion, error) {
+func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTemplate, TableName(nsID))
 
-	foundKeys, foundVersions, err := db.retryQueryAndReadRows(context.Background(), query, queryKeys)
+	foundKeys, foundVersions, err := db.retryQueryAndReadRows(ctx, query, queryKeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed reading key and version: %w", err) //nolint:wrapcheck
 	}

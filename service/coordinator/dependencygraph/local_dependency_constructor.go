@@ -10,6 +10,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
 var logger = logging.New("dependencygraph")
@@ -66,7 +67,7 @@ func newLocalDependencyConstructor(
 
 func (p *localDependencyConstructor) run(ctx context.Context, numWorkers int) {
 	g, gCtx := errgroup.WithContext(ctx)
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		g.Go(func() error {
 			p.construct(gCtx)
 			return nil
@@ -129,7 +130,7 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 			p.orderEnforcer.Wait()
 		}
 
-		p.metrics.addToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode))
+		promutil.AddToCounter(p.metrics.ldgTxProcessedTotal, len(txsNode))
 		outgoingTransactionsNode.Write(&transactionNodeBatch{
 			txsNode:          txsNode,
 			localDepDetector: depDetector,

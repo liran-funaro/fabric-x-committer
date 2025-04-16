@@ -31,7 +31,7 @@ import (
 type queryServiceTestEnv struct {
 	config        *Config
 	ctx           context.Context
-	qs            *QueryService
+	qs            *Service
 	ns            []string
 	clientConn    *grpc.ClientConn
 	pool          *pgxpool.Pool
@@ -251,6 +251,7 @@ func TestQueryPolicies(t *testing.T) {
 }
 
 func requireMapSize(t *testing.T, expectedSize int, m *sync.Map) {
+	t.Helper()
 	n := 0
 	m.Range(func(_, _ any) bool {
 		n++
@@ -270,12 +271,13 @@ func strToBytes(str ...string) [][]byte {
 func verToBytes(ver ...int) [][]byte {
 	ret := make([][]byte, len(ver))
 	for i, v := range ver {
-		ret[i] = types.VersionNumber(v).Bytes() // nolint:gosec
+		ret[i] = types.VersionNumber(v).Bytes() //nolint:gosec
 	}
 	return ret
 }
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
+	t.Helper()
 	t.Log("generating config and namespaces")
 	namespacesToTest := []string{"0", "1", "2"}
 	dbConf := generateNamespacesUnderTest(t, namespacesToTest)
@@ -383,6 +385,7 @@ func (it *items) asQuery() *protoqueryservice.QueryNamespace {
 }
 
 func (q *queryServiceTestEnv) insert(t *testing.T, i *items) {
+	t.Helper()
 	query := fmt.Sprintf(
 		`insert into %s values (
 			UNNEST($1::bytea[]), UNNEST($2::bytea[]), UNNEST($3::bytea[])
@@ -394,6 +397,7 @@ func (q *queryServiceTestEnv) insert(t *testing.T, i *items) {
 }
 
 func (q *queryServiceTestEnv) update(t *testing.T, i *items) {
+	t.Helper()
 	query := fmt.Sprintf(`
 		UPDATE %[1]s
 			SET value = t.value,
@@ -414,6 +418,7 @@ func requireResults(
 	expected []*items,
 	ret []*protoqueryservice.RowsNamespace,
 ) {
+	t.Helper()
 	require.Len(t, ret, len(expected))
 	for i, item := range expected {
 		requireRow(t, item, ret[i])
@@ -425,6 +430,7 @@ func requireRow(
 	expected *items,
 	ret *protoqueryservice.RowsNamespace,
 ) {
+	t.Helper()
 	require.Equal(t, expected.ns, ret.NsId)
 	require.ElementsMatch(t, expected.asRows(), ret.Rows)
 }
@@ -434,6 +440,7 @@ func requireIntMetricValue(t *testing.T, expected int, m prometheus.Metric) {
 }
 
 func requireIntVecMetricValue(t *testing.T, expected int, mv *prometheus.MetricVec, lvs ...string) {
+	t.Helper()
 	m, err := mv.GetMetricWithLabelValues(lvs...)
 	require.NoError(t, err)
 	requireIntMetricValue(t, expected, m)
@@ -444,6 +451,7 @@ func (q *queryServiceTestEnv) beginView(
 	client protoqueryservice.QueryServiceClient,
 	params *protoqueryservice.ViewParameters,
 ) *protoqueryservice.View {
+	t.Helper()
 	view, err := client.BeginView(q.ctx, params)
 	require.NoError(t, err)
 	require.NotNil(t, view)
@@ -463,6 +471,7 @@ func (q *queryServiceTestEnv) endView(
 	client protoqueryservice.QueryServiceClient,
 	view *protoqueryservice.View,
 ) {
+	t.Helper()
 	_, err := client.EndView(q.ctx, view)
 	require.NoError(t, err)
 	q.disabledViews = append(q.disabledViews, view.Id)
