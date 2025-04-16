@@ -3,6 +3,7 @@
 1. [Labeling Review Comments](#labeling-review-comments)
 2. [The Importance of Politeness in Code Reviews](#the-importance-of-politeness-in-code-reviews)
 3. [GoLang Coding Standards](#golang-coding-standards)
+   - [Error Handling](#error-handling)
 4. [The Arguments for Simplicity](#the-argument-for-simplicity)
    - [Prioritize Simple and Readable Code over "Clever" Code](#prioritize-simple-and-readable-code-over-clever-code)
    - [Avoid Premature Optimization](#avoid-premature-optimization)
@@ -138,7 +139,71 @@ reviewing code, you should keep these guidelines in mind and refer to them as ne
    Uber demonstrates how a large organization applies Go best practices. It's a useful reference for
    structuring and formatting your Go code.
 
+## Error Handling
 
+Consistent and effective error handling is crucial for maintaining robust and Diagnosable services.
+These guidelines outline our approach, primarily leveraging the `github.com/cockroachdb/errors` 
+package and standard Go practices for clarity and detailed diagnostics.
+
+1.  **Capture Stack Trace at Origin:** When an error is first encountered (i.e., received from an 
+    external package like a database driver or HTTP client) or when a new error condition is created 
+    within our internal packages, it's essential to capture a stack trace at that point. 
+    Use `errors.New`, `errors.Newf`, `errors.Wrap`, or `errors.Wrapf` from the `github.com/cockroachdb/errors` package. 
+    This establishes the precise origin point of the error.
+    * **Example (External):** 
+        ```go
+        _, err := db.Exec(...) ; 
+        if err != nil { 
+          return errors.Wrap(err, "failed to execute db query") 
+        }
+        ```
+    * **Example (Internal):** 
+        ```go
+        if !isValid { 
+          return errors.Newf("validation failed for input field %d", X) 
+        }
+          ```
+
+2.  **Decorate Errors Without Duplicating Traces:** As an error propagates up the call stack, you might 
+    need to add more context or hints about the operation being performed at that level. 
+    Adding context is optional; only do so if it genuinely adds value for understanding or debugging
+    the error. If you choose to add context, use the standard Go `fmt.Errorf` with the `%w` verb for 
+    this: `fmt.Errorf("additional context: %w", err)`. This wraps the underlying error (`err`) and 
+    adds your hint, but crucially, it preserves the original stack trace captured by `cockroachdb/errors` 
+    without adding a new, redundant trace. This prevents bloating the stack trace information while
+    enriching the error context.
+    * **Example:** 
+        ```go
+        if err := processItem(item); err != nil { 
+          return fmt.Errorf("failed to process item %d: %w", item.ID, err) 
+        }
+        ```
+
+3.  **Log Full Error Details at Exit Points:** At the boundaries or exit points of logical operations
+    (e.g., within a gRPC handler just before returning a response, or finishing a background task), log the 
+    complete error details. This *must* include the full stack trace. Use a dedicated logging function like
+    `logger.ErrorStackTrace(err)` which is designed to extract and format the stack trace contained
+    within the `cockroachdb/errors` error object.
+
+4.  **Handle Errors at gRPC Boundaries:** You cannot directly return stack traces over a gRPC connection.
+    Instead, after logging the detailed internal error (as per point 3), convert the error into an 
+    appropriate gRPC status code. Use helper functions, preferably located in `utils/gprcerror`, to map 
+    internal error types or conditions to standard gRPC codes (e.g., `codes.Internal` for unexpected 
+    server errors, `codes.InvalidArgument` for validation failures, `codes.NotFound`, etc.). This provides
+    the client with a meaningful, standardized error without exposing internal implementation details
+    or verbose stack traces.
+    * **Example (gRPC Handler):**
+        ```go
+        func (s *server) MyGRPCHandler(ctx context.Context, req *pb.Request) (*pb.Response, error) {
+            res, err := s.service.DoSomething(ctx, req.Data)
+            if err != nil {
+                logger.ErrorStackTrace(err) // Log the full error + stack trace internally
+                // Convert to gRPC status error for the client
+                return nil, gprcerror.WrapInternalError(err) 
+            }
+            return &pb.Response{Result: res}, nil
+        }
+        ```
 # The Argument for Simplicity
 
 Simple code is generally:
