@@ -209,7 +209,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 		promutil.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
 		outgoingPreparedTransactions.Write(prepTxs)
 
-		logger.Debugf("Transaction preparing finished.")
+		logger.Debug("Transaction preparing finished.")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -161,7 +162,7 @@ func (c *transactionCommitter) commitTransactions(
 		vTx.updateInvalidTxs(duplicated, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
 	}
 
-	return nil, fmt.Errorf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
+	return nil, errors.Newf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
 }
 
 // prepareStatusForCommit construct transaction status.

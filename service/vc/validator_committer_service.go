@@ -82,7 +82,8 @@ func NewValidatorCommitterService(
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
 	if err != nil {
-		return nil, utils.ProcessErr(logger, err, "failed to initialize database") //nolint:wrapcheck
+		logger.ErrorStackTrace(err)
+		return nil, err
 	}
 
 	vc := &ValidatorCommitterService{

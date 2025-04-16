@@ -2,9 +2,9 @@ package vc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
@@ -89,7 +89,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 			return nil
 		}
 
-		logger.Debugf("Batch of prepared TXs in the validator.")
+		logger.Debug("Batch of prepared TXs in the validator.")
 		prepTx.Debug()
 		start := time.Now()
 		// Step 1: we validate reads and collect mismatching reads per namespace.
@@ -171,7 +171,7 @@ func (v *validatedTransactions) updateMismatch(nsToMismatchingReads namespaceToR
 
 			txIDs, ok := v.readToTxIDs[r]
 			if !ok {
-				return fmt.Errorf("read %v not found in readToTransactionIndices", r)
+				return errors.Newf("read %v not found in readToTransactionIndices", r)
 			}
 
 			v.updateInvalidTxs(txIDs, protoblocktx.Status_ABORTED_MVCC_CONFLICT)

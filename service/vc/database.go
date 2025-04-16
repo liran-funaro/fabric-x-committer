@@ -150,7 +150,10 @@ func (db *database) queryVersionsIfPresent(nsID string, queryKeys [][]byte) (key
 
 func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.BlockInfo, error) {
 	blkInfo, err := db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
-	return blkInfo, errors.Wrap(err, "failed to guery the last committed block number")
+	if err != nil {
+		return blkInfo, fmt.Errorf("failed to get the last committed block number: %w", err) //nolint:wrapcheck
+	}
+	return blkInfo, nil
 }
 
 func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
@@ -183,14 +186,10 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *prot
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	retryErr := db.retry.Execute(ctx, func() error {
+	return db.retry.Execute(ctx, func() error { //nolint:wrapcheck
 		_, err := db.pool.Exec(ctx, setMetadataPrepStmt, []byte(lastCommittedBlockNumberKey), v)
-		return err
+		return errors.Wrapf(err, "failed to set the last committed block number")
 	})
-	if retryErr != nil {
-		return fmt.Errorf("failed to set the last committed block number: %w", retryErr) //nolint:wrapcheck
-	}
-	return nil
 }
 
 // commit commits the writes to the database.
@@ -293,7 +292,7 @@ func (db *database) commitTxStatus(
 		statues = append(statues, int(status.Code))
 		blkAndTxNum, ok := states.txIDToHeight[TxID(tID)]
 		if !ok {
-			return nil, fmt.Errorf("block and tx number is not passed for txID %s", tID)
+			return nil, errors.Newf("block and tx number is not passed for txID %s", tID)
 		}
 		heights = append(heights, blkAndTxNum.ToBytes())
 	}
@@ -433,7 +432,7 @@ func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
 func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
 	var res []pgtype.Value
 	if err := r.Scan(&res); err != nil {
-		return nil, fmt.Errorf("failed scan: %w", err)
+		return nil, errors.Wrap(err, "failed to read value from the current row")
 	}
 
 	var result string
@@ -486,7 +485,7 @@ func (db *database) readStatusWithHeight(
 
 			ht, _, err := types.NewHeightFromBytes(height)
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("failed to create height from encoded bytes [%v]", height))
+				return fmt.Errorf("failed to create height from encoded bytes [%v]: %w", height, err)
 			}
 
 			rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
@@ -547,5 +546,8 @@ func (db *database) retryQueryAndReadRows(
 		return err
 	})
 
-	return keys, values, errors.Wrapf(retryErr, "error reading rows")
+	if retryErr != nil {
+		return keys, values, fmt.Errorf("error reading rows: %w", retryErr) //nolint:wrapcheck
+	}
+	return keys, values, retryErr //nolint:wrapcheck
 }
