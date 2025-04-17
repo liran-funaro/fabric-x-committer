@@ -209,16 +209,20 @@ func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservi
 		return 0, err
 	}
 
+	// We should update the orderer endpoints first, before recovering the ledger
+	// store. Otherwise, the `recoverLedgerStore` function might try to fetch blocks
+	// from non-existent or non-member ordering services.
+	if err := s.recoverConfigTransactionFromStateDB(ctx, coordClient); err != nil {
+		return 0, err
+	}
+
 	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
 	}
 	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
 
-	if err := s.recoverLedgerStore(ctx, coordClient, blkInfo.Number); err != nil {
-		return 0, err
-	}
-	return blkInfo.Number, s.recoverConfigTransactionFromStateDB(ctx, coordClient)
+	return blkInfo.Number, s.recoverLedgerStore(ctx, coordClient, blkInfo.Number)
 }
 
 func (s *Service) recoverConfigTransactionFromStateDB(
