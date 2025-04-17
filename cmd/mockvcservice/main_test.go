@@ -4,31 +4,30 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 )
 
-//go:embed mockvcservice-test-config.yaml
-var configTemplate string
-
-//nolint:paralleltest // Cannot parallelize due to viper.
+//nolint:paralleltest // Cannot parallelize due to logger.
 func TestMockVCServiceCmd(t *testing.T) {
-	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
-	config := fmt.Sprintf(configTemplate, loggerOutputPath)
-	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
-
-	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
-	// identified. Instead, string concatenation is used for better compatibility.
-	commonTests := []cobracmd.CommandTest{
+	s := config.StartDefaultSystem(t)
+	commonTests := []config.CommandTest{
 		{
-			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath},
-			CmdLoggerOutput: "Serving",
-			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
+			Name:              "start with endpoint",
+			Args:              []string{"start", "--endpoint", "localhost:8008"},
+			CmdLoggerOutputs:  []string{"Serving", "localhost:8008"},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateVC,
+			System:            s,
+		},
+		{
+			Name:              "start",
+			Args:              []string{"start"},
+			CmdLoggerOutputs:  []string{"Serving", s.ServerEndpoint.String()},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateVC,
+			System:            s,
 		},
 		{
 			Name:         "print version",
@@ -50,7 +49,7 @@ func TestMockVCServiceCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, mockvcserviceCmd(), loggerOutputPath, tc)
+			config.UnitTestRunner(t, mockvcserviceCmd(), tc)
 		})
 	}
 }

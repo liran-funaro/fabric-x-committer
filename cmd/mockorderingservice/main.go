@@ -10,14 +10,14 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (
-	serviceName    = "mockorderingservice"
+	serviceName    = "mock-ordering-service"
 	serviceVersion = "0.0.2"
 )
 
@@ -37,27 +37,24 @@ func mockorderingserviceCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a mock ordering service.", serviceName),
 	}
 
-	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
+	cmd.AddCommand(config.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	v := config.NewViperWithLoggingDefault()
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: fmt.Sprintf("Starts a %v.", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return errors.Wrap(err, "failed to read config")
+			conf, err := config.ReadMockOrdererYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
 			}
 			cmd.SilenceUsage = true
-			wrapper := new(struct {
-				Config mock.OrdererConfig `mapstructure:"mock-ordering-service"`
-			})
-			config.Unmarshal(wrapper)
-			conf := &wrapper.Config
 
 			service, err := mock.NewMockOrderer(conf)
 			if err != nil {
@@ -85,7 +82,6 @@ func startCmd() *cobra.Command {
 			return g.Wait()
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
 	return cmd
 }

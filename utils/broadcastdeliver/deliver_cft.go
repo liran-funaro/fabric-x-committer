@@ -87,9 +87,6 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 	}
 	logger.Info("Seek request sent.")
 
-	// If we managed to send a request, we can reset the connection's backoff.
-	conn.ResetBackoff()
-
 	outputBlock := channel.NewWriter(ctx, config.OutputBlock)
 	for ctx.Err() == nil {
 		block, status, err := stream.RecvBlockOrStatus()
@@ -104,6 +101,9 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(
 		config.StartBlkNum = int64(block.Header.Number) + 1
 		logger.Debugf("next expected block number is %d", config.StartBlkNum)
 		outputBlock.Write(block)
+
+		// If we managed to receive one block, we can reset the connection's backoff.
+		conn.ResetBackoff()
 	}
 
 	return nil

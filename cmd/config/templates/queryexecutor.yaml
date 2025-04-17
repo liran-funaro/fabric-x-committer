@@ -1,22 +1,30 @@
-query-service:
-  # Configuration for the server
+# Configuration for the server
+server:
+  # The server's endpoint configuration
+  endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+monitoring:
   server:
-    # The server's endpoint configuration
-    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
-  monitoring:
-    server:
-      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+    endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
 
-  database:
-    endpoints:
-      {{- range .Endpoints.Database }}
-      - {{ . }}
-      {{- end }}
+database:
+  endpoints:
+    {{- range .Endpoints.Database }}
+    - {{ . }}
+    {{- end }}
+  username: "yugabyte"
+  # TODO: pass password via environment variable
+  password: "yugabyte"
+  database: {{ .DB.Name }}
+  load-balance: {{ .DB.LoadBalance }}
+  max-connections: 10
+  min-connections: 5
+  retry:
+    max-elapsed-time: 1h
 
-    username: "yugabyte"                       # The username for the database
-    password: "yugabyte"                       # The password for the database
-    database: {{ .DB.Name }}
-    max-connections: 10                        # The maximum size of the connection pool
-    min-connections: 5                         # The minimum size of the connection pool.
-
-{{ template "loggingBlock" . }}
+logging:
+  enabled: {{ .Logging.Enabled }}
+  level: {{ .Logging.Level }}
+  caller: {{ .Logging.Caller }}
+  development: {{ .Logging.Development }}
+  output: {{ .Logging.Output }}
+  name: query

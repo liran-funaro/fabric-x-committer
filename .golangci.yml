@@ -37,7 +37,8 @@ linters:
     - usetesting
     - wastedassign
     - whitespace
-    - wrapcheck
+    # wrapcheck is not working as expected. It is categorizing internal packages as external.
+    #- wrapcheck
   settings:
     depguard:
       rules:

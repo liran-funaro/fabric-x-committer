@@ -4,48 +4,39 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 )
 
-//go:embed vcservice-cmd-test-config.yaml
-var configTemplate string
-
-//nolint:paralleltest // Cannot parallelize due to viper.
+//nolint:paralleltest // Cannot parallelize due to logger.
 func TestVCServiceCmd(t *testing.T) {
-	conn := dbtest.PrepareTestEnv(t)
-	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
-	config := fmt.Sprintf(
-		configTemplate,
-		loggerOutputPath,
-		conn.Endpoints[0],
-		conn.User,
-		conn.Password,
-		conn.Database,
-	)
-	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
-
-	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
-	// identified. Instead, string concatenation is used for better compatibility.
-	commonTests := []cobracmd.CommandTest{
+	s := config.StartDefaultSystem(t)
+	commonTests := []config.CommandTest{
 		{
-			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8000"},
-			CmdLoggerOutput: "Serving",
-			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
-			Endpoint:        "localhost:8000",
+			Name:              "start with endpoint",
+			Args:              []string{"start", "--endpoint", "localhost:8000"},
+			CmdLoggerOutputs:  []string{"Serving", "localhost:8000"},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateVC,
+			System:            s,
 		},
 		{
-			Name:            "clear the " + serviceName,
-			Args:            []string{"clear", "--configs", testConfigPath, "--namespaces", "0"},
-			CmdStdOutput:    "Clearing database",
-			CmdLoggerOutput: fmt.Sprintf("Table 'ns_%s' is cleared", "0"),
-			Err:             nil,
+			Name:              "start",
+			Args:              []string{"start"},
+			CmdLoggerOutputs:  []string{"Serving", s.ServerEndpoint.String()},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateVC,
+			System:            s,
+		},
+		{
+			Name:              "clear",
+			Args:              []string{"clear", "--namespaces", "0"},
+			CmdStdOutput:      "Clearing database",
+			CmdLoggerOutputs:  []string{fmt.Sprintf("Table 'ns_%s' is cleared", "0")},
+			Err:               nil,
+			UseConfigTemplate: config.TemplateVC,
+			System:            s,
 		},
 		{
 			Name:         "print version",
@@ -67,7 +58,7 @@ func TestVCServiceCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(tc.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, vcserviceCmd(), loggerOutputPath, tc)
+			config.UnitTestRunner(t, vcserviceCmd(), tc)
 		})
 	}
 }

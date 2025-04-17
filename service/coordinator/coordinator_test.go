@@ -804,7 +804,7 @@ func (e *coordinatorTestEnv) requireStatus(
 	expectedTxStatus, differentPersisted map[string]*protoblocktx.StatusWithHeight,
 ) {
 	t.Helper()
-	require.Equal(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
+	require.EqualExportedValues(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
 	var txIDs []string //nolint:prealloc
 	for txID := range expectedTxStatus {
 		txIDs = append(txIDs, txID)
@@ -817,15 +817,12 @@ func (e *coordinatorTestEnv) requireStatus(
 func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*protoblocktx.StatusWithHeight {
 	t.Helper()
 	status := make(map[string]*protoblocktx.StatusWithHeight)
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		txStatus, err := e.csStream.Recv()
-		if !assert.NoError(t, err) {
-			return false
-		}
+		require.NoError(c, err)
 		maps.Insert(status, maps.All(txStatus.Status))
-		return len(status) == count
+		require.Len(c, status, count)
 	}, time.Minute, 500*time.Millisecond)
-
 	return status
 }
 
@@ -938,7 +935,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 func fakeConfigForTest(_ *testing.T) *Config {
 	return &Config{
-		ServerConfig: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServer(),
 		SignVerifierConfig: &SignVerifierConfig{
 			ServerConfig: []*connection.ServerConfig{{Endpoint: connection.Endpoint{Host: "random", Port: 1234}}},
 		},

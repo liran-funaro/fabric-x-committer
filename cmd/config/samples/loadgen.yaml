@@ -1,25 +1,25 @@
-orderer-client:
-  sidecar-endpoint: localhost:5000
-  coordinator:
-    endpoint: localhost:5001
-  orderer:
-    endpoints:
-      - localhost:1234
-      - localhost:1235
-    consensus-type: BFT
-    channel-id: channel
-  broadcast-parallelism: 50
 monitoring:
   server:
-    endpoint: localhost:5002
+    endpoint: :2110
   latency:
     sampler:
       type: timer
       sampling-interval: 10s
     buckets:
-      type: uniform
+      distribution: uniform
       max-latency: 5s
       bucket-count: 1000
+
+orderer-client:
+  sidecar-endpoint: sidecar:5050
+  orderer:
+    connection:
+      endpoints:
+        - broadcast,deliver,mock-ordering-service:4001
+    consensus-type: BFT
+    channel-id: channel
+  broadcast-parallelism: 50
+
 load-profile:
   key:
     size: 32
@@ -33,20 +33,21 @@ load-profile:
         0:
           scheme: ECDSA
           seed: 10
-        1024:
+        _meta:
           scheme: ECDSA
           seed: 11
   conflicts:
     invalid-signatures: 0.1
   seed: 12345
-  # We use small number of workers to reduce the CPU load during tests.
-  workers: 1
+  workers: 50
+
 stream:
   rate-limit:
+    endpoint: :6997
     initial-limit: 1000
   # We set low values for the buffer and batch to reduce the CPU load during tests.
-  buffers-size: 1
-  gen-batch: 1
+  buffers-size: 1_000
+  gen-batch: 1_000
 generate:
   namespaces: true
   load: true
@@ -62,3 +63,9 @@ generate:
 limit:
   blocks: 10_000
   transactions: 0
+
+logging:
+  enabled: true
+  development: false
+  level: INFO
+  name: loadgen

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
-/app init --configs=/config.yaml &&
-  /app start --configs=/config.yaml
+/app init --config=/config.yaml &&
+  /app start --config=/config.yaml

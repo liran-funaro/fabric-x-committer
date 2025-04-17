@@ -12,7 +12,7 @@ import (
 
 type decoderFunc = func(dataType, targetType reflect.Type, rawData any) (any, bool, error)
 
-var decoders = []decoderFunc{durationDecoder, endpointDecoder, ordererEndpointDecoder}
+var decoders = []decoderFunc{durationDecoder, serverDecoder, endpointDecoder, ordererEndpointDecoder}
 
 // decoderHook contains custom unmarshalling for types not supported by default by mapstructure.
 // I.e., [time.Duration], [connection.Endpoint], [connection.OrdererEndpoint].
@@ -52,6 +52,19 @@ func ordererEndpointDecoder(dataType, targetType reflect.Type, rawData any) (res
 	}
 	endpoint, err := connection.ParseOrdererEndpoint(stringData)
 	return endpoint, true, errors.Wrap(err, "failed to parse orderer endpoint")
+}
+
+func serverDecoder(dataType, targetType reflect.Type, rawData any) (result any, done bool, err error) {
+	stringData, ok := getStringData(dataType, rawData)
+	if !ok || targetType != reflect.TypeOf(connection.ServerConfig{}) {
+		return nil, false, nil
+	}
+	endpoint, err := connection.NewEndpoint(stringData)
+	var ret connection.ServerConfig
+	if endpoint != nil {
+		ret = connection.ServerConfig{Endpoint: *endpoint}
+	}
+	return ret, true, errors.Wrap(err, "failed to parse orderer endpoint")
 }
 
 func getStringData(dataType reflect.Type, rawData any) (stringData string, isStringData bool) {

@@ -51,9 +51,9 @@ type (
 		Verifier    []*connection.Endpoint
 		VCService   []*connection.Endpoint
 		Orderer     []*connection.Endpoint
-		Query       *connection.Endpoint
 		Coordinator *connection.Endpoint
 		Sidecar     *connection.Endpoint
+		Query       *connection.Endpoint
 		LoadGen     *connection.Endpoint
 	}
 
@@ -85,15 +85,13 @@ var (
 	TemplateLoadGenOrderer string
 	//go:embed templates/loadgen_committer.yaml
 	TemplateLoadGenCommitter string
-	//go:embed templates/logging_block.yaml
-	TemplateLogging string
 )
 
 // CreateConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
 func CreateConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
 	t.Helper()
 	tmpl := template.New("").Funcs(sprig.FuncMap())
-	tmpl, err := tmpl.Parse(templateString + TemplateLogging)
+	tmpl, err := tmpl.Parse(templateString)
 	require.NoError(t, err)
 
 	var renderedConfig bytes.Buffer

@@ -13,7 +13,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
@@ -163,10 +162,10 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 }
 
 // SubmitConfigBlock creates and submits a config block.
-func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *config.ConfigBlock) *common.Block {
+func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBlock) *common.Block {
 	t.Helper()
 	if conf == nil {
-		conf = &config.ConfigBlock{}
+		conf = &workload.ConfigBlock{}
 	}
 	if conf.ChannelID == "" {
 		conf.ChannelID = e.TestConfig.ChanID

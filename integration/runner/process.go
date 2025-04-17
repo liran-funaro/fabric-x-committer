@@ -70,7 +70,7 @@ func (p *ProcessWithConfig) Restart(t *testing.T) {
 	t.Helper()
 	p.Stop(t)
 	cmdPath := path.Join("bin", p.cmdName)
-	c := exec.Command(cmdPath, "start", "--configs", p.configFilePath)
+	c := exec.Command(cmdPath, "start", "--config", p.configFilePath)
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))

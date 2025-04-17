@@ -28,7 +28,7 @@ type (
 	ValidatorAndCommitterServiceTestEnv struct {
 		VCServices []*ValidatorCommitterService
 		DBEnv      *DatabaseTestEnv
-		Configs    []*ValidatorCommitterServiceConfig
+		Configs    []*Config
 		Endpoints  []*connection.Endpoint
 	}
 
@@ -60,11 +60,11 @@ func NewValidatorAndCommitServiceTestEnv(
 	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(initCancel)
 	vcservices := make([]*ValidatorCommitterService, numServices)
-	configs := make([]*ValidatorCommitterServiceConfig, numServices)
+	configs := make([]*Config, numServices)
 
 	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
-		config := &ValidatorCommitterServiceConfig{
+		config := &Config{
 			Server:   connection.NewLocalHostServer(),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{

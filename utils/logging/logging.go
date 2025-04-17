@@ -3,6 +3,7 @@ package logging
 import (
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -14,12 +15,6 @@ var (
 	loggerInstance Logger
 	mu             sync.Mutex
 )
-
-var logLevelMap = map[Level]zapcore.Level{
-	Debug: zap.DebugLevel,
-	Info:  zap.InfoLevel,
-	Error: zap.ErrorLevel,
-}
 
 type Logger struct {
 	*zap.SugaredLogger
@@ -38,13 +33,20 @@ func SetupWithConfig(config *Config) {
 }
 
 func createLogger(config *Config) *zap.Logger {
-	if !config.Enabled {
+	if config == nil || !config.Enabled {
 		return zap.NewNop()
 	}
 
-	defaultLevel, ok := logLevelMap[config.Level]
-	if !ok {
-		defaultLevel = zapcore.ErrorLevel
+	level := zap.NewAtomicLevel()
+	switch strings.ToUpper(config.Level) {
+	case Debug:
+		level.SetLevel(zap.DebugLevel)
+	case Info:
+		level.SetLevel(zap.InfoLevel)
+	case Warning:
+		level.SetLevel(zap.WarnLevel)
+	case Error:
+		level.SetLevel(zap.ErrorLevel)
 	}
 	outputs := []string{"stderr"}
 	if config.Output != "" {
@@ -52,7 +54,7 @@ func createLogger(config *Config) *zap.Logger {
 	}
 
 	c := zap.Config{
-		Level:       zap.NewAtomicLevelAt(defaultLevel),
+		Level:       level,
 		Development: config.Development,
 		Sampling: &zap.SamplingConfig{
 			Initial:    100,
@@ -64,7 +66,7 @@ func createLogger(config *Config) *zap.Logger {
 		ErrorOutputPaths: outputs,
 	}
 
-	return zap.Must(c.Build(zap.WithCaller(config.Caller)))
+	return zap.Must(c.Build(zap.WithCaller(config.Caller))).Named(config.Name)
 }
 
 func getEncoderConfig(dev bool) zapcore.EncoderConfig {
@@ -76,6 +78,7 @@ func getEncoderConfig(dev bool) zapcore.EncoderConfig {
 		cfg = zap.NewProductionEncoderConfig()
 	}
 	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncodeName = zapcore.FullNameEncoder
 	return cfg
 }
 

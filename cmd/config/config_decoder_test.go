@@ -1,14 +1,17 @@
 package config
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const config = `
+server: localhost:5050
 endpoint: localhost:5050
 orderer-endpoint: id=5,msp-id=org,broadcast,deliver,localhost:5050
 json-orderer-endpoint: {"id":5,"msp-id":"org","api":["broadcast","deliver"],"host":"localhost","port":5050}
@@ -32,15 +35,17 @@ yaml-orderer-endpoint:
 
 func TestEndpoints(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, LoadYamlConfigs(config))
+	v := viper.New()
+	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(config)))
 	conf := new(struct {
+		Server                       connection.ServerConfig    `mapstructure:"server"`
 		Endpoint                     connection.Endpoint        `mapstructure:"endpoint"`
 		OrdererEndpoint              connection.OrdererEndpoint `mapstructure:"orderer-endpoint"`
 		JSONOrdererEndpoint          connection.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
 		MultilineJSONOrdererEndpoint connection.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
 		YamlJSONOrdererEndpoint      connection.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
 	})
-	Unmarshal(conf)
+	require.NoError(t, unmarshal(v, conf))
 	expected := connection.OrdererEndpoint{
 		ID:    5,
 		MspID: "org",
@@ -50,6 +55,7 @@ func TestEndpoints(t *testing.T) {
 			Port: 5050,
 		},
 	}
+	require.Equal(t, expected.Endpoint, conf.Server.Endpoint)
 	require.Equal(t, expected.Endpoint, conf.Endpoint)
 	require.Equal(t, expected, conf.OrdererEndpoint)
 	require.Equal(t, expected, conf.JSONOrdererEndpoint)

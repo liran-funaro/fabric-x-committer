@@ -8,8 +8,8 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
-// ValidatorCommitterServiceConfig is the configuration for the validator-committer service.
-type ValidatorCommitterServiceConfig struct {
+// Config is the configuration for the validator-committer service.
+type Config struct {
 	Server         *connection.ServerConfig `mapstructure:"server"`
 	Database       *DatabaseConfig          `mapstructure:"database"`
 	ResourceLimits *ResourceLimitsConfig    `mapstructure:"resource-limits"`

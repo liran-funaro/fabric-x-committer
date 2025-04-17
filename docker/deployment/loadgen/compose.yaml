@@ -25,7 +25,7 @@ services:
   loadgen:
     image: "committer-loadgen:latest"
     volumes:
-      - ../config/config-loadgen.yaml:/config.yaml
+      - ../../../cmd/config/sample/loadgen.yaml:/config.yaml
       - ../scripts/loadgen.docker-entrypoint.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
     ports:

@@ -4,41 +4,30 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 )
 
-//go:embed query-cmd-test-config.yaml
-var configTemplate string
-
-//nolint:paralleltest // Cannot parallelize due to viper.
+//nolint:paralleltest // Cannot parallelize due to logger.
 func TestQueryServiceCmd(t *testing.T) {
-	conn := dbtest.PrepareTestEnv(t)
-	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
-	config := fmt.Sprintf(
-		configTemplate,
-		loggerOutputPath,
-		conn.Endpoints[0],
-		conn.User,
-		conn.Password,
-		conn.Database,
-	)
-	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
-
-	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
-	// identified. Instead, string concatenation is used for better compatibility.
-	commonTests := []cobracmd.CommandTest{
+	s := config.StartDefaultSystem(t)
+	commonTests := []config.CommandTest{
 		{
-			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8003"},
-			CmdLoggerOutput: "Serving",
-			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
-			Endpoint:        "localhost:8003",
+			Name:              "start with endpoint",
+			Args:              []string{"start", "--endpoint", "localhost:8003"},
+			CmdLoggerOutputs:  []string{"Serving", "localhost:8003"},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateQueryService,
+			System:            s,
+		},
+		{
+			Name:              "start",
+			Args:              []string{"start"},
+			CmdLoggerOutputs:  []string{"Serving", s.ServerEndpoint.String()},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateQueryService,
+			System:            s,
 		},
 		{
 			Name:         "print version",
@@ -60,7 +49,7 @@ func TestQueryServiceCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, queryServiceCmd(), loggerOutputPath, tc)
+			config.UnitTestRunner(t, queryServiceCmd(), tc)
 		})
 	}
 }

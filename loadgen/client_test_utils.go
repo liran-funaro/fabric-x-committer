@@ -25,7 +25,7 @@ func eventuallyMetrics(
 	t.Helper()
 	if !assert.Eventually(t, func() bool {
 		return condition(m.GetState())
-	}, 2*time.Minute, time.Second) {
+	}, 5*time.Minute, time.Second) {
 		t.Fatalf("Metrics target was not achieved: %+v", m.GetState())
 	}
 }

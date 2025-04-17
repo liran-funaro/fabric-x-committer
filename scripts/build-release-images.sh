@@ -39,11 +39,11 @@ function build_image() {
 # make GOOS=linux GOARCH=s390x build
 
 # build container images
-build_image sidecar sidecar "5050 2110"
-build_image coordinator coordinator "5002 2110"
-build_image signatureverifier signature-verifier "4001 2110"
-build_image validatorpersister validator-persister "5001 2110"
+build_image sidecar sidecar "4001 2114"
+build_image coordinator coordinator "9001 2119"
+build_image signatureverifier signature-verifier "5001 2115"
+build_image validatorpersister validator-persister "6001 2116"
 build_image loadgen loadgen "2110"
-build_image queryexecutor query-executor "7001 2110"
+build_image queryexecutor query-executor "7001 2117"
 
 ${docker_cmd} images | grep ${image_prefix}

@@ -136,8 +136,8 @@ docker run --name sc_yugabyte_unit_tests \
 # Run local binaries
 
 ```shell
-bin/sigservice --configs config/config-sigservice.yaml
-bin/shardsservice --configs config/config-shardsservice.yaml
-bin/coordinator --configs config/config-coordinator.yaml
-bin/loadgen stream --configs config/config-loadgen.yaml
+bin/sigservice --config config/config-sigservice.yaml
+bin/shardsservice --config config/config-shardsservice.yaml
+bin/coordinator --config config/config-coordinator.yaml
+bin/loadgen stream --config config/config-loadgen.yaml
 ```

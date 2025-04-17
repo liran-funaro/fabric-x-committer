@@ -41,7 +41,7 @@ type ValidatorCommitterService struct {
 	metrics                  *perfMetrics
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
-	config                   *ValidatorCommitterServiceConfig
+	config                   *Config
 
 	// isStreamActive indicates whether a stream from the client (i.e., coordinator) to the vcservice
 	// is currently active. We permit a maximum of one active stream at a time. If multiple
@@ -66,7 +66,7 @@ type Limits struct {
 // It also creates the database connection.
 func NewValidatorCommitterService(
 	ctx context.Context,
-	config *ValidatorCommitterServiceConfig,
+	config *Config,
 ) (*ValidatorCommitterService, error) {
 	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits

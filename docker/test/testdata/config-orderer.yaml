@@ -1,9 +1,0 @@
-mock-ordering-service:
-  servers:
-    - endpoint: :7050
-  block-size: 1024
-  block-timeout: 30s
-logging:
-  development: true
-  enabled: true
-  level: INFO

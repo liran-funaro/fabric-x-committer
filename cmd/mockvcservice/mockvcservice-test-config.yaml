@@ -1,9 +1,0 @@
-logging:
-  enabled: true
-  level: debug
-  Caller: true
-  Development: true
-  Output: %s
-validator-committer-service:
-  server:
-    endpoint: localhost:6002

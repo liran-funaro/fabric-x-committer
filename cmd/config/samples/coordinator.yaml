@@ -1,0 +1,24 @@
+server:
+  endpoint: :9001
+monitoring:
+  server:
+    endpoint: :2119
+
+sign-verifier:
+  server:
+    - endpoint: signature-verifier:5001
+validator-committer:
+  server:
+    - endpoint: validator-persister:6001
+
+dependency-graph:
+  num-of-local-dep-constructors: 1
+  waiting-txs-limit: 10_000
+  num-of-workers-for-global-dep-manager: 1
+  per-channel-buffer-size-per-goroutine: 10
+
+logging:
+  enabled: true
+  development: false
+  level: INFO
+  name: coordinator

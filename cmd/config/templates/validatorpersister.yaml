@@ -1,28 +1,34 @@
-validator-committer-service:
+server:
+  endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+monitoring:
   server:
-    endpoint: {{ .ServerEndpoint | default "localhost:0" }}
-  monitoring:
-    server:
-      endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+    endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
 
-  database:
-    endpoints:
-      {{- range .Endpoints.Database }}
-      - {{ . }}
-      {{- end }}
+database:
+  endpoints:
+    {{- range .Endpoints.Database }}
+    - {{ . }}
+    {{- end }}
+  username: "yugabyte"
+  # TODO: pass password via environment variable
+  password: "yugabyte"
+  database: {{ .DB.Name }}
+  load-balance: {{ .DB.LoadBalance }}
+  max-connections: 10
+  min-connections: 5
+  retry:
+    max-elapsed-time: 1h
 
-    username: "yugabyte"
-    # TODO: pass password via environment variable
-    password: "yugabyte"
-    database: {{ .DB.Name }}
-    max-connections: 10
-    min-connections: 5
-    load-balance: {{ .DB.LoadBalance }}
+resource-limits:
+  max-workers-for-preparer: 1
+  max-workers-for-validator: 1
+  max-workers-for-committer: 20
+  min-transaction-batch-size: 1
 
-  resource-limits:
-    max-workers-for-preparer: 1
-    max-workers-for-validator: 1
-    max-workers-for-committer: 20
-    min-transaction-batch-size: 1
-
-{{ template "loggingBlock" . }}
+logging:
+  enabled: {{ .Logging.Enabled }}
+  level: {{ .Logging.Level }}
+  caller: {{ .Logging.Caller }}
+  development: {{ .Logging.Development }}
+  output: {{ .Logging.Output }}
+  name: VC

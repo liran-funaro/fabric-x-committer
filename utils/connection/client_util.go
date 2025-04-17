@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"io"
 	"net"
@@ -39,7 +40,7 @@ type (
 	}
 )
 
-// retryPolicy defines the retry policy for a gRPC client connection.
+// GrpcConfig defines the retry policy for a gRPC client connection.
 // This policy differs from grpc.WithBlock(), which only blocks during the initial connection.
 // The retry policy applies to all subsequent gRPC calls made through the client connection.
 // Our GRPC retry policy is applicable only for the following status codes:
@@ -47,18 +48,9 @@ type (
 //	(1) UNAVAILABLE	The service is currently unavailable (e.g., transient network issue, server down).
 //	(2) DEADLINE_EXCEEDED	Operation took too long (deadline passed).
 //	(3) RESOURCE_EXHAUSTED	Some resource (e.g., quota) has been exhausted; the operation cannot proceed.
-var retryPolicy = `{
-  "methodConfig": [{
-    "name": [],
-    "retryPolicy": {
-      "MaxAttempts": 7,
-      "InitialBackoff": "1s",
-      "MaxBackoff": "32s",
-      "BackoffMultiplier": 2.0,
-      "RetryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"]
-    }
-  }]
-}`
+//
+//go:embed grpc_config.json
+var GrpcConfig string
 
 var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
@@ -127,7 +119,7 @@ func CloseConnectionsLog[T io.Closer](connections ...T) {
 }
 
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
-	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(retryPolicy))
+	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(GrpcConfig))
 	ctx, cancel := context.WithTimeout(context.TODO(), 90*time.Second)
 	defer cancel()
 
@@ -143,7 +135,7 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 
 func LazyConnect(config *DialConfig) (*grpc.ClientConn, error) {
 	address := config.WithAddress.Address()
-	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(retryPolicy))
+	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(GrpcConfig))
 	cc, err := grpc.NewClient(address, config.DialOpts...)
 	if err != nil {
 		logger.Errorf("Error connecting to %s: %v", address, err)

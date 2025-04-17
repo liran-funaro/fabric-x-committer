@@ -8,7 +8,7 @@ import (
 type (
 	// Config is the configuration for coordinator service. It contains configurations for all managers.
 	Config struct {
-		ServerConfig                  *connection.ServerConfig  `mapstructure:"server"`
+		Server                        *connection.ServerConfig  `mapstructure:"server"`
 		SignVerifierConfig            *SignVerifierConfig       `mapstructure:"sign-verifier"`
 		ValidatorCommitterConfig      *ValidatorCommitterConfig `mapstructure:"validator-committer"`
 		DependencyGraphConfig         *DependencyGraphConfig    `mapstructure:"dependency-graph"`

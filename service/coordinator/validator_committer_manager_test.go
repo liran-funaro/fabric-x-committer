@@ -9,14 +9,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator/dependencygraph"
@@ -203,10 +201,9 @@ func TestValidatorCommitterManager(t *testing.T) {
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
 
-		configBlockPath := config.CreateConfigBlock(t, &config.ConfigBlock{
+		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 			MetaNamespaceVerificationKey: verificationKey,
 		})
-		configBlock, err := configtxgen.ReadBlock(configBlockPath)
 		require.NoError(t, err)
 
 		txBatch := dependencygraph.TxNodeBatch{

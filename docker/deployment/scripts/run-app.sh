@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-/app start --configs=/config.yaml
+/app start --config=/config.yaml

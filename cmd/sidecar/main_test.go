@@ -4,49 +4,30 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os"
-	"path"
-	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 )
 
-//go:embed sidecar-cmd-test-config.yaml
-var serverTemplate string
-
-//nolint:paralleltest // Cannot parallelize due to viper.
+//nolint:paralleltest // Cannot parallelize due to logger.
 func TestSidecarCmd(t *testing.T) {
-	_, ordererServer := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: 1, BlockSize: 100},
-	)
-	_, coordinatorServer := mock.StartMockCoordinatorService(t)
-
-	loggerOutputPath, testConfigPath := cobracmd.PrepareTestDirs(t)
-	ledgerPath := filepath.Clean(path.Join(t.TempDir(), "ledger"))
-	config := fmt.Sprintf(
-		serverTemplate,
-		ordererServer.Configs[0].Endpoint.Port,
-		coordinatorServer.Configs[0].Endpoint.Port,
-		ledgerPath,
-		3111,
-		9111,
-		loggerOutputPath,
-	)
-	require.NoError(t, os.WriteFile(testConfigPath, []byte(config), 0o600))
-
-	// In some IDEs, using fmt.Sprintf() for test names can prevent the tests from being properly
-	// identified. Instead, string concatenation is used for better compatibility.
-	commonTests := []cobracmd.CommandTest{
+	s := config.StartDefaultSystem(t)
+	commonTests := []config.CommandTest{
 		{
-			Name:            "start the " + serviceName,
-			Args:            []string{"start", "--configs", testConfigPath, "--endpoint", "localhost:8002"},
-			CmdLoggerOutput: "Serving",
-			CmdStdOutput:    fmt.Sprintf("Starting %v service", serviceName),
-			Endpoint:        "localhost:8002",
+			Name:              "start with endpoints",
+			Args:              []string{"start", "--endpoint", "localhost:8002"},
+			CmdLoggerOutputs:  []string{"Serving", "localhost:8002"},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateSidecar,
+			System:            s,
+		},
+		{
+			Name:              "star",
+			Args:              []string{"start"},
+			CmdLoggerOutputs:  []string{"Serving", s.ServerEndpoint.String()},
+			CmdStdOutput:      fmt.Sprintf("Starting %v service", serviceName),
+			UseConfigTemplate: config.TemplateSidecar,
+			System:            s,
 		},
 		{
 			Name:         "print version",
@@ -68,7 +49,7 @@ func TestSidecarCmd(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			cobracmd.UnitTestRunner(t, sidecarCmd(), loggerOutputPath, tc)
+			config.UnitTestRunner(t, sidecarCmd(), tc)
 		})
 	}
 }

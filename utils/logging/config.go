@@ -15,6 +15,7 @@ type Config struct {
 	Caller      bool   `mapstructure:"caller"`
 	Development bool   `mapstructure:"development"`
 	Output      string `mapstructure:"output"`
+	Name        string `mapstructure:"name"`
 }
 
 var defaultConfig = &Config{

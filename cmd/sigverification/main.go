@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -37,12 +35,13 @@ func sigverifierCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a service that verifies the transaction's signatures.", serviceName),
 	}
 
-	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
+	cmd.AddCommand(config.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	v := config.NewViperWithVerifierDefaults()
 	var configPath string
 
 	cmd := &cobra.Command{
@@ -50,12 +49,13 @@ func startCmd() *cobra.Command {
 		Short: fmt.Sprintf("Starts a %v service.", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return errors.Wrap(err, "failed to read config")
+			conf, err := config.ReadVerifierYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
 			}
 			cmd.SilenceUsage = true
-			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
+			defer cmd.Printf("%v service ended\n", serviceName)
 
 			service := verifier.New(conf)
 			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
@@ -63,70 +63,26 @@ func startCmd() *cobra.Command {
 			})
 		},
 	}
-	cobracmd.SetDefaultFlags(cmd, serviceName, &configPath)
-	setFlags(cmd)
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	utils.Must(config.CobraInt(v, cmd, config.CobraFlag{
+		Name:  "parallelism",
+		Usage: "sets the value of the parallelism in the config file",
+		Key:   "parallel-executor.parallelism",
+	}))
+	utils.Must(config.CobraInt(v, cmd, config.CobraFlag{
+		Name:  "batch-size-cutoff",
+		Usage: "Batch time cutoff limit",
+		Key:   "parallel-executor.batch-size-cutoff",
+	}))
+	utils.Must(config.CobraInt(v, cmd, config.CobraFlag{
+		Name:  "channel-buffer-size",
+		Usage: "Channel buffer size for the executor",
+		Key:   "parallel-executor.channel-buffer-size",
+	}))
+	utils.Must(config.CobraDuration(v, cmd, config.CobraFlag{
+		Name:  "batch-time-cutoff",
+		Usage: "Batch time cutoff limit",
+		Key:   "parallel-executor.batch-time-cutoff",
+	}))
 	return cmd
-}
-
-// setFlags setting the relevant flags for the service usage.
-func setFlags(cmd *cobra.Command) {
-	cobracmd.CobraInt(
-		cmd,
-		"parallelism",
-		"sets the value of the parallelism in the config file",
-		fmt.Sprintf("%v.parallel-executor.parallelism", serviceName),
-	)
-
-	cobracmd.CobraInt(
-		cmd,
-		"batch-size-cutoff",
-		"Batch time cutoff limit",
-		fmt.Sprintf("%v.parallel-executor.batch-size-cutoff", serviceName),
-	)
-
-	cobracmd.CobraInt(
-		cmd,
-		"channel-buffer-size",
-		"Channel buffer size for the executor",
-		fmt.Sprintf("%v.parallel-executor.channel-buffer-size", serviceName),
-	)
-
-	cobracmd.CobraString(
-		cmd,
-		"scheme",
-		"Verification scheme",
-		fmt.Sprintf("%v.scheme", serviceName),
-	)
-
-	cobracmd.CobraDuration(
-		cmd,
-		"batch-time-cutoff",
-		"Batch time cutoff limit",
-		fmt.Sprintf("%v.parallel-executor.batch-time-cutoff", serviceName),
-	)
-}
-
-func readConfig() *verifier.Config {
-	setDefaults()
-	wrapper := new(struct {
-		Config verifier.Config `mapstructure:"sig-verification"`
-	})
-	config.Unmarshal(wrapper)
-	return &wrapper.Config
-}
-
-func setDefaults() {
-	viper.SetDefault("sig-verification.server.endpoint", "localhost:5000")
-	viper.SetDefault("sig-verification.monitoring.server.endpoint", "localhost:2112")
-
-	viper.SetDefault("sig-verification.scheme", "ECDSA")
-
-	viper.SetDefault("sig-verification.parallel-executor.parallelism", 4)
-	viper.SetDefault("sig-verification.parallel-executor.batch-time-cutoff", "500ms")
-	viper.SetDefault("sig-verification.parallel-executor.batch-size-cutoff", 50)
-	viper.SetDefault("sig-verification.parallel-executor.channel-buffer-size", 50)
-
-	viper.SetDefault("logging.development", "false")
-	viper.SetDefault("logging.enabled", "true")
-	viper.SetDefault("logging.level", "Info")
 }

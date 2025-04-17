@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -193,11 +194,15 @@ func RunServiceForTest(
 	dCtx, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)
 	wg.Add(1)
+
+	// We extract caller information to ensure we have sufficient information for debugging.
+	pc, file, no, ok := runtime.Caller(1)
+	require.True(t, ok)
 	go func() {
 		defer wg.Done()
 		defer ready.SignalReady()
 		// We use assert to prevent panicking for cleanup errors.
-		assert.NoError(t, service(dCtx))
+		assert.NoErrorf(t, service(dCtx), "called from %s:%d\n\t%s", file, no, runtime.FuncForPC(pc).Name())
 	}()
 
 	if waitFunc == nil {

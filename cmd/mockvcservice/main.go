@@ -4,16 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -38,23 +35,24 @@ func mockvcserviceCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a mock validator and committer service.", serviceName),
 	}
 
-	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
+	cmd.AddCommand(config.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	v := config.NewViperWithVCDefaults()
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: fmt.Sprintf("Starts a %v.", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return errors.Wrap(err, "failed to read config")
+			conf, err := config.ReadVCYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
 			}
 			cmd.SilenceUsage = true
-			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			vcs := mock.NewMockVcService()
@@ -63,27 +61,6 @@ func startCmd() *cobra.Command {
 			})
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
 	return cmd
-}
-
-// readConfig reads the configuration from the viper instance.
-// If the configuration file is used, the caller should call
-// config.ReadFromYamlFile() before calling this function.
-func readConfig() *vc.ValidatorCommitterServiceConfig {
-	setDefaults()
-
-	wrapper := new(struct {
-		Config vc.ValidatorCommitterServiceConfig `mapstructure:"validator-committer-service"`
-	})
-	config.Unmarshal(wrapper)
-	return &wrapper.Config
-}
-
-func setDefaults() {
-	// defaults for server config.
-	viper.SetDefault("validator-committer-service.server.endpoint", "localhost:6001")
-	// defaults for monitoring config.
-	viper.SetDefault("validator-committer-service.monitoring.server.endpoint", "localhost:6002")
 }

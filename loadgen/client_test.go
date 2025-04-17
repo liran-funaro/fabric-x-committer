@@ -105,8 +105,8 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				ServerConfig: connection.NewLocalHostServer(),
-				Monitoring:   defaultMonitoring(),
+				Server:     connection.NewLocalHostServer(),
+				Monitoring: defaultMonitoring(),
 				SignVerifierConfig: &coordinator.SignVerifierConfig{
 					ServerConfig: []*connection.ServerConfig{{
 						Endpoint: sigVerServer.Configs[0].Endpoint,
@@ -126,13 +126,13 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.ServerConfig, func(server *grpc.Server) {
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server, func(server *grpc.Server) {
 				protocoordinatorservice.RegisterCoordinatorServer(server, service)
 			})
 
 			// Start client
 			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
-				Endpoint: &cConf.ServerConfig.Endpoint,
+				Endpoint: &cConf.Server.Endpoint,
 			}
 			testLoadGenerator(t, clientConf)
 		})

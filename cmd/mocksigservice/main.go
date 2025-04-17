@@ -4,16 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
@@ -38,47 +35,32 @@ func mocksigverifierserviceCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a mock signature verification service.", serviceName),
 	}
 
-	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
+	cmd.AddCommand(config.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	v := config.NewViperWithVerifierDefaults()
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: fmt.Sprintf("Starts a %v", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return errors.Wrap(err, "failed to read config")
+			conf, err := config.ReadVerifierYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
 			}
 			cmd.SilenceUsage = true
-			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			sv := mock.NewMockSigVerifier()
-			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
-				protosigverifierservice.RegisterVerifierServer(server, sv)
+			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(s *grpc.Server) {
+				protosigverifierservice.RegisterVerifierServer(s, sv)
 			})
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path to the config file")
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
 	return cmd
-}
-
-func readConfig() *verifier.Config {
-	setDefaults()
-	wrapper := new(struct {
-		Config verifier.Config `mapstructure:"sig-verification"`
-	})
-	config.Unmarshal(wrapper)
-	return &wrapper.Config
-}
-
-func setDefaults() {
-	viper.SetDefault("logging.development", "false")
-	viper.SetDefault("logging.enabled", "true")
-	viper.SetDefault("logging.level", "Info")
 }

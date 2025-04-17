@@ -7,10 +7,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/cobracmd"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
 const (
@@ -34,12 +34,13 @@ func loadgenCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a load generator for FabricX committer services.", serviceName),
 	}
 
-	cmd.AddCommand(cobracmd.VersionCmd(serviceName, serviceVersion))
+	cmd.AddCommand(config.VersionCmd(serviceName, serviceVersion))
 	cmd.AddCommand(startCmd())
 	return cmd
 }
 
 func startCmd() *cobra.Command {
+	v := config.NewViperWithLoadGenDefaults()
 	var configPath string
 	var onlyNamespace bool
 	var onlyWorkload bool
@@ -48,11 +49,11 @@ func startCmd() *cobra.Command {
 		Short: fmt.Sprintf("Starts a %v", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := cobracmd.ReadYaml(configPath); err != nil {
-				return errors.Wrap(err, "failed to read config")
+			conf, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
 			}
 			cmd.SilenceUsage = true
-			conf := readConfig()
 			cmd.Printf("Starting %v service\n", serviceName)
 
 			if onlyNamespace {
@@ -69,16 +70,9 @@ func startCmd() *cobra.Command {
 			return client.Run(cmd.Context())
 		},
 	}
-
-	cmd.PersistentFlags().StringVar(&configPath, "configs", "", "set the absolute path of config directory")
-	cmd.PersistentFlags().BoolVar(&onlyNamespace, "only-namespace", false, "only run namespace generation")
-	cmd.PersistentFlags().BoolVar(&onlyWorkload, "only-workload", false, "only run workload generation")
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	p := cmd.PersistentFlags()
+	p.BoolVar(&onlyNamespace, "only-namespace", false, "only run namespace generation")
+	p.BoolVar(&onlyWorkload, "only-workload", false, "only run workload generation")
 	return cmd
-}
-
-// readConfig is a function that reads the client configuration.
-func readConfig() *loadgen.ClientConfig {
-	wrapper := new(loadgen.ClientConfig)
-	config.Unmarshal(wrapper)
-	return wrapper
 }

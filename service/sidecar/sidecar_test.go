@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,12 +16,12 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	"github.ibm.com/decentralized-trust-research/fabricx-config/internaltools/configtxgen"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
@@ -91,14 +92,15 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	})
 
 	ordererEndpoints := ordererEnv.AllEndpoints()
-	configBlock := ordererEnv.SubmitConfigBlock(t, &config.ConfigBlock{
+	configBlock := ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 		OrdererEndpoints: ordererEndpoints,
 	})
 
 	var genesisBlockFilePath string
 	initOrdererEndpoints := ordererEndpoints
 	if conf.WithConfigBlock {
-		genesisBlockFilePath = config.WriteConfigBlock(t, configBlock)
+		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
+		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{

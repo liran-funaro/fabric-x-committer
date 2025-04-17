@@ -211,7 +211,7 @@ build-mock-orderer-image: build-arch
 		-f ${dockerfile_release_dir}/Dockerfile \
 		-t ${image_namespace}/mock-ordering-service:${version} \
 		--build-arg SERVICE_NAME=mockorderingservice \
-		--build-arg PORTS=4001 \
+		--build-arg PORTS=7050 \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		.
 
@@ -222,6 +222,11 @@ lint: FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Linting Complete. Parsing Errors..."
+
+
+# This rule can be used to find and fix lint issues for specific package.
+full-lint-%: FORCE
+	golangci-lint run --color=always --timeout=4m ./$*/...
 
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 # If a rule has no prerequisites or recipe, and the target of the rule is a nonexistent file,

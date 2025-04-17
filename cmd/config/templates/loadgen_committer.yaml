@@ -16,10 +16,9 @@ monitoring:
       sample-size: 100
       sample-period: 100000
     buckets:
-      type: uniform
+      distribution: uniform
       max-latency: 5s
       bucket-count: 1000
-buffer-size: 0
 
 load-profile:
   block:
@@ -75,4 +74,10 @@ limit:
   blocks: {{ .LoadGenBlockLimit }}
   transactions: {{ .LoadGenTXLimit }}
 
-{{ template "loggingBlock" . }}
+logging:
+  enabled: {{ .Logging.Enabled }}
+  level: {{ .Logging.Level }}
+  caller: {{ .Logging.Caller }}
+  development: {{ .Logging.Development }}
+  output: {{ .Logging.Output }}
+  name: loadgen

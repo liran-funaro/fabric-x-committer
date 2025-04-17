@@ -12,7 +12,6 @@ type (
 		Adapter adapters.AdapterConfig `mapstructure:",squash" yaml:",inline"`
 
 		Monitoring metrics.Config `mapstructure:"monitoring" yaml:"monitoring"`
-		BufferSize int            `mapstructure:"buffer-size" yaml:"buffer-size"`
 
 		LoadProfile *workload.Profile       `mapstructure:"load-profile" yaml:"load-profile"`
 		Stream      *workload.StreamOptions `mapstructure:"stream" yaml:"stream"`
