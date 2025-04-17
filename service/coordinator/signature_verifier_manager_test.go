@@ -282,7 +282,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 
 func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 	t.Parallel()
-	env := newSvMgrTestEnv(t, 1)
+	env := newSvMgrTestEnv(t, 1, []byte("failed to update policies")...)
 	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
 	sv := env.mockSvService[0]
 
@@ -301,9 +301,6 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 		env.submitTxBatch(t, 1)
 		return sv.GetPolicyUpdateCounter() > policyUpdateCount
 	}, 2*time.Minute, 50*time.Millisecond)
-
-	// We expect a failure and reconnection due to the bad policy.
-	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 }
 
 func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {

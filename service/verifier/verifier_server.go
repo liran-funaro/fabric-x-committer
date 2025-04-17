@@ -80,7 +80,12 @@ func (s *Server) StartStream(stream protosigverifierservice.Verifier_StartStream
 			return gCtx.Err()
 		})
 	}
-	return grpcerror.WrapInternalError(g.Wait())
+
+	err := g.Wait()
+	if errors.Is(err, ErrUpdatePolicies) {
+		return grpcerror.WrapInvalidArgument(err)
+	}
+	return grpcerror.WrapCancelled(g.Wait())
 }
 
 func (s *Server) handleInputs(

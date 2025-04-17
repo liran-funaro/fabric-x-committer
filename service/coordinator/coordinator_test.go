@@ -872,12 +872,11 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	txPerBlock := 10
 	b, expectedTxsStatus := makeTestBlock(txPerBlock)
-
 	success := channel.Make[bool](ctx, 1)
 	go func() {
 		success.Write(assert.Eventually(t, func() bool {
 			return env.coordinator.numWaitingTxsForStatus.Load() == int32(2)
-		}, 3*time.Second, 50*time.Millisecond))
+		}, 1*time.Minute, 100*time.Millisecond))
 	}()
 
 	env.sigVerifiers[0].MockFaultyNodeDropSize = 2

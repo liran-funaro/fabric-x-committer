@@ -7,6 +7,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
@@ -15,6 +16,7 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator/dependencygraph"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
 
@@ -45,7 +47,6 @@ type (
 		txMu             *sync.Mutex
 
 		policyManager *policyManager
-		lifecycle     *connection.RemoteServiceLifecycle
 	}
 
 	signVerifierManagerConfig struct {
@@ -104,12 +105,14 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		g.Go(func() error {
 			defer connection.CloseConnectionsLog(conn)
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
-			err := sv.sendTransactionsAndForwardStatus(eCtx, txBatchQueue, channel.NewWriter(
-				eCtx,
-				c.outgoingValidatedTxs,
-			))
-			c.metrics.verifiersConnection.Disconnected(label)
-			return errors.Wrap(err, "failed to send transactions and receive verification statuses from verifiers")
+			return connection.Sustain(eCtx, func() error {
+				defer sv.recoverPendingTransactions(txBatchQueue)
+				return sv.sendTransactionsAndForwardStatus(
+					eCtx,
+					txBatchQueue,
+					channel.NewWriter(eCtx, c.outgoingValidatedTxs),
+				)
+			})
 		})
 	}
 	return g.Wait()
@@ -143,11 +146,6 @@ func newSignatureVerifier(
 		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
 		txMu:             &sync.Mutex{},
 		policyManager:    config.policyManager,
-		lifecycle: &connection.RemoteServiceLifecycle{
-			Name:        conn.CanonicalTarget(),
-			ConnMetrics: config.metrics.verifiersConnection,
-			// TODO: initialize retry from config.
-		},
 	}
 }
 
@@ -160,38 +158,28 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
-	return sv.lifecycle.RunLifecycle(ctx, func(sCtx context.Context) error {
-		stream, err := sv.client.StartStream(sCtx)
-		if err != nil {
-			return errors.Wrap(err, "failed to start stream")
-		}
+	defer sv.metrics.verifiersConnection.Disconnected(sv.conn.CanonicalTarget())
+	g, gCtx := errgroup.WithContext(ctx)
 
-		sv.lifecycle.Go(func() error { //nolint:contextcheck
-			return sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs.WithContext(stream.Context()))
-		})
+	stream, err := sv.client.StartStream(gCtx)
+	if err != nil {
+		return errors.Join(connection.ErrBackOff, err)
+	}
 
-		sv.lifecycle.Go(func() error { //nolint:contextcheck
-			return sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(stream.Context()))
-		})
+	// if the stream is started, the connection is established.
+	sv.metrics.verifiersConnection.Connected(sv.conn.CanonicalTarget())
 
-		return nil
-	}, func() error {
-		// Re-enter pending transactions to the queue so other workers can fetch them.
-		pendingTxs := dependencygraph.TxNodeBatch{}
-		sv.txMu.Lock()
-		for txHeight, txNode := range sv.txBeingValidated {
-			logger.Debugf("Recovering tx: %v", txHeight)
-			pendingTxs = append(pendingTxs, txNode)
-		}
-		sv.txBeingValidated = make(map[types.Height]*dependencygraph.TransactionNode)
-		sv.txMu.Unlock()
-
-		if len(pendingTxs) > 0 {
-			promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
-			inputTxBatch.Write(pendingTxs)
-		}
-		return nil
+	// NOTE: sendTransactionsToSVService and receiveStatusAndForwardToOutput must
+	//       always return an error on exist.
+	g.Go(func() error {
+		return sv.sendTransactionsToSVService(stream, inputTxBatch.WithContext(gCtx))
 	})
+
+	g.Go(func() error {
+		return sv.receiveStatusAndForwardToOutput(stream, outputValidatedTxs.WithContext(gCtx))
+	})
+
+	return g.Wait()
 }
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
@@ -243,13 +231,17 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	for {
 		response, err := stream.Recv()
 		if err != nil {
+			if grpcerror.HasCode(err, codes.InvalidArgument) {
+				// While it is unlikely that svm would send an invalid policy, it could happen
+				// if the stored policy in the database is corrupted or maliciously altered, or
+				// if there is a bug in the committer that modifies the policy bytes.
+				return errors.Join(connection.ErrNonRetryable, err)
+			}
 			// The stream ended or the SVM was closed.
 			return errors.Wrap(err, "receive from stream ended with error")
 		}
 
 		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Responses))
-		// We view a successful stream.Recv() as the fist indication of successful interaction.
-		sv.lifecycle.ReportInteraction()
 
 		validatedTxs := dependencygraph.TxNodeBatch{}
 		// TODO: introduce metrics to measure the lock wait/holding duration.
@@ -280,10 +272,29 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	}
 }
 
+func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Writer[dependencygraph.TxNodeBatch]) {
+	sv.txMu.Lock()
+	defer sv.txMu.Unlock()
+
+	if len(sv.txBeingValidated) == 0 {
+		return
+	}
+
+	pendingTxs := dependencygraph.TxNodeBatch{}
+	for txHeight, txNode := range sv.txBeingValidated {
+		logger.Debugf("Recovering tx: %v", txHeight)
+		pendingTxs = append(pendingTxs, txNode)
+	}
+	sv.txBeingValidated = make(map[types.Height]*dependencygraph.TransactionNode)
+
+	inputTxBatch.Write(pendingTxs)
+	promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
+}
+
 func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
 	sv.txMu.Lock()
+	defer sv.txMu.Unlock()
 	for _, txNode := range txBatch {
 		sv.txBeingValidated[types.Height{BlockNum: txNode.Tx.BlockNumber, TxNum: txNode.Tx.TxNum}] = txNode
 	}
-	sv.txMu.Unlock()
 }

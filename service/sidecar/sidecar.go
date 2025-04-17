@@ -8,6 +8,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
@@ -28,6 +29,7 @@ type Service struct {
 	ordererClient      *broadcastdeliver.Client
 	relay              *relay
 	ledgerService      *LedgerService
+	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
 	config             *Config
@@ -58,12 +60,13 @@ func New(c *Config) (*Service, error) {
 		return nil, errors.Wrap(err, "failed to create ledger")
 	}
 	return &Service{
-		ordererClient:  ordererClient,
-		relay:          relayService,
-		ledgerService:  ledgerService,
-		config:         c,
-		metrics:        metrics,
-		committedBlock: make(chan *common.Block, 100),
+		ordererClient:      ordererClient,
+		relay:              relayService,
+		ledgerService:      ledgerService,
+		config:             c,
+		metrics:            metrics,
+		blockToBeCommitted: make(chan *common.Block, 100),
+		committedBlock:     make(chan *common.Block, 100),
 	}, nil
 }
 
@@ -87,107 +90,84 @@ func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
 	if connErr != nil {
 		return errors.Wrap(connErr, "failed to connect to coordinator")
 	}
+	s.coordConn = conn
 	defer connection.CloseConnectionsLog(conn)
 	logger.Infof("sidecar connected to coordinator at %s", &s.config.Committer.Endpoint)
 	coordClient := protocoordinatorservice.NewCoordinatorClient(conn)
 
-	g, eCtx := errgroup.WithContext(pCtx)
+	g, gCtx := errgroup.WithContext(pCtx)
 
 	// Deliver the block with status to client runs independently of the coordinator connection lifecycle.
 	// eCtx will be cancelled if this service stopped processing the blocks due to ledger error.
 	// Such errors require human interaction to resolve the ledger discrepancy.
 	g.Go(func() error {
-		return s.ledgerService.run(eCtx, &ledgerRunConfig{
+		return s.ledgerService.run(gCtx, &ledgerRunConfig{
 			IncomingCommittedBlock: s.committedBlock,
 		})
 	})
 
-	lifecycle := &connection.RemoteServiceLifecycle{
-		Name:        conn.CanonicalTarget(),
-		ConnMetrics: s.metrics.coordConnection,
-		// TODO: initialize retry from config.
-	}
-
 	g.Go(func() error {
-		return lifecycle.RunLifecycle(eCtx, func(sCtx context.Context) error {
-			// If the sidecar fails but the coordinator remains active, the sidecar
-			// must wait for the coordinator to become idle (i.e., to finish
-			// processing all previously submitted transactions) before attempting
-			// recovery. This ensures proper block store recovery in the sidecar.
-			// For example, suppose blocks 100 through 200 were sent to the coordinator.
-			// Some of these blocks might be partially committed, with the sidecar
-			// having received partial status updates, when the sidecar crashes and
-			// restarts. Upon restart, the sidecar can easily determine the
-			// coordinator's next expected block. However, it needs to reconstruct
-			// its block store to fill any gaps.
-			// The sidecar can identify missing blocks using its current block store
-			// height and the coordinator's next expected block number. It can then
-			// fetch these missing blocks from the ordering service and their statuses
-			// from the coordinator, finally committing them to its local block store.
-			// However, if the coordinator has not fully committed these blocks,
-			// the sidecar might not be able to retrieve all necessary status updates.
-			// To prevent this, the sidecar waits for the coordinator to complete all
-			// pending transactions before attempting recovery. This ensures that the
-			// sidecar retrieves complete status information and avoids inconsistencies
-			// in its block store.
-			if err := waitForIdleCoordinator(sCtx, coordClient); err != nil {
-				return err
-			}
-
-			blkInfo, err := coordClient.GetNextExpectedBlockNumber(sCtx, nil)
-			if err != nil {
-				return errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
-			}
-			logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
-
-			if err = s.recoverLedgerStore(sCtx, coordClient, blkInfo.Number); err != nil {
-				return errors.Wrap(err, "failed to recover block store")
-			}
-
-			if err = s.recoverConfigTransactionFromStateDB(sCtx, coordClient); err != nil {
-				return errors.Wrap(err, "failed to recover policies")
-			}
-
-			// A successful recovery indicates successful interaction with the coordinator.
-			lifecycle.ReportInteraction()
-
-			// Fetch blocks from the ordering service and write them on s.blockToBeCommitted.
-			lifecycle.Go(func() error {
-				err := s.ordererClient.Deliver(sCtx, &broadcastdeliver.DeliverConfig{
-					StartBlkNum: int64(blkInfo.Number), //nolint:gosec
-					EndBlkNum:   broadcastdeliver.MaxBlockNum,
-					OutputBlock: s.blockToBeCommitted,
-				})
-				if errors.Is(err, context.Canceled) {
-					// A context may be cancelled due to a relay error, thus it is not critical error.
-					return errors.Wrap(err, "context is canceled")
-				}
-				return errors.Join(connection.ErrLifecycleCritical, err)
-			})
-
-			// Relay the blocks to committer (from s.blockToBeCommitted) and receive the transaction status.
-			lifecycle.Go(func() error {
-				return s.relay.run(sCtx, &relayRunConfig{
-					coordClient:                    coordClient,
-					nextExpectedBlockByCoordinator: blkInfo.Number,
-					configUpdater:                  s.configUpdater,
-					incomingBlockToBeCommitted:     s.blockToBeCommitted,
-					outgoingCommittedBlock:         s.committedBlock,
-				})
-			})
-			return nil
-		}, func() error {
-			// Wait for all the committed blocks to be written to the ledger.
-			for eCtx.Err() == nil && len(s.committedBlock) > 0 {
-				logger.Infof("Waiting for committed block queue: %d", len(s.committedBlock))
-				time.Sleep(100 * time.Millisecond)
-			}
-			// We should drop all enqueued block if any.
-			s.blockToBeCommitted = make(chan *common.Block, 100)
-			return nil
+		return connection.Sustain(gCtx, func() error {
+			defer func() {
+				s.recoverCommittedBlocks(gCtx)
+				s.blockToBeCommitted = make(chan *common.Block, 100) // We should drop all enqueued block if any.
+			}()
+			return s.sendBlocksAndReceiveStatus(gCtx, coordClient)
 		})
 	})
+
 	return errors.Wrap(g.Wait(), "sidecar has been stopped")
+}
+
+func (s *Service) sendBlocksAndReceiveStatus(
+	ctx context.Context,
+	coordClient protocoordinatorservice.CoordinatorClient,
+) error {
+	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
+	nextBlockNum, err := s.recover(ctx, coordClient)
+	if err != nil {
+		return errors.Join(connection.ErrBackOff, err)
+	}
+
+	// if the recovery is successful, the connection is established.
+	s.metrics.coordConnection.Connected(s.coordConn.CanonicalTarget())
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
+	g.Go(func() error {
+		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
+		err := s.ordererClient.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
+			StartBlkNum: int64(nextBlockNum), //nolint:gosec
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+			OutputBlock: s.blockToBeCommitted,
+		})
+		if errors.Is(err, context.Canceled) {
+			// A context may be cancelled due to a relay error, thus it is not critical error.
+			return errors.Wrap(err, "context is canceled")
+		}
+		return errors.Join(connection.ErrNonRetryable, err)
+	})
+
+	g.Go(func() error {
+		logger.Info("Relay the blocks to committer (from s.blockToBeCommitted) and receive the transaction status.")
+		return s.relay.run(gCtx, &relayRunConfig{
+			coordClient:                    coordClient,
+			nextExpectedBlockByCoordinator: nextBlockNum,
+			configUpdater:                  s.configUpdater,
+			incomingBlockToBeCommitted:     s.blockToBeCommitted,
+			outgoingCommittedBlock:         s.committedBlock,
+		})
+	})
+
+	return g.Wait()
+}
+
+func (s *Service) recoverCommittedBlocks(ctx context.Context) {
+	for ctx.Err() == nil && len(s.committedBlock) > 0 {
+		logger.Infof("Waiting for committed block queue: %d", len(s.committedBlock))
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func (s *Service) configUpdater(block *common.Block) {
@@ -201,6 +181,44 @@ func (s *Service) configUpdater(block *common.Block) {
 	if err != nil {
 		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
 	}
+}
+
+func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservice.CoordinatorClient) (uint64, error) {
+	logger.Info("recovering sidecar")
+	// If the sidecar fails but the coordinator remains active, the sidecar
+	// must wait for the coordinator to become idle (i.e., to finish
+	// processing all previously submitted transactions) before attempting
+	// recovery. This ensures proper block store recovery in the sidecar.
+	// For example, suppose blocks 100 through 200 were sent to the coordinator.
+	// Some of these blocks might be partially committed, with the sidecar
+	// having received partial status updates, when the sidecar crashes and
+	// restarts. Upon restart, the sidecar can easily determine the
+	// coordinator's next expected block. However, it needs to reconstruct
+	// its block store to fill any gaps.
+	// The sidecar can identify missing blocks using its current block store
+	// height and the coordinator's next expected block number. It can then
+	// fetch these missing blocks from the ordering service and their statuses
+	// from the coordinator, finally committing them to its local block store.
+	// However, if the coordinator has not fully committed these blocks,
+	// the sidecar might not be able to retrieve all necessary status updates.
+	// To prevent this, the sidecar waits for the coordinator to complete all
+	// pending transactions before attempting recovery. This ensures that the
+	// sidecar retrieves complete status information and avoids inconsistencies
+	// in its block store.
+	if err := waitForIdleCoordinator(ctx, coordClient); err != nil {
+		return 0, err
+	}
+
+	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
+	}
+	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
+
+	if err := s.recoverLedgerStore(ctx, coordClient, blkInfo.Number); err != nil {
+		return 0, err
+	}
+	return blkInfo.Number, s.recoverConfigTransactionFromStateDB(ctx, coordClient)
 }
 
 func (s *Service) recoverConfigTransactionFromStateDB(

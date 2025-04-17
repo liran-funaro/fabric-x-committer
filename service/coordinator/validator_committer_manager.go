@@ -40,7 +40,6 @@ type (
 		client    protovcservice.ValidationAndCommitServiceClient
 		metrics   *perfMetrics
 		policyMgr *policyManager
-		lifecycle *connection.RemoteServiceLifecycle
 
 		// vc service returns only the txID and the status of the transaction. To find the
 		// transaction node associated with the txID, we use txBeingValidated map.
@@ -95,14 +94,18 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 		g.Go(func() error {
 			defer connection.CloseConnectionsLog(vc.conn)
-			err := vc.sendTransactionsAndForwardStatus(
-				eCtx,
-				txBatchQueue,
-				channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
-				channel.NewWriter(eCtx, c.outgoingTxsStatus),
-			)
-			c.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
-			return errors.Wrap(err, "failed to send transactions and receive commit status from validator-committers")
+			return connection.Sustain(eCtx, func() (err error) {
+				defer func() {
+					err = errors.Join(vc.recoverPendingTransactions(txBatchQueue), err)
+				}()
+				err = vc.sendTransactionsAndForwardStatus(
+					eCtx,
+					txBatchQueue,
+					channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
+					channel.NewWriter(eCtx, c.outgoingTxsStatus),
+				)
+				return err
+			})
 		})
 	}
 
@@ -210,11 +213,6 @@ func newValidatorCommitter(serverConfig *connection.ServerConfig, metrics *perfM
 		metrics:          metrics,
 		policyMgr:        policyMgr,
 		txBeingValidated: &sync.Map{},
-		lifecycle: &connection.RemoteServiceLifecycle{
-			Name:        conn.CanonicalTarget(),
-			ConnMetrics: metrics.vcservicesConnection,
-			// TODO: initialize retry from config.
-		},
 	}, nil
 }
 
@@ -224,48 +222,34 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
 	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
 ) error {
-	return vc.lifecycle.RunLifecycle(ctx, func(sCtx context.Context) error {
-		stream, err := vc.client.StartValidateAndCommitStream(sCtx)
-		if err != nil {
-			return errors.Wrap(err, "failed to start stream")
-		}
-		//nolint:contextcheck
-		vc.lifecycle.Go(func() error {
-			return vc.sendTransactionsToVCService(stream, inputTxBatch.WithContext(stream.Context()))
-		})
-		vc.lifecycle.Go(func() error {
-			// NOTE: The channels outputValidatedTxsNode and outputTxsStatus should not depend on the stream context.
-			//       Doing so can result in permanently lost validation results. Specifically, after reading a
-			//       transaction from the stream and removing it from txBeingValidated, if the stream context is
-			//       canceled before we can write to these two channels, the validation results are lost forever.
-			//       Similarly, the first argument, i.e., context should not be stream context.
-			return vc.receiveStatusAndForwardToOutput(stream, outputValidatedTxsNode, outputTxsStatus)
-		})
-		return nil
-	}, func() error {
-		// Re-enter pending transactions to the queue so other workers can fetch them.
-		pendingTxs := dependencygraph.TxNodeBatch{}
-		var err error
-		vc.txBeingValidated.Range(func(_, v any) bool {
-			txNode, ok := v.(*dependencygraph.TransactionNode)
-			if !ok {
-				err = errors.New("failed to cast txNode stored in the txBeingValidated map")
-				return false
-			}
-			pendingTxs = append(pendingTxs, txNode)
-			return true
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to start sender and receiver of validator-committer")
-		}
-		vc.txBeingValidated = &sync.Map{}
+	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 
-		if len(pendingTxs) > 0 {
-			promutil.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
-			inputTxBatch.Write(pendingTxs)
-		}
-		return nil
+	g, gCtx := errgroup.WithContext(ctx)
+
+	stream, err := vc.client.StartValidateAndCommitStream(gCtx)
+	if err != nil {
+		return errors.Join(connection.ErrBackOff, err)
+	}
+
+	// if the stream is started, the connection has been established.
+	vc.metrics.vcservicesConnection.Connected(vc.conn.CanonicalTarget())
+
+	// NOTE: sendTransactionsToVCService and receiveStatusAndForwardToOutput must
+	//       always return an error on exist.
+	g.Go(func() error { //nolint:contextcheck
+		return vc.sendTransactionsToVCService(stream, inputTxBatch.WithContext(stream.Context()))
 	})
+
+	g.Go(func() error {
+		// NOTE: The channels outputValidatedTxsNode and outputTxsStatus should not depend on the stream context.
+		//       Doing so can result in permanently lost validation results. Specifically, after reading a
+		//       transaction from the stream and removing it from txBeingValidated, if the stream context is
+		//       canceled before we can write to these two channels, the validation results are lost forever.
+		//       Similarly, the first argument, i.e., context should not be stream context.
+		return vc.receiveStatusAndForwardToOutput(stream, outputValidatedTxsNode, outputTxsStatus)
+	})
+
+	return g.Wait()
 }
 
 func (vc *validatorCommitter) sendTransactionsToVCService(
@@ -296,8 +280,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 	}
 }
 
-// NOTE: receiveStatusAndForwardToOutput filters all transient connection related errors.
-func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
+func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
 	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
@@ -311,36 +294,9 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
 
-		txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
-		var untrackedTxIDs []string
-		for txID, txStatus := range txsStatus.Status {
-			v, ok := vc.txBeingValidated.LoadAndDelete(txID)
-			if !ok {
-				// Because the VC manager might submit the same transaction multiple times (for example,
-				// if a VC service fails or the coordinator reconnects to a failed VC service), it could
-				// receive duplicate responses.  However, the txBeingValidated lookup will succeed only once.
-				// Therefore, if the transaction ID is not found in txBeingValidated, we must proceed to
-				// the next status.
-				untrackedTxIDs = append(untrackedTxIDs, txID)
-				continue
-			}
-
-			txNode, ok := v.(*dependencygraph.TransactionNode)
-			if !ok {
-				// NOTE: This error should never occur.
-				return errors.Wrap(connection.ErrLifecycleCritical,
-					"failed to cast txNode from the txBeingValidated map")
-			}
-			txsNode = append(txsNode, txNode)
-
-			if txStatus.Code != protoblocktx.Status_COMMITTED {
-				continue
-			}
-
-			// Updating policy before sending transaction nodes to the dependency
-			// graph manager to free dependent transactions. Otherwise, dependent transactions
-			// might be validated against a stale policy.
-			vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
+		txsNode, untrackedTxIDs, err := vc.getTxsAndUpdatePolicies(txsStatus)
+		if err != nil {
+			return err
 		}
 
 		for _, txID := range untrackedTxIDs {
@@ -377,4 +333,71 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput( //nolint:gocognit
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
 	}
+}
+
+func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
+) error {
+	pendingTxs := dependencygraph.TxNodeBatch{}
+	var err error
+
+	vc.txBeingValidated.Range(func(_, v any) bool {
+		txNode, ok := v.(*dependencygraph.TransactionNode)
+		if !ok {
+			err = errors.Wrap(connection.ErrNonRetryable, "failed to cast txNode stored in the txBeingValidated map")
+			return false
+		}
+		pendingTxs = append(pendingTxs, txNode)
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	vc.txBeingValidated = &sync.Map{}
+
+	if len(pendingTxs) == 0 {
+		return nil
+	}
+
+	promutil.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
+	inputTxsNode.Write(pendingTxs)
+	return nil
+}
+
+func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *protoblocktx.TransactionsStatus) (
+	[]*dependencygraph.TransactionNode, []string, error,
+) {
+	txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
+	var untrackedTxIDs []string
+	for txID, txStatus := range txsStatus.Status {
+		v, ok := vc.txBeingValidated.LoadAndDelete(txID)
+		if !ok {
+			// Because the VC manager might submit the same transaction multiple times (for example,
+			// if a VC service fails or the coordinator reconnects to a failed VC service), it could
+			// receive duplicate responses.  However, the txBeingValidated lookup will succeed only once.
+			// Therefore, if the transaction ID is not found in txBeingValidated, we must proceed to
+			// the next status.
+			untrackedTxIDs = append(untrackedTxIDs, txID)
+			continue
+		}
+
+		txNode, ok := v.(*dependencygraph.TransactionNode)
+		if !ok {
+			// NOTE: This error should never occur.
+			return nil, nil, errors.Wrap(connection.ErrNonRetryable,
+				"failed to cast txNode from the txBeingValidated map")
+		}
+		txsNode = append(txsNode, txNode)
+
+		if txStatus.Code != protoblocktx.Status_COMMITTED {
+			continue
+		}
+
+		// Updating policy before sending transaction nodes to the dependency
+		// graph manager to free dependent transactions. Otherwise, dependent transactions
+		// might be validated against a stale policy.
+		vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
+	}
+
+	return txsNode, untrackedTxIDs, nil
 }

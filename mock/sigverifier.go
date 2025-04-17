@@ -9,6 +9,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 )
@@ -41,7 +42,7 @@ func (m *SigVerifier) updatePolicies(update *protosigverifierservice.Update) err
 	}
 	m.policyUpdateCounter.Add(1)
 	if m.returnErrForUpdatePolicies.CompareAndSwap(true, false) {
-		return errors.New("invalid argument")
+		return errors.Wrap(verifier.ErrUpdatePolicies, "failed to update the policies")
 	}
 	m.updates = append(m.updates, update)
 	logger.Info("policies has been updated")
@@ -59,7 +60,12 @@ func (m *SigVerifier) StartStream(stream protosigverifierservice.Verifier_StartS
 	g.Go(func() error {
 		return m.sendResponseBatch(eCtx, stream)
 	})
-	return grpcerror.WrapCancelled(g.Wait())
+
+	err := g.Wait()
+	if errors.Is(err, verifier.ErrUpdatePolicies) {
+		return grpcerror.WrapInvalidArgument(err)
+	}
+	return grpcerror.WrapCancelled(err)
 }
 
 func (m *SigVerifier) receiveRequestBatch(
@@ -75,7 +81,7 @@ func (m *SigVerifier) receiveRequestBatch(
 
 		err = m.updatePolicies(reqBatch.Update)
 		if err != nil {
-			return errors.Wrap(err, "error updating policies")
+			return err
 		}
 
 		logger.Debugf("new batch received at the mock sig verifier with %d requests.", len(reqBatch.Requests))
