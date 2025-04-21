@@ -27,11 +27,11 @@ type LazyJSON struct {
 
 // String marshals the give object as JSON.
 func (lj *LazyJSON) String() string {
-	if p, err := json.Marshal(lj.O); err != nil {
+	p, err := json.Marshal(lj.O)
+	if err != nil {
 		return fmt.Sprintf("cannot marshal object: %v", err)
-	} else {
-		return string(p)
 	}
+	return string(p)
 }
 
 // Must panics given an error.

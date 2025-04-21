@@ -8,21 +8,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-type Host = string
-
+// Endpoint describes a remote endpoint.
 type Endpoint struct {
-	Host Host `mapstructure:"host" json:"host,omitempty" yaml:"host,omitempty"`
-	Port int  `mapstructure:"port" json:"port,omitempty" yaml:"port,omitempty"`
+	Host string `mapstructure:"host" json:"host,omitempty" yaml:"host,omitempty"`
+	Port int    `mapstructure:"port" json:"port,omitempty" yaml:"port,omitempty"`
 }
 
+// Empty returns true if no port is assigned.
 func (e *Endpoint) Empty() bool {
 	return e.Port == 0
 }
 
+// Address returns a string representation of the endpoint's address.
 func (e *Endpoint) Address() string {
 	return fmt.Sprintf("%s:%d", e.Host, e.Port)
 }
 
+// String returns a string representation of the endpoint.
 func (e *Endpoint) String() string {
 	return e.Address()
 }

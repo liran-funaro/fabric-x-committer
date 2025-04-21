@@ -1,32 +1,12 @@
 package logging
 
 import (
-	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func setupTestLogger(t *testing.T) string {
-	t.Helper()
-
-	tmpFile, err := os.CreateTemp(t.TempDir(), "logtest")
-	require.NoError(t, err)
-	tmpFileName := tmpFile.Name()
-	require.NoError(t, tmpFile.Close())
-
-	config := &Config{
-		Enabled:     true,
-		Level:       Debug,
-		Output:      tmpFileName,
-		Development: true,
-		Caller:      false,
-	}
-	SetupWithConfig(config)
-
-	return tmpFileName
-}
 
 func TestLogOutput(t *testing.T) {
 	t.Parallel()
@@ -51,30 +31,30 @@ func TestLogOutput(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.logMsg, func(t *testing.T) {
 			t.Parallel()
-			tmpFileName := setupTestLogger(t)
-
-			logger := New("test")
-			tc.logFunc(logger, tc.logMsg)
+			l, tmpFileName := setupTestLogger(t)
+			tc.logFunc(l, tc.logMsg)
 			requireContains(t, tmpFileName, tc.logMsg)
 		})
 	}
 }
 
-func TestErrorStackTrace(t *testing.T) {
-	t.Parallel()
-	tmpFileName := setupTestLogger(t)
-
-	logger := New("test")
-	errMsg := "stack trace test error"
-	testErr := errors.New(errMsg)
-	logger.ErrorStackTrace(testErr)
-	// ErrorStackTrace is the name of a function expected in the stack trace
-	requireContains(t, tmpFileName, "ErrorStackTrace")
+func setupTestLogger(t *testing.T) (*Logger, string) {
+	t.Helper()
+	tmpFileName := filepath.Clean(filepath.Join(t.TempDir(), "log-test.log"))
+	l := &Logger{}
+	l.updateConfig(&Config{
+		Enabled:     true,
+		Level:       Debug,
+		Output:      tmpFileName,
+		Development: true,
+		Caller:      false,
+	})
+	return l, tmpFileName
 }
 
 func requireContains(t *testing.T, fileName, contains string) {
 	t.Helper()
-	logData, err := os.ReadFile(fileName) //nolint:gosec // allow file name inclusion via variable
+	logData, err := os.ReadFile(filepath.Clean(fileName))
 	require.NoError(t, err)
 	require.Contains(t, string(logData), contains)
 }

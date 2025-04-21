@@ -9,6 +9,7 @@ import (
 )
 
 func TestReadWrite(t *testing.T) {
+	t.Parallel()
 	valSchema := "id=5,msp-id=org,broadcast,deliver,localhost:5050"
 	valJSON := `{"id":5,"msp-id":"org","api":["broadcast","deliver"],"host":"localhost","port":5050}`
 	valYAML := `id: 5
@@ -30,13 +31,13 @@ port: 5050
 	}
 	require.Equal(t, valSchema, expected.String())
 
-	valJsonRaw, err := json.Marshal(expected)
+	valJSONRaw, err := json.Marshal(expected)
 	require.NoError(t, err)
-	require.Equal(t, valJSON, string(valJsonRaw))
+	require.JSONEq(t, valJSON, string(valJSONRaw))
 
 	valYamlRaw, err := yaml.Marshal(expected)
 	require.NoError(t, err)
-	require.Equal(t, valYAML, string(valYamlRaw))
+	require.YAMLEq(t, valYAML, string(valYamlRaw))
 
 	e, err := ParseOrdererEndpoint(valSchema)
 	require.NoError(t, err)

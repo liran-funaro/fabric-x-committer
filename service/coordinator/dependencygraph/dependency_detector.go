@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 type (
@@ -21,7 +20,7 @@ type (
 		// readWriteKeyToWaitingTxs is used to establish write-read, write-write and read-write dependencies.
 		readWriteKeyToWaitingTxs keyToTransactions
 
-		workers *workerpool.WorkerPool
+		workers *workerPool
 	}
 
 	// keyToTransactions holds a map of key to transactions that have read or written the key.
@@ -35,7 +34,7 @@ func newDependencyDetector() *dependencyDetector {
 		readOnlyKeyToWaitingTxs:  make(keyToTransactions),
 		writeOnlyKeyToWaitingTxs: make(keyToTransactions),
 		readWriteKeyToWaitingTxs: make(keyToTransactions),
-		workers:                  workerpool.New(&workerpool.Config{Parallelism: 3, ChannelCapacity: 3}),
+		workers:                  newWorkerPool(3, 3),
 	}
 }
 

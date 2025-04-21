@@ -41,8 +41,8 @@ func TestChannel(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			val, ok = c.Read()
-			require.False(t, ok)
-			require.Nil(t, val)
+			assert.False(t, ok)
+			assert.Nil(t, val)
 		}()
 
 		// Make sure we are waiting on the channel.
@@ -65,7 +65,7 @@ func TestChannel(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.False(t, c.Write(d))
+			assert.False(t, c.Write(d))
 		}()
 
 		// Make sure we are waiting on the channel.
@@ -87,7 +87,7 @@ func TestChannel(t *testing.T) {
 		require.Equal(t, ctx, c.Context())
 
 		go func() {
-			require.True(t, c.Write(d))
+			assert.True(t, c.Write(d))
 		}()
 
 		val, ok := c.Read()
@@ -98,7 +98,7 @@ func TestChannel(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.False(t, c.Write(d))
+			assert.False(t, c.Write(d))
 		}()
 
 		// Make sure we are waiting on the channel.

@@ -8,7 +8,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 )
 
 var logger = logging.New("tracker")
@@ -18,8 +17,8 @@ type latencyReceiverSender struct {
 	latencyTracker sync.Map
 	validLatency   prometheus.Histogram
 	invalidLatency prometheus.Histogram
-	blockSampler   monitoring.NumberTracingSampler
-	txSampler      monitoring.KeyTracingSampler
+	blockSampler   NumberTracingSampler
+	txSampler      KeyTracingSampler
 }
 
 // onReceiveTransaction is called when a TX is received.

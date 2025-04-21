@@ -15,17 +15,15 @@ import (
 //     See: https://support.yugabyte.com/hc/en-us/articles/10552861830541-Unable-to-Drop-Database.
 //   - Creating/dropping tables immediately after creating a database.
 //     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
-type (
-	RetryProfile struct {
-		InitialInterval     time.Duration `mapstructure:"initial-interval" yaml:"initial-interval"`
-		RandomizationFactor float64       `mapstructure:"randomization-factor" yaml:"randomization-factor"`
-		Multiplier          float64       `mapstructure:"multiplier" yaml:"multiplier"`
-		MaxInterval         time.Duration `mapstructure:"max-interval" yaml:"max-interval"`
-		// After MaxElapsedTime the ExponentialBackOff returns RetryStopDuration.
-		// It never stops if MaxElapsedTime == 0.
-		MaxElapsedTime time.Duration `mapstructure:"max-elapsed-time" yaml:"max-elapsed-time"`
-	}
-)
+type RetryProfile struct {
+	InitialInterval     time.Duration `mapstructure:"initial-interval" yaml:"initial-interval"`
+	RandomizationFactor float64       `mapstructure:"randomization-factor" yaml:"randomization-factor"`
+	Multiplier          float64       `mapstructure:"multiplier" yaml:"multiplier"`
+	MaxInterval         time.Duration `mapstructure:"max-interval" yaml:"max-interval"`
+	// After MaxElapsedTime the ExponentialBackOff returns RetryStopDuration.
+	// It never stops if MaxElapsedTime == 0.
+	MaxElapsedTime time.Duration `mapstructure:"max-elapsed-time" yaml:"max-elapsed-time"`
+}
 
 const (
 	defaultInitialInterval     = 500 * time.Millisecond
@@ -41,6 +39,7 @@ func (p *RetryProfile) Execute(ctx context.Context, o backoff.Operation) error {
 	return errors.Wrap(backoff.Retry(o, backoff.WithContext(p.NewBackoff(), ctx)), "multiple retries failed")
 }
 
+// NewBackoff creates a new [backoff.ExponentialBackOff] instance with this profile.
 func (p *RetryProfile) NewBackoff() *backoff.ExponentialBackOff {
 	b := &backoff.ExponentialBackOff{
 		InitialInterval:     defaultInitialInterval,

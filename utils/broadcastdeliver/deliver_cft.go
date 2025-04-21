@@ -46,7 +46,7 @@ const MaxBlockNum uint64 = math.MaxUint64
 func (c *DeliverCftClient) Deliver(ctx context.Context, config *DeliverConfig) error {
 	resiliencyManager := c.ConnectionManager.GetResiliencyManager(WithAPI(Deliver))
 	for ctx.Err() == nil {
-		if config.StartBlkNum > 0 && uint64(config.StartBlkNum) > config.EndBlkNum { // nolint:gosec
+		if config.StartBlkNum > 0 && uint64(config.StartBlkNum) > config.EndBlkNum {
 			logger.Debugf("Deliver finished successfully")
 			return nil
 		}

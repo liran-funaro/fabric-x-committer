@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"golang.org/x/crypto/sha3"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 )
 
@@ -110,7 +111,8 @@ func (b *eddsaFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
 // NewKeysWithSeed generate deterministic private and public keys.
 func (*eddsaFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
 	r := pseudorand.New(pseudorand.NewSource(seed))
-	pk, sk, _ := ed25519.GenerateKey(r)
+	pk, sk, err := ed25519.GenerateKey(r)
+	utils.Must(err)
 	return sk, pk
 }
 
@@ -127,7 +129,8 @@ func (*blsFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.
 	_, _, _, g2 := bn254.Generators()
 
 	randomBytes := make([]byte, fr.Modulus().BitLen())
-	r.Read(randomBytes)
+	_, err := r.Read(randomBytes)
+	utils.Must(err)
 
 	sk := big.NewInt(0)
 	sk.SetBytes(randomBytes)
@@ -145,17 +148,11 @@ func (*blsFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.
 // NewKeys generate private and public keys.
 func (*ecdsaFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil
-	}
+	utils.Must(err)
 	serializedPrivateKey, err := SerializeSigningKey(privateKey)
-	if err != nil {
-		return nil, nil
-	}
+	utils.Must(err)
 	serializedPublicKey, err := SerializeVerificationKey(&privateKey.PublicKey)
-	if err != nil {
-		return nil, nil
-	}
+	utils.Must(err)
 	return serializedPrivateKey, serializedPublicKey
 }
 
@@ -182,12 +179,8 @@ func (*ecdsaFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signatur
 		D:         privateKey,
 	}
 	serializedPrivateKey, err := SerializeSigningKey(pk)
-	if err != nil {
-		return nil, nil
-	}
+	utils.Must(err)
 	serializedPublicKey, err := SerializeVerificationKey(&pk.PublicKey)
-	if err != nil {
-		return nil, nil
-	}
+	utils.Must(err)
 	return serializedPrivateKey, serializedPublicKey
 }

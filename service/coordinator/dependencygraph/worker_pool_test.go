@@ -1,22 +1,21 @@
-package workerpool_test
+package dependencygraph
 
 import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 func TestWorkerPool(t *testing.T) {
-	workers := workerpool.New(&workerpool.Config{
-		Parallelism:     10,
-		ChannelCapacity: 5,
-	})
+	t.Parallel()
+	workers := newWorkerPool(10, 5)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(workers.Run(ctx))
+		return connection.FilterStreamRPCError(workers.run(ctx))
 	}, nil)
 
 	size := 100
@@ -30,13 +29,9 @@ func TestWorkerPool(t *testing.T) {
 	resultMap := make(map[int]any)
 	for range size {
 		i, ok := result.Read()
-		if !ok {
-			t.Fatalf("context ended before worker finished")
-		}
+		require.True(t, ok, "context ended before worker finished")
 		_, ok = resultMap[i]
-		if ok {
-			t.Error("repeated result")
-		}
+		require.False(t, ok, "repeated result")
 		resultMap[i] = nil
 	}
 }

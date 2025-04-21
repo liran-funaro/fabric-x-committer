@@ -104,7 +104,7 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return dm.dependencyDetector.workers.Run(gCtx)
+		return dm.dependencyDetector.workers.run(gCtx)
 	})
 
 	g.Go(func() error {

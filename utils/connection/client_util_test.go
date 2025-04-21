@@ -17,11 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/status"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -68,7 +70,7 @@ func commonGrpcRetryTest(
 		Help: "total number of connection failures.",
 	}, []string{"target"})
 
-	connection.WaitForConnection(ctx, conn, connStatus, failureCount)
+	waitForConnection(ctx, conn, connStatus, failureCount)
 
 	label := []string{conn.CanonicalTarget()}
 	connStatusM, err := connStatus.GetMetricWithLabelValues(label...)
@@ -94,7 +96,7 @@ func commonGrpcRetryTest(
 	defer cancel2()
 	go func() {
 		defer wg.Done()
-		connection.WaitForConnection(ctx2, conn, connStatus, failureCount)
+		waitForConnection(ctx2, conn, connStatus, failureCount)
 	}()
 
 	time.Sleep(5 * time.Second)
@@ -171,7 +173,7 @@ func newFilterTestEnv(t *testing.T) *filterTestEnv {
 	env.server = test.RunGrpcServerForTest(serviceCtx, t, env.serverConf, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.service)
 	})
-	conn, err := connection.Connect(connection.NewDialConfig(&env.serverConf.Endpoint))
+	conn, err := connection.LazyConnect(connection.NewDialConfig(&env.serverConf.Endpoint))
 	require.NoError(t, err)
 	env.client = peer.NewDeliverClient(conn)
 
@@ -243,35 +245,28 @@ func TestFilterStreamRPCError(t *testing.T) {
 	t.Run("server ctx cancel", func(t *testing.T) {
 		t.Parallel()
 		env := newFilterTestEnv(t)
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		defer wg.Wait()
 		go func() {
-			defer wg.Done()
-			_, err := env.deliver.Recv()
-			require.Error(t, err)
-			// This returns either codes.Canceled or codes.Unavailable (EOF).
-			requireNoWrappedError(t, err)
+			time.Sleep(3 * time.Second)
+			env.serviceCancel()
 		}()
-		time.Sleep(3 * time.Second)
-		env.serviceCancel()
+
+		_, err := env.deliver.Recv()
+		require.Error(t, err)
+		// This returns either codes.Canceled or codes.Unavailable (EOF).
+		requireNoWrappedError(t, err)
 	})
 
 	t.Run("server shutdown", func(t *testing.T) {
 		t.Parallel()
 		env := newFilterTestEnv(t)
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		defer wg.Wait()
 		go func() {
-			defer wg.Done()
-			_, err := env.deliver.Recv()
-			require.Error(t, err)
-			// This returns either codes.Canceled or codes.Unavailable (EOF).
-			requireNoWrappedError(t, err)
+			time.Sleep(3 * time.Second)
+			env.server.Stop()
 		}()
-		time.Sleep(3 * time.Second)
-		env.server.Stop()
+		_, err := env.deliver.Recv()
+		require.Error(t, err)
+		// This returns either codes.Canceled or codes.Unavailable (EOF).
+		requireNoWrappedError(t, err)
 	})
 }
 
@@ -321,4 +316,37 @@ func TestCloseConnections(t *testing.T) {
 		}
 		require.NoError(t, connection.CloseConnections(closers...))
 	})
+}
+
+func waitForConnection(
+	ctx context.Context,
+	conn *grpc.ClientConn,
+	connStatus *prometheus.GaugeVec,
+	failureCount *prometheus.CounterVec,
+) {
+	label := []string{conn.CanonicalTarget()}
+	defer func() {
+		promutil.SetGaugeVec(connStatus, label, connection.Connected)
+	}()
+
+	if conn.GetState() == connectivity.Ready {
+		return
+	}
+
+	promutil.AddToCounterVec(failureCount, label, 1)
+	promutil.SetGaugeVec(connStatus, label, connection.Disconnected)
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			conn.Connect()
+			if conn.GetState() == connectivity.Ready {
+				return
+			}
+		}
+	}
 }

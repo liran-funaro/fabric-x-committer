@@ -12,7 +12,7 @@ import (
 // all zero-bits starting bytes are trimmed in order to reduce the length of the array
 // For preserving the order in a default bytes-comparison, first byte contains the number of remaining bytes.
 // The presence of first byte also allows to use the returned bytes as part of other larger byte array such as a
-// composite-key representation in db
+// composite-key representation in db.
 func EncodeOrderPreservingVarUint64(number uint64) []byte {
 	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, number)
@@ -26,7 +26,7 @@ func EncodeOrderPreservingVarUint64(number uint64) []byte {
 		}
 	}
 
-	sizeBytes := proto.EncodeVarint(uint64(size))
+	sizeBytes := proto.EncodeVarint(uint64(size)) //nolint:gosec // integer overflow conversion int -> uint64.
 	if len(sizeBytes) > 1 {
 		panic(fmt.Errorf(
 			"[]sizeBytes should not be more than one byte because the max number it needs to hold is 8. size=%d",
@@ -39,8 +39,10 @@ func EncodeOrderPreservingVarUint64(number uint64) []byte {
 	return encodedBytes
 }
 
-// DecodeOrderPreservingVarUint64 decodes the number from the bytes obtained from method 'EncodeOrderPreservingVarUint64'.
-// It returns the decoded number, the number of bytes that are consumed in the process, and an error if the input bytes are invalid.
+// DecodeOrderPreservingVarUint64 decodes the number from the bytes obtained from method
+// 'EncodeOrderPreservingVarUint64'.
+// It returns the decoded number, the number of bytes that are consumed in the process,
+// and an error if the input bytes are invalid.
 func DecodeOrderPreservingVarUint64(bytes []byte) (uint64, int, error) {
 	s, numBytes := proto.DecodeVarint(bytes)
 

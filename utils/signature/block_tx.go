@@ -16,20 +16,20 @@ func DigestTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 	}
 	ns := tx.Namespaces[nsIndex]
 	n := Namespace{
-		Reads:      make([]Reads, len(ns.ReadsOnly)),
-		ReadWrites: make([]ReadWrites, len(ns.ReadWrites)),
-		Writes:     make([]BlindWrites, len(ns.BlindWrites)),
+		Reads:      make([]Read, len(ns.ReadsOnly)),
+		ReadWrites: make([]ReadWrite, len(ns.ReadWrites)),
+		Writes:     make([]BlindWrite, len(ns.BlindWrites)),
 	}
 
 	for i, r := range ns.ReadsOnly {
-		n.Reads[i] = Reads{
+		n.Reads[i] = Read{
 			Key:     r.Key,
 			Version: r.Version,
 		}
 	}
 
 	for i, rw := range ns.ReadWrites {
-		n.ReadWrites[i] = ReadWrites{
+		n.ReadWrites[i] = ReadWrite{
 			Key:     rw.Key,
 			Version: rw.Version,
 			Value:   rw.Value,
@@ -37,7 +37,7 @@ func DigestTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 	}
 
 	for i, bw := range ns.BlindWrites {
-		n.Writes[i] = BlindWrites{
+		n.Writes[i] = BlindWrite{
 			Key:   bw.Key,
 			Value: bw.Value,
 		}
@@ -56,25 +56,32 @@ func DigestTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-type Tx struct {
-	TxID      string
-	Namespace Namespace
-}
-type Namespace struct {
-	Reads      []Reads
-	ReadWrites []ReadWrites
-	Writes     []BlindWrites
-}
-type Reads struct {
-	Key     []byte
-	Version []byte
-}
-type BlindWrites struct {
-	Key   []byte
-	Value []byte
-}
-type ReadWrites struct {
-	Key     []byte
-	Version []byte
-	Value   []byte
-}
+type (
+	// Tx is a stab for [protoblocktx.Tx].
+	Tx struct {
+		TxID      string
+		Namespace Namespace
+	}
+	// Namespace is a stab for [protoblocktx.TxNamespace].
+	Namespace struct {
+		Reads      []Read
+		ReadWrites []ReadWrite
+		Writes     []BlindWrite
+	}
+	// Read is a stab for [protoblocktx.Read].
+	Read struct {
+		Key     []byte
+		Version []byte
+	}
+	// BlindWrite is a stab for [protoblocktx.Write].
+	BlindWrite struct {
+		Key   []byte
+		Value []byte
+	}
+	// ReadWrite is a stab for [protoblocktx.ReadWrite].
+	ReadWrite struct {
+		Key     []byte
+		Version []byte
+		Value   []byte
+	}
+)

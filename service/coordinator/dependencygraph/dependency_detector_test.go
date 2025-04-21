@@ -20,7 +20,7 @@ func TestDependencyDetector(t *testing.T) {
 
 	dd := newDependencyDetector()
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(dd.workers.Run(ctx))
+		return connection.FilterStreamRPCError(dd.workers.run(ctx))
 	}, nil)
 
 	tx1Node := createTxNode(t, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]})
@@ -29,7 +29,7 @@ func TestDependencyDetector(t *testing.T) {
 
 	depDetect := newDependencyDetector()
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(depDetect.workers.Run(ctx))
+		return connection.FilterStreamRPCError(depDetect.workers.run(ctx))
 	}, nil)
 	depDetect.addWaitingTx(tx1Node)
 	dd.mergeWaitingTx(ctx, depDetect)

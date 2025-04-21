@@ -8,7 +8,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 type (
@@ -37,9 +36,6 @@ type (
 		// NumOfLocalDepConstructors defines the number of local
 		// dependency constructors.
 		NumOfLocalDepConstructors int
-		// WorkerPoolConfigForGlobalDepManager defines the worker pool
-		// for the global dependency manager.
-		WorkerPoolConfigForGlobalDepManager *workerpool.Config
 		// WaitingTxsLimit defines the maximum number of transactions
 		// that can be waiting at the dependency manager.
 		WaitingTxsLimit int

@@ -3,22 +3,20 @@ package connection
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"io"
 	"net"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 )
 
 const (
@@ -30,15 +28,19 @@ const (
 )
 
 type (
+	// DialConfig represents the dial options to create a connection.
 	DialConfig struct {
 		WithAddress
 		DialOpts []grpc.DialOption
 	}
 
+	// WithAddress represents any type that can generate an address.
 	WithAddress interface {
 		Address() string
 	}
 )
+
+var logger = logging.New("connection")
 
 // GrpcConfig defines the retry policy for a gRPC client connection.
 // This policy differs from grpc.WithBlock(), which only blocks during the initial connection.
@@ -54,33 +56,35 @@ var GrpcConfig string
 
 var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
+// NewDialConfig creates the default dial config with new credentials.
 func NewDialConfig(endpoint WithAddress) *DialConfig {
 	return NewDialConfigWithCreds(endpoint, insecure.NewCredentials())
 }
 
+// NewDialConfigWithCreds creates the default dial config with the given credentials.
 func NewDialConfigWithCreds(endpoint WithAddress, creds credentials.TransportCredentials) *DialConfig {
 	return &DialConfig{
 		WithAddress: endpoint,
-		DialOpts:    NewDialOptionWithCreds(creds),
+		DialOpts:    newDialOptionWithCreds(creds),
 	}
 }
 
-func NewDialOptionWithCreds(creds credentials.TransportCredentials) []grpc.DialOption {
+// newDialOptionWithCreds creates the default dial options with the given credentials.
+func newDialOptionWithCreds(creds credentials.TransportCredentials) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(maxMsgSize),
 			grpc.MaxCallSendMsgSize(maxMsgSize),
 		),
+		//nolint:staticcheck // TODO: remove once all use of [Connect] are removed.
 		grpc.WithBlock(),
+		//nolint:staticcheck // TODO: remove once all use of [Connect] are removed.
 		grpc.WithReturnConnectionError(),
 	}
 }
 
-func OpenConnections[T WithAddress](endpoints []T, transportCredentials credentials.TransportCredentials) ([]*grpc.ClientConn, error) {
-	return openConnections(endpoints, transportCredentials, Connect)
-}
-
+// CloseConnections calls [closer.Close()] for all the given connections and return the close errors.
 func CloseConnections[T io.Closer](connections ...T) error {
 	logger.Infof("Closing %d connections.\n", len(connections))
 	errs := make([]error, len(connections))
@@ -88,6 +92,14 @@ func CloseConnections[T io.Closer](connections ...T) error {
 		errs[i] = filterAcceptableCloseErr(closer.Close())
 	}
 	return errors.Join(errs...)
+}
+
+// CloseConnectionsLog calls [closer.Close()] for all the given connections and log the close errors.
+func CloseConnectionsLog[T io.Closer](connections ...T) {
+	closeErr := CloseConnections(connections...)
+	if closeErr != nil {
+		logger.Errorf("failed closing connections: %v", closeErr)
+	}
 }
 
 var acceptableCloseErr = []error{
@@ -111,19 +123,16 @@ func filterAcceptableCloseErr(err error) error {
 	return err
 }
 
-func CloseConnectionsLog[T io.Closer](connections ...T) {
-	closeErr := CloseConnections(connections...)
-	if closeErr != nil {
-		logger.Errorf("failed closing connections: %v", closeErr)
-	}
-}
-
+// Connect creates a new [grpc.ClientConn] with the given [DialConfig].
+// It attempts to connect immediately.
+//
+// Deprecated: use LazyConnect instead. Will be supported throughout 1.x.
 func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(GrpcConfig))
 	ctx, cancel := context.WithTimeout(context.TODO(), 90*time.Second)
 	defer cancel()
 
-	address := config.WithAddress.Address()
+	address := config.Address()
 	cc, err := grpc.DialContext(ctx, address, config.DialOpts...)
 	if err != nil {
 		logger.Errorf("Error connecting to %s: %v", address, err)
@@ -133,79 +142,39 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 	return cc, nil
 }
 
+// LazyConnect creates a new [grpc.ClientConn] with the given [DialConfig].
+// It will not attempt to create a connection with the remote.
+// TODO: rename to Connect once all calls to [Connect] will be removed.
 func LazyConnect(config *DialConfig) (*grpc.ClientConn, error) {
-	address := config.WithAddress.Address()
+	address := config.Address()
 	config.DialOpts = append(config.DialOpts, grpc.WithDefaultServiceConfig(GrpcConfig))
 	cc, err := grpc.NewClient(address, config.DialOpts...)
 	if err != nil {
 		logger.Errorf("Error connecting to %s: %v", address, err)
-		return nil, err
+		return nil, errors.Wrap(err, "error connecting to grpc")
 	}
 	return cc, nil
 }
 
+// OpenLazyConnections opens connections with multiple remotes.
+// TODO: rename to OpenConnections once all calls to [Connect] will be removed.
 func OpenLazyConnections[T WithAddress](
 	endpoints []T,
 	transportCredentials credentials.TransportCredentials,
 ) ([]*grpc.ClientConn, error) {
-	return openConnections(endpoints, transportCredentials, LazyConnect)
-}
-
-func openConnections[T WithAddress](
-	endpoints []T,
-	transportCredentials credentials.TransportCredentials,
-	connect func(*DialConfig) (*grpc.ClientConn, error),
-) ([]*grpc.ClientConn, error) {
 	logger.Infof("Opening connections to %d endpoints: %v.\n", len(endpoints), endpoints)
 	connections := make([]*grpc.ClientConn, len(endpoints))
 	for i, endpoint := range endpoints {
-		conn, err := connect(NewDialConfigWithCreds(endpoint, transportCredentials))
+		conn, err := LazyConnect(NewDialConfigWithCreds(endpoint, transportCredentials))
 		if err != nil {
 			logger.Errorf("Error connecting: %v", err)
 			CloseConnectionsLog(connections[:i]...)
 			return nil, err
 		}
-
 		connections[i] = conn
 	}
 	logger.Infof("Opened %d connections", len(connections))
 	return connections, nil
-}
-
-// WaitForConnection waits for the given connection to be in the ready state.
-func WaitForConnection(
-	ctx context.Context,
-	conn *grpc.ClientConn,
-	connStatus *prometheus.GaugeVec,
-	failureCount *prometheus.CounterVec,
-) {
-	label := []string{conn.CanonicalTarget()}
-	defer func() {
-		promutil.SetGaugeVec(connStatus, label, Connected)
-	}()
-
-	if conn.GetState() == connectivity.Ready {
-		return
-	}
-
-	promutil.AddToCounterVec(failureCount, label, 1)
-	promutil.SetGaugeVec(connStatus, label, Disconnected)
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			logger.Debug("Reconnecting to service.")
-			conn.Connect()
-			if conn.GetState() == connectivity.Ready {
-				return
-			}
-			logger.Debug("service connection is not ready.")
-		}
-	}
 }
 
 // FilterStreamRPCError filters RPC errors that caused due to ending stream.

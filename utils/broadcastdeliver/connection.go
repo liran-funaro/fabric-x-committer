@@ -290,6 +290,7 @@ func (e *OrdererConnection) EqualEndpoints(e2 *OrdererConnection) bool {
 	if e == nil || e.OrdererEndpoint == nil || e2 == nil || e2.OrdererEndpoint == nil {
 		return false
 	}
+	//nolint: staticcheck // could remove embedded field "OrdererEndpoint" from selector, but here explicit call helps.
 	return e.OrdererEndpoint.String() == e2.OrdererEndpoint.String()
 }
 

@@ -2,11 +2,11 @@ package connection
 
 import (
 	"encoding/json"
-	"errors"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,7 +18,7 @@ type (
 		MspID string `mapstructure:"msp-id" json:"msp-id,omitempty" yaml:"msp-id,omitempty"`
 		// API should be broadcast and/or deliver.
 		API      []string `mapstructure:"api" json:"api,omitempty" yaml:"api,omitempty"`
-		Endpoint `mapstructure:",squash" json:",inline" yaml:",inline"`
+		Endpoint `mapstructure:",squash" yaml:",inline"`
 	}
 )
 
@@ -29,9 +29,10 @@ const (
 	Deliver = "deliver"
 )
 
+// Orderer endpoints errors.
 var (
-	ErrorInvalidEndpointKey = errors.New("invalid endpoint key")
-	ErrorInvalidEndpoint    = errors.New("invalid endpoint")
+	ErrInvalidEndpointKey = errors.New("invalid endpoint key")
+	ErrInvalidEndpoint    = errors.New("invalid endpoint")
 )
 
 // NewOrdererEndpoints is a helper function to generate a list of OrdererEndpoint(s) from ServerConfig(s).
@@ -77,64 +78,75 @@ func (e *OrdererEndpoint) SupportsAPI(api string) bool {
 }
 
 // ParseOrdererEndpoint parses a string according to the following schema order (the first that succeeds).
-// Schema 1: JSON
-// Schema 2: YAML
-// Schema 3: [id=ID,][msp-id=MspID,][broadcast,][deliver,][host=Host,][port=Port,][Host:Port]
+// Schema 1: JSON.
+// Schema 2: YAML.
+// Schema 3: [id=ID,][msp-id=MspID,][broadcast,][deliver,][host=Host,][port=Port,][Host:Port].
 func ParseOrdererEndpoint(valueRaw string) (*OrdererEndpoint, error) {
 	ret := &OrdererEndpoint{}
 	if len(valueRaw) == 0 {
 		return ret, nil
 	}
-
 	if err := json.Unmarshal([]byte(valueRaw), ret); err == nil {
 		return ret, nil
 	}
 	if err := yaml.Unmarshal([]byte(valueRaw), ret); err == nil {
 		return ret, nil
 	}
+	err := unmarshalOrdererEndpoint(valueRaw, ret)
+	return ret, err
+}
 
+func unmarshalOrdererEndpoint(valueRaw string, out *OrdererEndpoint) error {
 	metaParts := strings.Split(valueRaw, ",")
 	for _, item := range metaParts {
 		item = strings.TrimSpace(item)
-		if item == Broadcast || item == Deliver {
-			ret.API = append(ret.API, item)
-		} else if i := strings.Index(item, "="); i >= 0 {
-			key, value := strings.TrimSpace(item[:i]), strings.TrimSpace(item[i+1:])
+		equalIdx := strings.Index(item, "=")
+		colonIdx := strings.Index(item, ":")
+		var err error
+		switch {
+		case item == Broadcast || item == Deliver:
+			out.API = append(out.API, item)
+		case equalIdx >= 0:
+			key, value := strings.TrimSpace(item[:equalIdx]), strings.TrimSpace(item[equalIdx+1:])
 			switch key {
-			case "id":
-				id, err := strconv.ParseUint(value, 10, 32)
-				if err != nil {
-					return nil, err
-				}
-				ret.ID = uint32(id)
 			case "msp-id":
-				ret.MspID = value
+				out.MspID = value
 			case "host":
-				ret.Host = value
+				out.Host = value
+			case "id":
+				err = out.setID(value)
 			case "port":
-				if err := ret.setPort(value); err != nil {
-					return nil, err
-				}
+				err = out.setPort(value)
 			default:
-				return nil, ErrorInvalidEndpointKey
+				return ErrInvalidEndpointKey
 			}
-		} else if i = strings.Index(item, ":"); i >= 0 {
-			ret.Host = strings.TrimSpace(item[:i])
-			if err := ret.setPort(strings.TrimSpace(item[i+1:])); err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, ErrorInvalidEndpoint
+		case colonIdx >= 0:
+			out.Host = strings.TrimSpace(item[:colonIdx])
+			err = out.setPort(strings.TrimSpace(item[colonIdx+1:]))
+		default:
+			return ErrInvalidEndpoint
+		}
+		if err != nil {
+			return err
 		}
 	}
-	return ret, nil
+	return nil
 }
 
 func (e *OrdererEndpoint) setPort(portStr string) error {
 	port, err := strconv.ParseInt(portStr, 10, 32)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse port")
 	}
 	e.Port = int(port)
+	return nil
+}
+
+func (e *OrdererEndpoint) setID(idStr string) error {
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return errors.Wrap(err, "invalid id value")
+	}
+	e.ID = uint32(id)
 	return nil
 }

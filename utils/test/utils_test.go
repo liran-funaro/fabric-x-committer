@@ -14,15 +14,17 @@ import (
 )
 
 func TestCheckServerStopped(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
 
 	mockSigVer := mock.NewMockSigVerifier()
 
 	sigVerServers := test.StartGrpcServersForTest(ctx, t, 1,
 		func(server *grpc.Server, _ int) {
 			protosigverifierservice.RegisterVerifierServer(server, mockSigVer)
-		})
+		},
+	)
 
 	addr := sigVerServers.Configs[0].Endpoint.Address()
 	require.Eventually(t, func() bool {

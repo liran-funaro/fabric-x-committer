@@ -18,7 +18,6 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/logging"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/workerpool"
 )
 
 var logger = logging.New("coordinator service")
@@ -132,10 +131,6 @@ func NewCoordinatorService(c *Config) *Service {
 			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 			NumOfLocalDepConstructors: c.DependencyGraphConfig.NumOfLocalDepConstructors,
-			WorkerPoolConfigForGlobalDepManager: &workerpool.Config{
-				Parallelism:     c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager,
-				ChannelCapacity: c.DependencyGraphConfig.NumOfWorkersForGlobalDepManager * 2,
-			},
 			WaitingTxsLimit:           c.DependencyGraphConfig.WaitingTxsLimit,
 			PrometheusMetricsProvider: metrics.Provider,
 		},

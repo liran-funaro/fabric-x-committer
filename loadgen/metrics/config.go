@@ -8,5 +8,5 @@ import (
 // It adds latency tracker to the common metrics configurations.
 type Config struct {
 	monitoring.Config `mapstructure:",squash" yaml:",inline"`
-	Latency           monitoring.LatencyConfig `mapstructure:"latency" yaml:"latency"`
+	Latency           LatencyConfig `mapstructure:"latency" yaml:"latency"`
 }

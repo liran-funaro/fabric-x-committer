@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/onsi/gomega"
@@ -36,7 +35,7 @@ type (
 
 	// TestingT allows supporting both Testing and Benchmarking.
 	TestingT interface {
-		Errorf(format string, args ...interface{})
+		Errorf(format string, args ...any)
 		FailNow()
 		Cleanup(f func())
 		Context() context.Context
@@ -217,6 +216,8 @@ func RunServiceForTest(
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
 // It is intended for services that implements the Service API (i.e., command line services).
+//
+//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t TestingT,
@@ -259,7 +260,10 @@ type StatusRetriever interface {
 	) (*protoblocktx.TransactionsStatus, error)
 }
 
-func EnsurePersistedTxStatus( // nolint:revive
+// EnsurePersistedTxStatus fails the test if the given TX IDs does not match the expected status.
+//
+//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
+func EnsurePersistedTxStatus(
 	ctx context.Context,
 	t TestingT,
 	r StatusRetriever,
@@ -272,20 +276,20 @@ func EnsurePersistedTxStatus( // nolint:revive
 	}
 	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
-	require.Equal(t, expected, actualStatus.Status)
+	require.EqualExportedValues(t, expected, actualStatus.Status)
 }
 
 // CheckServerStopped returns true if the grpc server listening on a
 // given address has been stopped.
-func CheckServerStopped(_ *testing.T, addr string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func CheckServerStopped(t TestingT, addr string) bool {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
-	conn, err := grpc.DialContext( // nolint:staticcheck
+	conn, err := grpc.DialContext( //nolint:staticcheck
 		ctx,
 		addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), // nolint:staticcheck
+		grpc.WithBlock(), //nolint:staticcheck
 	)
 	if err != nil {
 		return true

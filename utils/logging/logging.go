@@ -11,25 +11,52 @@ import (
 	"google.golang.org/grpc/grpclog"
 )
 
-var (
-	loggerInstance Logger
-	mu             sync.Mutex
-)
-
+// Logger wraps [zap.SugaredLogger] to allow updating all the loggers.
 type Logger struct {
 	*zap.SugaredLogger
+	mu sync.Mutex
 }
 
-func init() {
-	SetupWithConfig(defaultConfig)
-}
+var loggerInstance Logger
 
+// SetupWithConfig updates the logger with the given config.
 func SetupWithConfig(config *Config) {
-	mu.Lock()
-	defer mu.Unlock()
-
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	loggerInstance.SugaredLogger = createLogger(config).Sugar()
+	loggerInstance.updateConfig(config)
+}
+
+// New returns a logger instance.
+// TODO: use the name variable.
+func New(_ string) *Logger {
+	// Due to package initialization order, the Fabric package that initialize the GRPC logger
+	// might be initialized after our own package.
+	// Since methods calls can happen only after package initialization,
+	// this call ensures the GRPC logger will stay quiet.
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+	loggerInstance.initWithDefault()
+	return &loggerInstance
+}
+
+// ErrorStackTrace prints the stack trace present in the error type.
+func (l *Logger) ErrorStackTrace(err error) {
+	if err == nil {
+		return
+	}
+	l.Errorf("%+v", err)
+}
+
+func (l *Logger) updateConfig(config *Config) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.SugaredLogger = createLogger(config).Sugar()
+}
+
+func (l *Logger) initWithDefault() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.SugaredLogger == nil {
+		l.SugaredLogger = createLogger(defaultConfig).Sugar()
+	}
 }
 
 func createLogger(config *Config) *zap.Logger {
@@ -53,6 +80,16 @@ func createLogger(config *Config) *zap.Logger {
 		outputs = append(outputs, config.Output)
 	}
 
+	var encCfg zapcore.EncoderConfig
+	if config.Development {
+		encCfg = zap.NewDevelopmentEncoderConfig()
+		encCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	} else {
+		encCfg = zap.NewProductionEncoderConfig()
+	}
+	encCfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	encCfg.EncodeName = zapcore.FullNameEncoder
+
 	c := zap.Config{
 		Level:       level,
 		Development: config.Development,
@@ -60,41 +97,13 @@ func createLogger(config *Config) *zap.Logger {
 			Initial:    100,
 			Thereafter: 100,
 		},
-		Encoding:         "console",
-		EncoderConfig:    getEncoderConfig(config.Development),
-		OutputPaths:      outputs,
-		ErrorOutputPaths: outputs,
+		Encoding:      "console",
+		EncoderConfig: encCfg,
+		// We don't need the stack trace at the logging point. We log the error point stack trace manually.
+		DisableStacktrace: true,
+		OutputPaths:       outputs,
+		ErrorOutputPaths:  outputs,
 	}
 
 	return zap.Must(c.Build(zap.WithCaller(config.Caller))).Named(config.Name)
-}
-
-func getEncoderConfig(dev bool) zapcore.EncoderConfig {
-	var cfg zapcore.EncoderConfig
-	if dev {
-		cfg = zap.NewDevelopmentEncoderConfig()
-		cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	} else {
-		cfg = zap.NewProductionEncoderConfig()
-	}
-	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
-	cfg.EncodeName = zapcore.FullNameEncoder
-	return cfg
-}
-
-func New(name string) *Logger {
-	// Due to package initialization order, the Fabric package that initialize the GRPC logger
-	// might be initialized after our own package.
-	// Since methods calls can happen only after package initialization,
-	// this call ensures the GRPC logger will stay quiet.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	return &loggerInstance
-}
-
-// ErrorStackTrace prints the stack trace present in the error type.
-func (l *Logger) ErrorStackTrace(err error) {
-	if err == nil {
-		return
-	}
-	l.Errorf("%+v", err)
 }

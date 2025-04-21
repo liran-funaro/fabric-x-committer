@@ -13,9 +13,7 @@ import (
 )
 
 // NewIdentitySigner instantiate a signer for the given identity.
-//
-//nolint:ireturn // NewIdentitySigner returns interface
-func NewIdentitySigner(config *IdentityConfig) (msp.SigningIdentity, error) {
+func NewIdentitySigner(config *IdentityConfig) (msp.SigningIdentity, error) { //nolint:ireturn,nolintlint // bug.
 	if config == nil {
 		logger.Infof("No identity configuration. Skipping signer initialization")
 		return nil, nil
