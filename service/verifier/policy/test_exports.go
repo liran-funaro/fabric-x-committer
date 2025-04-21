@@ -11,15 +11,15 @@ import (
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature/sigtest"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 // MakePolicy generates a policy item from a namespace policy.
 func MakePolicy(
-	t test.TestingT,
+	t *testing.T,
 	ns string,
 	nsPolicy *protoblocktx.NamespacePolicy,
 ) *protoblocktx.PolicyItem {
+	t.Helper()
 	var policyBytes []byte
 	if ns == types.MetaNamespaceID {
 		block, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{

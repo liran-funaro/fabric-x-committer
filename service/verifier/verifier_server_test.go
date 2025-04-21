@@ -400,7 +400,8 @@ type State struct {
 	Client  protosigverifierservice.VerifierClient
 }
 
-func newTestState(t test.TestingT, config *Config) *State {
+func newTestState(t *testing.T, config *Config) *State {
+	t.Helper()
 	service := New(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server, func(grpcServer *grpc.Server) {
 		protosigverifierservice.RegisterVerifierServer(grpcServer, service)

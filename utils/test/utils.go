@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/onsi/gomega"
@@ -32,29 +33,20 @@ type (
 		Servers []*grpc.Server
 		Configs []*connection.ServerConfig
 	}
-
-	// TestingT allows supporting both Testing and Benchmarking.
-	TestingT interface {
-		Errorf(format string, args ...any)
-		FailNow()
-		Cleanup(f func())
-		Context() context.Context
-		Helper()
-	}
 )
 
 // FailHandler registers a [gomega] fail handler.
-func FailHandler(t TestingT) {
+func FailHandler(t *testing.T) {
 	t.Helper()
 	gomega.RegisterFailHandler(func(message string, _ ...int) {
 		t.Helper()
-		t.Errorf(message)
+		t.Errorf("received error message: %s", message)
 		t.FailNow()
 	})
 }
 
 // CheckMetrics checks the metrics endpoint for the expected metrics.
-func CheckMetrics(t TestingT, client *http.Client, url string, expectedMetrics []string) {
+func CheckMetrics(t *testing.T, client *http.Client, url string, expectedMetrics []string) {
 	t.Helper()
 	resp, err := client.Get(url)
 	require.NoError(t, err)
@@ -76,7 +68,7 @@ func CheckMetrics(t TestingT, client *http.Client, url string, expectedMetrics [
 }
 
 // GetMetricValue returns the value of a prometheus metric.
-func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
+func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 	t.Helper()
 	gm := promgo.Metric{}
 	require.NoError(t, m.Write(&gm))
@@ -105,7 +97,7 @@ func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, t TestingT, serverConfig *connection.ServerConfig, register ...func(server *grpc.Server),
+	ctx context.Context, t *testing.T, serverConfig *connection.ServerConfig, register ...func(server *grpc.Server),
 ) *grpc.Server {
 	t.Helper()
 	listener, err := serverConfig.Listener()
@@ -142,7 +134,7 @@ func RunGrpcServerForTest(
 // StartGrpcServersForTest starts multiple GRPC servers with a default configuration.
 func StartGrpcServersForTest(
 	ctx context.Context,
-	t TestingT,
+	t *testing.T,
 	numService int,
 	register ...func(*grpc.Server, int),
 ) *GrpcServers {
@@ -156,8 +148,9 @@ func StartGrpcServersForTest(
 
 // StartGrpcServersWithConfigForTest starts multiple GRPC servers with given configurations.
 func StartGrpcServersWithConfigForTest(
-	ctx context.Context, t TestingT, sc []*connection.ServerConfig, register ...func(*grpc.Server, int),
+	ctx context.Context, t *testing.T, sc []*connection.ServerConfig, register ...func(*grpc.Server, int),
 ) *GrpcServers {
+	t.Helper()
 	grpcServers := make([]*grpc.Server, len(sc))
 	for i, s := range sc {
 		grpcServers[i] = RunGrpcServerForTest(ctx, t, s, func(server *grpc.Server) {
@@ -180,28 +173,28 @@ func StartGrpcServersWithConfigForTest(
 // Returns a ready flag that indicate that the service is done.
 func RunServiceForTest(
 	ctx context.Context,
-	t TestingT,
+	tb testing.TB,
 	service func(ctx context.Context) error,
 	waitFunc func(ctx context.Context) bool,
 ) *channel.Ready {
-	t.Helper()
+	tb.Helper()
 	ready := channel.NewReady()
 	var wg sync.WaitGroup
 	// NOTE: we should cancel the context before waiting for the completion. Therefore, the
 	//       order of cleanup matters, which is last added first called.
-	t.Cleanup(wg.Wait)
+	tb.Cleanup(wg.Wait)
 	dCtx, cancel := context.WithCancel(ctx)
-	t.Cleanup(cancel)
+	tb.Cleanup(cancel)
 	wg.Add(1)
 
 	// We extract caller information to ensure we have sufficient information for debugging.
 	pc, file, no, ok := runtime.Caller(1)
-	require.True(t, ok)
+	require.True(tb, ok)
 	go func() {
 		defer wg.Done()
 		defer ready.SignalReady()
 		// We use assert to prevent panicking for cleanup errors.
-		assert.NoErrorf(t, service(dCtx), "called from %s:%d\n\t%s", file, no, runtime.FuncForPC(pc).Name())
+		assert.NoErrorf(tb, service(dCtx), "called from %s:%d\n\t%s", file, no, runtime.FuncForPC(pc).Name())
 	}()
 
 	if waitFunc == nil {
@@ -209,8 +202,8 @@ func RunServiceForTest(
 	}
 
 	initCtx, initCancel := context.WithTimeout(dCtx, 2*time.Minute)
-	t.Cleanup(initCancel)
-	require.True(t, waitFunc(initCtx))
+	tb.Cleanup(initCancel)
+	require.True(tb, waitFunc(initCtx))
 	return ready
 }
 
@@ -220,7 +213,7 @@ func RunServiceForTest(
 //nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
-	t TestingT,
+	t *testing.T,
 	service connection.Service,
 	serverConfig *connection.ServerConfig,
 	register ...func(server *grpc.Server),
@@ -238,9 +231,10 @@ func RunServiceAndGrpcForTest(
 // WaitUntilGrpcServerIsReady uses the health check API to check a service readiness.
 func WaitUntilGrpcServerIsReady(
 	ctx context.Context,
-	t TestingT,
+	t *testing.T,
 	conn grpc.ClientConnInterface,
 ) {
+	t.Helper()
 	if conn == nil {
 		return
 	}
@@ -265,7 +259,7 @@ type StatusRetriever interface {
 //nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 func EnsurePersistedTxStatus(
 	ctx context.Context,
-	t TestingT,
+	t *testing.T,
 	r StatusRetriever,
 	txIDs []string,
 	expected map[string]*protoblocktx.StatusWithHeight,
@@ -281,7 +275,8 @@ func EnsurePersistedTxStatus(
 
 // CheckServerStopped returns true if the grpc server listening on a
 // given address has been stopped.
-func CheckServerStopped(t TestingT, addr string) bool {
+func CheckServerStopped(t *testing.T, addr string) bool {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
