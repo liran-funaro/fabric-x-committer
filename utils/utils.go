@@ -65,3 +65,13 @@ func Range[T constraints.Integer](start, end T) []T {
 	}
 	return results
 }
+
+// ProcessErr wraps a non-nil error with a message using %w for unwrapping.
+// Returns nil if the error is nil, otherwise returns the wrapped error.
+// Example to the call of the function: utils.ProcessErr(g.Wait(), "sidecar has been stopped").
+func ProcessErr(err error, msg string) error {
+	if err != nil {
+		return fmt.Errorf("%s: %w", msg, err) //nolint:wrapcheck
+	}
+	return nil
+}

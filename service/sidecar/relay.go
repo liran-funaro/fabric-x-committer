@@ -13,6 +13,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
@@ -51,6 +52,7 @@ func newRelay(
 	lastCommittedBlockSetInterval time.Duration,
 	metrics *perfMetrics,
 ) *relay {
+	logger.Info("Initializing new relay")
 	if lastCommittedBlockSetInterval == 0 {
 		lastCommittedBlockSetInterval = defaultLastCommittedBlockSetInterval
 	}
@@ -96,7 +98,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 		return r.setLastCommittedBlockNumber(gCtx, config.coordClient, expectedNextBlockToBeCommitted)
 	})
 
-	return errors.Wrap(g.Wait(), "stream with the coordinator has ended")
+	return utils.ProcessErr(g.Wait(), "stream with the coordinator has ended")
 }
 
 func (r *relay) preProcessBlockAndSendToCoordinator( //nolint:gocognit
