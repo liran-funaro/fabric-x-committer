@@ -335,6 +335,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.DatabaseConfig {
 	t.Helper()
 	env := vc.NewValidatorAndCommitServiceTestEnv(t, 1)
+	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf()
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{

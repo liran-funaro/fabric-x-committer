@@ -3,6 +3,7 @@ package vc
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -45,6 +46,7 @@ func NewValidatorAndCommitServiceTestEnv(
 	numServices int,
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
+	t.Helper()
 	require.LessOrEqual(t, len(db), 1)
 
 	var dbEnv *DatabaseTestEnv
@@ -57,7 +59,7 @@ func NewValidatorAndCommitServiceTestEnv(
 		t.Fatalf("At most one db env can be passed as n argument but received %d envs", len(db))
 	}
 
-	initCtx, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(initCancel)
 	vcservices := make([]*ValidatorCommitterService, numServices)
 	configs := make([]*Config, numServices)
@@ -106,6 +108,12 @@ func (vcEnv *ValidatorAndCommitterServiceTestEnv) GetDBEnv(_ *testing.T) *Databa
 	return vcEnv.DBEnv
 }
 
+// SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
+func (vcEnv *ValidatorAndCommitterServiceTestEnv) SetupSystemTablesAndNamespaces(ctx context.Context, t *testing.T) {
+	t.Helper()
+	require.NoError(t, vcEnv.DBEnv.DB.setupSystemTablesAndNamespaces(ctx))
+}
+
 // DatabaseTestEnv represents a database test environment.
 type DatabaseTestEnv struct {
 	DB     *database
@@ -114,6 +122,7 @@ type DatabaseTestEnv struct {
 
 // NewDatabaseTestEnv creates a new default database test environment.
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
+	t.Helper()
 	// default parameters set.
 	return newDatabaseTestEnv(t, dbtest.PrepareTestEnv(t), false)
 }
@@ -136,16 +145,16 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
 		Retry: &connection.RetryProfile{
-			MaxElapsedTime:  3 * time.Minute,
-			InitialInterval: 100 * time.Millisecond,
+			MaxElapsedTime:  5 * time.Minute,
+			InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,
 		},
 	}
 
 	m := newVCServiceMetrics()
-	sCtx, sCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	sCtx, sCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(sCancel)
 	dbObject, err := newDatabase(sCtx, config, m)
-	require.NoError(t, err)
+	require.NoError(t, err, "%+v", err)
 	t.Cleanup(dbObject.close)
 
 	return &DatabaseTestEnv{
@@ -156,11 +165,13 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 
 // CountStatus returns the number of transactions with a given tx status.
 func (env *DatabaseTestEnv) CountStatus(t *testing.T, status protoblocktx.Status) int {
+	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status))
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
 func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status))
 }
 
@@ -183,6 +194,7 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	t *testing.T,
 	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
+	t.Helper()
 	var nonDupTxIDs [][]byte
 	for id, s := range expectedStatuses {
 		if s.Code != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
@@ -190,12 +202,12 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	actualRows, err := env.DB.readStatusWithHeight(ctx, nonDupTxIDs)
 	require.NoError(t, err)
 
-	require.Equal(t, len(nonDupTxIDs), len(actualRows))
+	require.Len(t, actualRows, len(nonDupTxIDs))
 	for _, tID := range nonDupTxIDs {
 		require.Equal(t, expectedStatuses[string(tID)], actualRows[string(tID)])
 	}
@@ -208,6 +220,7 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t *testing.T,
 	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
+	t.Helper()
 	var dupTxIDs [][]byte
 	for id, s := range expectedStatuses {
 		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
@@ -215,16 +228,16 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	actualRows, err := env.DB.readStatusWithHeight(ctx, dupTxIDs)
 	require.NoError(t, err)
 
-	require.Equal(t, len(dupTxIDs), len(actualRows))
+	require.Len(t, actualRows, len(dupTxIDs))
 	for _, tID := range dupTxIDs {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
-		txID := string(tID) // nolint:staticcheck
+		txID := string(tID) //nolint:staticcheck
 		require.NotEqual(t, expectedStatuses[txID].Code, actualRows[txID].Code)
 		expHeight := types.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
 		actualHeight := types.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
@@ -232,42 +245,47 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	}
 }
 
-func (env *DatabaseTestEnv) commitState(t *testing.T, nsToWrites namespaceToWrites) {
+func (env *DatabaseTestEnv) populateData( //nolint:revive
+	t *testing.T,
+	createNsIDs []string,
+	nsToWrites namespaceToWrites,
+	batchStatus *protoblocktx.TransactionsStatus,
+	txIDToHeight transactionIDToHeight,
+) {
+	t.Helper()
+	newNsIDsWrites := namespaceToWrites{}
+	for _, nsID := range createNsIDs {
+		nsWrites := newNsIDsWrites.getOrCreate(types.MetaNamespaceID)
+		nsWrites.append([]byte(nsID), nil, types.VersionNumber(0).Bytes())
+	}
+
+	require.NoError(t, env.DB.retry.Execute(t.Context(), func() error {
+		conflicts, duplicate, err := env.DB.commit(t.Context(), &statesToBeCommitted{
+			newWrites: newNsIDsWrites, batchStatus: batchStatus, txIDToHeight: txIDToHeight,
+		})
+		require.Empty(t, conflicts)
+		require.Empty(t, duplicate)
+		logger.WarnStackTrace(err)
+		return err
+	}))
+
 	for nsID, writes := range nsToWrites {
-		_, err := env.DB.pool.Exec(context.Background(), fmt.Sprintf(`
+		require.NoError(t, env.DB.retry.ExecuteSQL(t.Context(), env.DB.pool, fmt.Sprintf(`
 			INSERT INTO %s (key, value, version)
 			SELECT _key, _value, _version
 			FROM UNNEST($1::bytea[], $2::bytea[], $3::bytea[]) AS t(_key, _value, _version);`,
 			TableName(nsID)),
 			writes.keys, writes.values, writes.versions,
-		)
-		require.NoError(t, err)
+		))
 	}
-}
-
-func (env *DatabaseTestEnv) populateDataWithCleanup( //nolint:revive
-	t *testing.T,
-	nsIDs []string,
-	writes namespaceToWrites,
-	batchStatus *protoblocktx.TransactionsStatus,
-	txIDToHeight transactionIDToHeight,
-) {
-	require.NoError(t, initDatabaseTables(context.Background(), env.DB.pool, nsIDs))
-
-	_, _, err := env.DB.commit(t.Context(), &statesToBeCommitted{batchStatus: batchStatus, txIDToHeight: txIDToHeight})
-	require.NoError(t, err)
-	env.commitState(t, writes)
-
-	t.Cleanup(func() {
-		require.NoError(t, clearDatabaseTables(context.Background(), env.DB.pool, nsIDs))
-	})
 }
 
 // FetchKeys fetches a list of keys.
 func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) map[string]*ValueVersion {
+	t.Helper()
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
 
-	kvPairs, err := env.DB.pool.Query(context.Background(), query, keys)
+	kvPairs, err := env.DB.pool.Query(t.Context(), query, keys)
 	require.NoError(t, err)
 	defer kvPairs.Close()
 
@@ -287,14 +305,16 @@ func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) 
 }
 
 func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID string) {
+	t.Helper()
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
-	names, err := env.DB.pool.Query(context.Background(), query)
+	names, err := env.DB.pool.Query(t.Context(), query)
 	require.NoError(t, err)
 	defer names.Close()
 	require.True(t, names.Next())
 }
 
 func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, expectedRows namespaceWrites) {
+	t.Helper()
 	actualRows := env.FetchKeys(t, nsID, expectedRows.keys)
 
 	assert.Len(t, actualRows, len(expectedRows.keys))
@@ -307,11 +327,12 @@ func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, expectedRows na
 }
 
 func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byte) {
+	t.Helper()
 	actualRows := env.FetchKeys(t, nsID, keys)
 
-	assert.Len(t, actualRows, 0)
+	assert.Empty(t, actualRows)
 	for key, valVer := range actualRows {
-		assert.Fail(t, "key [%s] should not exist; value: [%s], version [%d]",
+		assert.Fail(t, "key ["+key+"] should not exist", "value: [%s], version [%d]",
 			key, string(valVer.Value), types.VersionNumberFromBytes(valVer.Version))
 	}
 }

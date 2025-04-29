@@ -6,6 +6,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/errors"
+	"github.com/yugabyte/pgx/v4/pgxpool"
 )
 
 // RetryProfile can be used to define the backoff properties for retries.
@@ -36,7 +37,20 @@ const (
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
 // It returns nil on success, or the error returned by the final attempt on timeout.
 func (p *RetryProfile) Execute(ctx context.Context, o backoff.Operation) error {
-	return errors.Wrap(backoff.Retry(o, backoff.WithContext(p.NewBackoff(), ctx)), "multiple retries failed")
+	return backoff.Retry(o, backoff.WithContext(p.NewBackoff(), ctx))
+}
+
+// ExecuteSQL executes the given SQL statement until it succeeds or a timeout occurs.
+func (p *RetryProfile) ExecuteSQL(ctx context.Context, pool *pgxpool.Pool, sqlStmt string, args ...any) error {
+	err := p.Execute(ctx, func() error {
+		_, err := pool.Exec(ctx, sqlStmt, args...)
+		err = errors.Wrapf(err, "failed to execute the SQL statement [%s]", sqlStmt)
+		if err != nil {
+			logger.Warn(err)
+		}
+		return err
+	})
+	return err
 }
 
 // NewBackoff creates a new [backoff.ExponentialBackOff] instance with this profile.

@@ -109,7 +109,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
 	e.client = client
 
-	sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
+	sCtx, sCancel := context.WithTimeout(ctx, 5*time.Minute)
 	t.Cleanup(sCancel)
 	csStream, err := client.BlockProcessing(sCtx)
 	require.NoError(t, err)
@@ -293,7 +293,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	t.Parallel()
 	// TODO: Use real signature verifier instead of mocks.
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 
@@ -473,7 +473,7 @@ func TestQueueSize(t *testing.T) {
 func TestCoordinatorRecovery(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 

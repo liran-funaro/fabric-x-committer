@@ -45,6 +45,14 @@ func (l *Logger) ErrorStackTrace(err error) {
 	l.Errorf("%+v", err)
 }
 
+// WarnStackTrace prints the stack trace present in the error type as warning log.
+func (l *Logger) WarnStackTrace(err error) {
+	if err == nil {
+		return
+	}
+	l.Warnf("%+v", err)
+}
+
 func (l *Logger) updateConfig(config *Config) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

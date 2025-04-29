@@ -2,7 +2,6 @@ package dbtest
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -37,11 +35,8 @@ const (
 )
 
 // randDbName generates random DB name.
-func randDbName(t *testing.T) string {
-	t.Helper()
-	uuidObj, err := uuid.NewRandomFromReader(rand.Reader)
-	require.NoError(t, err)
-	uuidStr := strings.ReplaceAll(uuidObj.String(), "-", "_")
+func randDbName() string {
+	uuidStr := strings.ReplaceAll(uuid.NewString(), "-", "_")
 	return fmt.Sprintf(defaultDBPrefix, getDBTypeFromEnv(), uuidStr)
 }
 
@@ -77,19 +72,17 @@ func PrepareTestEnvWithConnection(t *testing.T, conn *Connection) *Connection {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), defaultStartTimeout)
 	t.Cleanup(cancel)
-	require.True(t, conn.WaitForReady(ctx), errors.Wrapf(ctx.Err(), "database is not ready"))
-	t.Logf("connection nodes details: %s", conn.EndpointsString())
+	require.True(t, conn.waitForReady(ctx), errors.Wrapf(ctx.Err(), "database is not ready"))
+	t.Logf("connection nodes details: %s", conn.endpointsString())
 
-	dbName := randDbName(t)
-	require.NoError(t, conn.CreateDB(ctx, dbName))
+	dbName := randDbName()
+	require.NoError(t, conn.execute(ctx, fmt.Sprintf(createDBSQLTempl, dbName)))
 
 	t.Cleanup(func() {
 		//nolint:usetesting // t.Context is finishing right after the test resulting in context.Deadline error.
 		cleanUpCtx, cleanUpCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cleanUpCancel()
-		assert.NoError(t, DefaultRetry.Execute(cleanUpCtx, func() error {
-			return conn.DropDB(cleanUpCtx, dbName)
-		}))
+		logger.WarnStackTrace(conn.execute(cleanUpCtx, fmt.Sprintf(dropDBSQLTempl, dbName)))
 	})
 	// We copy the connection and add the database name
 	connSettings := *conn

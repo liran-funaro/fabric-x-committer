@@ -21,6 +21,6 @@ const (
 var defaultConfig = &Config{
 	Enabled:     true,
 	Level:       Info,
-	Caller:      false,
+	Caller:      true,
 	Development: true,
 }

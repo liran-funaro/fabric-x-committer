@@ -109,6 +109,16 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		})
 	}
 
+	_, err := utils.FirstSuccessful(
+		vcm.validatorCommitter,
+		func(vc *validatorCommitter) (*protovcservice.Empty, error) {
+			return vc.client.SetupSystemTablesAndNamespaces(ctx, nil)
+		},
+	)
+	if err != nil {
+		return errors.Wrap(err, "failed to setup system tables and namespaces")
+	}
+
 	vcm.ready.SignalReady()
 	return g.Wait()
 }

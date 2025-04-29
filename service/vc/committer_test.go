@@ -20,10 +20,11 @@ type committerTestEnv struct {
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
+	t.Helper()
 	validatedTxs := make(chan *validatedTransactions, 10)
 	txStatus := make(chan *protoblocktx.TransactionsStatus, 10)
 
-	dbEnv := NewDatabaseTestEnv(t)
+	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 	metrics := newVCServiceMetrics()
 	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
@@ -61,9 +62,10 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { //nolint: revi
 }
 
 func TestCommit(t *testing.T) {
+	t.Parallel()
 	env := newCommitterTestEnv(t)
 
-	env.dbEnv.populateDataWithCleanup(
+	env.dbEnv.populateData(
 		t,
 		[]string{"1", "2"},
 		writes(
@@ -389,7 +391,7 @@ func TestCommit(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // each test case depends on the previous test case.
 		t.Run(tt.name, func(t *testing.T) {
 			env.validatedTxs <- tt.txs
 			txStatus := <-env.txStatus

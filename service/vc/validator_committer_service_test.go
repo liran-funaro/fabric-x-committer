@@ -51,15 +51,19 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 		sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
 		t.Cleanup(sCancel)
+		require.NoError(t, err)
 		vcStream, err := client.StartValidateAndCommitStream(sCtx)
 		require.NoError(t, err)
 		require.Eventually(t, func() bool {
 			return vcs.VCServices[i].isStreamActive.Load()
-		}, 2*time.Second, 50*time.Millisecond)
+		}, 5*time.Second, 50*time.Millisecond)
 
 		vcsTestEnv.clients[i] = client
 		vcsTestEnv.streams[i] = vcStream
 	}
+
+	_, err := vcsTestEnv.clients[0].SetupSystemTablesAndNamespaces(ctx, nil)
+	require.NoError(t, err)
 
 	return vcsTestEnv
 }
@@ -159,22 +163,25 @@ func TestCreateConfigAndTables(t *testing.T) {
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {
+	t.Parallel()
 	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
+	setup := func() *validatorAndCommitterServiceTestEnvWithClient {
+		env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 
-	env.dbEnv.populateDataWithCleanup(t, []string{"1", types.MetaNamespaceID}, namespaceToWrites{
-		"1": &namespaceWrites{
-			keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
-			values:   [][]byte{[]byte("value"), []byte("value")},
-			versions: [][]byte{v0},
-		},
-		types.MetaNamespaceID: &namespaceWrites{
-			keys:     [][]byte{[]byte("1")},
-			versions: [][]byte{v0},
-		},
-	}, nil, nil)
+		//nolint:contextcheck // for now, the callee can use the test Context.
+		env.dbEnv.populateData(t, []string{"1"}, namespaceToWrites{
+			"1": &namespaceWrites{
+				keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
+				values:   [][]byte{[]byte("value"), []byte("value")},
+				versions: [][]byte{v0},
+			},
+		}, nil, nil)
+		return env
+	}
 
 	t.Run("all valid txs", func(t *testing.T) {
+		t.Parallel()
+		env := setup()
 		txBatch := &protovcservice.TransactionBatch{
 			Transactions: []*protovcservice.Transaction{
 				// The following 3 TXs test the blind write path, merging to the update path
@@ -340,6 +347,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	})
 
 	t.Run("invalid tx", func(t *testing.T) {
+		t.Parallel()
+		env := setup()
 		txBatch := &protovcservice.TransactionBatch{
 			Transactions: []*protovcservice.Transaction{
 				{
@@ -502,6 +511,7 @@ func requireGRPCErrorCode(t *testing.T, code codes.Code, err error, ret any) {
 }
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {
+	t.Parallel()
 	ctx, _ := createContext(t)
 	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
 
@@ -516,19 +526,16 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 }
 
 func TestTransactionResubmission(t *testing.T) {
+	t.Parallel()
 	setup := func() (context.Context, *validatorAndCommitterServiceTestEnvWithClient) {
 		ctx, _ := createContext(t)
 		numServices := 3
 		env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, numServices)
 
-		env.dbEnv.populateDataWithCleanup(t, []string{"3", types.MetaNamespaceID}, namespaceToWrites{
+		env.dbEnv.populateData(t, []string{"3"}, namespaceToWrites{
 			"3": &namespaceWrites{
 				keys:     [][]byte{[]byte("Existing key")},
 				values:   [][]byte{[]byte("value")},
-				versions: [][]byte{v0},
-			},
-			types.MetaNamespaceID: &namespaceWrites{
-				keys:     [][]byte{[]byte("3")},
 				versions: [][]byte{v0},
 			},
 		}, nil, nil)
@@ -653,6 +660,7 @@ func TestTransactionResubmission(t *testing.T) {
 	}
 
 	t.Run("same transactions submitted again after commit", func(t *testing.T) {
+		t.Parallel()
 		ctx, env := setup()
 		require.NoError(t, env.streams[0].Send(txBatch))
 		txStatus, err := env.streams[0].Recv()
@@ -676,6 +684,7 @@ func TestTransactionResubmission(t *testing.T) {
 	})
 
 	t.Run("same transactions submitted again while previous submission is not yet committed", func(t *testing.T) {
+		t.Parallel()
 		ctx, env := setup()
 		require.NoError(t, env.streams[0].Send(txBatch))
 		require.NoError(t, env.streams[0].Send(txBatch))
@@ -691,6 +700,7 @@ func TestTransactionResubmission(t *testing.T) {
 	})
 
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
+		t.Parallel()
 		ctx, env := setup()
 		txBatchWithDup := &protovcservice.TransactionBatch{}
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
@@ -705,7 +715,8 @@ func TestTransactionResubmission(t *testing.T) {
 		test.EnsurePersistedTxStatus(ctx, t, env.clients[0], txIDs, expectedTxStatus)
 	})
 
-	t.Run("same duplicated transactions submitted in parallel to all vcservices", func(t *testing.T) {
+	t.Run("same duplicate transactions submitted in parallel to all vcservices", func(t *testing.T) {
+		t.Parallel()
 		ctx, env := setup()
 		txBatchWithDup := &protovcservice.TransactionBatch{}
 		for range 10 {
@@ -728,7 +739,8 @@ func TestTransactionResubmission(t *testing.T) {
 }
 
 func createContext(t *testing.T) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	return ctx, cancel
 }

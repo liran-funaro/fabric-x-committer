@@ -19,6 +19,7 @@ type prepareTestEnv struct {
 }
 
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
+	t.Helper()
 	txBatch := make(chan *protovcservice.TransactionBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()

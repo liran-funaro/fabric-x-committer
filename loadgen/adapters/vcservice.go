@@ -40,6 +40,10 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
 	streams := make([]protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, 0, len(connections))
 	for i, conn := range connections {
 		client := protovcservice.NewValidationAndCommitServiceClient(conn)
+		_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+		if err != nil {
+			return errors.Wrap(err, "failed to setup system tables and namespaces")
+		}
 		if i == 0 {
 			if lastBlockNum, err := client.GetLastCommittedBlockNumber(ctx, nil); err != nil {
 				// We do not return error as we can proceed assuming no blocks were committed.
