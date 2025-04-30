@@ -155,7 +155,6 @@ func TestValidateNamespaceReads(t *testing.T) {
 		tt := test
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			readConflicts, err := env.DB.validateNamespaceReads(t.Context(), tt.nsID, tt.r)
 			require.NoError(t, err)
 			require.ElementsMatch(t, toComparableReads(tt.expectedReadConflicts), toComparableReads(readConflicts))

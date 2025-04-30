@@ -92,7 +92,7 @@ func (q *Service) BeginView(
 		if err != nil {
 			return nil, err
 		}
-		if q.batcher.makeView(viewID, params) {
+		if q.batcher.makeView(viewID, params) { //nolint:contextcheck // false positive.
 			return &protoqueryservice.View{Id: viewID}, nil
 		}
 	}

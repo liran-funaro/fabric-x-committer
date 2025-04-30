@@ -42,7 +42,7 @@ func (l *Logger) ErrorStackTrace(err error) {
 	if err == nil {
 		return
 	}
-	l.Errorf("%+v", err)
+	l.WithOptions(zap.AddCallerSkip(1)).Errorf("%+v", err)
 }
 
 // WarnStackTrace prints the stack trace present in the error type as warning log.
@@ -50,7 +50,7 @@ func (l *Logger) WarnStackTrace(err error) {
 	if err == nil {
 		return
 	}
-	l.Warnf("%+v", err)
+	l.WithOptions(zap.AddCallerSkip(1)).Warnf("%+v", err)
 }
 
 func (l *Logger) updateConfig(config *Config) {
@@ -63,7 +63,7 @@ func (l *Logger) initWithDefault() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.SugaredLogger == nil {
-		l.SugaredLogger = createLogger(defaultConfig).Sugar()
+		l.SugaredLogger = createLogger(&DefaultConfig).Sugar()
 	}
 }
 

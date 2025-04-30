@@ -18,7 +18,8 @@ const (
 	Error   string = "ERROR"
 )
 
-var defaultConfig = &Config{
+// DefaultConfig for logging.
+var DefaultConfig = Config{
 	Enabled:     true,
 	Level:       Info,
 	Caller:      true,

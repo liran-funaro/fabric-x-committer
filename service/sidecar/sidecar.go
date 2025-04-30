@@ -80,7 +80,7 @@ func (*Service) WaitForReady(context.Context) bool {
 }
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
-func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
+func (s *Service) Run(ctx context.Context) error {
 	pCtx, pCancel := context.WithCancel(ctx)
 	defer pCancel()
 	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
@@ -89,7 +89,7 @@ func (s *Service) Run(ctx context.Context) error { //nolint:gocognit
 	}()
 
 	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
-	conn, connErr := connection.LazyConnect(connection.NewDialConfig(&s.config.Committer.Endpoint))
+	conn, connErr := connection.Connect(connection.NewDialConfig(&s.config.Committer.Endpoint))
 	if connErr != nil {
 		return fmt.Errorf("failed to connect to coordinator: %w", connErr)
 	}

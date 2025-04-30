@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -61,7 +63,7 @@ func writes(isBlind bool, allWrites ...state) namespaceToWrites { //nolint: revi
 	return ntw
 }
 
-func TestCommit(t *testing.T) {
+func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 	t.Parallel()
 	env := newCommitterTestEnv(t)
 
@@ -391,10 +393,13 @@ func TestCommit(t *testing.T) {
 		},
 	}
 
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
 	for _, tt := range tests { //nolint:paralleltest // each test case depends on the previous test case.
 		t.Run(tt.name, func(t *testing.T) {
-			env.validatedTxs <- tt.txs
-			txStatus := <-env.txStatus
+			channel.NewWriter(ctx, env.validatedTxs).Write(tt.txs)
+			txStatus, ok := channel.NewReader(ctx, env.txStatus).Read()
+			require.True(t, ok)
 			require.Equal(t, &protoblocktx.TransactionsStatus{Status: tt.expectedTxStatuses}, txStatus)
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)

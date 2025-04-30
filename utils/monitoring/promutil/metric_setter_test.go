@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 func TestAddToCounter(t *testing.T) {
@@ -17,7 +18,7 @@ func TestAddToCounter(t *testing.T) {
 		Help: "A test counter.",
 	})
 	AddToCounter(c, 5)
-	requireMetric(t, 5, c)
+	test.RequireIntMetricValue(t, 5, c)
 }
 
 func TestAddToCounterVec(t *testing.T) {
@@ -28,7 +29,7 @@ func TestAddToCounterVec(t *testing.T) {
 	}, []string{"label"})
 	AddToCounterVec(cv, []string{"foo"}, 3)
 	c := cv.WithLabelValues("foo")
-	requireMetric(t, 3, c)
+	test.RequireIntMetricValue(t, 3, c)
 }
 
 func TestAddToGauge(t *testing.T) {
@@ -39,7 +40,7 @@ func TestAddToGauge(t *testing.T) {
 	})
 	g.Set(10)
 	AddToGauge(g, 5)
-	requireMetric(t, 15, g)
+	test.RequireIntMetricValue(t, 15, g)
 }
 
 func TestSetGauge(t *testing.T) {
@@ -49,7 +50,7 @@ func TestSetGauge(t *testing.T) {
 		Help: "A test gauge for setting.",
 	})
 	SetGauge(g, 20)
-	requireMetric(t, 20, g)
+	test.RequireIntMetricValue(t, 20, g)
 }
 
 func TestSetGaugeVec(t *testing.T) {
@@ -60,7 +61,7 @@ func TestSetGaugeVec(t *testing.T) {
 	}, []string{"label"})
 	SetGaugeVec(gv, []string{"bar"}, 30)
 	g := gv.WithLabelValues("bar")
-	requireMetric(t, 30, g)
+	test.RequireIntMetricValue(t, 30, g)
 }
 
 func TestObserve(t *testing.T) {
@@ -88,9 +89,4 @@ func TestObserveSize(t *testing.T) {
 	m := &dto.Metric{}
 	require.NoError(t, h.Write(m))
 	require.InDelta(t, float64(50), m.GetHistogram().GetSampleSum(), 0)
-}
-
-func requireMetric(t *testing.T, expected float64, c prometheus.Collector) {
-	t.Helper()
-	require.InDelta(t, expected, testutil.ToFloat64(c), 0)
 }

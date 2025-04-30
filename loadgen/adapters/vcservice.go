@@ -31,7 +31,7 @@ func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
 
 // RunWorkload applies load on the VC.
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream TxStream) error {
-	connections, connErr := connection.OpenLazyConnections(c.config.Endpoints, insecure.NewCredentials())
+	connections, connErr := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
 	if connErr != nil {
 		return errors.Wrap(connErr, "failed opening connection to vc-service")
 	}

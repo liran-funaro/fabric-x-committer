@@ -83,23 +83,21 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 		t3 := createTxNode(t, [][]byte{keys[2]}, [][]byte{keys[3]}, nil)
 
 		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
-		t1.dependentTxs.Store(t2, struct{}{})
+		t1.dependentTxs.Store(t2, nil)
 
 		t3.dependsOnTxs = append(t3.dependsOnTxs, t2)
-		t2.dependentTxs.Store(t3, struct{}{})
+		t2.dependentTxs.Store(t3, nil)
 
 		env.incomingTxs <- createTxsNodeBatch(t, TxNodeBatch{t1, t2, t3})
 		depFreeTxs := <-env.outgoingTxs
 		// only dependency free tx is t1
 		require.Equal(t, TxNodeBatch{t1}, depFreeTxs)
 
-		require.Equal(t, float64(3), test.GetMetricValue(t, env.metrics.gdgWaitingTxQueueSize))
+		test.RequireIntMetricValue(t, 3, env.metrics.gdgWaitingTxQueueSize)
 
 		env.validatedTxs <- TxNodeBatch{t1}
 
-		require.Eventually(t, func() bool {
-			return test.GetMetricValue(t, env.metrics.gdgWaitingTxQueueSize) == 2
-		}, 2*time.Second, 200*time.Millisecond)
+		test.EventuallyIntMetric(t, 2, env.metrics.gdgWaitingTxQueueSize, 2*time.Second, 200*time.Millisecond)
 
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t1, t2 becomes dependency free
@@ -120,7 +118,7 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 
 		// as we are not updating the dependentsTxs of validated txs,
 		// the number of dependents is non-zero for t1.
-		require.Equal(t, 1, getLengthOfDependentTx(t, t1.dependentTxs))
+		require.Equal(t, 1, t1.dependentTxs.Count())
 	})
 }
 
@@ -135,7 +133,7 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 		t2 := createTxNode(t, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]})
 
 		t2.dependsOnTxs = append(t2.dependsOnTxs, t1)
-		t1.dependentTxs.Store(t2, struct{}{})
+		t1.dependentTxs.Store(t2, nil)
 
 		env.incomingTxs <- createTxsNodeBatch(t, TxNodeBatch{t1, t2})
 
@@ -152,7 +150,7 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 
 		// t1 has three dependents: t2, t3, and t4
 		require.Eventually(t, func() bool {
-			return getLengthOfDependentTx(t, t1.dependentTxs) == 3
+			return t1.dependentTxs.Count() == 3
 		}, 2*time.Second, 200*time.Millisecond)
 		for _, txNode := range []*TransactionNode{t2, t3, t4} {
 			_, exist := t1.dependentTxs.Load(txNode)
@@ -166,7 +164,7 @@ func TestGlobalDependencyManagerBothLocalAndGlobalDependency(t *testing.T) {
 		require.Equal(t, TxNodeBatch{t2}, depFreeTxs)
 
 		// t2 has two dependents: t3 and t4
-		require.Equal(t, 2, getLengthOfDependentTx(t, t2.dependentTxs))
+		require.Equal(t, 2, t2.dependentTxs.Count())
 		for _, txNode := range []*TransactionNode{t3, t4} {
 			_, exist := t2.dependentTxs.Load(txNode)
 			require.True(t, exist)
@@ -215,7 +213,7 @@ func TestGlobalDependencyManagerWithLimit(t *testing.T) {
 		// t1 has two dependents: t2, and t3 but t2 is waiting due to the limit and not processed yet.
 		// Hence, t1 should have only one dependent which is t2.
 		require.Eventually(t, func() bool {
-			return getLengthOfDependentTx(t, t1.dependentTxs) == 1
+			return t1.dependentTxs.Count() == 1
 		}, 2*time.Second, 200*time.Millisecond)
 		_, exist := t1.dependentTxs.Load(t2)
 		require.True(t, exist)
@@ -230,7 +228,7 @@ func TestGlobalDependencyManagerWithLimit(t *testing.T) {
 		// the dependency graph yet. However, now, t3 should not be waiting given t1 is removed. Hence,
 		// we need to wait until t3 is added to the dependency graph.
 		require.Eventually(t, func() bool {
-			return getLengthOfDependentTx(t, t2.dependentTxs) == 1
+			return t2.dependentTxs.Count() == 1
 		}, 2*time.Second, 200*time.Millisecond)
 
 		env.validatedTxs <- []*TransactionNode{t2}
@@ -264,8 +262,8 @@ func createTxsNodeBatch(_ *testing.T, txsNode TxNodeBatch) *transactionNodeBatch
 func ensureProcessedAndValidatedMetrics(t *testing.T, metrics *perfMetrics, processed, validated int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t, metrics.gdgTxProcessedTotal) == float64(processed) &&
-			test.GetMetricValue(t, metrics.gdgValidatedTxProcessedTotal) == float64(validated)
+		return test.GetIntMetricValue(t, metrics.gdgTxProcessedTotal) == processed &&
+			test.GetIntMetricValue(t, metrics.gdgValidatedTxProcessedTotal) == validated
 	}, 2*time.Second, 200*time.Millisecond)
 }
 

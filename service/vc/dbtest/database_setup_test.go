@@ -18,7 +18,7 @@ func TestDefaultStartAndQuery(t *testing.T) {
 }
 
 func TestContainerStartAndQuery(t *testing.T) {
-	t.Skip()
+	t.Skip("This test can run manually when needed")
 	for _, tc := range []string{"postgres", "yugabyte"} {
 		testCase := tc
 		t.Run(testCase, func(t *testing.T) {

@@ -24,8 +24,8 @@ const (
 	queryKeyValueVersionSQLTmpt = "SELECT key, value, version FROM %s WHERE key = ANY($1)"
 )
 
-// ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
 type (
+	// ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
 	ValidatorAndCommitterServiceTestEnv struct {
 		VCServices []*ValidatorCommitterService
 		DBEnv      *DatabaseTestEnv
@@ -101,7 +101,7 @@ func NewValidatorAndCommitServiceTestEnv(
 }
 
 // GetDBEnv returns the database test environment.
-func (vcEnv *ValidatorAndCommitterServiceTestEnv) GetDBEnv(_ *testing.T) *DatabaseTestEnv {
+func (vcEnv *ValidatorAndCommitterServiceTestEnv) GetDBEnv() *DatabaseTestEnv {
 	if vcEnv == nil {
 		return nil
 	}
@@ -237,7 +237,7 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	for _, tID := range dupTxIDs {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
-		txID := string(tID) //nolint:staticcheck
+		txID := string(tID) //nolint:staticcheck // false positive.
 		require.NotEqual(t, expectedStatuses[txID].Code, actualRows[txID].Code)
 		expHeight := types.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
 		actualHeight := types.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
@@ -306,7 +306,9 @@ func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) 
 
 func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID string) {
 	t.Helper()
-	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID))
+	query := fmt.Sprintf(
+		"SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID),
+	)
 	names, err := env.DB.pool.Query(t.Context(), query)
 	require.NoError(t, err)
 	defer names.Close()
@@ -329,10 +331,9 @@ func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, expectedRows na
 func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byte) {
 	t.Helper()
 	actualRows := env.FetchKeys(t, nsID, keys)
-
 	assert.Empty(t, actualRows)
 	for key, valVer := range actualRows {
-		assert.Fail(t, "key ["+key+"] should not exist", "value: [%s], version [%d]",
+		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
 			key, string(valVer.Value), types.VersionNumberFromBytes(valVer.Version))
 	}
 }

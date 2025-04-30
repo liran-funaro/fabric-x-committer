@@ -8,6 +8,7 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
@@ -38,7 +39,7 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	}
 }
 
-func TestValidate(t *testing.T) {
+func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 	t.Parallel()
 
 	env := newValidatorTestEnv(t)
@@ -363,8 +364,9 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range tests { //nolint:paralleltest // each test case depends on the previous test.
 		t.Run(tt.name, func(t *testing.T) {
-			env.preparedTxs <- tt.preparedTx
-			validatedTxs := <-env.validatedTxs
+			channel.NewWriter(t.Context(), env.preparedTxs).Write(tt.preparedTx)
+			validatedTxs, ok := channel.NewReader(t.Context(), env.validatedTxs).Read()
+			require.True(t, ok)
 			require.Equal(t, tt.expectedValidatedTx.validTxNonBlindWrites, validatedTxs.validTxNonBlindWrites)
 			require.Equal(t, tt.expectedValidatedTx.validTxBlindWrites, validatedTxs.validTxBlindWrites)
 			require.Equal(t, tt.expectedValidatedTx.invalidTxStatus, validatedTxs.invalidTxStatus)

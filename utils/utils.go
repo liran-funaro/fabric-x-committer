@@ -22,12 +22,19 @@ func FileExists(path string) bool {
 
 // LazyJSON will lazily marshal a struct for logging purposes.
 type LazyJSON struct {
-	O any
+	O      any
+	Indent string
 }
 
 // String marshals the give object as JSON.
 func (lj *LazyJSON) String() string {
-	p, err := json.Marshal(lj.O)
+	var p []byte
+	var err error
+	if lj.Indent != "" {
+		p, err = json.MarshalIndent(lj.O, "", lj.Indent)
+	} else {
+		p, err = json.Marshal(lj.O)
+	}
 	if err != nil {
 		return fmt.Sprintf("cannot marshal object: %v", err)
 	}

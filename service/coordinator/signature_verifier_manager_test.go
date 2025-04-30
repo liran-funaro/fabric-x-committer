@@ -110,12 +110,12 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 	)
 }
 
-func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetridTxsTotal int) {
+func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
-	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t,
-			e.signVerifierManager.metrics.verifiersRetriedTransactionTotal) == float64(expectedRetridTxsTotal)
-	}, 30*time.Second, 250*time.Millisecond)
+	test.EventuallyIntMetric(
+		t, expectedRetriedTxsTotal, e.signVerifierManager.metrics.verifiersRetriedTransactionTotal,
+		30*time.Second, 250*time.Millisecond,
+	)
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
@@ -134,10 +134,10 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	expectedValidatedTxs = env.submitTxBatch(t, 4)
 	env.requireTxBatch(t, expectedValidatedTxs)
 
-	require.Eventually(t, func() bool {
-		return test.GetMetricValue(t,
-			env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal) == 15
-	}, 30*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(
+		t, 15, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		30*time.Second, 10*time.Millisecond,
+	)
 }
 
 func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {

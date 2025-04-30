@@ -416,7 +416,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
-func TestPrepareTx(t *testing.T) {
+func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	t.Parallel()
 
 	env := newPrepareTestEnv(t)

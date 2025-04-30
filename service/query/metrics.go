@@ -10,7 +10,7 @@ const (
 	grpcBeginView             = "begin_view"
 	grpcEndView               = "end_view"
 	grpcGetRows               = "get_rows"
-	sessionViews              = "viewIDToViewHolder"
+	sessionViews              = "active_views"
 	sessionProcessingQueries  = "processing_queries"
 	sessionWaitingQueries     = "waiting_queries"
 	sessionInExecutionQueries = "in_execution_queries"

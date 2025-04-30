@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
 
 // ExpectedConn is used to describe the expected connection state.
@@ -52,9 +52,7 @@ func RequireConnectionMetrics(
 	connFailure, err := connMetrics.FailureTotal.GetMetricWithLabelValues(label)
 	require.NoError(t, err)
 
-	require.Eventuallyf(t, func() bool {
-		return math.Abs(testutil.ToFloat64(connStatus)-float64(expected.Status)) < 1e-10
-	}, 30*time.Second, 200*time.Millisecond, "connection status does not match expected: %d", expected.Status)
-	require.InDelta(t, float64(expected.FailureTotal), testutil.ToFloat64(connFailure), 1e-10)
-	require.InDelta(t, float64(expected.Status), testutil.ToFloat64(connStatus), 1e-10)
+	test.EventuallyIntMetric(t, expected.Status, connStatus, 30*time.Second, 200*time.Millisecond)
+	test.RequireIntMetricValue(t, expected.FailureTotal, connFailure)
+	test.RequireIntMetricValue(t, expected.Status, connStatus)
 }

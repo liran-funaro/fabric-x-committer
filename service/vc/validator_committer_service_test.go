@@ -27,7 +27,6 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 }
 
 func newValidatorAndCommitServiceTestEnvWithClient(
-	ctx context.Context,
 	t *testing.T,
 	numServices int,
 ) *validatorAndCommitterServiceTestEnvWithClient {
@@ -42,16 +41,15 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	}
 
 	for i := range numServices {
-		clientConn, err := connection.LazyConnect(connection.NewDialConfig(&vcs.Configs[i].Server.Endpoint))
+		clientConn, err := connection.Connect(connection.NewDialConfig(&vcs.Configs[i].Server.Endpoint))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, clientConn.Close())
 		})
 		client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
 
-		sCtx, sCancel := context.WithTimeout(ctx, 2*time.Minute)
+		sCtx, sCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 		t.Cleanup(sCancel)
-		require.NoError(t, err)
 		vcStream, err := client.StartValidateAndCommitStream(sCtx)
 		require.NoError(t, err)
 		require.Eventually(t, func() bool {
@@ -62,7 +60,9 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		vcsTestEnv.streams[i] = vcStream
 	}
 
-	_, err := vcsTestEnv.clients[0].SetupSystemTablesAndNamespaces(ctx, nil)
+	sCtx, sCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(sCancel)
+	_, err := vcsTestEnv.clients[0].SetupSystemTablesAndNamespaces(sCtx, nil)
 	require.NoError(t, err)
 
 	return vcsTestEnv
@@ -70,8 +70,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
-	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
 	p := &protoblocktx.NamespacePolicy{
 		Scheme:    "ECDSA",
 		PublicKey: []byte("public-key"),
@@ -109,6 +108,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 		txStatus1.Status[configID],
 	)
 
+	ctx, _ := createContext(t)
 	tx, err := env.dbEnv.DB.readConfigTX(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, tx)
@@ -164,11 +164,8 @@ func TestCreateConfigAndTables(t *testing.T) {
 
 func TestValidatorAndCommitterService(t *testing.T) {
 	t.Parallel()
-	ctx, _ := createContext(t)
 	setup := func() *validatorAndCommitterServiceTestEnvWithClient {
-		env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
-
-		//nolint:contextcheck // for now, the callee can use the test Context.
+		env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
 		env.dbEnv.populateData(t, []string{"1"}, namespaceToWrites{
 			"1": &namespaceWrites{
 				keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
@@ -291,7 +288,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			},
 		}
 
-		require.Zero(t, test.GetMetricValue(t, env.vcs[0].metrics.transactionReceivedTotal))
+		require.Zero(t, test.GetIntMetricValue(t, env.vcs[0].metrics.transactionReceivedTotal))
 
 		require.NoError(t, env.streams[0].Send(txBatch))
 		txStatus, err := env.streams[0].Recv()
@@ -305,15 +302,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			txIDs[i] = tx.ID
 		}
 
-		require.Equal(
-			t,
-			float64(len(txBatch.Transactions)),
-			test.GetMetricValue(t, env.vcs[0].metrics.transactionReceivedTotal),
-		)
+		test.RequireIntMetricValue(t, len(txBatch.Transactions), env.vcs[0].metrics.transactionReceivedTotal)
 		require.Equal(t, expectedTxStatus, txStatus.Status)
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
+		ctx, _ := createContext(t)
 		test.EnsurePersistedTxStatus(ctx, t, env.clients[0], txIDs, expectedTxStatus)
 
 		txBatch = &protovcservice.TransactionBatch{
@@ -417,6 +411,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
+		ctx, _ := createContext(t)
 		status, err := env.clients[0].GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
 		require.NoError(t, err)
 		require.Equal(t, expectedTxStatus, status.Status)
@@ -425,10 +420,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 func TestLastCommittedBlockNumber(t *testing.T) {
 	t.Parallel()
-	ctx, _ := createContext(t)
 	numServices := 3
-	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, numServices)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, numServices)
 
+	ctx, _ := createContext(t)
 	for i := range numServices {
 		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
 		requireGRPCErrorCode(t, codes.NotFound, err, lastCommittedBlock)
@@ -447,20 +442,19 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 
 func TestGRPCStatusCode(t *testing.T) {
 	t.Parallel()
-	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
 	c := env.clients[0]
+
+	ctx, _ := createContext(t)
+
+	t.Log("GetLastCommittedBlockNumber returns an not found error")
+	lastCommitted, lastCommittedErr := c.GetLastCommittedBlockNumber(ctx, nil)
+	requireGRPCErrorCode(t, codes.NotFound, lastCommittedErr, lastCommitted)
 
 	t.Run("GetTransactionsStatus returns an invalid argument error", func(t *testing.T) {
 		t.Parallel()
 		ret, err := c.GetTransactionsStatus(ctx, nil)
 		requireGRPCErrorCode(t, codes.InvalidArgument, err, ret)
-	})
-
-	//nolint:paralleltest // to get the NotFound code, this test needs to be run before closing the pool.
-	t.Run("GetLastCommittedBlockNumber returns an not found error", func(t *testing.T) {
-		ret, err := c.GetLastCommittedBlockNumber(ctx, nil)
-		requireGRPCErrorCode(t, codes.NotFound, err, ret)
 	})
 
 	env.vcs[0].db.pool.Close()
@@ -512,13 +506,13 @@ func requireGRPCErrorCode(t *testing.T, code codes.Code, err error, ret any) {
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 	t.Parallel()
-	ctx, _ := createContext(t)
-	env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
 	}, 4*time.Second, 250*time.Millisecond)
 
+	ctx, _ := createContext(t)
 	stream, err := env.clients[0].StartValidateAndCommitStream(ctx)
 	require.NoError(t, err)
 	_, err = stream.Recv()
@@ -528,9 +522,8 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 func TestTransactionResubmission(t *testing.T) {
 	t.Parallel()
 	setup := func() (context.Context, *validatorAndCommitterServiceTestEnvWithClient) {
-		ctx, _ := createContext(t)
 		numServices := 3
-		env := newValidatorAndCommitServiceTestEnvWithClient(ctx, t, numServices)
+		env := newValidatorAndCommitServiceTestEnvWithClient(t, numServices)
 
 		env.dbEnv.populateData(t, []string{"3"}, namespaceToWrites{
 			"3": &namespaceWrites{
@@ -540,6 +533,7 @@ func TestTransactionResubmission(t *testing.T) {
 			},
 		}, nil, nil)
 
+		ctx, _ := createContext(t)
 		return ctx, env
 	}
 
