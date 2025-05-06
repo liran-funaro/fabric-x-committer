@@ -221,8 +221,8 @@ pull-db-image: FORCE
 lint: FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
-	@echo "Linting Complete. Parsing Errors..."
-
+	@echo "Running SQL Linters..."
+	sh scripts/sql-lint.sh
 
 # This rule can be used to find and fix lint issues for specific package.
 full-lint-%: FORCE
