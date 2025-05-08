@@ -31,8 +31,7 @@ func TestDBNodeCrashHandling(t *testing.T) {
 		BlockSize:    500,
 		DBCluster:    clusterConnection,
 	})
-	c.Start(t, runner.FullTxPath)
-	c.StartLoadGenOrderer(t)
+	c.Start(t, runner.FullTxPathWithLoadGen)
 
 	waitForCommittedTxs(t, c, 10_000)
 	clusterController.RemoveLastNode(t)

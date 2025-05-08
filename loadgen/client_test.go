@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -82,7 +81,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 			}
 
 			// Start client
-			clientConf.Adapter.SigVerifierClient = &adapters.SVClientConfig{
+			clientConf.Adapter.VerifierClient = &adapters.VerifierClientConfig{
 				Endpoints: endpoints,
 			}
 			testLoadGenerator(t, clientConf)
@@ -279,13 +278,13 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 
 	if !c.Limit.HasLimit() {
 		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, &http.Client{}, client.resources.Metrics.URL(), []string{
+		test.CheckMetrics(t, client.resources.Metrics.URL(),
 			"loadgen_block_sent_total",
 			"loadgen_transaction_sent_total",
 			"loadgen_transaction_received_total",
 			"loadgen_valid_transaction_latency_seconds",
 			"loadgen_invalid_transaction_latency_seconds",
-		})
+		)
 	}
 
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {

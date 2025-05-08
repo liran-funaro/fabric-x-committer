@@ -1,18 +1,18 @@
 server:
-  endpoint: {{ .ServerEndpoint | default "localhost:0" }}
+  endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
 monitoring:
   server:
-    endpoint: {{ .MetricsEndpoint | default "localhost:0" }}
+    endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
 
 verifier:
   endpoints:
     {{- range .Endpoints.Verifier }}
-    - {{ . }}
+    - {{ .Server }}
     {{- end }}
 validator-committer:
   endpoints:
    {{- range .Endpoints.VCService }}
-    - {{ . }}
+    - {{ .Server }}
    {{- end }}
 
 dependency-graph:

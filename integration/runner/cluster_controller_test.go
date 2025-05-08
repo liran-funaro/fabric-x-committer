@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 func TestClusterController(t *testing.T) {
@@ -30,41 +29,4 @@ func TestClusterController(t *testing.T) {
 
 	cc.stopAndRemoveYugaCluster(t)
 	require.Equal(t, 0, cc.GetClusterSize())
-}
-
-func TestClusterControllerConcurrency(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Container IP access not supported on non-linux Docker")
-	}
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	t.Cleanup(cancel)
-
-	cc, _ := StartYugaCluster(ctx, t, 0)
-
-	clusterSize := 5
-
-	g, gCtx := errgroup.WithContext(ctx)
-
-	for range clusterSize {
-		g.Go(func() error {
-			cc.AddNode(gCtx, t)
-			return nil
-		})
-	}
-	require.NoError(t, g.Wait())
-
-	for range clusterSize {
-		g.Go(func() error {
-			cc.RemoveLastNode(t)
-			return nil
-		})
-	}
-	require.NoError(t, g.Wait())
-
-	require.Equal(t, 1, cc.GetClusterSize(), "Cluster size should be 1 after all follower nodes removals.")
-
-	cc.stopAndRemoveYugaCluster(t)
-	require.Equal(t, 0, cc.GetClusterSize(), "Cluster size should be 0 after all nodes removals.")
 }

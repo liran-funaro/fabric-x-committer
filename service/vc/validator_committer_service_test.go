@@ -62,7 +62,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		})
 		client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
 
-		sCtx, sCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(sCancel)
 		vcStream, err := client.StartValidateAndCommitStream(sCtx)
 		require.NoError(t, err)

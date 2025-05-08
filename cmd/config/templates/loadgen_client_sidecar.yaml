@@ -1,0 +1,10 @@
+# This is a partial template. It contains only the sidecar client configurations.
+# It should be complimented by the common load generator configuration.
+
+sidecar-client:
+  sidecar-endpoint: {{ .Endpoints.Sidecar.Server }}
+  orderer-servers:
+    {{- range .Endpoints.Orderer }}
+    - endpoint: {{ .Server }}
+    {{- end }}
+  channel-id: {{ .ChannelID }}

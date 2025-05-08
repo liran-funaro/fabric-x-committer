@@ -100,13 +100,20 @@ const (
 	QueryService
 	LoadGenForOrderer
 	LoadGenForCommitter
+	LoadGenForCoordinator
+	LoadGenForVerifier
+	LoadGenForVCService
 
-	FullTxPath            = Orderer | Sidecar | Coordinator | Verifier | VC
+	CommitterTxPath       = Sidecar | Coordinator | Verifier | VC
+	FullTxPath            = Orderer | CommitterTxPath
 	FullTxPathWithLoadGen = FullTxPath | LoadGenForOrderer
 	FullTxPathWithQuery   = FullTxPath | QueryService
 
-	CommitterTxPath            = Sidecar | Coordinator | Verifier | VC
 	CommitterTxPathWithLoadGen = CommitterTxPath | LoadGenForCommitter
+
+	// loadGenMatcher is used to extract only the load generator flags from the full service flags value.
+	loadGenMatcher = LoadGenForOrderer | LoadGenForCommitter | LoadGenForCoordinator |
+		LoadGenForVCService | LoadGenForVerifier
 )
 
 // NewRuntime creates a new test runtime.
@@ -134,10 +141,13 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		c.dbEnv = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
 	}
 
-	t.Log("Allocating ports")
 	s := &c.SystemConfig
-	s.Endpoints.Database = c.dbEnv.DBConf.Endpoints
+	s.DB.Name = c.dbEnv.DBConf.Database
+	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
+	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
+	s.LedgerPath = t.TempDir()
 
+	t.Log("Allocating ports")
 	ports := portAllocator{}
 	defer ports.close()
 	s.Endpoints.Orderer = ports.allocatePorts(t, 1)
@@ -147,16 +157,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	s.DB.Name = c.dbEnv.DBConf.Database
-	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
-	s.LedgerPath = t.TempDir()
-
 	t.Logf("Endpoints: %s", &utils.LazyJSON{O: s.Endpoints, Indent: "  "})
 
 	t.Log("Creating config block")
 	c.ordererEndpoints = make([]*connection.OrdererEndpoint, len(s.Endpoints.Orderer))
-	for i, endpoint := range s.Endpoints.Orderer {
-		c.ordererEndpoints[i] = &connection.OrdererEndpoint{MspID: "org", Endpoint: *endpoint}
+	for i, e := range s.Endpoints.Orderer {
+		c.ordererEndpoints[i] = &connection.OrdererEndpoint{MspID: "org", Endpoint: *e.Server}
 	}
 	metaCrypto := c.CreateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
 	s.ConfigBlockPath = config.CreateConfigBlock(t, &config.ConfigBlock{
@@ -178,8 +184,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.Sidecar = newProcess(t, sidecarCMD, config.TemplateSidecar, s.WithEndpoint(s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(clientConn(t, s.Endpoints.Coordinator))
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(clientConn(t, s.Endpoints.Query))
+	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(clientConn(t, s.Endpoints.Coordinator.Server))
+	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(clientConn(t, s.Endpoints.Query.Server))
 
 	var err error
 	c.ordererClient, err = broadcastdeliver.New(&broadcastdeliver.Config{
@@ -196,7 +202,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: s.ChannelID,
-		Endpoint:  s.Endpoints.Sidecar,
+		Endpoint:  s.Endpoints.Sidecar.Server,
 	})
 	require.NoError(t, err)
 	return c
@@ -206,9 +212,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	t.Helper()
 
+	require.Falsef(t, isMoreThanOneBitSet((Orderer|LoadGenForCommitter)&serviceFlags),
+		"cannot use load generator for committer with an orderer")
+
 	t.Log("Running services")
-	if LoadGenForCommitter&serviceFlags != 0 {
-		c.StartLoadGenCommitter(t)
+	if loadGenMatcher&serviceFlags != 0 {
+		c.startLoadGen(t, serviceFlags)
 	}
 	if Orderer&serviceFlags != 0 {
 		c.MockOrderer.Restart(t)
@@ -232,13 +241,51 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	if QueryService&serviceFlags != 0 {
 		c.QueryService.Restart(t)
 	}
-	if LoadGenForOrderer&serviceFlags != 0 {
-		c.StartLoadGenOrderer(t)
+
+	if Coordinator&serviceFlags != 0 && Sidecar&serviceFlags != 0 {
+		// We need the sidecar to update the coordinator with the last committed block.
+		t.Log("Validate coordinator state")
+		c.ensureAtLeastLastCommittedBlockNumber(t, 0)
 	}
 
-	t.Log("Validate state")
-	c.ensureAtLeastLastCommittedBlockNumber(t, 0)
+	if Sidecar&serviceFlags != 0 {
+		c.startBlockDelivery(t)
+	}
+}
 
+func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
+	t.Helper()
+	loadGenFlag := loadGenMatcher & serviceFlags
+	require.Falsef(t, isMoreThanOneBitSet(loadGenFlag), "only one load generator may be set")
+	var template string
+	switch loadGenFlag {
+	case LoadGenForCommitter:
+		template = config.TemplateLoadGenCommitter
+	case LoadGenForOrderer:
+		template = config.TemplateLoadGenOrderer
+	case LoadGenForCoordinator:
+		template = config.TemplateLoadGenCoordinator
+	case LoadGenForVCService:
+		template = config.TemplateLoadGenVC
+	case LoadGenForVerifier:
+		template = config.TemplateLoadGenVerifier
+	default:
+		return
+	}
+	s := c.SystemConfig
+	s.Policy = &workload.PolicyProfile{
+		NamespacePolicies: make(map[string]*workload.Policy),
+	}
+	// We create the crypto profile for the generated namespace to ensure consistency.
+	c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
+	for _, cr := range c.GetAllCrypto() {
+		s.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
+	}
+	newProcess(t, loadgenCMD, template, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
+}
+
+func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
+	t.Helper()
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
@@ -254,34 +301,6 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 			return true
 		}
 	})
-}
-
-// StartLoadGenOrderer applies load on the orderer.
-// We need to run the load gen after initializing because it will re-initialize.
-func (c *CommitterRuntime) StartLoadGenOrderer(t *testing.T) {
-	t.Helper()
-	c.startLoadGenWithTemplate(t, config.TemplateLoadGenOrderer)
-}
-
-// StartLoadGenCommitter applies load on the sidecar.
-// We need to run the load gen after initializing because it will re-initialize.
-func (c *CommitterRuntime) StartLoadGenCommitter(t *testing.T) {
-	t.Helper()
-	c.startLoadGenWithTemplate(t, config.TemplateLoadGenCommitter)
-}
-
-func (c *CommitterRuntime) startLoadGenWithTemplate(t *testing.T, template string) {
-	t.Helper()
-	s := c.SystemConfig
-	s.Policy = &workload.PolicyProfile{
-		NamespacePolicies: make(map[string]*workload.Policy),
-	}
-	// We create the crypto profile for the generated namespace to ensure consistency.
-	c.CreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
-	for _, cr := range c.GetAllCrypto() {
-		s.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
-	}
-	newProcess(t, loadgenCMD, template, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
 }
 
 // clientConn creates a service connection using its given server endpoint.
@@ -528,4 +547,8 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 		require.NotNil(ct, lastCommittedBlock.Block)
 		require.GreaterOrEqual(ct, lastCommittedBlock.Block.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
+}
+
+func isMoreThanOneBitSet(bits int) bool {
+	return bits != 0 && bits&(bits-1) != 0
 }

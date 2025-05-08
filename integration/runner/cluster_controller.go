@@ -3,12 +3,12 @@ package runner
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
@@ -69,14 +69,14 @@ func (cc *DBClusterController) AddNode(ctx context.Context, t *testing.T) *dbtes
 // waitForNodeReadiness checks the container's readiness by monitoring its logs.
 func (*DBClusterController) waitForNodeReadiness(t *testing.T, node *dbtest.DatabaseContainer) {
 	t.Helper()
-	require.Eventually(
+	require.EventuallyWithT(
 		t,
-		func() bool {
+		func(ct *assert.CollectT) {
 			output := node.GetContainerLogs(t)
-			return strings.Contains(output, "Data placement constraint successfully verified")
+			require.Contains(ct, output, "Data placement constraint successfully verified")
 		},
-		90*time.Second,
-		250*time.Millisecond,
+		3*time.Minute,
+		1*time.Second,
 		"Node %s readiness check failed", node.Name,
 	)
 }

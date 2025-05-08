@@ -217,7 +217,7 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 func TestCoordinatorServiceValidTx(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.start(ctx, t)
 

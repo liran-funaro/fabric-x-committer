@@ -141,8 +141,8 @@ $(cache_dir) $(mod_cache_dir):
 	# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
 	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
 
-BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor \
-			  loadgen mockvcservice mocksigservice mockorderingservice
+BUILD_TARGETS=coordinator signatureverifier validatorpersister sidecar queryexecutor loadgen \
+			  mockvcservice mocksigservice mockorderingservice
 
 build: $(output_dir) $(BUILD_TARGETS)
 
