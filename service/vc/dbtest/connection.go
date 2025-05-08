@@ -120,6 +120,5 @@ func (c *Connection) execute(ctx context.Context, stmt string) error {
 		return err
 	}
 	defer pool.Close()
-
 	return defaultRetry.ExecuteSQL(ctx, pool, stmt)
 }

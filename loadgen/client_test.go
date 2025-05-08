@@ -105,18 +105,10 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:     connection.NewLocalHostServer(),
-				Monitoring: defaultMonitoring(),
-				SignVerifierConfig: &coordinator.SignVerifierConfig{
-					ServerConfig: []*connection.ServerConfig{{
-						Endpoint: sigVerServer.Configs[0].Endpoint,
-					}},
-				},
-				ValidatorCommitterConfig: &coordinator.ValidatorCommitterConfig{
-					ServerConfig: []*connection.ServerConfig{{
-						Endpoint: vcServer.Configs[0].Endpoint,
-					}},
-				},
+				Server:                   connection.NewLocalHostServer(),
+				Monitoring:               defaultMonitoring(),
+				VerifierConfig:           *test.ServerToClientConfig(sigVerServer.Configs...),
+				ValidatorCommitterConfig: *test.ServerToClientConfig(vcServer.Configs...),
 				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors:       1,
 					WaitingTxsLimit:                 10_000,

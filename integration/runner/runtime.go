@@ -287,7 +287,7 @@ func (c *CommitterRuntime) startLoadGenWithTemplate(t *testing.T, template strin
 // clientConn creates a service connection using its given server endpoint.
 func clientConn(t *testing.T, e *connection.Endpoint) *grpc.ClientConn {
 	t.Helper()
-	serviceConnection, err := connection.Connect(connection.NewDialConfig(e))
+	serviceConnection, err := connection.Connect(connection.NewInsecureDialConfig(e))
 	require.NoError(t, err)
 	return serviceConnection
 }
@@ -512,9 +512,10 @@ func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum u
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	lastBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+	lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
 	require.NoError(t, err)
-	require.Equal(t, blkNum, lastBlock.Number)
+	require.NotNil(t, lastCommittedBlock.Block)
+	require.Equal(t, blkNum, lastCommittedBlock.Block.Number)
 }
 
 func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
@@ -522,8 +523,9 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		lastBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+		lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
 		require.NoError(ct, err)
-		require.GreaterOrEqual(ct, lastBlock.Number, blkNum)
+		require.NotNil(ct, lastCommittedBlock.Block)
+		require.GreaterOrEqual(ct, lastCommittedBlock.Block.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
 }
