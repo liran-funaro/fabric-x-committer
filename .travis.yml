@@ -59,7 +59,7 @@ jobs:
     - stage: test
       name: Integration Tests (yugabyte)
       install: scripts/get-and-start-yuga.sh
-      script: travis_wait 20 make integration-test
+      script: travis_wait 30 make integration-test
     - stage: test
       name: Build and test container images
       script: make container-test -j16
