@@ -76,6 +76,7 @@ type (
 )
 
 func newGlobalDependencyManager(c *globalDepConfig) *globalDependencyManager {
+	logger.Info("Initializing newGlobalDependencyManager")
 	slotsForWaitingTxs := &atomic.Int64{}
 	slotsForWaitingTxs.Store(int64(c.waitingTxsLimit))
 
@@ -104,6 +105,7 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		logger.Debug("Starting dependencyDetector workers")
 		return dm.dependencyDetector.workers.run(gCtx)
 	})
 
@@ -113,11 +115,13 @@ func (dm *globalDependencyManager) run(ctx context.Context) {
 	})
 
 	g.Go(func() error {
+		logger.Debug("Starting processValidatedTransactions")
 		dm.processValidatedTransactions(gCtx)
 		return nil
 	})
 
 	g.Go(func() error {
+		logger.Debug("Starting outputFreedExistingTransactions")
 		dm.outputFreedExistingTransactions(gCtx)
 		return nil
 	})
