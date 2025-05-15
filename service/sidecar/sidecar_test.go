@@ -49,6 +49,7 @@ type sidecarTestEnv struct {
 	sidecar        *Service
 	gServer        *grpc.Server
 	committedBlock chan *common.Block
+	configBlock    *common.Block
 }
 
 type sidecarTestConfig struct {
@@ -101,6 +102,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	ordererEndpoints := ordererEnv.AllEndpoints()
 	configBlock := ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 		OrdererEndpoints: ordererEndpoints,
+		ChannelID:        ordererEnv.TestConfig.ChanID,
 	})
 
 	var genesisBlockFilePath string
@@ -144,6 +146,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		coordinatorServer: coordinatorServer,
 		ordererEnv:        ordererEnv,
 		config:            *sidecarConf,
+		configBlock:       configBlock,
 	}
 }
 
@@ -246,7 +249,48 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Cleanup(cancel)
 	env.start(ctx, t, 0)
 	env.requireBlock(ctx, t, 0)
-	// TODO: implement
+
+	t.Log("Stop the sidecar service and ledger service")
+	cancel()
+	require.Eventually(t, func() bool {
+		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+	}, 4*time.Second, 500*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return !env.coordinator.IsStreamActive()
+	}, 2*time.Second, 250*time.Millisecond)
+
+	// Important: Close the sidecar explicitly to release LevelDB resources
+	require.NotNil(t, env.sidecar)
+	env.sidecar.Close()
+
+	// Create a new context for the remaining operations
+	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(newCancel)
+
+	t.Log("Modify the Sidecar config, use illegal host endpoint")
+	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
+	// as the sidecar expects the Endpoints to be non-empty.
+	env.config.Orderer.Connection.Endpoints = []*connection.OrdererEndpoint{
+		{Endpoint: connection.Endpoint{Host: "localhost", Port: 9999}},
+	}
+
+	var err error
+	t.Log("Create a new sidecar with the new configuration")
+	env.sidecar, err = New(&env.config)
+	require.NoError(t, err)
+	t.Cleanup(env.sidecar.Close)
+
+	// The Genesis block path is empty since the test didn't set WithConfigBlock:
+	t.Log("Set the coordinator config block to use orderer AllEndpoints.")
+	env.coordinator.SetConfigTransaction(env.configBlock.Data.Data[0])
+
+	t.Log("Start the new sidecar")
+	env.start(newCtx, t, 0)
+
+	env.requireBlock(newCtx, t, 0)
+
+	// Now we can send transactions with the new configuration
+	env.sendTransactionsAndEnsureCommitted(newCtx, t, 1)
 }
 
 func TestSidecarRecovery(t *testing.T) {
