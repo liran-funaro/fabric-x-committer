@@ -47,15 +47,15 @@ jobs:
         - make lint
     - stage: test
       name: Unit Test (non DB)
-      script: make test-non-db-packages
+      script: make test-no-db
     - stage: test
-      name: Unit Tests (postgres)
+      name: Requires and Core DB Tests (postgres)
       install: sh scripts/get-and-start-postgres.sh
-      script: make test-db-packages
+      script: make test-requires-db test-core-db
     - stage: test
-      name: Unit Tests (yugabyte)
+      name: Core DB Tests (yugabyte)
       install: sh scripts/get-and-start-yuga.sh
-      script: make test-db-packages
+      script: make test-core-db
     - stage: test
       name: Integration Tests (yugabyte)
       install: sh scripts/get-and-start-yuga.sh
