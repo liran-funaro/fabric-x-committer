@@ -29,7 +29,6 @@ cache_dir       ?= $(shell $(go_cmd) env GOCACHE)
 mod_cache_dir   ?= $(shell $(go_cmd) env GOMODCACHE)
 go_version      ?= 1.24
 golang_image    ?= golang:$(go_version)-bookworm
-db_image        ?= yugabytedb/yugabyte:2.20.7.0-b58
 
 dockerfile_base_dir       ?= $(project_dir)/docker/images
 dockerfile_test_node_dir  ?= $(dockerfile_base_dir)/test_node
@@ -52,7 +51,8 @@ os             ?= $(shell $(go_cmd) env GOOS)
 arch           ?= $(shell $(go_cmd) env GOARCH)
 multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
-go_build       ?= $(env) $(go_cmd) build -buildvcs=false -o
+build_flags    ?= -buildvcs=false -o
+go_build       ?= $(env) $(go_cmd) build $(build_flags)
 
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
@@ -164,6 +164,7 @@ build-arch-%: FORCE
 		os=$(word 1, $(subst -, ,$*)) \
 		arch=$(word 2, $(subst -, ,$*)) \
 		output_dir=$(arch_output_dir)/$* \
+		build_flags="-ldflags '-w -s' $(build_flags)" \
 		build
 
 coordinator: FORCE $(output_dir)
@@ -205,11 +206,10 @@ build-docker: FORCE $(cache_dir) $(mod_cache_dir)
     make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
-build-test-node-image: build-arch pull-db-image
+build-test-node-image: build-arch
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
 		-t ${image_namespace}/committer-test-node:${version} \
-		--build-arg DB_IMAGE=${db_image} \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		. $(docker_push_arg)
 
@@ -225,9 +225,6 @@ build-mock-orderer-image: build-arch
 		--build-arg PORTS=7050 \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		.
-
-pull-db-image: FORCE
-	${docker_cmd} pull ${db_image}
 
 lint: FORCE
 	@echo "Running Go Linters..."
