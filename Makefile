@@ -56,6 +56,8 @@ go_build       ?= $(env) $(go_cmd) build $(build_flags)
 
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
+PYTHON_CMD ?= python
+
 # Set additional parameter to build the test-node for different platforms and push
 # E.g., make multiplatform=true docker_push=true build-test-node-image
 docker_build_flags=--quiet
@@ -234,7 +236,9 @@ lint: FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Running SQL Linters..."
-	sh scripts/sql-lint.sh
+	git ls-files '*.sql' | sort -u | ${PYTHON_CMD} -m sqlfluff lint --dialect postgres
+	@echo "Running License Header Linters..."
+	scripts/license-lint.sh
 
 # This rule can be used to find and fix lint issues for specific package.
 full-lint-%: FORCE
