@@ -79,14 +79,18 @@ CORE_DB_PACKAGES_REGEXP = .*/scalable-committer/service/(vc|query)
 REQUIRES_DB_PACKAGES_REGEXP = .*/scalable-committer/(service/coordinator|loadgen|cmd)
 HEAVY_PACKAGES_REGEXP = .*/scalable-committer/(docker|integration)
 
-# Excludes integration and container tests. Use `make integration-test` and `make container-test`.
+# Excludes integration and container tests.
+# Use `test-integration`, `test-integration-runtime`, and `test-container`.
 test: build
 	@$(go_cmd) test -timeout 30m -v $(shell $(go_cmd) list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
 
-integration-test: build
-	$(go_cmd) test -timeout 30m -v ./integration/...
+test-integration: build
+	$(go_cmd) test -timeout 30m -v ./integration/test/...
 
-container-test: build-test-node-image build-mock-orderer-image
+test-integration-runtime: build
+	$(go_cmd) test -timeout 30m -v ./integration/runner/...
+
+test-container: build-test-node-image build-mock-orderer-image
 	$(go_cmd) test -v ./docker/...
 
 test-package-%: build
