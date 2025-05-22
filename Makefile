@@ -87,10 +87,10 @@ test: build
 	@$(go_cmd) test -timeout 30m -v $(shell $(go_cmd) list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
 
 test-integration: build
-	$(go_cmd) test -timeout 30m -v ./integration/test/...
+	$(go_cmd) test -timeout 30m -v ./integration/... -skip "DBResiliency.*"
 
-test-integration-runtime: build
-	$(go_cmd) test -timeout 30m -v ./integration/runner/...
+test-integration-db-resiliency: build
+	$(go_cmd) test -timeout 30m -v ./integration/... -run "DBResiliency.*"
 
 test-container: build-test-node-image build-mock-orderer-image
 	$(go_cmd) test -v ./docker/...

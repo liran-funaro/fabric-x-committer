@@ -66,8 +66,8 @@ jobs:
       install: scripts/get-and-start-yuga.sh
       script: travis_wait 30 make test-integration
     - stage: test
-      name: Integration Runtime (container)
-      script: make test-integration-runtime
+      name: Integration DB Resiliency (container)
+      script: make test-integration-db-resiliency
     - stage: test
       name: Build and test all-in-one test image (container)
       script: make test-container -j16
