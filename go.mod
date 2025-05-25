@@ -4,7 +4,7 @@
 //
 module github.ibm.com/decentralized-trust-research/scalable-committer
 
-go 1.24
+go 1.24.3
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
