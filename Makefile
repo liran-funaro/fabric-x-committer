@@ -136,6 +136,9 @@ kill-test-docker: FORCE
 	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(docker_cmd) rm -f
 	$(docker_cmd) ps -aq -f name=sc_postgres_unit_tests | xargs $(docker_cmd) rm -f
 
+bench-loadgen: FORCE
+	$(go_cmd) test ./loadgen/workload/... -bench "BenchmarkGen.*" -run=^$
+
 #########################
 # Generate protos
 #########################
