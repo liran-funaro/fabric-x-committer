@@ -136,8 +136,9 @@ kill-test-docker: FORCE
 	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(docker_cmd) rm -f
 	$(docker_cmd) ps -aq -f name=sc_postgres_unit_tests | xargs $(docker_cmd) rm -f
 
+# Run a load generation benchmarks with added op/sec column.
 bench-loadgen: FORCE
-	$(go_cmd) test ./loadgen/workload/... -bench "BenchmarkGen.*" -run=^$
+	$(go_cmd) test ./loadgen/workload/... -bench "BenchmarkGen.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
 
 #########################
 # Generate protos

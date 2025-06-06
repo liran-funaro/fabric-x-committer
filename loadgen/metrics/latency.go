@@ -23,15 +23,18 @@ type (
 
 	// SamplerConfig describes the latency sampling parameters.
 	SamplerConfig struct {
-		Type TraceSamplerType `mapstructure:"type"`
-		// Prefix related.
-		Prefix string `mapstructure:"prefix"`
-		// SampleHash related.
+		Type   TraceSamplerType `mapstructure:"type"`
+		Always bool             `mapstructure:"always"`
+		Never  bool             `mapstructure:"never"`
+		Prefix string           `mapstructure:"prefix"`
+		Hash   *SampleHash      `mapstructure:"hash"`
+	}
+
+	// SampleHash hash sampler.
+	SampleHash struct {
 		SamplePeriod uint64 `mapstructure:"sample-period"`
 		SampleSize   uint64 `mapstructure:"sample-size"`
 		Ratio        uint64 `mapstructure:"ratio"`
-		// SampleTimer related.
-		SamplingInterval time.Duration `mapstructure:"sampling-interval"`
 	}
 
 	// BucketConfig describes the latency bucket distribution.
@@ -58,12 +61,6 @@ const (
 	BucketEmpty   BucketDistribution = "empty"
 	BucketUniform BucketDistribution = "uniform"
 	BucketFixed   BucketDistribution = "fixed"
-
-	SampleAlways TraceSamplerType = "always"
-	SampleNever  TraceSamplerType = "never"
-	SamplePrefix TraceSamplerType = "prefix"
-	SampleHash   TraceSamplerType = "hash"
-	SampleTimer  TraceSamplerType = "timer"
 )
 
 // Buckets returns a list of buckets for latency monitoring.
@@ -88,58 +85,22 @@ func (c *BucketConfig) Buckets() []float64 {
 
 // TxSampler returns a KeyTracingSampler for latency monitoring.
 func (c *SamplerConfig) TxSampler() KeyTracingSampler {
-	switch c.Type {
-	case SampleAlways:
-		return func(string) bool { return true }
-	case SampleNever, "":
+	switch {
+	default:
+		fallthrough
+	case c.Never:
 		return func(string) bool { return false }
-	case SamplePrefix:
+	case c.Always:
+		return func(string) bool { return true }
+	case len(c.Prefix) > 0:
 		return func(key string) bool {
 			return len(key) >= len(c.Prefix) && key[:len(c.Prefix)] == c.Prefix
 		}
-	case SampleHash:
+	case c.Hash != nil:
 		return func(key string) bool {
 			hash := binary.LittleEndian.Uint64([]byte(key))
-			return hash%c.SamplePeriod < c.SampleSize && hash%c.Ratio == 0
+			return hash%c.Hash.SamplePeriod < c.Hash.SampleSize && hash%c.Hash.Ratio == 0
 		}
-	case SampleTimer:
-		ticker := time.NewTicker(c.SamplingInterval)
-		return func(string) bool {
-			select {
-			case <-ticker.C:
-				return true
-			default:
-				return false
-			}
-		}
-	default:
-		panic("type " + c.Type + " not defined")
-	}
-}
-
-// BlockSampler returns a NumberTracingSampler for latency monitoring.
-func (c *SamplerConfig) BlockSampler() NumberTracingSampler {
-	switch c.Type {
-	case SampleAlways:
-		return func(uint64) bool { return true }
-	case SampleNever, "":
-		return func(uint64) bool { return false }
-	case SampleHash:
-		return func(hash uint64) bool {
-			return hash%c.SamplePeriod < c.SampleSize && hash%c.Ratio == 0
-		}
-	case SampleTimer:
-		ticker := time.NewTicker(c.SamplingInterval)
-		return func(uint64) bool {
-			select {
-			case <-ticker.C:
-				return true
-			default:
-				return false
-			}
-		}
-	default:
-		panic("type " + c.Type + " not supported")
 	}
 }
 

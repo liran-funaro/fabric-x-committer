@@ -11,7 +11,6 @@ import (
 	promgo "github.com/prometheus/client_model/go"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
 )
@@ -98,8 +97,7 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 				Help:      "Latency of invalid transactions in seconds",
 				Buckets:   buckets,
 			}),
-			blockSampler: sampler.BlockSampler(),
-			txSampler:    sampler.TxSampler(),
+			txSampler: sampler.TxSampler(),
 		},
 	}
 }
@@ -125,11 +123,16 @@ func getCounterValue(c prometheus.Counter) uint64 {
 	return uint64(gm.Counter.GetValue())
 }
 
-// OnSendBlock is a function that increments the block sent total and calls the latency tracker.
-func (c *PerfMetrics) OnSendBlock(block *protocoordinatorservice.Block) {
+// OnSendBatch is a function that increments the block sent total and calls the latency tracker.
+func (c *PerfMetrics) OnSendBatch(txs []*protoblocktx.Tx) {
+	if len(txs) == 0 {
+		return
+	}
 	promutil.AddToCounter(c.blockSentTotal, 1)
-	promutil.AddToCounter(c.transactionSentTotal, len(block.Txs))
-	c.latencyTracker.onSendBlock(block)
+	promutil.AddToCounter(c.transactionSentTotal, len(txs))
+	for _, tx := range txs {
+		c.latencyTracker.onSendTransaction(tx.Id)
+	}
 }
 
 // OnSendTransaction is a function that increments the transaction sent total and calls the latency tracker.

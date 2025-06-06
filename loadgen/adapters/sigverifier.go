@@ -15,7 +15,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
@@ -74,7 +73,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 
 	for _, stream := range streams {
 		g.Go(func() error {
-			return sendBlocks(gCtx, &c.commonAdapter, txStream, mapVSBatch, stream.Send)
+			return sendBlocks(gCtx, &c.commonAdapter, txStream, c.mapToBatch, stream.Send)
 		})
 		g.Go(func() error {
 			defer dCancel() // We stop sending if we can't track the received items.
@@ -143,12 +142,12 @@ func (c *SvAdapter) receiveStatus(
 	return nil
 }
 
-func mapVSBatch(b *protocoordinatorservice.Block) (*protosigverifierservice.RequestBatch, error) {
-	reqs := make([]*protosigverifierservice.Request, len(b.Txs))
-	for i, tx := range b.Txs {
+func (c *SvAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protosigverifierservice.RequestBatch, error) {
+	reqs := make([]*protosigverifierservice.Request, len(txs))
+	for i, tx := range txs {
 		reqs[i] = &protosigverifierservice.Request{
-			BlockNum: b.Number,
-			TxNum:    uint64(b.TxsNum[i]),
+			BlockNum: c.NextBlockNum(),
+			TxNum:    uint64(i), //nolint:gosec // int -> uint64.
 			Tx:       tx,
 		}
 	}

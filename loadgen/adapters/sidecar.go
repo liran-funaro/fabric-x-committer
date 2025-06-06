@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -86,7 +86,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		})
 	})
 	g.Go(func() error {
-		return sendBlocks(gCtx, &c.commonAdapter, txStream, c.mapSidecarBlock,
+		return sendBlocks(gCtx, &c.commonAdapter, txStream, c.mapToBlock,
 			func(fabricBlock *common.Block) error {
 				if !orderer.SubmitBlock(gCtx, fabricBlock) {
 					return errors.New("failed to submit block")
@@ -108,9 +108,9 @@ func (*SidecarAdapter) Supports() Phases {
 	}
 }
 
-func (c *SidecarAdapter) mapSidecarBlock(block *protocoordinatorservice.Block) (*common.Block, error) {
-	data := make([][]byte, len(block.Txs))
-	for i, tx := range block.Txs {
+func (c *SidecarAdapter) mapToBlock(txs []*protoblocktx.Tx) (*common.Block, error) {
+	data := make([][]byte, len(txs))
+	for i, tx := range txs {
 		env, _, err := serialization.CreateEnvelope(c.config.ChannelID, nil, tx)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed creating envelope")
@@ -122,7 +122,7 @@ func (c *SidecarAdapter) mapSidecarBlock(block *protocoordinatorservice.Block) (
 	}
 	return &common.Block{
 		Header: &common.BlockHeader{
-			Number: block.Number,
+			Number: c.NextBlockNum(),
 		},
 		Data: &common.BlockData{
 			Data: data,

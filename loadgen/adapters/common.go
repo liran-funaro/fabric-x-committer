@@ -12,7 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
@@ -55,9 +55,9 @@ type (
 		nextBlockNum atomic.Uint64
 	}
 
-	// blockWithMapping contains the block with its mapping to the adapter's form.
-	blockWithMapping[T any] struct {
-		block   *protocoordinatorservice.Block
+	// txsWithMapping contains the TXs with its mapping to the adapter's form.
+	txsWithMapping[T any] struct {
+		txs     []*protoblocktx.Tx
 		mapping T
 	}
 )
@@ -104,59 +104,74 @@ func (*commonAdapter) Supports() Phases {
 	}
 }
 
+// NextBlockNum returns the next block number to use.
+func (c *commonAdapter) NextBlockNum() uint64 {
+	return c.nextBlockNum.Add(1) - 1
+}
+
 //nolint:revive // Parameters are required.
 func sendBlocks[T any](
 	ctx context.Context,
 	c *commonAdapter,
 	txStream *workload.StreamWithSetup,
-	mapper func(*protocoordinatorservice.Block) (T, error),
+	mapper func([]*protoblocktx.Tx) (T, error),
 	sender func(T) error,
 ) error {
-	blockGen := txStream.MakeBlocksGenerator()
-	queueRaw := make(chan *blockWithMapping[T], c.res.Stream.BuffersSize)
-
+	queueRaw := make(chan *txsWithMapping[T], c.res.Stream.BuffersSize)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	queue := channel.NewReaderWriter(ctx, queueRaw)
-
 	// Pipeline the mapping process.
 	go func() {
 		defer close(queueRaw)
-		for ctx.Err() == nil {
-			block := blockGen.Next(ctx)
-			if block == nil {
-				// If the context ended, the generator returns nil.
-				return
-			}
-			block.Number = c.nextBlockNum.Add(1) - 1
-			mappedBlock, err := mapper(block)
-			if err != nil {
-				logger.Errorf("failed mapping block: %+v", err)
-				return
-			}
-			queue.Write(&blockWithMapping[T]{
-				block:   block,
-				mapping: mappedBlock,
-			})
-		}
+		mapToQueue(ctx, queueRaw, txStream, mapper, int(c.res.Profile.Block.Size)) //nolint:gosec // uint64 -> int.
 	}()
 
+	queue := channel.NewReader(ctx, queueRaw)
 	for ctx.Err() == nil {
 		b, ok := queue.Read()
 		if !ok {
 			// The context ended.
 			return nil
 		}
-		logger.Debugf("Sending block %d with %d TXs", b.block.Number, len(b.block.Txs))
+		logger.Debugf("Sending block with %d TXs", len(b.txs))
 		if err := sender(b.mapping); err != nil {
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed sending block")
 		}
-		c.res.Metrics.OnSendBlock(b.block)
+		c.res.Metrics.OnSendBatch(b.txs)
 		if c.res.isSendLimit() {
 			return nil
 		}
 	}
 	return nil
+}
+
+//nolint:revive // Parameters are required.
+func mapToQueue[T any](
+	ctx context.Context,
+	queueRaw chan *txsWithMapping[T],
+	txStream *workload.StreamWithSetup,
+	mapper func([]*protoblocktx.Tx) (T, error),
+	blockSize int,
+) {
+	queue := channel.NewWriter(ctx, queueRaw)
+	txGen := txStream.MakeTxGenerator()
+	for ctx.Err() == nil {
+		txs := txGen.Next(ctx, blockSize)
+		if len(txs) == 0 || txs[len(txs)-1] == nil {
+			// Generators return nil when their stream is done.
+			// This indicates that the block generator should also be done.
+			return
+		}
+		mappedBatch, err := mapper(txs)
+		if err != nil {
+			logger.Errorf("failed mapping block: %+v", err)
+			return
+		}
+		queue.Write(&txsWithMapping[T]{
+			txs:     txs,
+			mapping: mappedBatch,
+		})
+	}
 }
 
 func (r *ClientResources) isSendLimit() bool {

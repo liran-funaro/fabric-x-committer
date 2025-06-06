@@ -114,43 +114,20 @@ func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 	printResult()
 }
 
-func BenchmarkGenBlock(b *testing.B) {
+func BenchmarkGenTx(b *testing.B) {
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
 		t := NewTxStream(p, defaultBenchStreamOptions())
 
 		b.ResetTimer()
 		test.RunServiceForTest(b.Context(), b, t.Run, t.WaitForReady)
-		g := &BlockGenerator{
-			TxGenerator: t.MakeGenerator(),
-			BlockSize:   p.Block.Size,
-		}
+		g := t.MakeGenerator()
 
 		var sum float64
-		for range b.N {
-			blk := g.Next(b.Context())
-			sum += float64(len(blk.Txs))
-		}
-		b.StopTimer()
-
-		// Prevent compiler optimizations.
-		result += sum
-	})
-}
-
-func BenchmarkGenTx(b *testing.B) {
-	//nolint:thelper // false positive.
-	genericBench(b, func(b *testing.B, p *Profile) {
-		c := NewTxStream(p, defaultBenchStreamOptions())
-
-		b.ResetTimer()
-		test.RunServiceForTest(b.Context(), b, c.Run, c.WaitForReady)
-		g := c.MakeGenerator()
-
-		var sum float64
-		for range b.N {
-			tx := g.Next(b.Context())
-			sum += float64(len(tx.Namespaces))
+		n := max(1, b.N/int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+		for range n {
+			txs := g.NextN(b.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+			sum += float64(len(txs))
 		}
 		b.StopTimer()
 
@@ -169,9 +146,10 @@ func BenchmarkGenQuery(b *testing.B) {
 		g := c.MakeGenerator()
 
 		var sum float64
-		for range b.N {
-			q := g.Next(b.Context())
-			sum += float64(len(q.Namespaces))
+		n := max(1, b.N/int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+		for range n {
+			q := g.NextN(b.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+			sum += float64(len(q))
 		}
 		b.StopTimer()
 
@@ -294,15 +272,12 @@ func TestGenValidBlock(t *testing.T) {
 		), func(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
-			g := &BlockGenerator{
-				TxGenerator: c.MakeGenerator(),
-				BlockSize:   p.Block.Size,
-			}
+			g := c.MakeGenerator()
 			signer := NewTxSignerVerifier(p.Transaction.Policy)
 
 			for range 5 {
-				block := g.Next(t.Context())
-				for _, tx := range block.Txs {
+				txs := g.NextN(t.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+				for _, tx := range txs {
 					requireValidTx(t, tx, p, signer)
 				}
 			}
@@ -470,30 +445,27 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	blockGen *BlockGenerator
+	txGen    *RateLimiterGenerator[*protoblocktx.Tx]
 	queryGen *RateLimiterGenerator[*protoqueryservice.Query]
 }
 
 func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
 	t.Helper()
 	q := &queryTestEnv{
-		p:    p,
-		keys: make(map[string]*struct{}),
-		blockGen: &BlockGenerator{
-			TxGenerator: startTxGeneratorUnderTest(t, p, o).MakeGenerator(),
-			BlockSize:   p.Block.Size,
-		},
+		p:        p,
+		keys:     make(map[string]*struct{}),
+		txGen:    startTxGeneratorUnderTest(t, p, o).MakeGenerator(),
 		queryGen: startQueryGeneratorUnderTest(t, p, o),
 	}
 	for range 100 {
-		q.addBlock(t.Context())
+		q.addBlock(t.Context(), p.Block.Size)
 	}
 	return q
 }
 
-func (q *queryTestEnv) addBlock(ctx context.Context) {
-	block := q.blockGen.Next(ctx)
-	for _, tx := range block.Txs {
+func (q *queryTestEnv) addBlock(ctx context.Context, size uint64) {
+	txs := q.txGen.NextN(ctx, int(size)) //nolint:gosec // uint64 -> int.
+	for _, tx := range txs {
 		for _, ns := range tx.Namespaces {
 			for _, r := range ns.ReadsOnly {
 				q.keys[string(r.Key)] = nil
@@ -540,7 +512,7 @@ func TestQuery(t *testing.T) {
 				// keys in the block might not be the same as in the query.
 				// So we need to consume blocks until we found all the keys.
 				require.Eventuallyf(t, func() bool {
-					env.addBlock(t.Context())
+					env.addBlock(t.Context(), p.Block.Size)
 					return len(query.Namespaces[0].Keys) == env.countExistingKeys(query.Namespaces[0].Keys)
 				}, time.Second*5, 1, "iteration %d", i)
 			}
