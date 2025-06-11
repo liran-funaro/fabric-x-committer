@@ -10,7 +10,7 @@ monitoring:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
   latency:
     sampler:
-      prefix: a
+      portion: 0.01
     buckets:
       distribution: uniform
       max-latency: 5s

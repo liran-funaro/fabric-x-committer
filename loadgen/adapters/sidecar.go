@@ -108,16 +108,19 @@ func (*SidecarAdapter) Supports() Phases {
 	}
 }
 
-func (c *SidecarAdapter) mapToBlock(txs []*protoblocktx.Tx) (*common.Block, error) {
+// mapToBlock creates a Fabric block. It uses the envelope's TX ID to track the TXs latency.
+func (c *SidecarAdapter) mapToBlock(txs []*protoblocktx.Tx) (*common.Block, []string, error) {
 	data := make([][]byte, len(txs))
+	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
-		env, _, err := serialization.CreateEnvelope(c.config.ChannelID, nil, tx)
+		env, txID, err := serialization.CreateEnvelope(c.config.ChannelID, nil, tx)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed creating envelope")
+			return nil, nil, errors.Wrap(err, "failed creating envelope")
 		}
+		txIDs[i] = txID
 		data[i], err = proto.Marshal(env)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed marshaling envelope")
+			return nil, nil, errors.Wrap(err, "failed marshaling envelope")
 		}
 	}
 	return &common.Block{
@@ -127,5 +130,5 @@ func (c *SidecarAdapter) mapToBlock(txs []*protoblocktx.Tx) (*common.Block, erro
 		Data: &common.BlockData{
 			Data: data,
 		},
-	}, nil
+	}, txIDs, nil
 }

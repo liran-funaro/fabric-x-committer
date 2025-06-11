@@ -111,7 +111,8 @@ func (c *VcAdapter) receiveStatus(
 	return nil
 }
 
-func (c *VcAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protovcservice.TransactionBatch, error) {
+// mapToBatch creates a VC batch. It uses the protoblocktx.Tx.Id to track the TXs latency.
+func (c *VcAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protovcservice.TransactionBatch, []string, error) {
 	batchTxs := make([]*protovcservice.Transaction, len(txs))
 	for i, tx := range txs {
 		batchTxs[i] = &protovcservice.Transaction{
@@ -121,5 +122,5 @@ func (c *VcAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protovcservice.Transact
 			TxNum:       uint32(i), //nolint:gosec // int -> uint32.
 		}
 	}
-	return &protovcservice.TransactionBatch{Transactions: batchTxs}, nil
+	return &protovcservice.TransactionBatch{Transactions: batchTxs}, getTXsIDs(txs), nil
 }

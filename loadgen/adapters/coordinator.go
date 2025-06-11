@@ -74,7 +74,8 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream *workload
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-func (c *CoordinatorAdapter) mapToBlock(txs []*protoblocktx.Tx) (*protocoordinatorservice.Block, error) {
+// mapToBlock creates a Coordinator block. It uses the protoblocktx.Tx.Id to track the TXs latency.
+func (c *CoordinatorAdapter) mapToBlock(txs []*protoblocktx.Tx) (*protocoordinatorservice.Block, []string, error) {
 	txNums := c.txNumCache.Load()
 	if txNums == nil || len(*txNums) < len(txs) {
 		// Lazy initialization of the tx numbers.
@@ -86,7 +87,7 @@ func (c *CoordinatorAdapter) mapToBlock(txs []*protoblocktx.Tx) (*protocoordinat
 		Number: c.NextBlockNum(),
 		Txs:    txs,
 		TxsNum: (*txNums)[:len(txs)],
-	}, nil
+	}, getTXsIDs(txs), nil
 }
 
 // Progress a submitted block indicates progress for the coordinator as it guaranteed to preserve the order.

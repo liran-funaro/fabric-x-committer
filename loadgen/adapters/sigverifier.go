@@ -142,7 +142,8 @@ func (c *SvAdapter) receiveStatus(
 	return nil
 }
 
-func (c *SvAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protosigverifierservice.RequestBatch, error) {
+// mapToBatch creates a Verifier request batch. It uses the protoblocktx.Tx.Id to track the TXs latency.
+func (c *SvAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protosigverifierservice.RequestBatch, []string, error) {
 	reqs := make([]*protosigverifierservice.Request, len(txs))
 	for i, tx := range txs {
 		reqs[i] = &protosigverifierservice.Request{
@@ -151,5 +152,5 @@ func (c *SvAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protosigverifierservice
 			Tx:       tx,
 		}
 	}
-	return &protosigverifierservice.RequestBatch{Requests: reqs}, nil
+	return &protosigverifierservice.RequestBatch{Requests: reqs}, getTXsIDs(txs), nil
 }

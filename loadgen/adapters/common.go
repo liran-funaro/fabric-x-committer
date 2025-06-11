@@ -57,8 +57,8 @@ type (
 
 	// txsWithMapping contains the TXs with its mapping to the adapter's form.
 	txsWithMapping[T any] struct {
-		txs     []*protoblocktx.Tx
 		mapping T
+		txIDs   []string
 	}
 )
 
@@ -109,12 +109,16 @@ func (c *commonAdapter) NextBlockNum() uint64 {
 	return c.nextBlockNum.Add(1) - 1
 }
 
+// sendBlocks submits TXs from the stream using the sender.
+// It uses the mapper to map the TX stream to the sender's form.
+// The mapper also outputs a list of TX IDs that are used to track the TX latency.
+//
 //nolint:revive // Parameters are required.
 func sendBlocks[T any](
 	ctx context.Context,
 	c *commonAdapter,
 	txStream *workload.StreamWithSetup,
-	mapper func([]*protoblocktx.Tx) (T, error),
+	mapper func([]*protoblocktx.Tx) (T, []string, error),
 	sender func(T) error,
 ) error {
 	queueRaw := make(chan *txsWithMapping[T], c.res.Stream.BuffersSize)
@@ -133,11 +137,11 @@ func sendBlocks[T any](
 			// The context ended.
 			return nil
 		}
-		logger.Debugf("Sending block with %d TXs", len(b.txs))
+		logger.Debugf("Sending block with %d TXs", len(b.txIDs))
 		if err := sender(b.mapping); err != nil {
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed sending block")
 		}
-		c.res.Metrics.OnSendBatch(b.txs)
+		c.res.Metrics.OnSendBatch(b.txIDs)
 		if c.res.isSendLimit() {
 			return nil
 		}
@@ -150,7 +154,7 @@ func mapToQueue[T any](
 	ctx context.Context,
 	queueRaw chan *txsWithMapping[T],
 	txStream *workload.StreamWithSetup,
-	mapper func([]*protoblocktx.Tx) (T, error),
+	mapper func([]*protoblocktx.Tx) (T, []string, error),
 	blockSize int,
 ) {
 	queue := channel.NewWriter(ctx, queueRaw)
@@ -162,16 +166,24 @@ func mapToQueue[T any](
 			// This indicates that the block generator should also be done.
 			return
 		}
-		mappedBatch, err := mapper(txs)
+		mappedBatch, txIDs, err := mapper(txs)
 		if err != nil {
 			logger.Errorf("failed mapping block: %+v", err)
 			return
 		}
 		queue.Write(&txsWithMapping[T]{
-			txs:     txs,
 			mapping: mappedBatch,
+			txIDs:   txIDs,
 		})
 	}
+}
+
+func getTXsIDs(txs []*protoblocktx.Tx) []string {
+	txIDs := make([]string, len(txs))
+	for i, tx := range txs {
+		txIDs[i] = tx.Id
+	}
+	return txIDs
 }
 
 func (r *ClientResources) isSendLimit() bool {

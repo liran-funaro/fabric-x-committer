@@ -83,6 +83,7 @@ func (*OrdererAdapter) Supports() Phases {
 	}
 }
 
+// sendTransactions submits Fabric TXs. It uses the envelope's TX ID to track the TXs latency.
 func (c *OrdererAdapter) sendTransactions(
 	ctx context.Context, txStream *workload.StreamWithSetup, stream *broadcastdeliver.EnvelopedStream,
 ) error {

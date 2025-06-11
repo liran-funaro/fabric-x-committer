@@ -7,7 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package metrics
 
 import (
-	"encoding/binary"
+	"hash/maphash"
+	"math"
 	"sort"
 	"time"
 
@@ -23,18 +24,10 @@ type (
 
 	// SamplerConfig describes the latency sampling parameters.
 	SamplerConfig struct {
-		Type   TraceSamplerType `mapstructure:"type"`
-		Always bool             `mapstructure:"always"`
-		Never  bool             `mapstructure:"never"`
-		Prefix string           `mapstructure:"prefix"`
-		Hash   *SampleHash      `mapstructure:"hash"`
-	}
-
-	// SampleHash hash sampler.
-	SampleHash struct {
-		SamplePeriod uint64 `mapstructure:"sample-period"`
-		SampleSize   uint64 `mapstructure:"sample-size"`
-		Ratio        uint64 `mapstructure:"ratio"`
+		// Prefix checks for TXs that have the given prefix.
+		Prefix string `mapstructure:"prefix" json:"prefix,omitempty"`
+		// Portion uses the simple and efficient hash of the key to sample the required portion of TXs.
+		Portion float64 `mapstructure:"portion" json:"portion,omitempty"`
 	}
 
 	// BucketConfig describes the latency bucket distribution.
@@ -61,6 +54,9 @@ const (
 	BucketEmpty   BucketDistribution = "empty"
 	BucketUniform BucketDistribution = "uniform"
 	BucketFixed   BucketDistribution = "fixed"
+
+	// portionEps is chosen to ensure 1 > (1-eps).
+	portionEps float64 = 1e-16
 )
 
 // Buckets returns a list of buckets for latency monitoring.
@@ -86,20 +82,20 @@ func (c *BucketConfig) Buckets() []float64 {
 // TxSampler returns a KeyTracingSampler for latency monitoring.
 func (c *SamplerConfig) TxSampler() KeyTracingSampler {
 	switch {
-	default:
-		fallthrough
-	case c.Never:
-		return func(string) bool { return false }
-	case c.Always:
-		return func(string) bool { return true }
 	case len(c.Prefix) > 0:
+		prefixSize := len(c.Prefix)
 		return func(key string) bool {
-			return len(key) >= len(c.Prefix) && key[:len(c.Prefix)] == c.Prefix
+			return len(key) >= prefixSize && key[:prefixSize] == c.Prefix
 		}
-	case c.Hash != nil:
+	case c.Portion < portionEps:
+		return func(string) bool { return false }
+	case c.Portion > (float64(1) - portionEps):
+		return func(string) bool { return true }
+	default:
+		seed := maphash.MakeSeed()
+		valueLimit := uint64(math.Round(c.Portion * math.MaxUint64))
 		return func(key string) bool {
-			hash := binary.LittleEndian.Uint64([]byte(key))
-			return hash%c.Hash.SamplePeriod < c.Hash.SampleSize && hash%c.Hash.Ratio == 0
+			return maphash.String(seed, key) < valueLimit
 		}
 	}
 }

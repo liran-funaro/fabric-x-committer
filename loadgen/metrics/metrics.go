@@ -50,8 +50,6 @@ type (
 // NewLoadgenServiceMetrics creates a new PerfMetrics instance.
 func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 	p := monitoring.NewProvider()
-	buckets := c.Latency.BucketConfig.Buckets()
-	sampler := &c.Latency.SamplerConfig
 	return &PerfMetrics{
 		Provider: p,
 		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
@@ -84,21 +82,27 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
-		latencyTracker: &latencyReceiverSender{
-			validLatency: p.NewHistogram(prometheus.HistogramOpts{
-				Namespace: "loadgen",
-				Name:      "valid_transaction_latency_seconds",
-				Help:      "Latency of transactions in seconds",
-				Buckets:   buckets,
-			}),
-			invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
-				Namespace: "loadgen",
-				Name:      "invalid_transaction_latency_seconds",
-				Help:      "Latency of invalid transactions in seconds",
-				Buckets:   buckets,
-			}),
-			txSampler: sampler.TxSampler(),
-		},
+		latencyTracker: newLatencyReceiverSender(p, &c.Latency),
+	}
+}
+
+func newLatencyReceiverSender(p *monitoring.Provider, conf *LatencyConfig) *latencyReceiverSender {
+	buckets := conf.BucketConfig.Buckets()
+	sampler := &conf.SamplerConfig
+	return &latencyReceiverSender{
+		validLatency: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loadgen",
+			Name:      "valid_transaction_latency_seconds",
+			Help:      "Latency of transactions in seconds",
+			Buckets:   buckets,
+		}),
+		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loadgen",
+			Name:      "invalid_transaction_latency_seconds",
+			Help:      "Latency of invalid transactions in seconds",
+			Buckets:   buckets,
+		}),
+		txSampler: sampler.TxSampler(),
 	}
 }
 
@@ -124,14 +128,14 @@ func getCounterValue(c prometheus.Counter) uint64 {
 }
 
 // OnSendBatch is a function that increments the block sent total and calls the latency tracker.
-func (c *PerfMetrics) OnSendBatch(txs []*protoblocktx.Tx) {
-	if len(txs) == 0 {
+func (c *PerfMetrics) OnSendBatch(txIDs []string) {
+	if len(txIDs) == 0 {
 		return
 	}
 	promutil.AddToCounter(c.blockSentTotal, 1)
-	promutil.AddToCounter(c.transactionSentTotal, len(txs))
-	for _, tx := range txs {
-		c.latencyTracker.onSendTransaction(tx.Id)
+	promutil.AddToCounter(c.transactionSentTotal, len(txIDs))
+	for _, txID := range txIDs {
+		c.latencyTracker.onSendTransaction(txID)
 	}
 }
 
