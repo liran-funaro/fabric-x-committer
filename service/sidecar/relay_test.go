@@ -93,7 +93,8 @@ func TestRelayNormalBlock(t *testing.T) {
 	require.Equal(t, blk0, committedBlock0)
 
 	m := relayEnv.metrics
-	require.Greater(t, test.GetMetricValue(t, m.blockProcessingInRelaySeconds), float64(0))
+	require.Greater(t, test.GetMetricValue(t, m.blockMappingInRelaySeconds), float64(0))
+	require.Greater(t, test.GetMetricValue(t, m.mappedBlockProcessingInRelaySeconds), float64(0))
 	require.Greater(t, test.GetMetricValue(t, m.transactionStatusesProcessingInRelaySeconds), float64(0))
 }
 
