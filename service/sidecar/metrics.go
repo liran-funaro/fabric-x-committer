@@ -30,6 +30,9 @@ type perfMetrics struct {
 	committedBlocksQueueSize        prometheus.Gauge
 
 	coordConnection *monitoring.ConnectionMetrics
+
+	appendBlockToLedgerSeconds prometheus.Histogram
+	blockHeight                prometheus.Gauge
 }
 
 func newPerformanceMetrics() *perfMetrics {
@@ -86,6 +89,19 @@ func newPerformanceMetrics() *perfMetrics {
 		coordConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
 			Namespace:       "sidecar",
 			RemoteNamespace: "coordinator",
+		}),
+		appendBlockToLedgerSeconds: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "sidecar",
+			Subsystem: "ledger",
+			Name:      "append_block_seconds",
+			Help:      "Time spent appending a block to the ledger.",
+			Buckets:   histoBuckets,
+		}),
+		blockHeight: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "ledger",
+			Name:      "block_height",
+			Help:      "The current block height of the ledger.",
 		}),
 	}
 }
