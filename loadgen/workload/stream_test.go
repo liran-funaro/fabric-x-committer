@@ -30,37 +30,6 @@ func printResult() {
 	fmt.Printf("Result: %v\n", result)
 }
 
-func defaultProfile(workers uint32) *Profile {
-	return &Profile{
-		Key: KeyProfile{
-			Size: 32,
-		},
-		Block: BlockProfile{
-			// We use a small block to reduce the CPU load during tests.
-			Size: 10,
-		},
-		Transaction: TransactionProfile{
-			ReadWriteCount: NewConstantDistribution(2),
-			Policy: &PolicyProfile{
-				NamespacePolicies: map[string]*Policy{
-					GeneratedNamespaceID:  {Scheme: signature.Ecdsa},
-					types.MetaNamespaceID: {Scheme: signature.Ecdsa},
-				},
-			},
-		},
-		Query: QueryProfile{
-			QuerySize:             NewConstantDistribution(100),
-			MinInvalidKeysPortion: NewConstantDistribution(0),
-			Shuffle:               false,
-		},
-		Conflicts: ConflictProfile{
-			InvalidSignatures: Never,
-		},
-		Seed:    249822374033311501,
-		Workers: workers,
-	}
-}
-
 func defaultStreamOptions() *StreamOptions {
 	// We set low values for the buffer and batch to reduce the CPU load during tests.
 	return &StreamOptions{
@@ -70,7 +39,7 @@ func defaultStreamOptions() *StreamOptions {
 }
 
 func defaultBenchProfile(workers uint32) *Profile {
-	p := defaultProfile(workers)
+	p := DefaultProfile(workers)
 	p.Block.Size = 1024
 	p.Query.QuerySize = NewConstantDistribution(1024)
 	return p
@@ -95,6 +64,8 @@ func benchTxProfiles() (profiles []*Profile) {
 		for _, p := range benchWorkersProfiles() {
 			if !sign {
 				p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.NoScheme
+			} else {
+				p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.Ecdsa
 			}
 			profiles = append(profiles, p)
 		}
@@ -203,7 +174,7 @@ func requireValidTx(t *testing.T, tx *protoblocktx.Tx, profile *Profile, signer 
 
 func testWorkersProfiles() (profiles []*Profile) {
 	for _, workers := range []uint32{1, 2, 4, 8} {
-		profiles = append(profiles, defaultProfile(workers))
+		profiles = append(profiles, DefaultProfile(workers))
 	}
 	return profiles
 }
@@ -287,7 +258,8 @@ func TestGenValidBlock(t *testing.T) {
 
 func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(1)
+	p := DefaultProfile(1)
+	p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.Ecdsa
 	p.Conflicts.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
@@ -305,7 +277,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 
 func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(1)
+	p := DefaultProfile(1)
 	p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
@@ -362,7 +334,7 @@ func TestGenDependentTx(t *testing.T) {
 
 func TestBlindWriteWithValue(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(1)
+	p := DefaultProfile(1)
 	p.Transaction.BlindWriteValueSize = 32
 	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
 
@@ -377,7 +349,7 @@ func TestBlindWriteWithValue(t *testing.T) {
 
 func TestReadWriteWithValue(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(1)
+	p := DefaultProfile(1)
 	p.Transaction.ReadWriteValueSize = 32
 	p.Transaction.ReadWriteCount = NewConstantDistribution(2)
 
@@ -392,7 +364,7 @@ func TestReadWriteWithValue(t *testing.T) {
 
 func TestGenTxWithRateLimit(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(8)
+	p := DefaultProfile(8)
 	limit := 100
 	expectedSeconds := 5
 	producedTotal := expectedSeconds * limit
@@ -430,7 +402,7 @@ func (m *modGenTester) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
 
 func TestGenTxWithModifier(t *testing.T) {
 	t.Parallel()
-	p := defaultProfile(8)
+	p := DefaultProfile(8)
 
 	mod0 := &modGenTester{types.VersionNumber(0).Bytes()}
 	mod1 := &modGenTester{types.VersionNumber(1).Bytes()}
@@ -526,7 +498,7 @@ func TestQueryWithInvalid(t *testing.T) {
 		portion := portion
 		t.Run(fmt.Sprintf("invalid-portion:%.1f", portion), func(t *testing.T) {
 			t.Parallel()
-			p := defaultProfile(1)
+			p := DefaultProfile(1)
 			p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
 			env := newQueryTestEnv(t, p, defaultStreamOptions())
 
@@ -548,7 +520,7 @@ func TestQueryShuffle(t *testing.T) {
 	portion := 0.5
 	t.Run("no-shuffle", func(t *testing.T) {
 		t.Parallel()
-		p := defaultProfile(1)
+		p := DefaultProfile(1)
 		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
 		p.Query.Shuffle = false
 		env := newQueryTestEnv(t, p, defaultStreamOptions())
@@ -563,7 +535,7 @@ func TestQueryShuffle(t *testing.T) {
 
 	t.Run("with-shuffle", func(t *testing.T) {
 		t.Parallel()
-		p := defaultProfile(1)
+		p := DefaultProfile(1)
 		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
 		p.Query.Shuffle = true
 		env := newQueryTestEnv(t, p, defaultStreamOptions())

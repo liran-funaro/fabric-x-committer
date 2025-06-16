@@ -149,6 +149,14 @@ kill-test-docker: FORCE
 bench-loadgen: FORCE
 	$(go_cmd) test ./loadgen/... -bench "Benchmark.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
 
+# Run dependency detector benchmarks with added op/sec column.
+bench-dep: FORCE
+	$(go_cmd) test ./service/coordinator/dependencygraph/... -bench "BenchmarkDependencyGraph.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
+
+# Run dependency detector benchmarks with added op/sec column.
+bench-preparer: FORCE
+	$(go_cmd) test ./service/vc/... -bench "BenchmarkPrepare.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+
 #########################
 # Generate protos
 #########################
