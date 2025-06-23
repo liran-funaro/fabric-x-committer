@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -123,8 +124,8 @@ func (p *RetryProfile) MakeGrpcRetryPolicyJSON() string {
 			"name": []any{make(map[string]any)},
 			"retryPolicy": map[string]any{
 				"maxAttempts":       calcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTime),
-				"initialBackoff":    fmt.Sprintf("%.1fs", initialInterval),
-				"maxBackoff":        fmt.Sprintf("%.1fs", maxInterval),
+				"initialBackoff":    formatSeconds(initialInterval),
+				"maxBackoff":        formatSeconds(maxInterval),
 				"backoffMultiplier": multiplier,
 				"retryableStatusCodes": []string{
 					"UNAVAILABLE",
@@ -140,6 +141,10 @@ func (p *RetryProfile) MakeGrpcRetryPolicyJSON() string {
 		return "{}"
 	}
 	return string(jsonString)
+}
+
+func formatSeconds(sec float64) string {
+	return fmt.Sprintf("%ss", strconv.FormatFloat(sec, 'f', -1, 64))
 }
 
 // calcMaxAttempts calculates the number of attempts given the following parameters:

@@ -401,9 +401,8 @@ func (c *CommitterRuntime) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 func (c *CommitterRuntime) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
 	t.Helper()
 	for _, tx := range txs {
-		_, resp, err := c.ordererStream.SubmitWithEnv(tx)
+		_, err := c.ordererStream.SendWithEnv(tx)
 		require.NoError(t, err)
-		require.Equal(t, common.Status_SUCCESS, resp.Status)
 	}
 }
 
