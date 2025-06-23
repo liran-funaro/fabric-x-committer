@@ -23,8 +23,9 @@ import (
 type (
 	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
 	ProcessWithConfig struct {
+		CmdBin         string
+		CmdName        string
 		process        ifrit.Process
-		cmdName        string
 		configFilePath string
 	}
 )
@@ -42,13 +43,15 @@ const (
 func newProcess(
 	t *testing.T,
 	cmdName string,
+	cmdBin string,
 	cmdTemplate string,
 	conf *config.SystemConfig,
 ) *ProcessWithConfig {
 	t.Helper()
 	configFilePath := config.CreateTempConfigFromTemplate(t, cmdTemplate, conf)
 	p := &ProcessWithConfig{
-		cmdName:        cmdName,
+		CmdName:        cmdName,
+		CmdBin:         cmdBin,
 		configFilePath: configFilePath,
 	}
 	t.Cleanup(func() {
@@ -67,7 +70,7 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 	select {
 	case <-p.process.Wait():
 	case <-time.After(30 * time.Second):
-		t.Errorf("Process [%s] did not terminate after 30 seconds", p.cmdName)
+		t.Errorf("Process [%s] did not terminate after 30 seconds", p.CmdName)
 	}
 }
 
@@ -75,12 +78,12 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 func (p *ProcessWithConfig) Restart(t *testing.T) {
 	t.Helper()
 	p.Stop(t)
-	cmdPath := path.Join("bin", p.cmdName)
+	cmdPath := path.Join("bin", p.CmdBin)
 	c := exec.Command(cmdPath, "start", "--config", p.configFilePath)
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))
-	p.process = Run(c, p.cmdName, "")
+	p.process = Run(c, p.CmdName, "")
 }
 
 // Run executes the specified command and returns the corresponding process.

@@ -305,16 +305,18 @@ func TestReadConfigLoadGen(t *testing.T) {
 		name:           "default",
 		configFilePath: emptyConfig(t),
 		expectedConfig: &loadgen.ClientConfig{
+			Server: makeServer("localhost", 8001),
 			Monitoring: metrics.Config{
-				Config: makeMonitoring("localhost", 2110),
+				Config: makeMonitoring("localhost", 2118),
 			},
 		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
 		expectedConfig: &loadgen.ClientConfig{
+			Server: makeServer("", 8001),
 			Monitoring: metrics.Config{
-				Config: makeMonitoring("", 2110),
+				Config: makeMonitoring("", 2118),
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{
 						Portion: 0.01,
@@ -366,7 +368,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			Stream: &workload.StreamOptions{
 				RateLimit: &workload.LimiterConfig{
 					Endpoint:     *makeEndpoint("", 6997),
-					InitialLimit: 1000,
+					InitialLimit: 10_000,
 				},
 				BuffersSize: 10,
 				GenBatch:    10,
@@ -376,7 +378,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 				Load:       true,
 			},
 			Limit: &adapters.GenerateLimit{
-				Transactions: 5_000,
+				Transactions: 50_000,
 			},
 		},
 	}}

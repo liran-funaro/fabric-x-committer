@@ -73,7 +73,7 @@ func NewViperWithQueryDefaults() *viper.Viper {
 
 // NewViperWithLoadGenDefaults returns a viper instance with the load generator default values.
 func NewViperWithLoadGenDefaults() *viper.Viper {
-	return NewViperWithServiceDefault(0, 2110)
+	return NewViperWithServiceDefault(8001, 2118)
 }
 
 // NewViperWithServiceDefault returns a viper instance with a service default values.

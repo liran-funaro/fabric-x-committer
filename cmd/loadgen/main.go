@@ -12,11 +12,14 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoloadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/cmd/config"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
 )
 
 const (
@@ -73,7 +76,9 @@ func startCmd() *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to create loadgen client")
 			}
-			return client.Run(cmd.Context())
+			return connection.StartService(cmd.Context(), client, conf.Server, func(s *grpc.Server) {
+				protoloadgen.RegisterLoadGenServiceServer(s, client)
+			})
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

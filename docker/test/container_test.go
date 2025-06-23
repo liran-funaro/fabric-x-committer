@@ -41,8 +41,9 @@ const (
 	ordererPort        = "7050"
 	sidecarPort        = "4001"
 	queryServicePort   = "7001"
-	loadGenMetricsPort = "2110"
+	loadGenMetricsPort = "2118"
 	channelName        = "testchannel"
+	monitoredMetric    = "loadgen_transaction_committed_total"
 )
 
 // TestStartTestNode spawns a mock orderer and an all-in-one instance of the committer using docker
@@ -91,12 +92,19 @@ func TestStartTestNode(t *testing.T) {
 
 	metricsURL, err := monitoring.MakeMetricsURL("localhost:" + loadGenMetricsPort)
 	require.NoError(t, err)
+
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
+	// We check often since the load generator's metrics might be closed if the limit is reached.
+	// We log only if there are changes to avoid spamming the log.
+	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
-		t.Logf("loadgen_transaction_committed_total: %d", count)
+		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric)
+		if prevCount != count {
+			t.Logf("%x: %d", monitoredMetric, count)
+		}
+		prevCount = count
 		return count > 1_000
-	}, 5*time.Minute, 1*time.Second)
+	}, 15*time.Minute, 100*time.Millisecond)
 }
 
 //nolint:revive
