@@ -22,7 +22,7 @@ orderer-client:
       endpoints:
         - broadcast,deliver,ordering-service:7050
     consensus-type: BFT
-    channel-id: channel
+    channel-id: mychannel
   # We set low values to reduce the CPU load during tests.
   broadcast-parallelism: 1
 

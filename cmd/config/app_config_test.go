@@ -337,7 +337,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 								0, "", makeServer("ordering-service", 7050),
 							),
 						},
-						ChannelID:     "channel",
+						ChannelID:     "mychannel",
 						ConsensusType: "BFT",
 					},
 					BroadcastParallelism: 1,

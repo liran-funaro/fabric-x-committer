@@ -23,35 +23,79 @@ import (
 type (
 	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
 	ProcessWithConfig struct {
-		CmdBin         string
-		CmdName        string
+		params         CmdParameters
 		process        ifrit.Process
 		configFilePath string
+	}
+
+	// CmdParameters holds the parameters for a command.
+	CmdParameters struct {
+		Name     string
+		Bin      string
+		Arg      string
+		Template string
 	}
 )
 
 const (
-	mockordererCMD   = "mockorderingservice"
-	queryexecutorCMD = "queryexecutor"
-	verifierCMD      = "signatureverifier"
-	vcCMD            = "validatorpersister"
-	coordinatorCMD   = "coordinator"
-	sidecarCMD       = "sidecar"
-	loadgenCMD       = "loadgen"
+	committerCMD = "committer"
+	loadgenCMD   = "loadgen"
+	mockCMD      = "mock"
+)
+
+var (
+	cmdOrderer = CmdParameters{
+		Name:     "orderer",
+		Bin:      mockCMD,
+		Arg:      "start-orderer",
+		Template: config.TemplateMockOrderer,
+	}
+	cmdVerifier = CmdParameters{
+		Name:     "verifier",
+		Bin:      committerCMD,
+		Arg:      "start-verifier",
+		Template: config.TemplateVerifier,
+	}
+	cmdVC = CmdParameters{
+		Name:     "vc",
+		Bin:      committerCMD,
+		Arg:      "start-vc",
+		Template: config.TemplateVC,
+	}
+	cmdCoordinator = CmdParameters{
+		Name:     "coordinator",
+		Bin:      committerCMD,
+		Arg:      "start-coordinator",
+		Template: config.TemplateCoordinator,
+	}
+	cmdSidecar = CmdParameters{
+		Name:     "sidecar",
+		Bin:      committerCMD,
+		Arg:      "start-sidecar",
+		Template: config.TemplateSidecar,
+	}
+	cmdQuery = CmdParameters{
+		Name:     "query",
+		Bin:      committerCMD,
+		Arg:      "start-query",
+		Template: config.TemplateQueryService,
+	}
+	cmdLoadGen = CmdParameters{
+		Name: "loadgen",
+		Bin:  loadgenCMD,
+		Arg:  "start",
+	}
 )
 
 func newProcess(
 	t *testing.T,
-	cmdName string,
-	cmdBin string,
-	cmdTemplate string,
+	cmdParams CmdParameters,
 	conf *config.SystemConfig,
 ) *ProcessWithConfig {
 	t.Helper()
-	configFilePath := config.CreateTempConfigFromTemplate(t, cmdTemplate, conf)
+	configFilePath := config.CreateTempConfigFromTemplate(t, cmdParams.Template, conf)
 	p := &ProcessWithConfig{
-		CmdName:        cmdName,
-		CmdBin:         cmdBin,
+		params:         cmdParams,
 		configFilePath: configFilePath,
 	}
 	t.Cleanup(func() {
@@ -70,7 +114,7 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 	select {
 	case <-p.process.Wait():
 	case <-time.After(30 * time.Second):
-		t.Errorf("Process [%s] did not terminate after 30 seconds", p.CmdName)
+		t.Errorf("Process [%s] did not terminate after 30 seconds", p.params.Name)
 	}
 }
 
@@ -78,12 +122,12 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 func (p *ProcessWithConfig) Restart(t *testing.T) {
 	t.Helper()
 	p.Stop(t)
-	cmdPath := path.Join("bin", p.CmdBin)
-	c := exec.Command(cmdPath, "start", "--config", p.configFilePath)
+	cmdPath := path.Join("bin", p.params.Bin)
+	c := exec.Command(cmdPath, p.params.Arg, "--config", p.configFilePath)
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))
-	p.process = Run(c, p.CmdName, "")
+	p.process = Run(c, p.params.Name, "")
 }
 
 // Run executes the specified command and returns the corresponding process.

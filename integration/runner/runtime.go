@@ -8,6 +8,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -180,20 +181,20 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	})
 
 	t.Log("Create processes")
-	c.MockOrderer = newProcess(t, "orderer", mockordererCMD, config.TemplateMockOrderer, s)
-	for _, e := range s.Endpoints.Verifier {
-		c.Verifier = append(c.Verifier, newProcess(t, "verifier", verifierCMD, config.TemplateVerifier,
-			s.WithEndpoint(e)))
+	c.MockOrderer = newProcess(t, cmdOrderer, s)
+	for i, e := range s.Endpoints.Verifier {
+		p := cmdVerifier
+		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
+		c.Verifier = append(c.Verifier, newProcess(t, p, s.WithEndpoint(e)))
 	}
-	for _, e := range s.Endpoints.VCService {
-		c.VcService = append(c.VcService, newProcess(t, "vc", vcCMD, config.TemplateVC, s.WithEndpoint(e)))
+	for i, e := range s.Endpoints.VCService {
+		p := cmdVC
+		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
+		c.VcService = append(c.VcService, newProcess(t, p, s.WithEndpoint(e)))
 	}
-	c.Coordinator = newProcess(t, "coordinator", coordinatorCMD, config.TemplateCoordinator,
-		s.WithEndpoint(s.Endpoints.Coordinator))
-	c.QueryService = newProcess(t, "query", queryexecutorCMD, config.TemplateQueryService,
-		s.WithEndpoint(s.Endpoints.Query))
-	c.Sidecar = newProcess(t, "sidecar", sidecarCMD, config.TemplateSidecar,
-		s.WithEndpoint(s.Endpoints.Sidecar))
+	c.Coordinator = newProcess(t, cmdCoordinator, s.WithEndpoint(s.Endpoints.Coordinator))
+	c.Sidecar = newProcess(t, cmdSidecar, s.WithEndpoint(s.Endpoints.Sidecar))
+	c.QueryService = newProcess(t, cmdQuery, s.WithEndpoint(s.Endpoints.Query))
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(clientConn(t, s.Endpoints.Coordinator.Server))
@@ -269,18 +270,18 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	t.Helper()
 	loadGenFlag := loadGenMatcher & serviceFlags
 	require.Falsef(t, isMoreThanOneBitSet(loadGenFlag), "only one load generator may be set")
-	var template string
+	loadGenParams := cmdLoadGen
 	switch loadGenFlag {
 	case LoadGenForCommitter:
-		template = config.TemplateLoadGenCommitter
+		loadGenParams.Template = config.TemplateLoadGenCommitter
 	case LoadGenForOrderer:
-		template = config.TemplateLoadGenOrderer
+		loadGenParams.Template = config.TemplateLoadGenOrderer
 	case LoadGenForCoordinator:
-		template = config.TemplateLoadGenCoordinator
+		loadGenParams.Template = config.TemplateLoadGenCoordinator
 	case LoadGenForVCService:
-		template = config.TemplateLoadGenVC
+		loadGenParams.Template = config.TemplateLoadGenVC
 	case LoadGenForVerifier:
-		template = config.TemplateLoadGenVerifier
+		loadGenParams.Template = config.TemplateLoadGenVerifier
 	default:
 		return
 	}
@@ -298,11 +299,12 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	if isDist {
 		s.LoadGenWorkers = 0
 	}
-	newProcess(t, "loadgen", loadgenCMD, template, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
+	newProcess(t, loadGenParams, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
 	if isDist {
 		s.LoadGenWorkers = 1
-		newProcess(t, "dist-loadgen", loadgenCMD, config.TemplateLoadGenDistributedLoadGenClient,
-			s.WithEndpoint(config.ServiceEndpoints{})).Restart(t)
+		loadGenParams.Name = "dist-loadgen"
+		loadGenParams.Template = config.TemplateLoadGenDistributedLoadGenClient
+		newProcess(t, loadGenParams, s.WithEndpoint(config.ServiceEndpoints{})).Restart(t)
 	}
 }
 
