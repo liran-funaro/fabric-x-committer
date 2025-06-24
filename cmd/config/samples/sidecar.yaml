@@ -35,6 +35,9 @@ committer:
 ledger:
   path: /root/sc/ledger
 
+last-committed-block-set-interval: 5s
+waiting-txs-limit: 20_000_000
+
 logging:
   enabled: true
   development: false

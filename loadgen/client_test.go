@@ -207,6 +207,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 					ChannelID:     chanID,
 					ConsensusType: broadcastdeliver.Bft,
 				},
+				LastCommittedBlockSetInterval: 100 * time.Millisecond,
+				WaitingTxsLimit:               5000,
 				Committer: sidecar.CoordinatorConfig{
 					Endpoint: coordinatorServer.Configs[0].Endpoint,
 				},
@@ -256,6 +258,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 					ChannelID:     "mychannel",
 					ConsensusType: broadcastdeliver.Bft,
 				},
+				LastCommittedBlockSetInterval: 100 * time.Millisecond,
+				WaitingTxsLimit:               5000,
 				Committer: sidecar.CoordinatorConfig{
 					Endpoint: coordinatorServer.Configs[0].Endpoint,
 				},

@@ -19,7 +19,7 @@ import (
 func NewViperWithCoordinatorDefaults() *viper.Viper {
 	v := NewViperWithServiceDefault(9001, 2119)
 	v.SetDefault("dependency-graph.num-of-local-dep-constructors", 1)
-	v.SetDefault("dependency-graph.waiting-txs-limit", 10000)
+	v.SetDefault("dependency-graph.waiting-txs-limit", 100_000)
 	v.SetDefault("dependency-graph.num-of-workers-for-global-dep-manager", 1)
 	v.SetDefault("per-channel-buffer-size-per-goroutine", 10)
 	return v
@@ -32,6 +32,8 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 	v.SetDefault("orderer.connection.endpoints", "broadcast,deliver,localhost:7050")
 	v.SetDefault("committer.endpoint", "localhost:9001")
 	v.SetDefault("ledger.path", "./ledger/")
+	v.SetDefault("last-committed-block-set-interval", "3s")
+	v.SetDefault("waiting-txs-limit", 100_000)
 	return v
 }
 

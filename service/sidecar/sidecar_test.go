@@ -128,6 +128,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 			Path: t.TempDir(),
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
+		WaitingTxsLimit:               1000,
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServer(),
 		},
