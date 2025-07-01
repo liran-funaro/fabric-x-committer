@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-module github.ibm.com/decentralized-trust-research/scalable-committer
+module github.com/hyperledger/fabric-x-committer
 
 go 1.24.3
 
@@ -20,11 +20,11 @@ require (
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240918034325-94590aa4332b
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3
+	github.com/hyperledger/fabric-x-common v0.0.0-20250701155113-a1ddf93333d8
 	github.com/jackc/pgtype v1.14.3
 	github.com/jackc/puddle v1.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/gomega v1.34.2
-	github.com/opencontainers/image-spec v1.1.0
 	github.com/prometheus/client_golang v1.20.4
 	github.com/prometheus/client_model v0.6.1
 	github.com/spf13/cobra v1.8.1
@@ -32,7 +32,6 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tedsuo/ifrit v0.0.0-20230516164442-7862c310ad26
 	github.com/yugabyte/pgx/v4 v4.14.8
-	github.ibm.com/decentralized-trust-research/fabricx-config v0.0.0-20250127131704-372c87953e71
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.36.0
 	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6
@@ -115,6 +114,7 @@ require (
 	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

@@ -16,13 +16,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protovcservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/grpcerror"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type validatorAndCommitterServiceTestEnvWithClient struct {

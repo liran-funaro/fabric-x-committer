@@ -15,11 +15,11 @@ import (
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap/zapcore"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier/policy"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 type verifier struct {

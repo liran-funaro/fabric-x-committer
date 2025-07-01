@@ -42,7 +42,7 @@ jobs:
         - git fetch origin main:main
         # Apply formatting
         - gofmt -w .
-        - goimports -local "github.ibm.com/decentralized-trust-research/scalable-committer" -w .
+        - goimports -local "github.com/hyperledger/fabric-x-committer" -w .
         # Re make protobufs, overwriting any formatting
         - PATH="$HOME/bin:$PATH" make proto
       script:

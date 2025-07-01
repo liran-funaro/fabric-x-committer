@@ -12,10 +12,10 @@ import (
 
 	"github.com/onsi/gomega"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/service/verifier"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 func TestBadlyFormedTxs(t *testing.T) {

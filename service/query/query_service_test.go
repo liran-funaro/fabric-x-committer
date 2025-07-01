@@ -24,17 +24,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/adapters"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier/policy"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/loadgen"
+	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type queryServiceTestEnv struct {

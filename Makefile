@@ -78,7 +78,7 @@ MAKEFLAGS += --jobs=16
 # Tests
 #########################
 
-ROOT_PKG_REGEXP = github.ibm.com/decentralized-trust-research/scalable-committer
+ROOT_PKG_REGEXP = github.com/hyperledger/fabric-x-committer
 CORE_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/service/(vc|query)
 REQUIRES_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(service/coordinator|loadgen|cmd)
 HEAVY_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(docker|integration)

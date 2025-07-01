@@ -12,7 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
 // DigestTxNamespace digests a transactions for a given namespace index.

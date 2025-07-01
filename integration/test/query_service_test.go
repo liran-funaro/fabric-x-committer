@@ -14,10 +14,10 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
 //nolint:paralleltest // Reduce tests load.

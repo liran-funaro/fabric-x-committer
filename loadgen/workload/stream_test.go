@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // result is used to prevent compiler optimizations.

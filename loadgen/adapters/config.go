@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package adapters
 
 import (
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (

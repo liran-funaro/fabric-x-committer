@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 // ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.

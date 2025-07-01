@@ -9,7 +9,7 @@ package types
 import (
 	"google.golang.org/protobuf/encoding/protowire"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
 type (

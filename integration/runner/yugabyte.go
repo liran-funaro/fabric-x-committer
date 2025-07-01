@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
 // YugaClusterController is a struct that facilitates the manipulation of a DB cluster,

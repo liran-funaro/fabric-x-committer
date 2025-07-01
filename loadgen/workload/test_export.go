@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // StartGenerator is used for benchmarking.

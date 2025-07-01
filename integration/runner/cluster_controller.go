@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // DBClusterController is a class that facilitates the manipulation of a DB cluster,

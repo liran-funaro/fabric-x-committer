@@ -12,11 +12,12 @@
 package protoloadgen
 
 import (
-	protoblocktx "github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoblocktx "github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (

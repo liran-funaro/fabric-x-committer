@@ -9,7 +9,7 @@ package types
 import (
 	"fmt"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
 // Height represents the height of a transaction in blockchain.

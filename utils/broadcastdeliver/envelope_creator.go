@@ -12,7 +12,7 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 type (

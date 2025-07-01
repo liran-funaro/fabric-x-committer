@@ -12,8 +12,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/workload"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 )
 
 type (

@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

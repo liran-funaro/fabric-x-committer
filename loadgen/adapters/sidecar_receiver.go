@@ -15,13 +15,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/loadgen/metrics"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/sidecar/sidecarclient"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/broadcastdeliver"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
+	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
+	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 type receiverConfig struct {

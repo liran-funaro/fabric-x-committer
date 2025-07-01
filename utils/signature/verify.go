@@ -11,7 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
 // DigestVerifier verifies a digest.

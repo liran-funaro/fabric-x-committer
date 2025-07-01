@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
 const (

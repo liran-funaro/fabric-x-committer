@@ -14,9 +14,9 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 // transactionValidator validates the reads of transactions against the committed states.

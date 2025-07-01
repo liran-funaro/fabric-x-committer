@@ -20,17 +20,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protocoordinatorservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/mock"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/coordinator/dependencygraph"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/service/vc"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
+	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (

@@ -15,9 +15,9 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 // viewParametersPermutations there is a constant number of view-parameter permutations.

@@ -16,8 +16,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 // Signer types.
