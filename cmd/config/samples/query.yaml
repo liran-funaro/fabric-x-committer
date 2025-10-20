@@ -6,6 +6,12 @@
 server:
   # The server's endpoint configuration
   endpoint: :7001
+  tls:
+    mode: mtls
+    cert-path: /server-certs/public-key
+    key-path: /server-certs/private-key
+    ca-cert-paths:
+      - /server-certs/ca-certificate
   # Credentials for the server
 monitoring:
   server:
