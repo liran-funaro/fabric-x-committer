@@ -22,6 +22,53 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+type System struct {
+	Orderer           *OrdererTestEnv
+	Coordinator       *Coordinator
+	CoordinatorServer *test.GrpcServers
+	Verifier          *Verifier
+	VerifierServer    *test.GrpcServers
+	VC                *VcService
+	VCServer          *test.GrpcServers
+}
+
+type SystemParameters struct {
+	NumVc            int
+	NumVerifier      int
+	StartOrderer     bool
+	StartCoordinator bool
+}
+
+func StartMockSystem(t *testing.T, sp SystemParameters) *System {
+	t.Helper()
+	var s System
+
+	if sp.NumVerifier > 0 {
+		s.Verifier = NewMockSigVerifier()
+		s.VerifierServer = test.StartGrpcServersForTest(
+			t.Context(), t, test.StartServerParameters{NumService: sp.NumVerifier},
+			s.Verifier.RegisterService,
+		)
+	}
+
+	if sp.NumVc > 0 {
+		s.VC = NewMockVcService()
+		s.VCServer = test.StartGrpcServersForTest(
+			t.Context(), t, test.StartServerParameters{NumService: sp.NumVc},
+			s.VC.RegisterService,
+		)
+	}
+
+	if sp.StartCoordinator {
+		s.Coordinator = NewMockCoordinator()
+		s.CoordinatorServer = test.StartGrpcServersForTest(
+			t.Context(), t, test.StartServerParameters{NumService: 1},
+			s.Coordinator.RegisterService,
+		)
+	}
+	return &s
+}
+
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
 func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
 	*Verifier, *test.GrpcServers,
