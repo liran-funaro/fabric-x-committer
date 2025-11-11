@@ -45,7 +45,14 @@ type (
 	RPCAttempt func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error
 )
 
-const defaultHostName = "localhost"
+const (
+	defaultHostName = "localhost"
+
+	//nolint:revive // represents the default certificate's names.
+	PrivateKey       = "private-key.pem"
+	PublicKey        = "public-key.pem"
+	CACertificateKey = "ca-certificate.pem"
+)
 
 // ServerModes is a list of server-side TLS modes used for testing.
 var ServerModes = []string{connection.MutualTLSMode, connection.OneSideTLSMode, connection.NoneTLSMode}
@@ -70,7 +77,7 @@ func (scm *CredentialsFactory) CreateServerCredentials(
 	t.Helper()
 	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san...)
 	require.NoError(t, err)
-	return createTLSConfig(t, tlsMode, serverKeypair, scm.CertificateAuthority.CertBytes())
+	return scm.createTLSConfig(t, tlsMode, serverKeypair)
 }
 
 // CreateClientCredentials creates a client key pair,
@@ -79,7 +86,7 @@ func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode str
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
-	return createTLSConfig(t, tlsMode, clientKeypair, scm.CertificateAuthority.CertBytes())
+	return scm.createTLSConfig(t, tlsMode, clientKeypair)
 }
 
 /*
@@ -180,23 +187,22 @@ func CreateClientWithTLS[T any](
 
 // createTLSConfig creates a TLS configuration based on the
 // given TLS mode and credential bytes, and returns it along with the certificates' path.
-func createTLSConfig(
+func (scm *CredentialsFactory) createTLSConfig(
 	t *testing.T,
 	connectionMode string,
 	keyPair *tlsgen.CertKeyPair,
-	caCertificate []byte,
 ) (connection.TLSConfig, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
 
-	privateKeyPath := filepath.Join(tmpDir, "private-key")
+	privateKeyPath := filepath.Join(tmpDir, PrivateKey)
 	require.NoError(t, os.WriteFile(privateKeyPath, keyPair.Key, 0o600))
 
-	publicKeyPath := filepath.Join(tmpDir, "public-key")
+	publicKeyPath := filepath.Join(tmpDir, PublicKey)
 	require.NoError(t, os.WriteFile(publicKeyPath, keyPair.Cert, 0o600))
 
-	caCertificatePath := filepath.Join(tmpDir, "ca-certificate")
-	require.NoError(t, os.WriteFile(caCertificatePath, caCertificate, 0o600))
+	caCertificatePath := filepath.Join(tmpDir, CACertificateKey)
+	require.NoError(t, os.WriteFile(caCertificatePath, scm.CertificateAuthority.CertBytes(), 0o600))
 
 	return connection.TLSConfig{
 		Mode:        connectionMode,

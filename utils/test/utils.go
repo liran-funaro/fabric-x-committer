@@ -34,6 +34,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
+var (
+	// InsecureTLSConfig defines an empty tls config.
+	InsecureTLSConfig connection.TLSConfig
+	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
+	defaultGrpcRetryProfile connection.RetryProfile
+)
+
 type (
 	// GrpcServers holds the server instances and their respective configurations.
 	GrpcServers struct {
@@ -51,13 +58,6 @@ func FailHandler(t *testing.T) {
 		t.FailNow()
 	})
 }
-
-var (
-	// InsecureTLSConfig defines an empty tls config.
-	InsecureTLSConfig connection.TLSConfig
-	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile connection.RetryProfile
-)
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s).
 func ServerToMultiClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
