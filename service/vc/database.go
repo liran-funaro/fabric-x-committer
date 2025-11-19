@@ -458,6 +458,7 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
 	}
+
 	for i, key := range keys {
 		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(key),

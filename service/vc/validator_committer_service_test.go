@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -96,10 +97,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
 	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("public-key"),
-	}
+	p := policy.MakeECDSAThresholdRuleNsPolicy([]byte("publick-key"))
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
 	configID := "create config"
