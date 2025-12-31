@@ -353,7 +353,7 @@ func appendMissingBlock(
 		expectedHeight[i] = tx.Ref
 	}
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
+	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}

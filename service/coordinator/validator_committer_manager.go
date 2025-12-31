@@ -151,7 +151,7 @@ func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	query *servicepb.QueryStatus,
+	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
 	return ret, errors.Wrap(err, "failed getting transactions status")
