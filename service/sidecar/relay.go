@@ -48,7 +48,6 @@ type (
 	relayRunConfig struct {
 		coordClient                    servicepb.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
-		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
@@ -74,6 +73,12 @@ func newRelay(
 
 // run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
 func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
+	// We first try to recover missing blocks from the orderer to the ledger.
+	recoverErr := processMissingBlocks(ctx, config)
+	if recoverErr != nil {
+		return recoverErr
+	}
+
 	r.nextBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
@@ -101,7 +106,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
 	g.Go(func() error {
-		return r.preProcessBlock(sCtx, mappedBlockQueue, config.configUpdater)
+		return r.preProcessBlock(sCtx, mappedBlockQueue)
 	})
 	g.Go(func() error {
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
@@ -125,7 +130,6 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 func (r *relay) preProcessBlock(
 	ctx context.Context,
 	mappedBlockQueue chan<- *blockMappingResult,
-	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
@@ -164,7 +168,6 @@ func (r *relay) preProcessBlock(
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
-			configUpdater(block)
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
@@ -367,4 +370,66 @@ func (r *relay) setLastCommittedBlockNumber(
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}
+}
+
+func processMissingBlocks(ctx context.Context, c *relayRunConfig) error {
+	uncommittedBlocks := channel.NewReader(ctx, c.incomingBlockToBeCommitted)
+	committedBlocks := channel.NewWriter(ctx, c.outgoingCommittedBlock)
+	recoveredBlocks := 0
+	stopBlock := c.nextExpectedBlockByCoordinator - 1
+	for ctx.Err() == nil {
+		blk, ok := uncommittedBlocks.Read()
+		if !ok {
+			return ctx.Err()
+		}
+		appendErr := appendMissingBlock(ctx, c.coordClient, blk, committedBlocks)
+		if appendErr != nil {
+			return appendErr
+		}
+		recoveredBlocks++
+		if blk.Header.Number == stopBlock {
+			break
+		}
+	}
+	if recoveredBlocks > 0 {
+		logger.Infof("successfully recover ledger store by adding [%d] missing blocks", recoveredBlocks)
+	}
+	return nil
+}
+
+func appendMissingBlock(
+	ctx context.Context,
+	client servicepb.CoordinatorClient,
+	blk *common.Block,
+	committedBlocks channel.Writer[*common.Block],
+) error {
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	if err != nil {
+		// This can never occur unless there is a bug in the relay.
+		return err
+	}
+
+	txIDs := make([]string, len(mappedBlock.block.Txs))
+	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
+	for i, tx := range mappedBlock.block.Txs {
+		txIDs[i] = tx.Ref.TxId
+		expectedHeight[i] = tx.Ref
+	}
+
+	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
+	if err != nil {
+		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
+	}
+
+	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
+		return err
+	}
+
+	mappedBlock.withStatus.setStatusMetadataInBlock()
+
+	if !committedBlocks.Write(mappedBlock.withStatus.block) {
+		return errors.New("context ended")
+	}
+	return nil
 }

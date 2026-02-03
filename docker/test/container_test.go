@@ -26,11 +26,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -113,12 +113,12 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			// Adding namespace policy and creating transaction builder
 			runtime.AddOrUpdateNamespaces(t, "1")
 
-			runtime.CommittedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
+			runtime.CommittedBlock = deliver.StartCommitterDeliver(ctx, t, deliver.CommitterDeliveryParameters{
 				ChannelID: channelName,
 				Client: test.NewTLSClientConfig(
 					runtime.SystemConfig.ClientTLS, runtime.SystemConfig.Endpoints.Sidecar.Server,
 				),
-			}, 0)
+			})
 
 			t.Log("Try to fetch the first block")
 			b, ok := channel.NewReader(ctx, runtime.CommittedBlock).Read()
@@ -209,10 +209,10 @@ func TestStartTestNode(t *testing.T) {
 		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, containerName, sidecarPort)),
 	)
 	require.NoError(t, err)
-	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
+	committedBlock := deliver.StartCommitterDeliver(ctx, t, deliver.CommitterDeliveryParameters{
 		ChannelID: channelName,
 		Client:    test.NewInsecureClientConfig(sidecarEndpoint),
-	}, 0)
+	})
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))

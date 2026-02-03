@@ -9,16 +9,13 @@ package verifier
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
-	commonmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -162,13 +159,7 @@ func TestSignatureRule(t *testing.T) {
 	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
-	mspDirs := make([]commonmsp.DirLoadParameters, 2)
-	peerOrgPath := filepath.Join(cp.cryptoPath, cryptogen.PeerOrganizationsDir)
-	for i, org := range []string{"peer-org-0", "peer-org-1"} {
-		mspDirs[i].MspName = org
-		clientName := "client@" + org + ".com"
-		mspDirs[i].MspDir = filepath.Join(peerOrgPath, org, "users", clientName, "msp")
-	}
+	mspDirs := sigtest.GetPeersMspDirs(cp.cryptoPath)
 
 	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
 	require.NoError(t, err)

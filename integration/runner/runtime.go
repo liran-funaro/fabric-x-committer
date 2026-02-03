@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,16 +17,15 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/apptest"
@@ -55,24 +53,18 @@ type (
 
 		DBEnv *vc.DatabaseTestEnv
 
-		OrdererStream      *test.BroadcastStream
+		OrdererStream      *adapters.BroadcastStream
 		CoordinatorClient  servicepb.CoordinatorClient
 		QueryServiceClient committerpb.QueryServiceClient
-		SidecarClient      *sidecarclient.Client
 		NotifyClient       committerpb.NotifierClient
 		NotifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
-		CommittedBlock chan *common.Block
-
-		TxBuilder *workload.TxBuilder
-
-		Config *Config
-
-		SeedForCryptoGen *rand.Rand
-
-		LastReceivedBlockNumber uint64
-
-		CredFactory *test.CredentialsFactory
+		CommittedBlock          chan *common.Block
+		TxBuilder               *workload.TxBuilder
+		Config                  *Config
+		SeedForCryptoGen        *rand.Rand
+		NextExpectedBlockNumber uint64
+		CredFactory             *test.CredentialsFactory
 	}
 
 	// Config represents the runtime configuration.
@@ -183,12 +175,11 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.DB.Endpoints = c.DBEnv.DBConf.Endpoints
 	s.DB.TLS = c.DBEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
-	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
 	t.Log("Allocating ports")
 	ports := portAllocator{}
 	defer ports.close()
-	s.Endpoints.Orderer = ports.allocatePorts(t, 1)
+	s.Endpoints.Orderer = ports.allocatePorts(t, 3)
 	s.Endpoints.Verifier = ports.allocatePorts(t, conf.NumVerifiers)
 	s.Endpoints.VCService = ports.allocatePorts(t, conf.NumVCService)
 	s.Endpoints.Query = ports.allocatePorts(t, 1)[0]
@@ -205,10 +196,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	test.LogStruct(t, "System Parameters", s)
 
-	t.Log("Creating config block")
-	configBlock, err := workload.CreateConfigBlock(s.Policy)
-	require.NoError(t, err)
-	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
+	t.Log("Creating crypto material")
+	err := workload.PrepareCryptoMaterial(s.Policy)
 	require.NoError(t, err)
 
 	t.Log("create TLS manager and clients certificate")
@@ -260,24 +249,17 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	)
 
 	var err error
-	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
+	c.OrdererStream, err = adapters.NewBroadcastStream(ctx, &ordererconn.Config{
 		Connection: ordererconn.ConnectionConfig{
 			Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
 			TLS:       c.SystemConfig.ClientTLS,
 		},
-		ChannelID:     c.SystemConfig.Policy.ChannelID,
-		Identity:      c.SystemConfig.Policy.Identity,
-		ConsensusType: ordererconn.Bft,
+		ChannelID:           c.SystemConfig.Policy.ChannelID,
+		Identity:            c.SystemConfig.Policy.Identity,
+		FaultToleranceLevel: ordererconn.BFT,
 	})
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)
-
-	c.SidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: c.SystemConfig.Policy.ChannelID,
-		Client:    test.NewTLSClientConfig(c.SystemConfig.ClientTLS, endpoints.Sidecar.Server),
-	})
-	require.NoError(t, err)
-	t.Cleanup(c.SidecarClient.CloseConnections)
 }
 
 // OpenNotificationStream starts a notification stream.
@@ -374,8 +356,9 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(c.SidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
-			EndBlkNum:   deliver.MaxBlockNum,
+		return connection.FilterStreamRPCError(deliver.CommiterToChannel(ctx, deliver.CommitterDeliveryParameters{
+			ChannelID:   c.SystemConfig.Policy.ChannelID,
+			Client:      test.NewTLSClientConfig(c.SystemConfig.ClientTLS, c.SystemConfig.Endpoints.Sidecar.Server),
 			OutputBlock: c.CommittedBlock,
 		}))
 	}, func(ctx context.Context) bool {
@@ -496,9 +479,9 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 			return
 		}
 	case <-time.After(2 * time.Minute):
-		t.Fatalf("Timed out waiting for block #%d", c.LastReceivedBlockNumber+1)
+		t.Fatalf("Timed out waiting for block #%d", c.NextExpectedBlockNumber)
 	}
-	c.LastReceivedBlockNumber = blk.Header.Number
+	c.NextExpectedBlockNumber = blk.Header.Number + 1
 	t.Logf("Got block #%d", blk.Header.Number)
 
 	for txNum, txEnv := range blk.Data.Data {

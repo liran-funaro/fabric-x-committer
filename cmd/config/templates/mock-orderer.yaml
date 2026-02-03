@@ -6,7 +6,7 @@ server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
-config-block-path: {{ .ConfigBlockPath }}
+crypto-material-path: {{ .Policy.CryptoMaterialPath }}
 send-config-block: true
 
 logging:

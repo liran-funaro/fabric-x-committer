@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package deliver_test
+package adapters
 
 import (
 	"context"
@@ -17,15 +17,12 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -40,7 +37,14 @@ var testGrpcRetryProfile = connection.RetryProfile{
 
 const channelForTest = "mychannel"
 
-func TestBroadcastDeliver(t *testing.T) {
+type broadcastTestEnv struct {
+	config    ordererconn.Config
+	orderer   *mock.Orderer
+	servers   []test.GrpcServers
+	nextBlock uint64
+}
+
+func TestBroadcast(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
@@ -50,98 +54,81 @@ func TestBroadcastDeliver(t *testing.T) {
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 
 			// We use a short retry grpc-config to shorten the test time.
-			ordererService, servers, conf := makeConfig(t, &serverTLSConfig)
+			e := newBroadcastTestEnv(t, &serverTLSConfig)
 
 			// Set the orderer client credentials.
-			conf.Connection.TLS = clientTLSConfig
-			allEndpoints := conf.Connection.Endpoints
+			e.config.Connection.TLS = clientTLSConfig
+			allEndpoints := e.config.Connection.Endpoints
 
 			// We only take the bottom endpoints for now.
 			// Later we take the other endpoints and update the client.
-			conf.Connection.Endpoints = allEndpoints[:6]
-			client, err := deliver.New(&conf)
-			require.NoError(t, err)
-			t.Cleanup(client.CloseConnections)
+			e.config.Connection.Endpoints = allEndpoints[:6]
 
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 			t.Cleanup(cancel)
 
-			outputBlocksChan := make(chan *common.Block, 100)
-			go func() {
-				err = client.Deliver(ctx, &deliver.Parameters{
-					StartBlkNum: 0,
-					EndBlkNum:   deliver.MaxBlockNum,
-					OutputBlock: outputBlocksChan,
-				})
-				assert.ErrorIs(t, err, context.Canceled)
-			}()
-			outputBlocks := channel.NewReader(ctx, outputBlocksChan)
-
 			t.Log("Read config block")
-			b, ok := outputBlocks.Read()
-			require.True(t, ok)
-			require.NotNil(t, b)
+			b := e.getNextBlock(t)
 			require.Len(t, b.Data.Data, 1)
 
 			t.Log("All good")
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			e.submit(t, expectedSubmit{
 				success: 3,
 			})
 
 			t.Log("One server down")
-			servers[2].Servers[0].Stop()
-			listener1 := holdPort(ctx, t, servers[2].Configs[0])
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			e.servers[2].Servers[0].Stop()
+			listener1 := holdPort(ctx, t, e.servers[2].Configs[0])
+			e.submit(t, expectedSubmit{
 				success: 3,
 			})
 
 			t.Log("Two servers down")
-			servers[2].Servers[1].Stop()
-			listener2 := holdPort(ctx, t, servers[2].Configs[1])
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			e.servers[2].Servers[1].Stop()
+			listener2 := holdPort(ctx, t, e.servers[2].Configs[1])
+			e.submit(t, expectedSubmit{
 				success:     2,
 				unavailable: 1,
 			})
 
 			t.Log("One incorrect server")
 			_ = listener1.Close()
-			fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
-			waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint, clientTLSConfig)
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			fakeServer := test.RunGrpcServerForTest(ctx, t, e.servers[2].Configs[0], nil)
+			waitUntilGrpcServerIsReady(ctx, t, &e.servers[2].Configs[0].Endpoint, clientTLSConfig)
+			e.submit(t, expectedSubmit{
 				success:       2,
 				unimplemented: 1,
 			})
 			t.Log("All good again")
 			fakeServer.Stop()
-			servers[2].Servers[0] = test.RunGrpcServerForTest(
-				ctx, t, servers[2].Configs[0], ordererService.RegisterService,
+			e.servers[2].Servers[0] = test.RunGrpcServerForTest(
+				ctx, t, e.servers[2].Configs[0], e.orderer.RegisterService,
 			)
-			waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint, clientTLSConfig)
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			waitUntilGrpcServerIsReady(ctx, t, &e.servers[2].Configs[0].Endpoint, clientTLSConfig)
+			e.submit(t, expectedSubmit{
 				success: 3,
 			})
 
 			t.Log("Insufficient quorum")
 			_ = listener2.Close()
-			for _, gs := range servers[:2] {
+			for _, gs := range e.servers[:2] {
 				for _, s := range gs.Servers[:2] {
 					s.Stop()
 				}
 			}
-			for _, gs := range servers[:2] {
+			for _, gs := range e.servers[:2] {
 				for _, c := range gs.Configs[:2] {
 					holdPort(ctx, t, c)
 				}
 			}
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			e.submit(t, expectedSubmit{
 				success:     1,
 				unavailable: 2,
 			})
 
 			t.Log("Update endpoints")
-			conf.Connection.Endpoints = allEndpoints[6:]
-			require.NoError(t, client.UpdateConnections(&conf.Connection))
-			submit(t, &conf, outputBlocks, expectedSubmit{
+			e.config.Connection.Endpoints = allEndpoints[6:]
+			e.submit(t, expectedSubmit{
 				success: 3,
 			})
 		})
@@ -154,10 +141,8 @@ type expectedSubmit struct {
 	unimplemented int
 }
 
-func submit(
+func (e *broadcastTestEnv) submit(
 	t *testing.T,
-	conf *ordererconn.Config,
-	outputBlocks channel.Reader[*common.Block],
 	expected expectedSubmit,
 ) {
 	t.Helper()
@@ -167,7 +152,7 @@ func submit(
 	// We create a new stream for each request to ensure GRPC does not cache the latest state.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	stream, err := test.NewBroadcastStream(ctx, conf)
+	stream, err := NewBroadcastStream(ctx, &e.config)
 	require.NoError(t, err)
 	defer stream.CloseConnections()
 
@@ -192,16 +177,23 @@ func submit(
 		require.LessOrEqual(t, unimplementedCount, expected.unimplemented, err)
 	}
 
-	b, ok := outputBlocks.Read()
-	require.True(t, ok)
-	require.NotNil(t, b)
+	b := e.getNextBlock(t)
 	require.Len(t, b.Data.Data, 1)
 	_, hdr, err := serialization.UnwrapEnvelope(b.Data.Data[0])
 	require.NoError(t, err)
 	require.Equal(t, tx.Id, hdr.TxId)
 }
 
-func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
+func (e *broadcastTestEnv) getNextBlock(t *testing.T) *common.Block {
+	t.Helper()
+	b, err := e.orderer.GetBlock(t.Context(), e.nextBlock)
+	require.NoError(t, err)
+	require.NotNil(t, b)
+	e.nextBlock++
+	return b
+}
+
+func newBroadcastTestEnv(t *testing.T, tlsConfig *connection.TLSConfig) *broadcastTestEnv {
 	t.Helper()
 
 	idCount := 3
@@ -226,9 +218,9 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 	require.Len(t, ordererServer.Servers, instanceCount)
 
 	conf := ordererconn.Config{
-		ChannelID:     channelForTest,
-		ConsensusType: ordererconn.Bft,
-		Connection:    ordererconn.ConnectionConfig{Retry: &testGrpcRetryProfile},
+		ChannelID:           channelForTest,
+		FaultToleranceLevel: ordererconn.BFT,
+		Connection:          ordererconn.ConnectionConfig{Retry: &testGrpcRetryProfile},
 	}
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
@@ -249,7 +241,11 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 	for i, e := range conf.Connection.Endpoints {
 		t.Logf("ENDPOINT [%02d] %s", i, e.String())
 	}
-	return ordererService, servers, conf
+	return &broadcastTestEnv{
+		config:  conf,
+		servers: servers,
+		orderer: ordererService,
+	}
 }
 
 func waitUntilGrpcServerIsReady(

@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -61,10 +61,10 @@ func TestLedgerService(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
-	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
+	receivedBlocksFromLedger := deliver.StartCommitterDeliver(t.Context(), t, deliver.CommitterDeliveryParameters{
 		ChannelID: channelID,
 		Client:    test.NewInsecureClientConfig(&config.Endpoint),
-	}, 0)
+	})
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))
 	blk1.Metadata = metadata
@@ -76,7 +76,7 @@ func TestLedgerService(t *testing.T) {
 	ensureAtLeastHeight(t, ls, 3)
 	require.Equal(t, 3, test.GetIntMetricValue(t, metrics.blockHeight))
 	for i := range 3 {
-		blk := <-receivedBlocksFromLedgerService
+		blk := <-receivedBlocksFromLedger
 		require.Equal(t, uint64(i), blk.Header.Number) //nolint:gosec
 	}
 

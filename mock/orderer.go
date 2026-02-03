@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -20,12 +21,13 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -36,21 +38,22 @@ type (
 	OrdererConfig struct {
 		// Server and ServerConfigs sets the used serving endpoints.
 		// We support both for compatibility with other services.
-		Server           *connection.ServerConfig   `mapstructure:"server"`
-		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
-		NumService       int                        `mapstructure:"num-services"`
-		BlockSize        int                        `mapstructure:"block-size"`
-		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
-		OutBlockCapacity int                        `mapstructure:"out-block-capacity"`
-		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
-		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
-		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
+		Server             *connection.ServerConfig   `mapstructure:"server"`
+		ServerConfigs      []*connection.ServerConfig `mapstructure:"servers"`
+		NumService         int                        `mapstructure:"num-services"`
+		BlockSize          int                        `mapstructure:"block-size"`
+		BlockTimeout       time.Duration              `mapstructure:"block-timeout"`
+		OutBlockCapacity   int                        `mapstructure:"out-block-capacity"`
+		PayloadCacheSize   int                        `mapstructure:"payload-cache-size"`
+		CryptoMaterialPath string                     `mapstructure:"crypto-material-path"`
+		SendConfigBlock    bool                       `mapstructure:"send-config-block"`
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
+		streamStateManager[OrdererStreamState, PartyState]
 		config      *OrdererConfig
-		configBlock *common.Block
+		crypto      *workload.CryptoMaterial
 		inEnvs      chan *common.Envelope
 		inBlocks    chan *common.Block
 		cutBlock    chan any
@@ -58,15 +61,18 @@ type (
 		healthcheck *health.Server
 	}
 
-	// HoldingOrderer allows holding a block.
-	HoldingOrderer struct {
-		*Orderer
-		HoldFromBlock atomic.Uint64
+	// OrdererStreamState holds the streams state.
+	OrdererStreamState struct {
+		StreamInfo
+		*PartyState
+		DataBlockStream bool
 	}
 
-	holdingStream struct {
-		ab.AtomicBroadcast_DeliverServer
-		holdBlock *atomic.Uint64
+	// PartyState holds the shared state of all streams of a party.
+	PartyState struct {
+		PartyID       uint32
+		HoldFromBlock atomic.Uint64
+		ReplaceBlock  utils.SyncMap[uint64, *common.Block]
 	}
 
 	blockCache struct {
@@ -126,18 +132,20 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.PayloadCacheSize == 0 {
 		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
 	}
-	configBlock := defaultConfigBlock
-	if config.ConfigBlockPath != "" {
+	crypto := &workload.CryptoMaterial{
+		ConfigBlock: defaultConfigBlock,
+	}
+	if config.CryptoMaterialPath != "" {
 		var err error
-		configBlock, err = configtxgen.ReadBlock(config.ConfigBlockPath)
+		crypto, err = workload.LoadCrypto(config.CryptoMaterialPath)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read config block")
+			return nil, errors.Wrap(err, "failed to read crypto material")
 		}
 	}
 
 	return &Orderer{
 		config:      config,
-		configBlock: configBlock,
+		crypto:      crypto,
 		inEnvs:      make(chan *common.Envelope, config.NumService*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:    make(chan any),
@@ -171,88 +179,129 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	if streamErr != nil {
 		return streamErr //nolint:wrapcheck // already a GRPC error.
 	}
-	start, end, seekErr := readSeekInfo(env)
+	seekInfo, seekErr := readSeekInfo(env)
+	if seekErr != nil {
+		return grpcerror.WrapInvalidArgument(seekErr)
+	}
+	start, end, seekErr := parseSeekInfoStartStop(seekInfo)
 	if seekErr != nil {
 		return grpcerror.WrapInvalidArgument(seekErr)
 	}
 
-	addr := util.ExtractRemoteAddress(stream.Context())
-	logger.Infof("Starting delivery with %s [%d -> %d]", addr, start, end)
-	defer logger.Infof("Finished delivery with %s", addr)
-
 	ctx := stream.Context()
+	state := o.registerStream(ctx, func(info StreamInfo, p *PartyState) *OrdererStreamState {
+		return &OrdererStreamState{
+			StreamInfo:      info,
+			PartyState:      p,
+			DataBlockStream: seekInfo.ContentType == ab.SeekInfo_BLOCK,
+		}
+	})
+
 	// Ensures releasing the waiters when this context ends.
 	stop := o.cache.releaseAfter(ctx)
 	defer stop()
 
-	var prevBlock *common.Block
+	blockParams := BlockPrepareParameters{
+		LastConfigBlockIndex: 0,
+		ConsenterSigners:     o.crypto.Consenters,
+	}
 	for i := start; i <= end && ctx.Err() == nil; i++ {
 		b, err := o.cache.getBlock(ctx, i)
-		if errors.Is(err, ErrLostBlock) {
-			// We send an empty block for the sake of the delivery progress.
-			b = &common.Block{Data: &common.BlockData{}}
-			addBlockHeader(prevBlock, b)
-		} else if err != nil {
+		if err != nil && !errors.Is(err, ErrLostBlock) {
 			return grpcerror.WrapCancelled(err)
 		}
-		if err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: b}}); err != nil {
+		if b == nil {
+			// Lost block. We send an empty block for the sake of the delivery progress.
+			b = &common.Block{Data: &common.BlockData{}}
+			PrepareBlockHeaderAndMetadata(b, blockParams)
+		}
+		msg := state.prepareResponse(ctx, b)
+		if msg == nil {
+			break
+		}
+		if err = stream.Send(msg); err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
-		logger.Debugf("Emitted block %d", b.Header.Number)
-		prevBlock = b
+		logger.Debugf("Emitted block [#%d] by %s", b.Header.Number, state)
+		blockParams.PrevBlock = b
 	}
 	return grpcerror.WrapCancelled(ctx.Err())
 }
 
-// Deliver calls Orderer.Deliver, but with a holding stream.
-func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	return o.Orderer.Deliver(&holdingStream{
-		AtomicBroadcast_DeliverServer: stream,
-		holdBlock:                     &o.HoldFromBlock,
-	})
-}
+func (s *OrdererStreamState) prepareResponse(ctx context.Context, block *common.Block) *ab.DeliverResponse {
+	blockNumber := block.Header.Number
 
-// Release blocks.
-func (o *HoldingOrderer) Release() {
-	o.HoldFromBlock.Store(math.MaxUint64)
-}
-
-// RegisterService registers for the orderer's GRPC services.
-func (o *HoldingOrderer) RegisterService(server *grpc.Server) {
-	ab.RegisterAtomicBroadcastServer(server, o)
-	healthgrpc.RegisterHealthServer(server, o.healthcheck)
-}
-
-func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
-	block, ok := msg.Type.(*ab.DeliverResponse_Block)
-	if ok {
-		// A simple busy wait loop is sufficient here.
-		for block.Block.Header.Number >= s.holdBlock.Load() {
-			logger.Infof("Holding block: %d (up to %d)", block.Block.Header.Number, s.holdBlock.Load())
-			select {
-			case <-s.Context().Done():
-				return nil
-			case <-time.NewTimer(time.Second).C:
-			}
+	// Block holding: a simple busy wait loop is sufficient here.
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	logHolding := false
+	for s.shouldHold(blockNumber) {
+		if !logHolding {
+			logger.Infof("Holding block: %d by %s", blockNumber, s)
+			logHolding = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
 		}
 	}
-	//nolint:wrapcheck // This is a mock for an external method.
-	return s.AtomicBroadcast_DeliverServer.Send(msg)
+	if logHolding {
+		logger.Infof("Releasing block: %d (up to %d) by %s",
+			blockNumber, s.HoldFromBlock.Load(), s)
+	}
+
+	// Block manipulation.
+	altBlock, loaded := s.ReplaceBlock.Load(blockNumber)
+	if loaded {
+		logger.Infof("Replacing block: %d by %s", blockNumber, s)
+		block = altBlock
+	}
+
+	// Headers only.
+	if !s.DataBlockStream && !protoutil.IsConfigBlock(block) {
+		block = &common.Block{
+			Header:   block.Header,
+			Metadata: block.Metadata,
+		}
+	}
+
+	return &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}
 }
 
-func readSeekInfo(env *common.Envelope) (start, end uint64, err error) {
-	start = 0
-	end = math.MaxUint64
+func (s *OrdererStreamState) shouldHold(blockNumber uint64) bool {
+	holdValue := s.HoldFromBlock.Load()
+	if holdValue == 0 {
+		// To avoid manual initialization, we assume "0" means not initialized.
+		return false
+	}
+	return blockNumber >= holdValue
+}
 
+// String outputs a human-readable identifier for this stream.
+func (s *OrdererStreamState) String() string {
+	kind := "headers"
+	if s.DataBlockStream {
+		kind = "data"
+	}
+	return fmt.Sprintf("party [%d] - %s - stream [%d]", s.PartyID, kind, s.Index)
+}
+
+func readSeekInfo(env *common.Envelope) (seekInfo *ab.SeekInfo, err error) {
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	if err != nil {
-		return start, end, errors.Wrap(err, "failed unmarshalling payload")
+		return nil, errors.Wrap(err, "failed unmarshalling payload")
 	}
-	seekInfo := &ab.SeekInfo{}
+	seekInfo = &ab.SeekInfo{}
 	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
-		return start, end, errors.Wrap(err, "failed unmarshalling seek info")
+		return nil, errors.Wrap(err, "failed unmarshalling seek info")
 	}
+	return seekInfo, nil
+}
 
+func parseSeekInfoStartStop(seekInfo *ab.SeekInfo) (start, end uint64, err error) {
+	start = 0
+	end = math.MaxUint64
 	if startMsg := seekInfo.Start.GetSpecified(); startMsg != nil {
 		start = startMsg.Number
 	}
@@ -272,21 +321,25 @@ func (o *Orderer) Run(ctx context.Context) error {
 	defer stop()
 
 	tick := time.NewTicker(o.config.BlockTimeout)
-	var prevBlock *common.Block
+	blockParams := BlockPrepareParameters{}
 	sendBlock := func(b *common.Block) {
 		if b == nil {
 			return
 		}
-		addBlockHeader(prevBlock, b)
+		PrepareBlockHeaderAndMetadata(b, blockParams)
 		o.cache.addBlock(ctx, b)
 		tick.Reset(o.config.BlockTimeout)
-		prevBlock = b
+		blockParams.PrevBlock = b
 	}
 
 	// Submit the config block.
 	if o.config.SendConfigBlock {
-		sendBlock(o.configBlock)
+		sendBlock(o.crypto.ConfigBlock)
 	}
+
+	// We add the singers after submitting the genesis block as Fabric's orderer
+	// does not sign the genesis block.
+	blockParams.ConsenterSigners = o.crypto.Consenters
 
 	data := make([][]byte, 0, o.config.BlockSize)
 	sendBlockData := func(reason string) {
@@ -356,20 +409,6 @@ func (o *Orderer) GetBlock(ctx context.Context, blockNum uint64) (*common.Block,
 // CutBlock allows forcing block cut for testing other packages.
 func (o *Orderer) CutBlock(ctx context.Context) bool {
 	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
-}
-
-func addBlockHeader(prevBlock, curBlock *common.Block) {
-	var blockNumber uint64
-	var previousHash []byte
-	if prevBlock != nil {
-		blockNumber = prevBlock.Header.Number + 1
-		previousHash = protoutil.BlockHeaderHash(prevBlock.Header)
-	}
-	curBlock.Header = &common.BlockHeader{
-		Number:       blockNumber,
-		DataHash:     protoutil.ComputeBlockDataHash(curBlock.Data),
-		PreviousHash: previousHash,
-	}
 }
 
 func newBlockCache(size int) *blockCache {

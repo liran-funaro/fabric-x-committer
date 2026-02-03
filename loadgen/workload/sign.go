@@ -9,8 +9,6 @@ package workload
 import (
 	"maps"
 	"os"
-	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -18,9 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
-	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -115,26 +111,11 @@ func newPolicyEndorserFromKey(
 }
 
 func newPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
-	peerOrgs := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
-	dir, err := os.ReadDir(peerOrgs)
-	utils.Must(err)
-	mspDirs := make([]msp.DirLoadParameters, 0, len(dir))
-	for _, dirEntry := range dir {
-		if !dirEntry.IsDir() {
-			continue
-		}
-		orgName := dirEntry.Name()
-		clientName := "client@" + orgName + ".com"
-		mspDirs = append(mspDirs, msp.DirLoadParameters{
-			MspName: orgName,
-			MspDir:  filepath.Join(peerOrgs, orgName, "users", clientName, "msp"),
-		})
-	}
-
-	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
+	peersMspDirs := sigtest.GetPeersMspDirs(cryptoPath)
+	signingIdentities, err := sigtest.GetSigningIdentities(peersMspDirs...)
 	utils.Must(err)
 
-	endorser, err := sigtest.NewNsEndorserFromMsp(test.CreatorID, mspDirs...)
+	endorser, err := sigtest.NewNsEndorserFromMsp(test.CreatorID, peersMspDirs...)
 	utils.Must(err)
 
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))

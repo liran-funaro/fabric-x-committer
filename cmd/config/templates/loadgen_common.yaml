@@ -46,7 +46,7 @@ load-profile:
         scheme: {{ $element.Scheme }}
         seed: {{ $element.Seed }}
       {{ end }}
-    config-block-path: {{ .ConfigBlockPath }}
+    crypto-material-path: {{ .Policy.CryptoMaterialPath }}
   query:
     query-size:
     min-invalid-keys-portion:

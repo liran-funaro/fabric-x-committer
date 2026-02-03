@@ -36,17 +36,21 @@ require (
 	golang.org/x/crypto v0.47.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/sync v0.19.0
+	golang.org/x/text v0.33.0
 	golang.org/x/time v0.14.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260114163908-3f89685c29c3
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
 
+replace github.com/hyperledger/fabric-x-common => github.com/liran-funaro/fabric-x-common v0.0.0-20260129140753-ad5a832e8bb7
+
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/googleapis/api-linter/v2/cmd/api-linter
 	github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt
 	github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
+	go.uber.org/mock/mockgen
 	golang.org/x/tools/cmd/goimports
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
@@ -322,13 +326,13 @@ require (
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
-	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.0 // indirect

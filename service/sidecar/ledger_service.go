@@ -19,9 +19,11 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger/fileledger"
 	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -42,6 +44,12 @@ type (
 		IncomingCommittedBlock <-chan *common.Block
 	}
 )
+
+var deliverRetryProfile = connection.RetryProfile{
+	InitialInterval: 50 * time.Millisecond,
+	Multiplier:      1.5,
+	MaxInterval:     time.Second,
+}
 
 // newLedgerService creates a new ledger service.
 func newLedgerService(channelID, ledgerDir string, metrics *perfMetrics) (*ledgerService, error) {
@@ -172,15 +180,29 @@ func (s *ledgerService) deliverBlocks(
 		return common.Status_NOT_FOUND, errors.New("channel not found")
 	}
 
-	cursor, stopNum, err := s.getCursor(payload.Data)
+	seekInfo, err := readSeekInfo(payload.Data)
 	if err != nil {
 		return common.Status_BAD_REQUEST, err
 	}
+	cursor, stopNum, err := s.getCursor(seekInfo)
+	if err != nil {
+		return common.Status_BAD_REQUEST, err
+	}
+	defer cursor.Close()
 	logger.Debugf("Received seekInfo.")
 
+	// We use a retry backoff here to avoid busy waiting when blocks are not yet available.
+	deliverRetry := deliverRetryProfile.NewBackoff()
 	for srv.Context().Err() == nil {
 		block, status := cursor.Next()
 
+		if status == common.Status_SERVICE_UNAVAILABLE && seekInfo.Behavior == ab.SeekInfo_BLOCK_UNTIL_READY {
+			logger.Debug("Blocks not yet available, waiting...")
+			backoffErr := connection.WaitForNextBackOffDuration(srv.Context(), deliverRetry)
+			if !errors.Is(backoffErr, connection.ErrRetryTimeout) {
+				continue
+			}
+		}
 		if status != common.Status_SUCCESS {
 			return status, nil
 		}
@@ -197,15 +219,53 @@ func (s *ledgerService) deliverBlocks(
 	return common.Status_SUCCESS, nil
 }
 
-func (s *ledgerService) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
-	seekInfo := &ab.SeekInfo{}
-	if err := proto.Unmarshal(payload, seekInfo); err != nil {
-		return nil, 0, errors.New("malformed seekInfo payload")
-	}
-	if seekInfo.Start == nil || seekInfo.Stop == nil {
-		return nil, 0, errors.New("seekInfo missing start or stop")
-	}
+func (s *ledgerService) getBlockByNumber(number uint64) (*common.Block, error) {
+	return s.getSingleBlock(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{
+		Number: number,
+	}}})
+}
 
+func (s *ledgerService) getLatestBlock() (*common.Block, error) {
+	return s.getSingleBlock(&ab.SeekPosition{Type: &ab.SeekPosition_Newest{Newest: &ab.SeekNewest{}}})
+}
+
+func (s *ledgerService) getSingleBlock(pos *ab.SeekPosition) (*common.Block, error) {
+	cursor, _ := s.ledger.Iterator(pos)
+	defer cursor.Close()
+	currentBlock, status := cursor.Next()
+	if status != common.Status_SUCCESS {
+		return nil, errors.Errorf("failed to fetch a single block: %s", status.String())
+	}
+	if currentBlock == nil {
+		return nil, errors.New("block not found")
+	}
+	if currentBlock.Header == nil {
+		return nil, errors.New("block has no header")
+	}
+	return currentBlock, nil
+}
+
+func (s *ledgerService) getLatestConfigBlock() (*common.Block, error) {
+	block, err := s.getLatestBlock()
+	if err != nil {
+		return nil, err
+	}
+	return s.getConfigBlockOfBlock(block)
+}
+
+func (s *ledgerService) getConfigBlockOfBlock(block *common.Block) (*common.Block, error) {
+	configBlockIdx, err := protoutil.GetLastConfigIndexFromBlock(block)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get config index from block")
+	}
+	if configBlockIdx == block.Header.Number {
+		// Config blocks points to itself, so we can just return it.
+		return block, nil
+	}
+	return s.getBlockByNumber(configBlockIdx)
+}
+
+func (s *ledgerService) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64, error) {
 	cursor, number := s.ledger.Iterator(seekInfo.Start)
 
 	switch stop := seekInfo.Stop.Type.(type) {
@@ -221,12 +281,13 @@ func (s *ledgerService) getCursor(payload []byte) (blockledger.Iterator, uint64,
 		}
 		return cursor, s.ledger.Height() - 1, nil
 	case *ab.SeekPosition_Specified:
-
 		if stop.Specified.Number < number {
+			cursor.Close()
 			return nil, 0, errors.New("start number greater than stop number")
 		}
 		return cursor, stop.Specified.Number, nil
 	default:
+		cursor.Close()
 		return nil, 0, errors.New("unknown type")
 	}
 }
@@ -244,4 +305,15 @@ func wrapDeliverError(status common.Status, err error) error {
 	default:
 		return grpcerror.WrapInternalError(err)
 	}
+}
+
+func readSeekInfo(payload []byte) (*ab.SeekInfo, error) {
+	seekInfo := &ab.SeekInfo{}
+	if err := proto.Unmarshal(payload, seekInfo); err != nil {
+		return nil, errors.New("malformed seekInfo payload")
+	}
+	if seekInfo.Start == nil || seekInfo.Stop == nil {
+		return nil, errors.New("seekInfo missing start or stop")
+	}
+	return seekInfo, nil
 }

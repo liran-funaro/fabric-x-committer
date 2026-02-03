@@ -32,10 +32,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -57,7 +57,6 @@ type sidecarTestEnv struct {
 type sidecarTestConfig struct {
 	NumService      int
 	NumFakeService  int
-	NumHolders      int
 	WithConfigBlock bool
 }
 
@@ -125,8 +124,7 @@ func newSidecarTestEnvWithTLS(
 			BlockTimeout:    5 * time.Minute,
 			SendConfigBlock: false,
 		},
-		NumFake:    conf.NumFakeService,
-		NumHolders: conf.NumHolders,
+		NumFake: conf.NumFakeService,
 	})
 
 	ordererEndpoints := ordererEnv.AllEndpoints()
@@ -180,7 +178,7 @@ func newSidecarTestEnvWithTLS(
 func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 	ctx context.Context,
 	t *testing.T,
-	startBlkNum int64,
+	startBlkNum uint64,
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
@@ -197,14 +195,15 @@ func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T
 func (env *sidecarTestEnv) startSidecarClient(
 	ctx context.Context,
 	t *testing.T,
-	startBlkNum int64,
+	startBlkNum uint64,
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
-		ChannelID: env.config.Orderer.ChannelID,
-		Client:    test.NewTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint),
-	}, startBlkNum)
+	env.committedBlock = deliver.StartCommitterDeliver(ctx, t, deliver.CommitterDeliveryParameters{
+		ChannelID:    env.config.Orderer.ChannelID,
+		Client:       test.NewTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint),
+		NextBlockNum: startBlkNum,
+	})
 }
 
 func (env *sidecarTestEnv) startNotificationStream(
@@ -249,7 +248,7 @@ func TestSidecar(t *testing.T) {
 
 func TestSidecarConfigUpdate(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3, NumHolders: 3}, test.InsecureTLSConfig)
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3}, test.InsecureTLSConfig)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
@@ -267,10 +266,17 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("Update the sidecar to use a second orderer group")
-	env.ordererEnv.Holder.HoldFromBlock.Store(expectedBlock + 2)
-	submitConfigBlock(env.ordererEnv.AllHolderEndpoints())
+	allEndpoints := env.ordererEnv.AllRealEndpoints()
+	holdingEndpoints, nonHoldingEndpoints := allEndpoints[:1], allEndpoints[1:]
+	holdingEndpoint := holdingEndpoints[0].Address()
+	submitConfigBlock(holdingEndpoints)
 	env.requireBlock(ctx, t, expectedBlock)
 	expectedBlock++
+
+	t.Log("Validate only the holder stream remains")
+	mock.RequireStreams(t, env.ordererEnv.Orderer, 1)
+	holdingStream := mock.RequireStreamsWithEndpoints(t, env.ordererEnv.Orderer, 1, holdingEndpoint)[0]
+	holdingStream.HoldFromBlock.Store(expectedBlock + 1)
 
 	t.Log("Sanity check")
 	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
@@ -280,12 +286,12 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	// We submit the config that returns to the non-holding orderer.
 	// But it should not be processed as the sidecar should have switched to the holding
 	// orderer.
-	submitConfigBlock(env.ordererEnv.AllRealOrdererEndpoints())
+	submitConfigBlock(nonHoldingEndpoints)
 	select {
 	case <-ctx.Done():
 		t.Fatal("context deadline exceeded")
 	case <-env.committedBlock:
-		t.Fatal("the sidecar cannot receive blocks since its orderer holds them")
+		t.Fatal("The sidecar should not receive blocks since its orderer holds them")
 	case <-time.After(expectedProcessingTime):
 		t.Log("Fantastic")
 	}
@@ -297,11 +303,12 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	require.Equal(t, expectedBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
-	env.ordererEnv.Holder.HoldFromBlock.Add(1)
+	holdingStream.HoldFromBlock.Add(1)
 	env.requireBlock(ctx, t, expectedBlock)
 	expectedBlock++
 
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
+	mock.RequireStreamsWithEndpoints(t, env.ordererEnv.Orderer, 0, holdingEndpoint)
 	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 }
 

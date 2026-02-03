@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -24,11 +24,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 var logger = logging.New("sidecar")
@@ -37,7 +37,7 @@ var logger = logging.New("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 type Service struct {
-	ordererClient      *deliver.Client
+	delivery           deliver.OrdererDeliveryParameters
 	relay              *relay
 	notifier           *notifier
 	ledgerService      *ledgerService
@@ -53,15 +53,18 @@ type Service struct {
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
 	logger.Info("Initializing new sidecar")
-	err := LoadBootstrapConfig(c)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load shared config: %w", err)
-	}
 
 	// 1. Fetch blocks from the ordering service.
-	ordererClient, err := deliver.New(&c.Orderer)
+	err := ordererconn.ValidateConfig(&c.Orderer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create orderer client: %w", err)
+		return nil, err
+	}
+	var lastConfigBlock *common.Block
+	if c.Bootstrap.GenesisBlockFilePath != "" {
+		lastConfigBlock, err = configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		if err != nil {
+			return nil, errors.Wrap(err, "read config block")
+		}
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
@@ -79,15 +82,24 @@ func New(c *Config) (*Service, error) {
 	if bufferSize <= 0 {
 		bufferSize = defaultBufferSize
 	}
+	blockToBeCommitted := make(chan *common.Block, bufferSize)
 	return &Service{
-		ordererClient:      ordererClient,
+		delivery: deliver.OrdererDeliveryParameters{
+			FaultToleranceLevel:     c.Orderer.FaultToleranceLevel,
+			TLS:                     c.Orderer.Connection.TLS,
+			Retry:                   c.Orderer.Connection.Retry,
+			Identity:                c.Orderer.Identity,
+			BlockWithholdingTimeout: time.Second,
+			LastestKnownConfig:      lastConfigBlock,
+			OutputBlock:             blockToBeCommitted,
+		},
 		relay:              relayService,
 		notifier:           newNotifier(bufferSize, &c.Notification),
 		ledgerService:      ledgerService,
 		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
 		metrics:            metrics,
-		blockToBeCommitted: make(chan *common.Block, bufferSize),
+		blockToBeCommitted: blockToBeCommitted,
 		committedBlock:     make(chan *common.Block, bufferSize),
 		statusQueue:        make(chan []*committerpb.TxStatus, bufferSize),
 	}, nil
@@ -135,10 +147,13 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return connection.Sustain(gCtx, func() error {
+		// TODO: initialize retry from config.
+		return connection.Sustain(gCtx, nil, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
-				s.blockToBeCommitted = make(chan *common.Block, 100) // We should drop all enqueued block if any.
+				// We should drop all enqueued block if any.
+				s.blockToBeCommitted = make(chan *common.Block, cap(s.blockToBeCommitted))
+				s.delivery.OutputBlock = s.blockToBeCommitted
 			}()
 			return s.sendBlocksAndReceiveStatus(gCtx, coordClient)
 		})
@@ -159,37 +174,39 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	coordClient servicepb.CoordinatorClient,
 ) error {
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
-	nextBlockNum, err := s.recover(ctx, coordClient)
+	var err error
+	err = s.recoverDeliveryFromLedgerStore(ctx, coordClient)
 	if err != nil {
 		return errors.Join(connection.ErrBackOff, err)
 	}
+
+	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
+	if err != nil {
+		return logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
+	}
+	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
 
 	// if the recovery is successful, the connection is established.
 	s.metrics.coordConnection.Connected(s.coordConn.CanonicalTarget())
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
+	// NOTE: deliver.OrdererToChannel and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
-		err := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(nextBlockNum), //nolint:gosec
-			EndBlkNum:   deliver.MaxBlockNum,
-			OutputBlock: s.blockToBeCommitted,
-		})
-		if errors.Is(err, context.Canceled) {
-			// A context may be cancelled due to a relay error, thus it is not critical error.
-			return errors.Wrap(err, "context is canceled")
+		deliverErr := deliver.OrdererToChannel(gCtx, &s.delivery)
+		if errors.Is(deliverErr, context.Canceled) {
+			// A context may be canceled due to a relay error, thus it is not critical error.
+			return errors.Wrap(deliverErr, "context is canceled")
 		}
-		return errors.Join(connection.ErrNonRetryable, err)
+		return errors.Join(connection.ErrNonRetryable, deliverErr)
 	})
 
 	g.Go(func() error {
 		logger.Info("Relay the blocks to committer (from s.blockToBeCommitted) and receive the transaction status.")
 		return s.relay.run(gCtx, &relayRunConfig{
 			coordClient:                    coordClient,
-			nextExpectedBlockByCoordinator: nextBlockNum,
-			configUpdater:                  s.configUpdater,
+			nextExpectedBlockByCoordinator: blkInfo.Number,
 			incomingBlockToBeCommitted:     s.blockToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
@@ -207,20 +224,9 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 	}
 }
 
-func (s *Service) configUpdater(block *common.Block) {
-	logger.Infof("updating config from block: %d", block.Header.Number)
-	err := OverwriteConfigFromBlock(s.config, block)
-	if err != nil {
-		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
-		return
-	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
-	if err != nil {
-		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
-	}
-}
-
-func (s *Service) recover(ctx context.Context, coordClient servicepb.CoordinatorClient) (uint64, error) {
+func (s *Service) recoverDeliveryFromLedgerStore(
+	ctx context.Context, coordClient servicepb.CoordinatorClient,
+) error {
 	logger.Info("recovering sidecar")
 	// If the sidecar fails but the coordinator remains active, the sidecar
 	// must wait for the coordinator to become idle (i.e., to finish
@@ -243,130 +249,35 @@ func (s *Service) recover(ctx context.Context, coordClient servicepb.Coordinator
 	// sidecar retrieves complete status information and avoids inconsistencies
 	// in its block store.
 	if err := waitForIdleCoordinator(ctx, coordClient); err != nil {
-		return 0, err
-	}
-
-	// We should update the orderer endpoints first, before recovering the ledger
-	// store. Otherwise, the `recoverLedgerStore` function might try to fetch blocks
-	// from non-existent or non-member ordering services.
-	if err := s.recoverConfigTransactionFromStateDB(ctx, coordClient); err != nil {
-		return 0, err
-	}
-
-	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
-	if err != nil {
-		return 0, logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
-	}
-	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
-
-	return blkInfo.Number, s.recoverLedgerStore(ctx, coordClient, blkInfo.Number)
-}
-
-func (s *Service) recoverConfigTransactionFromStateDB(
-	ctx context.Context, client servicepb.CoordinatorClient,
-) error {
-	configMsg, err := client.GetConfigTransaction(ctx, nil)
-	if err != nil {
-		return logAndWrapCoordinatorError(err, "failed to get config transaction from coordinator")
-	}
-	if configMsg == nil || configMsg.Envelope == nil {
-		return nil
-	}
-	envelope, err := protoutil.UnmarshalEnvelope(configMsg.Envelope)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
-	}
-	err = OverwriteConfigFromEnvelope(s.config, envelope)
-	if err != nil {
 		return err
 	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
-	return errors.Wrapf(err, "failed to update connections")
-}
-
-func (s *Service) recoverLedgerStore(
-	ctx context.Context,
-	client servicepb.CoordinatorClient,
-	stateDBHeight uint64,
-) error {
-	blockStoreHeight := s.ledgerService.GetBlockHeight()
-	if blockStoreHeight >= stateDBHeight {
-		// NOTE: The block store height can be greater than the state database height.
-		//       This occurs because the last committed block number is updated in the state
-		//       database periodically, whereas blocks are written to the block store immediately.
-		//       Therefore, the block store height can temporarily exceed the state database height.
+	if s.ledgerService.ledger.Height() == 0 {
 		return nil
 	}
 
-	numOfBlocksPendingInBlockStore := stateDBHeight - blockStoreHeight
-	logger.Infof("ledger store is [%d] blocks behind the state database in the committer",
-		numOfBlocksPendingInBlockStore)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	blockCh := make(chan *common.Block, numOfBlocksPendingInBlockStore)
-	committedBlocks := channel.NewWriter(ctx, s.committedBlock)
-
-	g.Go(func() error {
-		logger.Infof("starting delivery service with the orderer to receive block %d to %d",
-			blockStoreHeight, stateDBHeight-1)
-		return s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(blockStoreHeight), //nolint:gosec
-			EndBlkNum:   stateDBHeight - 1,
-			OutputBlock: blockCh,
-		})
-	})
-
-	g.Go(func() error {
-		for range numOfBlocksPendingInBlockStore {
-			select {
-			case <-gCtx.Done():
-				return gCtx.Err()
-			case blk := <-blockCh:
-				if err := appendMissingBlock(gCtx, client, blk, committedBlocks); err != nil {
-					return err
-				}
-			}
-		}
-		logger.Infof("successfully recover ledger store by adding [%d] missing blocks", numOfBlocksPendingInBlockStore)
-		return nil
-	})
-
-	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
-}
-
-func appendMissingBlock(
-	ctx context.Context,
-	client servicepb.CoordinatorClient,
-	blk *common.Block,
-	committedBlocks channel.Writer[*common.Block],
-) error {
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	latestBlock, err := s.ledgerService.getLatestBlock()
 	if err != nil {
-		// This can never occur unless there is a bug in the relay.
+		return err
+	}
+	verificationConfigBlock, err := s.ledgerService.getConfigBlockOfBlock(latestBlock)
+	if err != nil {
+		return err
+	}
+	latestConfigBlock, err := s.ledgerService.getLatestConfigBlock()
+	if err != nil {
 		return err
 	}
 
-	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
-	for i, tx := range mappedBlock.block.Txs {
-		txIDs[i] = tx.Ref.TxId
-		expectedHeight[i] = tx.Ref
-	}
+	s.delivery.NextBlockVerificationConfig = verificationConfigBlock
+	s.delivery.LastBlock = latestBlock
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
-	if err != nil {
-		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
-	}
-
-	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
-		return err
-	}
-
-	mappedBlock.withStatus.setStatusMetadataInBlock()
-
-	if !committedBlocks.Write(mappedBlock.withStatus.block) {
-		return errors.New("context ended")
+	// We might have a newer config block than the one in the ledger
+	// (e.g., from the config YAML or from previous delivery run).
+	// This can help in cases where the sidecar was down too long and missed a crucial config-block
+	// that updated all the endpoints, leaving no known orderers to fetch blocks from.
+	if s.delivery.LastestKnownConfig != nil &&
+		s.delivery.LastestKnownConfig.Header.Number < latestConfigBlock.Header.Number {
+		s.delivery.LastestKnownConfig = latestConfigBlock
 	}
 	return nil
 }

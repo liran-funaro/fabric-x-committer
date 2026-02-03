@@ -17,11 +17,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -37,27 +37,25 @@ const (
 
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
-	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: params.Res.Profile.Policy.ChannelID,
-		Client:    params.ClientConfig,
-	})
-	if err != nil {
-		return err
-	}
 	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{
-			EndBlkNum:   deliver.MaxBlockNum,
+		return deliver.CommiterToChannel(gCtx, deliver.CommitterDeliveryParameters{
+			ChannelID:   params.Res.Profile.Policy.ChannelID,
+			Client:      params.ClientConfig,
 			OutputBlock: committedBlock,
 		})
 	})
 }
 
 // runOrdererReceiver start receiving blocks from the orderer.
-func runOrdererReceiver(ctx context.Context, res *ClientResources, client *deliver.Client) error {
+func runOrdererReceiver(ctx context.Context, res *ClientResources, c *ordererconn.Config) error {
 	return runDeliveryReceiver(ctx, res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return client.Deliver(gCtx, &deliver.Parameters{
-			EndBlkNum:   deliver.MaxBlockNum,
-			OutputBlock: committedBlock,
+		return deliver.OrdererToChannel(gCtx, &deliver.OrdererDeliveryParameters{
+			// We use no fault tolerance, as we only aim to monitor progress.
+			FaultToleranceLevel: ordererconn.NoFT,
+			TLS:                 c.Connection.TLS,
+			Retry:               c.Connection.Retry,
+			Identity:            c.Identity,
+			OutputBlock:         committedBlock,
 		})
 	})
 }

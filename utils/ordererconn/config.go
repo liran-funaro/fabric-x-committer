@@ -17,10 +17,10 @@ import (
 type (
 	// Config for the orderer-client.
 	Config struct {
-		Connection    ConnectionConfig `mapstructure:"connection"`
-		ConsensusType string           `mapstructure:"consensus-type"`
-		ChannelID     string           `mapstructure:"channel-id"`
-		Identity      *IdentityConfig  `mapstructure:"identity"`
+		Connection          ConnectionConfig `mapstructure:"connection"`
+		FaultToleranceLevel string           `mapstructure:"fault-tolerance-level"`
+		ChannelID           string           `mapstructure:"channel-id"`
+		Identity            *IdentityConfig  `mapstructure:"identity"`
 	}
 
 	// ConnectionConfig contains the endpoints, CAs, and retry profile.
@@ -39,48 +39,62 @@ type (
 	}
 )
 
+// Fault tolerance levels.
+// BFT (byzantine fault tolerance):
+//   - For delivery: verifies blocks and monitors for block withholding.
+//   - For broadcast: submit transactions to multiple orderers and waits for acknowledgments from a quorum.
+//
+// CFT (crash fault tolerance):
+//   - For delivery: verifies blocks.
+//   - For broadcast: submits transactions to a single orderer.
+//
+// NoFT (no fault tolerance):
+//   - For delivery: does not verify blocks nor monitor for block withholding.
+//   - For broadcast: submits transactions to a single orderer.
+//   - Not for production use.
+//
+// UnspecifiedFT (empty string) defaults to the DefaultFT, which is the highest fault tolerance level (BFT).
 const (
-	// Cft client support for crash fault tolerance.
-	Cft = "CFT"
-	// Bft client support for byzantine fault tolerance.
-	Bft = "BFT"
-	// DefaultConsensus default fault tolerance.
-	DefaultConsensus = Cft
+	UnspecifiedFT = ""
+	BFT           = "BFT"
+	CFT           = "CFT"
+	NoFT          = "NO"
+	DefaultFT     = BFT
+)
 
+const (
 	// Broadcast support by endpoint.
 	Broadcast = "broadcast"
 	// Deliver support by endpoint.
 	Deliver = "deliver"
 )
 
-// Errors that may be returned when updating a configuration.
+// ErrEmptyEndpoint will be returned when an endpoint is empty.
 var (
-	ErrEmptyConnectionConfig = errors.New("empty connection config")
-	ErrEmptyEndpoint         = errors.New("empty endpoint")
-	ErrNoEndpoints           = errors.New("no endpoints")
+	ErrEmptyEndpoint = errors.New("empty endpoint")
+	ErrNoEndpoints   = errors.New("no endpoints")
 )
 
 // ValidateConfig validate the configuration.
 func ValidateConfig(c *Config) error {
-	if c.ConsensusType == "" {
-		c.ConsensusType = DefaultConsensus
+	switch c.FaultToleranceLevel {
+	case BFT, CFT, NoFT:
+		// valid
+	case UnspecifiedFT:
+		c.FaultToleranceLevel = DefaultFT
+	default:
+		return errors.Newf("invalid fault tolerance level: '%s'", c.FaultToleranceLevel)
 	}
-	if c.ConsensusType != Bft && c.ConsensusType != Cft {
-		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
-	}
-	return ValidateConnectionConfig(&c.Connection)
+	return ValidateEndpoints(c.Connection.Endpoints)
 }
 
-// ValidateConnectionConfig validate the configuration.
-func ValidateConnectionConfig(c *ConnectionConfig) error {
-	if c == nil {
-		return ErrEmptyConnectionConfig
-	}
-	if len(c.Endpoints) == 0 {
+// ValidateEndpoints validate the configuration.
+func ValidateEndpoints(ep []*commontypes.OrdererEndpoint) error {
+	if len(ep) == 0 {
 		return ErrNoEndpoints
 	}
-	uniqueEndpoints := make(map[string]string)
-	for _, e := range c.Endpoints {
+	uniqueEndpoints := make(map[string]string, len(ep))
+	for _, e := range ep {
 		if e.Host == "" || e.Port == 0 {
 			return ErrEmptyEndpoint
 		}

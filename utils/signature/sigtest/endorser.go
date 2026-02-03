@@ -8,6 +8,8 @@ package sigtest
 
 import (
 	"math/big"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -15,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -54,7 +57,7 @@ func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, err
 
 // NewNsEndorserFromMsp creates a new NsEndorser using identities loaded from MSP directories.
 // This endorser will create an endorsement for each MSP provided.
-func NewNsEndorserFromMsp(certType int, mspDirs ...msp.DirLoadParameters) (*NsEndorser, error) {
+func NewNsEndorserFromMsp(certType int, mspDirs ...*msp.DirLoadParameters) (*NsEndorser, error) {
 	identities, idErr := GetSigningIdentities(mspDirs...)
 	if idErr != nil {
 		return nil, idErr
@@ -102,11 +105,58 @@ func (v *NsEndorser) EndorseTxNs(txID string, tx *applicationpb.Tx, nsIdx int) (
 	return v.Endorse(msg)
 }
 
+// GetPeersIdentities returns the peers' identities from a crypto path.
+func GetPeersIdentities(cryptoPath string) ([]msp.SigningIdentity, error) {
+	return GetSigningIdentities(GetPeersMspDirs(cryptoPath)...)
+}
+
+// GetPeersMspDirs returns the peers' MSP directory path.
+func GetPeersMspDirs(cryptoPath string) []*msp.DirLoadParameters {
+	peerOrgPath := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
+	peerMspDirs := GetMspDirs(peerOrgPath)
+	for _, mspItem := range peerMspDirs {
+		clientName := "client@" + mspItem.MspName + ".com"
+		mspItem.MspDir = path.Join(mspItem.MspDir, "users", clientName, "msp")
+	}
+	return peerMspDirs
+}
+
+// GetConsenterIdentities returns the orderer consenters' identities from a crypto path.
+func GetConsenterIdentities(cryptoPath string) ([]msp.SigningIdentity, error) {
+	ordererOrgPath := path.Join(cryptoPath, cryptogen.OrdererOrganizationsDir)
+	ordererMspDirs := GetMspDirs(ordererOrgPath)
+	for _, mspItem := range ordererMspDirs {
+		nodeName := "consenter-" + mspItem.MspName[len("orderer-"):]
+		mspItem.MspDir = path.Join(mspItem.MspDir, "orderers", nodeName, "msp")
+	}
+	return GetSigningIdentities(ordererMspDirs...)
+}
+
+// GetMspDirs returns an msp dir parameter per organization in the path.
+func GetMspDirs(targetPath string) []*msp.DirLoadParameters {
+	dir, err := os.ReadDir(targetPath)
+	if err != nil {
+		return nil
+	}
+	mspDirs := make([]*msp.DirLoadParameters, 0, len(dir))
+	for _, dirEntry := range dir {
+		if !dirEntry.IsDir() {
+			continue
+		}
+		orgName := dirEntry.Name()
+		mspDirs = append(mspDirs, &msp.DirLoadParameters{
+			MspName: orgName,
+			MspDir:  path.Join(targetPath, orgName),
+		})
+	}
+	return mspDirs
+}
+
 // GetSigningIdentities loads signing identities from the given MSP directories.
-func GetSigningIdentities(mspDirs ...msp.DirLoadParameters) ([]msp.SigningIdentity, error) {
+func GetSigningIdentities(mspDirs ...*msp.DirLoadParameters) ([]msp.SigningIdentity, error) {
 	identities := make([]msp.SigningIdentity, len(mspDirs))
 	for i, mspDir := range mspDirs {
-		localMsp, err := msp.LoadLocalMspDir(mspDir)
+		localMsp, err := msp.LoadLocalMspDir(*mspDir)
 		if err != nil {
 			return nil, err
 		}
