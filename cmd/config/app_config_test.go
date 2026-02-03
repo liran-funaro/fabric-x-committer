@@ -35,10 +35,6 @@ import (
 
 const artifactsPath = "/root/artifacts"
 
-var ordererRootCAs = []string{
-	filepath.Join(artifactsPath, test.OrdererRootCATLSPath),
-}
-
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
 	sidecarTLSCreds := test.NewServiceTLSConfig(artifactsPath, "sidecar", connection.MutualTLSMode)
@@ -55,9 +51,6 @@ func TestReadConfigSidecar(t *testing.T) {
 				MaxConcurrentStreams: 10,
 			},
 			Monitoring: newServerConfig("localhost", 2114),
-			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
-			},
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint("localhost", 9001),
 			},
@@ -94,21 +87,14 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			Monitoring: newServerConfigWithDefaultTLS("sidecar", 2114),
 			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
+				FaultToleranceLevel:      ordererconn.BFT,
+				LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+				Identity:                 newIdentityConfig(),
 				TLS: ordererconn.OrdererTLSConfig{
 					Mode:     sidecarTLSCreds.Mode,
 					KeyPath:  sidecarTLSCreds.KeyPath,
 					CertPath: sidecarTLSCreds.CertPath,
 				},
-				Organizations: map[string]*ordererconn.OrganizationConfig{
-					"org0": {
-						Endpoints: []*commontypes.OrdererEndpoint{
-							newOrdererEndpoint("", "orderer"),
-						},
-						CACerts: ordererRootCAs,
-					},
-				},
-				Identity: newIdentityConfig(),
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", "sidecar", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -123,9 +109,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
 			ChannelBufferSize:             100,
-			Bootstrap: sidecar.Bootstrap{
-				GenesisBlockFilePath: "/root/artifacts/config-block.pb.bin",
-			},
 		},
 	}}
 	for _, tc := range tests {
@@ -372,21 +355,13 @@ func TestReadConfigLoadGen(t *testing.T) {
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", "loadgen", 4001),
 					Orderer: ordererconn.Config{
-						ChannelID:     "mychannel",
-						ConsensusType: ordererconn.Bft,
-						Identity:      newIdentityConfig(),
+						FaultToleranceLevel:      ordererconn.BFT,
+						LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+						Identity:                 newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
 							Mode:     loadgenTLSCreds.Mode,
 							KeyPath:  loadgenTLSCreds.KeyPath,
 							CertPath: loadgenTLSCreds.CertPath,
-						},
-						Organizations: map[string]*ordererconn.OrganizationConfig{
-							"org0": {
-								Endpoints: []*commontypes.OrdererEndpoint{
-									newOrdererEndpoint("", "orderer"),
-								},
-								CACerts: ordererRootCAs,
-							},
 						},
 					},
 					BroadcastParallelism: 1,
