@@ -1,1 +1,4 @@
 {"id":"027b3626-0222-4038-af6e-e214f5788aaa","ts":"2026-03-08T14:08:08.517Z","path":"/home/liran/workspace/fabric-x-committer/utils/deliverorderer/orderer.go","version":"1.0.0","taskID":"4735a078-3e5d-428d-a2f6-81ed64296a23"}
+
+{"id":"f214bcfc-3d94-4caa-bfe2-edc1d854596a","ts":"2026-03-08T08:56:20.095Z","path":"/home/liran/workspace/fabric-x-committer/service/sidecar/sidecar.go","version":"1.0.0","taskID":"0ff99db7-5074-49d2-b9f8-2bd4cff7cf57"}
+{"id":"c22a0cb2-72f3-46cd-972b-b43935ab5f3b","ts":"2026-03-08T08:57:22.243Z","path":"/home/liran/workspace/fabric-x-committer/service/sidecar/sidecar.go","version":"1.0.0","taskID":"0ff99db7-5074-49d2-b9f8-2bd4cff7cf57"}
