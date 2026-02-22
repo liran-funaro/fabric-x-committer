@@ -158,7 +158,7 @@ func (r *relay) preProcessBlock(
 		}
 
 		if recoveredBlocks > 0 {
-			logger.Infof("successfully recover ledger store by adding [%d] missing blocks", recoveredBlocks)
+			logger.Infof("successfully recovered ledger by adding [%d] missing blocks", recoveredBlocks)
 			recoveredBlocks = 0
 		}
 

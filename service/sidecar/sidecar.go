@@ -89,23 +89,21 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
 
-	bufferSize := c.ChannelBufferSize
-	if bufferSize <= 0 {
-		bufferSize = defaultBufferSize
+	if c.ChannelBufferSize <= 0 {
+		c.ChannelBufferSize = defaultBufferSize
 	}
 	return &Service{
-		ordererClient:      ordererClient,
-		relay:              relayService,
-		notifier:           newNotifier(bufferSize, &c.Notification),
-		blockStore:         blockStore,
-		blockDelivery:      newBlockDelivery(blockStore, c.Orderer.ChannelID),
-		blockQuery:         newBlockQuery(blockStore.store),
-		healthcheck:        connection.DefaultHealthCheckService(),
-		config:             c,
-		metrics:            metrics,
-		blockToBeCommitted: make(chan *common.Block, bufferSize),
-		committedBlock:     make(chan *common.Block, bufferSize),
-		statusQueue:        make(chan []*committerpb.TxStatus, bufferSize),
+		ordererClient:  ordererClient,
+		relay:          relayService,
+		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
+		blockStore:     blockStore,
+		blockDelivery:  newBlockDelivery(blockStore, c.Orderer.ChannelID),
+		blockQuery:     newBlockQuery(blockStore.store),
+		healthcheck:    connection.DefaultHealthCheckService(),
+		config:         c,
+		metrics:        metrics,
+		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
+		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
 	}, nil
 }
 
@@ -154,7 +152,6 @@ func (s *Service) Run(ctx context.Context) error {
 		return connection.Sustain(gCtx, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
-				s.blockToBeCommitted = make(chan *common.Block, 100) // We should drop all enqueued block if any.
 			}()
 			return s.sendBlocksAndReceiveStatus(gCtx, coordClient)
 		})
@@ -176,8 +173,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	coordClient servicepb.CoordinatorClient,
 ) error {
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
-	var err error
-	err = s.recoverDeliveryFromLedgerStore(ctx, coordClient)
+	nextDeliveryBlockNum, err := s.recoverDeliveryFromLedgerStore(ctx, coordClient)
 	if err != nil {
 		return errors.Join(connection.ErrBackOff, err)
 	}
@@ -193,19 +189,22 @@ func (s *Service) sendBlocksAndReceiveStatus(
 
 	g, gCtx := errgroup.WithContext(ctx)
 
+	// We drop all enqueued block if any before starting a new session.
+	s.blockToBeCommitted = make(chan *common.Block, s.config.ChannelBufferSize)
+
 	// NOTE: deliver.OrdererToChannel and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
-		err := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(nextBlockNum), //nolint:gosec
+		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
+			StartBlkNum: int64(nextDeliveryBlockNum), //nolint:gosec
 			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: s.blockToBeCommitted,
 		})
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(deliverErr, context.Canceled) {
 			// A context may be cancelled due to a relay error, thus it is not critical error.
-			return errors.Wrap(err, "context is canceled")
+			return errors.Wrap(deliverErr, "context is canceled")
 		}
-		return errors.Join(connection.ErrNonRetryable, err)
+		return errors.Join(connection.ErrNonRetryable, deliverErr)
 	})
 
 	g.Go(func() error {
@@ -231,10 +230,23 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 	}
 }
 
+func (s *Service) configUpdater(block *common.Block) {
+	logger.Infof("updating config from block: %d", block.Header.Number)
+	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromConfigBlock(block)
+	if err != nil {
+		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
+		return
+	}
+	err = s.ordererClient.UpdateConnections(orgsMaterial)
+	if err != nil {
+		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
+	}
+}
+
 func (s *Service) recoverDeliveryFromLedgerStore(
 	ctx context.Context, coordClient servicepb.CoordinatorClient,
-) error {
-	logger.Info("recovering sidecar previous block and config block from ledger store")
+) (uint64, error) {
+	logger.Info("recovering sidecar config block from the ledger")
 	// If the sidecar fails but the coordinator remains active, the sidecar
 	// must wait for the coordinator to become idle (i.e., to finish
 	// processing all previously submitted transactions) before attempting
@@ -256,43 +268,36 @@ func (s *Service) recoverDeliveryFromLedgerStore(
 	// sidecar retrieves complete status information and avoids inconsistencies
 	// in its block store.
 	if err := waitForIdleCoordinator(ctx, coordClient); err != nil {
-		return err
+		return 0, err
 	}
 
 	blockStoreHeight := s.blockStore.GetBlockHeight()
+	logger.Infof("starting ledger height: %d", blockStoreHeight)
 	if blockStoreHeight == 0 {
-		return nil
+		return 0, nil
 	}
 
 	latestBlock, err := s.blockStore.store.RetrieveBlockByNumber(blockStoreHeight - 1)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	configBlockIdx, err := protoutil.GetLastConfigIndexFromBlock(latestBlock)
 	if err != nil {
-		return errors.Wrap(err, "failed to get config index from latest block")
+		return 0, errors.Wrap(err, "failed to get config index from latest block")
 	}
+
+	logger.Infof("starting config block number: %d", configBlockIdx)
 	// Config blocks may point to itself.
-	verificationConfigBlock := latestBlock
+	latestConfigBlock := latestBlock
 	if configBlockIdx != latestBlock.Header.Number {
-		verificationConfigBlock, err = s.blockStore.store.RetrieveBlockByNumber(configBlockIdx)
+		latestConfigBlock, err = s.blockStore.store.RetrieveBlockByNumber(configBlockIdx)
 		if err != nil {
-			return errors.Wrap(err, "failed to get latest config block")
+			return 0, errors.Wrap(err, "failed to get latest config block")
 		}
 	}
 
-	s.delivery.NextBlockVerificationConfig = verificationConfigBlock
-	s.delivery.LastBlock = latestBlock
-
-	// We might have a newer config block than the one in the ledger
-	// (e.g., from the config YAML or from previous delivery run).
-	// This can help in cases where the sidecar was down too long and missed a crucial config-block
-	// that updated all the endpoints, leaving no known orderers to fetch blocks from.
-	if s.delivery.LastestKnownConfig == nil ||
-		s.delivery.LastestKnownConfig.Header.Number < verificationConfigBlock.Header.Number {
-		s.delivery.LastestKnownConfig = verificationConfigBlock
-	}
-	return nil
+	s.configUpdater(latestConfigBlock)
+	return blockStoreHeight, nil
 }
 
 func (s *Service) monitorQueues(ctx context.Context) {

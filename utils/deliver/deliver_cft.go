@@ -159,7 +159,7 @@ func (c *CftClient) deliverRelay(
 		if block == nil || block.Header == nil {
 			return 0, errors.New("received nil block or with nil header")
 		}
-		if block.Header.Number != uint64(p.StartBlkNum) {
+		if block.Header.Number != uint64(p.StartBlkNum) { //nolint:gosec // int64 -> uint64.
 			return 0, errors.Errorf("received block number %d != %d (expected)",
 				block.Header.Number, p.StartBlkNum)
 		}
