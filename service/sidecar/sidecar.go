@@ -26,7 +26,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -177,17 +176,24 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	coordClient servicepb.CoordinatorClient,
 ) error {
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
-	nextBlockNum, err := s.recover(ctx, coordClient)
+	var err error
+	err = s.recoverDeliveryFromLedgerStore(ctx, coordClient)
 	if err != nil {
 		return errors.Join(connection.ErrBackOff, err)
 	}
+
+	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
+	if err != nil {
+		return logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
+	}
+	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
 
 	// if the recovery is successful, the connection is established.
 	s.metrics.coordConnection.Connected(s.coordConn.CanonicalTarget())
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
+	// NOTE: deliver.OrdererToChannel and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
 		err := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
@@ -206,7 +212,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 		logger.Info("Relay the blocks to committer (from s.blockToBeCommitted) and receive the transaction status.")
 		return s.relay.run(gCtx, &relayRunConfig{
 			coordClient:                    coordClient,
-			nextExpectedBlockByCoordinator: nextBlockNum,
+			nextExpectedBlockByCoordinator: blkInfo.Number,
 			configUpdater:                  s.configUpdater,
 			incomingBlockToBeCommitted:     s.blockToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
@@ -225,21 +231,10 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 	}
 }
 
-func (s *Service) configUpdater(block *common.Block) {
-	logger.Infof("updating config from block: %d", block.Header.Number)
-	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromConfigBlock(block)
-	if err != nil {
-		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
-		return
-	}
-	err = s.ordererClient.UpdateConnections(orgsMaterial)
-	if err != nil {
-		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
-	}
-}
-
-func (s *Service) recover(ctx context.Context, coordClient servicepb.CoordinatorClient) (uint64, error) {
-	logger.Info("recovering sidecar")
+func (s *Service) recoverDeliveryFromLedgerStore(
+	ctx context.Context, coordClient servicepb.CoordinatorClient,
+) error {
+	logger.Info("recovering sidecar previous block and config block from ledger store")
 	// If the sidecar fails but the coordinator remains active, the sidecar
 	// must wait for the coordinator to become idle (i.e., to finish
 	// processing all previously submitted transactions) before attempting
@@ -261,130 +256,41 @@ func (s *Service) recover(ctx context.Context, coordClient servicepb.Coordinator
 	// sidecar retrieves complete status information and avoids inconsistencies
 	// in its block store.
 	if err := waitForIdleCoordinator(ctx, coordClient); err != nil {
-		return 0, err
-	}
-
-	// We should update the orderer endpoints first, before recovering the ledger
-	// store. Otherwise, the `recoverLedgerStore` function might try to fetch blocks
-	// from non-existent or non-member ordering services.
-	if err := s.recoverConfigTransactionFromStateDB(ctx, coordClient); err != nil {
-		return 0, err
-	}
-
-	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
-	if err != nil {
-		return 0, logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
-	}
-	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
-
-	return blkInfo.Number, s.recoverLedgerStore(ctx, coordClient, blkInfo.Number)
-}
-
-func (s *Service) recoverConfigTransactionFromStateDB(
-	ctx context.Context, client servicepb.CoordinatorClient,
-) error {
-	configMsg, err := client.GetConfigTransaction(ctx, nil)
-	if err != nil {
-		return logAndWrapCoordinatorError(err, "failed to get config transaction from coordinator")
-	}
-	if configMsg == nil || configMsg.Envelope == nil {
-		return nil
-	}
-	envelope, err := protoutil.UnmarshalEnvelope(configMsg.Envelope)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
-	}
-	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromEnvelope(envelope)
-	if err != nil {
 		return err
 	}
-	err = s.ordererClient.UpdateConnections(orgsMaterial)
-	return errors.Wrapf(err, "failed to update connections")
-}
 
-func (s *Service) recoverLedgerStore(
-	ctx context.Context,
-	client servicepb.CoordinatorClient,
-	stateDBHeight uint64,
-) error {
 	blockStoreHeight := s.blockStore.GetBlockHeight()
-	if blockStoreHeight >= stateDBHeight {
-		// NOTE: The block store height can be greater than the state database height.
-		//       This occurs because the last committed block number is updated in the state
-		//       database periodically, whereas blocks are written to the block store immediately.
-		//       Therefore, the block store height can temporarily exceed the state database height.
+	if blockStoreHeight == 0 {
 		return nil
 	}
 
-	numOfBlocksPendingInBlockStore := stateDBHeight - blockStoreHeight
-	logger.Infof("ledger store is [%d] blocks behind the state database in the committer",
-		numOfBlocksPendingInBlockStore)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	blockCh := make(chan *common.Block, numOfBlocksPendingInBlockStore)
-	committedBlocks := channel.NewWriter(ctx, s.committedBlock)
-
-	g.Go(func() error {
-		logger.Infof("starting delivery service with the orderer to receive block %d to %d",
-			blockStoreHeight, stateDBHeight-1)
-		return s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(blockStoreHeight), //nolint:gosec
-			EndBlkNum:   stateDBHeight - 1,
-			OutputBlock: blockCh,
-		})
-	})
-
-	g.Go(func() error {
-		for range numOfBlocksPendingInBlockStore {
-			select {
-			case <-gCtx.Done():
-				return gCtx.Err()
-			case blk := <-blockCh:
-				if err := appendMissingBlock(gCtx, client, blk, committedBlocks); err != nil {
-					return err
-				}
-			}
+	latestBlock, err := s.blockStore.store.RetrieveBlockByNumber(blockStoreHeight - 1)
+	if err != nil {
+		return err
+	}
+	configBlockIdx, err := protoutil.GetLastConfigIndexFromBlock(latestBlock)
+	if err != nil {
+		return errors.Wrap(err, "failed to get config index from latest block")
+	}
+	// Config blocks may point to itself.
+	verificationConfigBlock := latestBlock
+	if configBlockIdx != latestBlock.Header.Number {
+		verificationConfigBlock, err = s.blockStore.store.RetrieveBlockByNumber(configBlockIdx)
+		if err != nil {
+			return errors.Wrap(err, "failed to get latest config block")
 		}
-		logger.Infof("successfully recover ledger store by adding [%d] missing blocks", numOfBlocksPendingInBlockStore)
-		return nil
-	})
-
-	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
-}
-
-func appendMissingBlock(
-	ctx context.Context,
-	client servicepb.CoordinatorClient,
-	blk *common.Block,
-	committedBlocks channel.Writer[*common.Block],
-) error {
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(blk, &txIDToHeight)
-	if err != nil {
-		// This can never occur unless there is a bug in the relay.
-		return err
 	}
 
-	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
-	for i, tx := range mappedBlock.block.Txs {
-		txIDs[i] = tx.Ref.TxId
-		expectedHeight[i] = tx.Ref
-	}
+	s.delivery.NextBlockVerificationConfig = verificationConfigBlock
+	s.delivery.LastBlock = latestBlock
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
-	if err != nil {
-		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
-	}
-
-	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
-		return err
-	}
-
-	mappedBlock.withStatus.setStatusMetadataInBlock()
-
-	if !committedBlocks.Write(mappedBlock.withStatus.block) {
-		return errors.New("context ended")
+	// We might have a newer config block than the one in the ledger
+	// (e.g., from the config YAML or from previous delivery run).
+	// This can help in cases where the sidecar was down too long and missed a crucial config-block
+	// that updated all the endpoints, leaving no known orderers to fetch blocks from.
+	if s.delivery.LastestKnownConfig == nil ||
+		s.delivery.LastestKnownConfig.Header.Number < verificationConfigBlock.Header.Number {
+		s.delivery.LastestKnownConfig = verificationConfigBlock
 	}
 	return nil
 }

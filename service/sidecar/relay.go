@@ -26,17 +26,15 @@ import (
 
 type (
 	relay struct {
+		coordinatorClient          servicepb.CoordinatorClient
 		incomingBlockToBeCommitted <-chan *common.Block
 		outgoingCommittedBlock     chan<- *common.Block
 		outgoingStatusUpdates      chan<- []*committerpb.TxStatus
 
-		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
-		// expects to receive from the orderer. This value is initially extracted from the last committed
-		// block number in the ledger, then incremented.
-		// The sidecar queries the coordinator for this value before starting to pull blocks from the ordering service.
-		nextBlockNumberToBeReceived atomic.Uint64
 		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
 		nextBlockNumberToBeCommitted atomic.Uint64
+		// endRecoveryBlockNumber is the first block number that we start relaying blocks to the coordinator.
+		endRecoveryBlockNumber uint64
 
 		activeBlocksCount             atomic.Int32
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
@@ -78,7 +76,8 @@ func newRelay(
 
 // run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
 func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
-	r.nextBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
+	r.coordinatorClient = config.coordClient
+	r.endRecoveryBlockNumber = config.nextExpectedBlockByCoordinator
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
@@ -132,32 +131,35 @@ func (r *relay) preProcessBlock(
 	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
+	committedBlocks := channel.NewWriter(ctx, r.outgoingCommittedBlock)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
 
 	done := context.AfterFunc(ctx, r.waitingTxsSlots.Broadcast)
 	defer done()
 
-	for {
+	recoveredBlocks := 0
+	for ctx.Err() == nil {
 		block, ok := incomingBlockToBeCommitted.Read()
 		if !ok {
-			return errors.Wrap(ctx.Err(), "context ended")
+			break
 		}
-		if block.Header == nil {
-			logger.Warn("Received a block without header")
+		// We expect a block with a header and in the correct order.
+		blockNum := block.Header.Number
+		logger.Debugf("Block %d arrived in the relay", blockNum)
+
+		// We first try to recover missing blocks from the orderer to the ledger.
+		if blockNum < r.endRecoveryBlockNumber {
+			appendErr := appendMissingBlock(ctx, r.coordinatorClient, block, committedBlocks)
+			if appendErr != nil {
+				return appendErr
+			}
+			recoveredBlocks++
 			continue
 		}
-		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
 
-		blockNum := block.Header.Number
-		swapped := r.nextBlockNumberToBeReceived.CompareAndSwap(blockNum, blockNum+1)
-		if !swapped {
-			errMsg := fmt.Sprintf(
-				"sidecar expects block [%d] but received block [%d]",
-				r.nextBlockNumberToBeReceived.Load(),
-				blockNum,
-			)
-			logger.Error(errMsg)
-			return errors.New(errMsg)
+		if recoveredBlocks > 0 {
+			logger.Infof("successfully recover ledger store by adding [%d] missing blocks", recoveredBlocks)
+			recoveredBlocks = 0
 		}
 
 		start := time.Now()
@@ -185,6 +187,7 @@ func (r *relay) preProcessBlock(
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
 		}
 	}
+	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (r *relay) sendBlocksToCoordinator(
@@ -374,4 +377,41 @@ func (r *relay) setLastCommittedBlockNumber(
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}
+}
+
+func appendMissingBlock(
+	ctx context.Context,
+	client servicepb.CoordinatorClient,
+	blk *common.Block,
+	committedBlocks channel.Writer[*common.Block],
+) error {
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	if err != nil {
+		// This can never occur unless there is a bug in the relay.
+		return err
+	}
+
+	txIDs := make([]string, len(mappedBlock.block.Txs))
+	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
+	for i, tx := range mappedBlock.block.Txs {
+		txIDs[i] = tx.Ref.TxId
+		expectedHeight[i] = tx.Ref
+	}
+
+	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
+	if err != nil {
+		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
+	}
+
+	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
+		return err
+	}
+
+	mappedBlock.withStatus.setStatusMetadataInBlock()
+
+	if !committedBlocks.Write(mappedBlock.withStatus.block) {
+		return errors.New("context ended")
+	}
+	return nil
 }

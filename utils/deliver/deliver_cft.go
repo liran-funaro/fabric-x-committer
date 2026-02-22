@@ -153,6 +153,17 @@ func (c *CftClient) deliverRelay(
 			return *status, nil
 		}
 
+		// We make minimal verifications to ensure we receive blocks in order.
+		// This allows us to restart the connection from the next expected block.
+		// We restart the connection upon failure.
+		if block == nil || block.Header == nil {
+			return 0, errors.New("received nil block or with nil header")
+		}
+		if block.Header.Number != uint64(p.StartBlkNum) {
+			return 0, errors.Errorf("received block number %d != %d (expected)",
+				block.Header.Number, p.StartBlkNum)
+		}
+
 		//nolint:gosec // integer overflow conversion uint64 -> int64
 		p.StartBlkNum = int64(block.Header.Number) + 1
 		logger.Debugf("next expected block number is %d", p.StartBlkNum)
