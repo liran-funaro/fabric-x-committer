@@ -1,3 +1,7 @@
 {"id":"0c533381-2b43-4bcd-8d84-5279d33d9a21","ts":"2026-03-02T14:21:32.169Z","path":"/home/liran/workspace/fabric-x-committer/Makefile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
 {"id":"b2747707-e01c-4c24-9e0c-ebc7c907cf4a","ts":"2026-03-02T14:21:52.487Z","path":"/home/liran/workspace/fabric-x-committer/Makefile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
 {"id":"0697a4f3-c9ea-4228-b561-7728a831faa0","ts":"2026-03-02T14:22:49.271Z","path":"/home/liran/workspace/fabric-x-committer/Makefile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
+
+{"id":"43a01502-fd5a-4491-9f6c-9604a5786a2a","ts":"2026-03-02T14:09:50.548Z","path":"/home/liran/workspace/fabric-x-committer/Makefile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
+{"id":"642cec98-820a-4138-8985-007d61a35a0d","ts":"2026-03-02T14:10:08.891Z","path":"/home/liran/workspace/fabric-x-committer/docker/images/release/Dockerfile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
+{"id":"385940a3-00d5-4d9f-a412-a719e8686ddc","ts":"2026-03-02T14:10:48.319Z","path":"/home/liran/workspace/fabric-x-committer/docker/images/test_node/Dockerfile","version":"1.0.0","taskID":"364c0f36-82c9-4c68-ad0f-9ed14275cf77"}
