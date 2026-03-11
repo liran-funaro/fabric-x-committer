@@ -21,17 +21,17 @@ import (
 )
 
 type (
-	// blockProcessingState maintains the state required for processing and verifying blocks
+	// blockVerificationStateMachine maintains the state required for processing and verifying blocks
 	// in sequence. It tracks the expected next block number, the last processed block,
 	// and configuration for content verification.
-	blockProcessingState struct {
+	blockVerificationStateMachine struct {
 		configState
 		dataBlockStream     bool
-		verifyBlocksContent bool
 		nextBlockNum        uint64
-		lastBlockHeaderHash []byte
-		lastBlock           *common.Block
-		updaterID           uint32
+		prevBlockHeaderHash []byte
+		prevBlock           *common.Block
+		// updaterSourceID is used to track which source the previous block was received from.
+		updaterSourceID uint32
 	}
 
 	// configState holds the current channel configuration state used for block verification.
@@ -46,9 +46,13 @@ type (
 // ErrUnexpectedBlockNumber is returned by the verification step if the blocks are not received in order.
 var ErrUnexpectedBlockNumber = errors.New("received unexpected block number")
 
+func newBlockProcessingState(dataBlockStream bool) blockVerificationStateMachine {
+	return blockVerificationStateMachine{dataBlockStream: dataBlockStream}
+}
+
 // verificationStepAndUpdateState returns error if the block number is not what expected,
 // or if the blocks header/data hashes does not match the expected value.
-func (s *blockProcessingState) verificationStepAndUpdateState(blk *deliver.BlockWithSourceID) error {
+func (s *blockVerificationStateMachine) verificationStepAndUpdateState(blk *deliver.BlockWithSourceID) error {
 	// 1. Verify form.
 	if !s.verifyBlockForm(blk.Block) {
 		return errors.New("received malformed block")
@@ -61,22 +65,18 @@ func (s *blockProcessingState) verificationStepAndUpdateState(blk *deliver.Block
 	}
 
 	// 3. Verify content.
-	if s.verifyBlocksContent {
-		err := s.verifyHashes(blk.Block)
-		if err != nil {
-			return err
-		}
-		err = s.verifyBlockPolicy(blk.Block)
-		if err != nil {
-			return err
-		}
+	if err := s.verifyHashes(blk.Block); err != nil {
+		return err
+	}
+	if err := s.verifyBlockPolicy(blk.Block); err != nil {
+		return err
 	}
 
 	// If it is a valid block, update internal processing state.
-	s.lastBlock = blk.Block
+	s.prevBlock = blk.Block
 	s.nextBlockNum = blk.Block.Header.Number + 1
-	s.lastBlockHeaderHash = protoutil.BlockHeaderHash(blk.Block.Header)
-	s.updaterID = blk.SourceID
+	s.prevBlockHeaderHash = protoutil.BlockHeaderHash(blk.Block.Header)
+	s.updaterSourceID = blk.SourceID
 
 	// If it is a config block, update the config state.
 	err := s.updateIfConfigBlock(blk.Block)
@@ -90,30 +90,27 @@ func (s *blockProcessingState) verificationStepAndUpdateState(blk *deliver.Block
 
 // verifyBlockForm checks whether the block is well-formed.
 // It is only used internally.
-func (s *blockProcessingState) verifyBlockForm(block *common.Block) bool {
+func (s *blockVerificationStateMachine) verifyBlockForm(block *common.Block) bool {
 	if block == nil || block.Header == nil || block.Metadata == nil {
 		return false
 	}
 	if len(block.Metadata.Metadata) < len(common.BlockMetadataIndex_name) {
 		return false
 	}
-	// Block's data can be nil only if we only requested headers.
-	if s.dataBlockStream && block.Data == nil {
-		return false
-	}
-	return true
+	// Block data can be nil only when headers alone were requested.
+	return !s.dataBlockStream || block.Data != nil
 }
 
 // verifyHashes checks that the block previous hash matches the previous block,
 // and that the internal data hash matches the one in the header.
 // It is only used internally.
-func (s *blockProcessingState) verifyHashes(block *common.Block) error {
+func (s *blockVerificationStateMachine) verifyHashes(block *common.Block) error {
 	blockNumber := block.Header.Number
 
 	// Verify header hash if we have the previous block hash.
-	if len(s.lastBlockHeaderHash) != 0 {
-		if !bytes.Equal(block.Header.PreviousHash, s.lastBlockHeaderHash) {
-			return errors.Errorf("previous block header hash mismatch on block [%d]", blockNumber)
+	if len(s.prevBlockHeaderHash) != 0 {
+		if !bytes.Equal(block.Header.PreviousHash, s.prevBlockHeaderHash) {
+			return errors.Newf("previous block header hash mismatch on block [%d]", blockNumber)
 		}
 	}
 
@@ -125,7 +122,7 @@ func (s *blockProcessingState) verifyHashes(block *common.Block) error {
 		// Verify that Header.DataHash is equal to the hash of block.Data
 		// This is to ensure that the header is consistent with the data carried by this block
 		if !bytes.Equal(dataHash, block.Header.DataHash) {
-			return errors.Errorf("block data hash mismatch on block [%d]", blockNumber)
+			return errors.Newf("block data hash mismatch on block [%d]", blockNumber)
 		}
 	}
 	return nil
@@ -133,7 +130,7 @@ func (s *blockProcessingState) verifyHashes(block *common.Block) error {
 
 // verifyBlockPolicy returns error if the block does not satisfy the config block policy.
 // It is only used internally.
-func (s *blockProcessingState) verifyBlockPolicy(block *common.Block) error {
+func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) error {
 	if s.ConfigBlockMaterial == nil || s.verifierFunc == nil {
 		return nil
 	}
@@ -142,9 +139,10 @@ func (s *blockProcessingState) verifyBlockPolicy(block *common.Block) error {
 
 	// If the config block is ahead of this block, something wrong has happened.
 	// This should never happen as we validate in-order block processing.
-	// But if we received a config block from external source, such error may occur.
+	// But if we received a config block from external source via the input parameters, such error may occur.
+	// For example, if the last known config was given from a corrupted ledger, or a male configured YAML file.
 	if blockNumber < s.configBlockNumber {
-		return errors.Errorf("block number [%d] is less than config block number [%d]",
+		return errors.Newf("block number [%d] is less than config block number [%d]",
 			blockNumber, s.configBlockNumber)
 	}
 
@@ -161,11 +159,11 @@ func (s *blockProcessingState) verifyBlockPolicy(block *common.Block) error {
 		// We have a nested verification to ensure we don't run the relatively heavy
 		// check [protoutil.IsConfigBlock()] for most cases.
 		if !protoutil.IsConfigBlock(block) {
-			return errors.Errorf("block's last config block [%d] != [%d] current config block",
+			return errors.Newf("block's last config block [%d] != [%d] current config block",
 				lastConfigBlockIdx, s.configBlockNumber)
 		}
 		if lastConfigBlockIdx != blockNumber {
-			return errors.Errorf("config block's last config block [%d] != [%d] config block number",
+			return errors.Newf("config block's last config block [%d] != [%d] config block number",
 				lastConfigBlockIdx, blockNumber)
 		}
 	}
@@ -198,7 +196,7 @@ func (cs *configState) updateIfConfigBlock(block *common.Block) error {
 
 	// This is a config block. Let's start validating.
 	if cs.ConfigBlockMaterial != nil && configMaterial.ChannelID != cs.ChannelID {
-		return errors.Errorf("config block channel ID [%s] does not match expected [%s]",
+		return errors.Newf("config block channel ID [%s] does not match expected [%s]",
 			configMaterial.ChannelID, cs.ChannelID)
 	}
 
@@ -216,7 +214,7 @@ func (cs *configState) updateIfConfigBlock(block *common.Block) error {
 func fetchVerifier(bundle *channelconfig.Bundle) (protoutil.BlockVerifierFunc, error) {
 	policy, exists := bundle.PolicyManager().GetPolicy(policies.BlockValidation)
 	if !exists {
-		return nil, errors.Errorf("no `%s` policy in config block", policies.BlockValidation)
+		return nil, errors.Newf("no `%s` policy in config block", policies.BlockValidation)
 	}
 
 	oc, ok := bundle.OrdererConfig()

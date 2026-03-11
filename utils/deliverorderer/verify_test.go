@@ -28,12 +28,11 @@ import (
 func BenchmarkVerifyBlock(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	printer := message.NewPrinter(language.English)
-	s, p := prepare(b)
-
 	for _, blockSize := range []int{100, 1_000, 10_000, 100_000} {
 		b.Run(printer.Sprintf("blockSize=%d", blockSize), func(b *testing.B) {
 			txs := workload.GenerateTransactions(b, nil, b.N)
 			blocks := make([]*deliver.BlockWithSourceID, 0, 1+(b.N/blockSize))
+			s, p := prepare(b)
 			for len(txs) > 0 {
 				curBlockSize := min(blockSize, len(txs))
 				blk := workload.MapToOrdererBlock(0, txs[:curBlockSize])
@@ -68,7 +67,7 @@ func TestVerifyBlock(t *testing.T) {
 	testcrypto.PrepareBlockHeaderAndMetadata(b1, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1, SourceID: 1})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, s.updaterID)
+	require.EqualValues(t, 1, s.updaterSourceID)
 
 	t.Log("[X] Unexpected next block number")
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1})
@@ -125,7 +124,7 @@ func TestVerifyBlock(t *testing.T) {
 	testcrypto.PrepareBlockHeaderAndMetadata(newConfigBlock, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: newConfigBlock, SourceID: 2})
 	require.NoError(t, err)
-	require.EqualValues(t, 2, s.updaterID)
+	require.EqualValues(t, 2, s.updaterSourceID)
 	require.Equal(t, newConfigBlock.Header.Number, s.configBlockNumber)
 
 	t.Log("[V] New block with new consenters")
@@ -146,89 +145,69 @@ func TestVerifyBlock(t *testing.T) {
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b7})
 	require.Error(t, err, "expected error due to wrong consenters")
 	require.ErrorContains(t, err, "0 sub-policies were satisfied")
-
-	t.Log("[V] No content verification")
-	s.verifyBlocksContent = false
-	p.ConsenterSigners = nil // No ConsenterSigners - block won't have valid signatures.
-	// Create a block without proper signatures
-	bNoSig := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(bNoSig, p)
-
-	// Should succeed because content verification is disabled
-	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: bNoSig, SourceID: 1})
-	require.NoError(t, err)
-	assert.Equal(t, bNoSig.Header.Number+1, s.nextBlockNum)
 }
 
 func TestVerifyBlockForm(t *testing.T) {
 	t.Parallel()
 	txs := workload.GenerateTransactions(t, nil, 100)
 
-	t.Run("Nil block", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: nil})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
-
-	t.Run("Block with nil header", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		b := &common.Block{
-			Data:     &common.BlockData{},
-			Metadata: &common.BlockMetadata{Metadata: make([][]byte, 5)},
-		}
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
-
-	t.Run("Block with nil metadata", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		b := &common.Block{
-			Header: &common.BlockHeader{Number: 1},
-			Data:   &common.BlockData{},
-		}
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
-
-	t.Run("Block with insufficient metadata length", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		b := &common.Block{
-			Header:   &common.BlockHeader{Number: 1},
-			Data:     &common.BlockData{},
-			Metadata: &common.BlockMetadata{Metadata: make([][]byte, 2)},
-		}
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
-
-	t.Run("Block with nil data in data block stream", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		b := &common.Block{
-			Header:   &common.BlockHeader{Number: 1},
-			Metadata: &common.BlockMetadata{Metadata: make([][]byte, 5)},
-		}
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
-
-	t.Run("Malformed block", func(t *testing.T) {
-		t.Parallel()
-		s, _ := prepare(t)
-		b := workload.MapToOrdererBlock(1, txs)
-		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "malformed")
-	})
+	for _, tc := range []struct {
+		name          string
+		block         *common.Block
+		errorContains string
+	}{
+		{
+			name:          "Nil block",
+			block:         nil,
+			errorContains: "malformed",
+		},
+		{
+			name: "Block with nil header",
+			block: &common.Block{
+				Data:     &common.BlockData{},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, 5)},
+			},
+			errorContains: "malformed",
+		},
+		{
+			name: "Block with nil metadata",
+			block: &common.Block{
+				Header: &common.BlockHeader{Number: 1},
+				Data:   &common.BlockData{},
+			},
+			errorContains: "malformed",
+		},
+		{
+			name: "Block with insufficient metadata length",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 1},
+				Data:     &common.BlockData{},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, 2)},
+			},
+			errorContains: "malformed",
+		},
+		{
+			name: "Block with nil data in data block stream",
+			block: &common.Block{
+				Header:   &common.BlockHeader{Number: 1},
+				Metadata: &common.BlockMetadata{Metadata: make([][]byte, 5)},
+			},
+			errorContains: "malformed",
+		},
+		{
+			name:          "Malformed block",
+			block:         workload.MapToOrdererBlock(1, txs),
+			errorContains: "malformed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s, _ := prepare(t)
+			err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: tc.block})
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.errorContains)
+		})
+	}
 }
 
 func TestVerifyBlockEdgeCases(t *testing.T) {
@@ -268,7 +247,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		s := blockProcessingState{dataBlockStream: true, verifyBlocksContent: true}
+		s := newBlockProcessingState(true)
 		err = s.updateIfConfigBlock(genesisBlock)
 		require.NoError(t, err)
 		// Don't process it yet, just set it as config
@@ -299,7 +278,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		s := blockProcessingState{}
+		s := newBlockProcessingState(false)
 		err = s.updateIfConfigBlock(genesisBlock)
 		require.NoError(t, err)
 
@@ -354,7 +333,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 
 		// Create a config block with invalid config data at block 2
 		invalidConfigBlock2 := &common.Block{
-			Header: &common.BlockHeader{Number: 2, PreviousHash: s.lastBlockHeaderHash},
+			Header: &common.BlockHeader{Number: 2, PreviousHash: s.prevBlockHeaderHash},
 			Data: &common.BlockData{
 				Data: [][]byte{
 					protoutil.MarshalOrPanic(&common.Envelope{
@@ -528,7 +507,7 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 	})
 }
 
-func prepare(tb testing.TB) (blockProcessingState, testcrypto.BlockPrepareParameters) {
+func prepare(tb testing.TB) (blockVerificationStateMachine, testcrypto.BlockPrepareParameters) {
 	tb.Helper()
 	cryptoDir := tb.TempDir()
 	genesisBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(cryptoDir, &testcrypto.ConfigBlock{
@@ -543,10 +522,7 @@ func prepare(tb testing.TB) (blockProcessingState, testcrypto.BlockPrepareParame
 	})
 	require.NoError(tb, err)
 
-	s := blockProcessingState{dataBlockStream: true, verifyBlocksContent: true}
-	err = s.updateIfConfigBlock(genesisBlock)
-	require.NoError(tb, err)
-
+	s := newBlockProcessingState(true)
 	// We process the genesis block first.
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: genesisBlock})
 	require.NoError(tb, err)
@@ -561,8 +537,7 @@ func prepare(tb testing.TB) (blockProcessingState, testcrypto.BlockPrepareParame
 }
 
 func submitGoodBlock(
-	tb testing.TB, s *blockProcessingState, p *testcrypto.BlockPrepareParameters,
-	label uint32,
+	tb testing.TB, s *blockVerificationStateMachine, p *testcrypto.BlockPrepareParameters, label uint32,
 ) {
 	tb.Helper()
 	txs := workload.GenerateTransactions(tb, nil, 100)
@@ -570,6 +545,6 @@ func submitGoodBlock(
 	testcrypto.PrepareBlockHeaderAndMetadata(b, *p)
 	err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b, SourceID: label})
 	require.NoError(tb, err)
-	require.Equal(tb, label, s.updaterID)
+	require.Equal(tb, label, s.updaterSourceID)
 	p.PrevBlock = b
 }

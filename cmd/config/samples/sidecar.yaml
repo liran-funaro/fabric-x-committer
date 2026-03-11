@@ -71,10 +71,13 @@ monitoring:
 
 # Orderer connection configuration for fetching blocks
 orderer:
+  # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
+  # Affects how the sidecar interacts with the orderer.
   fault-tolerance-level: BFT
-  # Path to the genesis block file (config block) used to initialize the ledger on
-  # first startup. Required for new deployments. If the ledger already exists,
-  # this parameter is ignored.
+  # Path to the last known config block file, used to obtain the latest endpoints and TLS credentials
+  # of the Orderer parties.
+  # It can be the genesis config block (required for new deployments).
+  # But it can also be used to bootstrap a deployment with a stale ledger.
   last-known-config-block-path: /root/artifacts/config-block.pb.bin
   # Sidecar uses these TLS credentials when connecting to the orderers as a client.
   tls:
@@ -145,6 +148,9 @@ notification:
   max-active-tx-ids: 100_000
   max-tx-ids-per-request: 1000
 
+# How often the sidecar updates the coordinator with the last committed block number.
+# More frequent updates improve coordinator accuracy for dependency resolution but
+# increase network traffic and coordinator load.
 last-committed-block-set-interval: 5s
 # Maximum number of transactions that have been sent to the coordinator and are
 # waiting for their status response. When reached, the sidecar applies backpressure

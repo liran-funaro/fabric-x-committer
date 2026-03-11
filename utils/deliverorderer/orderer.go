@@ -56,29 +56,17 @@ type (
 	//   - SuspicionGracePeriod: Cooldown period after raising a suspicion before allowing another
 	//   - LivenessCheckInterval: Frequency of checking that all delivery streams are alive
 	//
-	// Block Processing State:
-	// The Parameters struct maintains state about processed blocks to support recovery and resumption:
-	//   - LastBlock: The most recently processed block (do NOT pass the genesis block here to allow the delivery to
-	//	   deliver it for processing)
-	//   - NextBlockVerificationConfig: Config block used to verify the next incoming block
-	//   - LastestKnownConfig: The newest known config block (may be ahead of NextBlockVerificationConfig)
-	//
-	// State Relationships:
-	//   - If LastestKnownConfig is not provided, NextBlockVerificationConfig is used as the latest config
-	//   - If NextBlockVerificationConfig is not provided, policy verification starts only when a config
-	//     block is delivered (LastestKnownConfig is NOT used for verification as it may not be relevant)
-	//   - LastestKnownConfig helps recover when delivery missed a config block that updated all endpoints
-	//   - These fields are updated at the end of the delivery process for future runs
-	//
 	// Output Channels:
 	//   - OutputBlock: Receives verified data blocks (without source information)
 	//   - OutputBlockWithSourceID: Receives verified data blocks with source orderer ID
 	//   - At least one output channel must be provided
+	//
+	// Session holds updetable session information for future runs.
 	Parameters struct {
 		FaultToleranceLevel     string
 		TLS                     connection.TLSMaterials
 		Retry                   *connection.RetryProfile
-		Identity                *ordererconn.IdentityConfig
+		Signer                  identity.SignerSerializer
 		BlockWithholdingTimeout time.Duration
 		SuspicionGracePeriod    time.Duration
 		LivenessCheckInterval   time.Duration
@@ -87,6 +75,22 @@ type (
 		OutputBlock             chan<- *common.Block
 		OutputBlockWithSourceID chan<- *deliver.BlockWithSourceID
 
+		Session *SessionInfo
+	}
+
+	// The SessionInfo struct maintains state about processed blocks to support recovery and resumption:
+	//   - LastBlock: The most recently processed block (do NOT pass the genesis block here to allow the delivery to
+	//	   deliver it for processing)
+	//   - NextBlockVerificationConfig: Config block used to verify the next incoming block
+	//   - LastestKnownConfig: The newest known config block (can be ahead of NextBlockVerificationConfig)
+	//
+	// State Relationships:
+	//   - If LastestKnownConfig is not provided, NextBlockVerificationConfig is used as the latest config
+	//   - If NextBlockVerificationConfig is not provided, policy verification starts only when a config
+	//     block is delivered (LastestKnownConfig is NOT used for verification as it may not be relevant)
+	//   - LastestKnownConfig helps recover when delivery missed a config block that updated all endpoints
+	//   - These fields are updated at the end of the delivery process for future runs
+	SessionInfo struct {
 		NextBlockVerificationConfig *common.Block
 		LastestKnownConfig          *common.Block
 		LastBlock                   *common.Block
@@ -98,17 +102,16 @@ type (
 		params                  *Parameters
 		monitorBlockWithholding bool
 		jointOutputBlock        chan *deliver.BlockWithSourceID
-		signer                  identity.SignerSerializer
 		tlsCertHash             []byte
 
 		// dataStream and headerOnlyStream holds the processing state of each stream respectively.
 		// They progress in parallel independently.
-		dataStream       blockProcessingState
-		headerOnlyStream blockProcessingState
+		dataStream       blockVerificationStateMachine
+		headerOnlyStream blockVerificationStateMachine
 
 		// latestConfig holds the latest known config. It is used to have the most
 		// up-to-date channel ID, orderer endpoints, and credentials when reconnecting.
-		// For verification, each blockProcessingState holds its own configState.
+		// For verification, each blockVerificationStateMachine holds its own configState.
 		latestConfig configState
 
 		// dataBlockDeadlineBuffer is a circular buffer indexed by (blockNum % MaxBlocksAhead).
@@ -150,8 +153,8 @@ var logger = flogging.MustGetLogger("deliverorderer")
 // ToQueue connects to an orderer delivery server, verifies blocks, and delivers them to a queue (go channel).
 // It returns when an error occurs or when the context is done.
 // It will attempt to reconnect on errors.
-func ToQueue(ctx context.Context, odp *Parameters) error {
-	d, err := newFTDelivery(odp)
+func ToQueue(ctx context.Context, odp Parameters) error {
+	d, err := newFTDelivery(&odp)
 	if err != nil {
 		return err
 	}
@@ -162,10 +165,10 @@ func ToQueue(ctx context.Context, odp *Parameters) error {
 
 	err = d.run(cCtx)
 
-	// Update input parameters for future runs.
-	odp.LastBlock = d.dataStream.lastBlock
-	odp.NextBlockVerificationConfig = d.dataStream.ConfigBlock
-	odp.LastestKnownConfig = d.latestConfig.ConfigBlock
+	// Update the session parameters for future runs.
+	odp.Session.LastBlock = d.dataStream.prevBlock
+	odp.Session.NextBlockVerificationConfig = d.dataStream.ConfigBlock
+	odp.Session.LastestKnownConfig = d.latestConfig.ConfigBlock
 	return err
 }
 
@@ -178,19 +181,18 @@ func newFTDelivery(odp *Parameters) (*ftDelivery, error) {
 	if ftErr != nil {
 		return nil, ftErr
 	}
-	signer, idErr := ordererconn.NewIdentitySigner(odp.Identity)
-	if idErr != nil {
-		return nil, errors.WithMessage(idErr, "error creating identity signer")
-	}
 	tlsCertHash := sha256.Sum256(odp.TLS.Cert)
 
 	d := &ftDelivery{
 		params:                  odp,
-		signer:                  signer,
 		tlsCertHash:             tlsCertHash[:],
 		jointOutputBlock:        make(chan *deliver.BlockWithSourceID, cap(odp.OutputBlock)),
 		monitorBlockWithholding: ftLevel == ordererconn.BFT,
 		restartBackoff:          odp.Retry.NewBackoff(),
+	}
+	err := d.initializeStreamStates()
+	if err != nil {
+		return nil, err
 	}
 	if d.monitorBlockWithholding {
 		if odp.BlockWithholdingTimeout == 0 {
@@ -205,25 +207,22 @@ func newFTDelivery(odp *Parameters) (*ftDelivery, error) {
 		d.dataBlockDeadlineBuffer = make([]time.Time, odp.MaxBlocksAhead)
 		d.nextAllowedSuspicion = time.Now().Add(odp.SuspicionGracePeriod)
 	}
-	err := d.initializeStreamStates(ftLevel)
-	if err != nil {
-		return nil, err
-	}
 	return d, nil
 }
 
-func (d *ftDelivery) initializeStreamStates(ftLevel string) error {
-	s := blockProcessingState{
-		verifyBlocksContent: ftLevel == ordererconn.BFT || ftLevel == ordererconn.CFT,
-	}
-	// We process the last block and start the following blocks processing from it.
-	// We use the headers-only stream to allow providing data-less block as the previous block.
+func (d *ftDelivery) initializeStreamStates() error {
+	s := newBlockProcessingState(false)
+
+	session := d.params.Session
+
+	// We initialize the processing state from the last block and start the following blocks processing from it.
+	// We use a headers-only stream to allow providing data-less block as the previous block.
 	// We process the last block before applying the config block to avoid verifying the last block.
 	// This is because the last block might be signed by previous configuration.
-	if d.params.LastBlock != nil && d.params.LastBlock.Header != nil {
-		s.nextBlockNum = d.params.LastBlock.Header.Number
+	if session.LastBlock != nil && session.LastBlock.Header != nil {
+		s.nextBlockNum = session.LastBlock.Header.Number
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{
-			Block: d.params.LastBlock,
+			Block: session.LastBlock,
 			// We use a large ID to ensure we do not confuse it with a real source.
 			SourceID: math.MaxUint32,
 		})
@@ -232,14 +231,14 @@ func (d *ftDelivery) initializeStreamStates(ftLevel string) error {
 		}
 	}
 
-	if d.params.NextBlockVerificationConfig != nil {
-		err := s.updateIfConfigBlock(d.params.NextBlockVerificationConfig)
+	if session.NextBlockVerificationConfig != nil {
+		err := s.updateIfConfigBlock(session.NextBlockVerificationConfig)
 		if err != nil {
 			return errors.WithMessage(err, "error loading next block verification config")
 		}
 	}
-	if d.params.LastestKnownConfig != nil {
-		err := d.latestConfig.updateIfConfigBlock(d.params.LastestKnownConfig)
+	if session.LastestKnownConfig != nil {
+		err := d.latestConfig.updateIfConfigBlock(session.LastestKnownConfig)
 		if err != nil {
 			return errors.WithMessage(err, "error loading last known config")
 		}
@@ -254,7 +253,7 @@ func (d *ftDelivery) initializeStreamStates(ftLevel string) error {
 
 	// We validate that the config block is ahead the next expected block to fail fast.
 	if s.nextBlockNum < s.configBlockNumber {
-		return errors.Errorf("config block number [%d] is ahead of the next expected block [%d]",
+		return errors.Newf("config block number [%d] is ahead of the next expected block [%d]",
 			s.configBlockNumber, s.nextBlockNum)
 	}
 
@@ -333,7 +332,7 @@ func (d *ftDelivery) processNextBlock(ctx context.Context) (
 		// With that, we save processing time of duplicated blocks from different sources.
 		// Since getting an unexpected block number from a source other than the last updater is a
 		// correct behavior, we don't need to log it.
-		if !errors.Is(verificationErr, ErrUnexpectedBlockNumber) || state.updaterID == blk.SourceID {
+		if !errors.Is(verificationErr, ErrUnexpectedBlockNumber) || state.updaterSourceID == blk.SourceID {
 			logger.Warnf("Block verification failed for source [%d] (data=%v): %v",
 				blk.SourceID, state.dataBlockStream, verificationErr)
 		}
@@ -391,7 +390,7 @@ func (d *ftDelivery) readNextBlock(ctx context.Context) *deliver.BlockWithSource
 	}
 }
 
-func (d *ftDelivery) getProcessingState(block *deliver.BlockWithSourceID) *blockProcessingState {
+func (d *ftDelivery) getProcessingState(block *deliver.BlockWithSourceID) *blockVerificationStateMachine {
 	switch block.SourceID {
 	case d.curDataBlockSourceID:
 		return &d.dataStream
@@ -400,7 +399,7 @@ func (d *ftDelivery) getProcessingState(block *deliver.BlockWithSourceID) *block
 	}
 }
 
-func (d *ftDelivery) checkNextStreamAction(state *blockProcessingState) streamAction {
+func (d *ftDelivery) checkNextStreamAction(state *blockVerificationStateMachine) streamAction {
 	if d.latestConfig.configBlockNumber < state.configBlockNumber {
 		// If a newer config block appears, it may contain endpoints update.
 		// So we restart the streams with the latest config.
@@ -426,7 +425,7 @@ func (d *ftDelivery) checkBlockWithholding() streamAction {
 	logger.Warnf("Suspecting block withholding of block [%d] by party ID [%d]. "+
 		"Party [%d] already received block [%d]. "+
 		"Replacing data block source.",
-		d.dataStream.nextBlockNum, d.curDataBlockSourceID, d.headerOnlyStream.updaterID,
+		d.dataStream.nextBlockNum, d.curDataBlockSourceID, d.headerOnlyStream.updaterSourceID,
 		d.headerOnlyStream.nextBlockNum-1)
 
 	// Set the next allowed suspicion.
@@ -530,7 +529,7 @@ func (d *ftDelivery) startSingleDeliveryStream(
 		err := deliver.ToQueue(ctx, deliver.Parameters{
 			StreamCreator:           ordererStreamCreator(conn),
 			ChannelID:               d.latestConfig.ChannelID,
-			Signer:                  d.signer,
+			Signer:                  d.params.Signer,
 			TLSCertHash:             d.tlsCertHash,
 			OutputBlockWithSourceID: d.jointOutputBlock,
 			NextBlockNum:            nextBlockNum,
@@ -559,8 +558,8 @@ func (d *ftDelivery) pickDataBlockStreamID(m *ordererconn.ConnectionMaterial) ui
 	if d.headerOnlyStream.nextBlockNum > d.dataStream.nextBlockNum &&
 		d.latestConfig.configBlockNumber == d.headerOnlyStream.configBlockNumber &&
 		d.headerOnlyStream.nextBlockNum-1 > d.headerOnlyStream.configBlockNumber &&
-		slices.Contains(parties, d.headerOnlyStream.updaterID) {
-		return d.headerOnlyStream.updaterID
+		slices.Contains(parties, d.headerOnlyStream.updaterSourceID) {
+		return d.headerOnlyStream.updaterSourceID
 	}
 
 	// crypto/rand works with big.Int.

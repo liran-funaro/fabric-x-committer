@@ -26,15 +26,21 @@ func LoadParametersFromConfig(c *ordererconn.Config) (*Parameters, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "read config block")
 	}
+	signer, idErr := ordererconn.NewIdentitySigner(c.Identity)
+	if idErr != nil {
+		return nil, errors.WithHint(idErr, "error creating identity signer")
+	}
 	return &Parameters{
 		FaultToleranceLevel:     c.FaultToleranceLevel,
 		TLS:                     *tls,
 		Retry:                   c.Retry,
-		Identity:                c.Identity,
-		LastestKnownConfig:      lastConfigBlock,
+		Signer:                  signer,
 		BlockWithholdingTimeout: c.BlockWithholdingTimeout,
 		LivenessCheckInterval:   c.LivenessCheckInterval,
 		SuspicionGracePeriod:    c.SuspicionGracePeriod,
 		MaxBlocksAhead:          c.MaxBlocksAhead,
+		Session: &SessionInfo{
+			LastestKnownConfig: lastConfigBlock,
+		},
 	}, nil
 }

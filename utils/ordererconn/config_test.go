@@ -25,15 +25,12 @@ func TestGetFaultToleranceLevel(t *testing.T) {
 		// Valid cases - uppercase
 		{input: "BFT", expected: "BFT"},
 		{input: "CFT", expected: "CFT"},
-		{input: "NO", expected: "NO"},
 		// Valid cases - lowercase
 		{input: "bft", expected: "BFT"},
 		{input: "cft", expected: "CFT"},
-		{input: "no", expected: "NO"},
 		// Valid cases - mixed case
 		{input: "BfT", expected: "BFT"},
 		{input: "CfT", expected: "CFT"},
-		{input: "No", expected: "NO"},
 		// Unspecified defaults to BFT
 		{input: "", expected: "BFT"},
 		// Invalid case

@@ -287,22 +287,28 @@ func (s *Service) startDelivery(ctx context.Context, output chan<- *common.Block
 	if err != nil {
 		return err
 	}
+
 	// We use the maximum between the latest config block in the ledger, the config block from the YAML,
 	// and the latest from the previous delivery runs.
 	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
-	p := *s.deliveryParams
-	p.OutputBlock = output
-	p.LastestKnownConfig = maxBlock(p.LastestKnownConfig, latestConfig)
-	p.LastBlock, p.NextBlockVerificationConfig, err = s.getPrevBlockAndItsConfig(nextBlockNum)
+	lastestKnownConfig := maxBlock(s.deliveryParams.Session.LastestKnownConfig, latestConfig)
+	lastBlock, nextBlockVerificationConfig, err := s.getPrevBlockAndItsConfig(nextBlockNum)
 	if err != nil {
 		return err
 	}
 
+	p := *s.deliveryParams
+	p.OutputBlock = output
+	p.Session = &deliverorderer.SessionInfo{
+		LastestKnownConfig:          lastestKnownConfig,
+		LastBlock:                   lastBlock,
+		NextBlockVerificationConfig: nextBlockVerificationConfig,
+	}
 	logger.Infof("Staring delivery from block [%d]", nextBlockNum)
-	deliverErr := deliverorderer.ToQueue(ctx, &p)
+	deliverErr := deliverorderer.ToQueue(ctx, p)
 
-	// We keep the last known config from previous runs.
-	s.deliveryParams.LastestKnownConfig = maxBlock(p.LastestKnownConfig, s.deliveryParams.LastestKnownConfig)
+	// We keep the session from previous runs.
+	s.deliveryParams.Session = p.Session
 
 	if errors.Is(deliverErr, context.Canceled) {
 		// A context may be canceled due to a relay error, thus it is not critical error.

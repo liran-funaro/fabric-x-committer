@@ -64,17 +64,11 @@ type (
 //   - For delivery: verifies blocks.
 //   - For broadcast: submits transactions to a single orderer.
 //
-// NoFT (no fault tolerance):
-//   - For delivery: does not verify blocks nor monitor for block withholding.
-//   - For broadcast: submits transactions to a single orderer.
-//   - Not for production use.
-//
 // UnspecifiedFT (empty string) defaults to the DefaultFT, which is the highest fault tolerance level (BFT).
 const (
 	UnspecifiedFT = ""
 	BFT           = "BFT"
 	CFT           = "CFT"
-	NoFT          = "NO"
 	DefaultFT     = BFT
 )
 
@@ -82,7 +76,7 @@ const (
 func GetFaultToleranceLevel(ftLevel string) (string, error) {
 	ftLevel = strings.ToUpper(ftLevel)
 	switch ftLevel {
-	case BFT, CFT, NoFT:
+	case BFT, CFT:
 		return ftLevel, nil
 	case UnspecifiedFT:
 		return DefaultFT, nil

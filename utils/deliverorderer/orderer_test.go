@@ -142,13 +142,14 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 			require.NotNil(t, params)
 			assert.Equal(t, tc.expectedFaultTolerance, params.FaultToleranceLevel)
 
-			assert.Equal(t, e.OrdererConnConfig.Identity, params.Identity)
 			assert.Equal(t, config.BlockWithholdingTimeout, params.BlockWithholdingTimeout)
 			assert.Equal(t, config.LivenessCheckInterval, params.LivenessCheckInterval)
 			assert.Equal(t, config.SuspicionGracePeriod, params.SuspicionGracePeriod)
 			assert.Equal(t, config.MaxBlocksAhead, params.MaxBlocksAhead)
 
-			assert.NotNil(t, params.LastestKnownConfig)
+			assert.NotNil(t, params.Signer)
+			assert.NotNil(t, params.Session)
+			assert.NotNil(t, params.Session.LastestKnownConfig)
 		})
 	}
 }
@@ -179,41 +180,44 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 
 	t.Run("invalid LastBlock", func(t *testing.T) {
 		t.Parallel()
-		deliveryParams := &deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererconn.BFT,
-			TLS:                         *tls,
-			LastestKnownConfig:          configBlock,
-			NextBlockVerificationConfig: configBlock,
-			LastBlock:                   invalidBlock, // Invalid block
-			OutputBlock:                 make(chan *common.Block, 10),
-		}
-		err := deliverorderer.ToQueue(cancelledContext, deliveryParams)
+		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel: ordererconn.BFT,
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
+			Session: &deliverorderer.SessionInfo{
+				LastestKnownConfig:          configBlock,
+				NextBlockVerificationConfig: configBlock,
+				LastBlock:                   invalidBlock, // Invalid block
+			},
+		})
 		require.ErrorContains(t, err, "error loading last block")
 	})
 
 	t.Run("invalid LastestKnownConfig", func(t *testing.T) {
 		t.Parallel()
-		deliveryParams := &deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererconn.BFT,
-			TLS:                         *tls,
-			LastestKnownConfig:          invalidBlock, // Invalid config
-			NextBlockVerificationConfig: configBlock,
-			OutputBlock:                 make(chan *common.Block, 10),
-		}
-		err := deliverorderer.ToQueue(cancelledContext, deliveryParams)
+		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel: ordererconn.BFT,
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
+			Session: &deliverorderer.SessionInfo{
+				LastestKnownConfig:          invalidBlock, // Invalid config
+				NextBlockVerificationConfig: configBlock,
+			},
+		})
 		require.ErrorContains(t, err, "error loading last known config")
 	})
 
 	t.Run("invalid NextBlockVerificationConfig", func(t *testing.T) {
 		t.Parallel()
-		deliveryParams := &deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererconn.BFT,
-			TLS:                         *tls,
-			LastestKnownConfig:          configBlock,
-			NextBlockVerificationConfig: invalidBlock, // Invalid config
-			OutputBlock:                 make(chan *common.Block, 10),
-		}
-		err := deliverorderer.ToQueue(cancelledContext, deliveryParams)
+		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel: ordererconn.BFT,
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
+			Session: &deliverorderer.SessionInfo{
+				LastestKnownConfig:          configBlock,
+				NextBlockVerificationConfig: invalidBlock, // Invalid config
+			},
+		})
 		require.ErrorContains(t, err, "error loading next block verification config")
 	})
 
@@ -230,14 +234,15 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 		configBlock3 := proto.CloneOf(configBlock)
 		configBlock3.Header.Number = 3
 
-		deliveryParams := &deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererconn.BFT,
-			TLS:                         *tls,
-			NextBlockVerificationConfig: configBlock3,
-			LastBlock:                   lastBlock,
-			OutputBlock:                 make(chan *common.Block, 10),
-		}
-		err := deliverorderer.ToQueue(cancelledContext, deliveryParams)
+		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel: ordererconn.BFT,
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
+			Session: &deliverorderer.SessionInfo{
+				NextBlockVerificationConfig: configBlock3,
+				LastBlock:                   lastBlock,
+			},
+		})
 		require.ErrorContains(t, err, "config block number [3] is ahead of the next expected block [2]")
 	})
 }
@@ -286,15 +291,14 @@ func TestOrdererDeliverCFT(t *testing.T) {
 func TestOrdererDeliverNoFT(t *testing.T) {
 	t.Parallel()
 	e := newDeliverOrdererTestEnv(t, deliverOrdererTestEnvParams{
-		ftMode:  ordererconn.NoFT,
 		tlsMode: connection.NoneTLSMode,
 	})
-	e.startDelivery(t)
-	e.waitForDeliveryOfConfigBlock(t)
+	e.startDeliveryNoFt(t)
+	configBlock := e.WaitForBlock(t, e.output)
+	require.Len(t, configBlock.Data.Data, 1)
 
 	t.Log("Sanity check - submit blocks")
-	b := e.submit(t)
-	require.EqualValues(t, 0, b.SourceID)
+	e.Submit(t, e.output)
 
 	t.Log("NoFT mode: even blocks with bad signatures are accepted")
 	expectedBlockNum := e.PrevBlock.Header.Number + 1
@@ -306,8 +310,7 @@ func TestOrdererDeliverNoFT(t *testing.T) {
 	for _, p := range e.PartyStates {
 		p.ReplaceBlock.Store(expectedBlockNum, badSigBlock)
 	}
-	b = e.submit(t)
-	require.EqualValues(t, 0, b.SourceID)
+	e.Submit(t, e.output)
 }
 
 func TestOrdererDeliverBFT(t *testing.T) {
@@ -417,7 +420,7 @@ type deliverOrdererTestEnvParams struct {
 
 type deliverOrdererTestEnv struct {
 	*mock.OrdererTestEnv
-	deliveryParams   *deliverorderer.Parameters
+	deliveryParams   deliverorderer.Parameters
 	output           chan *common.Block
 	outputWithSource chan *deliver.BlockWithSourceID
 }
@@ -452,8 +455,8 @@ func newDeliverOrdererTestEnv(t *testing.T, p deliverOrdererTestEnvParams) *deli
 	params.Retry.MaxElapsedTime = time.Minute
 	params.OutputBlock = e.output
 	params.OutputBlockWithSourceID = e.outputWithSource
-	params.NextBlockVerificationConfig = params.LastestKnownConfig
-	e.deliveryParams = params
+	params.Session.NextBlockVerificationConfig = params.Session.LastestKnownConfig
+	e.deliveryParams = *params
 	return e
 }
 
@@ -465,6 +468,26 @@ func (e *deliverOrdererTestEnv) startDelivery(t *testing.T) context.CancelFunc {
 	t.Cleanup(cancel)
 	wg.Go(func() {
 		deliverErr := deliverorderer.ToQueue(ctx, e.deliveryParams)
+		assert.ErrorIs(t, deliverErr, context.Canceled)
+	})
+	return func() {
+		cancel()
+		wg.Wait()
+	}
+}
+
+func (e *deliverOrdererTestEnv) startDeliveryNoFt(t *testing.T) context.CancelFunc {
+	t.Helper()
+	wg := sync.WaitGroup{}
+	t.Cleanup(wg.Wait)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+	wg.Go(func() {
+		deliverErr := deliverorderer.ToQueueWithNoFT(ctx, deliverorderer.NoFTParameters{
+			ClientConfig: &e.OrdererConnConfig,
+			NextBlockNum: 0,
+			OutputBlock:  e.output,
+		})
 		assert.ErrorIs(t, deliverErr, context.Canceled)
 	})
 	return func() {
