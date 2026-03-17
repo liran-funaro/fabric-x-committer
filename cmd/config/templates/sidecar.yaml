@@ -47,7 +47,7 @@ monitoring:
 
 orderer:
   fault-tolerance-level: BFT
-  last-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
+  latest-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
   tls:
     mode: {{ .ClientTLS.Mode }}
     cert-path: {{ .ClientTLS.CertPath }}

@@ -9,7 +9,6 @@ package vc
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -164,10 +163,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
 		TLS:            cs.TLS,
-		Retry: &connection.RetryProfile{
-			MaxElapsedTime:  5 * time.Minute,
-			InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,
-		},
+		Retry:          testdb.DefaultRetry,
 	}
 
 	m := newVCServiceMetrics()

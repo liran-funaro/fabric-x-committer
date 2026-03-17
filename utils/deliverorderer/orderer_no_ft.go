@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
@@ -34,12 +35,12 @@ func ToQueueWithNoFT(ctx context.Context, noFtParams NoFTParameters) error {
 	if err != nil {
 		return err
 	}
-	configMaterial, err := ordererconn.LoadConfigBlock(params.Session.LastestKnownConfig)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(params.LatestKnownConfig)
 	if configMaterial == nil || err != nil {
 		return err
 	}
 
-	m := configMaterial.OrdererConnectionMaterial(ordererconn.MaterialParameters{
+	m := ordererconn.OrdererConnectionMaterial(configMaterial, ordererconn.MaterialParameters{
 		API:   types.Deliver,
 		TLS:   params.TLS,
 		Retry: params.Retry,

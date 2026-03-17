@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -280,12 +281,12 @@ func filterEndpoints(allEndpoints []*commontypes.OrdererEndpoint, maxID uint32) 
 // SubmitConfigBlock creates and submits a config block.
 func (e *OrdererTestEnv) SubmitConfigBlock(
 	t *testing.T, c *testcrypto.ConfigBlock,
-) *ordererconn.ConfigBlockMaterial {
+) *channelconfig.ConfigBlockMaterial {
 	t.Helper()
 	if c == nil {
 		c = &testcrypto.ConfigBlock{}
 	}
-	prevConfigMaterial, err := ordererconn.LoadConfigBlockFromFile(e.ConfigBlockPath())
+	prevConfigMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(e.ConfigBlockPath())
 	require.NoError(t, err)
 	if len(c.ChannelID) == 0 {
 		c.ChannelID = prevConfigMaterial.ChannelID
@@ -301,7 +302,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(
 
 	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(e.ArtifactsPath, c)
 	require.NoError(t, err)
-	configMaterial, err := ordererconn.LoadConfigBlock(configBlock)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(configBlock)
 	require.NoError(t, err)
 
 	consenters, err := testcrypto.GetConsenterIdentities(e.ArtifactsPath)

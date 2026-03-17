@@ -8,13 +8,13 @@ package testdb
 
 import (
 	"context"
-	"math/rand"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 )
@@ -34,12 +34,12 @@ func defaultCredentials(dbType string) (user, password string) {
 	return "yugabyte", "yugabyte"
 }
 
-// defaultRetry is used for tests.
-var defaultRetry = &connection.RetryProfile{
+// DefaultRetry is used for tests.
+var DefaultRetry = &connection.RetryProfile{
 	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
 	MaxElapsedTime: 5 * time.Minute,
 	// InitialInterval is the starting wait time interval that increases every retry attempt.
-	InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,
+	InitialInterval: time.Duration(utils.RandIntN(900)+100) * time.Millisecond,
 }
 
 // Connection facilities connecting to a YugabyteDB instance.
@@ -96,7 +96,7 @@ func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
 	dbconn.ConfigureConnReadDeadline(poolConfig)
 
 	var pool *pgxpool.Pool
-	if retryErr := defaultRetry.Execute(ctx, func() error {
+	if retryErr := DefaultRetry.Execute(ctx, func() error {
 		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 		return err
 	}); retryErr != nil {
@@ -145,5 +145,5 @@ func (c *Connection) execute(ctx context.Context, stmt string) error {
 		return err
 	}
 	defer pool.Close()
-	return defaultRetry.ExecuteSQL(ctx, pool, stmt)
+	return DefaultRetry.ExecuteSQL(ctx, pool, stmt)
 }

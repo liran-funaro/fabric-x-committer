@@ -67,7 +67,7 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 		{
 			name:                   "valid config with all parameters",
 			faultToleranceLevel:    ordererconn.BFT,
-			configBlockPath:        e.OrdererConnConfig.LastKnownConfigBlockPath,
+			configBlockPath:        e.OrdererConnConfig.LatestKnownConfigBlockPath,
 			tlsConfig:              e.OrdererConnConfig.TLS,
 			expectedChannelID:      channelForTest,
 			expectedFaultTolerance: ordererconn.BFT,
@@ -75,7 +75,7 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 		{
 			name:                   "valid config with CFT fault tolerance",
 			faultToleranceLevel:    ordererconn.CFT,
-			configBlockPath:        e.OrdererConnConfig.LastKnownConfigBlockPath,
+			configBlockPath:        e.OrdererConnConfig.LatestKnownConfigBlockPath,
 			tlsConfig:              e.OrdererConnConfig.TLS,
 			expectedChannelID:      channelForTest,
 			expectedFaultTolerance: ordererconn.CFT,
@@ -102,7 +102,7 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 		{
 			name:                "error with invalid TLS configuration",
 			faultToleranceLevel: ordererconn.BFT,
-			configBlockPath:     e.OrdererConnConfig.LastKnownConfigBlockPath,
+			configBlockPath:     e.OrdererConnConfig.LatestKnownConfigBlockPath,
 			tlsConfig: ordererconn.OrdererTLSConfig{
 				Mode:              connection.MutualTLSMode,
 				CertPath:          "/nonexistent/cert.pem",
@@ -117,11 +117,11 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 
 			// Setup config based on test parameters
 			config := &ordererconn.Config{
-				FaultToleranceLevel:      tc.faultToleranceLevel,
-				LastKnownConfigBlockPath: tc.configBlockPath,
-				TLS:                      tc.tlsConfig,
-				Retry:                    e.OrdererConnConfig.Retry,
-				Identity:                 e.OrdererConnConfig.Identity,
+				FaultToleranceLevel:        tc.faultToleranceLevel,
+				LatestKnownConfigBlockPath: tc.configBlockPath,
+				TLS:                        tc.tlsConfig,
+				Retry:                      e.OrdererConnConfig.Retry,
+				Identity:                   e.OrdererConnConfig.Identity,
 			}
 
 			// Call the function under test
@@ -130,7 +130,6 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 			// Verify results
 			if tc.expectError {
 				require.Error(t, err)
-				assert.Nil(t, params)
 				if tc.expectedErrorContains != "" {
 					assert.Contains(t, err.Error(), tc.expectedErrorContains)
 				}
@@ -142,14 +141,10 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 			require.NotNil(t, params)
 			assert.Equal(t, tc.expectedFaultTolerance, params.FaultToleranceLevel)
 
-			assert.Equal(t, config.BlockWithholdingTimeout, params.BlockWithholdingTimeout)
-			assert.Equal(t, config.LivenessCheckInterval, params.LivenessCheckInterval)
-			assert.Equal(t, config.SuspicionGracePeriod, params.SuspicionGracePeriod)
-			assert.Equal(t, config.MaxBlocksAhead, params.MaxBlocksAhead)
+			assert.Equal(t, config.SuspicionGracePeriodPerBlock, params.SuspicionGracePeriodPerBlock)
 
 			assert.NotNil(t, params.Signer)
-			assert.NotNil(t, params.Session)
-			assert.NotNil(t, params.Session.LastestKnownConfig)
+			assert.NotNil(t, params.LatestKnownConfig)
 		})
 	}
 }
@@ -178,31 +173,39 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	cancelledContext, cancel := context.WithCancel(t.Context())
 	cancel()
 
+	t.Run("invalid FaultToleranceLevel", func(t *testing.T) {
+		t.Parallel()
+		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel: "invalid",
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
+		}, &deliverorderer.SessionInfo{})
+		require.ErrorContains(t, err, "invalid fault tolerance level")
+	})
+
 	t.Run("invalid LastBlock", func(t *testing.T) {
 		t.Parallel()
 		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
 			FaultToleranceLevel: ordererconn.BFT,
 			TLS:                 *tls,
 			OutputBlock:         make(chan *common.Block, 10),
-			Session: &deliverorderer.SessionInfo{
-				LastestKnownConfig:          configBlock,
-				NextBlockVerificationConfig: configBlock,
-				LastBlock:                   invalidBlock, // Invalid block
-			},
+		}, &deliverorderer.SessionInfo{
+			LatestKnownConfig:           configBlock,
+			NextBlockVerificationConfig: configBlock,
+			LastBlock:                   invalidBlock, // Invalid block
 		})
 		require.ErrorContains(t, err, "error loading last block")
 	})
 
-	t.Run("invalid LastestKnownConfig", func(t *testing.T) {
+	t.Run("invalid LatestKnownConfig", func(t *testing.T) {
 		t.Parallel()
 		err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
 			FaultToleranceLevel: ordererconn.BFT,
 			TLS:                 *tls,
 			OutputBlock:         make(chan *common.Block, 10),
-			Session: &deliverorderer.SessionInfo{
-				LastestKnownConfig:          invalidBlock, // Invalid config
-				NextBlockVerificationConfig: configBlock,
-			},
+		}, &deliverorderer.SessionInfo{
+			LatestKnownConfig:           invalidBlock, // Invalid config
+			NextBlockVerificationConfig: configBlock,
 		})
 		require.ErrorContains(t, err, "error loading last known config")
 	})
@@ -213,10 +216,9 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 			FaultToleranceLevel: ordererconn.BFT,
 			TLS:                 *tls,
 			OutputBlock:         make(chan *common.Block, 10),
-			Session: &deliverorderer.SessionInfo{
-				LastestKnownConfig:          configBlock,
-				NextBlockVerificationConfig: invalidBlock, // Invalid config
-			},
+		}, &deliverorderer.SessionInfo{
+			LatestKnownConfig:           configBlock,
+			NextBlockVerificationConfig: invalidBlock, // Invalid config
 		})
 		require.ErrorContains(t, err, "error loading next block verification config")
 	})
@@ -225,10 +227,12 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 		t.Parallel()
 
 		txs := workload.GenerateTransactions(t, nil, 10)
-		lastBlock := workload.MapToOrdererBlock(0, txs)
-		testcrypto.PrepareBlockHeaderAndMetadata(lastBlock, testcrypto.BlockPrepareParameters{
-			PrevBlock: configBlock,
-		})
+		lastBlock := testcrypto.PrepareBlockHeaderAndMetadata(
+			workload.MapToOrdererBlock(0, txs),
+			testcrypto.BlockPrepareParameters{
+				PrevBlock: configBlock,
+			},
+		)
 		require.EqualValues(t, 1, lastBlock.Header.Number)
 
 		configBlock3 := proto.CloneOf(configBlock)
@@ -238,10 +242,9 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 			FaultToleranceLevel: ordererconn.BFT,
 			TLS:                 *tls,
 			OutputBlock:         make(chan *common.Block, 10),
-			Session: &deliverorderer.SessionInfo{
-				NextBlockVerificationConfig: configBlock3,
-				LastBlock:                   lastBlock,
-			},
+		}, &deliverorderer.SessionInfo{
+			NextBlockVerificationConfig: configBlock3,
+			LastBlock:                   lastBlock,
 		})
 		require.ErrorContains(t, err, "config block number [3] is ahead of the next expected block [2]")
 	})
@@ -263,10 +266,12 @@ func TestOrdererDeliverCFT(t *testing.T) {
 	t.Log("CFT mode: blocks with bad signatures should be rejected")
 	expectedBlockNum := e.PrevBlock.Header.Number + 1
 	txs := workload.GenerateTransactions(t, nil, 10)
-	badSigBlock := workload.MapToOrdererBlock(0, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(badSigBlock, testcrypto.BlockPrepareParameters{
-		PrevBlock: e.PrevBlock,
-	})
+	badSigBlock := testcrypto.PrepareBlockHeaderAndMetadata(
+		workload.MapToOrdererBlock(0, txs),
+		testcrypto.BlockPrepareParameters{
+			PrevBlock: e.PrevBlock,
+		},
+	)
 	for _, p := range e.PartyStates {
 		p.ReplaceBlock.Store(expectedBlockNum, badSigBlock)
 	}
@@ -303,10 +308,13 @@ func TestOrdererDeliverNoFT(t *testing.T) {
 	t.Log("NoFT mode: even blocks with bad signatures are accepted")
 	expectedBlockNum := e.PrevBlock.Header.Number + 1
 	txs := workload.GenerateTransactions(t, nil, 10)
-	badSigBlock := workload.MapToOrdererBlock(0, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(badSigBlock, testcrypto.BlockPrepareParameters{
-		PrevBlock: e.PrevBlock,
-	})
+
+	badSigBlock := testcrypto.PrepareBlockHeaderAndMetadata(
+		workload.MapToOrdererBlock(0, txs),
+		testcrypto.BlockPrepareParameters{
+			PrevBlock: e.PrevBlock,
+		},
+	)
 	for _, p := range e.PartyStates {
 		p.ReplaceBlock.Store(expectedBlockNum, badSigBlock)
 	}
@@ -315,24 +323,12 @@ func TestOrdererDeliverNoFT(t *testing.T) {
 
 func TestOrdererDeliverBFT(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name               string
-		tlsMode            string
-		withholdingTimeout time.Duration
-		maxBlocksAhead     uint64
-	}{
-		{name: connection.NoneTLSMode, tlsMode: connection.NoneTLSMode},
-		{name: connection.OneSideTLSMode, tlsMode: connection.OneSideTLSMode},
-		{name: connection.MutualTLSMode, tlsMode: connection.MutualTLSMode},
-		{name: "max blocks ahead", withholdingTimeout: time.Hour, maxBlocksAhead: 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tlsMode := range test.ServerModes {
+		t.Run(tlsMode, func(t *testing.T) {
 			t.Parallel()
 			e := newDeliverOrdererTestEnv(t, deliverOrdererTestEnvParams{
-				ftMode:             ordererconn.BFT,
-				tlsMode:            tc.tlsMode,
-				withholdingTimeout: tc.withholdingTimeout,
-				maxBlocksAhead:     tc.maxBlocksAhead,
+				ftMode:  ordererconn.BFT,
+				tlsMode: tlsMode,
 			})
 			stopDelivery := e.startDelivery(t)
 			e.waitForDeliveryOfConfigBlock(t)
@@ -385,8 +381,7 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			p0.HoldFromBlock.Store(expectedBlockNum)
 			p1.HoldFromBlock.Store(expectedBlockNum + 1)
 			p2.HoldFromBlock.Store(expectedBlockNum + 1)
-			badSigBlock := &common.Block{}
-			testcrypto.PrepareBlockHeaderAndMetadata(badSigBlock, testcrypto.BlockPrepareParameters{
+			badSigBlock := testcrypto.PrepareBlockHeaderAndMetadata(&common.Block{}, testcrypto.BlockPrepareParameters{
 				PrevBlock: e.PrevBlock,
 			})
 			p2.ReplaceBlock.Store(expectedBlockNum, badSigBlock)
@@ -412,15 +407,14 @@ func TestOrdererDeliverBFT(t *testing.T) {
 }
 
 type deliverOrdererTestEnvParams struct {
-	tlsMode            string
-	ftMode             string
-	withholdingTimeout time.Duration
-	maxBlocksAhead     uint64
+	tlsMode string
+	ftMode  string
 }
 
 type deliverOrdererTestEnv struct {
 	*mock.OrdererTestEnv
 	deliveryParams   deliverorderer.Parameters
+	deliverySession  deliverorderer.SessionInfo
 	output           chan *common.Block
 	outputWithSource chan *deliver.BlockWithSourceID
 }
@@ -431,33 +425,34 @@ func newDeliverOrdererTestEnv(t *testing.T, p deliverOrdererTestEnvParams) *deli
 	// In this test, we are using the same server TLS config for all the orderer instances for simplicity.
 	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, p.tlsMode)
 
-	// We use a short retry grpc-config to shorten the test time.
-	e := &deliverOrdererTestEnv{
-		OrdererTestEnv: mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
-			ChanID:      channelForTest,
-			NumIDs:      3,
-			ServerPerID: 4,
-			OrdererConfig: &mock.OrdererConfig{
-				BlockSize:        10,
-				SendGenesisBlock: true,
-			},
-			ServerTLSConfig: serverTLSConfig,
-			ClientTLSConfig: clientTLSConfig,
-		}),
-		output:           make(chan *common.Block, 100),
-		outputWithSource: make(chan *deliver.BlockWithSourceID, 100),
-	}
+	e := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
+		ChanID:      channelForTest,
+		NumIDs:      3,
+		ServerPerID: 4,
+		OrdererConfig: &mock.OrdererConfig{
+			BlockSize:        10,
+			SendGenesisBlock: true,
+		},
+		ServerTLSConfig: serverTLSConfig,
+		ClientTLSConfig: clientTLSConfig,
+	})
+	output := make(chan *common.Block, 100)
+	outputWithSource := make(chan *deliver.BlockWithSourceID, 100)
 	params, err := deliverorderer.LoadParametersFromConfig(&e.OrdererConnConfig)
 	require.NoError(t, err)
 	params.FaultToleranceLevel = p.ftMode
-	params.BlockWithholdingTimeout = p.withholdingTimeout
-	params.MaxBlocksAhead = p.maxBlocksAhead
 	params.Retry.MaxElapsedTime = time.Minute
-	params.OutputBlock = e.output
-	params.OutputBlockWithSourceID = e.outputWithSource
-	params.Session.NextBlockVerificationConfig = params.Session.LastestKnownConfig
-	e.deliveryParams = *params
-	return e
+	params.OutputBlock = output
+	params.OutputBlockWithSourceID = outputWithSource
+	return &deliverOrdererTestEnv{
+		OrdererTestEnv: e,
+		deliveryParams: params,
+		deliverySession: deliverorderer.SessionInfo{
+			NextBlockVerificationConfig: params.LatestKnownConfig,
+		},
+		output:           output,
+		outputWithSource: outputWithSource,
+	}
 }
 
 func (e *deliverOrdererTestEnv) startDelivery(t *testing.T) context.CancelFunc {
@@ -467,7 +462,7 @@ func (e *deliverOrdererTestEnv) startDelivery(t *testing.T) context.CancelFunc {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	wg.Go(func() {
-		deliverErr := deliverorderer.ToQueue(ctx, e.deliveryParams)
+		deliverErr := deliverorderer.ToQueue(ctx, e.deliveryParams, &e.deliverySession)
 		assert.ErrorIs(t, deliverErr, context.Canceled)
 	})
 	return func() {

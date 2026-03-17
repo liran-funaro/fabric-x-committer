@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -182,7 +183,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 		rand.Shuffle(len(info), func(i, j int) { info[i], info[j] = info[j], info[i] })
 
 		for len(info) > 0 {
-			chunkSize := rand.Intn(len(info)) + 1
+			chunkSize := utils.RandIntN(uint64(len(info))) + 1
 			if err := c.sendTxsStatusChunk(stream, info[:chunkSize]); err != nil {
 				return err
 			}

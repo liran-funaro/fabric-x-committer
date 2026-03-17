@@ -100,9 +100,9 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 		}
 	}
 	return ordererconn.Config{
-		FaultToleranceLevel:      ordererconn.BFT,
-		TLS:                      ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
-		LastKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+		FaultToleranceLevel:        ordererconn.BFT,
+		TLS:                        ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+		LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
 		Retry: &connection.RetryProfile{
 			InitialInterval: 10 * time.Millisecond,
 			MaxInterval:     100 * time.Millisecond,

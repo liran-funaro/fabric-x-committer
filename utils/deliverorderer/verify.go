@@ -8,6 +8,7 @@ package deliverorderer
 
 import (
 	"bytes"
+	"math"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -17,7 +18,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type (
@@ -28,16 +28,16 @@ type (
 		configState
 		dataBlockStream     bool
 		nextBlockNum        uint64
-		prevBlockHeaderHash []byte
-		prevBlock           *common.Block
-		// updaterSourceID is used to track which source the previous block was received from.
+		lastBlockHeaderHash []byte
+		lastBlock           *common.Block
+		// updaterSourceID is used to track which source the last block was received from.
 		updaterSourceID uint32
 	}
 
 	// configState holds the current channel configuration state used for block verification.
 	// It contains the latest config block material.
 	configState struct {
-		*ordererconn.ConfigBlockMaterial
+		*channelconfig.ConfigBlockMaterial
 		configBlockNumber uint64
 		verifierFunc      protoutil.BlockVerifierFunc
 	}
@@ -46,8 +46,65 @@ type (
 // ErrUnexpectedBlockNumber is returned by the verification step if the blocks are not received in order.
 var ErrUnexpectedBlockNumber = errors.New("received unexpected block number")
 
-func newBlockProcessingState(dataBlockStream bool) blockVerificationStateMachine {
-	return blockVerificationStateMachine{dataBlockStream: dataBlockStream}
+// newBlockProcessingState initializes the processing state from the last block
+// and start the following blocks processing from it.
+// It returns a headers only stream state, and the latest config state.
+// For data block verification, use [state.cloneAsDataBlockStream()].
+func newBlockProcessingState(session *SessionInfo) (
+	state blockVerificationStateMachine, latestConfig configState, err error,
+) {
+	// We use headers-only stream to allow providing data-less block as the last block.
+	// We process the last block before applying the config block to avoid verifying the last block.
+	// This is because the last block might be signed by previous configuration.
+	blockHeader := session.LastBlock.GetHeader()
+	if blockHeader != nil {
+		state.nextBlockNum = blockHeader.Number
+		err = state.verificationStepAndUpdateState(&deliver.BlockWithSourceID{
+			Block: session.LastBlock,
+			// We use a large ID to ensure we do not confuse it with a real source.
+			SourceID: math.MaxUint32,
+		})
+		if err != nil {
+			return state, latestConfig, errors.WithMessage(err, "error loading last block")
+		}
+	}
+
+	if session.NextBlockVerificationConfig != nil {
+		err = state.updateIfConfigBlock(session.NextBlockVerificationConfig)
+		if err != nil {
+			return state, latestConfig, errors.WithMessage(err, "error loading next block verification config")
+		}
+	}
+
+	if session.LatestKnownConfig != nil {
+		err = latestConfig.updateIfConfigBlock(session.LatestKnownConfig)
+		if err != nil {
+			return state, latestConfig, errors.WithMessage(err, "error loading last known config")
+		}
+	}
+
+	// We assert that the latest config is indeed the latest.
+	// This is useful in cases that the latest config block was given by the user,
+	// but the system have a newer config block in the ledger.
+	if latestConfig.ConfigBlockMaterial == nil || state.configBlockNumber > latestConfig.configBlockNumber {
+		latestConfig = state.configState
+	}
+
+	// We validate that the config block is ahead the next expected block to fail fast.
+	if state.nextBlockNum < state.configBlockNumber {
+		return state, latestConfig, errors.Newf(
+			"verification config block number [%d] is ahead of the next expected block [%d]",
+			state.configBlockNumber, state.nextBlockNum,
+		)
+	}
+	return state, latestConfig, nil
+}
+
+// cloneAsDataBlockStream returns a clone of this state for data block verification.
+func (s *blockVerificationStateMachine) cloneAsDataBlockStream() blockVerificationStateMachine {
+	dataBlockStream := *s
+	dataBlockStream.dataBlockStream = true
+	return dataBlockStream
 }
 
 // verificationStepAndUpdateState returns error if the block number is not what expected,
@@ -73,14 +130,14 @@ func (s *blockVerificationStateMachine) verificationStepAndUpdateState(blk *deli
 	}
 
 	// If it is a valid block, update internal processing state.
-	s.prevBlock = blk.Block
 	s.nextBlockNum = blk.Block.Header.Number + 1
-	s.prevBlockHeaderHash = protoutil.BlockHeaderHash(blk.Block.Header)
+	s.lastBlock = blk.Block
+	s.lastBlockHeaderHash = protoutil.BlockHeaderHash(blk.Block.Header)
 	s.updaterSourceID = blk.SourceID
 
 	// If it is a config block, update the config state.
 	err := s.updateIfConfigBlock(blk.Block)
-	if err != nil && !errors.Is(err, ordererconn.ErrNotConfigBlock) {
+	if err != nil && !errors.Is(err, channelconfig.ErrNotConfigBlock) {
 		// At this point, the block is valid and should be delivered.
 		// We can only log the issue for investigative purposes.
 		logger.Warnf("failed to update config block: %v", err)
@@ -101,15 +158,15 @@ func (s *blockVerificationStateMachine) verifyBlockForm(block *common.Block) boo
 	return !s.dataBlockStream || block.Data != nil
 }
 
-// verifyHashes checks that the block previous hash matches the previous block,
+// verifyHashes checks that the block previous hash matches the last block,
 // and that the internal data hash matches the one in the header.
 // It is only used internally.
 func (s *blockVerificationStateMachine) verifyHashes(block *common.Block) error {
 	blockNumber := block.Header.Number
 
 	// Verify header hash if we have the previous block hash.
-	if len(s.prevBlockHeaderHash) != 0 {
-		if !bytes.Equal(block.Header.PreviousHash, s.prevBlockHeaderHash) {
+	if len(s.lastBlockHeaderHash) != 0 {
+		if !bytes.Equal(block.Header.PreviousHash, s.lastBlockHeaderHash) {
 			return errors.Newf("previous block header hash mismatch on block [%d]", blockNumber)
 		}
 	}
@@ -189,7 +246,7 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 // It is assumed that this config block had already been
 // verified using the VerifyBlock method immediately prior to calling this method.
 func (cs *configState) updateIfConfigBlock(block *common.Block) error {
-	configMaterial, err := ordererconn.LoadConfigBlock(block)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(block)
 	if configMaterial == nil || err != nil {
 		return err
 	}

@@ -66,11 +66,11 @@ orderer:
   # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
   # Affects how the sidecar interacts with the orderer.
   fault-tolerance-level: BFT
-  # Path to the last known config block file, used to obtain the latest endpoints and TLS credentials
+  # Path to the latest known config block file, used to obtain the latest endpoints and TLS credentials
   # of the Orderer parties.
   # It can be the genesis config block (required for new deployments).
   # But it can also be used to bootstrap a deployment with a stale ledger.
-  last-known-config-block-path: /root/artifacts/config-block.pb.bin
+  latest-known-config-block-path: /root/artifacts/config-block.pb.bin
   # Sidecar uses these TLS credentials when connecting to the orderers as a client.
   tls: *tlsConfig
   # reconnect:  # Optional exponential backoff retry for orderer gRPC reconnections.

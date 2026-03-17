@@ -8,15 +8,12 @@ package ordererconn_test
 
 import (
 	"maps"
-	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
@@ -24,182 +21,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
-
-func TestLoadConfigBlockFromFile(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name                    string
-		path                    string
-		expectedChannelID       string
-		expectedOrdererOrgs     int
-		expectedApplicationOrgs int
-	}{
-		{
-			name:                    "valid config block file",
-			path:                    createConfigBlockPath(t, "channel-0", 2, nil),
-			expectedChannelID:       "channel-0",
-			expectedOrdererOrgs:     1,
-			expectedApplicationOrgs: 2,
-		},
-		{
-			name:                    "valid config block with single peer org",
-			path:                    createConfigBlockPath(t, "channel-1", 1, nil),
-			expectedChannelID:       "channel-1",
-			expectedOrdererOrgs:     1,
-			expectedApplicationOrgs: 1,
-		},
-		{
-			name: "valid config block with multiple peer orgs and orderers",
-			path: createConfigBlockPath(t, "channel-2", 3, []*commontypes.OrdererEndpoint{
-				{ID: 0, Host: "orderer1.example.com", Port: 7050},
-				{ID: 1, Host: "orderer2.example.com", Port: 7051},
-			}),
-			expectedChannelID:       "channel-2",
-			expectedOrdererOrgs:     2,
-			expectedApplicationOrgs: 3,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			retMaterial, retErr := ordererconn.LoadConfigBlockFromFile(tc.path)
-
-			require.NoError(t, retErr)
-			require.NotNil(t, retMaterial)
-			require.Equal(t, tc.expectedChannelID, retMaterial.ChannelID)
-			require.NotNil(t, retMaterial.ConfigBlock)
-			require.NotNil(t, retMaterial.Bundle)
-			require.Len(t, retMaterial.OrdererOrganizations, tc.expectedOrdererOrgs)
-			require.Len(t, retMaterial.ApplicationOrganizations, tc.expectedApplicationOrgs)
-			for _, org := range retMaterial.OrdererOrganizations {
-				require.NotEmpty(t, org.Endpoints)
-			}
-		})
-	}
-}
-
-func TestLoadConfigBlockFromFileEdgeCases(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name          string
-		blockPath     string
-		expectedError string
-	}{
-		{
-			name:          "empty path",
-			blockPath:     "",
-			expectedError: "config block path is empty",
-		},
-		{
-			name:          "non-existent file",
-			blockPath:     path.Join(t.TempDir(), "file.block"),
-			expectedError: "could not read block",
-		},
-		{
-			name:          "nil data",
-			blockPath:     createBlockFile(t, &common.Block{}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "data block",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{Data: [][]byte{[]byte("transaction data")}},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "empty data",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{Data: [][]byte{}},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "multiple transactions",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{
-					Data: [][]byte{[]byte("transaction 1"), []byte("transaction 2")},
-				},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "invalid payload",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{
-					Data: [][]byte{
-						protoutil.MarshalOrPanic(&common.Envelope{
-							Payload: []byte("invalid payload"),
-						}),
-					},
-				},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "nil header",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{
-					Data: [][]byte{
-						protoutil.MarshalOrPanic(&common.Envelope{
-							Payload: protoutil.MarshalOrPanic(&common.Payload{Header: nil}),
-						}),
-					},
-				},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "wrong header type",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{
-					Data: [][]byte{
-						protoutil.MarshalOrPanic(&common.Envelope{
-							Payload: protoutil.MarshalOrPanic(&common.Payload{
-								Header: &common.Header{
-									ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-										Type:      int32(common.HeaderType_ENDORSER_TRANSACTION),
-										ChannelId: "test-channel",
-									}),
-								},
-							}),
-						}),
-					},
-				},
-			}),
-			expectedError: "the block is not a config block",
-		},
-		{
-			name: "invalid config envelope",
-			blockPath: createBlockFile(t, &common.Block{
-				Data: &common.BlockData{
-					Data: [][]byte{
-						protoutil.MarshalOrPanic(&common.Envelope{
-							Payload: protoutil.MarshalOrPanic(&common.Payload{
-								Header: &common.Header{
-									ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-										Type:      int32(common.HeaderType_CONFIG),
-										ChannelId: "test-channel",
-									}),
-								},
-								Data: []byte("invalid config envelope"),
-							}),
-						}),
-					},
-				},
-			}),
-			expectedError: "error unmarshalling config envelope",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			retMaterial, retErr := ordererconn.LoadConfigBlockFromFile(tc.blockPath)
-			require.ErrorContains(t, retErr, tc.expectedError)
-			require.Nil(t, retMaterial)
-		})
-	}
-}
 
 func TestOrdererConnectionMaterial(t *testing.T) {
 	t.Parallel()
@@ -303,7 +124,7 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			material := createConfigBlockMaterial(t, 1, tc.endpoints)
-			connMaterial := material.OrdererConnectionMaterial(tc.params)
+			connMaterial := ordererconn.OrdererConnectionMaterial(material, tc.params)
 			require.NotNil(t, connMaterial)
 			require.Len(t, connMaterial.Joint.Endpoints, tc.expectedJointEndpointCount)
 			require.ElementsMatch(t, tc.expectedIDs, slices.Collect(maps.Keys(connMaterial.PerID)))
@@ -344,9 +165,9 @@ func TestOrdererConnectionMaterialShuffling(t *testing.T) {
 	for i := range uint32(3) {
 		perIDOrders[i] = make(map[string]any)
 	}
-	firstCall := material.OrdererConnectionMaterial(params)
+	firstCall := ordererconn.OrdererConnectionMaterial(material, params)
 	for range 10 {
-		connMaterial := material.OrdererConnectionMaterial(params)
+		connMaterial := ordererconn.OrdererConnectionMaterial(material, params)
 		require.ElementsMatch(t, firstCall.Joint.Endpoints, connMaterial.Joint.Endpoints)
 
 		jointOrders[connection.AddressString(connMaterial.Joint.Endpoints...)] = nil
@@ -359,32 +180,6 @@ func TestOrdererConnectionMaterialShuffling(t *testing.T) {
 	require.Greater(t, len(jointOrders), 1, "endpoints should be shuffled")
 	for id, o := range perIDOrders {
 		require.Greaterf(t, len(o), 1, "endpoints for ID %d should be shuffled", id)
-	}
-}
-
-func TestOrganizationMaterialExtraction(t *testing.T) {
-	t.Parallel()
-
-	material := createConfigBlockMaterial(t, 3, []*commontypes.OrdererEndpoint{
-		{ID: 0, Host: "orderer1.example.com", Port: 7050},
-		{ID: 0, Host: "orderer2.example.com", Port: 7051},
-	})
-
-	require.Len(t, material.OrdererOrganizations, 1)
-	ordererOrg := material.OrdererOrganizations[0]
-	require.NotEmpty(t, ordererOrg.MspID)
-	require.NotEmpty(t, ordererOrg.CACerts)
-	require.Len(t, ordererOrg.Endpoints, 2)
-	for _, ep := range ordererOrg.Endpoints {
-		require.NotEmpty(t, ep.Host)
-		require.NotZero(t, ep.Port)
-		require.Equal(t, ordererOrg.MspID, ep.MspID)
-	}
-
-	require.Len(t, material.ApplicationOrganizations, 3)
-	for _, peerOrg := range material.ApplicationOrganizations {
-		require.NotEmpty(t, peerOrg.MspID)
-		require.NotEmpty(t, peerOrg.CACerts)
 	}
 }
 
@@ -407,7 +202,7 @@ func TestParameterPropagation(t *testing.T) {
 		Retry: retryProfile,
 		API:   commontypes.Deliver,
 	}
-	connMaterial := material.OrdererConnectionMaterial(params)
+	connMaterial := ordererconn.OrdererConnectionMaterial(material, params)
 	require.Equal(t, retryProfile, connMaterial.Joint.Retry)
 	for _, mat := range connMaterial.PerID {
 		require.Equal(t, retryProfile, mat.Retry)
@@ -444,20 +239,10 @@ func createConfigBlockMaterial(
 	t *testing.T,
 	peerOrgCount uint32,
 	endpoints []*commontypes.OrdererEndpoint,
-) *ordererconn.ConfigBlockMaterial {
+) *channelconfig.ConfigBlockMaterial {
 	t.Helper()
 	blockPath := createConfigBlockPath(t, "test-channel", peerOrgCount, endpoints)
-	material, err := ordererconn.LoadConfigBlockFromFile(blockPath)
+	material, err := channelconfig.LoadConfigBlockMaterialFromFile(blockPath)
 	require.NoError(t, err)
 	return material
-}
-
-func createBlockFile(t *testing.T, block *common.Block) string {
-	t.Helper()
-	blockPath := filepath.Join(t.TempDir(), "block.block")
-	blockBytes, err := protoutil.Marshal(block)
-	require.NoError(t, err)
-	err = os.WriteFile(blockPath, blockBytes, 0o600)
-	require.NoError(t, err)
-	return blockPath
 }

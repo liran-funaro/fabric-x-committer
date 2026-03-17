@@ -94,6 +94,10 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			getServerConfig := func(servicePort string) config.ServiceConfig {
 				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
+			clientTLS := test.NewServiceTLSConfig(artifactsPath, "sidecar", mode)
+			clientTLS.CACertPaths = append(clientTLS.CACertPaths,
+				filepath.Join(artifactsPath, test.OrdererRootCATLSPath),
+			)
 			runtime := runner.CommitterRuntime{
 				SeedForCryptoGen: rand.New(rand.NewSource(10)),
 				Config:           &runner.Config{},
@@ -103,7 +107,8 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 						Query:       getServerConfig(queryServicePort),
 						Coordinator: getServerConfig(coordinatorServicePort),
 					},
-					Policy: &c.LoadProfile.Policy,
+					Policy:    &c.LoadProfile.Policy,
+					ClientTLS: clientTLS,
 				},
 				DBEnv: vc.NewDatabaseTestEnvFromConnection(
 					t,
@@ -112,19 +117,12 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				),
 				OrdererEnv: &mock.OrdererTestEnv{
 					OrdererConnConfig: ordererconn.Config{
-						TLS:                      ordererconn.TLSConfigToOrdererTLSConfig(clientTLS),
-						FaultToleranceLevel:      ordererconn.CFT,
-						LastKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+						TLS:                        ordererconn.TLSConfigToOrdererTLSConfig(clientTLS),
+						FaultToleranceLevel:        ordererconn.CFT,
+						LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
 					},
 				},
 			}
-
-			runtime.SystemConfig.ClientTLS = test.NewServiceTLSConfig(
-				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
-			)
-			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
-				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererRootCATLSPath),
-			)
 
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)

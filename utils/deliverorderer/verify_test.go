@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
@@ -38,7 +38,7 @@ func BenchmarkVerifyBlock(b *testing.B) {
 				blk := workload.MapToOrdererBlock(0, txs[:curBlockSize])
 				txs = txs[curBlockSize:]
 				blocks = append(blocks, &deliver.BlockWithSourceID{Block: blk})
-				testcrypto.PrepareBlockHeaderAndMetadata(blk, p)
+				blk = testcrypto.PrepareBlockHeaderAndMetadata(blk, p)
 				p.PrevBlock = blk
 			}
 
@@ -59,12 +59,12 @@ func TestVerifyBlock(t *testing.T) {
 	b1 := workload.MapToOrdererBlock(1, txs)
 
 	t.Log("[X] Well-formed block with no signatures")
-	testcrypto.PrepareBlockHeaderAndMetadata(b1, testcrypto.BlockPrepareParameters{PrevBlock: p.PrevBlock})
+	b1 = testcrypto.PrepareBlockHeaderAndMetadata(b1, testcrypto.BlockPrepareParameters{PrevBlock: p.PrevBlock})
 	err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1})
 	require.ErrorContains(t, err, "block signature verification failed on block")
 
 	t.Log("[V] Well-formed block with signatures")
-	testcrypto.PrepareBlockHeaderAndMetadata(b1, p)
+	b1 = testcrypto.PrepareBlockHeaderAndMetadata(b1, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1, SourceID: 1})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, s.updaterSourceID)
@@ -75,7 +75,7 @@ func TestVerifyBlock(t *testing.T) {
 
 	t.Log("[X] Unexpected prev block hash")
 	b1a := workload.MapToOrdererBlock(2, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(b1a, testcrypto.BlockPrepareParameters{PrevBlock: p.PrevBlock})
+	b1a = testcrypto.PrepareBlockHeaderAndMetadata(b1a, testcrypto.BlockPrepareParameters{PrevBlock: p.PrevBlock})
 	b1a.Header.Number = 2
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1a})
 	require.ErrorContains(t, err, "previous block header hash mismatch")
@@ -84,7 +84,7 @@ func TestVerifyBlock(t *testing.T) {
 	// Test hash validation
 	t.Log("[X] Block with data hash mismatch")
 	b2 := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(b2, p)
+	b2 = testcrypto.PrepareBlockHeaderAndMetadata(b2, p)
 	b2.Header.DataHash = []byte("wrong hash")
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b2})
 	require.ErrorContains(t, err, "block data hash mismatch")
@@ -103,13 +103,13 @@ func TestVerifyBlock(t *testing.T) {
 	insufficientQuorum := p
 	insufficientQuorum.ConsenterSigners = insufficientQuorum.ConsenterSigners[:2]
 	b4 := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(b4, insufficientQuorum)
+	b4 = testcrypto.PrepareBlockHeaderAndMetadata(b4, insufficientQuorum)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b4})
 	require.ErrorContains(t, err, "2 sub-policies were satisfied, but this policy requires 3")
 
 	t.Log("[V] Block with nil data in header-only stream")
 	bHeaderOnly := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(bHeaderOnly, p)
+	bHeaderOnly = testcrypto.PrepareBlockHeaderAndMetadata(bHeaderOnly, p)
 	bHeaderOnly.Data = nil // Make it header-only
 	s.dataBlockStream = false
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: bHeaderOnly})
@@ -120,30 +120,27 @@ func TestVerifyBlock(t *testing.T) {
 	// Test config block handling
 	t.Log("[V] New Config block")
 	_, p2 := prepare(t)
+	p2.PrevBlock = testcrypto.PrepareBlockHeaderAndMetadata(p2.PrevBlock, p)
 	newConfigBlock := p2.PrevBlock
-	testcrypto.PrepareBlockHeaderAndMetadata(newConfigBlock, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: newConfigBlock, SourceID: 2})
 	require.NoError(t, err)
 	require.EqualValues(t, 2, s.updaterSourceID)
 	require.Equal(t, newConfigBlock.Header.Number, s.configBlockNumber)
 
 	t.Log("[V] New block with new consenters")
-	p2.LastConfigBlockIndex = p2.PrevBlock.Header.Number
+	p2.LastConfigBlockIndex = newConfigBlock.Header.Number
 	submitGoodBlock(t, &s, &p2, 2)
 
 	t.Log("[X] Block points to older config block")
 	p.PrevBlock = p2.PrevBlock
-	b7 := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(b7, p)
+	b7 := testcrypto.PrepareBlockHeaderAndMetadata(workload.MapToOrdererBlock(1, txs), p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b7})
-	require.Error(t, err, "expected error due to wrong consenters")
 	require.ErrorContains(t, err, "block's last config block [0] != [5] current config block")
 
 	t.Log("[X] Block with old consenters")
 	p.LastConfigBlockIndex = p2.LastConfigBlockIndex
-	testcrypto.PrepareBlockHeaderAndMetadata(b7, p)
+	b7 = testcrypto.PrepareBlockHeaderAndMetadata(b7, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b7})
-	require.Error(t, err, "expected error due to wrong consenters")
 	require.ErrorContains(t, err, "0 sub-policies were satisfied")
 }
 
@@ -220,7 +217,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		// Advance to block 5 first
 		for range 5 {
 			bTemp := workload.MapToOrdererBlock(0, txs)
-			testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
+			bTemp = testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
 			err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: bTemp})
 			require.NoError(t, err)
 			p.PrevBlock = bTemp
@@ -230,7 +227,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		// Try to process block 6, which is less than config block 10
 		b := workload.MapToOrdererBlock(0, txs)
 		p.LastConfigBlockIndex = 10
-		testcrypto.PrepareBlockHeaderAndMetadata(b, p)
+		b = testcrypto.PrepareBlockHeaderAndMetadata(b, p)
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "block number [6] is less than config block number [10]")
@@ -247,7 +244,9 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		s := newBlockProcessingState(true)
+		s, _, err := newBlockProcessingState(&SessionInfo{})
+		require.NoError(t, err)
+		s = s.cloneAsDataBlockStream()
 		err = s.updateIfConfigBlock(genesisBlock)
 		require.NoError(t, err)
 		// Don't process it yet, just set it as config
@@ -278,7 +277,8 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		s := newBlockProcessingState(false)
+		s, _, err := newBlockProcessingState(&SessionInfo{})
+		require.NoError(t, err)
 		err = s.updateIfConfigBlock(genesisBlock)
 		require.NoError(t, err)
 
@@ -304,14 +304,14 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		// Advance to block 4
 		for range 4 {
 			bTemp := workload.MapToOrdererBlock(0, txs)
-			testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
+			bTemp = testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
 			err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: bTemp})
 			require.NoError(t, err)
 			p.PrevBlock = bTemp
 		}
 		// Create a regular (non-config) block at position 5 but make it point to wrong config block
 		badBlock := workload.MapToOrdererBlock(0, txs)
-		testcrypto.PrepareBlockHeaderAndMetadata(badBlock, testcrypto.BlockPrepareParameters{
+		badBlock = testcrypto.PrepareBlockHeaderAndMetadata(badBlock, testcrypto.BlockPrepareParameters{
 			LastConfigBlockIndex: 3, // Should point to 0 (current config) but points to 3
 			PrevBlock:            p.PrevBlock,
 			ConsenterSigners:     p.ConsenterSigners,
@@ -326,14 +326,14 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		s, p := prepare(t)
 		// Advance to block 1
 		bTemp := workload.MapToOrdererBlock(0, txs)
-		testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
+		bTemp = testcrypto.PrepareBlockHeaderAndMetadata(bTemp, p)
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: bTemp})
 		require.NoError(t, err)
 		p.PrevBlock = bTemp
 
 		// Create a config block with invalid config data at block 2
 		invalidConfigBlock2 := &common.Block{
-			Header: &common.BlockHeader{Number: 2, PreviousHash: s.prevBlockHeaderHash},
+			Header: &common.BlockHeader{Number: 2, PreviousHash: s.lastBlockHeaderHash},
 			Data: &common.BlockData{
 				Data: [][]byte{
 					protoutil.MarshalOrPanic(&common.Envelope{
@@ -351,7 +351,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 			},
 			Metadata: &common.BlockMetadata{Metadata: make([][]byte, 5)},
 		}
-		testcrypto.PrepareBlockHeaderAndMetadata(invalidConfigBlock2, p)
+		invalidConfigBlock2 = testcrypto.PrepareBlockHeaderAndMetadata(invalidConfigBlock2, p)
 		// This should succeed in verification but log a warning about config update failure (line 89)
 		err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: invalidConfigBlock2})
 		require.NoError(t, err, "block should be delivered even if config update fails")
@@ -370,7 +370,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		simpleBlock := workload.MapToOrdererBlock(1, txs)
 		simpleBlock.Header.Number = 0
 		simpleBlock.Metadata = &common.BlockMetadata{Metadata: make([][]byte, 5)}
-		testcrypto.PrepareBlockHeaderAndMetadata(simpleBlock, p)
+		simpleBlock = testcrypto.PrepareBlockHeaderAndMetadata(simpleBlock, p)
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: simpleBlock})
 		require.NoError(t, err, "should succeed when verifierFunc is nil")
 	})
@@ -387,7 +387,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		testcrypto.PrepareBlockHeaderAndMetadata(badConfigBlock, p)
+		badConfigBlock = testcrypto.PrepareBlockHeaderAndMetadata(badConfigBlock, p)
 		m := &common.Metadata{}
 		err = proto.Unmarshal(badConfigBlock.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES], m)
 		require.NoError(t, err)
@@ -411,7 +411,7 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 		b := workload.MapToOrdererBlock(1, txs)
 
 		err := cs.updateIfConfigBlock(b)
-		require.ErrorIs(t, err, ordererconn.ErrNotConfigBlock)
+		require.ErrorIs(t, err, channelconfig.ErrNotConfigBlock)
 		require.Nil(t, cs.ConfigBlockMaterial)
 	})
 
@@ -475,7 +475,7 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 		}
 		err := cs.updateIfConfigBlock(malformedBlock)
 		// malformed blocks that can't be parsed are treated as non-config blocks
-		require.ErrorIs(t, err, ordererconn.ErrNotConfigBlock)
+		require.ErrorIs(t, err, channelconfig.ErrNotConfigBlock)
 		assert.Nil(t, cs.ConfigBlockMaterial, "config state should not be updated for malformed blocks")
 	})
 
@@ -522,7 +522,9 @@ func prepare(tb testing.TB) (blockVerificationStateMachine, testcrypto.BlockPrep
 	})
 	require.NoError(tb, err)
 
-	s := newBlockProcessingState(true)
+	s, _, err := newBlockProcessingState(&SessionInfo{})
+	require.NoError(tb, err)
+	s = s.cloneAsDataBlockStream()
 	// We process the genesis block first.
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: genesisBlock})
 	require.NoError(tb, err)
@@ -541,8 +543,7 @@ func submitGoodBlock(
 ) {
 	tb.Helper()
 	txs := workload.GenerateTransactions(tb, nil, 100)
-	b := workload.MapToOrdererBlock(1, txs)
-	testcrypto.PrepareBlockHeaderAndMetadata(b, *p)
+	b := testcrypto.PrepareBlockHeaderAndMetadata(workload.MapToOrdererBlock(1, txs), *p)
 	err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b, SourceID: label})
 	require.NoError(tb, err)
 	require.Equal(tb, label, s.updaterSourceID)

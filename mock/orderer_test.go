@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -282,7 +282,7 @@ func (f *blockFetcher) requireGetBlock(
 
 func getVerifier(t *testing.T, block *common.Block) protoutil.BlockVerifierFunc {
 	t.Helper()
-	configMaterial, err := ordererconn.LoadConfigBlock(block)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(block)
 	require.NoError(t, err)
 	require.NotNil(t, configMaterial)
 

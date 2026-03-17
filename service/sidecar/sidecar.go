@@ -37,7 +37,7 @@ var logger = flogging.MustGetLogger("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 type Service struct {
-	deliveryParams     *deliverorderer.Parameters
+	deliveryParams     deliverorderer.Parameters
 	relay              *relay
 	notifier           *notifier
 	blockStore         *blockStore
@@ -170,7 +170,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	// We drop all enqueued block if any before starting a new session.
 	s.blockToBeCommitted = make(chan *common.Block, s.config.ChannelBufferSize)
 
-	// NOTE: deliver.OrdererToChannel and relay.Run must always return an error on exist.
+	// NOTE: deliver.s.startDelivery and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		return s.startDelivery(gCtx, s.blockToBeCommitted, nextBlockNum)
 	})
@@ -287,41 +287,33 @@ func (s *Service) startDelivery(ctx context.Context, output chan<- *common.Block
 	if err != nil {
 		return err
 	}
-
-	// We use the maximum between the latest config block in the ledger, the config block from the YAML,
-	// and the latest from the previous delivery runs.
-	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
-	lastestKnownConfig := maxBlock(s.deliveryParams.Session.LastestKnownConfig, latestConfig)
 	lastBlock, nextBlockVerificationConfig, err := s.getPrevBlockAndItsConfig(nextBlockNum)
 	if err != nil {
 		return err
 	}
 
-	p := *s.deliveryParams
-	p.OutputBlock = output
-	p.Session = &deliverorderer.SessionInfo{
-		LastestKnownConfig:          lastestKnownConfig,
+	logger.Infof("Staring delivery from block [%d]", nextBlockNum)
+	s.deliveryParams.OutputBlock = output
+	session := &deliverorderer.SessionInfo{
 		LastBlock:                   lastBlock,
 		NextBlockVerificationConfig: nextBlockVerificationConfig,
+		LatestKnownConfig:           latestConfig,
 	}
-	logger.Infof("Staring delivery from block [%d]", nextBlockNum)
-	deliverErr := deliverorderer.ToQueue(ctx, p)
+	deliverErr := deliverorderer.ToQueue(ctx, s.deliveryParams, session)
 
-	// We keep the session from previous runs.
-	s.deliveryParams.Session = p.Session
+	// The session's latest config block is updated to be the latest config block seen so far.
+	// This includes:
+	//  - the config block from the YAML (s.deliveryParam),
+	//  - the config block from the ledger (latestConfig),
+	//  - and the latest config block from the previous delivery runs (session.LatestKnownConfig).
+	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
+	s.deliveryParams.LatestKnownConfig = session.LatestKnownConfig
 
 	if errors.Is(deliverErr, context.Canceled) {
 		// A context may be canceled due to a relay error, thus it is not critical error.
 		return errors.Wrap(deliverErr, "context is canceled")
 	}
 	return errors.Join(connection.ErrNonRetryable, deliverErr)
-}
-
-func maxBlock(lBlk, rBlk *common.Block) *common.Block {
-	if lBlk == nil || (rBlk != nil && rBlk.Header.Number > lBlk.Header.Number) {
-		return rBlk
-	}
-	return lBlk
 }
 
 func (s *Service) getPrevBlockAndItsConfig(nextBlockNum uint64) (blk, configBlk *common.Block, err error) {

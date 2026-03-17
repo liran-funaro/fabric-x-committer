@@ -87,9 +87,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			Monitoring: newServerConfigWithDefaultTLS("sidecar", 2114),
 			Orderer: ordererconn.Config{
-				FaultToleranceLevel:      ordererconn.BFT,
-				LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
-				Identity:                 newIdentityConfig(),
+				FaultToleranceLevel:        ordererconn.BFT,
+				LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+				Identity:                   newIdentityConfig(),
 				TLS: ordererconn.OrdererTLSConfig{
 					Mode:     sidecarTLSCreds.Mode,
 					KeyPath:  sidecarTLSCreds.KeyPath,
@@ -355,9 +355,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", "loadgen", 4001),
 					Orderer: ordererconn.Config{
-						FaultToleranceLevel:      ordererconn.BFT,
-						LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
-						Identity:                 newIdentityConfig(),
+						FaultToleranceLevel:        ordererconn.BFT,
+						LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+						Identity:                   newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
 							Mode:     loadgenTLSCreds.Mode,
 							KeyPath:  loadgenTLSCreds.KeyPath,

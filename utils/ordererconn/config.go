@@ -22,18 +22,15 @@ type (
 		FaultToleranceLevel string                   `mapstructure:"fault-tolerance-level"`
 		TLS                 OrdererTLSConfig         `mapstructure:"tls"`
 		Retry               *connection.RetryProfile `mapstructure:"reconnect"`
-		// LastKnownConfigBlockPath is the path for the last known config block.
+		// LatestKnownConfigBlockPath is the path for the latest known config block.
 		// We fetch the orderer endpoints, CA certificates, and channel-ID from this block.
 		// This block might be newer than the block used for verification, to allow using
 		// the most up-to-date orderer connection data.
-		LastKnownConfigBlockPath string `mapstructure:"last-known-config-block-path"`
+		LatestKnownConfigBlockPath string `mapstructure:"latest-known-config-block-path"`
 
 		// The following parameters only applies to delivery.
-		Identity                *IdentityConfig `mapstructure:"identity"`
-		BlockWithholdingTimeout time.Duration   `mapstructure:"block-withholding-timeout"`
-		SuspicionGracePeriod    time.Duration   `mapstructure:"suspicion-grace-period"`
-		LivenessCheckInterval   time.Duration   `mapstructure:"liveness-check-interval"`
-		MaxBlocksAhead          uint64          `mapstructure:"max-blocks-ahead"`
+		Identity                     *IdentityConfig `mapstructure:"identity"`
+		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period-per-block"`
 	}
 
 	// IdentityConfig defines the orderer's client MSP.

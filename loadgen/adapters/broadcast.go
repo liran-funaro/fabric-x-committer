@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -57,11 +58,11 @@ func NewBroadcastStream(ctx context.Context, config *ordererconn.Config) (*Broad
 	if err != nil {
 		return nil, err
 	}
-	configMaterial, err := ordererconn.LoadConfigBlockFromFile(config.LastKnownConfigBlockPath)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(config.LatestKnownConfigBlockPath)
 	if err != nil {
 		return nil, err
 	}
-	m := configMaterial.OrdererConnectionMaterial(ordererconn.MaterialParameters{
+	m := ordererconn.OrdererConnectionMaterial(configMaterial, ordererconn.MaterialParameters{
 		API:   commontypes.Broadcast,
 		TLS:   *tls,
 		Retry: config.Retry,
