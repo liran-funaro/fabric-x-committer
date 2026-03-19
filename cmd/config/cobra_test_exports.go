@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

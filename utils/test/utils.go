@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"

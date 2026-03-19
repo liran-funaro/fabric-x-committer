@@ -11,17 +11,17 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/grpclog"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
@@ -33,10 +33,7 @@ import (
 func TestGRPCRetry(t *testing.T) {
 	// We start GRPC logging for this test to allow visibility into the retry process.
 	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
-	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	})
+	enableGrpcLog(t)
 
 	t.Log("Starting service")
 	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
@@ -100,12 +97,7 @@ func TestGRPCRetry(t *testing.T) {
 
 //nolint:paralleltest // modifies grpc logger.
 func TestGRPCRetryMultiEndpoints(t *testing.T) {
-	// We start GRPC logging for this test to allow visibility into the retry process.
-	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
-	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	})
+	enableGrpcLog(t)
 
 	t.Log("Starting service")
 	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
@@ -147,6 +139,16 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 		_, err = multiClient.Check(ctx, nil)
 		require.NoError(t, err)
 	}
+}
+
+// enableGrpcLog enables GRPC logging for this test to allow visibility into the retry process.
+// This change prevents us from running this test in parallel to others.
+func enableGrpcLog(t *testing.T) {
+	t.Helper()
+	flogging.SetGrpcLoggerLevel(zap.InfoLevel)
+	t.Cleanup(func() {
+		flogging.SetGrpcLoggerLevel(zap.FatalLevel)
+	})
 }
 
 type fakeBroadcastDeliver struct{}

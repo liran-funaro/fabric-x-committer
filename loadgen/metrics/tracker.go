@@ -9,7 +9,7 @@ package metrics
 import (
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils"

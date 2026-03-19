@@ -8,7 +8,7 @@ package ordererconn
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/utils"

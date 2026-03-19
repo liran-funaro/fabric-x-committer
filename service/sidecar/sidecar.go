@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -65,7 +64,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	if c.Bootstrap.GenesisBlockFilePath != "" {
-		configBlock, bootErr := configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
 		if bootErr != nil {
 			return nil, errors.Wrap(bootErr, "read config block")
 		}

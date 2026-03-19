@@ -10,8 +10,8 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/flogging"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"google.golang.org/grpc"
 

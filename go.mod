@@ -41,6 +41,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+replace github.com/hyperledger/fabric-x-common => github.com/liran-funaro/fabric-x-common v0.0.0-20260319125621-7340a7af3544
+
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/googleapis/api-linter/v2/cmd/api-linter
