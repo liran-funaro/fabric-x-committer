@@ -12,13 +12,15 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const tcpProtocol = "tcp"
@@ -40,7 +42,7 @@ var (
 	// listenRetry is the acceptable retry profile if port conflicts occur.
 	// This handles the race condition where another process claims a pre-assigned port.
 	// This will retry with the same port, waiting for it to become available.
-	listenRetry = RetryProfile{
+	listenRetry = retry.Profile{
 		InitialInterval: 50 * time.Millisecond,
 		MaxInterval:     500 * time.Millisecond,
 		MaxElapsedTime:  2 * time.Minute,
@@ -126,7 +128,7 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 // using exponential backoff. Non-port-conflict errors are treated as permanent failures
 // and will not be retried. The retry behavior is controlled by the listenRetry profile.
 func ListenRetryExecute(ctx context.Context, f func() error) error {
-	return listenRetry.Execute(ctx, func() error {
+	return retry.Execute(ctx, &listenRetry, func() error {
 		err := f()
 		switch {
 		case err == nil:

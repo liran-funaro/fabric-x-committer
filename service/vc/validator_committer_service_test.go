@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 )
@@ -174,10 +175,9 @@ func TestCreateConfigAndTables(t *testing.T) {
 	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", TableName(utNsID)))
 	require.NoError(t, err)
 	defer rows.Close()
-	keys, values, err := readTwoItems[[]byte, []byte](rows)
+	keysValues, err := readTwoItems[[]byte, []byte](rows)
 	require.NoError(t, err)
-	require.Empty(t, keys)
-	require.Empty(t, values)
+	require.Empty(t, keysValues)
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {
@@ -504,7 +504,7 @@ func TestGRPCStatusCode(t *testing.T) {
 	})
 
 	env.vcs[0].db.pool.Close()
-	env.vcs[0].db.retry = &connection.RetryProfile{
+	env.vcs[0].db.retry = &retry.Profile{
 		InitialInterval: 100 * time.Millisecond,
 		MaxInterval:     1 * time.Second,
 		MaxElapsedTime:  3 * time.Second,

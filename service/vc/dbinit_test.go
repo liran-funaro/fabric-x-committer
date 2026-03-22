@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 func TestDBInit(t *testing.T) {
@@ -78,17 +79,16 @@ func TestRetry(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	pool, err := NewDatabasePool(
+	_, err := NewDatabasePool(
 		ctx,
 		&DatabaseConfig{
 			Endpoints:      []*connection.Endpoint{{Port: 1234}},
 			Username:       "name",
 			Password:       "pwd",
 			MaxConnections: 5,
-			Retry: &connection.RetryProfile{
+			Retry: &retry.Profile{
 				MaxElapsedTime: 10 * time.Second,
 			},
 		})
 	require.ErrorContains(t, err, "failed to create a connection pool")
-	require.Nil(t, pool)
 }

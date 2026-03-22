@@ -18,8 +18,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -28,7 +28,7 @@ type blockDelivery struct {
 	blockStore *blockStore
 }
 
-var blockReadyRetryProfile = connection.RetryProfile{
+var blockReadyRetryProfile = retry.Profile{
 	InitialInterval: 100 * time.Millisecond,
 	Multiplier:      1.5,
 	MaxInterval:     3 * time.Second,
@@ -108,14 +108,10 @@ func (s *blockDelivery) deliverBlocks( //nolint:gocognit
 
 	if seekInfo.Behavior == ab.SeekInfo_BLOCK_UNTIL_READY {
 		// We use a retry backoff here to avoid busy waiting when blocks are not yet available.
-		err = blockReadyRetryProfile.Execute(ctx, func() error {
-			if s.blockStore.ledger.Height() > 0 {
-				return nil
-			}
-			return errors.New("Blocks not yet available")
-		})
-		if err != nil {
-			return 0, err
+		if !retry.WaitForCondition(ctx, &blockReadyRetryProfile, func() bool {
+			return s.blockStore.ledger.Height() > 0
+		}) {
+			return 0, errors.New("blocks not yet available")
 		}
 	}
 

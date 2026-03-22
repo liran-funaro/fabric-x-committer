@@ -18,6 +18,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -65,34 +66,28 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 
 	dbconn.ConfigureConnReadDeadline(poolConfig)
 
-	var pool *pgxpool.Pool
-	if retryErr := config.Retry.Execute(ctx, func() error {
-		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
-		if err != nil {
-			return errors.Wrap(err, "failed to create a connection pool")
+	return retry.ExecuteWithResult(ctx, config.Retry, func() (*pgxpool.Pool, error) {
+		p, poolErr := pgxpool.NewWithConfig(ctx, poolConfig)
+		if poolErr != nil {
+			return nil, errors.Wrap(poolErr, "failed to create a connection pool")
 		}
 		// NewWithConfig creates the pool lazily without connecting, so we ping to
 		// verify connectivity eagerly and let the retry loop handle transient failures.
-		return errors.Wrap(pool.Ping(ctx), "failed to create a connection pool")
-	}); retryErr != nil {
-		return nil, retryErr
-	}
-
-	logger.Info("DB pool created")
-	return pool, nil
+		return p, errors.Wrap(p.Ping(ctx), "failed to create a connection pool")
+	})
 }
 
 // TODO: merge this file with database.go.
 func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := db.retry.ExecuteSQL(ctx, db.pool,
+	if execErr := retry.ExecuteSQL(ctx, db.retry, db.pool,
 		fmtSplitIntoTablets(dbInitSQLStmt, db.tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
 		execErr := createNsTables(nsID, db.tablePreSplitTablets, func(q string) error {
-			return db.retry.ExecuteSQL(ctx, db.pool, q)
+			return retry.ExecuteSQL(ctx, db.retry, db.pool, q)
 		})
 		if execErr != nil {
 			return execErr
