@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -127,7 +128,7 @@ func (s *Server) handleInputs(
 		if err != nil {
 			return errors.Join(ErrUpdatePolicies, err)
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerInTxs, len(batch.Requests))
+		promutil.AddToCounter(s.metrics.VerifierServerTxs.WithLabelValues(monitoring.In), len(batch.Requests))
 		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
 
 		// Pass verification requests for processing.
@@ -151,7 +152,7 @@ func (s *Server) handleOutputs(
 		if !ok {
 			return errors.Wrap(stream.Context().Err(), "context ended")
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
+		promutil.AddToCounter(s.metrics.VerifierServerTxs.WithLabelValues(monitoring.Out), len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
 		rpcErr := stream.Send(&committerpb.TxStatusBatch{Status: outputs})

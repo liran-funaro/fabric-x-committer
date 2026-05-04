@@ -9,7 +9,6 @@ package monitoring
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -188,42 +187,6 @@ func (p *Provider) NewHistogramVec(opts prometheus.HistogramOpts, labels []strin
 	hv := prometheus.NewHistogramVec(opts, labels)
 	p.registry.MustRegister(hv)
 	return hv
-}
-
-// NewThroughputCounter creates a new prometheus throughput counter.
-func (p *Provider) NewThroughputCounter(
-	component, subComponent string,
-	direction ThroughputDirection,
-) prometheus.Counter {
-	return p.NewCounter(prometheus.CounterOpts{
-		Namespace: component,
-		Subsystem: subComponent,
-		Name:      fmt.Sprintf("%s_throughput", direction),
-		Help:      "Incoming requests/Outgoing responses for a component",
-	})
-}
-
-// NewConnectionMetrics supports common connection metrics.
-func (p *Provider) NewConnectionMetrics(opts ConnectionMetricsOpts) *ConnectionMetrics {
-	subsystem := fmt.Sprintf("grpc_%s", opts.RemoteNamespace)
-	return &ConnectionMetrics{
-		Status: p.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: opts.Namespace,
-			Subsystem: subsystem,
-			Name:      "connection_status",
-			Help: fmt.Sprintf(
-				"Connection status to %s service by grpc target (1 = connected, 0 = disconnected).",
-				opts.RemoteNamespace,
-			),
-		}, []string{"grpc_target"}),
-		FailureTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: opts.Namespace,
-			Subsystem: subsystem,
-			Name:      "connection_failure_total",
-			Help: fmt.Sprintf("Total number of connection failures to %s service.", opts.RemoteNamespace) +
-				"Short-lived failures may not always be captured.",
-		}, []string{"grpc_target"}),
-	}
 }
 
 // Registry returns the prometheus registry.

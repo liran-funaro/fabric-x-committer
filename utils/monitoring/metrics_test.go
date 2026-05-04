@@ -20,7 +20,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	newConnectionMetrics := func() *ConnectionMetrics {
 		p := NewProvider()
-		return p.NewConnectionMetrics(ConnectionMetricsOpts{})
+		return NewConnectionMetrics(p, MetricsParameters{})
 	}
 	target := "localhost:7051"
 
