@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -259,9 +260,34 @@ func TestOrdererDeliverCFT(t *testing.T) {
 	e.startDelivery(t)
 	e.waitForDeliveryOfConfigBlock(t)
 
+	m := e.deliveryParams.Metrics
+
+	// Verify initial metrics state
+	test.RequireIntMetricValue(t, 0, m.CurrentDataSourceID)
+	test.RequireIntMetricValue(t, 0, m.StreamBlockNumber.WithLabelValues("data"))
+
 	t.Log("Sanity check - submit blocks")
 	b := e.submit(t)
 	require.EqualValues(t, 0, b.SourceID)
+
+	// Verify stream progress metrics after first block
+	test.EventuallyIntMetric(t, 1, m.StreamBlockNumber.WithLabelValues("data"),
+		5*time.Second, 100*time.Millisecond, "data stream should reach block 1")
+
+	// Verify blocks delivered counter incremented
+	blocksDelivered := test.GetIntMetricValue(t, m.BlocksDeliveredTotal.WithLabelValues("data", "0"))
+	require.GreaterOrEqual(t, blocksDelivered, 1, "at least one block should be delivered")
+
+	// Verify stream lifecycle metrics
+	streamStarts := test.GetIntMetricValue(t, m.StreamStartsTotal.WithLabelValues("data", "0"))
+	require.GreaterOrEqual(t, streamStarts, 1, "stream should have started")
+
+	activeStreams := test.GetIntMetricValue(t, m.ActiveStreams.WithLabelValues("data", "0"))
+	require.Equal(t, 1, activeStreams, "one data stream should be active")
+
+	// Config updates: Genesis block (block 0) is not counted as an update
+	configUpdates := test.GetIntMetricValue(t, m.ConfigUpdatesTotal)
+	require.Equal(t, 0, configUpdates, "no config updates yet")
 
 	t.Log("CFT mode: blocks with bad signatures should be rejected")
 	expectedBlockNum := e.PrevBlock.Header.Number + 1
@@ -291,6 +317,18 @@ func TestOrdererDeliverCFT(t *testing.T) {
 	require.Len(t, gottenBlock.Data.Data, 10)
 	b = e.getBlockWithSource(t, gottenBlock)
 	require.EqualValues(t, 0, b.SourceID)
+
+	// Verify final stream progress
+	test.EventuallyIntMetric(t, 2, m.StreamBlockNumber.WithLabelValues("data"),
+		5*time.Second, 100*time.Millisecond, "data stream should reach block 2")
+
+	// Verify stream restart metrics
+	streamRestarts := test.GetIntMetricValue(t, m.StreamRestartsTotal.WithLabelValues("data_block_error"))
+	require.GreaterOrEqual(t, streamRestarts, 1, "stream should have restarted due to bad signature")
+
+	// Verify error metrics for signature verification failure
+	sigErrors := test.GetIntMetricValue(t, m.StreamErrorsTotal.WithLabelValues("data", "0", "signature_verification"))
+	require.GreaterOrEqual(t, sigErrors, 1, "signature verification error should be recorded")
 }
 
 func TestOrdererDeliverNoFT(t *testing.T) {
@@ -333,6 +371,8 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			stopDelivery := e.startDelivery(t)
 			e.waitForDeliveryOfConfigBlock(t)
 
+			m := e.deliveryParams.Metrics
+
 			t.Log("All good")
 			e.submit(t)
 
@@ -349,6 +389,21 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			b := e.submit(t)
 			require.EqualValues(t, 2, b.SourceID)
 
+			// Verify current data source metric is being tracked
+			currentSource := test.GetIntMetricValue(t, m.CurrentDataSourceID)
+			require.Equal(t, 2, currentSource, "current data source should be party 2")
+
+			// Verify block gap gauge is being tracked (negative gap means header streams are ahead)
+			blockGap := test.GetIntMetricValue(t, m.BlockGapGauge.WithLabelValues("2"))
+			require.GreaterOrEqual(t, blockGap, 0)
+
+			p2.HoldFromBlock.Store(expectedBlockNum + 2)
+			b = e.submit(t)
+			require.EqualValues(t, 2, b.SourceID)
+
+			blockGap = test.GetIntMetricValue(t, m.BlockGapGauge.WithLabelValues("2"))
+			require.GreaterOrEqual(t, blockGap, 1, "block gap should be >= 1 when data is ahead")
+
 			t.Log("Switch data source to party 1 (holding)")
 			expectedBlockNum = e.PrevBlock.Header.Number + 1
 			p0.HoldFromBlock.Store(expectedBlockNum)
@@ -357,6 +412,17 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			b = e.submit(t)
 			require.EqualValues(t, 1, b.SourceID)
 
+			// Verify suspicion metrics for party 2
+			suspicionCount2 := test.GetIntMetricValue(t, m.SuspicionRaisedTotal.WithLabelValues("2"))
+			require.GreaterOrEqual(t, suspicionCount2, 1, "suspicion should be raised for party 2")
+
+			// Verify target arrival deadline was set when suspicion was raised
+			targetDeadline := test.GetMetricValue(t, m.TargetArrivalDeadline.WithLabelValues("2"))
+			require.Greater(t, targetDeadline, float64(0), "target arrival deadline should be set")
+
+			currentSource = test.GetIntMetricValue(t, m.CurrentDataSourceID)
+			require.Equal(t, 1, currentSource, "current data source should be party 1")
+
 			t.Log("Switch data source to party 0 (holding)")
 			expectedBlockNum = e.PrevBlock.Header.Number + 1
 			p0.HoldFromBlock.Store(expectedBlockNum + 1)
@@ -364,6 +430,12 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			p2.HoldFromBlock.Store(expectedBlockNum)
 			b = e.submit(t)
 			require.EqualValues(t, 0, b.SourceID)
+
+			// Verify suspicion for party 1
+			suspicionCount1 := test.GetIntMetricValue(t, m.SuspicionRaisedTotal.WithLabelValues("1"))
+			require.GreaterOrEqual(t, suspicionCount1, 1, "suspicion should be raised for party 1")
+			currentSource = test.GetIntMetricValue(t, m.CurrentDataSourceID)
+			require.Equal(t, 0, currentSource, "current data source should be party 0")
 
 			t.Log("Switch data source to party 2 (malformed block)")
 			expectedBlockNum = e.PrevBlock.Header.Number + 1
@@ -376,6 +448,13 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			b = e.submit(t)
 			require.EqualValues(t, 2, b.SourceID)
 
+			// Verify stream errors are being tracked
+			// The malformed block comes from party 0 (the data stream source)
+			malformedBlockErrors := test.GetIntMetricValue(t,
+				m.StreamErrorsTotal.WithLabelValues("data", "0", "malformed_block"))
+			require.GreaterOrEqual(t, malformedBlockErrors, 1,
+				"at least one malformed block error should be recorded from party 0")
+
 			t.Log("Switch data source to party 1 (bad signatures)")
 			expectedBlockNum = e.PrevBlock.Header.Number + 1
 			p0.HoldFromBlock.Store(expectedBlockNum)
@@ -387,6 +466,13 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			p2.ReplaceBlock.Store(expectedBlockNum, badSigBlock)
 			b = e.submit(t)
 			require.EqualValues(t, 1, b.SourceID)
+
+			// Verify signature verification errors are tracked
+			// Party 1's data stream has the bad signature block.
+			signatureErrors := test.GetIntMetricValue(t,
+				m.StreamErrorsTotal.WithLabelValues("data", "2", "signature_verification"))
+			require.GreaterOrEqual(t, signatureErrors, 1,
+				"at least one signature verification error should be recorded from party 2's dats stream")
 
 			t.Log("Recover from last delivery params")
 			stopDelivery()
@@ -402,6 +488,17 @@ func TestOrdererDeliverBFT(t *testing.T) {
 
 			t.Log("Sanity check with new config block")
 			e.submit(t)
+
+			// Verify config update metrics
+			configUpdates := test.GetIntMetricValue(t, m.ConfigUpdatesTotal)
+			require.GreaterOrEqual(t, configUpdates, 1, "should have at least 1 config update")
+
+			// Verify config block number is tracked
+			configBlockNum := test.GetIntMetricValue(t, m.ConfigBlockNumber)
+			require.GreaterOrEqual(t, configBlockNum, 1, "config block number should be >= 1")
+
+			finalBlockNum := test.GetIntMetricValue(t, m.StreamBlockNumber.WithLabelValues("data"))
+			require.GreaterOrEqual(t, finalBlockNum, 5, "should have delivered multiple blocks")
 		})
 	}
 }
@@ -444,6 +541,7 @@ func newDeliverOrdererTestEnv(t *testing.T, p deliverOrdererTestEnvParams) *deli
 	params.OutputBlock = output
 	params.OutputBlockWithSourceID = outputWithSource
 	params.NextBlockVerificationConfig = params.LatestKnownConfig
+	params.Metrics = deliverorderer.NewMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 	return &deliverOrdererTestEnv{
 		OrdererTestEnv:   e,
 		deliveryParams:   params,
