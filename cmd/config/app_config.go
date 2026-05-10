@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -28,6 +29,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
+
+type loggincConfig struct {
+	Logging flogging.Config `mapstructure:"logging"`
+}
 
 var (
 	logger   = flogging.MustGetLogger("config-reader")
@@ -82,7 +87,7 @@ func ReadLoadGenYamlAndSetupLogging(
 // ReadYamlAndSetupLogging reading the YAML config file of a service.
 // It parses the server configuration separately from the service-specific configuration,
 // following the same pattern as logging configuration.
-func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, servicePrefix string) (*T, *serve.Config, error) {
+func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, serviceName string) (*T, *serve.Config, error) {
 	if configPath == "" {
 		return nil, nil, errors.New("--config flag must be set")
 	}
@@ -93,46 +98,43 @@ func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, servicePrefix st
 	if err = readYamlConfigsFromIO(v, bytes.NewReader(content)); err != nil {
 		return nil, nil, err
 	}
-	setupEnv(v, servicePrefix)
 
-	loggingWrapper := struct {
-		Logging *flogging.Config `mapstructure:"logging"`
-	}{}
-	if err = unmarshal(v, &loggingWrapper); err != nil {
-		return nil, nil, err
-	}
-	flogging.Init(*loggingWrapper.Logging)
-
-	// Parse server configuration separately (similar to logging)
-	serverConfig := &serve.Config{}
-	if err = unmarshal(v, serverConfig); err != nil {
-		return nil, nil, err
-	}
-
-	// Parse service-specific configuration
+	// Parse logging and server configuration separately.
+	var loggingWrapper loggincConfig
+	var serverConfig serve.Config
 	c := new(T)
-	if err = unmarshal(v, c); err != nil {
+	if err = unmarshal(v, serviceName, &loggingWrapper, &serverConfig, c); err != nil {
 		return nil, nil, err
 	}
+	flogging.Init(loggingWrapper.Logging)
 
-	return c, serverConfig, nil
+	return c, &serverConfig, nil
 }
 
-// unmarshal populate a config object and validate it.
-func unmarshal(v *viper.Viper, c any) error {
-	defer logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
-	if err := v.Unmarshal(c, decoderHook()); err != nil {
-		return errors.Wrap(err, "error decoding config")
-	}
-	return errors.Wrap(validate.Struct(c), "error validating config")
-}
-
-// setupEnv enables setting configuration via environment variables.
+// unmarshal populate multiple config objects and validates them.
+// It automatically set configuration via environment variables.
 // E.g. SC_LOGGING_ENABLED=false, but not SC_VERBOSE=false (does not work with aliases).
-func setupEnv(v *viper.Viper, servicePrefix string) {
-	v.SetEnvPrefix("SC_" + strings.ToUpper(servicePrefix))
-	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+func unmarshal(v *viper.Viper, serviceName string, items ...any) error {
+	ve := &envVarsSetter{
+		v:           v,
+		envPrefix:   "SC_" + strings.ToUpper(serviceName),
+		envReplacer: strings.NewReplacer("-", "_", ".", "_"),
+	}
+	for _, c := range items {
+		ve.setEnvVars(reflect.TypeOf(c))
+	}
+
+	decoders := decoderHook()
+	for _, c := range items {
+		if err := v.Unmarshal(c, decoders); err != nil {
+			return errors.Wrap(err, "error decoding config")
+		}
+		logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
+		if err := validate.Struct(c); err != nil {
+			return errors.Wrap(err, "error validating config")
+		}
+	}
+	return nil
 }
 
 // readYamlConfigsFromIO reads configurations from IO.

@@ -54,7 +54,7 @@ func TestParseEndpoint(t *testing.T) {
 		MultilineJSONOrdererEndpoint commontypes.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
 		YamlJSONOrdererEndpoint      commontypes.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
 	})
-	require.NoError(t, unmarshal(v, conf))
+	require.NoError(t, unmarshal(v, "test", conf))
 	expected := commontypes.OrdererEndpoint{
 		ID:    5,
 		MspID: "org",

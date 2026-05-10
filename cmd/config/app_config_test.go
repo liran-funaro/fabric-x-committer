@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -560,34 +561,83 @@ func TestViperDefaultsAreComplete(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithSidecarDefaults()
 		c := &sidecar.Config{}
-		require.NoError(t, unmarshal(v, c))
+		require.NoError(t, unmarshal(v, "sidecar", c))
 	})
 
 	t.Run("coordinator", func(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithCoordinatorDefaults()
 		c := &coordinator.Config{}
-		require.NoError(t, unmarshal(v, c))
+		require.NoError(t, unmarshal(v, "coordinator", c))
 	})
 
 	t.Run("vc", func(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithVCDefaults()
 		c := &vc.Config{}
-		require.NoError(t, unmarshal(v, c))
+		require.NoError(t, unmarshal(v, "vc", c))
 	})
 
 	t.Run("verifier", func(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithVerifierDefaults()
 		c := &verifier.Config{}
-		require.NoError(t, unmarshal(v, c))
+		require.NoError(t, unmarshal(v, "verifier", c))
 	})
 
 	t.Run("query", func(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithQueryDefaults()
 		c := &query.Config{}
-		require.NoError(t, unmarshal(v, c))
+		require.NoError(t, unmarshal(v, "query", c))
 	})
+}
+
+// TestEnvOverrideFieldsNotInYAML verifies that environment variables can override
+// config fields even when those fields are not present in the YAML file and have no defaults.
+func TestEnvOverrideFieldsNotInYAML(t *testing.T) {
+	f := emptyConfig(t)
+
+	t.Setenv("SC_COORDINATOR_VALIDATOR_COMMITTER_RECONNECT_MULTIPLIER", "1.1")
+	cCoordinator, _, err := ReadCoordinatorYamlAndSetupLogging(NewViperWithCoordinatorDefaults(), f)
+	require.NoError(t, err)
+	require.NotNil(t, cCoordinator.ValidatorCommitter.Retry)
+	assert.InEpsilon(t, 1.1, cCoordinator.ValidatorCommitter.Retry.Multiplier, 1e-4)
+
+	t.Setenv("SC_SIDECAR_LEDGER_SYNC_INTERVAL", "60")
+	t.Setenv("SC_SIDECAR_ORDERER_RECONNECT_MAX_INTERVAL", "1m")
+	cSidecar, _, err := ReadSidecarYamlAndSetupLogging(NewViperWithSidecarDefaults(), f)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(60), cSidecar.Ledger.SyncInterval)
+	require.NotNil(t, cSidecar.Orderer.Retry)
+	require.Equal(t, time.Minute, cSidecar.Orderer.Retry.MaxInterval)
+
+	t.Setenv("SC_VC_DATABASE_TABLE_PRE_SPLIT_TABLETS", "10")
+	t.Setenv("SC_VC_DATABASE_LOAD_BALANCE", "true")
+	cVC, _, err := ReadVCYamlAndSetupLogging(NewViperWithVCDefaults(), f)
+	require.NoError(t, err)
+	assert.True(t, cVC.Database.LoadBalance)
+	assert.Equal(t, 10, cVC.Database.TablePreSplitTablets)
+
+	t.Setenv("SC_QUERY_MAX_ACTIVE_VIEWS", "8192")
+	t.Setenv("SC_QUERY_DATABASE_TABLE_PRE_SPLIT_TABLETS", "512")
+	cQuery, _, err := ReadQueryYamlAndSetupLogging(NewViperWithQueryDefaults(), f)
+	require.NoError(t, err)
+	assert.Equal(t, 8192, cQuery.MaxActiveViews)
+	assert.Equal(t, 512, cQuery.Database.TablePreSplitTablets)
+
+	t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MIN", "1")
+	t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MAX", "15")
+	t.Setenv("SC_LOADGEN_COORDINATOR_CLIENT_RECONNECT_MULTIPLIER", "1.2")
+	cLoadGen, _, err := ReadLoadGenYamlAndSetupLogging(NewViperWithLoadGenDefaults(), f)
+	require.NoError(t, err)
+	require.NotNil(t, cLoadGen.LoadProfile)
+	require.NotNil(t, cLoadGen.LoadProfile.Transaction)
+	require.NotNil(t, cLoadGen.LoadProfile.Transaction.BlindWriteCount)
+	require.NotNil(t, cLoadGen.LoadProfile.Transaction.BlindWriteCount.Uniform)
+	assert.InEpsilon(t, 1, cLoadGen.LoadProfile.Transaction.BlindWriteCount.Uniform.Min, 1e-4)
+	assert.InEpsilon(t, 15, cLoadGen.LoadProfile.Transaction.BlindWriteCount.Uniform.Max, 1e-4)
+	require.NotNil(t, cLoadGen.Adapter.CoordinatorClient)
+	require.NotNil(t, cLoadGen.Adapter.CoordinatorClient.Retry)
+	assert.InEpsilon(t, 1.2, cLoadGen.Adapter.CoordinatorClient.Retry.Multiplier, 1e-4)
 }
