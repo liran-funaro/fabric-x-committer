@@ -76,7 +76,16 @@ func StartAndServe(ctx context.Context, service Service, serverConfig ...*Config
 		return service.Run(gCtx)
 	})
 
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
+	// Extract the service startup timeout from the first config that defines one.
+	serviceStartupTimeout := DefaultServiceStartupTimeout
+	for _, s := range serverConfig {
+		if s.ServiceStartupTimeout > 0 {
+			serviceStartupTimeout = s.ServiceStartupTimeout
+			break
+		}
+	}
+
+	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, serviceStartupTimeout)
 	defer cancelTimeout()
 	if !service.WaitForReady(ctxTimeout) {
 		cancel()

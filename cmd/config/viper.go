@@ -99,6 +99,13 @@ func NewViperWithLoadGenDefaults() *viper.Viper {
 	return newViperWithServiceDefault("loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort)
 }
 
+// NewViperWithOrdererDefaults returns a viper instance with the mock-orderer service default values.
+func NewViperWithOrdererDefaults() *viper.Viper {
+	v := NewViperWithLoggingDefault("orderer")
+	v.SetDefault("readiness-timeout", serve.DefaultServiceStartupTimeout)
+	return v
+}
+
 // newViperWithServiceDefault returns a viper instance with a service default values.
 func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault(serviceName)
@@ -107,6 +114,7 @@ func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort 
 	// Rate limiting disabled by default (0 = disabled)
 	v.SetDefault("server.rate-limit", &serve.RateLimitConfig{})
 	v.SetDefault("monitoring.rate-limit", &serve.RateLimitConfig{})
+	v.SetDefault("startup-timeout", serve.DefaultServiceStartupTimeout)
 	return v
 }
 

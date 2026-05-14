@@ -44,6 +44,12 @@ monitoring:
     requests-per-second: 0
     burst: 0
 
+# Maximum time to wait for the query service to become ready before startup fails.
+# The query service is considered ready after it successfully
+# establishes a connection pool to the database, initializes the view limiter and query batcher.
+# Default: 5m
+startup-timeout: 5m
+
 # Database connection configuration
 database:
   # List of database endpoints to connect to. Multiple endpoints can be specified
