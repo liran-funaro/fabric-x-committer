@@ -24,7 +24,7 @@ The system consists of four main microservices that communicate via gRPC:
 - **Language**: Go 1.26
 - **Communication**: gRPC with Protocol Buffers
 - **Database**: PostgreSQL or YugabyteDB (for state storage)
-- **Testing**: Standard Go testing with Docker-based integration tests
+- **Testing**: Standard Go testing with binaries integration tests and Docker-based integration tests
 - **Build**: Make-based build system with Docker support
 
 ## Building and Running
@@ -40,43 +40,7 @@ The system consists of four main microservices that communicate via gRPC:
 ```bash
 # Build all binaries locally
 make build
-
-# Build in Docker container (useful for consistent builds)
-make build-with-docker
-
-# Build for specific OS/architecture
-make build os=linux arch=amd64
-
-# Build release binaries for multiple architectures
-make build-release
 ```
-
-### Testing
-
-```bash
-# Run unit tests (excludes integration and container tests)
-make test
-
-# Run integration tests
-make test-integration
-
-# Run tests with coverage
-make test-cover
-
-# Run specific package tests
-make test-package-<package-name>
-
-# Run container tests (requires Docker images)
-make test-container
-```
-
-#### Database Tests
-
-- Some tests require a database. The test harness automatically manages YugabyteDB Docker containers.
-- Use `make kill-test-docker` to clean up containers after testing.
-- It is best to use a local DB deployment by exporting `export DB_DEPLOYMENT=local`.
-- The database is usually already running. Verify using `docker ps` and check `sc_test_postgres_unit_tests`.
-- If it is not running, the database can be deployed manually using `scripts/get-and-start-postgres.sh`
 
 ### Running Services
 
@@ -120,19 +84,9 @@ The project uses `github.com/cockroachdb/errors` for comprehensive error handlin
 
 - avoid callbacks when possible
 - avoid code duplication
-- Collate methods of the same struct togather
+- Collate methods of the same struct together
 - Order the methods such that the method user is before the method declaration
-- Address lint issues - run `make lint`
-
-### Code Review Standards
-
-Reviews use three priority levels:
-
-- **Major**: Critical issues affecting functionality, performance, or maintainability (must be addressed)
-- **Minor**: Code style, naming, or best practices (should be addressed)
-- **Nit**: Typos, formatting, minor preferences (optional)
-
-Always be polite and constructive in reviews. Use "we" instead of "you" to frame issues as team problems.
+- Address lint issues - run `make lint` or `make lint-go` for Go code linting only.
 
 ### Performance Considerations
 
@@ -145,8 +99,7 @@ Always be polite and constructive in reviews. Use "we" instead of "you" to frame
 
 ```
 /
-├── api/                    # Protocol Buffer definitions
-│   └── servicepb/         # Service protobuf files
+├── api/                   # Protocol Buffer definitions
 ├── cmd/                   # Main applications
 │   ├── committer/         # Main committer service
 │   ├── loadgen/           # Load generation tool
@@ -197,9 +150,7 @@ Detailed architectural documentation is available in the `docs/` directory:
 
 6. **Protocol Buffers**: Changes to `.proto` files require regeneration: `make proto`
 
-7. **Linting**: Run `make lint` before submitting PRs. The project uses golangci-lint with strict rules.
-
-8. **Code Ownership**: Check `CODEOWNERS` file for component ownership. Code owners must review changes to their areas.
+7. **Code Ownership**: Check `CODEOWNERS` file for component ownership. Code owners must review changes to their areas.
 
 ## Common Development Tasks
 
@@ -249,7 +200,6 @@ Before submitting a PR:
 ## Getting Help
 
 - Review detailed service documentation in `docs/`
-- Check `guidelines.md` for coding standards and philosophy
 - Examine existing code for patterns and conventions
 - Run `make` to see all available build targets
 
