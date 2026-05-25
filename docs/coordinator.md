@@ -130,7 +130,7 @@ Task 2 step **e**.
 The coordinator handles this feedback in three steps:
 
 1. Forward the batch to the sidecar, even if it has no statuses. Drop it only if it has neither statuses nor feedback.
-2. Use the feedback's `TxRef` to remove the checkpoint from `txBeingValidated` and release its dependency-graph node.
+2. Use the feedback's `TxRef` to remove the checkpoint from `txBeingProcessed` and release its dependency-graph node.
    Otherwise, a retry would wait forever on the old node's writes.
 3. Count the feedback as one transaction when updating `numTxsInProgress` and the status queue's count. The `txCount`
    helper handles both statuses and feedback. Without this count, the coordinator would never report idle after a hold,
