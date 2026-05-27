@@ -4,9 +4,14 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 -->
 
+---
+name: tests
+description: Write and/or run unit and integration tests, ensuring high code coverage and reliability.
+---
+
 # Testing Code Guidelines
 
-This document provides specific guidelines for writing tests in the fabric-x-committer project.
+This document provides specific guidelines for writing and running tests in the fabric-x-committer project.
 
 - **High Coverage Expected**: Strive for comprehensive test coverage, but focus on meaningful scenarios
 - **Minimize Mocks**: Use mocks sparingly; prefer testing with real dependencies when practical
@@ -14,6 +19,14 @@ This document provides specific guidelines for writing tests in the fabric-x-com
     - `test-core-db`: Components that directly interact with the database
     - `test-requires-db`: Components that depend on the database layer
     - `test-no-db`: Pure logic tests with no database dependency
+
+#### Running Database Tests
+
+- Some tests require a database. The test harness automatically manages YugabyteDB Docker containers.
+- Use `make kill-test-docker` to clean up containers after testing.
+- It is best to use a local DB deployment by exporting `export DB_DEPLOYMENT=local`.
+- The database is usually already running. Verify using `docker ps` and check `sc_test_postgres_unit_tests`.
+- If it is not running, the database can be deployed manually using `scripts/get-and-start-postgres.sh`
 
 #### Testing Code Guidelines
 
@@ -340,10 +353,10 @@ require.Greater(t, count, 500)
 ### Metrics Testing Best Practices
 
 1. **Use Appropriate Helper**: Choose the right helper based on timing requirements:
-   - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for synchronous operations where the metric should already have the expected value
-   - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) for asynchronous operations where the metric will reach the expected value after some time
-   - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
-   - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
+    - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for synchronous operations where the metric should already have the expected value
+    - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) for asynchronous operations where the metric will reach the expected value after some time
+    - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
+    - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
 
 2. **Capture Baseline Values**: When testing incremental changes, capture the metric value before the operation:
    ```go
@@ -366,12 +379,12 @@ require.Greater(t, count, 500)
    ```
 
 4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105):
-   - Unit tests: 1-5 seconds wait, 10-100ms tick
-   - Integration tests: 5-60 seconds wait, 100ms-1s tick
-   - Examples from codebase:
-     - Fast operations: `5*time.Second, 10*time.Millisecond`
-     - Normal operations: `5*time.Second, 100*time.Millisecond`
-     - Slow operations: `2*time.Second, 200*time.Millisecond`
+    - Unit tests: 1-5 seconds wait, 10-100ms tick
+    - Integration tests: 5-60 seconds wait, 100ms-1s tick
+    - Examples from codebase:
+        - Fast operations: `5*time.Second, 10*time.Millisecond`
+        - Normal operations: `5*time.Second, 100*time.Millisecond`
+        - Slow operations: `2*time.Second, 200*time.Millisecond`
 
 5. **Test Initial State**: Always verify metrics start at expected initial values:
    ```go
