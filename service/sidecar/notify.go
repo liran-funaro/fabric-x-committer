@@ -273,8 +273,13 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(
 			delete(requests, req)
 		}
 	}
-	req.streamEventQueue.Write(&committerpb.NotificationResponse{
-		TimeoutTxIds: txIDs,
-	})
+	// txIDs can be empty when the timeout fires after a status event has already
+	// removed all of this request's subscriptions (i.e., removeAndEnqueueStatusEvents
+	// ran first). In that case there is nothing to report, so we skip the write.
+	if len(txIDs) > 0 {
+		req.streamEventQueue.Write(&committerpb.NotificationResponse{
+			TimeoutTxIds: txIDs,
+		})
+	}
 	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }

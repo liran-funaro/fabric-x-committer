@@ -475,6 +475,62 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	require.Len(t, res.TxStatusEvents, 2)
 }
 
+func TestNotifierLateTimeoutDoesNotEmitEmptyResponse(t *testing.T) {
+	t.Parallel()
+
+	subs, req, responses := newSingleTxSubscription(t)
+
+	// Process a status event for the subscribed TX ID.
+	removed, uniqueRemoved := subs.removeAndEnqueueStatusEvents([]*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
+	})
+	require.Equal(t, 1, removed)
+	require.Equal(t, 1, uniqueRemoved)
+
+	res := <-responses
+	require.Empty(t, res.TimeoutTxIds)
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
+	}, res.TxStatusEvents)
+
+	// A late timeout callback must not emit an empty timeout response.
+	removed, uniqueRemoved = subs.removeAndEnqueueTimeoutEvents(req)
+	require.Zero(t, removed)
+	require.Zero(t, uniqueRemoved)
+
+	select {
+	case res := <-responses:
+		require.Failf(t, "timeout response should not be emitted", "response: %v", res)
+	default:
+	}
+}
+
+func newSingleTxSubscription(
+	tb testing.TB,
+) (*subscriptions, *notificationRequest, chan *committerpb.NotificationResponse) {
+	tb.Helper()
+	responses := make(chan *committerpb.NotificationResponse, 2)
+	req := &notificationRequest{
+		request: &committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{"tx1"}},
+			Timeout:         durationpb.New(1 * time.Millisecond),
+		},
+		streamEventQueue: channel.NewWriter(tb.Context(), responses),
+		timer:            time.NewTimer(time.Hour),
+	}
+	tb.Cleanup(func() {
+		req.timer.Stop()
+	})
+	subs := &subscriptions{
+		txIDToRequests: make(map[string]map[*notificationRequest]any),
+		availableSlots: 1,
+	}
+	rejected, uniqueNew := subs.addRequest(req)
+	require.Empty(tb, rejected)
+	require.Equal(tb, 1, uniqueNew)
+	return subs, req, responses
+}
+
 func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 	tb.Helper()
 	return newNotifierTestEnvWithConfig(tb, numOfClients, &NotificationServiceConfig{
