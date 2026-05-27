@@ -35,6 +35,7 @@ docker/runner/out
 .bob/*
 !.bob/rules/
 !.bob/commands/
+!.bob/skills/
 *coverage.profile
 *coverage.html
 
