@@ -37,6 +37,10 @@ type (
 		block        *common.Block
 		txStatus     []committerpb.Status
 		pendingCount atomic.Int32
+
+		// Fields for StreamAllTransactions support
+		blockNumber uint64                 // Block number
+		txs         []*servicepb.TxWithRef // Transaction content (from coordinatorBatch.Txs)
 	}
 )
 
@@ -60,9 +64,12 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 	if block.Data == nil {
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
 		return &blockMappingResult{
-			blockNumber:  blockNumber,
-			block:        &servicepb.CoordinatorBatch{},
-			withStatus:   &blockWithStatus{block: block},
+			blockNumber: blockNumber,
+			block:       &servicepb.CoordinatorBatch{},
+			withStatus: &blockWithStatus{
+				block:       block,
+				blockNumber: blockNumber,
+			},
 			txIDToHeight: txIDToHeight,
 		}, nil
 	}
@@ -75,8 +82,10 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			Rejected: make([]*committerpb.TxStatus, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
-			block:    block,
-			txStatus: make([]committerpb.Status, txCount),
+			block:       block,
+			txStatus:    make([]committerpb.Status, txCount),
+			txs:         make([]*servicepb.TxWithRef, txCount),
+			blockNumber: blockNumber,
 		},
 		txIDToHeight: txIDToHeight,
 	}
@@ -90,6 +99,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			return nil, err
 		}
 	}
+
 	return mappedBlock, nil
 }
 
@@ -135,10 +145,12 @@ func (b *blockMappingResult) appendTx(txNum uint32, envLite *serialization.Envel
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, envLite); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, &servicepb.TxWithRef{
+	txWithRef := &servicepb.TxWithRef{
 		Ref:     committerpb.NewTxRef(envLite.TxID, b.blockNumber, txNum),
 		Content: tx,
-	})
+	}
+	b.block.Txs = append(b.block.Txs, txWithRef)
+	b.withStatus.txs[txNum] = txWithRef
 	debugTx(envLite, "included: %s", envLite.TxID)
 	return nil
 }
@@ -152,10 +164,12 @@ func (b *blockMappingResult) rejectTx(
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, envLite); idAlreadyExists || err != nil {
 		return err
 	}
+	ref := committerpb.NewTxRef(envLite.TxID, b.blockNumber, txNum)
 	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{
-		Ref:    committerpb.NewTxRef(envLite.TxID, b.blockNumber, txNum),
+		Ref:    ref,
 		Status: status,
 	})
+	b.withStatus.txs[txNum] = &servicepb.TxWithRef{Ref: ref}
 	debugTx(envLite, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -173,6 +187,13 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 	err := b.withStatus.setFinalStatus(txNum, status)
 	if err != nil {
 		return err
+	}
+	var txID string
+	if envLite != nil {
+		txID = envLite.TxID
+	}
+	b.withStatus.txs[txNum] = &servicepb.TxWithRef{
+		Ref: committerpb.NewTxRef(txID, b.blockNumber, txNum),
 	}
 	debugTx(envLite, "excluded: %s (%s)", &status, reason)
 	return nil

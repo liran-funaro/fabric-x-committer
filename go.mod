@@ -42,6 +42,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+replace github.com/hyperledger/fabric-x-common => github.com/liran-funaro/fabric-x-common v0.0.0-20260602123111-1ea384261093
+
 tool (
 	github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt
 	github.com/googleapis/api-linter/v2/cmd/api-linter
