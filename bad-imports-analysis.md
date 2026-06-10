@@ -81,7 +81,7 @@ Responsible for 4 unmaintained import(s)
   - **📦 github.com/kr/text**
     - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` *(indirect)* -> `github.com/kr/text`
     - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/otel/trace` -> `go.opentelemetry.io/otel` *(indirect)* -> `github.com/kr/text`
-    - ... and 30 more
+    - ... and 28 more
 
 - **📝 Imported in your code at:**
 
@@ -197,12 +197,12 @@ Responsible for 7 unmaintained import(s)
   - **📦 github.com/kr/pretty**
     - `github.com/hyperledger/fabric-x-common` *(indirect)* -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
     - `github.com/hyperledger/fabric-x-common` *(indirect)* -> `bitbucket.org/creachadair/stringset` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 41 more
+    - ... and 43 more
 
   - **📦 github.com/kr/text**
     - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/mathlib` *(indirect)* -> `github.com/kr/text`
     - `github.com/hyperledger/fabric-x-common` *(indirect)* -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` *(indirect)* -> `github.com/kr/text`
-    - ... and 59 more
+    - ... and 58 more
 
   - **📦 github.com/sykesm/zap-logfmt**
     - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/sykesm/zap-logfmt`
@@ -354,7 +354,7 @@ Responsible for 3 unmaintained import(s)
   - **📦 github.com/kr/text**
     - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` *(indirect)* -> `github.com/kr/text`
     - `google.golang.org/grpc` -> `go.opentelemetry.io/otel/metric` -> `go.opentelemetry.io/otel` *(indirect)* -> `github.com/kr/text`
-    - ... and 28 more
+    - ... and 22 more
 
 - **📝 Imported in your code at:**
 
