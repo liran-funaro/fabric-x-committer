@@ -73,7 +73,7 @@ class CodeLoc:
         return self._id < other._id
 
     @property
-    def _id(self):
+    def _id(self) -> tuple[str, int]:
         return self.file, self.line
 
 
@@ -205,6 +205,10 @@ class BadImportFinder:
             chains = self.find_dependency_chain(pkg)
             if chains:
                 package_chains[pkg] = chains
+            if len(chains) > 1:
+                common = common_suffix(chains)
+                if len(common) > 1:
+                    print(f"{pkg:50s} common suffix:", " -> ".join(common), file=sys.stderr)
 
         valid_blame = set()
         for pkg, chains in package_chains.items():
@@ -284,71 +288,22 @@ class BadImportFinder:
                     # Package is imported in our code - add to direct imports
                     direct_bad_imports.append(info)
 
+        # Filter out blame points that are themselves bad imports
+        # A bad import cannot be a blame point for other bad imports
+        # Note: We include even indirect dependencies as blame points if they're
+        # the best path we have. In the future, we may want to detect paths
+        # through tool dependencies separately.
+        for blame_point in list(indirect_blame_groups):
+            # Skip if blame point is itself a bad import
+            if blame_point in self.bad_imports:
+                del indirect_blame_groups[blame_point]
+
         # Report direct bad imports first (THIS REPO IS TO BLAME)
-        if direct_bad_imports:
-            print_direct_bad_imports_section(direct_bad_imports)
-
+        print_direct_bad_imports_section(direct_bad_imports)
         # Report indirect bad imports grouped by blame point
-        if indirect_blame_groups:
-            # Filter out blame points that are themselves bad imports
-            # A bad import cannot be a blame point for other bad imports
-            # Note: We include even indirect dependencies as blame points if they're
-            # the best path we have. In the future, we may want to detect paths
-            # through tool dependencies separately.
-            for blame_point in list(indirect_blame_groups):
-                # Skip if blame point is itself a bad import
-                if blame_point in self.bad_imports:
-                    del indirect_blame_groups[blame_point]
-
-            for blame_point, packages in sorted(indirect_blame_groups.items()):
-                if len(packages) == 0:
-                    continue
-
-                # Check if this is a tool dependency
-                edge_type = self.dependency_graph.edge_metadata.get((self.module_name, blame_point))
-                is_tool = edge_type == 'tool'
-
-                print(f"---")
-                print()
-
-                blame_title = f"## 🎯 BLAME POINT: `{blame_point}`"
-                if is_tool:
-                    blame_title += " (tool)"
-                print(blame_title)
-                print(f"Responsible for {len(packages)} unmaintained import(s)")
-                print()
-
-                # Show unmaintained imports FIRST
-                print(f"- **⚠️  Unmaintained imports:**")
-                print()
-
-                # Show each bad package under this blame point
-                blame_point_locations = []
-                for info in packages:
-                    print(f"  - **📦 {info.package}**")
-
-                    # Find chains for this blame point
-                    relevant_chains = [c for c in info.blame_analysis if c.blame_point == blame_point]
-                    if len(relevant_chains) != 1:
-                        print(f"There should be exactly one chains for blame point: {blame_point} and pacakge: "
-                              f"{info.package} - Actual: {len(relevant_chains)}", file=sys.stderr)
-                    else:
-                        self.print_multi_path("    ", relevant_chains[0].blame_to_target)
-                        blame_point_locations = relevant_chains[0].locations
-                    print()
-
-                # Show where this blame point is imported in your code
-                print_locations("- ", blame_point_locations)
-
+        print_indirect_blame_section(indirect_blame_groups, self.dependency_graph.edge_metadata, self.module_name)
         # Report on packages not in go.mod
-        if self.not_in_mod:
-            print(f"---")
-            print()
-            print(f"## NOT IN GO.MOD ({len(self.not_in_mod)} found)")
-            print()
-            for pkg in sorted(self.not_in_mod):
-                print(f"- `{pkg}`")
-            print()
+        print_not_in_mod(self.not_in_mod)
 
         # Summary
         print(f"---")
@@ -367,56 +322,10 @@ class BadImportFinder:
         print(f"- Not in go.mod: {len(self.not_in_mod)}")
         print()
 
-    def print_multi_path(self, indent: str, chains: Iterable[tuple[str, ...]], max_size=2):
-        chains = sorted(chains, key=lambda x: (len(x), x))
-        if len(chains) == 0:
-            return
-        for path in chains[:2]:
-            formatted_path = self.format_path_with_metadata(path)
-            print(f"{indent}- {formatted_path}")
-        if len(chains) > max_size:
-            print(f"{indent}- ... and {len(chains) - max_size} more")
 
-    def format_path_with_metadata(self, path_input):
-        """Format a dependency path with edge metadata annotations.
-
-        Args:
-            path_input: Either a list of package names or a string with " -> " separators
-
-        Returns:
-            Formatted string with packages and edge annotations
-        """
-        # Convert string to list if needed
-        if isinstance(path_input, str):
-            path_list = path_input.split(' -> ')
-        else:
-            path_list = path_input
-
-        if not path_list or len(path_list) < 2:
-            return ' -> '.join(f'`{p}`' for p in path_list)
-
-        parts = []
-        for i in range(len(path_list)):
-            parts.append(f'`{path_list[i]}`')
-
-            # Add edge annotation if not the last element
-            if i < len(path_list) - 1:
-                from_pkg = path_list[i]
-                to_pkg = path_list[i + 1]
-                edge_key = (from_pkg, to_pkg)
-                annotation = self.dependency_graph.edge_metadata.get(edge_key)
-                if annotation:
-                    parts.append(f" *({annotation})*")
-
-                parts.append(" -> ")
-
-        # Remove trailing " -> " if present
-        result = ''.join(parts)
-        if result.endswith(" -> "):
-            result = result[:-4]
-
-        return result
-
+####################################################################################################
+# Main
+####################################################################################################
 
 def main():
     # Determine project root (where go.mod is)
@@ -438,6 +347,11 @@ def main():
     print()
 
     finder.generate_report_grouped()
+
+
+####################################################################################################
+# Parsers
+####################################################################################################
 
 
 def iter_bad_imports():
@@ -519,6 +433,63 @@ def _iter_tools(content: str):
                 pkg = parts[0]
                 yield pkg
 
+
+def _iter_code_locations(project_root: Path, package: str) -> Iterable[CodeLoc]:
+    # Search for import statements in .go files
+    for go_file in project_root.rglob("*.go"):
+        # Skip vendor and hidden directories
+        if any(part.startswith('.') or part == 'vendor' for part in go_file.parts):
+            continue
+
+        with open(go_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Look for import statements
+        # Match both single imports and import blocks
+        import_patterns = [
+            rf'import\s+"({re.escape(package)}[^"]*)"',
+            rf'import\s+\w+\s+"({re.escape(package)}[^"]*)"',
+        ]
+
+        for pattern in import_patterns:
+            for match in re.finditer(pattern, content):
+                # Find line number
+                line_num = content[:match.start()].count('\n') + 1
+                full_import = match.group(1)
+
+                rel_path = go_file.relative_to(project_root)
+                yield CodeLoc(
+                    file=str(rel_path),
+                    line=line_num,
+                    import_path=full_import,
+                    is_test=str(rel_path).endswith("_test.go")
+                )
+
+        # Also check import blocks
+        import_block_pattern = r'import\s*\((.*?)\)'
+        for block_match in re.finditer(import_block_pattern, content, re.DOTALL):
+            block_content = block_match.group(1)
+            block_start = content[:block_match.start()].count('\n') + 1
+
+            for line_offset, line in enumerate(block_content.split('\n')):
+                if package in line:
+                    # Extract the full import path
+                    import_match = re.search(r'"([^"]+)"', line)
+                    if import_match:
+                        full_import = import_match.group(1)
+                        if package in full_import:
+                            rel_path = go_file.relative_to(project_root)
+                            yield CodeLoc(
+                                file=str(rel_path),
+                                line=block_start + line_offset,
+                                import_path=full_import,
+                                is_test=str(rel_path).endswith("_test.go")
+                            )
+
+
+####################################################################################################
+# Analyze
+####################################################################################################
 
 def build_dependency_graph(project_root) -> DependencyGraph:
     """Build the dependency graph with edge metadata for direct/indirect/toolchain."""
@@ -634,57 +605,28 @@ def dedup_all_paths(all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[s
     return new_all_paths
 
 
-def _iter_code_locations(project_root: Path, package: str) -> Iterable[CodeLoc]:
-    # Search for import statements in .go files
-    for go_file in project_root.rglob("*.go"):
-        # Skip vendor and hidden directories
-        if any(part.startswith('.') or part == 'vendor' for part in go_file.parts):
-            continue
+def common_suffix(tuples: Iterable[tuple]) -> tuple:
+    if not tuples:
+        return ()
 
-        with open(go_file, 'r', encoding='utf-8') as f:
-            content = f.read()
+    # 1. Reverse each tuple so the suffix becomes a prefix
+    reversed_tuples = (t[::-1] for t in tuples)
 
-        # Look for import statements
-        # Match both single imports and import blocks
-        import_patterns = [
-            rf'import\s+"({re.escape(package)}[^"]*)"',
-            rf'import\s+\w+\s+"({re.escape(package)}[^"]*)"',
-        ]
+    # 2. Zip elements together and take elements while they are all identical
+    matched = []
+    for elements in zip(*reversed_tuples):
+        if len(set(elements)) == 1:
+            matched.append(elements[0])
+        else:
+            break
 
-        for pattern in import_patterns:
-            for match in re.finditer(pattern, content):
-                # Find line number
-                line_num = content[:match.start()].count('\n') + 1
-                full_import = match.group(1)
+    # 3. Reverse the result back to its original order
+    return tuple(reversed(matched))
 
-                rel_path = go_file.relative_to(project_root)
-                yield CodeLoc(
-                    file=str(rel_path),
-                    line=line_num,
-                    import_path=full_import,
-                    is_test=str(rel_path).endswith("_test.go")
-                )
 
-        # Also check import blocks
-        import_block_pattern = r'import\s*\((.*?)\)'
-        for block_match in re.finditer(import_block_pattern, content, re.DOTALL):
-            block_content = block_match.group(1)
-            block_start = content[:block_match.start()].count('\n') + 1
-
-            for line_offset, line in enumerate(block_content.split('\n')):
-                if package in line:
-                    # Extract the full import path
-                    import_match = re.search(r'"([^"]+)"', line)
-                    if import_match:
-                        full_import = import_match.group(1)
-                        if package in full_import:
-                            rel_path = go_file.relative_to(project_root)
-                            yield CodeLoc(
-                                file=str(rel_path),
-                                line=block_start + line_offset,
-                                import_path=full_import,
-                                is_test=str(rel_path).endswith("_test.go")
-                            )
+####################################################################################################
+# Report
+####################################################################################################
 
 
 def print_locations(indent: str, locations, max_size=3):
@@ -704,6 +646,8 @@ def print_locations(indent: str, locations, max_size=3):
 
 
 def print_direct_bad_imports_section(direct_bad_imports: list[PackageBlameInfo]):
+    if not direct_bad_imports:
+        return
     print(f"---")
     print()
     print(f"## ⚠️ DIRECT UNMAINTAINED IMPORTS ({len(direct_bad_imports)} found)")
@@ -713,6 +657,115 @@ def print_direct_bad_imports_section(direct_bad_imports: list[PackageBlameInfo])
         print(f"- **📦 {info.package}**")
         print()
         print_locations("  ", info.locations)
+
+
+def print_indirect_blame_section(indirect_blame_groups, edge_metadata, module_name):
+    if not indirect_blame_groups:
+        return
+    for blame_point, packages in sorted(indirect_blame_groups.items()):
+        if len(packages) == 0:
+            continue
+
+        # Check if this is a tool dependency
+        edge_type = edge_metadata.get((module_name, blame_point))
+        is_tool = edge_type == 'tool'
+
+        print(f"---")
+        print()
+
+        blame_title = f"## 🎯 BLAME POINT: `{blame_point}`"
+        if is_tool:
+            blame_title += " (tool)"
+        print(blame_title)
+        print(f"Responsible for {len(packages)} unmaintained import(s)")
+        print()
+
+        # Show unmaintained imports FIRST
+        print(f"- **⚠️  Unmaintained imports:**")
+        print()
+
+        # Show each bad package under this blame point
+        blame_point_locations = []
+        for info in packages:
+            print(f"  - **📦 {info.package}**")
+
+            # Find chains for this blame point
+            relevant_chains = [c for c in info.blame_analysis if c.blame_point == blame_point]
+            if len(relevant_chains) != 1:
+                print(f"There should be exactly one chains for blame point: {blame_point} and pacakge: "
+                      f"{info.package} - Actual: {len(relevant_chains)}", file=sys.stderr)
+            else:
+                print_multi_path("    ", relevant_chains[0].blame_to_target, edge_metadata)
+                blame_point_locations = relevant_chains[0].locations
+            print()
+
+        # Show where this blame point is imported in your code
+        print_locations("- ", blame_point_locations)
+
+
+def print_not_in_mod(not_in_mod):
+    if not not_in_mod:
+        return
+    print(f"---")
+    print()
+    print(f"## NOT IN GO.MOD ({len(not_in_mod)} found)")
+    print()
+    for pkg in sorted(not_in_mod):
+        print(f"- `{pkg}`")
+    print()
+
+
+def print_multi_path(indent: str, chains: Iterable[tuple[str, ...]], edge_metadata, max_size=2):
+    chains = sorted(chains, key=lambda x: (len(x), x))
+    if len(chains) == 0:
+        return
+    for path in chains[:2]:
+        formatted_path = format_path_with_metadata(path, edge_metadata)
+        print(f"{indent}- {formatted_path}")
+    if len(chains) > max_size:
+        print(f"{indent}- ... and {len(chains) - max_size} more")
+
+
+def format_path_with_metadata(path_input, edge_metadata):
+    """Format a dependency path with edge metadata annotations.
+
+    Args:
+        path_input: Either a list of package names or a string with " -> " separators
+        edge_metadata: the edges
+
+    Returns:
+        Formatted string with packages and edge annotations
+    """
+    # Convert string to list if needed
+    if isinstance(path_input, str):
+        path_list = path_input.split(' -> ')
+    else:
+        path_list = path_input
+
+    if not path_list or len(path_list) < 2:
+        return ' -> '.join(f'`{p}`' for p in path_list)
+
+    parts = []
+    for i in range(len(path_list)):
+        parts.append(f'`{path_list[i]}`')
+
+        # Add edge annotation if not the last element
+        if i < len(path_list) - 1:
+            from_pkg = path_list[i]
+            to_pkg = path_list[i + 1]
+            edge_key = (from_pkg, to_pkg)
+            annotation = edge_metadata.get(edge_key)
+            if annotation:
+                parts.append(f" *({annotation})*")
+
+            parts.append(" -> ")
+
+    # Remove trailing " -> " if present
+    result = ''.join(parts)
+    if result.endswith(" -> "):
+        result = result[:-4]
+
+    return result
 
 
 def run(cmd: list[str], project_root):
