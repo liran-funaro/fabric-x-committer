@@ -89,9 +89,18 @@ class ChainInfo:
 class PackageBlameInfo:
     """Information about a bad package and its blame analysis."""
     package: str
-    blame_analysis: list[ChainInfo] | None
+    blame_analysis: list[ChainInfo]
     chains: set[tuple[str, ...]]
     locations: list[CodeLoc]  # locations where this package is imported
+
+
+@dataclass
+class PackageChains:
+    pkg: str
+    chains: set[tuple[str, ...]]  # All chains to the package (or root if different)
+    root_to_pkg: tuple[str, ...]  # A common chain leading to the package
+    blame_groups: list[ChainInfo]  # All chains to root, grouped by blame point
+    choke_points: dict
 
 
 class ModuleDependencyCache:
@@ -171,6 +180,8 @@ class BadImportFinder:
         bad_imports_set = set(self.bad_imports)
         self.included_bad_imports: list[str] = sorted(bad_imports_set & module_deps)
         self.not_in_mod: list[str] = sorted(sorted(bad_imports_set - module_deps))
+        self.analyzed_imports: set[str] = set()
+        self.transitive_imports: dict[str, set[tuple[str, ...]]] = defaultdict(set)
 
     def find_import_in_code(self, package) -> list[CodeLoc]:
         """Find where a package is imported in Go source files."""
@@ -188,6 +199,48 @@ class BadImportFinder:
         """Find all non-cyclic dependency chains from module to target package"""
         return self.dependency_graph.find_dependency_chain(self.module_name, pkg)
 
+    def analyze_package_chains(self):
+        """Analyze all bad imports and group them by blame point.
+
+        Returns:
+            A tuple of (blame_groups, no_blame_packages) where:
+            - blame_groups: dict mapping blame_point -> list of PackageBlameInfo
+            - no_blame_packages: list of PackageBlameInfo without clear blame point
+        """
+
+        # First pass: collect all valid blame points
+        package_chains: list[PackageChains] = []
+
+        for pkg in self.included_bad_imports:
+            chains = self.find_dependency_chain(pkg)
+            if not chains:
+                continue
+            if len(chains) > 1:
+                root_to_pkg = common_suffix(chains)
+            else:
+                root_to_pkg = (pkg,)
+            assert len(root_to_pkg) >= 1
+            if len(root_to_pkg) > 1:
+                chains = self.find_dependency_chain(root_to_pkg[0])
+
+            choke = find_bottleneck_nodes(chains, self.module_name, root_to_pkg[0])
+            choke_points = {}
+            for c in choke:
+                root_to_choke = []
+                root_from_choke = []
+                for ch in chains:
+                    try:
+                        i = ch.index(c)
+                        root_to_choke.append(tuple(ch[:i + 1]))
+                        root_from_choke.append(tuple(ch[i:]))
+                    except:
+                        pass
+                choke_points[c] = root_to_choke, root_from_choke
+            blame_groups = self.group_chains_by_blame_point(chains)
+            package_chains.append(PackageChains(pkg, chains, root_to_pkg, blame_groups, choke_points))
+
+        return package_chains
+
     def analyze_and_group_by_blame(self) -> dict[str, list[PackageBlameInfo]]:
         """Analyze all bad imports and group them by blame point.
 
@@ -201,12 +254,16 @@ class BadImportFinder:
 
         for pkg in self.included_bad_imports:
             chains = self.find_dependency_chain(pkg)
-            if chains:
-                package_chains[pkg] = chains
             if len(chains) > 1:
                 common = common_suffix(chains)
                 if len(common) > 1:
                     print(f"{pkg:50s} common suffix:", " -> ".join(common), file=sys.stderr)
+                    self.transitive_imports[pkg].add(common)
+                    pkg = common[0]
+                    chains = self.find_dependency_chain(pkg)
+            if chains:
+                self.analyzed_imports.add(pkg)
+                package_chains[pkg] = chains
 
         valid_blame = set()
         for pkg, chains in package_chains.items():
@@ -268,6 +325,49 @@ class BadImportFinder:
 
     def generate_report_grouped(self):
         """Generate a comprehensive report of bad imports grouped by blame point."""
+
+        z = self.analyze_package_chains()
+        for pkg_chain in z:
+            print(f"- **📦 {pkg_chain.pkg}**")
+            if len(pkg_chain.root_to_pkg) > 1:
+                print()
+                print(f"  Root to pkg: {format_path(pkg_chain.root_to_pkg, self.dependency_graph.edge_metadata)}")
+            print()
+            edges = set()
+
+            for path in pkg_chain.chains:
+                for u, v in zip(path, path[1:]):
+                    # Fetch label if it exists, otherwise leave it blank
+                    label = self.dependency_graph.edge_metadata.get((u, v), "")
+                    if label:
+                        edges.add(f"    {u} -->|{label}| {v}")
+                    else:
+                        edges.add(f"    {u} --> {v}")
+
+            choke = list(pkg_chain.choke_points)
+            style = [f"    style {pkg_chain.root_to_pkg[0]} fill:#555,stroke:#333,stroke-width:2px"]
+            for c in choke:
+                style.append(f"    style {c} fill:#777")
+
+            # Construct block
+            markdown_graph = "```mermaid\ngraph TD\n" + "\n".join(sorted(edges)) + "\n" + "\n".join(style) + "\n```"
+            print(markdown_graph)
+
+            for choke, (root_to_choke, root_from_choke) in pkg_chain.choke_points.items():
+                print(f"  - Choke: {choke}")
+                print()
+                print("    Root to choke:")
+                print_multi_path("    - ", root_to_choke, self.dependency_graph.edge_metadata, max_size=1)
+                print()
+                print("    Root from choke:")
+                print_multi_path("    - ", root_from_choke, self.dependency_graph.edge_metadata, max_size=1)
+
+            for ci in pkg_chain.blame_groups:
+                print(f"  - 🎯 Blamed: `{ci.blame_point}`")
+                print()
+                print_multi_path("    ", ci.blame_to_target, self.dependency_graph.edge_metadata, max_size=1)
+                print()
+
         # Analyze and group by blame point
         blame_groups = self.analyze_and_group_by_blame()
 
@@ -387,10 +487,11 @@ def parse_go_mod(go_mod_path: Path) -> dict[str, str]:
 
     for pkg, is_indirect in _iter_dep(content):
         tag = ""
-        if pkg in tool_deps:
-            tag = "tool"
-        elif is_indirect:
-            tag = "indirect"
+        if is_indirect:
+            if pkg in tool_deps:
+                tag = "tool"
+            else:
+                tag = "indirect"
         dependencies[pkg] = tag
 
     return dependencies
@@ -430,6 +531,9 @@ def _iter_tools(content: str):
             if parts:
                 pkg = parts[0]
                 yield pkg
+                pkg_parts = pkg.split("/cmd/")
+                if len(pkg_parts) > 1:
+                    yield pkg_parts[0]
 
 
 def _iter_code_locations(project_root: Path, package: str) -> Iterable[CodeLoc]:
@@ -572,17 +676,28 @@ def find_all_paths(graph, start, target, max_depth=10) -> set[tuple[str, ...]]:
 
 def dedup_all_paths(all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[str, str], str]) -> set[tuple[str, ...]]:
     shortcuts: dict[tuple[str, str], tuple[str, ...]] = {}
+    indirect_shortcuts: dict[tuple[str, str], tuple[str, ...]] = {}
     for path in all_paths:
         if len(path) < 2:
             continue
-        for i in range(len(path)):
+        for i in range(len(path) - 1):
+            if edge_metadata.get((path[i], path[i + 1])) == "indirect":
+                # Only follow direct path
+                continue
             for j in range(i + 1, len(path)):
-                if edge_metadata.get((path[j - 1], path[j])):
-                    # Only follow direct path
-                    break
                 k = path[i], path[j]
-                if k not in shortcuts:
-                    shortcuts[k] = tuple(path[i:j + 1])
+                sub_path = tuple(path[i:j + 1])
+                have_indirect = any(edge_metadata.get((s, t)) == "indirect" for s, t in zip(sub_path, sub_path[1:]))
+                if have_indirect:
+                    if k not in indirect_shortcuts or len(indirect_shortcuts[k]) > len(sub_path):
+                        indirect_shortcuts[k] = sub_path
+                else:
+                    if k not in shortcuts or len(shortcuts[k]) > len(sub_path):
+                        shortcuts[k] = sub_path
+
+    for k, v in indirect_shortcuts.items():
+        if k not in shortcuts:
+            shortcuts[k] = v
 
     new_all_paths = set()
     for path in all_paths:
@@ -622,6 +737,39 @@ def common_suffix(tuples: Iterable[tuple]) -> tuple:
     return tuple(reversed(matched))
 
 
+import networkx as nx
+
+
+def find_bottleneck_nodes(paths, source, target):
+    """
+    Finds if there is a group of up to K nodes that all flows must pass through.
+
+    :param paths: List of paths, where each path is a list of nodes (e.g., [['A', 'C', 'B'], ['A', 'D', 'B']])
+    :param source: The starting node (e.g., 'A')
+    :param target: The destination node (e.g., 'B')
+    :param K: The maximum size of the blocking node group
+    :return: (True, set_of_nodes) if found, (False, None) otherwise
+    """
+    # 1. Reconstruct the graph from the given paths
+    G = nx.DiGraph()
+    for path in paths:
+        # Add edges between consecutive nodes in each path
+        G.add_edges_from(zip(path[:-1], path[1:]))
+
+    # Quick Check: If source and target are directly connected,
+    # no set of intermediate nodes can stop the flow.
+    if G.has_edge(source, target):
+        return set()
+
+    try:
+        # 2. Find the minimum vertex cut
+        # This returns the smallest set of nodes that disconnects source from target
+        return nx.minimum_node_cut(G, s=source, t=target)
+    except nx.NetworkXNoPath:
+        # If there is no path at all, an empty set (size 0 <= K) disconnects them
+        return set()
+
+
 ####################################################################################################
 # Report
 ####################################################################################################
@@ -657,7 +805,9 @@ def print_direct_bad_imports_section(direct_bad_imports: list[PackageBlameInfo])
         print_locations("  ", info.locations)
 
 
-def print_indirect_blame_section(indirect_blame_groups, edge_metadata, module_name):
+def print_indirect_blame_section(
+        indirect_blame_groups: dict[str, list[PackageBlameInfo]], edge_metadata, module_name,
+):
     if not indirect_blame_groups:
         return
     for blame_point, packages in sorted(indirect_blame_groups.items()):
@@ -701,7 +851,7 @@ def print_indirect_blame_section(indirect_blame_groups, edge_metadata, module_na
         print_locations("- ", blame_point_locations)
 
 
-def print_not_in_mod(not_in_mod):
+def print_not_in_mod(not_in_mod: list[str]):
     if not not_in_mod:
         return
     print(f"---")
@@ -713,57 +863,25 @@ def print_not_in_mod(not_in_mod):
     print()
 
 
-def print_multi_path(indent: str, chains: Iterable[tuple[str, ...]], edge_metadata, max_size=2):
+def print_multi_path(
+        indent: str, chains: Iterable[tuple[str, ...]], edge_metadata: dict[tuple[str, str], str], max_size=2,
+):
     chains = sorted(chains, key=lambda x: (len(x), x))
     if len(chains) == 0:
         return
-    for path in chains[:2]:
-        formatted_path = format_path_with_metadata(path, edge_metadata)
-        print(f"{indent}- {formatted_path}")
+    for path in chains[:max_size]:
+        print(f"{indent}- {format_path(path, edge_metadata)}")
     if len(chains) > max_size:
         print(f"{indent}- ... and {len(chains) - max_size} more")
 
 
-def format_path_with_metadata(path_input, edge_metadata):
-    """Format a dependency path with edge metadata annotations.
-
-    Args:
-        path_input: Either a list of package names or a string with " -> " separators
-        edge_metadata: the edges
-
-    Returns:
-        Formatted string with packages and edge annotations
-    """
-    # Convert string to list if needed
-    if isinstance(path_input, str):
-        path_list = path_input.split(' -> ')
-    else:
-        path_list = path_input
-
-    if not path_list or len(path_list) < 2:
-        return ' -> '.join(f'`{p}`' for p in path_list)
-
-    parts = []
-    for i in range(len(path_list)):
-        parts.append(f'`{path_list[i]}`')
-
-        # Add edge annotation if not the last element
-        if i < len(path_list) - 1:
-            from_pkg = path_list[i]
-            to_pkg = path_list[i + 1]
-            edge_key = (from_pkg, to_pkg)
-            annotation = edge_metadata.get(edge_key)
-            if annotation:
-                parts.append(f" *({annotation})*")
-
-            parts.append(" -> ")
-
-    # Remove trailing " -> " if present
-    result = ''.join(parts)
-    if result.endswith(" -> "):
-        result = result[:-4]
-
-    return result
+def format_path(path: tuple[str, ...], edge_metadata: dict[tuple[str, str], str]):
+    parts = [f'`{p}`' for p in path]
+    for i, src_dst in list(enumerate(zip(path, path[1:]))):
+        annotation = edge_metadata.get(src_dst)
+        if annotation:
+            parts[i] += f" *({annotation})*"
+    return ' -> '.join(parts)
 
 
 def run(cmd: list[str], project_root):
