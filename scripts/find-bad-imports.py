@@ -33,8 +33,8 @@ class DependencyGraph:
     All edges are included in the graphs. Use edge_metadata to determine
     if an edge is direct, indirect, or tool.
     """
-    graph: dict  # module -> set of all dependencies
-    edge_metadata: dict  # (from, to) -> "" (direct), "indirect", or "tool"
+    graph: dict[str, set[str]]  # module -> set of all dependencies
+    edge_metadata: dict[tuple[str, str], str]  # (from, to) -> "" (direct), "indirect", or "tool"
 
     def find_dependency_chain(self, src_pkg: str, dst_pkg: str) -> set[tuple[str, ...]]:
         """Find all non-cyclic dependency chains from module to target package.
@@ -156,18 +156,21 @@ class ModuleDependencyCache:
 
 
 class BadImportFinder:
-    def __init__(self, project_root, bad_imports: list[str]):
+    def __init__(self, project_root, bad_imports: Iterable[str]):
         self.project_root = Path(project_root)
-        self.bad_imports = bad_imports
+        self.bad_imports: list[str] = list(bad_imports)
 
-        self.import_cache = {}  # Cache of package -> locations
+        self.import_cache: dict[str, list[CodeLoc]] = {}  # Cache of package -> locations
         self.similar_packages = defaultdict(list)  # Cache of package suffix -> full packages
-        self.module_name = get_module_name(project_root)
+        self.module_name: str = get_module_name(project_root)
         self.dependency_graph = build_dependency_graph(project_root)
 
-        module_deps = self.dependency_graph.graph.get(self.module_name)
-        self.included_bad_imports = sorted(set(self.bad_imports).intersection(module_deps))
-        self.not_in_mod = sorted(sorted(set(self.bad_imports) - set(module_deps)))
+        module_deps: set[str] | None = self.dependency_graph.graph.get(self.module_name)
+        if not module_deps:
+            raise Exception(f"Could not load dependencies for module: {self.module_name}")
+        bad_imports_set = set(self.bad_imports)
+        self.included_bad_imports: list[str] = sorted(bad_imports_set & module_deps)
+        self.not_in_mod: list[str] = sorted(sorted(bad_imports_set - module_deps))
 
     def find_import_in_code(self, package) -> list[CodeLoc]:
         """Find where a package is imported in Go source files."""
@@ -177,13 +180,8 @@ class BadImportFinder:
 
         locations = sorted(set(_iter_code_locations(self.project_root, package)))
 
-        # Cache the result. Also cache by suffix for similar package lookup
+        # Cache the result.
         self.import_cache[package] = locations
-        pkg_parts = package.split('/')
-        if len(pkg_parts) >= 2:
-            suffix = '/'.join(pkg_parts[-2:])
-            self.similar_packages[suffix].append(package)
-
         return locations
 
     def find_dependency_chain(self, pkg) -> set[tuple[str, ...]]:
@@ -373,7 +371,7 @@ def iter_bad_imports():
             yield line
 
 
-def get_module_name(project_root):
+def get_module_name(project_root) -> str:
     """Get the module name using go list -m."""
     return run(['go', 'list', '-m'], project_root).strip()
 
@@ -522,7 +520,7 @@ def build_dependency_graph(project_root) -> DependencyGraph:
     print(f"Cached {cache.size()} unique modules (avoided re-parsing)", file=sys.stderr)
 
     return DependencyGraph(
-        graph=graph,
+        graph=dict(graph),
         edge_metadata=edge_metadata
     )
 
