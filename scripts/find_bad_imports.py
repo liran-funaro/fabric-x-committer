@@ -8,12 +8,12 @@ This script analyzes a Go project to find:
 3. Where in the code these imports are used
 
 Usage:
-    cat bad-imports.txt | python3 scripts/find-bad-imports.py <project_root>
-    echo "github.com/some/package" | python3 scripts/find-bad-imports.py /path/to/project
+    cat bad-imports.txt | python3 scripts/find_bad_imports.py <project_root>
+    echo "github.com/some/package" | python3 scripts/find_bad_imports.py /path/to/project
 
 Example:
-    cat bad-imports.txt | python3 scripts/find-bad-imports.py .
-    cat bad-imports.txt | python3 scripts/find-bad-imports.py /home/user/myproject
+    cat bad-imports.txt | python3 scripts/find_bad_imports.py .
+    cat bad-imports.txt | python3 scripts/find_bad_imports.py /home/user/myproject
 """
 
 import re
@@ -165,8 +165,8 @@ class ModuleDependencyCache:
 
 
 class BadImportFinder:
-    def __init__(self, project_root, bad_imports: Iterable[str]):
-        self.project_root = Path(project_root)
+    def __init__(self, project_root: str, bad_imports: Iterable[str]):
+        self.project_root = Path(project_root).resolve()
         self.bad_imports: list[str] = list(bad_imports)
 
         self.import_cache: dict[str, list[CodeLoc]] = {}  # Cache of package -> locations
@@ -426,16 +426,15 @@ class BadImportFinder:
 ####################################################################################################
 
 def main():
-    # Determine project root (where go.mod is)
     if len(sys.argv) < 2:
-        print("Usage: python find-bad-imports.py <project_root>")
+        print("Usage: python find_bad_imports.py <project_root>")
         sys.exit(1)
-
-    project_root = Path(sys.argv[1]).resolve()
-
     print("Loading unmaintained imports...", file=sys.stderr)
     bad_imports = list(iter_bad_imports())
+    generate_report(sys.argv[1], bad_imports)
 
+
+def generate_report(project_root: str, bad_imports: list[str]):
     finder = BadImportFinder(project_root, bad_imports)
 
     print("Analyzing imports...", file=sys.stderr)
@@ -456,7 +455,7 @@ def iter_bad_imports():
     """Load the list of bad imports from stdin."""
     if sys.stdin.isatty():
         print("Error: No input provided. Please pipe input to this script.")
-        print("Usage: cat bad-imports.txt | python3 scripts/find-bad-imports.py")
+        print("Usage: cat bad-imports.txt | python3 scripts/find_bad_imports.py")
         sys.exit(1)
 
     lines = sys.stdin.readlines()
@@ -486,6 +485,7 @@ def parse_go_mod(go_mod_path: Path) -> dict[str, str]:
     dependencies = {}
 
     for pkg, is_indirect in _iter_dep(content):
+        pkg = pkg.strip('"')
         tag = ""
         if is_indirect:
             if pkg in tool_deps:
@@ -512,7 +512,7 @@ def _iter_dep(content: str):
                 yield pkg, is_indirect
 
     # Also check single-line requires
-    for line_match in re.finditer(r'require\s+(\S+)\s+\S+(.*)', content):
+    for line_match in re.finditer(r'require\s+([^\s(]+)\s+(\S+.*)', content):
         pkg = line_match.group(1)
         is_indirect = '// indirect' in line_match.group(2)
         yield pkg, is_indirect
@@ -675,6 +675,30 @@ def find_all_paths(graph, start, target, max_depth=10) -> set[tuple[str, ...]]:
 
 
 def dedup_all_paths(all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[str, str], str]) -> set[tuple[str, ...]]:
+    shortcuts = find_best_paths(all_paths, edge_metadata)
+
+    new_all_paths = set()
+    for path in all_paths:
+        if len(path) < 2:
+            new_all_paths.add(path)
+            continue
+        for i in reversed(range(len(path) - 1)):
+            k = path[i], path[i + 1]
+            if not edge_metadata.get(k) == "indirect":
+                continue
+            short_path = shortcuts.get(k)
+            if not short_path:
+                continue
+            path = tuple(path[:i]) + tuple(short_path) + tuple(path[i + 2:])
+
+        new_all_paths.add(path)
+
+    return new_all_paths
+
+
+def find_best_paths(
+        all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[str, str], str],
+) -> dict[tuple[str, str], tuple[str, ...]]:
     shortcuts: dict[tuple[str, str], tuple[str, ...]] = {}
     indirect_shortcuts: dict[tuple[str, str], tuple[str, ...]] = {}
     for path in all_paths:
@@ -689,7 +713,7 @@ def dedup_all_paths(all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[s
                 sub_path = tuple(path[i:j + 1])
                 have_indirect = any(edge_metadata.get((s, t)) == "indirect" for s, t in zip(sub_path, sub_path[1:]))
                 if have_indirect:
-                    if k not in indirect_shortcuts or len(indirect_shortcuts[k]) > len(sub_path):
+                    if k not in indirect_shortcuts or len(indirect_shortcuts[k]) < len(sub_path):
                         indirect_shortcuts[k] = sub_path
                 else:
                     if k not in shortcuts or len(shortcuts[k]) > len(sub_path):
@@ -699,23 +723,7 @@ def dedup_all_paths(all_paths: set[tuple[str, ...]], edge_metadata: dict[tuple[s
         if k not in shortcuts:
             shortcuts[k] = v
 
-    new_all_paths = set()
-    for path in all_paths:
-        if len(path) < 2:
-            new_all_paths.add(path)
-            continue
-        for i in reversed(range(len(path) - 1)):
-            k = path[i], path[i + 1]
-            if not edge_metadata.get(k):
-                continue
-            short_path = shortcuts.get(k)
-            if not short_path:
-                continue
-            path = tuple(path[:i]) + tuple(short_path) + tuple(path[i + 2:])
-
-        new_all_paths.add(path)
-
-    return new_all_paths
+    return shortcuts
 
 
 def common_suffix(tuples: Iterable[tuple]) -> tuple:
@@ -751,20 +759,20 @@ def find_bottleneck_nodes(paths, source, target):
     :return: (True, set_of_nodes) if found, (False, None) otherwise
     """
     # 1. Reconstruct the graph from the given paths
-    G = nx.DiGraph()
+    graph = nx.DiGraph()
     for path in paths:
         # Add edges between consecutive nodes in each path
-        G.add_edges_from(zip(path[:-1], path[1:]))
+        graph.add_edges_from(zip(path, path[1:]))
 
     # Quick Check: If source and target are directly connected,
     # no set of intermediate nodes can stop the flow.
-    if G.has_edge(source, target):
+    if graph.has_edge(source, target):
         return set()
 
     try:
         # 2. Find the minimum vertex cut
         # This returns the smallest set of nodes that disconnects source from target
-        return nx.minimum_node_cut(G, s=source, t=target)
+        return nx.minimum_node_cut(graph, s=source, t=target)
     except nx.NetworkXNoPath:
         # If there is no path at all, an empty set (size 0 <= K) disconnects them
         return set()
