@@ -598,11 +598,17 @@ def _iter_code_locations(project_root: Path, package: str) -> Iterable[CodeLoc]:
 def build_dependency_graph(project_root) -> DependencyGraph:
     """Build the dependency graph with edge metadata for direct/indirect/toolchain."""
     # Get the full graph from go mod graph and parse all edges
-    all_edges = list(_iter_project_graph_edges(project_root))
+    all_edges = set(_iter_project_graph_edges(project_root))
     print(f"Filtering {len(all_edges)} edges to separate direct and indirect dependencies...", file=sys.stderr)
 
     # Create cache for module dependencies
     cache = ModuleDependencyCache(project_root)
+
+    indirect_dep = {pkg for pkg, t in cache.get_dependencies(cache.module_name).items() if t == "indirect"}
+    why = {pkg: list(_iter_go_mod_why(project_root, pkg)) for pkg in indirect_dep}
+
+    for dep_list in why.values():
+        all_edges.update(zip(dep_list, dep_list[1:]))
 
     # Build forward and reverse graphs with all edges
     graph = defaultdict(set)
@@ -629,6 +635,26 @@ def build_dependency_graph(project_root) -> DependencyGraph:
         graph=dict(graph),
         edge_metadata=edge_metadata
     )
+
+
+def _iter_go_mod_why(project_root: str, pkg: str):
+    seen = set()
+    for line in run(['go', 'mod', 'why', pkg], project_root).split('\n'):
+        line = line.strip()
+        if not line or line.startswith("#") or "main module does not need" in line:
+            continue
+        if "fabric-x-committer" in line:
+            pkg = "github.com/hyperledger/fabric-x-commiter"
+        else:
+            try:
+                pkg = run(["go", "list", "-f", "{{.Module.Path}}", line], project_root).strip()
+            except Exception as e:
+                print(e, file=sys.stderr)
+                continue
+        if pkg in seen:
+            continue
+        yield pkg
+        seen.add(pkg)
 
 
 def _iter_project_graph_edges(project_root):
