@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import networkx as nx
+
 
 @dataclass
 class DependencyGraph:
@@ -743,9 +745,6 @@ def common_suffix(tuples: Iterable[tuple]) -> tuple:
 
     # 3. Reverse the result back to its original order
     return tuple(reversed(matched))
-
-
-import networkx as nx
 
 
 def find_bottleneck_nodes(paths, source, target):
