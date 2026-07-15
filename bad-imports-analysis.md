@@ -1,2268 +1,654 @@
 # Unmaintained Imports Report
 
-- **📦 github.com/Knetic/govaluate**
+*Graph nodes omit the `github.com/` and `hyperledger/` prefixes; blue nodes are Hyperledger packages, green nodes are build tools.*
+
+## 📦 `github.com/beorn7/perks`, `github.com/munnerz/goautoneg`
+
+*2 packages pulled in identically:*
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/prometheus/client_golang`
+  - imported at `loadgen/metrics/metrics.go:13`, `service/coordinator/dependencygraph/metrics.go:10`, `service/coordinator/metrics.go:10` (+13 more)
 
 ```mermaid
 graph TD
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-common --> github.com/Knetic/govaluate
-    style github.com/Knetic/govaluate fill:#555,stroke:#333,stroke-width:2px
-    style github.com/hyperledger/fabric-x-common fill:#777
+    fabric-lib-go --> prometheus/client_golang
+    fabric-x-committer --> fabric-lib-go
+    fabric-x-committer --> fabric-x-common
+    fabric-x-committer --> prometheus/client_golang
+    fabric-x-common --> fabric-lib-go
+    prometheus/client_golang --> beorn7/perks
+    prometheus/client_golang --> prometheus/common
+    prometheus/common --> munnerz/goautoneg
+    prometheus/common -->|indirect| prometheus/client_golang
+    style beorn7/perks fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style fabric-lib-go fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style fabric-x-common fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style munnerz/goautoneg fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style prometheus/client_golang fill:#777
 ```
-  - Choke: github.com/hyperledger/fabric-x-common
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/hyperledger/fabric-x-common`
+<details>
+<summary>🎯 Blame — 3 of our dependencies pull it in</summary>
 
-    Root from choke:
-    - - `github.com/hyperledger/fabric-x-common` -> `github.com/Knetic/govaluate`
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
+- `github.com/hyperledger/fabric-lib-go`
+  - path: `github.com/hyperledger/fabric-lib-go` → `github.com/prometheus/client_golang`
+  - imported at `cmd/cliutil/test_exports.go:18`, `cmd/config/app_config.go:19`, `cmd/config/app_config_test.go:16` (+40 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `github.com/hyperledger/fabric-lib-go` → `github.com/prometheus/client_golang`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/prometheus/client_golang`
+  - path: `github.com/prometheus/client_golang`
+  - imported at `loadgen/metrics/metrics.go:13`, `service/coordinator/dependencygraph/metrics.go:10`, `service/coordinator/metrics.go:10` (+13 more)
 
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/Knetic/govaluate`
+</details>
 
-- **📦 github.com/beorn7/perks**
+---
+
+## 📦 `github.com/davecgh/go-spew`, `github.com/pmezard/go-difflib`
+
+*2 packages pulled in identically:*
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/stretchr/testify`
+  - imported at `api/servicepb/height_test.go:12`, `cmd/cliutil/test_exports.go:21`, `cmd/cliutil/test_exports.go:22` (+156 more)
 
 ```mermaid
 graph TD
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/prometheus/client_golang --> github.com/beorn7/perks
-    github.com/prometheus/client_golang --> github.com/prometheus/common
-    github.com/prometheus/common -->|indirect| github.com/beorn7/perks
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    style github.com/beorn7/perks fill:#555,stroke:#333,stroke-width:2px
-    style github.com/prometheus/client_golang fill:#777
+    fabric-x-committer --> stretchr/testify
+    stretchr/testify --> davecgh/go-spew
+    stretchr/testify --> pmezard/go-difflib
+    style davecgh/go-spew fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style pmezard/go-difflib fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style stretchr/testify fill:#777
 ```
-  - Choke: github.com/prometheus/client_golang
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/prometheus/client_golang`
-    - - ... and 8 more
+<details>
+<summary>🎯 Blame — 25 of our dependencies pull it in</summary>
 
-    Root from choke:
-    - - `github.com/prometheus/client_golang` -> `github.com/beorn7/perks`
-    - - ... and 8 more
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
+- `github.com/Kunde21/markdownfmt/v3` *(tool)*
+  - path: `github.com/Kunde21/markdownfmt/v3` → `github.com/stretchr/testify`
+  - *(not imported directly)*
+- `github.com/cockroachdb/errors`
+  - path: `github.com/cockroachdb/errors` → `github.com/stretchr/testify`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/consensys/gnark-crypto`
+  - path: `github.com/consensys/gnark-crypto` → `github.com/stretchr/testify`
+  - imported at `utils/signature/verify_bls.go:11`, `utils/signature/verify_schemes_test.go:20`, `utils/testsig/digest_signer.go:16` (+3 more)
+- `github.com/fsouza/go-dockerclient`
+  - path: `github.com/fsouza/go-dockerclient` → `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `integration/runner/cluster_controllers_test.go:14`, `utils/test/docker.go:13`, `utils/testdb/container.go:22` (+1 more)
+- `github.com/gavv/httpexpect/v2`
+  - path: `github.com/gavv/httpexpect/v2` → `github.com/stretchr/testify`
+  - imported at `loadgen/client_test.go:19`
+- `github.com/go-playground/validator/v10`
+  - path: `github.com/go-playground/validator/v10` → `github.com/leodido/go-urn` → `github.com/stretchr/testify`
+  - imported at `cmd/config/app_config.go:18`
+- `github.com/go-task/slim-sprig/v3`
+  - path: `github.com/go-task/slim-sprig/v3` → `github.com/stretchr/testify`
+  - imported at `cmd/config/create_config_file.go:20`
+- `github.com/googleapis/api-linter/v2` *(tool)*
+  - path: `github.com/googleapis/api-linter/v2` → `github.com/stoewer/go-strcase` → `github.com/stretchr/testify`
+  - *(not imported directly)*
+- `github.com/grpc-ecosystem/grpc-gateway/v2`
+  - path: `github.com/grpc-ecosystem/grpc-gateway/v2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `api/servicepb/loadgen.pb.gw.go:17`, `api/servicepb/loadgen.pb.gw.go:18`, `loadgen/client.go:14`
+- `github.com/hyperledger/fabric-lib-go`
+  - path: `github.com/hyperledger/fabric-lib-go` → `github.com/stretchr/testify`
+  - imported at `cmd/cliutil/test_exports.go:18`, `cmd/config/app_config.go:19`, `cmd/config/app_config_test.go:16` (+40 more)
+- `github.com/hyperledger/fabric-protos-go-apiv2`
+  - path: `github.com/hyperledger/fabric-protos-go-apiv2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `integration/runner/runtime.go:17`, `integration/test/stream_concurrency_test.go:14`, `loadgen/adapters/broadcast.go:15` (+48 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `github.com/stretchr/testify`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/jackc/puddle/v2`
+  - path: `github.com/jackc/puddle/v2` → `github.com/stretchr/testify`
+  - imported at `utils/retry/executor.go:14`
+- `github.com/moby/moby/client`
+  - path: `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `docker/test/common.go:25`
+- `github.com/prometheus/client_golang`
+  - path: `github.com/prometheus/client_golang` → `github.com/prometheus/common` → `github.com/stretchr/testify`
+  - imported at `loadgen/metrics/metrics.go:13`, `service/coordinator/dependencygraph/metrics.go:10`, `service/coordinator/metrics.go:10` (+13 more)
+- `github.com/spf13/viper`
+  - path: `github.com/spf13/viper` → `github.com/stretchr/testify`
+  - imported at `cmd/config/app_config.go:20`, `cmd/config/config_decoder.go:20`, `cmd/config/config_decoder_test.go:15` (+2 more)
+- `github.com/stretchr/testify`
+  - path: `github.com/stretchr/testify`
+  - imported at `api/servicepb/height_test.go:12`, `cmd/cliutil/test_exports.go:21`, `cmd/cliutil/test_exports.go:22` (+156 more)
+- `github.com/yugabyte/pgx/v5`
+  - path: `github.com/yugabyte/pgx/v5` → `github.com/stretchr/testify`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+- `go.uber.org/mock`
+  - path: `go.uber.org/mock` → `github.com/stretchr/testify`
+  - imported at `utils/deliver/delivery_test.go:19`, `utils/deliver/streamer_mock_test.go:18`
+- `go.uber.org/zap`
+  - path: `go.uber.org/zap` → `github.com/stretchr/testify`
+  - imported at `service/sidecar/mapping.go:18`, `service/vc/validator.go:15`, `utils/retry/executor.go:16`
+- `google.golang.org/genproto/googleapis/api`
+  - path: `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `api/servicepb/loadgen.pb.go:16`
+- `google.golang.org/grpc`
+  - path: `google.golang.org/grpc` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
+- `google.golang.org/grpc/cmd/protoc-gen-go-grpc` *(tool)*
+  - path: `google.golang.org/grpc/cmd/protoc-gen-go-grpc` → `google.golang.org/grpc` → `go.opentelemetry.io/otel/trace` → `github.com/stretchr/testify`
+  - *(not imported directly)*
+- `gotest.tools/gotestsum` *(tool)*
+  - path: `gotest.tools/gotestsum` → `github.com/bitfield/gotestdox` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/stretchr/testify`
+  - *(not imported directly)*
+- `mvdan.cc/gofumpt` *(tool)*
+  - path: `mvdan.cc/gofumpt` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/stretchr/testify`
+  - *(not imported directly)*
 
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/prometheus/client_golang` -> `github.com/beorn7/perks`
-    - ... and 2 more
+</details>
 
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
+---
 
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/hyperledger/fabric-lib-go` -> `github.com/prometheus/client_golang` -> `github.com/beorn7/perks`
-    - ... and 2 more
+## 📦 `github.com/go-logr/stdr` — indirect
 
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
+**🚧 Choke points** — every path funnels through these:
 
-    - `github.com/prometheus/client_golang` -> `github.com/beorn7/perks`
-    - ... and 2 more
-
-- **📦 github.com/davecgh/go-spew**
+- `go.opentelemetry.io/otel`
+  - reached via `google.golang.org/grpc` → `go.opentelemetry.io/otel`
+  - `google.golang.org/grpc` imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
 
 ```mermaid
 graph TD
-    bitbucket.org/creachadair/stringset --> honnef.co/go/tools
-    cloud.google.com/go/longrunning --> google.golang.org/genproto/googleapis/api
-    cloud.google.com/go/longrunning --> google.golang.org/grpc
-    cloud.google.com/go/longrunning -->|indirect| go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/aries
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix --> github.com/IBM/mathlib
-    github.com/IBM/idemix --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/IBM/idemix --> github.com/onsi/ginkgo/v2
-    github.com/IBM/idemix --> github.com/onsi/gomega
-    github.com/IBM/idemix --> github.com/stretchr/testify
-    github.com/IBM/idemix --> github.com/sykesm/zap-logfmt
-    github.com/IBM/idemix --> go.uber.org/zap
-    github.com/IBM/idemix --> google.golang.org/grpc
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/stretchr/testify
-    github.com/IBM/idemix/bccsp/schemes/weak-bb --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/types --> github.com/IBM/mathlib
-    github.com/IBM/mathlib --> github.com/consensys/gnark-crypto
-    github.com/IBM/mathlib --> github.com/stretchr/testify
-    github.com/Kunde21/markdownfmt/v3 --> github.com/pkg/diff
-    github.com/Kunde21/markdownfmt/v3 --> github.com/stretchr/testify
-    github.com/Microsoft/go-winio --> github.com/sirupsen/logrus
-    github.com/bitfield/gotestdox --> github.com/rogpeppe/go-internal
-    github.com/bufbuild/protocompile --> github.com/stretchr/testify
-    github.com/cockroachdb/errors --> github.com/getsentry/sentry-go
-    github.com/cockroachdb/errors --> github.com/kr/pretty
-    github.com/cockroachdb/errors --> github.com/stretchr/testify
-    github.com/cockroachdb/errors --> google.golang.org/grpc
-    github.com/consensys/gnark-crypto --> github.com/stretchr/testify
-    github.com/consensys/gnark-crypto -->|indirect| github.com/kr/pretty
-    github.com/containerd/errdefs/pkg --> google.golang.org/grpc
-    github.com/containerd/log --> github.com/sirupsen/logrus
-    github.com/docker/docker --> github.com/Microsoft/go-winio
-    github.com/docker/docker --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/trace
-    github.com/docker/go-connections --> github.com/Microsoft/go-winio
-    github.com/fsouza/go-dockerclient --> github.com/Microsoft/go-winio
-    github.com/fsouza/go-dockerclient --> github.com/moby/go-archive
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/gavv/httpexpect/v2 --> github.com/sanity-io/litter
-    github.com/gavv/httpexpect/v2 --> github.com/stretchr/testify
-    github.com/gavv/httpexpect/v2 --> github.com/xeipuuv/gojsonschema
-    github.com/gavv/httpexpect/v2 --> moul.io/http2curl/v2
-    github.com/gavv/httpexpect/v2 -->|indirect| github.com/onsi/ginkgo
-    github.com/gavv/httpexpect/v2 -->|indirect| github.com/onsi/gomega
-    github.com/getsentry/sentry-go --> github.com/stretchr/testify
-    github.com/getsentry/sentry-go -->|indirect| github.com/kr/pretty
-    github.com/getsentry/sentry-go -->|indirect| github.com/rogpeppe/go-internal
-    github.com/go-playground/validator/v10 --> github.com/leodido/go-urn
-    github.com/go-task/slim-sprig --> github.com/stretchr/testify
-    github.com/go-task/slim-sprig/v3 --> github.com/stretchr/testify
-    github.com/googleapis/api-linter/v2 --> bitbucket.org/creachadair/stringset
-    github.com/googleapis/api-linter/v2 --> cloud.google.com/go/longrunning
-    github.com/googleapis/api-linter/v2 --> github.com/bufbuild/protocompile
-    github.com/googleapis/api-linter/v2 --> github.com/stoewer/go-strcase
-    github.com/googleapis/api-linter/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/grpc
-    github.com/hyperledger-labs/SmartBFT --> github.com/stretchr/testify
-    github.com/hyperledger-labs/SmartBFT --> go.uber.org/zap
-    github.com/hyperledger/aries-bbs-go --> github.com/IBM/mathlib
-    github.com/hyperledger/aries-bbs-go --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-lib-go --> github.com/onsi/ginkgo/v2
-    github.com/hyperledger/fabric-lib-go --> github.com/onsi/gomega
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-lib-go --> github.com/spf13/viper
-    github.com/hyperledger/fabric-lib-go --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-lib-go --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-lib-go --> go.uber.org/zap
-    github.com/hyperledger/fabric-lib-go --> google.golang.org/grpc
-    github.com/hyperledger/fabric-lib-go -->|indirect| github.com/go-task/slim-sprig/v3
-    github.com/hyperledger/fabric-protos-go-apiv2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/consensys/gnark-crypto
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/docker
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/go-connections
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/go-playground/validator/v10
-    github.com/hyperledger/fabric-x-committer --> github.com/go-task/slim-sprig/v3
-    github.com/hyperledger/fabric-x-committer --> github.com/grpc-ecosystem/grpc-gateway/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/jackc/puddle/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-committer --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-committer --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-x-committer --> github.com/yugabyte/pgx/v5
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/mock
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/genproto/googleapis/api
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/Kunde21/markdownfmt/v3
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-committer -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-committer -->|tool| mvdan.cc/gofumpt
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-common --> github.com/davecgh/go-spew
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger-labs/SmartBFT
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-common --> github.com/onsi/ginkgo/v2
-    github.com/hyperledger/fabric-x-common --> github.com/onsi/gomega
-    github.com/hyperledger/fabric-x-common --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-common --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-x-common --> github.com/syndtr/goleveldb
-    github.com/hyperledger/fabric-x-common --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-common --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-common -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-common -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-common -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-common -->|tool| mvdan.cc/gofumpt
-    github.com/jackc/pgpassfile --> github.com/stretchr/testify
-    github.com/jackc/pgservicefile --> github.com/stretchr/testify
-    github.com/jackc/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/jackc/pgx/v5 --> github.com/jackc/pgservicefile
-    github.com/jackc/pgx/v5 --> github.com/jackc/puddle/v2
-    github.com/jackc/pgx/v5 --> github.com/stretchr/testify
-    github.com/jackc/pgx/v5 -->|indirect| github.com/kr/pretty
-    github.com/jackc/puddle/v2 --> github.com/stretchr/testify
-    github.com/kr/pretty --> github.com/rogpeppe/go-internal
-    github.com/leodido/go-urn --> github.com/stretchr/testify
-    github.com/moby/go-archive --> github.com/containerd/log
-    github.com/moby/moby/client --> github.com/Microsoft/go-winio
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    github.com/moby/moby/client --> github.com/docker/go-connections
-    github.com/moby/moby/client --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/moby/moby/client --> go.opentelemetry.io/otel/trace
-    github.com/onsi/ginkgo --> github.com/go-task/slim-sprig
-    github.com/onsi/ginkgo --> github.com/onsi/gomega
-    github.com/onsi/ginkgo/v2 --> github.com/go-task/slim-sprig
-    github.com/onsi/ginkgo/v2 --> github.com/onsi/gomega
-    github.com/onsi/gomega --> github.com/onsi/ginkgo
-    github.com/onsi/gomega --> github.com/onsi/ginkgo/v2
-    github.com/pkg/diff --> github.com/sergi/go-diff
-    github.com/pkg/diff --> github.com/stretchr/testify
-    github.com/prometheus/client_golang --> github.com/prometheus/common
-    github.com/prometheus/client_golang -->|indirect| github.com/kr/pretty
-    github.com/prometheus/common --> github.com/stretchr/testify
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    github.com/prometheus/common -->|indirect| github.com/rogpeppe/go-internal
-    github.com/rogpeppe/go-internal --> github.com/pkg/diff
-    github.com/sanity-io/litter --> github.com/stretchr/testify
-    github.com/sergi/go-diff --> github.com/stretchr/testify
-    github.com/sergi/go-diff -->|indirect| github.com/kr/pretty
-    github.com/sirupsen/logrus --> github.com/stretchr/testify
-    github.com/spf13/cast -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/rogpeppe/go-internal
-    github.com/spf13/viper --> github.com/spf13/cast
-    github.com/spf13/viper --> github.com/stretchr/testify
-    github.com/spf13/viper --> github.com/subosito/gotenv
-    github.com/stoewer/go-strcase --> github.com/stretchr/testify
-    github.com/stretchr/objx --> github.com/stretchr/testify
-    github.com/stretchr/testify --> github.com/davecgh/go-spew
-    github.com/stretchr/testify --> github.com/stretchr/objx
-    github.com/subosito/gotenv --> github.com/stretchr/testify
-    github.com/sykesm/zap-logfmt --> github.com/stretchr/testify
-    github.com/sykesm/zap-logfmt --> go.uber.org/zap
-    github.com/syndtr/goleveldb --> github.com/onsi/ginkgo
-    github.com/syndtr/goleveldb --> github.com/onsi/gomega
-    github.com/syndtr/goleveldb --> github.com/stretchr/testify
-    github.com/tailscale/depaware --> github.com/pkg/diff
-    github.com/xeipuuv/gojsonschema --> github.com/stretchr/testify
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgservicefile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgx/v5
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/puddle/v2
-    github.com/yugabyte/pgx/v5 --> github.com/stretchr/testify
-    go.opentelemetry.io/auto/sdk --> github.com/stretchr/testify
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/kr/pretty
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/rogpeppe/go-internal
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> github.com/stretchr/testify
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel --> github.com/stretchr/testify
-    go.opentelemetry.io/otel --> go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> google.golang.org/grpc
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| github.com/grpc-ecosystem/grpc-gateway/v2
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| google.golang.org/genproto/googleapis/api
-    go.opentelemetry.io/otel/metric --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/metric --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel/trace --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/trace --> go.opentelemetry.io/otel
-    go.uber.org/atomic --> github.com/stretchr/testify
-    go.uber.org/mock --> github.com/stretchr/testify
-    go.uber.org/multierr --> github.com/stretchr/testify
-    go.uber.org/multierr --> go.uber.org/atomic
-    go.uber.org/multierr --> honnef.co/go/tools
-    go.uber.org/zap --> github.com/stretchr/testify
-    go.uber.org/zap --> go.uber.org/atomic
-    go.uber.org/zap --> go.uber.org/multierr
-    google.golang.org/genproto/googleapis/api --> google.golang.org/grpc
+    fabric-x-committer --> google.golang.org/grpc
+    fabric-x-committer -->|tool| googleapis/api-linter/v2
+    fabric-x-committer --> moby/moby/client
+    go.opentelemetry.io/otel --> go-logr/stdr
     google.golang.org/grpc --> go.opentelemetry.io/otel
-    google.golang.org/grpc --> go.opentelemetry.io/otel/metric
-    google.golang.org/grpc --> go.opentelemetry.io/otel/trace
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc --> google.golang.org/grpc
-    gotest.tools/gotestsum --> github.com/bitfield/gotestdox
-    honnef.co/go/tools --> github.com/rogpeppe/go-internal
-    moul.io/http2curl/v2 --> github.com/tailscale/depaware
-    mvdan.cc/gofumpt --> github.com/rogpeppe/go-internal
-    mvdan.cc/gofumpt -->|indirect| github.com/kr/pretty
-    style github.com/davecgh/go-spew fill:#555,stroke:#333,stroke-width:2px
-    style github.com/stretchr/testify fill:#777
-    style github.com/hyperledger/fabric-x-common fill:#777
+    googleapis/api-linter/v2 -->|3 hops| go.opentelemetry.io/otel
+    googleapis/api-linter/v2 -->|2 hops| google.golang.org/grpc
+    moby/moby/client -->|2 hops| go.opentelemetry.io/otel
+    moby/moby/client -->|2 hops| google.golang.org/grpc
+    style go-logr/stdr fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style googleapis/api-linter/v2 fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style go.opentelemetry.io/otel fill:#777
+    linkStyle 1 stroke:#0e6027,stroke-width:2px,color:#fff,background-color:#0e6027
 ```
-  - Choke: github.com/stretchr/testify
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/stretchr/testify`
-    - - ... and 2649 more
+<details>
+<summary>🎯 Blame — 11 of our dependencies pull it in</summary>
 
-    Root from choke:
-    - - `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - - ... and 2649 more
-  - Choke: github.com/hyperledger/fabric-x-common
+- `github.com/cockroachdb/errors`
+  - path: `github.com/cockroachdb/errors` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/fsouza/go-dockerclient`
+  - path: `github.com/fsouza/go-dockerclient` → `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `integration/runner/cluster_controllers_test.go:14`, `utils/test/docker.go:13`, `utils/testdb/container.go:22` (+1 more)
+- `github.com/googleapis/api-linter/v2` *(tool)*
+  - path: `github.com/googleapis/api-linter/v2` → `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - *(not imported directly)*
+- `github.com/grpc-ecosystem/grpc-gateway/v2`
+  - path: `github.com/grpc-ecosystem/grpc-gateway/v2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `api/servicepb/loadgen.pb.gw.go:17`, `api/servicepb/loadgen.pb.gw.go:18`, `loadgen/client.go:14`
+- `github.com/hyperledger/fabric-lib-go`
+  - path: `github.com/hyperledger/fabric-lib-go` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `cmd/cliutil/test_exports.go:18`, `cmd/config/app_config.go:19`, `cmd/config/app_config_test.go:16` (+40 more)
+- `github.com/hyperledger/fabric-protos-go-apiv2`
+  - path: `github.com/hyperledger/fabric-protos-go-apiv2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `integration/runner/runtime.go:17`, `integration/test/stream_concurrency_test.go:14`, `loadgen/adapters/broadcast.go:15` (+48 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/moby/moby/client`
+  - path: `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `docker/test/common.go:25`
+- `google.golang.org/genproto/googleapis/api`
+  - path: `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `api/servicepb/loadgen.pb.go:16`
+- `google.golang.org/grpc`
+  - path: `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
+- `google.golang.org/grpc/cmd/protoc-gen-go-grpc` *(tool)*
+  - path: `google.golang.org/grpc/cmd/protoc-gen-go-grpc` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/go-logr/stdr`
+  - *(not imported directly)*
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/hyperledger/fabric-x-common`
-    - - ... and 926 more
+</details>
 
-    Root from choke:
-    - - `github.com/hyperledger/fabric-x-common` -> `github.com/davecgh/go-spew`
-    - - ... and 926 more
-  - 🎯 Blamed: `github.com/Kunde21/markdownfmt/v3`
+---
 
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 7 more
+## 📦 `github.com/go-playground/locales`, `github.com/go-playground/universal-translator`
 
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
+*2 packages pulled in identically:*
 
-    - `github.com/cockroachdb/errors` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 89 more
+**🚧 Choke points** — every path funnels through these:
 
-  - 🎯 Blamed: `github.com/consensys/gnark-crypto`
-
-    - `github.com/consensys/gnark-crypto` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 5 more
-
-  - 🎯 Blamed: `github.com/docker/docker`
-
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 438 more
-
-  - 🎯 Blamed: `github.com/docker/go-connections`
-
-    - `github.com/docker/go-connections` -> `github.com/Microsoft/go-winio` -> `github.com/sirupsen/logrus` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/Microsoft/go-winio` -> `github.com/sirupsen/logrus` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 204 more
-
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 19 more
-
-  - 🎯 Blamed: `github.com/go-playground/validator/v10`
-
-    - `github.com/go-playground/validator/v10` -> `github.com/leodido/go-urn` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/go-task/slim-sprig/v3`
-
-    - `github.com/go-task/slim-sprig/v3` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/googleapis/api-linter/v2`
-
-    - `github.com/googleapis/api-linter/v2` -> `github.com/bufbuild/protocompile` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 286 more
-
-  - 🎯 Blamed: `github.com/grpc-ecosystem/grpc-gateway/v2`
-
-    - `github.com/grpc-ecosystem/grpc-gateway/v2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 135 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 135 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-protos-go-apiv2`
-
-    - `github.com/hyperledger/fabric-protos-go-apiv2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 73 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/davecgh/go-spew`
-    - ... and 926 more
-
-  - 🎯 Blamed: `github.com/jackc/puddle/v2`
-
-    - `github.com/jackc/puddle/v2` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
-
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 13 more
-
-  - 🎯 Blamed: `github.com/spf13/viper`
-
-    - `github.com/spf13/viper` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 11 more
-
-  - 🎯 Blamed: `github.com/stretchr/testify`
-
-    - `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/yugabyte/pgx/v5`
-
-    - `github.com/yugabyte/pgx/v5` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 19 more
-
-  - 🎯 Blamed: `go.uber.org/mock`
-
-    - `go.uber.org/mock` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 1 more
-
-  - 🎯 Blamed: `go.uber.org/zap`
-
-    - `go.uber.org/zap` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 11 more
-
-  - 🎯 Blamed: `google.golang.org/genproto/googleapis/api`
-
-    - `google.golang.org/genproto/googleapis/api` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 73 more
-
-  - 🎯 Blamed: `google.golang.org/grpc`
-
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 92 more
-
-  - 🎯 Blamed: `google.golang.org/grpc/cmd/protoc-gen-go-grpc`
-
-    - `google.golang.org/grpc/cmd/protoc-gen-go-grpc` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 73 more
-
-  - 🎯 Blamed: `gotest.tools/gotestsum`
-
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 3 more
-
-  - 🎯 Blamed: `mvdan.cc/gofumpt`
-
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-    - ... and 7 more
-
-- **📦 github.com/go-logr/stdr**
-
-  Root to pkg: `go.opentelemetry.io/otel` -> `github.com/go-logr/stdr`
+- `github.com/go-playground/validator/v10`
+  - imported at `cmd/config/app_config.go:18`
 
 ```mermaid
 graph TD
-    cloud.google.com/go/longrunning --> google.golang.org/genproto/googleapis/api
-    cloud.google.com/go/longrunning --> google.golang.org/grpc
-    cloud.google.com/go/longrunning -->|indirect| go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/IBM/idemix --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/IBM/idemix --> google.golang.org/grpc
-    github.com/cockroachdb/errors --> google.golang.org/grpc
-    github.com/containerd/errdefs/pkg --> google.golang.org/grpc
-    github.com/docker/docker --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/trace
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/googleapis/api-linter/v2 --> cloud.google.com/go/longrunning
-    github.com/googleapis/api-linter/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-lib-go --> google.golang.org/grpc
-    github.com/hyperledger/fabric-protos-go-apiv2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/docker
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/grpc-ecosystem/grpc-gateway/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/genproto/googleapis/api
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-committer -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-common --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-common -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-common -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    github.com/moby/moby/client --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/moby/moby/client --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> google.golang.org/grpc
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| github.com/grpc-ecosystem/grpc-gateway/v2
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| google.golang.org/genproto/googleapis/api
-    go.opentelemetry.io/otel/metric --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/trace --> go.opentelemetry.io/otel
-    google.golang.org/genproto/googleapis/api --> google.golang.org/grpc
+    fabric-x-committer --> go-playground/validator/v10
+    go-playground/universal-translator --> go-playground/locales
+    go-playground/validator/v10 --> go-playground/locales
+    go-playground/validator/v10 --> go-playground/universal-translator
+    style go-playground/locales fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style go-playground/universal-translator fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style go-playground/validator/v10 fill:#777
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+```
+
+<details>
+<summary>🎯 Blame — 1 of our dependencies pull it in</summary>
+
+- `github.com/go-playground/validator/v10`
+  - path: `github.com/go-playground/validator/v10`
+  - imported at `cmd/config/app_config.go:18`
+
+</details>
+
+---
+
+## 📦 `github.com/gogo/protobuf` — indirect
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/cockroachdb/errors`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/moby/moby/client`
+  - imported at `docker/test/common.go:25`
+
+```mermaid
+graph TD
+    cockroachdb/errors --> gogo/protobuf
+    containerd/errdefs/pkg -->|indirect| gogo/protobuf
+    fabric-x-committer --> cockroachdb/errors
+    fabric-x-committer --> fabric-x-common
+    fabric-x-committer --> fsouza/go-dockerclient
+    fabric-x-committer --> moby/moby/client
+    fabric-x-common --> cockroachdb/errors
+    fsouza/go-dockerclient --> moby/moby/client
+    moby/moby/client --> containerd/errdefs/pkg
+    style cockroachdb/errors fill:#777
+    style gogo/protobuf fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style fabric-x-common fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style moby/moby/client fill:#777
+```
+
+<details>
+<summary>🎯 Blame — 4 of our dependencies pull it in</summary>
+
+- `github.com/cockroachdb/errors`
+  - path: `github.com/cockroachdb/errors` → `github.com/gogo/protobuf`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/fsouza/go-dockerclient`
+  - path: `github.com/fsouza/go-dockerclient` → `github.com/moby/moby/client` → `github.com/containerd/errdefs/pkg` → `github.com/gogo/protobuf`
+  - imported at `integration/runner/cluster_controllers_test.go:14`, `utils/test/docker.go:13`, `utils/testdb/container.go:22` (+1 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `github.com/cockroachdb/errors` → `github.com/gogo/protobuf`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/moby/moby/client`
+  - path: `github.com/moby/moby/client` → `github.com/containerd/errdefs/pkg` → `github.com/gogo/protobuf`
+  - imported at `docker/test/common.go:25`
+
+</details>
+
+---
+
+## 📦 `github.com/jackc/pgpassfile` — indirect
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/yugabyte/pgx/v5`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+
+```mermaid
+graph TD
+    fabric-x-committer --> yugabyte/pgx/v5
+    jackc/pgx/v5 --> jackc/pgpassfile
+    yugabyte/pgx/v5 --> jackc/pgpassfile
+    yugabyte/pgx/v5 --> jackc/pgx/v5
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style jackc/pgpassfile fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style yugabyte/pgx/v5 fill:#777
+```
+
+<details>
+<summary>🎯 Blame — 1 of our dependencies pull it in</summary>
+
+- `github.com/yugabyte/pgx/v5`
+  - path: `github.com/yugabyte/pgx/v5` → `github.com/jackc/pgpassfile`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+
+</details>
+
+---
+
+## 📦 `github.com/kr/pretty` — indirect
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/cockroachdb/errors`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/consensys/gnark-crypto`
+  - imported at `utils/signature/verify_bls.go:11`, `utils/signature/verify_schemes_test.go:20`, `utils/testsig/digest_signer.go:16` (+3 more)
+- `github.com/pkg/diff`
+  - reached via `github.com/Kunde21/markdownfmt/v3` → `github.com/pkg/diff`
+  - `github.com/Kunde21/markdownfmt/v3` *(not imported directly)*
+- `github.com/yugabyte/pgx/v5`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+
+```mermaid
+graph TD
+    Kunde21/markdownfmt/v3 --> pkg/diff
+    cockroachdb/errors --> google.golang.org/grpc
+    cockroachdb/errors --> kr/pretty
+    cockroachdb/errors -->|3 hops| pkg/diff
+    consensys/gnark-crypto -->|indirect| kr/pretty
+    fabric-x-committer -->|tool| Kunde21/markdownfmt/v3
+    fabric-x-committer --> cockroachdb/errors
+    fabric-x-committer --> consensys/gnark-crypto
+    fabric-x-committer --> fabric-x-common
+    fabric-x-committer --> gavv/httpexpect/v2
+    fabric-x-committer --> google.golang.org/grpc
+    fabric-x-committer -->|tool| googleapis/api-linter/v2
+    fabric-x-committer -->|tool| gotest.tools/gotestsum
+    fabric-x-committer --> moby/moby/client
+    fabric-x-committer -->|tool| mvdan.cc/gofumpt
+    fabric-x-committer --> prometheus/client_golang
+    fabric-x-committer --> spf13/viper
+    fabric-x-committer --> yugabyte/pgx/v5
+    fabric-x-common --> cockroachdb/errors
+    fabric-x-common -->|3 hops| consensys/gnark-crypto
+    fabric-x-common --> google.golang.org/grpc
+    fabric-x-common -->|tool| googleapis/api-linter/v2
+    fabric-x-common -->|tool| gotest.tools/gotestsum
+    fabric-x-common -->|tool| mvdan.cc/gofumpt
+    fabric-x-common -->|4 hops| pkg/diff
+    fabric-x-common -->|2 hops| prometheus/client_golang
+    fabric-x-common --> spf13/viper
+    gavv/httpexpect/v2 -->|3 hops| pkg/diff
+    google.golang.org/grpc -->|4 hops| pkg/diff
+    googleapis/api-linter/v2 -->|2 hops| google.golang.org/grpc
+    googleapis/api-linter/v2 -->|6 hops| pkg/diff
+    gotest.tools/gotestsum -->|3 hops| pkg/diff
+    moby/moby/client -->|2 hops| google.golang.org/grpc
+    moby/moby/client -->|5 hops| pkg/diff
+    mvdan.cc/gofumpt -->|2 hops| pkg/diff
+    pkg/diff -->|2 hops| kr/pretty
+    prometheus/client_golang -->|3 hops| pkg/diff
+    spf13/viper -->|3 hops| pkg/diff
+    yugabyte/pgx/v5 -->|2 hops| kr/pretty
+    style Kunde21/markdownfmt/v3 fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style cockroachdb/errors fill:#777
+    style consensys/gnark-crypto fill:#777
+    style googleapis/api-linter/v2 fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style fabric-x-common fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style kr/pretty fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style pkg/diff fill:#777
+    style yugabyte/pgx/v5 fill:#777
+    style gotest.tools/gotestsum fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style mvdan.cc/gofumpt fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    linkStyle 5,11,12,14,21,22,23 stroke:#0e6027,stroke-width:2px,color:#fff,background-color:#0e6027
+```
+
+<details>
+<summary>🎯 Blame — 19 of our dependencies pull it in</summary>
+
+- `github.com/Kunde21/markdownfmt/v3` *(tool)*
+  - path: `github.com/Kunde21/markdownfmt/v3` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - *(not imported directly)*
+- `github.com/cockroachdb/errors`
+  - path: `github.com/cockroachdb/errors` → `github.com/kr/pretty`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/consensys/gnark-crypto`
+  - path: `github.com/consensys/gnark-crypto` → `github.com/kr/pretty`
+  - imported at `utils/signature/verify_bls.go:11`, `utils/signature/verify_schemes_test.go:20`, `utils/testsig/digest_signer.go:16` (+3 more)
+- `github.com/fsouza/go-dockerclient`
+  - path: `github.com/fsouza/go-dockerclient` → `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `integration/runner/cluster_controllers_test.go:14`, `utils/test/docker.go:13`, `utils/testdb/container.go:22` (+1 more)
+- `github.com/gavv/httpexpect/v2`
+  - path: `github.com/gavv/httpexpect/v2` → `moul.io/http2curl/v2` → `github.com/tailscale/depaware` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `loadgen/client_test.go:19`
+- `github.com/googleapis/api-linter/v2` *(tool)*
+  - path: `github.com/googleapis/api-linter/v2` → `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - *(not imported directly)*
+- `github.com/grpc-ecosystem/grpc-gateway/v2`
+  - path: `github.com/grpc-ecosystem/grpc-gateway/v2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `api/servicepb/loadgen.pb.gw.go:17`, `api/servicepb/loadgen.pb.gw.go:18`, `loadgen/client.go:14`
+- `github.com/hyperledger/fabric-lib-go`
+  - path: `github.com/hyperledger/fabric-lib-go` → `github.com/prometheus/client_golang` → `github.com/prometheus/common` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `cmd/cliutil/test_exports.go:18`, `cmd/config/app_config.go:19`, `cmd/config/app_config_test.go:16` (+40 more)
+- `github.com/hyperledger/fabric-protos-go-apiv2`
+  - path: `github.com/hyperledger/fabric-protos-go-apiv2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `integration/runner/runtime.go:17`, `integration/test/stream_concurrency_test.go:14`, `loadgen/adapters/broadcast.go:15` (+48 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `github.com/cockroachdb/errors` → `github.com/kr/pretty`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/moby/moby/client`
+  - path: `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `docker/test/common.go:25`
+- `github.com/prometheus/client_golang`
+  - path: `github.com/prometheus/client_golang` → `github.com/prometheus/common` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `loadgen/metrics/metrics.go:13`, `service/coordinator/dependencygraph/metrics.go:10`, `service/coordinator/metrics.go:10` (+13 more)
+- `github.com/spf13/viper`
+  - path: `github.com/spf13/viper` → `github.com/spf13/cast` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `cmd/config/app_config.go:20`, `cmd/config/config_decoder.go:20`, `cmd/config/config_decoder_test.go:15` (+2 more)
+- `github.com/yugabyte/pgx/v5`
+  - path: `github.com/yugabyte/pgx/v5` → `github.com/jackc/pgx/v5` → `github.com/kr/pretty`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+- `google.golang.org/genproto/googleapis/api`
+  - path: `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `api/servicepb/loadgen.pb.go:16`
+- `google.golang.org/grpc`
+  - path: `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
+- `google.golang.org/grpc/cmd/protoc-gen-go-grpc` *(tool)*
+  - path: `google.golang.org/grpc/cmd/protoc-gen-go-grpc` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `go.opentelemetry.io/auto/sdk` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - *(not imported directly)*
+- `gotest.tools/gotestsum` *(tool)*
+  - path: `gotest.tools/gotestsum` → `github.com/bitfield/gotestdox` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - *(not imported directly)*
+- `mvdan.cc/gofumpt` *(tool)*
+  - path: `mvdan.cc/gofumpt` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty`
+  - *(not imported directly)*
+
+</details>
+
+---
+
+## 📦 `github.com/kr/text` — indirect
+
+**🚧 Choke points** — every path funnels through these:
+
+- `github.com/hyperledger/fabric-x-common`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/kr/pretty`
+  - reached via `github.com/cockroachdb/errors` → `github.com/kr/pretty`
+  - `github.com/cockroachdb/errors` imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/spf13/viper`
+  - imported at `cmd/config/app_config.go:20`, `cmd/config/config_decoder.go:20`, `cmd/config/config_decoder_test.go:15` (+2 more)
+- `go.opentelemetry.io/otel`
+  - reached via `google.golang.org/grpc` → `go.opentelemetry.io/otel`
+  - `google.golang.org/grpc` imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
+- `go.uber.org/zap`
+  - imported at `service/sidecar/mapping.go:18`, `service/vc/validator.go:15`, `utils/retry/executor.go:16`
+- `mvdan.cc/gofumpt`
+  - *(not imported directly)*
+
+```mermaid
+graph TD
+    Kunde21/markdownfmt/v3 -->|3 hops| kr/pretty
+    cockroachdb/errors --> google.golang.org/grpc
+    cockroachdb/errors --> kr/pretty
+    consensys/gnark-crypto -->|indirect| kr/pretty
+    fabric-x-committer -->|tool| Kunde21/markdownfmt/v3
+    fabric-x-committer --> cockroachdb/errors
+    fabric-x-committer --> consensys/gnark-crypto
+    fabric-x-committer --> fabric-x-common
+    fabric-x-committer --> gavv/httpexpect/v2
+    fabric-x-committer --> go.uber.org/zap
+    fabric-x-committer --> google.golang.org/grpc
+    fabric-x-committer -->|tool| googleapis/api-linter/v2
+    fabric-x-committer -->|tool| gotest.tools/gotestsum
+    fabric-x-committer --> moby/moby/client
+    fabric-x-committer -->|tool| mvdan.cc/gofumpt
+    fabric-x-committer --> prometheus/client_golang
+    fabric-x-committer --> spf13/viper
+    fabric-x-committer --> yugabyte/pgx/v5
+    fabric-x-common --> cockroachdb/errors
+    fabric-x-common -->|3 hops| consensys/gnark-crypto
+    fabric-x-common --> go.uber.org/zap
+    fabric-x-common --> google.golang.org/grpc
+    fabric-x-common -->|tool| googleapis/api-linter/v2
+    fabric-x-common -->|tool| gotest.tools/gotestsum
+    fabric-x-common -->|6 hops| kr/pretty
+    fabric-x-common -->|3 hops| kr/text
+    fabric-x-common -->|tool| mvdan.cc/gofumpt
+    fabric-x-common -->|2 hops| prometheus/client_golang
+    fabric-x-common --> spf13/viper
+    gavv/httpexpect/v2 -->|5 hops| kr/pretty
+    go.opentelemetry.io/otel -->|5 hops| kr/pretty
+    go.opentelemetry.io/otel -->|indirect| kr/text
+    go.uber.org/zap -->|indirect| kr/text
     google.golang.org/grpc --> go.opentelemetry.io/otel
-    google.golang.org/grpc --> go.opentelemetry.io/otel/metric
-    google.golang.org/grpc --> go.opentelemetry.io/otel/trace
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc --> google.golang.org/grpc
-    style go.opentelemetry.io/otel fill:#555,stroke:#333,stroke-width:2px
-    style go.opentelemetry.io/otel/trace fill:#777
-    style go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp fill:#777
-    style go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp fill:#777
-    style google.golang.org/grpc fill:#777
+    googleapis/api-linter/v2 -->|3 hops| go.opentelemetry.io/otel
+    googleapis/api-linter/v2 -->|2 hops| google.golang.org/grpc
+    gotest.tools/gotestsum -->|5 hops| kr/pretty
+    kr/pretty --> kr/text
+    moby/moby/client -->|2 hops| go.opentelemetry.io/otel
+    moby/moby/client -->|2 hops| google.golang.org/grpc
+    mvdan.cc/gofumpt -->|4 hops| kr/pretty
+    mvdan.cc/gofumpt -->|indirect| kr/text
+    prometheus/client_golang -->|5 hops| kr/pretty
+    spf13/viper -->|5 hops| kr/pretty
+    spf13/viper -->|2 hops| kr/text
+    yugabyte/pgx/v5 -->|2 hops| kr/pretty
+    style Kunde21/markdownfmt/v3 fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style googleapis/api-linter/v2 fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style fabric-x-common fill:#0f62fe,stroke:#002d9c,stroke-width:4px,color:#fff
+    style kr/pretty fill:#777
+    style kr/text fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style spf13/viper fill:#777
+    style go.opentelemetry.io/otel fill:#777
+    style go.uber.org/zap fill:#777
+    style gotest.tools/gotestsum fill:#0e6027,stroke:#044317,stroke-width:2px,color:#fff
+    style mvdan.cc/gofumpt fill:#0e6027,stroke:#044317,stroke-width:4px,color:#fff
+    linkStyle 4,11,12,14,22,23,26 stroke:#0e6027,stroke-width:2px,color:#fff,background-color:#0e6027
 ```
-  - Choke: go.opentelemetry.io/otel/trace
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/docker/docker` -> `go.opentelemetry.io/otel/trace`
-    - - ... and 94 more
+<details>
+<summary>🎯 Blame — 20 of our dependencies pull it in</summary>
 
-    Root from choke:
-    - - `go.opentelemetry.io/otel/trace` -> `go.opentelemetry.io/otel`
-    - - ... and 94 more
-  - Choke: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+- `github.com/Kunde21/markdownfmt/v3` *(tool)*
+  - path: `github.com/Kunde21/markdownfmt/v3` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty` → `github.com/kr/text`
+  - *(not imported directly)*
+- `github.com/cockroachdb/errors`
+  - path: `github.com/cockroachdb/errors` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `cmd/committer/config.go:10`, `cmd/committer/healthcheck_cmd_test.go:13`, `cmd/committer/start_cmd.go:13` (+84 more)
+- `github.com/consensys/gnark-crypto`
+  - path: `github.com/consensys/gnark-crypto` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `utils/signature/verify_bls.go:11`, `utils/signature/verify_schemes_test.go:20`, `utils/testsig/digest_signer.go:16` (+3 more)
+- `github.com/fsouza/go-dockerclient`
+  - path: `github.com/fsouza/go-dockerclient` → `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `integration/runner/cluster_controllers_test.go:14`, `utils/test/docker.go:13`, `utils/testdb/container.go:22` (+1 more)
+- `github.com/gavv/httpexpect/v2`
+  - path: `github.com/gavv/httpexpect/v2` → `moul.io/http2curl/v2` → `github.com/tailscale/depaware` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `loadgen/client_test.go:19`
+- `github.com/googleapis/api-linter/v2` *(tool)*
+  - path: `github.com/googleapis/api-linter/v2` → `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - *(not imported directly)*
+- `github.com/grpc-ecosystem/grpc-gateway/v2`
+  - path: `github.com/grpc-ecosystem/grpc-gateway/v2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `api/servicepb/loadgen.pb.gw.go:17`, `api/servicepb/loadgen.pb.gw.go:18`, `loadgen/client.go:14`
+- `github.com/hyperledger/fabric-lib-go`
+  - path: `github.com/hyperledger/fabric-lib-go` → `go.uber.org/zap` → `github.com/kr/text`
+  - imported at `cmd/cliutil/test_exports.go:18`, `cmd/config/app_config.go:19`, `cmd/config/app_config_test.go:16` (+40 more)
+- `github.com/hyperledger/fabric-protos-go-apiv2`
+  - path: `github.com/hyperledger/fabric-protos-go-apiv2` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `integration/runner/runtime.go:17`, `integration/test/stream_concurrency_test.go:14`, `loadgen/adapters/broadcast.go:15` (+48 more)
+- `github.com/hyperledger/fabric-x-common`
+  - path: `github.com/hyperledger/fabric-x-common` → `github.com/cockroachdb/errors` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `api/servicepb/common.pb.go:15`, `api/servicepb/common.pb.go:16`, `api/servicepb/coordinator.pb.go:15` (+269 more)
+- `github.com/moby/moby/client`
+  - path: `github.com/moby/moby/client` → `go.opentelemetry.io/otel/trace` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `docker/test/common.go:25`
+- `github.com/prometheus/client_golang`
+  - path: `github.com/prometheus/client_golang` → `github.com/prometheus/common` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `loadgen/metrics/metrics.go:13`, `service/coordinator/dependencygraph/metrics.go:10`, `service/coordinator/metrics.go:10` (+13 more)
+- `github.com/spf13/viper`
+  - path: `github.com/spf13/viper` → `github.com/spf13/cast` → `github.com/kr/text`
+  - imported at `cmd/config/app_config.go:20`, `cmd/config/config_decoder.go:20`, `cmd/config/config_decoder_test.go:15` (+2 more)
+- `github.com/yugabyte/pgx/v5`
+  - path: `github.com/yugabyte/pgx/v5` → `github.com/jackc/pgx/v5` → `github.com/kr/pretty` → `github.com/kr/text`
+  - imported at `service/query/batcher.go:16`, `service/query/batcher.go:17`, `service/query/query.go:18` (+10 more)
+- `go.uber.org/zap`
+  - path: `go.uber.org/zap` → `github.com/kr/text`
+  - imported at `service/sidecar/mapping.go:18`, `service/vc/validator.go:15`, `utils/retry/executor.go:16`
+- `google.golang.org/genproto/googleapis/api`
+  - path: `google.golang.org/genproto/googleapis/api` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `api/servicepb/loadgen.pb.go:16`
+- `google.golang.org/grpc`
+  - path: `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - imported at `api/servicepb/coordinator_grpc.pb.go:17`, `api/servicepb/coordinator_grpc.pb.go:18`, `api/servicepb/coordinator_grpc.pb.go:19` (+98 more)
+- `google.golang.org/grpc/cmd/protoc-gen-go-grpc` *(tool)*
+  - path: `google.golang.org/grpc/cmd/protoc-gen-go-grpc` → `google.golang.org/grpc` → `go.opentelemetry.io/otel` → `github.com/kr/text`
+  - *(not imported directly)*
+- `gotest.tools/gotestsum` *(tool)*
+  - path: `gotest.tools/gotestsum` → `github.com/bitfield/gotestdox` → `github.com/rogpeppe/go-internal` → `github.com/pkg/diff` → `github.com/sergi/go-diff` → `github.com/kr/pretty` → `github.com/kr/text`
+  - *(not imported directly)*
+- `mvdan.cc/gofumpt` *(tool)*
+  - path: `mvdan.cc/gofumpt` → `github.com/kr/text`
+  - *(not imported directly)*
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`
-    - - ... and 23 more
+</details>
 
-    Root from choke:
-    - - `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - - ... and 23 more
-  - Choke: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
+---
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/docker/docker` -> `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`
-    - - ... and 29 more
+## 📦 `github.com/xeipuuv/gojsonpointer`, `github.com/xeipuuv/gojsonreference`, `github.com/xeipuuv/gojsonschema`
 
-    Root from choke:
-    - - `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` -> `go.opentelemetry.io/otel`
-    - - ... and 29 more
-  - Choke: google.golang.org/grpc
+*3 packages pulled in identically:*
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `google.golang.org/grpc`
-    - - ... and 155 more
+**🚧 Choke points** — every path funnels through these:
 
-    Root from choke:
-    - - `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - - ... and 155 more
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
-
-    - `github.com/cockroachdb/errors` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-  - 🎯 Blamed: `github.com/docker/docker`
-
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - ... and 36 more
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - ... and 12 more
-
-  - 🎯 Blamed: `github.com/googleapis/api-linter/v2`
-
-    - `github.com/googleapis/api-linter/v2` -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - ... and 23 more
-
-  - 🎯 Blamed: `github.com/grpc-ecosystem/grpc-gateway/v2`
-
-    - `github.com/grpc-ecosystem/grpc-gateway/v2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 11 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-protos-go-apiv2`
-
-    - `github.com/hyperledger/fabric-protos-go-apiv2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 65 more
-
-  - 🎯 Blamed: `google.golang.org/genproto/googleapis/api`
-
-    - `google.golang.org/genproto/googleapis/api` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-  - 🎯 Blamed: `google.golang.org/grpc`
-
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-  - 🎯 Blamed: `google.golang.org/grpc/cmd/protoc-gen-go-grpc`
-
-    - `google.golang.org/grpc/cmd/protoc-gen-go-grpc` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-- **📦 github.com/go-playground/locales**
+- `github.com/gavv/httpexpect/v2`
+  - imported at `loadgen/client_test.go:19`
 
 ```mermaid
 graph TD
-    github.com/go-playground/universal-translator --> github.com/go-playground/locales
-    github.com/go-playground/validator/v10 --> github.com/go-playground/locales
-    github.com/go-playground/validator/v10 --> github.com/go-playground/universal-translator
-    github.com/hyperledger/fabric-x-committer --> github.com/go-playground/validator/v10
-    style github.com/go-playground/locales fill:#555,stroke:#333,stroke-width:2px
-    style github.com/go-playground/validator/v10 fill:#777
+    fabric-x-committer --> gavv/httpexpect/v2
+    gavv/httpexpect/v2 -->|indirect| xeipuuv/gojsonpointer
+    gavv/httpexpect/v2 -->|indirect| xeipuuv/gojsonreference
+    gavv/httpexpect/v2 --> xeipuuv/gojsonschema
+    xeipuuv/gojsonreference --> xeipuuv/gojsonpointer
+    xeipuuv/gojsonschema -->|indirect| xeipuuv/gojsonpointer
+    xeipuuv/gojsonschema --> xeipuuv/gojsonreference
+    style gavv/httpexpect/v2 fill:#777
+    style fabric-x-committer fill:#0f62fe,stroke:#002d9c,stroke-width:2px,color:#fff
+    style xeipuuv/gojsonpointer fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style xeipuuv/gojsonreference fill:#555,stroke:#333,stroke-width:2px,color:#fff
+    style xeipuuv/gojsonschema fill:#555,stroke:#333,stroke-width:2px,color:#fff
 ```
-  - Choke: github.com/go-playground/validator/v10
 
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/go-playground/validator/v10`
-    - - ... and 1 more
+<details>
+<summary>🎯 Blame — 1 of our dependencies pull it in</summary>
 
-    Root from choke:
-    - - `github.com/go-playground/validator/v10` -> `github.com/go-playground/locales`
-    - - ... and 1 more
-  - 🎯 Blamed: `github.com/go-playground/validator/v10`
+- `github.com/gavv/httpexpect/v2`
+  - path: `github.com/gavv/httpexpect/v2`
+  - imported at `loadgen/client_test.go:19`
 
-    - `github.com/go-playground/validator/v10` -> `github.com/go-playground/locales`
-    - ... and 1 more
-
-- **📦 github.com/go-playground/universal-translator**
-
-```mermaid
-graph TD
-    github.com/go-playground/validator/v10 --> github.com/go-playground/universal-translator
-    github.com/hyperledger/fabric-x-committer --> github.com/go-playground/validator/v10
-    style github.com/go-playground/universal-translator fill:#555,stroke:#333,stroke-width:2px
-    style github.com/go-playground/validator/v10 fill:#777
-```
-  - Choke: github.com/go-playground/validator/v10
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/go-playground/validator/v10`
-
-    Root from choke:
-    - - `github.com/go-playground/validator/v10` -> `github.com/go-playground/universal-translator`
-  - 🎯 Blamed: `github.com/go-playground/validator/v10`
-
-    - `github.com/go-playground/validator/v10` -> `github.com/go-playground/universal-translator`
-
-- **📦 github.com/gogo/protobuf**
-
-```mermaid
-graph TD
-    github.com/cockroachdb/errors --> github.com/gogo/protobuf
-    github.com/containerd/errdefs/pkg -->|indirect| github.com/gogo/protobuf
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    style github.com/gogo/protobuf fill:#555,stroke:#333,stroke-width:2px
-    style github.com/cockroachdb/errors fill:#777
-    style github.com/containerd/errdefs/pkg fill:#777
-```
-  - Choke: github.com/cockroachdb/errors
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/cockroachdb/errors`
-    - - ... and 1 more
-
-    Root from choke:
-    - - `github.com/cockroachdb/errors` -> `github.com/gogo/protobuf`
-    - - ... and 1 more
-  - Choke: github.com/containerd/errdefs/pkg
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `github.com/containerd/errdefs/pkg`
-
-    Root from choke:
-    - - `github.com/containerd/errdefs/pkg` *(indirect)* -> `github.com/gogo/protobuf`
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
-
-    - `github.com/cockroachdb/errors` -> `github.com/gogo/protobuf`
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `github.com/containerd/errdefs/pkg` *(indirect)* -> `github.com/gogo/protobuf`
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/cockroachdb/errors` -> `github.com/gogo/protobuf`
-
-- **📦 github.com/jackc/pgpassfile**
-
-```mermaid
-graph TD
-    github.com/hyperledger/fabric-x-committer --> github.com/yugabyte/pgx/v5
-    github.com/jackc/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgx/v5
-    style github.com/jackc/pgpassfile fill:#555,stroke:#333,stroke-width:2px
-    style github.com/yugabyte/pgx/v5 fill:#777
-```
-  - Choke: github.com/yugabyte/pgx/v5
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/yugabyte/pgx/v5`
-    - - ... and 1 more
-
-    Root from choke:
-    - - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgpassfile`
-    - - ... and 1 more
-  - 🎯 Blamed: `github.com/yugabyte/pgx/v5`
-
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgpassfile`
-    - ... and 1 more
-
-- **📦 github.com/kilic/bls12-381**
-
-  Root to pkg: `github.com/IBM/mathlib` -> `github.com/kilic/bls12-381`
-
-```mermaid
-graph TD
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/aries
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix --> github.com/IBM/mathlib
-    github.com/IBM/idemix --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/weak-bb --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/types --> github.com/IBM/mathlib
-    github.com/hyperledger/aries-bbs-go --> github.com/IBM/mathlib
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    style github.com/IBM/mathlib fill:#555,stroke:#333,stroke-width:2px
-    style github.com/IBM/idemix fill:#777
-```
-  - Choke: github.com/IBM/idemix
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix`
-    - - ... and 7 more
-
-    Root from choke:
-    - - `github.com/IBM/idemix` -> `github.com/IBM/mathlib`
-    - - ... and 7 more
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/mathlib`
-    - ... and 7 more
-
-- **📦 github.com/kr/pretty**
-
-```mermaid
-graph TD
-    bitbucket.org/creachadair/stringset --> honnef.co/go/tools
-    cloud.google.com/go/longrunning --> google.golang.org/genproto/googleapis/api
-    cloud.google.com/go/longrunning --> google.golang.org/grpc
-    cloud.google.com/go/longrunning -->|indirect| go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/aries
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix --> github.com/IBM/mathlib
-    github.com/IBM/idemix --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/IBM/idemix --> github.com/sykesm/zap-logfmt
-    github.com/IBM/idemix --> go.uber.org/zap
-    github.com/IBM/idemix --> google.golang.org/grpc
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/weak-bb --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/types --> github.com/IBM/mathlib
-    github.com/IBM/mathlib --> github.com/consensys/gnark-crypto
-    github.com/IBM/mathlib -->|indirect| github.com/rogpeppe/go-internal
-    github.com/Kunde21/markdownfmt/v3 --> github.com/pkg/diff
-    github.com/bitfield/gotestdox --> github.com/rogpeppe/go-internal
-    github.com/cockroachdb/errors --> github.com/getsentry/sentry-go
-    github.com/cockroachdb/errors --> github.com/kr/pretty
-    github.com/cockroachdb/errors --> google.golang.org/grpc
-    github.com/consensys/gnark-crypto -->|indirect| github.com/kr/pretty
-    github.com/containerd/errdefs/pkg --> google.golang.org/grpc
-    github.com/docker/docker --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/trace
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/gavv/httpexpect/v2 --> moul.io/http2curl/v2
-    github.com/getsentry/sentry-go -->|indirect| github.com/kr/pretty
-    github.com/getsentry/sentry-go -->|indirect| github.com/rogpeppe/go-internal
-    github.com/googleapis/api-linter/v2 --> bitbucket.org/creachadair/stringset
-    github.com/googleapis/api-linter/v2 --> cloud.google.com/go/longrunning
-    github.com/googleapis/api-linter/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/grpc
-    github.com/hyperledger-labs/SmartBFT --> go.uber.org/zap
-    github.com/hyperledger/aries-bbs-go --> github.com/IBM/mathlib
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-lib-go --> github.com/spf13/viper
-    github.com/hyperledger/fabric-lib-go --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-lib-go --> go.uber.org/zap
-    github.com/hyperledger/fabric-lib-go --> google.golang.org/grpc
-    github.com/hyperledger/fabric-protos-go-apiv2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/consensys/gnark-crypto
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/docker
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/grpc-ecosystem/grpc-gateway/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-committer --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-committer --> github.com/yugabyte/pgx/v5
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/genproto/googleapis/api
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/Kunde21/markdownfmt/v3
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-committer -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-committer -->|tool| mvdan.cc/gofumpt
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger-labs/SmartBFT
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-common --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-common --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-common --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-common -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-common -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-common -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-common -->|tool| mvdan.cc/gofumpt
-    github.com/jackc/pgx/v5 -->|indirect| github.com/kr/pretty
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    github.com/moby/moby/client --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/moby/moby/client --> go.opentelemetry.io/otel/trace
-    github.com/pkg/diff --> github.com/sergi/go-diff
-    github.com/prometheus/client_golang --> github.com/prometheus/common
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    github.com/prometheus/common -->|indirect| github.com/rogpeppe/go-internal
-    github.com/rogpeppe/go-internal --> github.com/pkg/diff
-    github.com/rogpeppe/go-internal --> gopkg.in/errgo.v2
-    github.com/sergi/go-diff -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/rogpeppe/go-internal
-    github.com/spf13/viper --> github.com/spf13/cast
-    github.com/sykesm/zap-logfmt --> go.uber.org/zap
-    github.com/tailscale/depaware --> github.com/pkg/diff
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgx/v5
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/kr/pretty
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/rogpeppe/go-internal
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel --> go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> google.golang.org/grpc
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| github.com/grpc-ecosystem/grpc-gateway/v2
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| google.golang.org/genproto/googleapis/api
-    go.opentelemetry.io/otel/metric --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/trace --> go.opentelemetry.io/otel
-    go.uber.org/multierr --> honnef.co/go/tools
-    go.uber.org/zap --> go.uber.org/multierr
-    google.golang.org/genproto/googleapis/api --> google.golang.org/grpc
-    google.golang.org/grpc --> go.opentelemetry.io/otel
-    google.golang.org/grpc --> go.opentelemetry.io/otel/metric
-    google.golang.org/grpc --> go.opentelemetry.io/otel/trace
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc --> google.golang.org/grpc
-    gopkg.in/errgo.v2 -->|indirect| github.com/kr/pretty
-    gotest.tools/gotestsum --> github.com/bitfield/gotestdox
-    honnef.co/go/tools --> github.com/rogpeppe/go-internal
-    moul.io/http2curl/v2 --> github.com/tailscale/depaware
-    mvdan.cc/gofumpt --> github.com/rogpeppe/go-internal
-    style github.com/kr/pretty fill:#555,stroke:#333,stroke-width:2px
-    style github.com/spf13/cast fill:#777
-    style go.opentelemetry.io/auto/sdk fill:#777
-    style github.com/sergi/go-diff fill:#777
-    style github.com/jackc/pgx/v5 fill:#777
-    style gopkg.in/errgo.v2 fill:#777
-    style github.com/consensys/gnark-crypto fill:#777
-    style github.com/cockroachdb/errors fill:#777
-```
-  - Choke: github.com/spf13/cast
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/spf13/viper` -> `github.com/spf13/cast`
-    - - ... and 11 more
-
-    Root from choke:
-    - - `github.com/spf13/cast` *(indirect)* -> `github.com/kr/pretty`
-    - - ... and 11 more
-  - Choke: go.opentelemetry.io/auto/sdk
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk`
-    - - ... and 458 more
-
-    Root from choke:
-    - - `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - - ... and 458 more
-  - Choke: github.com/sergi/go-diff
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` *(tool)* -> `github.com/Kunde21/markdownfmt/v3` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff`
-    - - ... and 145 more
-
-    Root from choke:
-    - - `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-    - - ... and 145 more
-  - Choke: github.com/jackc/pgx/v5
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5`
-
-    Root from choke:
-    - - `github.com/jackc/pgx/v5` *(indirect)* -> `github.com/kr/pretty`
-  - Choke: gopkg.in/errgo.v2
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` *(tool)* -> `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2`
-    - - ... and 190 more
-
-    Root from choke:
-    - - `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - - ... and 190 more
-  - Choke: github.com/consensys/gnark-crypto
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/consensys/gnark-crypto`
-    - - ... and 8 more
-
-    Root from choke:
-    - - `github.com/consensys/gnark-crypto` *(indirect)* -> `github.com/kr/pretty`
-    - - ... and 8 more
-  - Choke: github.com/cockroachdb/errors
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/cockroachdb/errors`
-    - - ... and 38 more
-
-    Root from choke:
-    - - `github.com/cockroachdb/errors` -> `github.com/kr/pretty`
-    - - ... and 38 more
-  - 🎯 Blamed: `github.com/Kunde21/markdownfmt/v3`
-
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
-
-    - `github.com/cockroachdb/errors` -> `github.com/kr/pretty`
-    - ... and 20 more
-
-  - 🎯 Blamed: `github.com/consensys/gnark-crypto`
-
-    - `github.com/consensys/gnark-crypto` *(indirect)* -> `github.com/kr/pretty`
-
-  - 🎯 Blamed: `github.com/docker/docker`
-
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 91 more
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 38 more
-
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `moul.io/http2curl/v2` -> `github.com/tailscale/depaware` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - 🎯 Blamed: `github.com/googleapis/api-linter/v2`
-
-    - `github.com/googleapis/api-linter/v2` -> `bitbucket.org/creachadair/stringset` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 59 more
-
-  - 🎯 Blamed: `github.com/grpc-ecosystem/grpc-gateway/v2`
-
-    - `github.com/grpc-ecosystem/grpc-gateway/v2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 27 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 25 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-protos-go-apiv2`
-
-    - `github.com/hyperledger/fabric-protos-go-apiv2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 15 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/cockroachdb/errors` -> `github.com/kr/pretty`
-    - ... and 196 more
-
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
-
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 2 more
-
-  - 🎯 Blamed: `github.com/spf13/viper`
-
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 2 more
-
-  - 🎯 Blamed: `github.com/yugabyte/pgx/v5`
-
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5` *(indirect)* -> `github.com/kr/pretty`
-
-  - 🎯 Blamed: `go.uber.org/zap`
-
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 1 more
-
-  - 🎯 Blamed: `google.golang.org/genproto/googleapis/api`
-
-    - `google.golang.org/genproto/googleapis/api` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 15 more
-
-  - 🎯 Blamed: `google.golang.org/grpc`
-
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 17 more
-
-  - 🎯 Blamed: `google.golang.org/grpc/cmd/protoc-gen-go-grpc`
-
-    - `google.golang.org/grpc/cmd/protoc-gen-go-grpc` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 15 more
-
-  - 🎯 Blamed: `gotest.tools/gotestsum`
-
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 1 more
-
-  - 🎯 Blamed: `mvdan.cc/gofumpt`
-
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 1 more
-
-- **📦 github.com/kr/text**
-
-```mermaid
-graph TD
-    bitbucket.org/creachadair/stringset --> honnef.co/go/tools
-    cloud.google.com/go/longrunning --> google.golang.org/genproto/googleapis/api
-    cloud.google.com/go/longrunning --> google.golang.org/grpc
-    cloud.google.com/go/longrunning -->|indirect| go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/aries
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix --> github.com/IBM/mathlib
-    github.com/IBM/idemix --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/IBM/idemix --> github.com/sykesm/zap-logfmt
-    github.com/IBM/idemix --> go.uber.org/zap
-    github.com/IBM/idemix --> google.golang.org/grpc
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/weak-bb --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/types --> github.com/IBM/mathlib
-    github.com/IBM/mathlib --> github.com/consensys/gnark-crypto
-    github.com/IBM/mathlib -->|indirect| github.com/rogpeppe/go-internal
-    github.com/Kunde21/markdownfmt/v3 --> github.com/pkg/diff
-    github.com/bitfield/gotestdox --> github.com/rogpeppe/go-internal
-    github.com/cockroachdb/errors --> github.com/getsentry/sentry-go
-    github.com/cockroachdb/errors --> github.com/kr/pretty
-    github.com/cockroachdb/errors --> google.golang.org/grpc
-    github.com/consensys/gnark-crypto -->|indirect| github.com/kr/pretty
-    github.com/containerd/errdefs/pkg --> google.golang.org/grpc
-    github.com/docker/docker --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/trace
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/gavv/httpexpect/v2 --> moul.io/http2curl/v2
-    github.com/getsentry/sentry-go -->|indirect| github.com/kr/pretty
-    github.com/getsentry/sentry-go -->|indirect| github.com/rogpeppe/go-internal
-    github.com/googleapis/api-linter/v2 --> bitbucket.org/creachadair/stringset
-    github.com/googleapis/api-linter/v2 --> cloud.google.com/go/longrunning
-    github.com/googleapis/api-linter/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/grpc
-    github.com/hyperledger-labs/SmartBFT --> go.uber.org/zap
-    github.com/hyperledger/aries-bbs-go --> github.com/IBM/mathlib
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-lib-go --> github.com/spf13/viper
-    github.com/hyperledger/fabric-lib-go --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-lib-go --> go.uber.org/zap
-    github.com/hyperledger/fabric-lib-go --> google.golang.org/grpc
-    github.com/hyperledger/fabric-protos-go-apiv2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/consensys/gnark-crypto
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/docker
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/grpc-ecosystem/grpc-gateway/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-committer --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-committer --> github.com/yugabyte/pgx/v5
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/genproto/googleapis/api
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/Kunde21/markdownfmt/v3
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-committer -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-committer -->|tool| mvdan.cc/gofumpt
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger-labs/SmartBFT
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-common --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-common --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-common --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-common -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-common -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-common -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-common -->|tool| mvdan.cc/gofumpt
-    github.com/jackc/pgx/v5 -->|indirect| github.com/kr/pretty
-    github.com/kr/pretty --> github.com/kr/text
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    github.com/moby/moby/client --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/moby/moby/client --> go.opentelemetry.io/otel/trace
-    github.com/pkg/diff --> github.com/sergi/go-diff
-    github.com/prometheus/client_golang --> github.com/prometheus/common
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    github.com/prometheus/common -->|indirect| github.com/rogpeppe/go-internal
-    github.com/rogpeppe/go-internal --> github.com/pkg/diff
-    github.com/rogpeppe/go-internal --> gopkg.in/errgo.v2
-    github.com/sergi/go-diff -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/kr/text
-    github.com/spf13/cast -->|indirect| github.com/rogpeppe/go-internal
-    github.com/spf13/viper --> github.com/spf13/cast
-    github.com/sykesm/zap-logfmt --> go.uber.org/zap
-    github.com/tailscale/depaware --> github.com/pkg/diff
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgx/v5
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/kr/pretty
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/rogpeppe/go-internal
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel --> go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> google.golang.org/grpc
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| github.com/grpc-ecosystem/grpc-gateway/v2
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| google.golang.org/genproto/googleapis/api
-    go.opentelemetry.io/otel/metric --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel/metric -->|indirect| go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/trace --> go.opentelemetry.io/otel
-    go.uber.org/multierr --> honnef.co/go/tools
-    go.uber.org/zap --> go.uber.org/multierr
-    google.golang.org/genproto/googleapis/api --> google.golang.org/grpc
-    google.golang.org/grpc --> go.opentelemetry.io/otel
-    google.golang.org/grpc --> go.opentelemetry.io/otel/metric
-    google.golang.org/grpc --> go.opentelemetry.io/otel/trace
-    google.golang.org/grpc -->|indirect| go.opentelemetry.io/auto/sdk
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc --> google.golang.org/grpc
-    gopkg.in/errgo.v2 -->|indirect| github.com/kr/pretty
-    gotest.tools/gotestsum --> github.com/bitfield/gotestdox
-    honnef.co/go/tools --> github.com/rogpeppe/go-internal
-    moul.io/http2curl/v2 --> github.com/tailscale/depaware
-    mvdan.cc/gofumpt --> github.com/rogpeppe/go-internal
-    style github.com/kr/text fill:#555,stroke:#333,stroke-width:2px
-    style github.com/spf13/cast fill:#777
-    style github.com/kr/pretty fill:#777
-```
-  - Choke: github.com/spf13/cast
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/spf13/viper` -> `github.com/spf13/cast`
-    - - ... and 15 more
-
-    Root from choke:
-    - - `github.com/spf13/cast` *(indirect)* -> `github.com/kr/text`
-    - - ... and 15 more
-  - Choke: github.com/kr/pretty
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/cockroachdb/errors` -> `github.com/kr/pretty`
-    - - ... and 695 more
-
-    Root from choke:
-    - - `github.com/kr/pretty` -> `github.com/kr/text`
-    - - ... and 695 more
-  - 🎯 Blamed: `github.com/Kunde21/markdownfmt/v3`
-
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
-
-    - `github.com/cockroachdb/errors` -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 24 more
-
-  - 🎯 Blamed: `github.com/consensys/gnark-crypto`
-
-    - `github.com/consensys/gnark-crypto` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - 🎯 Blamed: `github.com/docker/docker`
-
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 122 more
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 47 more
-
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `moul.io/http2curl/v2` -> `github.com/tailscale/depaware` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - 🎯 Blamed: `github.com/googleapis/api-linter/v2`
-
-    - `github.com/googleapis/api-linter/v2` -> `bitbucket.org/creachadair/stringset` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 82 more
-
-  - 🎯 Blamed: `github.com/grpc-ecosystem/grpc-gateway/v2`
-
-    - `github.com/grpc-ecosystem/grpc-gateway/v2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 37 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/text`
-    - ... and 30 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-protos-go-apiv2`
-
-    - `github.com/hyperledger/fabric-protos-go-apiv2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 19 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/cockroachdb/errors` -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 249 more
-
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
-
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 2 more
-
-  - 🎯 Blamed: `github.com/spf13/viper`
-
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/text`
-    - ... and 3 more
-
-  - 🎯 Blamed: `github.com/yugabyte/pgx/v5`
-
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - 🎯 Blamed: `go.uber.org/zap`
-
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 1 more
-
-  - 🎯 Blamed: `google.golang.org/genproto/googleapis/api`
-
-    - `google.golang.org/genproto/googleapis/api` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 19 more
-
-  - 🎯 Blamed: `google.golang.org/grpc`
-
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 24 more
-
-  - 🎯 Blamed: `google.golang.org/grpc/cmd/protoc-gen-go-grpc`
-
-    - `google.golang.org/grpc/cmd/protoc-gen-go-grpc` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 19 more
-
-  - 🎯 Blamed: `gotest.tools/gotestsum`
-
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 1 more
-
-  - 🎯 Blamed: `mvdan.cc/gofumpt`
-
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 1 more
-
-- **📦 github.com/mitchellh/mapstructure**
-
-```mermaid
-graph TD
-    github.com/hyperledger/fabric-lib-go --> github.com/mitchellh/mapstructure
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/mitchellh/mapstructure
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/mitchellh/mapstructure
-    style github.com/mitchellh/mapstructure fill:#555,stroke:#333,stroke-width:2px
-```
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/mitchellh/mapstructure`
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/mitchellh/mapstructure`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/mitchellh/mapstructure`
-
-    - `github.com/mitchellh/mapstructure`
-
-- **📦 github.com/munnerz/goautoneg**
-
-  Root to pkg: `github.com/prometheus/client_golang` -> `github.com/prometheus/common` -> `github.com/munnerz/goautoneg`
-
-```mermaid
-graph TD
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-lib-go -->|indirect| github.com/prometheus/common
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    style github.com/prometheus/client_golang fill:#555,stroke:#333,stroke-width:2px
-```
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/prometheus/client_golang`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/hyperledger/fabric-lib-go` -> `github.com/prometheus/client_golang`
-    - ... and 1 more
-
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
-
-    - `github.com/prometheus/client_golang`
-
-- **📦 github.com/pmezard/go-difflib**
-
-  Root to pkg: `github.com/stretchr/testify` -> `github.com/pmezard/go-difflib`
-
-```mermaid
-graph TD
-    bitbucket.org/creachadair/stringset --> honnef.co/go/tools
-    cloud.google.com/go/longrunning --> google.golang.org/genproto/googleapis/api
-    cloud.google.com/go/longrunning --> google.golang.org/grpc
-    cloud.google.com/go/longrunning -->|indirect| go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/aries
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix --> github.com/IBM/mathlib
-    github.com/IBM/idemix --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/IBM/idemix --> github.com/onsi/ginkgo/v2
-    github.com/IBM/idemix --> github.com/onsi/gomega
-    github.com/IBM/idemix --> github.com/stretchr/testify
-    github.com/IBM/idemix --> github.com/sykesm/zap-logfmt
-    github.com/IBM/idemix --> go.uber.org/zap
-    github.com/IBM/idemix --> google.golang.org/grpc
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/schemes/weak-bb
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/idemix/bccsp/types
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/hyperledger/aries-bbs-go
-    github.com/IBM/idemix/bccsp/schemes/aries --> github.com/stretchr/testify
-    github.com/IBM/idemix/bccsp/schemes/weak-bb --> github.com/IBM/mathlib
-    github.com/IBM/idemix/bccsp/types --> github.com/IBM/mathlib
-    github.com/IBM/mathlib --> github.com/consensys/gnark-crypto
-    github.com/IBM/mathlib --> github.com/stretchr/testify
-    github.com/Kunde21/markdownfmt/v3 --> github.com/pkg/diff
-    github.com/Kunde21/markdownfmt/v3 --> github.com/stretchr/testify
-    github.com/Microsoft/go-winio --> github.com/sirupsen/logrus
-    github.com/bitfield/gotestdox --> github.com/rogpeppe/go-internal
-    github.com/bufbuild/protocompile --> github.com/stretchr/testify
-    github.com/cockroachdb/errors --> github.com/getsentry/sentry-go
-    github.com/cockroachdb/errors --> github.com/kr/pretty
-    github.com/cockroachdb/errors --> github.com/stretchr/testify
-    github.com/cockroachdb/errors --> google.golang.org/grpc
-    github.com/consensys/gnark-crypto --> github.com/stretchr/testify
-    github.com/consensys/gnark-crypto -->|indirect| github.com/kr/pretty
-    github.com/containerd/errdefs/pkg --> google.golang.org/grpc
-    github.com/containerd/log --> github.com/sirupsen/logrus
-    github.com/docker/docker --> github.com/Microsoft/go-winio
-    github.com/docker/docker --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-    github.com/docker/docker --> go.opentelemetry.io/otel/trace
-    github.com/docker/go-connections --> github.com/Microsoft/go-winio
-    github.com/fsouza/go-dockerclient --> github.com/Microsoft/go-winio
-    github.com/fsouza/go-dockerclient --> github.com/moby/go-archive
-    github.com/fsouza/go-dockerclient --> github.com/moby/moby/client
-    github.com/gavv/httpexpect/v2 --> github.com/sanity-io/litter
-    github.com/gavv/httpexpect/v2 --> github.com/stretchr/testify
-    github.com/gavv/httpexpect/v2 --> github.com/xeipuuv/gojsonschema
-    github.com/gavv/httpexpect/v2 --> moul.io/http2curl/v2
-    github.com/gavv/httpexpect/v2 -->|indirect| github.com/onsi/ginkgo
-    github.com/gavv/httpexpect/v2 -->|indirect| github.com/onsi/gomega
-    github.com/getsentry/sentry-go --> github.com/stretchr/testify
-    github.com/getsentry/sentry-go -->|indirect| github.com/kr/pretty
-    github.com/getsentry/sentry-go -->|indirect| github.com/rogpeppe/go-internal
-    github.com/go-playground/validator/v10 --> github.com/leodido/go-urn
-    github.com/go-task/slim-sprig --> github.com/stretchr/testify
-    github.com/go-task/slim-sprig/v3 --> github.com/stretchr/testify
-    github.com/googleapis/api-linter/v2 --> bitbucket.org/creachadair/stringset
-    github.com/googleapis/api-linter/v2 --> cloud.google.com/go/longrunning
-    github.com/googleapis/api-linter/v2 --> github.com/bufbuild/protocompile
-    github.com/googleapis/api-linter/v2 --> github.com/stoewer/go-strcase
-    github.com/googleapis/api-linter/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/genproto/googleapis/api
-    github.com/grpc-ecosystem/grpc-gateway/v2 --> google.golang.org/grpc
-    github.com/hyperledger-labs/SmartBFT --> github.com/stretchr/testify
-    github.com/hyperledger-labs/SmartBFT --> go.uber.org/zap
-    github.com/hyperledger-labs/SmartBFT -->|indirect| github.com/stretchr/objx
-    github.com/hyperledger/aries-bbs-go --> github.com/IBM/mathlib
-    github.com/hyperledger/aries-bbs-go --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-lib-go --> github.com/onsi/ginkgo/v2
-    github.com/hyperledger/fabric-lib-go --> github.com/onsi/gomega
-    github.com/hyperledger/fabric-lib-go --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-lib-go --> github.com/spf13/viper
-    github.com/hyperledger/fabric-lib-go --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-lib-go --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-lib-go --> go.uber.org/zap
-    github.com/hyperledger/fabric-lib-go --> google.golang.org/grpc
-    github.com/hyperledger/fabric-lib-go -->|indirect| github.com/go-task/slim-sprig/v3
-    github.com/hyperledger/fabric-protos-go-apiv2 --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-committer --> github.com/consensys/gnark-crypto
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/docker
-    github.com/hyperledger/fabric-x-committer --> github.com/docker/go-connections
-    github.com/hyperledger/fabric-x-committer --> github.com/fsouza/go-dockerclient
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/go-playground/validator/v10
-    github.com/hyperledger/fabric-x-committer --> github.com/go-task/slim-sprig/v3
-    github.com/hyperledger/fabric-x-committer --> github.com/grpc-ecosystem/grpc-gateway/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-committer --> github.com/jackc/puddle/v2
-    github.com/hyperledger/fabric-x-committer --> github.com/prometheus/client_golang
-    github.com/hyperledger/fabric-x-committer --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-committer --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-x-committer --> github.com/yugabyte/pgx/v5
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/mock
-    github.com/hyperledger/fabric-x-committer --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/genproto/googleapis/api
-    github.com/hyperledger/fabric-x-committer --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/Kunde21/markdownfmt/v3
-    github.com/hyperledger/fabric-x-committer -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-committer -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-committer -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-committer -->|tool| mvdan.cc/gofumpt
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/cockroachdb/errors
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger-labs/SmartBFT
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-protos-go-apiv2
-    github.com/hyperledger/fabric-x-common --> github.com/onsi/ginkgo/v2
-    github.com/hyperledger/fabric-x-common --> github.com/onsi/gomega
-    github.com/hyperledger/fabric-x-common --> github.com/spf13/viper
-    github.com/hyperledger/fabric-x-common --> github.com/stretchr/testify
-    github.com/hyperledger/fabric-x-common --> github.com/syndtr/goleveldb
-    github.com/hyperledger/fabric-x-common --> go.uber.org/zap
-    github.com/hyperledger/fabric-x-common --> google.golang.org/grpc
-    github.com/hyperledger/fabric-x-common -->|tool| github.com/googleapis/api-linter/v2
-    github.com/hyperledger/fabric-x-common -->|tool| google.golang.org/grpc/cmd/protoc-gen-go-grpc
-    github.com/hyperledger/fabric-x-common -->|tool| gotest.tools/gotestsum
-    github.com/hyperledger/fabric-x-common -->|tool| mvdan.cc/gofumpt
-    github.com/jackc/pgpassfile --> github.com/stretchr/testify
-    github.com/jackc/pgservicefile --> github.com/stretchr/testify
-    github.com/jackc/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/jackc/pgx/v5 --> github.com/jackc/pgservicefile
-    github.com/jackc/pgx/v5 --> github.com/jackc/puddle/v2
-    github.com/jackc/pgx/v5 --> github.com/stretchr/testify
-    github.com/jackc/pgx/v5 -->|indirect| github.com/kr/pretty
-    github.com/jackc/puddle/v2 --> github.com/stretchr/testify
-    github.com/kr/pretty --> github.com/rogpeppe/go-internal
-    github.com/leodido/go-urn --> github.com/stretchr/testify
-    github.com/moby/go-archive --> github.com/containerd/log
-    github.com/moby/moby/client --> github.com/Microsoft/go-winio
-    github.com/moby/moby/client --> github.com/containerd/errdefs/pkg
-    github.com/moby/moby/client --> github.com/docker/go-connections
-    github.com/moby/moby/client --> go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    github.com/moby/moby/client --> go.opentelemetry.io/otel/trace
-    github.com/onsi/ginkgo --> github.com/go-task/slim-sprig
-    github.com/onsi/ginkgo --> github.com/onsi/gomega
-    github.com/onsi/ginkgo/v2 --> github.com/go-task/slim-sprig
-    github.com/onsi/ginkgo/v2 --> github.com/onsi/gomega
-    github.com/onsi/gomega --> github.com/onsi/ginkgo
-    github.com/onsi/gomega --> github.com/onsi/ginkgo/v2
-    github.com/pkg/diff --> github.com/sergi/go-diff
-    github.com/pkg/diff --> github.com/stretchr/testify
-    github.com/prometheus/client_golang --> github.com/prometheus/common
-    github.com/prometheus/client_golang -->|indirect| github.com/kr/pretty
-    github.com/prometheus/common --> github.com/stretchr/testify
-    github.com/prometheus/common -->|indirect| github.com/prometheus/client_golang
-    github.com/prometheus/common -->|indirect| github.com/rogpeppe/go-internal
-    github.com/rogpeppe/go-internal --> github.com/pkg/diff
-    github.com/sanity-io/litter --> github.com/stretchr/testify
-    github.com/sergi/go-diff --> github.com/stretchr/testify
-    github.com/sergi/go-diff -->|indirect| github.com/kr/pretty
-    github.com/sirupsen/logrus --> github.com/stretchr/testify
-    github.com/spf13/cast -->|indirect| github.com/kr/pretty
-    github.com/spf13/cast -->|indirect| github.com/rogpeppe/go-internal
-    github.com/spf13/viper --> github.com/spf13/cast
-    github.com/spf13/viper --> github.com/stretchr/testify
-    github.com/spf13/viper --> github.com/subosito/gotenv
-    github.com/stoewer/go-strcase --> github.com/stretchr/testify
-    github.com/stretchr/objx --> github.com/stretchr/testify
-    github.com/subosito/gotenv --> github.com/stretchr/testify
-    github.com/sykesm/zap-logfmt --> github.com/stretchr/testify
-    github.com/sykesm/zap-logfmt --> go.uber.org/zap
-    github.com/syndtr/goleveldb --> github.com/onsi/ginkgo
-    github.com/syndtr/goleveldb --> github.com/onsi/gomega
-    github.com/syndtr/goleveldb --> github.com/stretchr/testify
-    github.com/tailscale/depaware --> github.com/pkg/diff
-    github.com/xeipuuv/gojsonschema --> github.com/stretchr/testify
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgpassfile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgservicefile
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/pgx/v5
-    github.com/yugabyte/pgx/v5 --> github.com/jackc/puddle/v2
-    github.com/yugabyte/pgx/v5 --> github.com/stretchr/testify
-    go.opentelemetry.io/auto/sdk --> github.com/stretchr/testify
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel
-    go.opentelemetry.io/auto/sdk --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/kr/pretty
-    go.opentelemetry.io/auto/sdk -->|indirect| github.com/rogpeppe/go-internal
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> github.com/stretchr/testify
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel --> github.com/stretchr/testify
-    go.opentelemetry.io/otel --> go.opentelemetry.io/auto/sdk
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/metric
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> go.opentelemetry.io/otel/trace
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp --> google.golang.org/grpc
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| github.com/grpc-ecosystem/grpc-gateway/v2
-    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp -->|indirect| google.golang.org/genproto/googleapis/api
-    go.opentelemetry.io/otel/metric --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/metric --> go.opentelemetry.io/otel
-    go.opentelemetry.io/otel/trace --> github.com/stretchr/testify
-    go.opentelemetry.io/otel/trace --> go.opentelemetry.io/otel
-    go.uber.org/atomic --> github.com/stretchr/testify
-    go.uber.org/mock --> github.com/stretchr/testify
-    go.uber.org/multierr --> github.com/stretchr/testify
-    go.uber.org/multierr --> go.uber.org/atomic
-    go.uber.org/multierr --> honnef.co/go/tools
-    go.uber.org/zap --> github.com/stretchr/testify
-    go.uber.org/zap --> go.uber.org/atomic
-    go.uber.org/zap --> go.uber.org/multierr
-    google.golang.org/genproto/googleapis/api --> google.golang.org/grpc
-    google.golang.org/grpc --> go.opentelemetry.io/otel
-    google.golang.org/grpc --> go.opentelemetry.io/otel/metric
-    google.golang.org/grpc --> go.opentelemetry.io/otel/trace
-    google.golang.org/grpc/cmd/protoc-gen-go-grpc --> google.golang.org/grpc
-    gotest.tools/gotestsum --> github.com/bitfield/gotestdox
-    honnef.co/go/tools --> github.com/rogpeppe/go-internal
-    moul.io/http2curl/v2 --> github.com/tailscale/depaware
-    mvdan.cc/gofumpt --> github.com/rogpeppe/go-internal
-    mvdan.cc/gofumpt -->|indirect| github.com/kr/pretty
-    style github.com/stretchr/testify fill:#555,stroke:#333,stroke-width:2px
-```
-  - 🎯 Blamed: `github.com/Kunde21/markdownfmt/v3`
-
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/stretchr/testify`
-    - ... and 3 more
-
-  - 🎯 Blamed: `github.com/cockroachdb/errors`
-
-    - `github.com/cockroachdb/errors` -> `github.com/stretchr/testify`
-    - ... and 52 more
-
-  - 🎯 Blamed: `github.com/consensys/gnark-crypto`
-
-    - `github.com/consensys/gnark-crypto` -> `github.com/stretchr/testify`
-    - ... and 2 more
-
-  - 🎯 Blamed: `github.com/docker/docker`
-
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `github.com/stretchr/testify`
-    - ... and 272 more
-
-  - 🎯 Blamed: `github.com/docker/go-connections`
-
-    - `github.com/docker/go-connections` -> `github.com/Microsoft/go-winio` -> `github.com/sirupsen/logrus` -> `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `github.com/fsouza/go-dockerclient`
-
-    - `github.com/fsouza/go-dockerclient` -> `github.com/Microsoft/go-winio` -> `github.com/sirupsen/logrus` -> `github.com/stretchr/testify`
-    - ... and 119 more
-
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `github.com/stretchr/testify`
-    - ... and 9 more
-
-  - 🎯 Blamed: `github.com/go-playground/validator/v10`
-
-    - `github.com/go-playground/validator/v10` -> `github.com/leodido/go-urn` -> `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `github.com/go-task/slim-sprig/v3`
-
-    - `github.com/go-task/slim-sprig/v3` -> `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `github.com/googleapis/api-linter/v2`
-
-    - `github.com/googleapis/api-linter/v2` -> `github.com/bufbuild/protocompile` -> `github.com/stretchr/testify`
-    - ... and 176 more
-
-  - 🎯 Blamed: `github.com/grpc-ecosystem/grpc-gateway/v2`
-
-    - `github.com/grpc-ecosystem/grpc-gateway/v2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify`
-    - ... and 83 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/stretchr/testify`
-    - ... and 76 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-protos-go-apiv2`
-
-    - `github.com/hyperledger/fabric-protos-go-apiv2` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify`
-    - ... and 44 more
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/stretchr/testify`
-    - ... and 567 more
-
-  - 🎯 Blamed: `github.com/jackc/puddle/v2`
-
-    - `github.com/jackc/puddle/v2` -> `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `github.com/prometheus/client_golang`
-
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` -> `github.com/stretchr/testify`
-    - ... and 6 more
-
-  - 🎯 Blamed: `github.com/spf13/viper`
-
-    - `github.com/spf13/viper` -> `github.com/stretchr/testify`
-    - ... and 5 more
-
-  - 🎯 Blamed: `github.com/stretchr/testify`
-
-    - `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `github.com/yugabyte/pgx/v5`
-
-    - `github.com/yugabyte/pgx/v5` -> `github.com/stretchr/testify`
-    - ... and 9 more
-
-  - 🎯 Blamed: `go.uber.org/mock`
-
-    - `go.uber.org/mock` -> `github.com/stretchr/testify`
-
-  - 🎯 Blamed: `go.uber.org/zap`
-
-    - `go.uber.org/zap` -> `github.com/stretchr/testify`
-    - ... and 5 more
-
-  - 🎯 Blamed: `google.golang.org/genproto/googleapis/api`
-
-    - `google.golang.org/genproto/googleapis/api` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify`
-    - ... and 44 more
-
-  - 🎯 Blamed: `google.golang.org/grpc`
-
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify`
-    - ... and 52 more
-
-  - 🎯 Blamed: `google.golang.org/grpc/cmd/protoc-gen-go-grpc`
-
-    - `google.golang.org/grpc/cmd/protoc-gen-go-grpc` -> `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `github.com/stretchr/testify`
-    - ... and 44 more
-
-  - 🎯 Blamed: `gotest.tools/gotestsum`
-
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/stretchr/testify`
-    - ... and 1 more
-
-  - 🎯 Blamed: `mvdan.cc/gofumpt`
-
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/stretchr/testify`
-    - ... and 3 more
-
-- **📦 github.com/sykesm/zap-logfmt**
-
-```mermaid
-graph TD
-    github.com/IBM/idemix --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-lib-go --> github.com/sykesm/zap-logfmt
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-lib-go
-    github.com/hyperledger/fabric-x-committer --> github.com/hyperledger/fabric-x-common
-    github.com/hyperledger/fabric-x-common --> github.com/IBM/idemix
-    github.com/hyperledger/fabric-x-common --> github.com/hyperledger/fabric-lib-go
-    style github.com/sykesm/zap-logfmt fill:#555,stroke:#333,stroke-width:2px
-    style github.com/IBM/idemix fill:#777
-    style github.com/hyperledger/fabric-lib-go fill:#777
-```
-  - Choke: github.com/IBM/idemix
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix`
-
-    Root from choke:
-    - - `github.com/IBM/idemix` -> `github.com/sykesm/zap-logfmt`
-  - Choke: github.com/hyperledger/fabric-lib-go
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/hyperledger/fabric-lib-go`
-    - - ... and 1 more
-
-    Root from choke:
-    - - `github.com/hyperledger/fabric-lib-go` -> `github.com/sykesm/zap-logfmt`
-    - - ... and 1 more
-  - 🎯 Blamed: `github.com/hyperledger/fabric-lib-go`
-
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/sykesm/zap-logfmt`
-
-  - 🎯 Blamed: `github.com/hyperledger/fabric-x-common`
-
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/sykesm/zap-logfmt`
-    - ... and 1 more
-
-- **📦 github.com/xeipuuv/gojsonpointer**
-
-```mermaid
-graph TD
-    github.com/gavv/httpexpect/v2 --> github.com/xeipuuv/gojsonschema
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/xeipuuv/gojsonreference --> github.com/xeipuuv/gojsonpointer
-    github.com/xeipuuv/gojsonschema --> github.com/xeipuuv/gojsonreference
-    style github.com/xeipuuv/gojsonpointer fill:#555,stroke:#333,stroke-width:2px
-    style github.com/xeipuuv/gojsonreference fill:#777
-```
-  - Choke: github.com/xeipuuv/gojsonreference
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference`
-
-    Root from choke:
-    - - `github.com/xeipuuv/gojsonreference` -> `github.com/xeipuuv/gojsonpointer`
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference` -> `github.com/xeipuuv/gojsonpointer`
-
-- **📦 github.com/xeipuuv/gojsonreference**
-
-```mermaid
-graph TD
-    github.com/gavv/httpexpect/v2 --> github.com/xeipuuv/gojsonschema
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    github.com/xeipuuv/gojsonschema --> github.com/xeipuuv/gojsonreference
-    style github.com/xeipuuv/gojsonreference fill:#555,stroke:#333,stroke-width:2px
-    style github.com/xeipuuv/gojsonschema fill:#777
-```
-  - Choke: github.com/xeipuuv/gojsonschema
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema`
-
-    Root from choke:
-    - - `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference`
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference`
-
-- **📦 github.com/xeipuuv/gojsonschema**
-
-```mermaid
-graph TD
-    github.com/gavv/httpexpect/v2 --> github.com/xeipuuv/gojsonschema
-    github.com/hyperledger/fabric-x-committer --> github.com/gavv/httpexpect/v2
-    style github.com/xeipuuv/gojsonschema fill:#555,stroke:#333,stroke-width:2px
-    style github.com/gavv/httpexpect/v2 fill:#777
-```
-  - Choke: github.com/gavv/httpexpect/v2
-
-    Root to choke:
-    - - `github.com/hyperledger/fabric-x-committer` -> `github.com/gavv/httpexpect/v2`
-
-    Root from choke:
-    - - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema`
-  - 🎯 Blamed: `github.com/gavv/httpexpect/v2`
-
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema`
+</details>
 
 ---
 
-## ⚠️ DIRECT UNMAINTAINED IMPORTS (3 found)
+## Not in the dependency graph (21 found)
 
-- **📦 github.com/mitchellh/mapstructure**
+These unmaintained packages are not reachable from this module — they are not pulled into the build.
 
-  **📝 Imported in your code at:**
-
-  - `cmd/config/config_decoder.go:19`
-  - `loadgen/workload/distributions_test.go:16`
-
-- **📦 github.com/prometheus/client_golang**
-
-  **📝 Imported in your code at:**
-
-  - `loadgen/metrics/metrics.go:13`
-  - `service/coordinator/dependencygraph/metrics.go:10`
-  - `service/coordinator/metrics.go:10`
-  - ... and 13 more location(s)
-
-- **📦 github.com/stretchr/testify**
-
-  **📝 Imported in your code at:**
-
-  - `api/servicepb/height_test.go:12`
-  - `cmd/cliutil/test_exports.go:21`
-  - `cmd/cliutil/test_exports.go:22`
-  - ... and 151 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/Kunde21/markdownfmt/v3` (tool)
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `github.com/Kunde21/markdownfmt/v3` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- *(Import location not found in code)*
-
----
-
-## 🎯 BLAME POINT: `github.com/cockroachdb/errors`
-Responsible for 3 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/gogo/protobuf**
-    - `github.com/cockroachdb/errors` -> `github.com/gogo/protobuf`
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/cockroachdb/errors` -> `github.com/kr/pretty`
-    - `github.com/cockroachdb/errors` -> `github.com/getsentry/sentry-go` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 2 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/cockroachdb/errors` -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/cockroachdb/errors` -> `github.com/getsentry/sentry-go` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 2 more
-
-- **📝 Imported in your code at:**
-
-  - `cmd/committer/config.go:10`
-  - `cmd/committer/healthcheck_cmd_test.go:13`
-  - `cmd/committer/start_cmd.go:13`
-  - ... and 84 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/consensys/gnark-crypto`
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/consensys/gnark-crypto` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `github.com/consensys/gnark-crypto` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- **📝 Imported in your code at:**
-
-  - `utils/signature/verify_bls.go:11`
-  - `utils/signature/verify_schemes_test.go:20`
-  - `utils/testsig/digest_signer.go:16`
-  - ... and 3 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/docker/docker`
-Responsible for 3 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/docker/docker` -> `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 40 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/docker/docker` -> `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 53 more
-
-  - **📦 go.opentelemetry.io/otel**
-    - `github.com/docker/docker` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - `github.com/docker/docker` -> `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` -> `go.opentelemetry.io/otel`
-    - ... and 11 more
-
-- **📝 Imported in your code at:**
-
-  - `docker/test/common.go:22`
-  - `docker/test/common.go:23`
-  - `docker/test/container_release_image_test.go:17`
-  - ... and 1 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/fsouza/go-dockerclient`
-Responsible for 4 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/gogo/protobuf**
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `github.com/containerd/errdefs/pkg` *(indirect)* -> `github.com/gogo/protobuf`
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/otel/trace` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 21 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/otel/trace` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 26 more
-
-  - **📦 go.opentelemetry.io/otel**
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - `github.com/fsouza/go-dockerclient` -> `github.com/moby/moby/client` -> `go.opentelemetry.io/otel/trace` -> `go.opentelemetry.io/otel`
-    - ... and 5 more
-
-- **📝 Imported in your code at:**
-
-  - `integration/runner/cluster_controllers_test.go:14`
-  - `utils/test/docker.go:13`
-  - `utils/testdb/container.go:22`
-  - ... and 1 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/gavv/httpexpect/v2`
-Responsible for 5 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/gavv/httpexpect/v2` -> `moul.io/http2curl/v2` -> `github.com/tailscale/depaware` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `github.com/gavv/httpexpect/v2` -> `moul.io/http2curl/v2` -> `github.com/tailscale/depaware` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - **📦 github.com/xeipuuv/gojsonpointer**
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference` -> `github.com/xeipuuv/gojsonpointer`
-
-  - **📦 github.com/xeipuuv/gojsonreference**
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema` -> `github.com/xeipuuv/gojsonreference`
-
-  - **📦 github.com/xeipuuv/gojsonschema**
-    - `github.com/gavv/httpexpect/v2` -> `github.com/xeipuuv/gojsonschema`
-
-- **📝 Imported in your code at:**
-
-  - `loadgen/client_test.go:19`
-
----
-
-## 🎯 BLAME POINT: `github.com/go-playground/validator/v10`
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/go-playground/locales**
-    - `github.com/go-playground/validator/v10` -> `github.com/go-playground/locales`
-    - `github.com/go-playground/validator/v10` -> `github.com/go-playground/universal-translator` -> `github.com/go-playground/locales`
-
-  - **📦 github.com/go-playground/universal-translator**
-    - `github.com/go-playground/validator/v10` -> `github.com/go-playground/universal-translator`
-
-- **📝 Imported in your code at:**
-
-  - `cmd/config/app_config.go:18`
-
----
-
-## 🎯 BLAME POINT: `github.com/googleapis/api-linter/v2` (tool)
-Responsible for 3 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/googleapis/api-linter/v2` -> `bitbucket.org/creachadair/stringset` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/googleapis/api-linter/v2` -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 16 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/googleapis/api-linter/v2` -> `bitbucket.org/creachadair/stringset` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/googleapis/api-linter/v2` -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 20 more
-
-  - **📦 go.opentelemetry.io/otel**
-    - `github.com/googleapis/api-linter/v2` -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel`
-    - `github.com/googleapis/api-linter/v2` -> `cloud.google.com/go/longrunning` *(indirect)* -> `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` -> `go.opentelemetry.io/otel/metric` -> `go.opentelemetry.io/otel`
-    - ... and 4 more
-
-- *(Import location not found in code)*
-
----
-
-## 🎯 BLAME POINT: `github.com/hyperledger/fabric-lib-go`
-Responsible for 1 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/sykesm/zap-logfmt**
-    - `github.com/hyperledger/fabric-lib-go` -> `github.com/sykesm/zap-logfmt`
-
-- **📝 Imported in your code at:**
-
-  - `cmd/cliutil/test_exports.go:18`
-  - `cmd/config/app_config.go:19`
-  - `cmd/config/app_config_test.go:16`
-  - ... and 40 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/hyperledger/fabric-x-common`
-Responsible for 6 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/IBM/mathlib**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/mathlib`
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/idemix/bccsp/schemes/aries` -> `github.com/IBM/mathlib`
-    - ... and 6 more
-
-  - **📦 github.com/Knetic/govaluate**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/Knetic/govaluate`
-
-  - **📦 github.com/davecgh/go-spew**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/davecgh/go-spew`
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/mathlib` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/idemix/bccsp/schemes/aries` -> `github.com/IBM/mathlib` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 14 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/mathlib` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/IBM/idemix/bccsp/schemes/aries` -> `github.com/IBM/mathlib` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 14 more
-
-  - **📦 github.com/sykesm/zap-logfmt**
-    - `github.com/hyperledger/fabric-x-common` -> `github.com/IBM/idemix` -> `github.com/sykesm/zap-logfmt`
-
-- **📝 Imported in your code at:**
-
-  - `api/servicepb/common.pb.go:15`
-  - `api/servicepb/common.pb.go:16`
-  - `api/servicepb/coordinator.pb.go:15`
-  - ... and 265 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/prometheus/client_golang`
-Responsible for 4 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/beorn7/perks**
-    - `github.com/prometheus/client_golang` -> `github.com/beorn7/perks`
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/beorn7/perks`
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `github.com/prometheus/client_golang` -> `github.com/prometheus/common` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-  - **📦 github.com/prometheus/client_golang**
-    - `github.com/prometheus/client_golang`
-
-- **📝 Imported in your code at:**
-
-  - `loadgen/metrics/metrics.go:13`
-  - `service/coordinator/dependencygraph/metrics.go:10`
-  - `service/coordinator/metrics.go:10`
-  - ... and 13 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/spf13/viper`
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/pretty`
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 1 more
-
-  - **📦 github.com/kr/text**
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/text`
-    - `github.com/spf13/viper` -> `github.com/spf13/cast` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 2 more
-
-- **📝 Imported in your code at:**
-
-  - `cmd/config/app_config.go:20`
-  - `cmd/config/config_decoder.go:20`
-  - `cmd/config/config_decoder_test.go:15`
-  - ... and 2 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/stretchr/testify`
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/davecgh/go-spew**
-    - `github.com/stretchr/testify` -> `github.com/davecgh/go-spew`
-
-  - **📦 github.com/stretchr/testify**
-    - `github.com/stretchr/testify`
-
-- **📝 Imported in your code at:**
-
-  - `api/servicepb/height_test.go:12`
-  - `cmd/cliutil/test_exports.go:21`
-  - `cmd/cliutil/test_exports.go:22`
-  - ... and 151 more location(s)
-
----
-
-## 🎯 BLAME POINT: `github.com/yugabyte/pgx/v5`
-Responsible for 3 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/jackc/pgpassfile**
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgpassfile`
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5` -> `github.com/jackc/pgpassfile`
-
-  - **📦 github.com/kr/pretty**
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `github.com/yugabyte/pgx/v5` -> `github.com/jackc/pgx/v5` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- **📝 Imported in your code at:**
-
-  - `service/query/batcher.go:16`
-  - `service/query/batcher.go:17`
-  - `service/query/query.go:18`
-  - ... and 10 more location(s)
-
----
-
-## 🎯 BLAME POINT: `go.uber.org/zap`
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `go.uber.org/zap` -> `go.uber.org/multierr` -> `honnef.co/go/tools` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- **📝 Imported in your code at:**
-
-  - `service/sidecar/mapping.go:18`
-  - `service/vc/validator.go:15`
-  - `utils/retry/executor.go:16`
-
----
-
-## 🎯 BLAME POINT: `google.golang.org/grpc`
-Responsible for 3 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel/metric` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty`
-    - ... and 16 more
-
-  - **📦 github.com/kr/text**
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel/metric` -> `go.opentelemetry.io/otel` -> `go.opentelemetry.io/auto/sdk` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - ... and 23 more
-
-  - **📦 go.opentelemetry.io/otel**
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel`
-    - `google.golang.org/grpc` -> `go.opentelemetry.io/otel/metric` -> `go.opentelemetry.io/otel`
-    - ... and 4 more
-
-- **📝 Imported in your code at:**
-
-  - `api/servicepb/coordinator_grpc.pb.go:17`
-  - `api/servicepb/coordinator_grpc.pb.go:18`
-  - `api/servicepb/coordinator_grpc.pb.go:19`
-  - ... and 97 more location(s)
-
----
-
-## 🎯 BLAME POINT: `gotest.tools/gotestsum` (tool)
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `gotest.tools/gotestsum` -> `github.com/bitfield/gotestdox` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- *(Import location not found in code)*
-
----
-
-## 🎯 BLAME POINT: `mvdan.cc/gofumpt` (tool)
-Responsible for 2 unmaintained import(s)
-
-- **⚠️  Unmaintained imports:**
-
-  - **📦 github.com/kr/pretty**
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty`
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty`
-
-  - **📦 github.com/kr/text**
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `gopkg.in/errgo.v2` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-    - `mvdan.cc/gofumpt` -> `github.com/rogpeppe/go-internal` -> `github.com/pkg/diff` -> `github.com/sergi/go-diff` *(indirect)* -> `github.com/kr/pretty` -> `github.com/kr/text`
-
-- *(Import location not found in code)*
-
----
-
-## NOT IN GO.MOD (17 found)
-
+- `github.com/Knetic/govaluate`
 - `github.com/KyleBanks/depth`
 - `github.com/benbjohnson/clock`
 - `github.com/davidlazar/go-crypto`
@@ -2272,22 +658,24 @@ Responsible for 2 unmaintained import(s)
 - `github.com/hyperledger-labs/jsonld-vc-bbs-go`
 - `github.com/jackpal/go-nat-pmp`
 - `github.com/josharian/intern`
+- `github.com/kilic/bls12-381`
 - `github.com/marten-seemann/tcp`
 - `github.com/mikioh/tcpinfo`
 - `github.com/mikioh/tcpopt`
 - `github.com/minio/sha256-simd`
+- `github.com/mitchellh/mapstructure`
 - `github.com/pbnjay/memory`
 - `github.com/remyoudompheng/bigfft`
 - `github.com/spaolacci/murmur3`
+- `github.com/sykesm/zap-logfmt`
 - `github.com/whyrusleeping/go-keyspace`
 
 ---
 
-## SUMMARY
+## Summary
 
-**Total unmaintained imports analyzed:** 35
-- In go.mod: 18
-- Direct unmaintained imports (this repo to blame): 3
-- Indirect unmaintained imports grouped by 18 external blame point(s)
-- Not in go.mod: 17
+- Total unmaintained imports checked: 35
+- Pulled into our build: 14 (in 9 source group(s))
+- Distinct blame points: 25
+- Not in the dependency graph: 21
 
