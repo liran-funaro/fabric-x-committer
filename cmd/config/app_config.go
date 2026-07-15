@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/go-playground/validator/v10"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/viper"
 
@@ -34,10 +33,7 @@ type loggingConfig struct {
 	Logging flogging.Config `mapstructure:"logging"`
 }
 
-var (
-	logger   = flogging.MustGetLogger("config-reader")
-	validate = validator.New()
-)
+var logger = flogging.MustGetLogger("config-reader")
 
 // ReadSidecarYamlAndSetupLogging reading the YAML config file of the sidecar.
 func ReadSidecarYamlAndSetupLogging(
@@ -133,7 +129,7 @@ func unmarshal(v *viper.Viper, items ...any) error {
 			return errors.Wrap(err, "error decoding config")
 		}
 		logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
-		if err := validate.Struct(c); err != nil {
+		if err := validateStruct(c); err != nil {
 			return errors.Wrap(err, "error validating config")
 		}
 	}
