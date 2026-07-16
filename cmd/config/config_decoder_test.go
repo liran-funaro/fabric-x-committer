@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
@@ -41,6 +42,73 @@ yaml-orderer-endpoint:
     host: localhost
     port: 5050
 `
+
+// distributionConfig mirrors how a *workload.Distribution field is embedded in
+// the real load-generator configuration (e.g., TransactionProfile.ReadWriteCount).
+type distributionConfig struct {
+	Count *workload.Distribution `mapstructure:"count"`
+}
+
+// TestDistributionShorthand verifies that a bare number is decoded as a const
+// distribution, while the full distribution forms keep working unchanged.
+func TestDistributionShorthand(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected *workload.Distribution
+	}{
+		{
+			name:     "integer shorthand",
+			yaml:     "count: 2",
+			expected: workload.NewConstantDistribution(2),
+		},
+		{
+			name:     "float shorthand",
+			yaml:     "count: 2.5",
+			expected: workload.NewConstantDistribution(2.5),
+		},
+		{
+			name:     "negative shorthand",
+			yaml:     "count: -1",
+			expected: workload.NewConstantDistribution(-1),
+		},
+		{
+			name:     "zero shorthand",
+			yaml:     "count: 0",
+			expected: workload.NewConstantDistribution(0),
+		},
+		{
+			name:     "explicit const form still works",
+			yaml:     "count:\n  const: 2",
+			expected: workload.NewConstantDistribution(2),
+		},
+		{
+			name:     "uniform form still works",
+			yaml:     "count:\n  uniform:\n    min: 0\n    max: 1",
+			expected: workload.NewUniformDistribution(0, 1),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v := viper.New()
+			require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(tc.yaml)))
+			conf := new(distributionConfig)
+			require.NoError(t, unmarshal(v, conf))
+			require.Equal(t, tc.expected, conf.Count)
+		})
+	}
+}
+
+// TestDistributionShorthandRejectsNonNumeric ensures a non-numeric scalar is not
+// silently coerced into a const distribution; it surfaces a decode error instead.
+func TestDistributionShorthandRejectsNonNumeric(t *testing.T) {
+	t.Parallel()
+	v := viper.New()
+	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString("count: abc")))
+	require.Error(t, unmarshal(v, new(distributionConfig)))
+}
 
 func TestParseEndpoint(t *testing.T) {
 	t.Parallel()

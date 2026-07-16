@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/viperutil"
 	"github.com/spf13/viper"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
@@ -42,8 +43,29 @@ const (
 func decoderHook() viper.DecoderConfigOption {
 	return viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
 		viperutil.StringSliceViaEnvDecodeHook, viperutil.ByteSizeDecodeHook, viperutil.OrdererEndpointDecoder,
-		durationDecoder, serverDecoder, endpointDecoder,
+		durationDecoder, serverDecoder, endpointDecoder, distributionDecoder,
 	))
+}
+
+// distributionDecoder allows a bare number as a shorthand for a const distribution.
+// For example, "read-write-count: 2" is equivalent to "read-write-count: {const: 2}".
+// Non-numeric values (maps, strings, booleans) are left untouched so the full
+// distribution forms (const, uniform, normal, discrete, bernoulli) keep working.
+func distributionDecoder(_, targetType reflect.Type, rawData any) (result any, err error) {
+	if targetType != reflect.TypeFor[workload.Distribution]() {
+		return rawData, nil
+	}
+	rv := reflect.ValueOf(rawData)
+	switch {
+	case rv.CanInt():
+		return workload.Distribution{Const: float64(rv.Int())}, nil
+	case rv.CanUint():
+		return workload.Distribution{Const: float64(rv.Uint())}, nil
+	case rv.CanFloat():
+		return workload.Distribution{Const: rv.Float()}, nil
+	default:
+		return rawData, nil
+	}
 }
 
 func durationDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
