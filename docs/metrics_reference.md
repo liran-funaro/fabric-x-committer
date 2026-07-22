@@ -125,15 +125,18 @@ The following Query Service metrics are exported for consumption by Prometheus.
 
 The following Load Generator metrics are exported for consumption by Prometheus.
 
-| Name                                        | Type      | Labels | Description                                                                 |
-|---------------------------------------------|-----------|--------|-----------------------------------------------------------------------------|
-| loadgen_block_sent_total                    | counter   |        | Total number of blocks sent by the block generator                          |
-| loadgen_block_received_total                | counter   |        | Total number of blocks received by the block generator                      |
-| loadgen_transaction_sent_total              | counter   |        | Total number of transactions sent by the block generator                    |
-| loadgen_transaction_received_total          | counter   |        | Total number of transactions received by the block generator                |
-| loadgen_transaction_committed_total         | counter   |        | Total number of transaction commit statuses received by the block generator |
-| loadgen_transaction_aborted_total           | counter   |        | Total number of transaction abort statuses received by the block generator  |
-| loadgen_valid_transaction_latency_seconds   | histogram |        | Latency of valid transactions in seconds                                    |
-| loadgen_invalid_transaction_latency_seconds | histogram |        | Latency of invalid transactions in seconds                                  |
+| Name                                        | Type      | Labels | Description                                                                             |
+|---------------------------------------------|-----------|--------|-----------------------------------------------------------------------------------------|
+| loadgen_block_sent_total                    | counter   |        | Total number of blocks sent by the block generator                                      |
+| loadgen_block_received_total                | counter   |        | Total number of blocks received by the block generator                                  |
+| loadgen_transaction_sent_total              | counter   |        | Total number of transactions sent by the block generator                                |
+| loadgen_transaction_received_total          | counter   |        | Total number of transactions received by the block generator                            |
+| loadgen_transaction_committed_total         | counter   |        | Total number of transaction commit statuses received by the block generator             |
+| loadgen_transaction_aborted_total           | counter   |        | Total number of transaction abort statuses received by the block generator              |
+| loadgen_valid_transaction_latency_seconds   | histogram |        | Latency of valid transactions in seconds                                                |
+| loadgen_invalid_transaction_latency_seconds | histogram |        | Latency of invalid transactions in seconds                                              |
+| loadgen_created_keys_total                  | counter   |        | Total number of new keys created (committable) by the generator                         |
+| loadgen_referenced_read_keys_total          | counter   |        | Total number of existing (backward) read-only key references generated                  |
+| loadgen_referenced_write_keys_total         | counter   |        | Total number of existing write-slot key references (read-write + blind-write) generated |
 
 ---

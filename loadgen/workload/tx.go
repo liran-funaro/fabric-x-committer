@@ -7,30 +7,30 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"math/rand"
+	"sync/atomic"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
-type (
-	// IndependentTxGenerator generates a new valid TX given key generators.
-	IndependentTxGenerator struct {
-		TxBuilder                *TxBuilder
-		ReadOnlyKeyGenerator     *MultiGenerator[Key]
-		ReadWriteKeyGenerator    *MultiGenerator[Key]
-		BlindWriteKeyGenerator   *MultiGenerator[Key]
-		ReadWriteValueGenerator  *ByteArrayGenerator
-		BlindWriteValueGenerator *ByteArrayGenerator
-		MetadataGenerator        *ByteArrayGenerator
-		Modifiers                []Modifier
-	}
+// invalidSignatureBytes is the dummy signature stamped on transactions selected to be invalid.
+var invalidSignatureBytes = []byte("dummy")
 
-	// Modifier modifies a TX.
-	Modifier interface {
-		Modify(*applicationpb.Tx)
+type (
+	// IndependentTxGenerator builds transactions from a txRandomProcess. The generator only assembles:
+	// it embeds the TransactionProfile (the fixed layout set sizes and value sizes), lays out the
+	// namespace, optionally stamps a dummy endorsement in place of a real signature, and hands off to
+	// the TxBuilder. The random content — keys, values, nonce/TX ID, and metadata — comes from the
+	// process and is a pure function of the transaction index, so a transaction is reproducible by
+	// index.
+	IndependentTxGenerator struct {
+		TransactionProfile
+		process   *txRandomProcess
+		txCounter *atomic.Uint64
+		TxBuilder *TxBuilder
 	}
 
 	// Key is an alias for byte array.
@@ -40,96 +40,74 @@ type (
 // DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
 const DefaultGeneratedNamespaceID = "0"
 
-// newIndependentTxGenerators creates workers that generates independent transactions and apply the modifiers.
-// Each worker will have a unique instance of the modifier to avoid concurrency issues.
-// The modifiers will be applied in the order they are given.
-// A transaction modifier can modify any of its fields to adjust the workload.
-// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
-// The signature modifier is applied last so all previous modifications will be signed correctly.
-func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
-	seeders, keyGens := newSeedersAndKeyGens(profile)
-	gens := make([]*IndependentTxGenerator, len(seeders))
-	for i, s := range seeders {
-		modifiers := make([]Modifier, 0, len(extraModifiers)+2)
-		if len(profile.Conflicts.Dependencies) > 0 {
-			modifiers = append(modifiers, newTxDependenciesModifier(s.nextSeed(), profile))
-		}
-		for _, mod := range extraModifiers {
-			modifiers = append(modifiers, mod.Next())
-		}
-		modifiers = append(modifiers, newSignTxModifier(s.nextSeed(), profile))
-		txb, err := NewTxBuilderFromPolicy(&profile.Policy, s.nextSeed())
+// newIndependentTxGenerators creates one generator per worker, each with its own txRandomProcess (each
+// process is driven from a single goroutine and reuses a seed buffer), all sharing one global tx-id
+// counter. Worker-count invariance comes from the shared counter, not from sharing the process.
+func newIndependentTxGenerators(profile *Profile, counter *atomic.Uint64) []*IndependentTxGenerator {
+	utils.Must(profile.Transaction.Validate())
+	gens := make([]*IndependentTxGenerator, profile.Workers)
+	for i := range gens {
+		txb, err := NewTxBuilderFromPolicy(&profile.Policy, nil)
 		utils.Must(err)
 		gens[i] = &IndependentTxGenerator{
-			TxBuilder:                txb,
-			ReadOnlyKeyGenerator:     multiKeyGenerator(keyGens[i], profile.Transaction.ReadOnlyCount),
-			ReadWriteKeyGenerator:    multiKeyGenerator(keyGens[i], profile.Transaction.ReadWriteCount),
-			BlindWriteKeyGenerator:   multiKeyGenerator(keyGens[i], profile.Transaction.BlindWriteCount),
-			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
-			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
-			MetadataGenerator:        valueGenerator(s.nextSeed(), profile.Transaction.MetadataSize),
-			Modifiers:                modifiers,
+			process:            newTxRandomProcess(profile),
+			txCounter:          counter,
+			TxBuilder:          txb,
+			TransactionProfile: profile.Transaction,
 		}
 	}
 	return gens
 }
 
-// Next generate a new TX.
+// Next generates a new TX. It grabs the next global transaction index and assembles the transaction
+// from the process: keys and their values come from the per-transaction slot layout (new creates +
+// existing references, keyed by flat key index), while the nonce and metadata are addressed by the
+// transaction index, so the whole TX is a pure function of that index.
 func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
-	readOnly := g.ReadOnlyKeyGenerator.Next()
-	readWrite := g.ReadWriteKeyGenerator.Next()
-	blindWriteKey := g.BlindWriteKeyGenerator.Next()
+	txIdx := g.txCounter.Add(1) - 1
+	keys := g.process.slotKeys(txIdx)
 
 	ns := &applicationpb.TxNamespace{
 		NsId:        DefaultGeneratedNamespaceID,
 		NsVersion:   0,
-		ReadsOnly:   make([]*applicationpb.Read, len(readOnly)),
-		ReadWrites:  make([]*applicationpb.ReadWrite, len(readWrite)),
-		BlindWrites: make([]*applicationpb.Write, len(blindWriteKey)),
+		ReadsOnly:   make([]*applicationpb.Read, g.ReadOnlyCount),
+		ReadWrites:  make([]*applicationpb.ReadWrite, g.ReadWriteCount),
+		BlindWrites: make([]*applicationpb.Write, g.BlindWriteCount),
 	}
 
-	for i, key := range readOnly {
-		ns.ReadsOnly[i] = &applicationpb.Read{Key: key}
+	// Keys come from the flat key indices in `keys`; each write-site's value is keyed by that key index
+	// AND this transaction's index, so an update to a key writes a value distinct from the create's.
+	for i := range ns.ReadsOnly {
+		ns.ReadsOnly[i] = &applicationpb.Read{Key: g.process.key(keys.readOnly[i])}
 	}
-
-	for i, key := range readWrite {
+	for i := range ns.ReadWrites {
 		ns.ReadWrites[i] = &applicationpb.ReadWrite{
-			Key:   key,
-			Value: g.ReadWriteValueGenerator.Next(),
+			Key:   g.process.key(keys.readWrite[i]),
+			Value: g.process.value(txIdx, keys.readWrite[i], g.ReadWriteValueSize),
 		}
 	}
-
-	for i, key := range blindWriteKey {
+	for i := range ns.BlindWrites {
 		ns.BlindWrites[i] = &applicationpb.Write{
-			Key:   key,
-			Value: g.BlindWriteValueGenerator.Next(),
+			Key:   g.process.key(keys.blindWrite[i]),
+			Value: g.process.value(txIdx, keys.blindWrite[i], g.BlindWriteValueSize),
 		}
 	}
 
-	// We include a metadata only if specifically requested.
 	var metadata [][]byte
-	metadataItem := g.MetadataGenerator.Next()
-	if len(metadataItem) > 0 {
-		metadata = [][]byte{metadataItem}
+	if item := g.process.metadata(txIdx, g.MetadataSize); len(item) > 0 {
+		metadata = [][]byte{item}
 	}
 
 	tx := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{ns},
 		Metadata:   metadata,
 	}
-	for _, mod := range g.Modifiers {
-		mod.Modify(tx)
+	if g.process.invalidSignature(txIdx) {
+		// Pre-assigning prevents TxBuilder from re-signing the TX.
+		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
+		for i := range tx.Namespaces {
+			tx.Endorsements[i] = testsig.CreateEndorsementsForThresholdRule(invalidSignatureBytes)[0]
+		}
 	}
-	return g.TxBuilder.MakeTx(tx)
-}
-
-func multiKeyGenerator(keyGen Generator[Key], keyCount uint32) *MultiGenerator[Key] {
-	return &MultiGenerator[Key]{
-		Gen:   keyGen,
-		Count: int(keyCount),
-	}
-}
-
-func valueGenerator(rnd *rand.Rand, valueSize uint32) *ByteArrayGenerator {
-	return &ByteArrayGenerator{Size: valueSize, Source: rnd}
+	return g.TxBuilder.MakeTxWithNonce(g.process.nonce(txIdx), tx)
 }

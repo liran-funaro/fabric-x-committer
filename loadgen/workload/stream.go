@@ -8,6 +8,7 @@ package workload
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
@@ -20,22 +21,55 @@ import (
 type TxStream struct {
 	options        *StreamOptions
 	gens           []*IndependentTxGenerator
+	counter        *atomic.Uint64
 	queue          chan []*servicepb.LoadGenTx
 	rateController *ConsumerRateController[*servicepb.LoadGenTx]
 }
 
 // NewTxStream creates a stream that generates transactions in batches into a queue.
-func NewTxStream(
-	profile *Profile,
-	options *StreamOptions,
-	modifierGenerators ...Generator[Modifier],
-) *TxStream {
+func NewTxStream(profile *Profile, options *StreamOptions) *TxStream {
 	queue := make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1))
+	counter := new(atomic.Uint64)
 	return &TxStream{
 		options:        options,
+		counter:        counter,
 		queue:          queue,
-		gens:           newIndependentTxGenerators(profile, modifierGenerators...),
+		gens:           newIndependentTxGenerators(profile, counter),
 		rateController: NewConsumerRateController(options.RateLimit, queue),
+	}
+}
+
+// KeyStats is a monotonic snapshot of the workload's key-generation counts, derived purely from the
+// number of transactions generated so far (N) and the (constant) split configuration. C(N) is the
+// committable-write frontier, RO the read-only slot count, and W the write-slot count (read-write +
+// blind-write) per transaction. When the split is disabled every slot is a fresh key, so there are no
+// references and CreatedKeys counts the fresh write creates (N*W).
+type KeyStats struct {
+	CreatedKeys         uint64 // committable frontier C(N): keys created by write slots
+	ReferencedReadKeys  uint64 // existing (backward) read-only references: N*RO
+	ReferencedWriteKeys uint64 // existing (backward) write-slot references: N*W - C(N)
+}
+
+// KeyStats returns the current key-generation counts, computed from the shared transaction counter and
+// the frontier closed-forms. All fields are monotonic non-decreasing (suitable for counter metrics).
+func (s *TxStream) KeyStats() KeyStats {
+	if len(s.gens) == 0 {
+		return KeyStats{}
+	}
+	n := s.counter.Load()
+	p := s.gens[0].process
+	w := uint64(p.ReadWriteCount) + uint64(p.BlindWriteCount)
+	if p.NewKeysRate == nil {
+		// Split disabled: every slot is a fresh key, so writes create N*W keys and there are no references.
+		return KeyStats{CreatedKeys: n * w}
+	}
+	// Split enabled: writes create up to C(N) keys; all read-only slots and the non-creating write slots
+	// are backward references into the working set.
+	created := uint64(max(0, p.committedFrontier(n)))
+	return KeyStats{
+		CreatedKeys:         created,
+		ReferencedReadKeys:  n * uint64(p.ReadOnlyCount),
+		ReferencedWriteKeys: n*w - created,
 	}
 }
 

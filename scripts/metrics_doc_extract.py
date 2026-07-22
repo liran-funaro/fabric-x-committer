@@ -25,9 +25,9 @@ while repo_root_dir.parent != repo_root_dir:
         break
     repo_root_dir = repo_root_dir.parent
 
-# Pattern: New(Counter|Gauge|Histogram)(Vec)?(prometheus.(Counter|Gauge|Histogram)Opts
-# Captures: group(1)=metric type, group(2)=Vec or None, group(3)=opts type
-metric_pattern = re.compile(r'New([A-Z][a-z]+)(Vec)?\(prometheus\.([A-Z][a-z]+)Opts')
+# Pattern: New(Counter|Gauge|Histogram)(Vec|Func)?(prometheus.(Counter|Gauge|Histogram)Opts
+# Captures: group(1)=metric type, group(2)=Vec/Func or None, group(3)=opts type
+metric_pattern = re.compile(r'New([A-Z][a-z]+)(Vec|Func)?\(prometheus\.([A-Z][a-z]+)Opts')
 
 # Pattern: package.FunctionName(..., monitoring.MetricsParameters
 # Captures: group(1)=package, group(2)=method name
@@ -92,7 +92,7 @@ def iter_all_matches(content: str):
     # Find all metrics.
     for match in metric_pattern.finditer(content):
         metric_type = match.group(1).lower()  # Counter, Gauge, or Histogram
-        is_vec = match.group(2) is not None  # Vec or None
+        is_vec = match.group(2) == 'Vec'  # only Vec has labels (Func has none)
         opts_type = match.group(3).lower()  # Counter, Gauge, or Histogram
 
         # Verify that the metric type matches the opts type

@@ -411,14 +411,15 @@ func TestReadConfigLoadGen(t *testing.T) {
 				},
 			},
 			LoadProfile: &workload.Profile{
-				Key: workload.KeyProfile{Size: 32},
 				Block: workload.BlockProfile{
 					MaxSize:       500,
 					MinSize:       10,
 					PreferredRate: time.Second,
 				},
 				Transaction: workload.TransactionProfile{
-					ReadWriteCount: 2,
+					KeySize:           32,
+					ReadWriteCount:    2,
+					InvalidSignatures: 0.1,
 				},
 				Policy: workload.PolicyProfile{
 					ChannelID: "mychannel",
@@ -434,9 +435,6 @@ func TestReadConfigLoadGen(t *testing.T) {
 					}},
 					PeerOrganizationCount: 2,
 					ArtifactsPath:         "/root/artifacts",
-				},
-				Conflicts: workload.ConflictProfile{
-					InvalidSignatures: 0.1,
 				},
 				Seed:    12345,
 				Workers: 1,
@@ -468,10 +466,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 	}
 }
 
-// TestLoadGenProbabilityValidation exercises the decode-and-validate path for the
-// loadgen conflict probabilities: values inside the closed interval [0,1] are
-// accepted, values outside are rejected by validation. This also covers the
-// per-dependency probability, which lives inside a slice (validated via "dive").
+// TestLoadGenProbabilityValidation exercises the decode-and-validate path for the loadgen
+// invalid-signatures probability: values inside the closed interval [0,1] are accepted, values outside
+// are rejected by validation.
 func TestLoadGenProbabilityValidation(t *testing.T) {
 	t.Parallel()
 	read := func(t *testing.T, yaml string) error {
@@ -481,11 +478,7 @@ func TestLoadGenProbabilityValidation(t *testing.T) {
 		return unmarshal(v, &loadgen.ClientConfig{})
 	}
 	invalidSig := func(probability string) string {
-		return "load-profile:\n  conflicts:\n    invalid-signatures: " + probability + "\n"
-	}
-	dependency := func(probability string) string {
-		return "load-profile:\n  conflicts:\n    dependencies:\n" +
-			"      - probability: " + probability + "\n        src: read\n        dst: write\n"
+		return "load-profile:\n  transaction:\n    invalid-signatures: " + probability + "\n"
 	}
 
 	for _, tc := range []struct {
@@ -497,9 +490,6 @@ func TestLoadGenProbabilityValidation(t *testing.T) {
 		{name: "invalid-signatures is 1", yaml: invalidSig("1")},
 		{name: "invalid-signatures above 1", yaml: invalidSig("1.5"), wantErr: true},
 		{name: "invalid-signatures below 0", yaml: invalidSig("-0.1"), wantErr: true},
-		{name: "dependency probability in range", yaml: dependency("0.5")},
-		{name: "dependency probability above 1", yaml: dependency("2"), wantErr: true},
-		{name: "dependency probability below 0", yaml: dependency("-1"), wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -101,6 +102,25 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 			Buckets:   latencyTracker.buckets,
 		}),
 	}
+}
+
+// RegisterWorkloadKeyStats registers scrape-time counters for the workload's key generation, computed
+// on demand from get(). The counts are monotonic functions of the number of generated transactions.
+func (c *PerfMetrics) RegisterWorkloadKeyStats(get func() workload.KeyStats) {
+	c.Registry().MustRegister(
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: "loadgen", Name: "created_keys_total",
+			Help: "Total number of new keys created (committable) by the generator",
+		}, func() float64 { return float64(get().CreatedKeys) }),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: "loadgen", Name: "referenced_read_keys_total",
+			Help: "Total number of existing (backward) read-only key references generated",
+		}, func() float64 { return float64(get().ReferencedReadKeys) }),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: "loadgen", Name: "referenced_write_keys_total",
+			Help: "Total number of existing write-slot key references (read-write + blind-write) generated",
+		}, func() float64 { return float64(get().ReferencedWriteKeys) }),
+	)
 }
 
 // GetState returns the number of committed transactions.

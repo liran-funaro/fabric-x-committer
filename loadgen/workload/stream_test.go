@@ -109,7 +109,7 @@ func BenchmarkGenTx(b *testing.B) {
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	t.Helper()
-	require.Len(t, key, int(profile.Key.Size))
+	require.Len(t, key, int(profile.Transaction.KeySize))
 	require.Positive(t, SumInt(key))
 }
 
@@ -187,11 +187,9 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 	return append(profiles, sigProfile, sigWithCertProfile)
 }
 
-func startTxGeneratorUnderTest(
-	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
-) *TxStream {
+func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOptions) *TxStream {
 	t.Helper()
-	g := NewTxStream(profile, options, modifierGenerators...)
+	g := NewTxStream(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g
 }
@@ -210,6 +208,50 @@ func TestGenValidTx(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTxStreamKeyStats(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 1
+	p.Transaction.ReadWriteCount = 2
+	p.Transaction.BlindWriteCount = 1
+	p.Transaction.NewKeysRate = ratePtr(1.5) // 1.5 creates / tx
+	p.Transaction.ReferenceGap = 5
+	p.Transaction.LookbackWindow = 100
+
+	s := NewTxStream(p, defaultStreamOptions())
+	require.Equal(t, KeyStats{}, s.KeyStats(), "nothing generated yet")
+
+	const n = 100
+	for range n {
+		s.gens[0].Next() // increments the shared counter
+	}
+
+	w := uint64(p.Transaction.ReadWriteCount + p.Transaction.BlindWriteCount)
+	ro := uint64(p.Transaction.ReadOnlyCount)
+	require.Equal(t, KeyStats{
+		CreatedKeys:         150,       // floor(100*1.5)
+		ReferencedReadKeys:  n * ro,    // every read-only slot is a backward ref
+		ReferencedWriteKeys: n*w - 150, // remaining write slots are backward refs
+	}, s.KeyStats())
+}
+
+func TestTxStreamKeyStatsSplitDisabled(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 1
+	p.Transaction.ReadWriteCount = 2
+	p.Transaction.BlindWriteCount = 1
+	// NewKeysRate unset (DefaultProfile) => split disabled: every slot is a fresh key, no references.
+
+	s := NewTxStream(p, defaultStreamOptions())
+	const n = 100
+	for range n {
+		s.gens[0].Next()
+	}
+	w := uint64(p.Transaction.ReadWriteCount + p.Transaction.BlindWriteCount)
+	require.Equal(t, KeyStats{CreatedKeys: n * w}, s.KeyStats())
 }
 
 func TestGenValidBlock(t *testing.T) {
@@ -248,7 +290,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
-	p.Conflicts.InvalidSignatures = 0.2
+	p.Transaction.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -263,61 +305,52 @@ func TestGenInvalidSigTx(t *testing.T) {
 	requireBernoulliDist(t, valid, 0.2, 1e-2)
 }
 
-func TestGenDependentTx(t *testing.T) {
+// txKeysByRole extracts the keys of a generated TX's single namespace, split by slot role, for tests
+// that assert on key reuse across a stream.
+func txKeysByRole(tx *servicepb.LoadGenTx) (readOnly, readWrite, blindWrite []Key) {
+	ns := tx.Tx.Namespaces[0]
+	for _, r := range ns.ReadsOnly {
+		readOnly = append(readOnly, r.Key)
+	}
+	for _, rw := range ns.ReadWrites {
+		readWrite = append(readWrite, rw.Key)
+	}
+	for _, w := range ns.BlindWrites {
+		blindWrite = append(blindWrite, w.Key)
+	}
+	return readOnly, readWrite, blindWrite
+}
+
+func TestGenSplitContention(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
-	p.Conflicts.Dependencies = []DependencyDescription{
-		{
-			Gap:         1,
-			Src:         "write",
-			Dst:         "write",
-			Probability: 0.1,
-		},
-		{
-			Gap:         1,
-			Src:         "read",
-			Dst:         "write",
-			Probability: 0.1,
-		},
-		{
-			Gap:         1,
-			Src:         "write",
-			Dst:         "read-write",
-			Probability: 0.1,
-		},
-		{
-			Gap:         1,
-			Src:         "read-write",
-			Dst:         "read-write",
-			Probability: 0.1,
-		},
-	}
+	// One create per transaction; the second read-write slot is a backward reference one tx behind,
+	// drawn from a 2-key window so warmup adds at most a couple of extra (negative) keys.
+	p.Transaction.ReadWriteCount = 2
+	p.Transaction.NewKeysRate = ratePtr(1)
+	p.Transaction.ReferenceGap = 1
+	p.Transaction.LookbackWindow = 2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 
-	txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: 1e6})
-	m := make(map[string]uint64)
+	const n = 1000
+	txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: n})
+	require.Len(t, txs, n)
+
+	distinct := make(map[string]struct{})
 	for _, tx := range txs {
-		for _, ns := range tx.Tx.Namespaces {
-			for _, r := range ns.ReadsOnly {
-				m[string(r.Key)]++
-			}
-			for _, rw := range ns.ReadWrites {
-				m[string(rw.Key)]++
-			}
-			for _, w := range ns.BlindWrites {
-				m[string(w.Key)]++
-			}
+		_, rw, _ := txKeysByRole(tx)
+		require.Len(t, rw, 2)
+		for _, k := range rw {
+			distinct[string(k)] = struct{}{}
 		}
 	}
-
-	var sum uint64
-	for _, v := range m {
-		sum += v - 1
-	}
-	require.InDelta(t, 0.4, float64(sum)/float64(len(txs)), 1e-3)
+	// n transactions create ~n keys total (one new per tx), not 2n: the second slot reuses an
+	// existing key. Allow a small warmup slack.
+	require.Less(t, len(distinct), n+10)
+	require.Greater(t, len(distinct), n-10)
 }
 
 func TestBlindWriteWithValue(t *testing.T) {
@@ -388,35 +421,6 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	}
 	duration := time.Since(start)
 	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.2*float64(expectedSeconds))
-}
-
-// modGenTester simulates querying the version from the query service.
-type modGenTester struct {
-	nsVersion uint64
-}
-
-func (m *modGenTester) Next() Modifier {
-	return m
-}
-
-func (m *modGenTester) Modify(tx *applicationpb.Tx) {
-	for _, ns := range tx.Namespaces {
-		ns.NsVersion = m.nsVersion
-	}
-}
-
-func TestGenTxWithModifier(t *testing.T) {
-	t.Parallel()
-	p := DefaultProfile(8)
-
-	mod0 := &modGenTester{0}
-	mod1 := &modGenTester{1}
-	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions(), mod0, mod1)
-	g := c.MakeGenerator()
-	tx := g.Next(t.Context())
-	for _, ns := range tx.Tx.Namespaces {
-		require.Equal(t, mod1.nsVersion, ns.NsVersion)
-	}
 }
 
 func TestAsnMarshal(t *testing.T) {

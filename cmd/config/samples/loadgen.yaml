@@ -116,9 +116,6 @@ orderer-client:
 
 # Load profile configuration defining transaction characteristics and generation parameters
 load-profile:
-  key:
-    # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
-    size: 32
   # block describes generate block characteristics
   # (when applying load to the VC or Verifier, blocks are translated to batches).
   # The generated block size is aimed to be max-size, if the generated
@@ -142,18 +139,61 @@ load-profile:
   #   - blind-write (write-count): Writes a key without reading it first.
   # The count for each type is a fixed number of operations per transaction (default: 0).
   transaction:
-    # Size in bytes of the metadata for each transaction (0 means nil value).
-    # metadata-size: 0
+    # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
+    key-size: 32
     # Size in bytes of the value written for each read-write operation (0 means nil value).
     # read-write-value-size: 0
     # Size in bytes of the value written for each blind-write operation (0 means nil value).
     # blind-write-value-size: 0
+    # Size in bytes of the metadata for each transaction (0 means nil value).
+    # metadata-size: 0
     # Number of read-only operations per transaction.
     # read-only-count: 0
     # Number of read-write operations per transaction.
     read-write-count: 2
     # Number of blind-write operations per transaction.
     # write-count: 0
+    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0), for testing
+    # signature verification and error handling. 0.1 = 10% invalid. The decision is derived
+    # deterministically from the transaction index.
+    invalid-signatures: 0.1
+    #
+    # By DEFAULT (new-keys-rate UNSET) every slot uses a fresh, unique key, generating
+    # contention-free workload. SETTING new-keys-rate (to any value >= 0) enables the split, letting keys
+    # be REUSED across transactions and producing the commit-time contention the coordinator must order.
+    #
+    # Reads and writes share ONE key space, and a key is only ever CREATED by a WRITE slot:
+    #   - A READ-WRITE slot that targets a not-yet-created key is the canonical CHECKED INSERT: its
+    #     nil-version read asserts the key does not exist, then the write creates it. Read-write slots
+    #     take the creates first. A conflict here (a concurrent creator) is measured contention, but may
+    #     waste a key — taken out of the queue but never written.
+    #   - A READ-ONLY slot NEVER creates; pointing it at a not-yet-created key would "waste" that key
+    #     (read forever as nil). So every read-only slot references an ALREADY-CREATED key.
+    # Forward references (a read of a key a later write creates) are NOT synthesized: the orderer and the
+    # parallel workers reorder transactions, so backward references near the frontier become forward
+    # references for free — a backward window at distance `reference-gap` is statistically the same as
+    # looking forward AND backward at gap/2.
+    #
+    # Average number of NEW committable keys created per transaction by the write slots. The committable
+    # frontier grows as floor(j * new-keys-rate) after j transactions; flooring keeps the per-transaction
+    # count deterministic. The first floor((j+1)*rate)-floor(j*rate) write slots create; every remaining
+    # write slot and every read-only slot references an already-created key. UNSET (default) DISABLES the
+    # split (every slot is a fresh unique key). A value of 0 means NO creates at all (every slot
+    # references the static pre-genesis working set). A positive value must not exceed the write-slot
+    # count (read-write-count + write-count). To keep read-writes doing checked inserts rather than
+    # forcing blind-write overflow, keep new-keys-rate <= write-count.
+    # new-keys-rate: 1
+    # Minimum transaction distance behind the current transaction from which existing references are
+    # drawn: at transaction j the reference window ends at the frontier as of j-gap. 0 (default)
+    # references the newest keys (in-flight, highest contention); larger values reference older, already-
+    # committed keys. Expressed in TRANSACTIONS (a distance), not keys. Ignored when new-keys-rate unset.
+    # reference-gap: 0
+    # Size, IN KEYS, of the moving working set an existing reference is drawn from (references land in
+    # [top-window, top), spread by a per-transaction random offset). A larger window spreads references
+    # over more keys (less contention); a smaller one concentrates them (more contention). Required to be
+    # at least the total slot count (read-only + read-write + write) when new-keys-rate is set, so all
+    # references within a transaction are distinct. Ignored when new-keys-rate is unset.
+    # lookback-window: 1024
   # Policy configuration for transaction endorsement and validation
   policy:
     # Channel ID for which transactions are generated. Must match the target blockchain channel.
@@ -204,21 +244,6 @@ load-profile:
     # which will be printed by the loadgen CLI tool.
     # If this path does not exist, or it is empty, the artifacts will be generated into it.
     artifacts-path: /root/artifacts
-  # Conflict and error injection configuration for testing system resilience.
-  conflicts:
-    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0).
-    # Used to test signature verification and error handling. 0.1 = 10% invalid.
-    invalid-signatures: 0.1
-    # Dependencies inject read-write conflicts between transactions to test MVCC validation.
-    # Each dependency type is an independent Bernoulli trial applied per transaction.
-    # 'src' and 'dst' specify the operation types that create the dependency:
-    #   "read", "write", or "read-write" (both read and write the same key).
-    # 'gap' controls the distance (in transaction count) between dependent transactions (min: 1, default: 1).
-    # dependencies:
-    #   - probability: 0.05   # 5% of transactions will have this dependency
-    #     gap: 1              # Dependent transaction is the immediately next one
-    #     src: read-write     # Source transaction reads and writes a key
-    #     dst: read-write     # Destination transaction reads and writes the same key
   # Random seed for reproducible transaction generation. Same seed produces same transaction sequence.
   seed: 12345
   # Number of worker goroutines for parallel transaction generation.
