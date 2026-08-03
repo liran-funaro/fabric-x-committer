@@ -92,8 +92,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				TLS:      sidecarTLSCreds,
 				KeepAlive: &serve.ServerKeepAliveConfig{
 					Params: &serve.ServerKeepAliveParamsConfig{
-						Time:    300 * time.Second,
-						Timeout: 600 * time.Second,
+						Time:    60 * time.Second,
+						Timeout: 10 * time.Second,
 					},
 					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
 						MinTime:             60 * time.Second,
@@ -333,9 +333,24 @@ func TestReadConfigQuery(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
-		expectedServerConfig: withClientStreamLimit(newServeConfigWithDefaultTLS(
-			"query", queryServerPort, queryMonitoringPort,
-		)),
+		expectedServerConfig: withClientStreamLimit(&serve.Config{
+			GRPC: serve.ServerConfig{
+				Endpoint: *newEndpoint("", queryServerPort),
+				TLS:      test.NewServiceTLSConfig(artifactsPath, "query", connection.MutualTLSMode),
+				KeepAlive: &serve.ServerKeepAliveConfig{
+					Params: &serve.ServerKeepAliveParamsConfig{
+						Time:    60 * time.Second,
+						Timeout: 10 * time.Second,
+					},
+					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
+						MinTime:             60 * time.Second,
+						PermitWithoutStream: true,
+					},
+				},
+			},
+			HTTP:                  *newServerConfigWithDefaultTLS("query", queryMonitoringPort),
+			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
+		}),
 		expectedServiceConfig: &query.Config{
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          1024,
