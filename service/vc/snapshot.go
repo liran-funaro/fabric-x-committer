@@ -20,6 +20,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgconn"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
@@ -39,6 +40,139 @@ import (
 // locked out by that sequence. Does not apply to YugabyteDB (DocDB cloning
 // keeps the source live, so no lockout dance is needed there).
 const maintenanceDBName = "postgres"
+
+// rejectSnapshotIfPriorNotCheckpointed gates a new _snapshot request so that at
+// most one snapshot lifecycle is active. The request is accepted only when the
+// latest _snapshot record (tracked via latestSnapshotKeyMetadataKey) is
+// CHECKPOINTED, or none exists yet; otherwise the incoming snapshot transaction
+// is rejected WITHOUT creating a snapshot database or writing a _snapshot record.
+//
+// The incoming _snapshot write is removed from vTx.newWrites and its status is
+// set in vTx.invalidTxStatus, so the normal status path reports the rejection
+// and createSnapshotIfPresent then sees an empty newWrites and no-ops.
+//
+// Rejection status:
+//   - COMPLETED latest record (finished but never checkpointed) -> NO_CHECKPOINT.
+//   - any other non-CHECKPOINTED state (UNSPECIFIED/PENDING/IN_PROGRESS/FAILED)
+//     or a record that fails to decode -> IN_PROGRESS (conservative).
+//
+// The latest-snapshot pointer is written atomically with the _snapshot row it
+// targets (see setLatestSnapshotKeyIfPresent in database.go), so this lookup is
+// always consistent: it never points at a row from a batch that did not commit,
+// and by the time a new snapshot TX reaches this gate its own txID cannot yet be
+// the pointer target (that only happens once ITS OWN commit succeeds, which is
+// after this gate runs).
+func (db *database) rejectSnapshotIfPriorNotCheckpointed(
+	ctx context.Context, vTx *validatedTransactions,
+) error {
+	// A snapshot TX is submitted standalone (one transaction, one new-write entry).
+	if len(vTx.newWrites) != 1 {
+		return nil
+	}
+	var incomingTxID TxID
+	for txID, nsWrites := range vTx.newWrites {
+		if !nsWrites[committerpb.SnapshotNamespaceID].empty() {
+			incomingTxID = txID
+		}
+	}
+	if incomingTxID == "" {
+		return nil
+	}
+
+	// Resubmission escape hatch: if the incoming txID already exists in tx_status,
+	// this is a duplicate/resubmission owned by the existing dedup path. Do not
+	// gate it, so it keeps its real committed status.
+	rows, err := db.readStatusWithHeight(ctx, [][]byte{[]byte(incomingTxID)})
+	if err != nil {
+		return fmt.Errorf("failed to read status for snapshot tx %s: %w", incomingTxID, err)
+	}
+	if len(rows) > 0 {
+		return nil
+	}
+
+	blockStatus, err := db.determineSnapshotStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if blockStatus == committerpb.Status_STATUS_UNSPECIFIED {
+		return nil // no prior snapshot, or the latest one is CHECKPOINTED -> accept.
+	}
+
+	vTx.updateInvalidTxs([]TxID{incomingTxID}, blockStatus)
+	return nil
+}
+
+// determineSnapshotStatus looks up the latest _snapshot record via the
+// latestSnapshotKeyMetadataKey pointer and returns the rejection status the
+// incoming request should receive, or STATUS_UNSPECIFIED when the request may
+// proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
+//
+// A pointer that names a missing row, or a row whose value fails to decode, is
+// an invariant violation (the pointer is written atomically with its row; see
+// setLatestSnapshotKeyIfPresent) or storage corruption, not a normal rejection
+// outcome. Both are returned as errors -- never silently mapped to a
+// conservative rejection status -- so the batch fails/retries instead of
+// masking the anomaly.
+func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.Status, error) {
+	state, err := db.readLatestSnapshotRecord(ctx)
+	if err != nil {
+		return committerpb.Status_STATUS_UNSPECIFIED, err
+	}
+	if state == nil {
+		return committerpb.Status_STATUS_UNSPECIFIED, nil // no snapshot has ever been accepted.
+	}
+
+	switch state.Status {
+	case committerpb.SnapshotState_CHECKPOINTED:
+		return committerpb.Status_STATUS_UNSPECIFIED, nil
+	case committerpb.SnapshotState_COMPLETED:
+		return committerpb.Status_REJECTED_SNAPSHOT_NO_CHECKPOINT, nil
+	default:
+		return committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, nil
+	}
+}
+
+// readLatestSnapshotRecord performs the full pointer-to-row read cycle: it looks
+// up the latest-snapshot pointer (latestSnapshotKeyMetadataKey, set by
+// setLatestSnapshotKeyIfPresent) and, when one is set, reads and decodes the
+// _snapshot record it names.
+//
+// Returns (nil, nil) when no snapshot has ever been accepted (pointer unset).
+// The pointer and its row are written atomically in the same DB transaction
+// (setLatestSnapshotKeyIfPresent), so a pointer with no matching row is never
+// possible under normal operation; this guards against a future bug (e.g. a
+// maintenance path that deletes _snapshot rows without clearing the pointer)
+// silently making the caller assume no active snapshot, by returning a hard
+// error instead. A row whose value fails to decode is likewise a hard error,
+// never silently mapped to a conservative rejection status.
+func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.SnapshotState, error) {
+	key, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
+		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey)
+		var v []byte
+		return v, errors.Wrap(r.Scan(&v), "failed to get the latest snapshot key")
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest snapshot key: %w", err)
+	}
+	if len(key) == 0 {
+		return nil, nil
+	}
+
+	query := statedb.FmtNsID(queryValuesByKeysSQLTempl, committerpb.SnapshotNamespaceID)
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, [][]byte{key})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest _snapshot record: %w", err)
+	}
+	if len(values) == 0 {
+		return nil, errors.Newf("latest snapshot key %s has no matching _snapshot record", key)
+	}
+
+	var state committerpb.SnapshotState
+	if decodeErr := proto.Unmarshal(values[0], &state); decodeErr != nil {
+		return nil, errors.Wrapf(decodeErr, "failed to decode latest _snapshot record for key %s", key)
+	}
+	return &state, nil
+}
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's
 // per-transaction new-writes and, BEFORE the batch is committed, creates the
@@ -108,6 +242,7 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 		return nil, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
 	ref := state.TxRef
+
 	if ref == nil {
 		return nil, errors.Newf("_snapshot record for key %s has no TxRef", key)
 	}
