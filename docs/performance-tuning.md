@@ -63,7 +63,8 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 A queue that exists once per stream carries a `stream` label, so read it as a total with
 `sum(<metric>)` or per worker with `max(<metric>)` — a single saturated worker matters even when
 the total looks healthy. A stream's series disappears when the stream ends, so `sum` covers only
-the live streams.
+the live streams. This applies to `verifier_server_parallel_executor_*` and
+`sidecar_notifier_stream_block_queue_size`.
 
 ## 3. Sidecar
 
