@@ -84,13 +84,6 @@ func (s *streamStateManager[T]) registerStream(streamCtx context.Context, factor
 		ServerEndpoint: utils.ExtractServerAddress(streamCtx),
 		ClientEndpoint: commonutils.ExtractRemoteAddress(streamCtx),
 	}
-	context.AfterFunc(streamCtx, func() {
-		logger.Infof("Closing stream [%d]", info.Index)
-		s.streamsMu.Lock()
-		defer s.streamsMu.Unlock()
-		delete(s.indexToStreamState, info.Index)
-	})
-
 	logger.Infof("Registering stream [%d] on server %s for client %s",
 		info.Index, info.ServerEndpoint, info.ClientEndpoint)
 
@@ -101,5 +94,16 @@ func (s *streamStateManager[T]) registerStream(streamCtx context.Context, factor
 	}
 	state := factory(info)
 	s.indexToStreamState[info.Index] = &internalStreamState[T]{info: info, state: state}
+
+	// Registered after the entry exists, and under the lock: context.AfterFunc invokes its
+	// callback immediately when the context is already done, so registering it earlier lets
+	// the delete win the race against the insert and leaves the stream registered forever.
+	context.AfterFunc(streamCtx, func() {
+		logger.Infof("Closing stream [%d]", info.Index)
+		s.streamsMu.Lock()
+		defer s.streamsMu.Unlock()
+		delete(s.indexToStreamState, info.Index)
+	})
+
 	return state
 }

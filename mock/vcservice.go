@@ -32,7 +32,7 @@ type (
 	// VcService is a mock implementation of servicepb.ValidationAndCommitServiceServer.
 	// It is used for testing the client which is the coordinator service.
 	VcService struct {
-		servicepb.ValidationAndCommitServiceServer
+		servicepb.UnimplementedValidationAndCommitServiceServer
 		streamStateManager[VCStreamState]
 		nextBlock atomic.Pointer[servicepb.BlockRef]
 		txsStatus *fifoCache[*committerpb.TxStatus]
@@ -50,7 +50,8 @@ type (
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-		MockFaultyNodeDropSize int
+		// It is atomic so a test can change it while streams are processing batches.
+		MockFaultyNodeDropSize atomic.Int64
 	}
 
 	// VCStreamState holds the stream's batch queue.
@@ -80,9 +81,10 @@ func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
 	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
-	lastBlock.Number++
-	v.nextBlock.Store(lastBlock)
-	return nil, nil
+	// A fresh message rather than incrementing lastBlock in place: the request belongs to
+	// the caller, which for an in-process client is the very message it still holds.
+	v.nextBlock.Store(&servicepb.BlockRef{Number: lastBlock.Number + 1})
+	return &emptypb.Empty{}, nil
 }
 
 // GetNextBlockNumberToCommit get the next expected block number in the database/ledger.
@@ -90,7 +92,12 @@ func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
 ) (*servicepb.BlockRef, error) {
-	return v.nextBlock.Load(), nil
+	if next := v.nextBlock.Load(); next != nil {
+		return next, nil
+	}
+	// Nothing committed yet. Returning a typed-nil message would reach the client as an
+	// indistinguishable zero-valued BlockRef anyway, so we say block 0 explicitly.
+	return &servicepb.BlockRef{}, nil
 }
 
 // GetNamespacePolicies is a mock implementation of the protovcservice.GetNamespacePolicies.
@@ -212,7 +219,7 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 	status := make([]*committerpb.TxStatus, 0, len(txs))
 
 	// We simulate a faulty node by not responding to the first X TXs.
-	skip := max(0, min(v.MockFaultyNodeDropSize, len(txs)))
+	skip := int(min(max(0, v.MockFaultyNodeDropSize.Load()), int64(len(txs))))
 
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()

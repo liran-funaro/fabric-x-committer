@@ -164,6 +164,9 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	if len(p.ChanID) == 0 {
 		p.ChanID = "channel"
 	}
+	if p.OrdererConfig == nil {
+		p.OrdererConfig = &OrdererConfig{}
+	}
 	p.NumIDs = max(1, p.NumIDs)
 	p.ServerPerID = max(1, p.ServerPerID)
 	p.PeerOrganizationCount = max(1, p.PeerOrganizationCount)

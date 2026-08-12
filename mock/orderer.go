@@ -110,6 +110,7 @@ type (
 	blockCache struct {
 		storage           []*common.Block
 		maxDeliveredBlock int64
+		maxAddedBlock     int64
 		mu                *sync.Cond
 	}
 )
@@ -148,35 +149,43 @@ var (
 
 // NewMockOrderer creates multiple orderer instances.
 func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
-	if config.BlockSize == 0 {
-		config.BlockSize = defaultConfig.BlockSize
+	// The defaults are applied to our own copy: the caller keeps ownership of the struct it
+	// passed, and storing it directly would let a later in-place field write bypass the
+	// atomic below.
+	conf := *config
+	if conf.BlockSize <= 0 {
+		conf.BlockSize = defaultConfig.BlockSize
 	}
-	if config.BlockTimeout.Abs() == 0 {
-		config.BlockTimeout = defaultConfig.BlockTimeout
+	// A non-positive timeout would panic time.NewTicker in Run.
+	if conf.BlockTimeout <= 0 {
+		conf.BlockTimeout = defaultConfig.BlockTimeout
 	}
-	if config.OutBlockCapacity == 0 {
-		config.OutBlockCapacity = defaultConfig.OutBlockCapacity
+	if conf.OutBlockCapacity <= 0 {
+		conf.OutBlockCapacity = defaultConfig.OutBlockCapacity
 	}
-	if config.PayloadCacheSize == 0 {
-		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
+	if conf.PayloadCacheSize <= 0 {
+		conf.PayloadCacheSize = defaultConfig.PayloadCacheSize
 	}
-	if config.TestServerParameters.NumService == 0 && len(config.Servers) == 0 {
-		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
+	if conf.TestServerParameters.NumService == 0 && len(conf.Servers) == 0 {
+		conf.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
-	genesisBlock, err := loadGenesisBlockWithConsenters(config)
+	genesisBlock, err := loadGenesisBlockWithConsenters(&conf)
 	if err != nil {
 		return nil, err
 	}
-	numServices := max(1, config.TestServerParameters.NumService, len(config.Servers))
+	numServices := max(1, conf.TestServerParameters.NumService, len(conf.Servers))
 	o := &Orderer{
 		genesisBlock: *genesisBlock,
-		inEnvs:       make(chan envelopeEntry, numServices*config.BlockSize*config.OutBlockCapacity),
-		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
-		cutBlock:     make(chan any),
-		cache:        newBlockCache(config.OutBlockCapacity),
-		healthcheck:  serve.DefaultHealthCheckService(),
+		// One block's worth of envelopes per server absorbs a broadcast burst; the block
+		// queue is bounded by the cache that ultimately holds the blocks. Multiplying the
+		// two (as this used to) allocates six-figure buffers for no benefit.
+		inEnvs:      make(chan envelopeEntry, numServices*conf.BlockSize),
+		inBlocks:    make(chan *BlockWithConsenters, conf.OutBlockCapacity),
+		cutBlock:    make(chan any),
+		cache:       newBlockCache(conf.OutBlockCapacity),
+		healthcheck: serve.DefaultHealthCheckService(),
 	}
-	o.config.Store(config)
+	o.config.Store(&conf)
 
 	// Initialize TLS with CAs from genesis block if available.
 	if protoutil.IsConfigBlock(genesisBlock.Block) {
@@ -232,7 +241,9 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 		if err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
-		inEnvs.Write(newEnvelopeEntry(env))
+		// No done signal: the ACK below only promises the envelope was accepted, so there is
+		// nothing to wait for and per-envelope Ready allocation would be pure overhead.
+		inEnvs.Write(envelopeEntry{env: env})
 		if err = stream.Send(&repsSuccess); err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
@@ -249,7 +260,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	if seekErr != nil {
 		return grpcerror.WrapInvalidArgument(seekErr)
 	}
-	start, end, seekErr := parseSeekInfoStartStop(seekInfo)
+	start, end, seekErr := parseSeekInfoStartStop(seekInfo, o.cache.newestBlockNumber())
 	if seekErr != nil {
 		return grpcerror.WrapInvalidArgument(seekErr)
 	}
@@ -276,8 +287,8 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 			return grpcerror.WrapCancelled(err)
 		}
 		if b == nil {
-			logger.Warnf("Lost block. Sending an empty block for the sake of the delivery progress.")
-			b = testcrypto.PrepareBlockHeaderAndMetadata(&common.Block{Data: &common.BlockData{}}, p)
+			logger.Warnf("Lost block [#%d]. Sending an empty block for the sake of the delivery progress.", i)
+			b = fillerBlock(i, p)
 		}
 		msg := state.prepareResponse(ctx, b)
 		if msg == nil {
@@ -289,7 +300,26 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		logger.Debugf("Emitted block [#%d] by %s", b.Header.Number, state)
 		p.PrevBlock = b
 	}
-	return grpcerror.WrapCancelled(ctx.Err())
+	if ctx.Err() != nil {
+		return grpcerror.WrapCancelled(ctx.Err())
+	}
+
+	// The requested range was fully delivered. A real orderer terminates a bounded seek
+	// with a status message rather than just closing the stream.
+	return stream.Send(&ab.DeliverResponse{
+		Type: &ab.DeliverResponse_Status{Status: common.Status_SUCCESS},
+	}) //nolint:wrapcheck // already a GRPC error.
+}
+
+// fillerBlock stands in for a block that was evicted from the cache before this stream
+// reached it. The requested number is forced via a synthetic predecessor: p.PrevBlock is
+// nil until the stream emits its first block, and letting the number default to 0 would
+// restart the client's numbering when the very first block of the stream is the lost one.
+func fillerBlock(blockNum uint64, p testcrypto.BlockPrepareParameters) *common.Block {
+	if p.PrevBlock == nil && blockNum > 0 {
+		p.PrevBlock = &common.Block{Header: &common.BlockHeader{Number: blockNum - 1}}
+	}
+	return testcrypto.PrepareBlockHeaderAndMetadata(&common.Block{Data: &common.BlockData{}}, p)
 }
 
 // RegisterPartyState registered a persistent party state for the server.
@@ -371,19 +401,33 @@ func readSeekInfo(env *common.Envelope) (seekInfo *ab.SeekInfo, err error) {
 	return seekInfo, nil
 }
 
-func parseSeekInfoStartStop(seekInfo *ab.SeekInfo) (start, end uint64, err error) {
-	start = 0
-	end = math.MaxUint64
-	if startMsg := seekInfo.Start.GetSpecified(); startMsg != nil {
-		start = startMsg.Number
-	}
-	if endMsg := seekInfo.Stop.GetSpecified(); endMsg != nil {
-		end = endMsg.Number
-	}
+func parseSeekInfoStartStop(seekInfo *ab.SeekInfo, newestBlock uint64) (start, end uint64, err error) {
+	start = resolveSeekPosition(seekInfo.Start, 0, newestBlock)
+	end = resolveSeekPosition(seekInfo.Stop, math.MaxUint64, newestBlock)
 	if start > end {
 		return start, end, errors.Newf("invalid block range: (start) [%d] > [%d] (end)", start, end)
 	}
 	return start, end, nil
+}
+
+// resolveSeekPosition maps a seek position to a block number, returning unset when the
+// position is absent. Treating an OLDEST/NEWEST position as "not specified" would silently
+// replay the whole ledger for a client that asked only for the tip.
+func resolveSeekPosition(pos *ab.SeekPosition, unset, newestBlock uint64) uint64 {
+	if pos == nil {
+		return unset
+	}
+	switch t := pos.Type.(type) {
+	case *ab.SeekPosition_Specified:
+		return t.Specified.GetNumber()
+	case *ab.SeekPosition_Oldest:
+		return 0
+	case *ab.SeekPosition_Newest:
+		return newestBlock
+	default:
+		// SeekNextCommit is not modelled by the mock.
+		return unset
+	}
 }
 
 // Run collects the envelopes, cuts the blocks, and store them to the block cache.
@@ -396,6 +440,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 	// does not sign the genesis block.
 	blockParams := testcrypto.BlockPrepareParameters{}
 	tick := time.NewTicker(o.config.Load().BlockTimeout)
+	defer tick.Stop()
 	sendBlock := func(b *common.Block) {
 		if b == nil {
 			return
@@ -496,7 +541,7 @@ func (o *Orderer) SubmitBlockWithConsenters(ctx context.Context, newConfig *Bloc
 // SubmitEnv allows submitting envelops directly for testing other packages.
 // It blocks until the envelope is collected by the Run goroutine.
 func (o *Orderer) SubmitEnv(ctx context.Context, e *common.Envelope) bool {
-	env := newEnvelopeEntry(e)
+	env := newSyncEnvelopeEntry(e)
 	if !channel.NewWriter(ctx, o.inEnvs).Write(env) {
 		return false
 	}
@@ -516,7 +561,9 @@ func (o *Orderer) CutBlock(ctx context.Context) bool {
 	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
 }
 
-func newEnvelopeEntry(e *common.Envelope) envelopeEntry {
+// newSyncEnvelopeEntry creates an entry whose sender can wait for the Run goroutine to
+// collect it.
+func newSyncEnvelopeEntry(e *common.Envelope) envelopeEntry {
 	return envelopeEntry{
 		env:  e,
 		done: channel.NewReady(),
@@ -533,8 +580,17 @@ func newBlockCache(size int) *blockCache {
 	return &blockCache{
 		storage:           make([]*common.Block, size),
 		maxDeliveredBlock: -1,
+		maxAddedBlock:     -1,
 		mu:                sync.NewCond(&sync.Mutex{}),
 	}
+}
+
+// newestBlockNumber returns the highest block number added so far, or 0 if the cache is
+// still empty, which is also where a NEWEST seek on an empty ledger has to start.
+func (c *blockCache) newestBlockNumber() uint64 {
+	c.mu.L.Lock()
+	defer c.mu.L.Unlock()
+	return uint64(max(0, c.maxAddedBlock))
 }
 
 func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {
@@ -561,6 +617,8 @@ func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
 		c.mu.Wait()
 	}
 	c.storage[blockIndex] = b
+	//nolint:gosec // integer overflow conversion uint64 -> int64
+	c.maxAddedBlock = max(c.maxAddedBlock, int64(b.Header.Number))
 	// Wakeup all waiting to get blocks.
 	c.mu.Broadcast()
 	return true
@@ -571,6 +629,13 @@ func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Blo
 
 	c.mu.L.Lock()
 	defer c.mu.L.Unlock()
+	// Asking for a block declares that everything before it has been consumed. Recording
+	// that up front is what frees the older slots for addBlock: otherwise a reader seeking
+	// ahead waits for a block whose slot still holds an older undelivered one, while
+	// addBlock waits for that same older block to be delivered — a standoff only the
+	// context cancellation could break.
+	//nolint:gosec // integer overflow conversion uint64 -> int64
+	c.markDelivered(int64(blockNum) - 1)
 	for ctx.Err() == nil {
 		b := c.storage[blockIndex]
 		switch {
@@ -582,13 +647,22 @@ func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Blo
 			return nil, ErrLostBlock
 		default: // b.Header.Number == blockNum
 			//nolint:gosec // integer overflow conversion uint64 -> int64
-			c.maxDeliveredBlock = max(c.maxDeliveredBlock, int64(b.Header.Number))
-			// Wakeup all waiting to add blocks.
-			c.mu.Broadcast()
+			c.markDelivered(int64(b.Header.Number))
 			return b, nil
 		}
 	}
 	return nil, errors.Wrapf(ctx.Err(), "context ended")
+}
+
+// markDelivered advances the highest delivered block and wakes the writers waiting to
+// reuse its slot. The caller must hold the lock.
+func (c *blockCache) markDelivered(blockNum int64) {
+	if blockNum <= c.maxDeliveredBlock {
+		return
+	}
+	c.maxDeliveredBlock = blockNum
+	// Wakeup all waiting to add blocks.
+	c.mu.Broadcast()
 }
 
 // addEnvelope returns true if the entry is unique.

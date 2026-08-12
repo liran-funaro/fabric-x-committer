@@ -13,6 +13,8 @@ type fifoCache[T any] struct {
 }
 
 func newFifoCache[T any](size int) *fifoCache[T] {
+	// At least one slot: addIfNotExist indexes the eviction queue unconditionally.
+	size = max(1, size)
 	return &fifoCache[T]{
 		cache:         make(map[string]T, size),
 		evictionQueue: make([]string, size),
