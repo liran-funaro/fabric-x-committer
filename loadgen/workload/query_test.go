@@ -44,7 +44,7 @@ func TestFillVersionsAverageConvergesAtBatchSizeOne(t *testing.T) {
 		n    = 1000
 	)
 	stub := &stubKeyVersionQuerier{versions: singleNsVersions(versions)}
-	f := newQueryFiller(stub, rate) // one accumulator, reused across every single-tx batch below.
+	f := newQueryFiller(stub, rate, nil) // one accumulator, reused across every single-tx batch below.
 
 	var totalVersioned int
 	for range n {
@@ -114,7 +114,7 @@ func TestFillVersionsPriorityAndHitMiss(t *testing.T) {
 			t.Parallel()
 			tx := newTestTx(roKeys, rwKeys)
 			stub := &stubKeyVersionQuerier{versions: singleNsVersions(storeVersions)}
-			f := newQueryFiller(stub, tc.rate)
+			f := newQueryFiller(stub, tc.rate, nil)
 
 			require.NoError(t, f.FillVersions(t.Context(), []*applicationpb.Tx{tx}))
 
@@ -131,7 +131,7 @@ func TestFillVersionsZeroRateSkipsQuerying(t *testing.T) {
 	t.Parallel()
 	tx := newTestTx([][]byte{[]byte("ro")}, [][]byte{[]byte("rw")})
 	stub := &stubKeyVersionQuerier{versions: singleNsVersions(map[string]uint64{"ro": 1, "rw": 2})}
-	f := newQueryFiller(stub, 0)
+	f := newQueryFiller(stub, 0, nil)
 
 	require.NoError(t, f.FillVersions(t.Context(), []*applicationpb.Tx{tx}))
 
@@ -148,7 +148,7 @@ func TestFillVersionsIgnoresBlindWrites(t *testing.T) {
 	blindWrite := &applicationpb.Write{Key: []byte("bw"), Value: []byte("v")}
 	tx.Namespaces[0].BlindWrites = []*applicationpb.Write{blindWrite}
 	stub := &stubKeyVersionQuerier{versions: singleNsVersions(map[string]uint64{"ro": 1, "rw": 2, "bw": 3})}
-	f := newQueryFiller(stub, 100)
+	f := newQueryFiller(stub, 100, nil)
 
 	require.NoError(t, f.FillVersions(t.Context(), []*applicationpb.Tx{tx}))
 
@@ -172,7 +172,7 @@ func TestFillVersionsGroupsByNamespace(t *testing.T) {
 		nsA: {sharedKey: 100},
 		nsB: {sharedKey: 200},
 	}}
-	f := newQueryFiller(stub, 1) // budget 1 per tx: a fresh accumulator selects both txs' lone read.
+	f := newQueryFiller(stub, 1, nil) // budget 1 per tx: a fresh accumulator selects both txs' lone read.
 
 	require.NoError(t, f.FillVersions(t.Context(), []*applicationpb.Tx{txA, txB}))
 
@@ -199,7 +199,7 @@ func TestFillVersionsSpendsPerTxBudgetAcrossNamespaces(t *testing.T) {
 		nsA: {"a1": 1},
 		nsB: {"b1": 2},
 	}}
-	f := newQueryFiller(stub, 3)
+	f := newQueryFiller(stub, 3, nil)
 
 	require.NoError(t, f.FillVersions(t.Context(), []*applicationpb.Tx{tx}))
 
@@ -233,7 +233,7 @@ func TestFillVersionsToleratesMissingNamespace(t *testing.T) {
 			t.Parallel()
 			tx := newTestTx([][]byte{[]byte("ro")}, [][]byte{[]byte("rw")})
 			stub := &stubKeyVersionQuerier{err: tc.err}
-			f := newQueryFiller(stub, 100) // budget large enough to select every read, forcing a GetRows call.
+			f := newQueryFiller(stub, 100, nil) // budget large enough to select every read, forcing a GetRows call.
 
 			err := f.FillVersions(t.Context(), []*applicationpb.Tx{tx})
 

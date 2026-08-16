@@ -8,14 +8,27 @@ package workload
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+)
+
+const (
+	// MaxTrackedKeyVersion bounds the label cardinality of queried_key_versions_total: versions at or
+	// above it share one bucket.
+	MaxTrackedKeyVersion = 16
+	// MaxTrackedKeyVersionLabel is the overflow bucket's label value.
+	MaxTrackedKeyVersionLabel = "16+"
+	// MissKeyVersionLabel marks a read with no committed version: the query was served but the key has
+	// never been written, so the read keeps its nil version.
+	MissKeyVersionLabel = "nil"
 )
 
 type (
@@ -30,6 +43,11 @@ type (
 		client keyVersionQuerier
 		rate   float64
 		acc    float64
+		// versions counts the outcome of every selected read, labelled by the version observed, so
+		// hit rate and the revisit distribution are both readable from one metric. Passed in rather
+		// than reached for: loadgen/metrics imports this package, so it cannot be imported back.
+		// May be nil, which disables recording (tests, and any caller that has no metrics).
+		versions *prometheus.CounterVec
 	}
 
 	// keyVersionQuerier is the minimal seam a queryFiller needs to fetch committed key versions. It is
@@ -49,8 +67,8 @@ type (
 
 // newQueryFiller creates a batchQuerier that queries client for a rate-controlled average number of reads
 // per transaction.
-func newQueryFiller(client keyVersionQuerier, rate float64) *queryFiller {
-	return &queryFiller{client: client, rate: rate}
+func newQueryFiller(client keyVersionQuerier, rate float64, versions *prometheus.CounterVec) *queryFiller {
+	return &queryFiller{client: client, rate: rate, versions: versions}
 }
 
 // FillVersions selects a rate-controlled subset of the batch's version-bearing reads (ReadsOnly and
@@ -86,26 +104,56 @@ func (f *queryFiller) FillVersions(ctx context.Context, batch []*applicationpb.T
 		return errors.Wrap(err, "failed to query committed key versions")
 	}
 
-	fillSelectedVersions(selected, versionsByNamespace(rows))
+	f.fillSelectedVersions(selected, versionsByNamespace(rows))
 	return nil
 }
 
 // fillSelectedVersions writes each fetched committed version back onto its selected read, in place, scoped
-// to the read's own namespace. A selected key absent from versions (a miss) keeps its nil version.
-func fillSelectedVersions(selected map[string]*nsSelection, versions map[string]map[string]uint64) {
+// to the read's own namespace. A selected key absent from versions (a miss) keeps its nil version. Every
+// selected read is recorded, hit or miss, so the metric's total is the number of reads the query stage
+// actually resolved and its "nil" bucket is the miss count.
+func (f *queryFiller) fillSelectedVersions(
+	selected map[string]*nsSelection, versions map[string]map[string]uint64,
+) {
 	for nsID, sel := range selected {
 		nsVersions := versions[nsID]
 		for _, r := range sel.reads {
 			if v, ok := nsVersions[string(r.Key)]; ok {
 				r.Version = &v
 			}
+			f.observe(r.Version)
 		}
 		for _, rw := range sel.readWrites {
 			if v, ok := nsVersions[string(rw.Key)]; ok {
 				rw.Version = &v
 			}
+			f.observe(rw.Version)
 		}
 	}
+}
+
+// KeyVersionLabel maps an observed committed version to the bounded label value used by the
+// queried_key_versions_total metric. Versions grow without limit when the workload keeps rewriting the
+// same keys -- key-backref-rate at the slot count makes that the steady state -- so labelling the raw
+// version would be an unbounded-cardinality series. Versions at or above MaxTrackedKeyVersion share one
+// bucket, which still answers what the metric is for: how much of the working set is being revisited.
+func KeyVersionLabel(version *uint64) string {
+	switch {
+	case version == nil:
+		return MissKeyVersionLabel
+	case *version >= MaxTrackedKeyVersion:
+		return MaxTrackedKeyVersionLabel
+	default:
+		return strconv.FormatUint(*version, 10)
+	}
+}
+
+// observe records one resolved read's version, or the miss bucket when it has none.
+func (f *queryFiller) observe(version *uint64) {
+	if f.versions == nil {
+		return
+	}
+	f.versions.WithLabelValues(KeyVersionLabel(version)).Inc()
 }
 
 // selectPriorityReads selects up to k of tx's version-bearing reads (ReadsOnly and ReadWrites; blind

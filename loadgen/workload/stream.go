@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
@@ -27,6 +28,9 @@ type (
 		gens           []*IndependentTxGenerator
 		queue          chan []*servicepb.LoadGenTx
 		rateController *ConsumerRateController[*servicepb.LoadGenTx]
+		// queriedKeyVersions is handed to each worker's query filler so it can record the version
+		// observed for every read it resolves. Nil disables recording.
+		queriedKeyVersions *prometheus.CounterVec
 	}
 
 	// batchQuerier optionally fills committed key versions into a batch's reads before signing. It is the
@@ -57,17 +61,20 @@ type (
 // NewTxStream creates a stream that generates transactions in batches into a queue. The counter is the
 // shared transaction-index counter (created before the stream and shared with the metrics); the stream's
 // workers reserve their index ranges from it via the generators.
-func NewTxStream(profile *Profile, options *StreamOptions, counter *TxCounter) (*TxStream, error) {
+func NewTxStream(
+	profile *Profile, options *StreamOptions, counter *TxCounter, queriedKeyVersions *prometheus.CounterVec,
+) (*TxStream, error) {
 	gens, err := newIndependentTxGenerators(profile, counter)
 	if err != nil {
 		return nil, err
 	}
 	queue := make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1))
 	return &TxStream{
-		options:        options,
-		queue:          queue,
-		gens:           gens,
-		rateController: NewConsumerRateController(options.RateLimit, queue),
+		options:            options,
+		queue:              queue,
+		gens:               gens,
+		queriedKeyVersions: queriedKeyVersions,
+		rateController:     NewConsumerRateController(options.RateLimit, queue),
 	}, nil
 }
 
@@ -119,7 +126,9 @@ func (s *TxStream) dialQueryConnections(
 			return nil, nil, errors.Wrap(err, "failed to connect to query service")
 		}
 		conns = append(conns, conn)
-		queriers[i] = newQueryFiller(committerpb.NewQueryServiceClient(conn), s.gens[i].QueriesRate)
+		queriers[i] = newQueryFiller(
+			committerpb.NewQueryServiceClient(conn), s.gens[i].QueriesRate, s.queriedKeyVersions,
+		)
 	}
 	return queriers, conns, nil
 }

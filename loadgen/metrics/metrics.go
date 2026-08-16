@@ -34,6 +34,12 @@ type (
 		validLatency              prometheus.Histogram
 		invalidLatency            prometheus.Histogram
 
+		// Outcome of every read whose committed version the query stage fetched, labelled by the
+		// version observed. Incremented by the workload's query filler, which is handed the vec
+		// directly: loadgen/metrics imports loadgen/workload, so the workload cannot import this
+		// package back, and a CounterFunc cannot carry labels.
+		queriedKeyVersionsTotal *prometheus.CounterVec
+
 		// Scrape-time counters read from the shared tx-index counter; no caller updates them.
 		createdKeysTotal         prometheus.CounterFunc
 		referencedReadKeysTotal  prometheus.CounterFunc
@@ -112,6 +118,15 @@ func NewLoadgenServiceMetrics(c *Config, counter *workload.TxCounter) *PerfMetri
 			Help:      "Latency of invalid transactions in seconds",
 			Buckets:   latencyTracker.buckets,
 		}),
+		queriedKeyVersionsTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "queried_key_versions_total",
+			Help: "Total number of reads whose committed version the query stage fetched, by the " +
+				"version observed: \"nil\" for a miss (no committed version yet), otherwise the " +
+				"version number, with versions at or above " + workload.MaxTrackedKeyVersionLabel +
+				" folded into that one bucket. Hit rate is 1 - nil/total; the spread over version " +
+				"numbers shows how often the workload revisits the same keys.",
+		}, []string{"version"}),
 		createdKeysTotal: p.NewCounterFunc(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "created_keys_total",
@@ -200,4 +215,16 @@ func (c *PerfMetrics) OnReceiveBatch(batch []TxStatus) {
 	}
 	promutil.AddToCounter(c.transactionCommittedTotal, successCount)
 	promutil.AddToCounter(c.transactionAbortedTotal, len(batch)-successCount)
+}
+
+// ObserveQueriedKeyVersion records the outcome of one read whose committed version the query stage
+// fetched. A nil version is a miss: the query succeeded but the key has no committed version yet.
+// Versions at or above maxTrackedKeyVersion share one bucket to keep the label bounded.
+func (c *PerfMetrics) ObserveQueriedKeyVersion(version *uint64) {
+	c.queriedKeyVersionsTotal.WithLabelValues(workload.KeyVersionLabel(version)).Inc()
+}
+
+// QueriedKeyVersions exposes the vec so the workload's query filler can increment it directly.
+func (c *PerfMetrics) QueriedKeyVersions() *prometheus.CounterVec {
+	return c.queriedKeyVersionsTotal
 }

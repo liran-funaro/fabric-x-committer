@@ -87,7 +87,7 @@ func BenchmarkGenTx(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter(p.Transaction))
+		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter(p.Transaction), nil)
 		require.NoError(b, err)
 
 		ctx := b.Context()
@@ -195,7 +195,7 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 
 func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOptions) *TxStream {
 	t.Helper()
-	g, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction))
+	g, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction), nil)
 	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error { return g.Run(ctx, nil) }, nil)
 	return g
@@ -238,7 +238,7 @@ func TestTxStreamKeyStats(t *testing.T) {
 	p.Transaction.KeyLookbackWindow = 100
 
 	counter := NewTxCounter(p.Transaction)
-	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter, nil)
 	require.NoError(t, err)
 	require.Equal(t, KeyStats{}, counter.KeyStats(), "nothing generated yet")
 
@@ -268,7 +268,7 @@ func TestTxStreamKeyStatsAboveWriteCap(t *testing.T) {
 	require.NoError(t, p.Transaction.Validate())
 
 	counter := NewTxCounter(p.Transaction)
-	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter, nil)
 	require.NoError(t, err)
 	const n = 100
 	s.gens[0].buildBatch(n)
@@ -292,7 +292,7 @@ func TestTxStreamKeyStatsHistorical(t *testing.T) {
 	// KeyBackrefRate defaults to 0 => every slot is a fresh key, no references.
 
 	counter := NewTxCounter(p.Transaction)
-	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter, nil)
 	require.NoError(t, err)
 	const n = 100
 	s.gens[0].buildBatch(n)
@@ -447,7 +447,7 @@ func TestQueryStageRoutesQueriesToClient(t *testing.T) {
 	p.Transaction.ReadWriteCount = 1
 	p.Transaction.QueriesRate = 1 // every transaction's lone versioned read is selected for querying.
 
-	s, err := NewTxStream(p, defaultStreamOptions(), NewTxCounter(p.Transaction))
+	s, err := NewTxStream(p, defaultStreamOptions(), NewTxCounter(p.Transaction), nil)
 	require.NoError(t, err)
 
 	fake := &fakeQueryServiceServer{}
