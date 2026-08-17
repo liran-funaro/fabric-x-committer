@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -141,6 +142,40 @@ func TestNewChannelLenGauge(t *testing.T) {
 	}, nilCh)
 	require.Equal(t, 0, test.GetIntMetricValue(t, nilGauge))
 	require.Equal(t, 1, test.GetIntMetricValue(t, g))
+}
+
+func TestNewAtomicValueGauge(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	inProgress := &atomic.Int32{}
+	signed := monitoring.NewAtomicValueGauge(env.provider, prometheus.GaugeOpts{
+		Namespace: "coordinator",
+		Subsystem: "grpc",
+		Name:      "in_progress_transaction",
+		Help:      "Number of transactions whose status has not been sent back yet",
+	}, inProgress)
+
+	env.checkMetrics(t, "coordinator_grpc_in_progress_transaction 0")
+
+	inProgress.Add(7)
+	env.checkMetrics(t, "coordinator_grpc_in_progress_transaction 7")
+
+	// A counter that goes back down is followed too, so this suits a value that is not monotonic.
+	inProgress.Add(-5)
+	require.Equal(t, 2, test.GetIntMetricValue(t, signed))
+
+	// The unsigned atomic types work through the same call, with no explicit type argument.
+	unsigned := &atomic.Uint64{}
+	unsigned.Store(11)
+	g := monitoring.NewAtomicValueGauge(env.provider, prometheus.GaugeOpts{
+		Namespace: "coordinator",
+		Subsystem: "vcservice",
+		Name:      "next_expected_batch",
+		Help:      "Next batch number the manager expects",
+	}, unsigned)
+	require.Equal(t, 11, test.GetIntMetricValue(t, g))
 }
 
 func TestNewGuageVec(t *testing.T) {

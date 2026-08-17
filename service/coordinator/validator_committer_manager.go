@@ -59,9 +59,12 @@ type (
 		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus              *txStatusQueue
-		metrics                        *perfMetrics
-		policyMgr                      *policyManager
+		// pendingTxs holds the batches waiting for a validator-committer stream, including those a
+		// failed stream returned. Its size is reported by the manager's metrics.
+		pendingTxs        chan dependencygraph.TxNodeBatch
+		outgoingTxsStatus *txStatusQueue
+		metrics           *perfMetrics
+		policyMgr         *policyManager
 	}
 )
 
@@ -79,8 +82,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 	g, eCtx := errgroup.WithContext(ctx)
 
-	txBatchQueue := channel.NewReaderWriter(eCtx,
-		make(chan dependencygraph.TxNodeBatch, cap(c.incomingTxsForValidationCommit)))
+	txBatchQueue := channel.NewReaderWriter(eCtx, c.pendingTxs)
 	g.Go(func() error {
 		ingestIncomingTxsToInternalQueue(
 			channel.NewReader(eCtx, c.incomingTxsForValidationCommit),

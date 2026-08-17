@@ -9,6 +9,7 @@ package coordinator
 import (
 	"context"
 	"crypto/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,12 +58,13 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		sigVerifierToVCServiceValidatedTxs: inputTxs,
 		vcServiceToDepGraphValidatedTxs:    outputTxs,
 		vcServiceToCoordinatorTxStatus:     outputTxsStatus,
-	})
+	}, &atomic.Int32{})
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
 			clientConfig:                   test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
+			pendingTxs:                     make(chan dependencygraph.TxNodeBatch, cap(inputTxs)),
 			outgoingTxsStatus:              outputTxsStatus,
 			metrics:                        metrics,
 			policyMgr:                      svEnv.policyManager,

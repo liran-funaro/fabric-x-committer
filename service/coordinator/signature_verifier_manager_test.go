@@ -53,12 +53,13 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		depGraphToSigVerifierFreeTxs:       inputTxBatch,
 		sigVerifierToVCServiceValidatedTxs: outputValidatedTxs,
 		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(1),
-	})
+	}, &atomic.Int32{})
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
 			clientConfig:             test.ServerToMultiClientConfig(test.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
+			pendingTxs:               make(chan dependencygraph.TxNodeBatch, cap(outputValidatedTxs)),
 			metrics:                  metrics,
 			policyManager:            pm,
 		},

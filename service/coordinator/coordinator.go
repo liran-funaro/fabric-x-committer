@@ -91,6 +91,12 @@ type (
 		// 	       server, there is a goroutine that sends transaction status to this queue.
 		// receiver: coordinator receives transaction status from this queue and forwards them to the sidecar.
 		vcServiceToCoordinatorTxStatus *txStatusQueue
+
+		// sender: each manager ingests its input queue into the queue below, and a failed stream
+		// 	       returns the batches it had in flight to it.
+		// receiver: the manager's per-endpoint senders, one goroutine per server, draw from it.
+		sigVerifierPendingTxs chan dependencygraph.TxNodeBatch
+		vcServicePendingTxs   chan dependencygraph.TxNodeBatch
 	}
 )
 
@@ -127,7 +133,15 @@ func NewCoordinatorService(c *Config) *Service {
 		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(bufSzPerChanForValCommitMgr),
 	}
 
-	metrics := newPerformanceMetrics(queues)
+	// Both pending queues were sized from the queue between the two managers -- the verifier's from
+	// its output, the validator-committer's from its input, which are the same channel -- so both
+	// keep that capacity rather than their own manager's.
+	pendingBufSz := cap(queues.sigVerifierToVCServiceValidatedTxs)
+	queues.sigVerifierPendingTxs = make(chan dependencygraph.TxNodeBatch, pendingBufSz)
+	queues.vcServicePendingTxs = make(chan dependencygraph.TxNodeBatch, pendingBufSz)
+
+	numTxsInProgress := &atomic.Int32{}
+	metrics := newPerformanceMetrics(queues, numTxsInProgress)
 
 	depMgr := dependencygraph.NewManager(
 		&dependencygraph.Parameters{
@@ -147,6 +161,7 @@ func NewCoordinatorService(c *Config) *Service {
 			clientConfig:             &c.Verifier,
 			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
 			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
+			pendingTxs:               queues.sigVerifierPendingTxs,
 			metrics:                  metrics,
 			policyManager:            policyMgr,
 		},
@@ -157,6 +172,7 @@ func NewCoordinatorService(c *Config) *Service {
 			clientConfig:                   &c.ValidatorCommitter,
 			incomingTxsForValidationCommit: queues.sigVerifierToVCServiceValidatedTxs,
 			outgoingValidatedTxsNode:       queues.vcServiceToDepGraphValidatedTxs,
+			pendingTxs:                     queues.vcServicePendingTxs,
 			outgoingTxsStatus:              queues.vcServiceToCoordinatorTxStatus,
 			metrics:                        metrics,
 			policyMgr:                      policyMgr,
@@ -172,7 +188,7 @@ func NewCoordinatorService(c *Config) *Service {
 		config:                c,
 		metrics:               metrics,
 		initializationDone:    channel.NewReady(),
-		numTxsInProgress:      &atomic.Int32{},
+		numTxsInProgress:      numTxsInProgress,
 		txBatchIDToDepGraph:   1,
 		healthcheck:           serve.DefaultHealthCheckService(),
 	}
