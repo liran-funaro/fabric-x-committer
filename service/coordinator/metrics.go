@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package coordinator
 
 import (
+	"sync/atomic"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
@@ -39,6 +41,12 @@ type (
 		// The status queue is read by the coordinator itself, so it has no manager to report it.
 		// Its saturation is what stalls the idle handshake, see NoPendingTransactionProcessing.
 		vcserviceOutputTxStatusBatchQueueSize prometheus.GaugeFunc
+
+		// transactionInProgress and transactionReady report the two counters the
+		// numTxsInProgress >= readyCount >= 0 invariant is written against, so the invariant can
+		// be checked from the metrics alone. See NoPendingTransactionProcessing.
+		transactionInProgress prometheus.GaugeFunc
+		transactionReady      prometheus.GaugeFunc
 	}
 
 	// managerMetrics holds the metrics that every service manager reports. Defining them
@@ -54,10 +62,22 @@ type (
 		inputQueueSize prometheus.GaugeFunc
 		// outputQueueSize reports the size of the manager's output batch queue.
 		outputQueueSize prometheus.GaugeFunc
+		// pendingQueueSize reports the size of the queue the manager's per-endpoint senders draw
+		// from, which also receives the batches re-queued after a stream failure.
+		pendingQueueSize prometheus.GaugeFunc
+	}
+
+	// managerQueues are the queues one service manager reports the size of on scrape. They are
+	// only ever measured here and never sent to, so they are receive-only: the direction they are
+	// used in elsewhere says nothing about this struct.
+	managerQueues struct {
+		input   <-chan dependencygraph.TxNodeBatch
+		output  <-chan dependencygraph.TxNodeBatch
+		pending <-chan dependencygraph.TxNodeBatch
 	}
 )
 
-func newPerformanceMetrics(q *channels) *perfMetrics {
+func newPerformanceMetrics(q *channels, numTxsInProgress *atomic.Int32) *perfMetrics {
 	p := monitoring.NewProvider()
 
 	return &perfMetrics{
@@ -81,30 +101,49 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 		verifiers: newManagerMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: "verifier",
-		}, q.depGraphToSigVerifierFreeTxs, q.sigVerifierToVCServiceValidatedTxs),
+		}, &managerQueues{
+			input:   q.depGraphToSigVerifierFreeTxs,
+			output:  q.sigVerifierToVCServiceValidatedTxs,
+			pending: q.sigVerifierPendingTxs,
+		}),
 		vcs: newManagerMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: subsystemVCService,
-		}, q.sigVerifierToVCServiceValidatedTxs, q.vcServiceToDepGraphValidatedTxs),
-		vcserviceOutputTxStatusBatchQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
+		}, &managerQueues{
+			input:   q.sigVerifierToVCServiceValidatedTxs,
+			output:  q.vcServiceToDepGraphValidatedTxs,
+			pending: q.vcServicePendingTxs,
+		}),
+		vcserviceOutputTxStatusBatchQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemVCService,
 			Name:      "output_tx_status_batch_queue_size",
 			Help: "Size of the output transaction status batch queue of " +
 				"the validation and committer service manager.",
-		}, func() float64 {
-			return float64(q.vcServiceToCoordinatorTxStatus.len())
-		}),
+		}, q.vcServiceToCoordinatorTxStatus.ch),
+		transactionInProgress: p.NewAtomicValueGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
+			Name:      "in_progress_transaction",
+			Help: "Number of transactions received from the client whose status has not been " +
+				"sent back yet.",
+		}, numTxsInProgress),
+		transactionReady: p.NewAtomicValueGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
+			Name:      "ready_transaction",
+			Help: "Number of transaction statuses buffered in the output queue, ready to be sent " +
+				"to the client.",
+		}, &q.vcServiceToCoordinatorTxStatus.count),
 	}
 }
 
 // newManagerMetrics creates the metric set of a single service manager. The namespace and
-// subsystem identify which manager reports them, and the two queues are reported on scrape.
+// subsystem identify which manager reports them.
 func newManagerMetrics(
 	p *monitoring.Provider,
 	params monitoring.MetricsParameters,
-	inputQueue <-chan dependencygraph.TxNodeBatch,
-	outputQueue chan<- dependencygraph.TxNodeBatch,
+	q *managerQueues,
 ) *managerMetrics {
 	return &managerMetrics{
 		connection: monitoring.NewConnectionMetrics(p, params),
@@ -120,21 +159,24 @@ func newManagerMetrics(
 			Name:      "transaction_retried_total",
 			Help:      "Total number of transactions retried by the manager.",
 		}),
-		inputQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
+		inputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
 			Name:      "input_batch_queue_size",
 			Help:      "Size of the input batch queue of the manager.",
-		}, func() float64 {
-			return float64(len(inputQueue))
-		}),
-		outputQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
+		}, q.input),
+		outputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
 			Name:      "output_batch_queue_size",
 			Help:      "Size of the output batch queue of the manager.",
-		}, func() float64 {
-			return float64(len(outputQueue))
-		}),
+		}, q.output),
+		pendingQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: params.Namespace,
+			Subsystem: params.Subsystem,
+			Name:      "pending_batch_queue_size",
+			Help: "Size of the queue the manager's per-endpoint senders draw from, including the " +
+				"batches re-queued after a stream failure.",
+		}, q.pending),
 	}
 }

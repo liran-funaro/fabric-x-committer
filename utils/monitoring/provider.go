@@ -35,6 +35,18 @@ type Provider struct {
 	url      atomic.Pointer[string]
 }
 
+type (
+	// gaugeable is the set of types an atomic value may hold and be reported as a gauge.
+	gaugeable interface {
+		~int32 | ~int64 | ~uint32 | ~uint64
+	}
+
+	// atomicLoader is satisfied by the sync/atomic integer types.
+	atomicLoader[T gaugeable] interface {
+		Load() T
+	}
+)
+
 var logger = flogging.MustGetLogger("monitoring")
 
 // NewProvider creates a new prometheus metrics provider.
@@ -132,6 +144,19 @@ func (p *Provider) NewAtomicChannelLenGauge[T any](
 			return 0
 		}
 		return float64(len(*c))
+	})
+}
+
+// NewAtomicValueGauge creates a new prometheus gauge that reports the value held by v on every
+// scrape. Use it for a counter the code already maintains atomically -- reporting it costs one
+// registration, whereas mirroring it into a settable gauge means every writer has to remember to
+// update both, and one that forgets is invisible.
+func (p *Provider) NewAtomicValueGauge[T gaugeable, A atomicLoader[T]](
+	opts prometheus.GaugeOpts,
+	v A,
+) prometheus.GaugeFunc {
+	return p.NewGaugeFunc(opts, func() float64 {
+		return float64(v.Load())
 	})
 }
 

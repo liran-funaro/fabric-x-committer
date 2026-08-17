@@ -233,6 +233,7 @@ call site was deleted, so two gauges silently read zero. Instead:
 |---|---|
 | Length of a channel that lives as long as the service | `p.NewChannelLenGauge(opts, ch)` |
 | Length of a channel replaced at runtime (per session) | `p.NewAtomicChannelLenGauge(opts, &ptr)`; the owner `Store`s the current channel |
+| A counter the code already maintains atomically | `p.NewAtomicValueGauge(opts, v)` — any `atomic.Int32/Int64/Uint32/Uint64`, no type argument needed |
 | Anything else already computable (a map size, a struct field) | `p.NewGaugeFunc(opts, fn)` — `fn` runs on the scrape path, so keep it cheap, non-blocking and nil-safe |
 
 `promutil.SetGauge` / `AddToGauge` remain correct for a gauge whose value is *maintained*
