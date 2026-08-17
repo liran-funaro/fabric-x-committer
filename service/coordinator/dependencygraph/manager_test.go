@@ -24,8 +24,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-const DefaultQueueMonitorSamplingTime = 100 * time.Millisecond
-
 // Manager kinds under test.
 const (
 	managerKindGlobalLocal = "global-local"
@@ -109,7 +107,6 @@ func BenchmarkDependencyGraph(b *testing.B) {
 						IncomingValidatedTxsNode:  val,
 						NumOfLocalDepConstructors: tc.workers,
 						WaitingTxsLimit:           20_000_000,
-						QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 						PrometheusMetricsProvider: monitoring.NewProvider(),
 					})
 
@@ -205,7 +202,6 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
-				QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 
