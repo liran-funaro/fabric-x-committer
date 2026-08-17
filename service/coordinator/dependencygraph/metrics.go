@@ -24,12 +24,27 @@ const (
 
 var bucket = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
+// managerQueues are the queues a manager reports the size of on scrape. They are only ever
+// measured here and never sent to, so they are receive-only, as in the coordinator's struct of the
+// same name. A nil queue reports zero, which SimpleManager relies on: its pre-processing queue
+// holds a different element type and is not reported.
+type managerQueues struct {
+	ldgInput <-chan *TransactionBatch
+	gdgInput <-chan *transactionNodeBatch
+}
+
 type perfMetrics struct {
 	provider *monitoring.Provider
 
-	// queue sizes
-	ldgInputTxBatchQueueSize prometheus.Gauge
-	gdgInputTxBatchQueueSize prometheus.Gauge
+	// queue sizes. The two input queues are channels, so they are read on scrape.
+	// gdgWaitingTxQueueSize and dependentTransactionsQueueSize instead count transactions held in
+	// the graph's maps under the manager's lock, so there is no channel to take a length of on
+	// demand and they stay maintained incrementally by the code that adds and frees those
+	// transactions: globalDependencyManager.constructDependencyGraph and
+	// processValidatedTransactions, localDependencyConstructor.construct, and
+	// SimpleManager.taskProcessing.
+	ldgInputTxBatchQueueSize prometheus.GaugeFunc
+	gdgInputTxBatchQueueSize prometheus.GaugeFunc
 	gdgWaitingTxQueueSize    prometheus.Gauge
 
 	// processed transactions by each manager
@@ -52,24 +67,25 @@ type perfMetrics struct {
 	// performance of outputFreedExistingTransactions()
 	gdgOutputFreedTxSeconds prometheus.Histogram
 
+	// dependentTransactionsQueueSize is maintained incrementally, see the queue sizes above.
 	dependentTransactionsQueueSize prometheus.Gauge
 }
 
-func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
+func newPerformanceMetrics(p *monitoring.Provider, q *managerQueues) *perfMetrics {
 	return &perfMetrics{
 		provider: p,
-		ldgInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		ldgInputTxBatchQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemLocalDependencyGraph,
 			Name:      nameInputTxBatchQueueSize,
 			Help:      "Size of the input transaction batch queue of the local dependency graph manager",
-		}),
-		gdgInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		}, q.ldgInput),
+		gdgInputTxBatchQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemGlobalDependencyGraph,
 			Name:      nameInputTxBatchQueueSize,
 			Help:      "Size of the input transaction batch queue of the global dependency graph manager",
-		}),
+		}, q.gdgInput),
 		gdgWaitingTxQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemGlobalDependencyGraph,

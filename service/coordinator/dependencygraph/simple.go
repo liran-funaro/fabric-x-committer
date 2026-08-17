@@ -56,7 +56,9 @@ func NewSimpleManager(p *Parameters) *SimpleManager {
 		preProcessedTxBatchQueue:        make(chan TxNodeBatch, cap(p.IncomingTxs)),
 		preProcessedValidatedBatchQueue: make(chan validatedBatch, cap(p.IncomingValidatedTxsNode)),
 		keyToWaitingTXs:                 make(map[string]*waiting),
-		metrics:                         newPerformanceMetrics(p.PrometheusMetricsProvider),
+		metrics: newPerformanceMetrics(p.PrometheusMetricsProvider, &managerQueues{
+			ldgInput: p.IncomingTxs,
+		}),
 	}
 }
 

@@ -27,11 +27,14 @@ type globalDependencyTestEnv struct {
 
 func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	t.Helper()
+	incomingTxs := make(chan *transactionNodeBatch, 10)
 	env := &globalDependencyTestEnv{
-		incomingTxs:  make(chan *transactionNodeBatch, 10),
+		incomingTxs:  incomingTxs,
 		outgoingTxs:  make(chan TxNodeBatch, 10),
 		validatedTxs: make(chan TxNodeBatch, 10),
-		metrics:      newPerformanceMetrics(monitoring.NewProvider()),
+		metrics: newPerformanceMetrics(monitoring.NewProvider(), &managerQueues{
+			gdgInput: incomingTxs,
+		}),
 	}
 
 	dm := newGlobalDependencyManager(
