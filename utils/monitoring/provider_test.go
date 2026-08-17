@@ -108,6 +108,41 @@ func TestNewGuage(t *testing.T) {
 	env.checkMetrics(t, "vcservice_preparer_transactions_queued 5")
 }
 
+func TestNewChannelLenGauge(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	ch := make(chan int, 3)
+	g := monitoring.NewChannelLenGauge(env.provider, prometheus.GaugeOpts{
+		Namespace: "vcservice",
+		Subsystem: "preparer",
+		Name:      "input_queue_size",
+		Help:      "Number of batches waiting to be prepared",
+	}, ch)
+
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 0")
+
+	// The value is read on scrape, so it tracks the channel without anything setting it.
+	ch <- 1
+	ch <- 2
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 2")
+
+	<-ch
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 1")
+
+	// A nil channel reports zero rather than panicking on the scrape path.
+	var nilCh chan int
+	nilGauge := monitoring.NewChannelLenGauge(env.provider, prometheus.GaugeOpts{
+		Namespace: "vcservice",
+		Subsystem: "validator",
+		Name:      "pending_queue_size",
+		Help:      "Number of batches waiting to be validated",
+	}, nilCh)
+	require.Equal(t, 0, test.GetIntMetricValue(t, nilGauge))
+	require.Equal(t, 1, test.GetIntMetricValue(t, g))
+}
+
 func TestNewGuageVec(t *testing.T) {
 	t.Parallel()
 
