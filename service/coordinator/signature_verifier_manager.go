@@ -60,8 +60,11 @@ type (
 		clientConfig             *connection.MultiClientConfig
 		incomingTxsForValidation <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxs     chan<- dependencygraph.TxNodeBatch
-		metrics                  *perfMetrics
-		policyManager            *policyManager
+		// pendingTxs holds the batches waiting for a verifier stream, including those a failed
+		// stream returned. Its size is reported by the manager's metrics.
+		pendingTxs    chan dependencygraph.TxNodeBatch
+		metrics       *perfMetrics
+		policyManager *policyManager
 	}
 )
 
@@ -85,7 +88,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 
 	g, eCtx := errgroup.WithContext(derivedCtx)
 
-	txBatchQueue := channel.NewReaderWriter(eCtx, make(chan dependencygraph.TxNodeBatch, cap(c.outgoingValidatedTxs)))
+	txBatchQueue := channel.NewReaderWriter(eCtx, c.pendingTxs)
 	g.Go(func() error {
 		ingestIncomingTxsToInternalQueue(
 			channel.NewReader(eCtx, c.incomingTxsForValidation),
