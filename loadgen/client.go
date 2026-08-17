@@ -65,18 +65,13 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Profile: conf.LoadProfile,
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
-			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring, txCounter),
 		},
 		healthcheck: serve.DefaultHealthCheckService(),
 	}
 
-	adapter, err := getAdapter(&conf.Adapter, &c.resources)
-	if err != nil {
-		return nil, err
-	}
-
 	// Generate the crypto artifacts and config block.
 	// This can be redundant in some cases, but we create it anyway to avoid specialized use cases.
+	var err error
 	c.resources.ConfigBlock, err = workload.CreateOrLoadConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 	if err != nil {
 		return nil, err
@@ -84,6 +79,15 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 
 	// After creating the artifacts, we can create the stream.
 	c.txStream, err = workload.NewTxStream(conf.LoadProfile, conf.Stream, txCounter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Both the metrics and the adapter need the stream: the metrics read its rate limit at scrape
+	// time, and the adapter reads the metrics.
+	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring, txCounter, c.txStream)
+
+	adapter, err := getAdapter(&conf.Adapter, &c.resources)
 	if err != nil {
 		return nil, err
 	}
