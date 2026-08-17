@@ -41,6 +41,7 @@ type (
 		lastCommittedBlockSetInterval time.Duration
 		waitingTxsSlots               *utils.Slots
 		metrics                       *perfMetrics
+		queues                        *queues
 		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
 		// by sendBlocksToCoordinator and processStatusBatch goroutines.
 		committedBlockMu sync.Mutex
@@ -61,11 +62,13 @@ type (
 func newRelay(
 	lastCommittedBlockSetInterval time.Duration,
 	metrics *perfMetrics,
+	q *queues,
 ) *relay {
 	logger.Info("Initializing new relay")
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		metrics:                       metrics,
+		queues:                        q,
 	}
 }
 
@@ -97,7 +100,10 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	expectedNextBlockToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
 
+	// Both queues below live for this session only. They are published so their sizes are
+	// reported on scrape; the pointers are not read for anything else.
 	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
+	r.queues.relayMappedBlock.Store(&mappedBlockQueue)
 	g.Go(func() error {
 		return r.preProcessBlock(sCtx, mappedBlockQueue)
 	})
@@ -106,6 +112,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	})
 
 	statusBatch := make(chan *committerpb.TxStatusBatch, cap(r.outgoingCommittedBlock))
+	r.queues.relayStatusBatch.Store(&statusBatch)
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(sCtx, stream, statusBatch)
 	})

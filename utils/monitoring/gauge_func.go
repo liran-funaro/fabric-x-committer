@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
+	"sync/atomic"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -51,5 +53,23 @@ func NewChannelLenGauge[T any](
 ) prometheus.GaugeFunc {
 	return p.NewGaugeFunc(opts, func() float64 {
 		return float64(len(ch))
+	})
+}
+
+// NewAtomicChannelLenGauge creates a new prometheus gauge that reports the number of items
+// buffered in the channel ch currently points to. Use it for a queue that is replaced during the
+// service's lifetime, such as one recreated per session: the value follows whichever channel is
+// installed, and an unset pointer reports zero rather than the previous channel's last value.
+func NewAtomicChannelLenGauge[T any](
+	p *Provider,
+	opts prometheus.GaugeOpts,
+	ch *atomic.Pointer[chan T],
+) prometheus.GaugeFunc {
+	return p.NewGaugeFunc(opts, func() float64 {
+		c := ch.Load()
+		if c == nil {
+			return 0
+		}
+		return float64(len(*c))
 	})
 }

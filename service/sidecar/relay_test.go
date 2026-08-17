@@ -47,10 +47,12 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{})
 	coordinatorEndpoint := coordinatorServer.Configs[0].GRPC.Endpoint
 
-	metrics := newPerformanceMetrics()
+	q := newQueues(10)
+	metrics := newPerformanceMetrics(q)
 	relayService := newRelay(
 		time.Second,
 		metrics,
+		q,
 	)
 
 	conn := test.NewInsecureConnection(t, &coordinatorEndpoint)
@@ -540,7 +542,7 @@ func submitSnapshotBlockForTest(t *testing.T, mappedBlock *blockMappingResult) [
 	t.Helper()
 
 	r := &relay{
-		metrics:         newPerformanceMetrics(),
+		metrics:         newPerformanceMetrics(newQueues(10)),
 		waitingTxsSlots: utils.NewSlots(int64(len(mappedBlock.block.Txs)) + 1),
 	}
 

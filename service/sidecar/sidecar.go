@@ -39,7 +39,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
@@ -55,20 +54,47 @@ var logger = flogging.MustGetLogger("sidecar")
 //     read-only queries directly to the underlying block store.
 type Service struct {
 	committerpb.UnimplementedBlockQueryServiceServer
-	deliveryParams        deliverorderer.Parameters
-	relay                 *relay
-	notifier              *notifier
-	blockStore            *blockStore
-	coordConn             *grpc.ClientConn
-	blockToBeCommitted    atomic.Pointer[chan *common.Block]
+	deliveryParams deliverorderer.Parameters
+	relay          *relay
+	notifier       *notifier
+	blockStore     *blockStore
+	coordConn      *grpc.ClientConn
+	queues         *queues
+	config         *Config
+	healthcheck    *health.Server
+	metrics        *perfMetrics
+	tlsUpdater     serve.DynamicTLSUpdater
+	ready          *channel.Ready
+}
+
+// queues are the channels whose sizes the sidecar reports on scrape, so they are created before
+// the metrics that observe them. The first group lives for the service's lifetime; the queues that
+// live for one coordinator session are held behind the atomic pointers below, which keeps
+// perfMetrics holding gauges only.
+type queues struct {
 	committedBlock        chan *common.Block
 	committedBlockWithTxs chan *committedBlockWithTxs
 	statusQueue           chan []*committerpb.TxStatus
-	config                *Config
-	healthcheck           *health.Server
-	metrics               *perfMetrics
-	tlsUpdater            serve.DynamicTLSUpdater
-	ready                 *channel.Ready
+	notifierRequests      chan *notificationRequest
+	notifierTimeouts      chan *notificationRequest
+
+	// The relay builds the three queues below anew for every coordinator session, which is how a
+	// failed session's leftovers are dropped, so they are held behind a pointer the session
+	// installs. A gauge over one of them reports whichever channel is current, and zero before
+	// the first session.
+	relayInputBlock  atomic.Pointer[chan *common.Block]
+	relayMappedBlock atomic.Pointer[chan *blockMappingResult]
+	relayStatusBatch atomic.Pointer[chan *committerpb.TxStatusBatch]
+}
+
+func newQueues(bufferSize int) *queues {
+	return &queues{
+		committedBlock:        make(chan *common.Block, bufferSize),
+		committedBlockWithTxs: make(chan *committedBlockWithTxs, bufferSize),
+		statusQueue:           make(chan []*committerpb.TxStatus, bufferSize),
+		notifierRequests:      make(chan *notificationRequest, bufferSize),
+		notifierTimeouts:      make(chan *notificationRequest, bufferSize),
+	}
 }
 
 var (
@@ -92,21 +118,20 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
-	metrics := newPerformanceMetrics()
+	q := newQueues(c.ChannelBufferSize)
+	metrics := newPerformanceMetrics(q)
 	deliveryParams.Metrics = metrics.delivery
-	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
+	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics, q)
 
 	return &Service{
-		deliveryParams:        deliveryParams,
-		relay:                 relayService,
-		notifier:              newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
-		healthcheck:           serve.DefaultHealthCheckService(),
-		config:                c,
-		metrics:               metrics,
-		committedBlock:        make(chan *common.Block, c.ChannelBufferSize),
-		committedBlockWithTxs: make(chan *committedBlockWithTxs, c.ChannelBufferSize),
-		statusQueue:           make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-		ready:                 channel.NewReady(),
+		deliveryParams: deliveryParams,
+		relay:          relayService,
+		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification, metrics, q),
+		healthcheck:    serve.DefaultHealthCheckService(),
+		config:         c,
+		metrics:        metrics,
+		queues:         q,
+		ready:          channel.NewReady(),
 	}, nil
 }
 
@@ -148,12 +173,12 @@ func (s *Service) Run(ctx context.Context) error {
 	g.Go(func() error {
 		// Deliver the block with status to clients.
 		return s.blockStore.run(gCtx, &blockStoreRunConfig{
-			IncomingCommittedBlock: s.committedBlock,
+			IncomingCommittedBlock: s.queues.committedBlock,
 		})
 	})
 	g.Go(func() error {
 		// Notification for clients.
-		return s.notifier.run(gCtx, s.statusQueue, s.committedBlockWithTxs)
+		return s.notifier.run(gCtx, s.queues.statusQueue, s.queues.committedBlockWithTxs)
 	})
 
 	g.Go(func() error {
@@ -196,7 +221,8 @@ func (s *Service) sendBlocksAndReceiveStatus(
 
 	// We drop all enqueued block if any before starting a new session.
 	blocksToBeCommitted := make(chan *common.Block, s.config.ChannelBufferSize)
-	s.blockToBeCommitted.Store(new(blocksToBeCommitted))
+	// Publish this session's queue so its size is reported on scrape.
+	s.queues.relayInputBlock.Store(&blocksToBeCommitted)
 
 	// Config blocks are infrequent, but in rare cases a user may submit
 	// multiple config transactions in rapid succession. Buffer of 5 allows
@@ -221,15 +247,15 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	})
 
 	g.Go(func() error {
-		logger.Info("Relay the blocks to committer (from s.blockToBeCommitted) and receive the transaction status.")
+		logger.Info("Relay the blocks to committer (from blocksToBeCommitted) and receive the transaction status.")
 		return s.relay.run(gCtx, &relayRunConfig{
 			coordClient:                    coordClient,
 			nextExpectedBlockByCoordinator: nextBlockNum,
 			incomingBlockToBeCommitted:     blocksToBeCommitted,
-			outgoingCommittedBlock:         s.committedBlock,
-			outgoingStatusUpdates:          s.statusQueue,
+			outgoingCommittedBlock:         s.queues.committedBlock,
+			outgoingStatusUpdates:          s.queues.statusQueue,
 			outgoingConfigBlocks:           configBlocks,
-			outgoingCommittedBlockWithTxs:  s.committedBlockWithTxs,
+			outgoingCommittedBlockWithTxs:  s.queues.committedBlockWithTxs,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
 		})
 	})
@@ -238,8 +264,8 @@ func (s *Service) sendBlocksAndReceiveStatus(
 }
 
 func (s *Service) recoverCommittedBlocks(ctx context.Context) {
-	for ctx.Err() == nil && len(s.committedBlock) > 0 {
-		logger.Infof("Waiting for committed block queue: %d", len(s.committedBlock))
+	for ctx.Err() == nil && len(s.queues.committedBlock) > 0 {
+		logger.Infof("Waiting for committed block queue: %d", len(s.queues.committedBlock))
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -310,7 +336,7 @@ func (s *Service) recoverLedgerStore(
 	g.Go(func() error {
 		defer cancel()
 		blocks := channel.NewReader(gCtx, blockCh)
-		committedBlocks := channel.NewWriter(ctx, s.committedBlock)
+		committedBlocks := channel.NewWriter(ctx, s.queues.committedBlock)
 		for range numOfBlocksPendingInBlockStore {
 			blk, ok := blocks.Read()
 			if !ok {
@@ -428,24 +454,6 @@ func appendMissingBlock(
 		return errors.New("context ended")
 	}
 	return nil
-}
-
-func (s *Service) monitorQueues(ctx context.Context) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	m := s.metrics
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-
-		blockToBeCommittedChan := s.blockToBeCommitted.Load()
-		if blockToBeCommittedChan != nil {
-			promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(*blockToBeCommittedChan))
-		}
-		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
-	}
 }
 
 // updateDynamicTLS reads config blocks from the relay and updates the

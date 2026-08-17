@@ -144,6 +144,39 @@ func TestNewChannelLenGauge(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, g))
 }
 
+func TestNewAtomicChannelLenGauge(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	var holder atomic.Pointer[chan int]
+	g := monitoring.NewAtomicChannelLenGauge(env.provider, prometheus.GaugeOpts{
+		Namespace: "sidecar",
+		Subsystem: "relay",
+		Name:      "input_block_queue_size",
+		Help:      "Number of blocks waiting to be relayed",
+	}, &holder)
+
+	// An unset pointer reports zero rather than dereferencing nil.
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 0")
+
+	first := make(chan int, 5)
+	holder.Store(&first)
+	first <- 1
+	first <- 2
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 2")
+
+	// Replacing the channel must move the gauge to the new one instead of latching the value of
+	// the channel the previous session left behind.
+	second := make(chan int, 5)
+	holder.Store(&second)
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 0")
+
+	second <- 1
+	require.Equal(t, 1, test.GetIntMetricValue(t, g))
+	require.Len(t, first, 2)
+}
+
 func TestNewAtomicValueGauge(t *testing.T) {
 	t.Parallel()
 
