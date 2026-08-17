@@ -37,5 +37,13 @@ type (
 	SidecarClientConfig struct {
 		SidecarClient  *connection.ClientConfig `mapstructure:"sidecar-client"`
 		OrdererServers []*serve.ServerConfig    `mapstructure:"orderer-servers"`
+		// OutBlockCapacity bounds how many blocks the embedded mock orderer holds between the
+		// workload submitting them and the sidecar fetching them, and so bounds the transactions
+		// in flight. Zero keeps the mock orderer's own default, which is large enough that an
+		// overloaded committer is absorbed rather than felt: the submission rate stays at
+		// whatever was asked for, only the commit rate reveals the real drain rate, and
+		// end-to-end latency grows past anything the latency histogram can represent. Set it to
+		// a small multiple of the sidecar's waiting-txs-limit to make saturation observable.
+		OutBlockCapacity int `mapstructure:"out-block-capacity"`
 	}
 )

@@ -40,7 +40,8 @@ func TestTransactionRateLimitGauge(t *testing.T) {
 		t.Parallel()
 		stream := newTestStream(t, 1000)
 		m := NewLoadgenServiceMetrics(&Config{}, workload.NewTxCounter(
-			workload.DefaultProfile(1).Transaction), stream)
+			workload.DefaultProfile(1).Transaction,
+		), stream)
 		test.RequireIntMetricValue(t, 1000, m.transactionRateLimit)
 
 		stream.SetRate(25_000)
