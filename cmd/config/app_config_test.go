@@ -389,10 +389,16 @@ func TestReadConfigLoadGen(t *testing.T) {
 		expectedServiceConfig *loadgen.ClientConfig
 		expectedServerConfig  *serve.Config
 	}{{
-		name:                  "default",
-		configFilePath:        emptyConfig(t),
-		expectedServerConfig:  newServeConfig(loadgenServerPort, loadgenMonitoringPort),
-		expectedServiceConfig: &loadgen.ClientConfig{},
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(loadgenServerPort, loadgenMonitoringPort),
+		// The latency tracker's table size defaults rather than falling back to a single slot,
+		// which would silently lose almost every measurement.
+		expectedServiceConfig: &loadgen.ClientConfig{
+			Monitoring: metrics.Config{
+				Latency: metrics.LatencyConfig{MaxTrackedTXs: 10_000},
+			},
+		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
@@ -402,6 +408,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 		expectedServiceConfig: &loadgen.ClientConfig{
 			Monitoring: metrics.Config{
 				Latency: metrics.LatencyConfig{
+					MaxTrackedTXs: 10_000,
 					SamplerConfig: metrics.SamplerConfig{
 						Portion: 0.01,
 					},
