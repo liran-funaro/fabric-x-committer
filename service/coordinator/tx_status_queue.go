@@ -88,6 +88,8 @@ func (q *txStatusQueue) drain() int32 {
 	}
 }
 
+// len returns the number of batches buffered in the queue. The gauge that reports it is
+// registered over q.ch directly, so this is the accessor for callers that hold only the queue.
 func (q *txStatusQueue) len() int {
 	return len(q.ch)
 }

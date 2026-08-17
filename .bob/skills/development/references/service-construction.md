@@ -290,6 +290,7 @@ call site was deleted, so two gauges silently read zero. Instead:
 | Reporting | Use |
 |---|---|
 | Length of a channel that lives as long as the service | `monitoring.NewChannelLenGauge(p, opts, ch)` |
+| A counter the code already maintains atomically | `monitoring.NewAtomicValueGauge(p, opts, v)` — any `atomic.Int32/Int64/Uint32/Uint64`, no type argument needed |
 | Anything else already computable (a map size, a struct field) | `p.NewGaugeFunc(opts, fn)` — `fn` runs on the scrape path, so keep it cheap, non-blocking and nil-safe |
 
 `promutil.SetGauge` / `AddToGauge` remain correct for a gauge whose value is *maintained*
