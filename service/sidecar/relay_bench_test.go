@@ -48,7 +48,7 @@ func BenchmarkRelayThroughput(b *testing.B) {
 	ctx, cancel := context.WithCancel(b.Context())
 	defer cancel()
 
-	r := newRelay(time.Hour, newPerformanceMetrics())
+	r := newRelay(time.Hour, newPerformanceMetrics(newQueues(10)))
 	incoming := make(chan *common.Block, cap(statuses))
 	committed := make(chan *common.Block, len(blocks))
 	r.incomingBlockToBeCommitted = incoming

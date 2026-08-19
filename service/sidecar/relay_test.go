@@ -568,7 +568,7 @@ func TestRelayStatusRouting(t *testing.T) {
 	committedBlock := make(chan *common.Block, 1)
 	statusUpdates := make(chan []*committerpb.TxStatus, 1)
 	r := &relay{
-		metrics:                       newPerformanceMetrics(),
+		metrics:                       newPerformanceMetrics(newQueues(10)),
 		waitingTxsSlots:               utils.NewSlots(int64(len(txIDs))),
 		outgoingCommittedBlock:        committedBlock,
 		outgoingCommittedBlockWithTxs: make(chan *committedBlockWithTxs, 1),

@@ -40,17 +40,12 @@ type (
 const committerChannelID = "fabric-x-committer"
 
 // newBlockStore creates a new block store.
-func newBlockStore(ledgerDir string, syncInterval uint64, metrics *perfMetrics) (*blockStore, error) {
-	logger.Infof("Create block store under %s", ledgerDir)
+func newBlockStore(config *LedgerConfig, metrics *perfMetrics) (*blockStore, error) {
+	logger.Infof("Create block store under %s", config.Path)
 
 	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(ledgerDir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{
-				blkstorage.IndexableAttrBlockNum,
-				blkstorage.IndexableAttrTxID,
-			},
-		},
+		blkstorage.NewConf(config.Path, -1),
+		&blkstorage.IndexConfig{AttrsToIndex: indexedAttrs(config)},
 		&disabled.Provider{},
 	)
 	if err != nil {
@@ -68,7 +63,7 @@ func newBlockStore(ledgerDir string, syncInterval uint64, metrics *perfMetrics) 
 		store:                        store,
 		storeProvider:                provider,
 		nextToBeCommittedBlockNumber: ledger.Height(),
-		syncInterval:                 syncInterval,
+		syncInterval:                 config.SyncInterval,
 		metrics:                      metrics,
 	}, nil
 }
@@ -132,4 +127,15 @@ func (s *blockStore) close() {
 // to include block 0 as well.
 func (s *blockStore) GetBlockHeight() uint64 {
 	return s.ledger.Height()
+}
+
+// indexedAttrs returns the block store index attributes the configuration enables. The block
+// number index is not optional: the block store reads the last block header through it when it
+// opens a non-empty ledger, so a sidecar without it could never recover from a restart.
+func indexedAttrs(config *LedgerConfig) []blkstorage.IndexableAttr {
+	attrs := []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum}
+	if !config.DisableTxIDIndex {
+		attrs = append(attrs, blkstorage.IndexableAttrTxID)
+	}
+	return attrs
 }
