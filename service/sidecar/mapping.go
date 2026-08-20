@@ -20,7 +20,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
@@ -38,11 +37,13 @@ type (
 		// in a block is accepted; any further snapshot TXs in the same block are rejected with
 		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
 		snapshotTx *servicepb.TxWithRef
-		// txIDToHeight is a reference to the relay map. It is only used while constructing this
-		// blockMappingResult (mapBlock/addTxIDMapping); nothing reads it back off the struct
-		// afterwards, so callers that build further blockMappingResult values (e.g.
-		// submitSnapshotBlock's segments) do not need to carry it forward.
-		txIDToHeight *utils.SyncMap[string, servicepb.Height]
+		// dedup is a reference to the relay's in-flight TX ID set, and txIDs collects the IDs this
+		// block added to it. Both are only used while constructing this blockMappingResult
+		// (mapBlock/addTxIDMapping); nothing reads them back off the struct afterwards, so callers
+		// that build further blockMappingResult values (e.g. submitSnapshotBlock's segments) do not
+		// need to carry them forward.
+		dedup *txIDDedup
+		txIDs []string
 	}
 
 	blockWithStatus struct {
@@ -61,7 +62,10 @@ const (
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
-func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb.Height]) (*blockMappingResult, error) {
+// mapBlock maps an orderer block into the batch the relay submits to the coordinator. It records
+// every accepted TX ID in dedup, rejecting a TX whose ID is already in flight, and hands dedup the
+// block's IDs so they are released once the block is committed.
+func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error) {
 	// Prepare block's metadata.
 	if block.Metadata == nil {
 		block.Metadata = &common.BlockMetadata{}
@@ -82,7 +86,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 				block:       block,
 				blockNumber: blockNumber,
 			},
-			txIDToHeight: txIDToHeight,
+			dedup: dedup,
 		}, nil
 	}
 
@@ -99,7 +103,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			txs:         make([]*servicepb.TxWithRef, txCount),
 			blockNumber: blockNumber,
 		},
-		txIDToHeight: txIDToHeight,
+		dedup: dedup,
+		txIDs: make([]string, 0, txCount),
 	}
 	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
@@ -112,6 +117,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			return nil, err
 		}
 	}
+
+	dedup.trackBlock(blockNumber, mappedBlock.txIDs)
 	return mappedBlock, nil
 }
 
@@ -319,11 +326,19 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 func (b *blockMappingResult) addTxIDMapping(ref *committerpb.TxRef) (
 	idAlreadyExists bool, err error,
 ) {
-	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(ref.TxId, *servicepb.NewHeightFromTxRef(ref))
-	if idAlreadyExists {
-		err = b.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+	if b.dedup.add(ref.TxId) {
+		b.txIDs = append(b.txIDs, ref.TxId)
+		return false, nil
 	}
-	return idAlreadyExists, err
+	return true, b.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+}
+
+// holds reports whether ref refers to a transaction of this block: the block must carry that TX ID
+// at that position. mapBlock fills txs for every position of the block, including the transactions
+// it rejects itself, so a ref that does not match belongs to a submission the relay no longer
+// tracks — see processStatusBatch.
+func (b *blockWithStatus) holds(ref *committerpb.TxRef) bool {
+	return int(ref.TxNum) < len(b.txs) && b.txs[ref.TxNum].Ref.TxId == ref.TxId
 }
 
 func (b *blockWithStatus) setFinalStatus(txNum uint32, status committerpb.Status) error {
