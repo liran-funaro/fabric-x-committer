@@ -117,6 +117,12 @@ Number of goroutines that process transaction batches in parallel to construct b
 
 Increasing this parallelizes the CPU work of building dependency graphs. However, since output order is enforced via a condition variable, gains diminish beyond 2-4 workers. Default: 1.
 
+### `dependency-graph.use-simple-manager`
+
+Selects the simple dependency graph manager. The default manager splits the work between a pool of local dependency constructors and a global graph guarded by one mutex; the simple manager keeps the whole waiting set in a single map owned by one goroutine, fed by channels, with no lock at all. `num-of-local-dep-constructors` has no effect when it is enabled.
+
+Compare `coordinator_global_dependency_graph_validated_tx_batch_processing` against `..._validated_tx_batch_processor_wait_for_lock` and `..._constructor_wait_for_lock` to see how much of the graph's busy time is contention rather than work. On this project's 19-machine cluster the validated batch processor reached 95% utilisation with 40% of it waiting for the mutex, and the constructor 86% with 43% waiting, on a 64-core machine whose busiest thread was under 20%. Enabling the simple manager did remove that entirely — those stages disappear from the utilisation sweep — but throughput did not change, because the pressure it released was absorbed by the next stage down: database commit latency rose from 90 ms to 120 ms at the same committed rate. Treat a lock-contention reading as a reason to check what is behind the lock, not as a throughput gain on its own. Default: false.
+
 ### `dependency-graph.waiting-txs-limit`
 
 Maximum number of transactions in the global dependency graph. The Coordinator acquires one slot per transaction before adding it to the graph. Slots are released when the VC returns validation results. When exhausted, the dependency graph construction blocks, channels fill up, and the Sidecar stops pulling blocks.
