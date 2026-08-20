@@ -37,7 +37,7 @@ type (
 	// validation and commit of each transaction.
 	Service struct {
 		servicepb.UnimplementedCoordinatorServer
-		dependencyMgr         *dependencygraph.Manager
+		dependencyMgr         dependencygraph.DependencyManager
 		signatureVerifierMgr  *signatureVerifierManager
 		validatorCommitterMgr *validatorCommitterManager
 		validatorCommitterAPI *validatorCommitterAPI
@@ -129,17 +129,22 @@ func NewCoordinatorService(c *Config) *Service {
 
 	metrics := newPerformanceMetrics(queues)
 
-	depMgr := dependencygraph.NewManager(
-		&dependencygraph.Parameters{
-			IncomingTxs:               queues.coordinatorToDepGraphTxs,
-			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
-			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
-			NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
-			WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
-			QueueMonitorSamplingTime:  c.QueueMonitorSamplingTime,
-			PrometheusMetricsProvider: metrics.Provider,
-		},
-	)
+	depGraphParams := &dependencygraph.Parameters{
+		IncomingTxs:               queues.coordinatorToDepGraphTxs,
+		OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
+		IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
+		NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
+		WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
+		QueueMonitorSamplingTime:  c.QueueMonitorSamplingTime,
+		PrometheusMetricsProvider: metrics.Provider,
+	}
+	var depMgr dependencygraph.DependencyManager
+	if c.DependencyGraph.UseSimpleManager {
+		logger.Info("Using the simple dependency graph manager")
+		depMgr = dependencygraph.NewSimpleManager(depGraphParams)
+	} else {
+		depMgr = dependencygraph.NewManager(depGraphParams)
+	}
 
 	policyMgr := newPolicyManager()
 

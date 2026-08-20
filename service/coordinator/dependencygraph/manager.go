@@ -15,6 +15,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
+// DependencyManager tracks which transactions are free of dependencies. Two implementations
+// exist: Manager, which splits the work between a local constructor pool and a mutex-guarded
+// global graph, and SimpleManager, which keeps one map under a single owning goroutine.
+type DependencyManager interface {
+	// Run processes transactions until the context is cancelled.
+	Run(ctx context.Context)
+}
+
 // Manager is the main component of the dependency graph module.
 // It is responsible for managing the local dependency constructor
 // and the global dependency manager.
