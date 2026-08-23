@@ -416,7 +416,31 @@ it was impossible, in half of its transactions, and what got measured was the fa
 Nothing in this document establishes anything about behaviour under contention. A valid measurement
 needs `queries-rate` above 0 and a query service to serve it, which this inventory does not deploy.
 
-One real finding survives it, because it is a property of the commit path rather than of the
+A second attempt, with the back-references placed in **blind-write** slots instead, is valid: a blind
+write carries no version by design, and the validator resolves it itself
+(`populateVersionsAndCategorizeBlindWrites` looks up each key's current version and routes the ones
+that exist to `update_ns`). Aborts were zero, confirming nothing impossible was submitted. Throughput
+was 13,160 tps.
+
+That one has a root cause, and it is not contention either. A control with the same blind-write layout
+and `key-backref-rate` back at 0 -- so no key is ever reused, and the lookup returns nothing -- gives
+12,987 tps. Key reuse is irrelevant; the collapse comes from the slot type, because blind writes are
+what make the validator perform a multi-key lookup at all.
+
+That lookup is `SELECT key, version FROM ns_X WHERE key = ANY($1)`, and on this cluster it issued one
+storage read request **per key**. The reason is a deployment setting added earlier in this evaluation:
+the state tables were pre-split into 120 tablets (ten per tablet server) to raise write concurrency.
+Measured on identical tables holding identical rows, queried for the same 1,200 existing keys and
+differing only in the split, 120 tablets cost 1,200 storage read requests and 7,801 ms where the
+default split cost 2 requests and 12.5 ms -- a factor of 622, of which only 440 ms is storage work and
+the rest serialised round trips. The plan is a correct primary-key index scan either way, so only the
+request counts from `EXPLAIN (ANALYZE, DIST)` show it.
+
+The setting did what it was chosen for, and its cost was unobservable for as long as every transaction
+only inserted fresh keys, because nothing then performs a multi-key lookup. `docs/performance-tuning.md`
+records the trade-off. Behaviour under genuine contention remains unmeasured.
+
+One further finding survives, because it is a property of the commit path rather than of the
 workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key
 raises `unique_violation`, rolls the whole statement back, triggers a rescan for every existing key
 in the batch, discards the work of all the non-conflicting transactions along with it, and makes

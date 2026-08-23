@@ -117,6 +117,39 @@ Number of goroutines that process transaction batches in parallel to construct b
 
 Increasing this parallelizes the CPU work of building dependency graphs, but measurement says it does not raise throughput at all. `BenchmarkDependencyGraph` over the no-dependency shape on a 32-core machine, 300,000 transactions per case, gives 216,886 / 249,691 / 220,000 / 246,929 / 221,484 / 228,068 tx/s at 1 / 2 / 4 / 8 / 16 / 32 constructors: no trend, and the spread is scheduling noise rather than a curve. The reason is that the pool is not what bounds the default manager -- the global manager's single graph goroutine and single validated-batch goroutine are, and no number of constructors widens them. Output order is also enforced through a condition variable, so a constructor may only run a bounded distance ahead of the last batch released. Raise this only if a profile shows the constructors themselves saturated. Default: 1.
 
+### Pre-splitting the state tables: a read/write trade-off worth measuring
+
+Not a committer setting, but the deployment choice with the largest measured effect on this project's
+cluster, and one that is easy to get wrong in a way nothing reports.
+
+The state tables are created with `SPLIT INTO N TABLETS` on YugabyteDB (`${SPLIT_INTO_TABLETS}` in
+`utils/statedb/create_namespace_tmpl.sql`). A tablet is the unit of write concurrency as well as of
+placement, so one tablet per tablet server lets a 64-core machine commit to only one Raft group per
+table at a time, and raising the count gives each server something to interleave.
+
+It also destroys read batching. With the table split into 120 tablets, `WHERE key = ANY($1)` issues
+one storage read request **per key** rather than one per tablet. Measured on identical tables with
+identical rows and the same 1,200 existing keys, differing only in the split:
+
+| Split | Storage read requests | Execution time |
+|---|---|---|
+| `SPLIT INTO 120 TABLETS` | 1,200 | 7,801 ms |
+| Default | 2 | 12.5 ms |
+
+A factor of 622, and only 440 ms of the 7,801 is storage work — the rest is 1,200 serialised round
+trips. The query plan is a correct primary-key index scan in both cases, so nothing in `EXPLAIN`
+short of the `DIST` request counts reveals it.
+
+This stayed invisible for as long as the workload only inserted fresh keys, because nothing then
+performs a multi-key lookup. It appears the moment anything does. On this cluster it took the
+blind-write path -- `queryVersionsIfPresent`, which the validator uses to decide insert versus update
+(`populateVersionsAndCategorizeBlindWrites`) -- from negligible to 6.3 seconds per batch, which was
+99.8% of the entire commit path's time and dropped throughput from 486,941 tps to 13,160. The query
+service and read validation take the same shape and would be affected the same way.
+
+If a deployment raises the tablet count for write concurrency, measure a multi-key read before and
+after, and read `Storage Read Requests` from `EXPLAIN (ANALYZE, DIST)` rather than the plan shape.
+
 ### `dependency-graph.use-simple-manager`
 
 Selects the simple dependency graph manager. The default manager splits the work between a pool of local dependency constructors and a global graph guarded by one mutex; the simple manager keeps the whole waiting set in a single map owned by one goroutine, fed by channels, with no lock at all. `num-of-local-dep-constructors` has no effect when it is enabled.
