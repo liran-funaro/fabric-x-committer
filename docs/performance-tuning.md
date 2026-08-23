@@ -129,12 +129,26 @@ the next stage down: database commit latency rose from 90 ms to 120 ms at the sa
 lock-contention reading as a reason to check what is behind the lock, not as a throughput gain on its own.
 
 Later measurement, after the manager's output path was fixed so that it no longer blocked (see the halt note
-below), does show it faster. `BenchmarkDependencyGraph` over the no-dependency shape gives 321,899 tx/s
-against 249,691 for the best default-manager configuration, a 29% gain measured in the same harness with the
-same transaction count. The cluster figures are not yet a clean comparison — the default manager's 355,995 tps
-was recorded while the load generator was itself the limit at about 358,000 tps, so it is a floor rather than
-that manager's ceiling, and it must not be compared against a later run taken after the generator was made
-faster.
+below), shows it substantially faster. `BenchmarkDependencyGraph` over the no-dependency shape gives
+321,899 tx/s against 249,691 for the best default-manager configuration, a 29% gain in the same harness over
+the same transaction count. On the 19-machine cluster, with both managers measured under an identical
+configuration from a fresh deployment over a 300-second window, it is larger:
+
+| | Committed | Mean latency | In-flight | DB batch commit | Busiest host CPU |
+|---|---|---|---|---|---|
+| Simple manager | **486,941 tps** | 1,099 ms | 558,315 | 140 ms | 76% |
+| Default manager | 329,854 tps | 1,596 ms | 523,336 | 62 ms | 60% |
+
+47.6%, and the mechanism is in the same row rather than inferred: under the default manager the database is
+**starved**. Batch commit latency falls from 140 ms to 62 ms and the commit machines drop from 76% to 60% CPU
+while the graph sits full at 523,336 transactions in flight. Work is queued in the coordinator and the
+machines that would do it are idle, which is what a constraint in the graph looks like from outside.
+
+Two cautions on that figure. Both rows have `key-backref-rate` at 0, so no two transactions touch the same
+key: the graph is tracking transactions that cannot conflict, which is the case that favours holding the
+waiting set in one goroutine. And an earlier cluster comparison put the gain at 41% by measuring the default
+manager while the load generator was itself the limit at about 358,000 tps — a floor rather than a ceiling.
+Do not compare runs taken either side of a change to the generator.
 
 Two defects had to be fixed before the simple manager could sustain load, and both are worth knowing about if
 this is enabled. It held the members of every key's running group rather than counting them, so under

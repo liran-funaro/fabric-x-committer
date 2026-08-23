@@ -67,16 +67,29 @@ Beyond that point the sequence continues, but the figures below were measured wi
 straight to the coordinator rather than through the sidecar (section 6.1), so they are not
 continuous with the table above:
 
-| Change | Sustained (300 s window) | Mean latency | Coordinator RSS |
-|---|---|---|---|
-| Simple dependency graph manager, once it no longer halts | — | — | — |
-| ... with `waiting-txs-limit` 20,000,000 | 500,258 (60 s window only) | 2,478 ms | 79 GB |
-| ... with `waiting-txs-limit` 500,000 | **486,941** | **1,099 ms** | **786 MB** |
+| Configuration | Sustained (300 s window) | Mean latency | p99 | Coordinator RSS |
+|---|---|---|---|---|
+| Default manager, `waiting-txs-limit` 500,000 | 329,854 | 1,596 ms | 1,995 ms | 2.8 GB |
+| Simple manager, `waiting-txs-limit` 20,000,000 | 500,258 (60 s window only) | 2,478 ms | — | 79 GB |
+| Simple manager, `waiting-txs-limit` 2,000,000 | 470,815 | 4,329 ms | 4,980 ms | 8.2 GB |
+| Simple manager, `waiting-txs-limit` 200,000 | 470,594 | **519 ms** | **746 ms** | 1.0 GB |
+| **Simple manager, `waiting-txs-limit` 500,000** | **486,941** | 1,099 ms | 1,988 ms | 786 MB |
 
-The last row is the figure to quote. The row above it is a 60-second window and did not survive a
-5-minute one; it is kept because it is what the 40x larger limit bought, which is nothing in
-throughput, 2.3x the latency and 100x the memory. Section 8 explains why the two window lengths
-disagree.
+Two results are in that table and they are worth separating.
+
+**The manager choice is worth 47.6%** — 486,941 against 329,854 at an otherwise identical
+configuration. The row shows why: under the default manager, database batch commit falls to 62 ms
+and the commit machines to 60% CPU, from 140 ms and 76%. The database is starved while the graph
+sits full. Section 8 records why an earlier version of this comparison, which put the gain at 41%,
+was not valid.
+
+**The waiting limit is a latency choice, not a throughput one.** In-flight tracks whatever ceiling
+the limit sets — 2,039,200 against a 2,000,000 limit — and 470,815 tps × 4.33 s reproduces that to
+three digits, so above what is needed to keep the validator-committers busy the surplus is pure
+queueing delay at about 4 KB of coordinator memory each. Memory is exactly linear: 1.0 / 8.2 / 79 GB
+at 200,000 / 2,000,000 / 20,000,000. 500,000 is the throughput maximum and 200,000 gives up 3.5% of
+it for half the mean latency and a third of the p99. 20,000,000 was simply a mistake: it bought
+nothing, and cost 100x the memory of the setting that beats it.
 
 ## 3. Changes that raised throughput
 
@@ -247,7 +260,10 @@ would change what is being measured.
 
 ## 6. Where the constraint is now
 
-The database commit path, at roughly 487,000 tps. Of the validator-committer stages,
+The database commit path, at roughly 487,000 tps, but only once the coordinator's dependency graph
+stops being it. With the default graph manager the constraint is the coordinator and the database
+idles behind it (section 4.2); with the simple manager the database becomes the constraint and the
+figure below is what that looks like. Of the validator-committer stages,
 `vcservice_database_tx_batch_commit` runs about 191 workers concurrently busy and
 `..._insert_new_key_with_value` about 90, batch commit latency is 140 ms, and the six commit
 machines sit at 74-76% CPU. Every coordinator queue is empty, which places the constraint below
