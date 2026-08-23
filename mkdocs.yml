@@ -53,6 +53,7 @@ nav:
   - Deployment:
       - Deployment Guide: deployment-guide.md
       - Performance Tuning: performance-tuning.md
+      - Cluster Optimization Log: cluster-optimization-log.md
   - Services:
       - Sidecar: sidecar.md
       - Coordinator: coordinator.md
