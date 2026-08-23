@@ -451,7 +451,20 @@ from 486,941 to 359,866:
 So 120 tablets is worth 35% on inserts and costs a factor of 24 on multi-key reads. Worth stating
 plainly because the evaluation nearly ended with a recommendation of 12 tablets as a pure 23x gain:
 every headline figure in this document was measured on the insert-only workload, and that
-recommendation would have cost a third of it. Behaviour under genuine contention remains unmeasured.
+recommendation would have cost a third of it.
+
+The cliff is sharp rather than gradual -- 48 tablets already commits only 31,132 tps against 314,336
+at 12 -- and what governs it is not the tablet count but the **product of tablets and keys per
+lookup**, which must stay under roughly 32,768. That model was fitted to the tablet sweep and then
+tested against predictions: 12 tablets with 2,000 keys and with 2,600 keys batch as predicted, 12
+tablets with 3,000 keys breaks as predicted, and 6 tablets with 5,000 keys batches as predicted, four
+for four including a pair straddling the boundary by 15%. `docs/performance-tuning.md` carries the
+table and the caveat that the constant is not portable.
+
+The useful consequence is a second lever. A deployment can keep a high tablet count and its write
+concurrency provided each lookup stays narrow -- at 120 tablets about 273 keys, roughly 136
+transactions per committed batch -- so the committed batch width is a knob this evaluation never
+touched. Behaviour under genuine contention remains unmeasured.
 
 One further finding survives, because it is a property of the commit path rather than of the
 workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key

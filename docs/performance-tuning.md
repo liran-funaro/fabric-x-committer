@@ -147,12 +147,40 @@ blind-write path -- `queryVersionsIfPresent`, which the validator uses to decide
 99.8% of the entire commit path's time and dropped throughput from 486,941 tps to 13,160. The query
 service and read validation take the same shape and would be affected the same way.
 
-Both sides of the trade-off are real, so this is a curve to be tuned rather than a setting with a
-right answer. The same cluster, measured over 300-second windows from clean deployments:
+**What actually governs it is the product of tablets and keys per lookup, not the tablet count.**
+Batching survives while `tablets × keys-per-lookup` stays below roughly 32,768 and collapses to one
+request per key above it. Measured on this cluster, with the last four rows run as predictions of the
+model rather than as fits to it:
+
+| Tablets | Keys | Product | Storage read requests |
+|---|---|---|---|
+| 24 | 1,200 | 28,800 | 1 |
+| 28 | 1,200 | 33,600 | 4 |
+| 29 | 1,200 | 34,800 | 1,200 |
+| 120 | 1,200 | 144,000 | 1,200 |
+| 24 | 5,000 | 120,000 | 5,000 |
+| 12 | 2,000 | 24,000 | 1 |
+| 12 | 2,600 | 31,200 | 2 |
+| 12 | 3,000 | 36,000 | 3,000 |
+| 6 | 5,000 | 30,000 | 3 |
+
+That gives two levers rather than one. A deployment can keep a high tablet count and its write
+concurrency provided each lookup stays narrow: at 120 tablets the budget is about 273 keys, which at
+two writes per transaction is roughly 136 transactions per committed batch. At 12 tablets the same
+budget allows about 1,365 transactions per batch. So the constraint to respect is
+`tablets × keys-per-lookup < ~32,768`, and the pair is chosen to suit the workload.
+
+The constant is inferred on this cluster against YugabyteDB 2025.2.1.0 and should not be treated as
+portable. The product relationship is what to test, and `Storage Read Requests` from
+`EXPLAIN (ANALYZE, DIST)` tests it in a single query.
+
+Both sides of the tablet trade-off are real, so this is a curve to be tuned rather than a setting
+with a right answer. The same cluster, measured over 300-second windows from clean deployments:
 
 | Split | Insert-only workload | Workload with a multi-key read |
 |---|---|---|
 | 120 tablets (10 per server) | **486,941 tps** | 13,160 tps |
+| 48 tablets (4 per server) | — | 31,132 tps |
 | 12 tablets (1 per server) | 359,866 tps | **314,336 tps** |
 
 120 tablets is worth 35% on the insert-only workload, exactly the write concurrency it was chosen
