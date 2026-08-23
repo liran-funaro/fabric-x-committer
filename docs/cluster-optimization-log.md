@@ -24,6 +24,7 @@ removed a real bottleneck without raising throughput at all.
 5. [The load generator became the limit](#5-the-load-generator-became-the-limit)
 6. [Where the constraint is now](#6-where-the-constraint-is-now)
 7. [How the constraint was located each time](#7-how-the-constraint-was-located-each-time)
+8. [Measuring without fooling yourself](#8-measuring-without-fooling-yourself)
 
 ## 1. The deployment
 
@@ -61,6 +62,21 @@ The last two rows have no sustained figure because from that point the load gene
 offer the requested 500,000, so no requested rate was delivered. The committer committed
 essentially everything offered (357,600 of 358,800), which is why the peak is meaningful there
 even though the step is marked short.
+
+Beyond that point the sequence continues, but the figures below were measured with load applied
+straight to the coordinator rather than through the sidecar (section 6.1), so they are not
+continuous with the table above:
+
+| Change | Sustained (300 s window) | Mean latency | Coordinator RSS |
+|---|---|---|---|
+| Simple dependency graph manager, once it no longer halts | — | — | — |
+| ... with `waiting-txs-limit` 20,000,000 | 500,258 (60 s window only) | 2,478 ms | 79 GB |
+| ... with `waiting-txs-limit` 500,000 | **486,941** | **1,099 ms** | **786 MB** |
+
+The last row is the figure to quote. The row above it is a 60-second window and did not survive a
+5-minute one; it is kept because it is what the 40x larger limit bought, which is nothing in
+throughput, 2.3x the latency and 100x the memory. Section 8 explains why the two window lengths
+disagree.
 
 ## 3. Changes that raised throughput
 
@@ -231,9 +247,37 @@ would change what is being measured.
 
 ## 6. Where the constraint is now
 
-The load generator, at roughly 358,000 tps offered. The committer commits essentially all of it
-(357,600 of 358,800) at 1,141 ms mean latency, with the busiest machine at 65% CPU and database
-batch commit at 68 ms.
+The database commit path, at roughly 487,000 tps. Of the validator-committer stages,
+`vcservice_database_tx_batch_commit` runs about 191 workers concurrently busy and
+`..._insert_new_key_with_value` about 90, batch commit latency is 140 ms, and the six commit
+machines sit at 74-76% CPU. Every coordinator queue is empty, which places the constraint below
+the coordinator rather than in it.
+
+### 6.1 Load applied straight to the coordinator
+
+From this point the load generator submits to the coordinator directly through `CoordinatorAdapter`,
+with the sidecar stopped, rather than serving blocks to the sidecar. The reason was that the
+committer and the generator had come within a few percent of each other, so an end-to-end
+measurement reports the slower of the two and cannot say which. Taking the sidecar out settled it:
+355,995 tps coordinator-direct against 357,600 through the full pipeline — the sidecar was never
+the constraint, and its removal bought nothing.
+
+Two things to know before reproducing this. The coordinator's `BlockProcessing` stream is exclusive
+(`TryLock` in `coordinator.go`), so the sidecar must be stopped, not merely bypassed. And the
+coordinator needs the namespace's configuration transaction, which normally arrives through the
+sidecar; without it every transaction returns `ABORTED_SIGNATURE_INVALID`.
+
+### 6.2 What the load generator can offer
+
+Not the constraint any more, but close enough to matter. One 64-core generator benchmarks at
+598,208 tx/s on the submit path (generation, block mapping, TX ID extraction, metrics and latency
+hooks, with a sender that does nothing) and 600,837 tx/s with a block marshal added, so gRPC and
+the status-receive path are what separate that from the 487,000 it offers in the deployment.
+
+A short-offer reading — the generator offering less than the requested rate — has two possible
+causes and a ramp cannot distinguish them. There is one case where it can: the generator offered a
+full 500,000 tps at the 500,000 step and only 447,600 at the 550,000 step. A generator ceiling is a
+constant and cannot fall when more is asked of it, so that drop is committer backpressure.
 
 Constraints found and resolved, in order:
 
@@ -245,7 +289,11 @@ Constraints found and resolved, in order:
 | Coordinator dependency graph mutex | removable, no throughput gain |
 | Database SQL front-end concentration | fixed, no throughput gain |
 | Sidecar channel buffering (latency only) | reduced 6× |
-| **Load generator signing throughput** | **current** |
+| Load generator signing throughput | removed (Ed25519, `gen-batch`) |
+| Sidecar block delivery | shown never to have been the constraint |
+| Coordinator dependency graph halting under load | fixed (`drain_test.go`) |
+| Oversized `waiting-txs-limit` (latency and memory) | 20M → 500K, 100× less memory |
+| **Database commit path** | **current** |
 
 ## 7. How the constraint was located each time
 
@@ -295,3 +343,49 @@ proving the new path was taken.
 **Test harness hypotheses locally.** The `gen-batch` sweep in section 3.5 took a 29-second
 benchmark against the repository's own generation path, rather than a 15-minute cluster cycle, and
 gave a sharper answer than the cluster could.
+
+## 8. Measuring without fooling yourself
+
+Four ways the measurements in this document were wrong before they were right. Each cost a figure
+that had already been written down.
+
+**A 60-second window catches transients a 5-minute window does not sustain.** 500,000 tps requested
+committed 499,356 over 60 s and 486,941 over 300 s from a clean deployment — and 462,296 over 300 s
+in a run that had already been pushed past the knee. All three are the same build at the same
+requested rate. Quote the 300-second figure from a fresh deployment; use short windows only to
+locate a knee.
+
+**Overload does not drain, so it contaminates everything after it.** The graph's slots are released
+only as the validator-committers return results, so a backlog can drain no faster than the committed
+rate. Recovering a quarter of a million queued transactions takes minutes, and `fx-ramp.py`'s 60-second
+settle does not cover it. Any step following an overloaded one reads low. This is why the apparent
+"collapse" past the knee — 550,000 requested delivering less than 500,000 requested did — is partly
+hysteresis and not purely a throughput cliff.
+
+**Two measurements taken at different times are not a comparison.** The simple dependency graph
+manager committed 500,258 tps where the default manager had committed 355,995, which looks like a
+41% gain and is not one: the default manager's figure was recorded while the load generator was
+itself the limit at about 358,000 tps, so it is a floor rather than that manager's ceiling, and the
+later run came after the generator had been made faster. The gain credited to the manager includes
+the generator's. The defensible comparison is the in-repository benchmark, where both managers run in
+the same harness over the same transaction count with no generator involved: 321,899 against 249,691
+tx/s, 29%.
+
+**A benchmark that hangs looks like a benchmark that is slow.** `BenchmarkDependencyGraph` numbered
+its batches from 0, and the local dependency constructor releases a batch only after its predecessor,
+so every default-manager case waited forever on a predecessor that could not exist. It had never
+measured the production manager at all — only the simple manager, which does not use that
+constructor. What made it look like slowness rather than a deadlock is that the benchmark generates
+`b.N*3` transactions with a single-worker profile, so at large `b.N` it genuinely does spend minutes
+generating. A goroutine dump distinguished the two in one step: 1.1% CPU, and the constructor parked
+in `sync.Cond.Wait` for five minutes. With it fixed, the local constructor pool turns out not to
+bound the default manager at all — 1 through 32 constructors give 216,886 / 249,691 / 220,000 /
+246,929 / 221,484 / 228,068 tx/s, no trend — because the ceiling is in the global manager's two
+single goroutines.
+
+**The dependency graph has not been measured on the work it exists for.** Every figure in this
+document was taken with `key-backref-rate` at 0, where each transaction's two read-write slots get
+fresh unique keys. No two transactions ever touch the same key, so the graph tracks transactions
+that cannot conflict and the MVCC validator never aborts one. Both managers were compared on a
+workload that gives the graph nothing to do, and the simple manager's advantage may not survive a
+workload that does.
