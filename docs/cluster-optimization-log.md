@@ -480,11 +480,20 @@ concurrency provided each lookup stays narrow -- at 120 tablets about 273 keys, 
 transactions per committed batch -- so the committed batch width is a knob this evaluation never
 touched.
 
-Behaviour under genuine contention therefore remains unmeasured, and it is worth being exact about
-what is missing. Both blind-write runs above used `key-backref-rate` 0, so neither reused a key: the
-one run that did reuse keys (13,160 tps) was taken at 120 tablets, where the lookup cost swamped
-everything else. Write contention can now be measured cheaply -- a `key-backref-rate` sweep over
-blind writes at 12 tablets, needing no query service -- and read contention still needs one.
+**Write contention, measured once the tablet cliff is out of the way, costs about 19%.** With 12
+tablets and blind writes, `key-backref-rate` 0.5 commits 254,221 tps against 314,336 at
+`key-backref-rate` 0 -- the same deployment, differing only in whether half the transactions write a
+key an earlier transaction created. Aborts are zero, the graph carries 13,186 dependent transactions
+where it carried none before, and database batch commit rises from about 205 ms to 269 ms as half the
+writes become updates rather than inserts.
+
+That is the shape one would hope for: real dependencies cost a fifth of throughput, not a factor of
+24. The factor of 24 was the tablet setting, and nothing else.
+
+What that measures is write contention alone. Blind writes cannot abort on a stale version, because
+the validator resolves their versions itself at commit time, so nothing here exercises MVCC read
+conflicts. Measuring those needs read-write slots carrying real versions, which needs `queries-rate`
+above 0 and a query service this inventory does not deploy. That remains the one unmeasured axis.
 
 One further finding survives, because it is a property of the commit path rather than of the
 workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key
