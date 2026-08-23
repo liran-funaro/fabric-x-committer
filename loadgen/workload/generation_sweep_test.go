@@ -76,7 +76,7 @@ func BenchmarkGenerationWorkers(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	for _, scheme := range []signature.Scheme{signature.NoScheme, signature.Eddsa, signature.Ecdsa} {
 		for _, workers := range []uint32{8, 16, 32, 64, 128, 256} {
-			name := string(scheme) + "/workers-" + strconv.FormatUint(uint64(workers), 10)
+			name := scheme + "/workers-" + strconv.FormatUint(uint64(workers), 10)
 			b.Run(name, func(b *testing.B) {
 				benchmarkGeneration(b, sweepProfile(b, workers, scheme),
 					sweepOptions(sweepGenBatch, sweepBuffersSize))

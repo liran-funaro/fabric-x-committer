@@ -25,8 +25,12 @@ type (
 		preProcessedTxBatchQueue        chan TxNodeBatch
 		preProcessedValidatedBatchQueue chan validatedBatch
 		keyToWaitingTXs                 map[string]*waiting
-		waitingTXs                      int
-		metrics                         *perfMetrics
+		// depFreeTxBatches holds released batches that the output channel has not taken yet.
+		// It is deliberately unbounded: taskProcessing must never block on the output while a
+		// validated batch waits for it. See the cycle described in taskProcessing.
+		depFreeTxBatches []TxNodeBatch
+		waitingTXs       int
+		metrics          *perfMetrics
 	}
 
 	validatedBatch struct {
@@ -34,15 +38,25 @@ type (
 		waiting []*waiting
 	}
 
+	// waiting tracks the transactions that use one key: the group that is allowed to run, and the
+	// groups queued behind it. The running group is kept as a count rather than as its members
+	// because those members have already been released and nothing here needs them again. Holding
+	// them would retain every transaction that ever touched a continuously read key -- the
+	// namespace key that every transaction reads is exactly that -- for the lifetime of the load.
 	waiting struct {
-		key   string
-		queue []*waiterGroup
+		key string
+		// runningCount is the number of transactions in the running group that are not validated
+		// yet. The key is free once it reaches zero.
+		runningCount int
+		// runningIsWriter records whether the running group is a writer, since a reader may join
+		// only a group of readers.
+		runningIsWriter bool
+		queue           []*waiterGroup
 	}
 
 	waiterGroup struct {
-		group     []*TransactionNode
-		doneCount int
-		writer    bool
+		group  []*TransactionNode
+		writer bool
 	}
 )
 
@@ -112,11 +126,19 @@ func (m *SimpleManager) preProcessVal(ctx context.Context) {
 			return
 		}
 		var ws []*waiting
+		txCount := 0
 		for _, node := range batch {
+			if !node.inDependencyGraph {
+				continue
+			}
+			txCount++
 			ws = append(ws, node.waitingKeys...)
 		}
+		if txCount == 0 {
+			continue
+		}
 		valQueue.Write(validatedBatch{
-			txCount: len(batch),
+			txCount: txCount,
 			waiting: ws,
 		})
 	}
@@ -124,7 +146,6 @@ func (m *SimpleManager) preProcessVal(ctx context.Context) {
 
 // taskProcessing -- taskQueue (TxNodeBatch/keys) -> out (TxNodeBatch).
 func (m *SimpleManager) taskProcessing(ctx context.Context) {
-	out := channel.NewWriter(ctx, m.out)
 	for ctx.Err() == nil {
 		batchQueue := m.preProcessedTxBatchQueue
 		if m.waitingTXs > m.waitingTxsLimit {
@@ -132,10 +153,25 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 			batchQueue = nil
 		}
 
+		// The output is a case of the select rather than a blocking write after it, because this
+		// goroutine is also the only consumer of the validated queue. Blocking on a full output
+		// while a validated batch waits closes a cycle: the verifiers and the vcservices stop
+		// consuming our output once their own results have nowhere to go, so the output never
+		// drains again and the pipeline halts with nothing logged anywhere. A nil channel blocks
+		// forever, which is how the case is disabled when we have nothing to send.
+		var outQueue chan<- TxNodeBatch
+		var outBatch TxNodeBatch
+		if len(m.depFreeTxBatches) > 0 {
+			outQueue, outBatch = m.out, m.depFreeTxBatches[0]
+		}
+
 		var depFree TxNodeBatch
 		select {
 		case <-ctx.Done():
 			return
+		case outQueue <- outBatch:
+			m.depFreeTxBatches = m.depFreeTxBatches[1:]
+			continue
 		case batch := <-batchQueue:
 			depFree = m.processTxBatch(batch)
 			promutil.AddToCounter(m.metrics.gdgTxProcessedTotal, len(batch))
@@ -147,7 +183,7 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 		}
 		promutil.SetGauge(m.metrics.gdgWaitingTxQueueSize, m.waitingTXs)
 		if len(depFree) > 0 {
-			out.Write(depFree)
+			m.depFreeTxBatches = append(m.depFreeTxBatches, depFree)
 		}
 	}
 }
@@ -194,8 +230,9 @@ func (m *SimpleManager) checkTXFree(tx *TransactionNode, k string, writer bool) 
 		}
 	} else {
 		w = &waiting{
-			key:   k,
-			queue: []*waiterGroup{{writer: writer, group: []*TransactionNode{tx}}},
+			key:             k,
+			runningCount:    1,
+			runningIsWriter: writer,
 		}
 		m.keyToWaitingTXs[k] = w
 	}
@@ -223,36 +260,42 @@ func (m *SimpleManager) appendFree(out TxNodeBatch, w *waiting) TxNodeBatch {
 // returns true if the wait is needed.
 func (w *waiting) add(tx *TransactionNode, writer bool) bool { //nolint:revive // false positive: control flag.
 	sz := len(w.queue)
-
-	// When there are no other items, or the previous item or this item is a writer,
-	// we should add a new group.
-	if sz == 0 || writer || w.queue[sz-1].writer {
+	if sz == 0 {
+		// A reader can join a running group of readers and proceed with it.
+		if !writer && !w.runningIsWriter {
+			w.runningCount++
+			return false
+		}
 		w.queue = append(w.queue, &waiterGroup{group: []*TransactionNode{tx}, writer: writer})
-		// We can return true if the item is not the first in the queue.
-		return sz != 0
+		return true
 	}
 
-	// In this case, the latest group are readers and this item is also a reader.
-	// We can append this reader.
-	lastQueue := w.queue[sz-1]
-	lastQueue.group = append(lastQueue.group, tx)
-	// We can return true if the reader group is not the first one.
-	return sz != 1
+	// When this item or the last queued item is a writer, we should add a new group.
+	// Otherwise, the latest group are readers and this item is also a reader, so we can append it.
+	last := w.queue[sz-1]
+	if writer || last.writer {
+		w.queue = append(w.queue, &waiterGroup{group: []*TransactionNode{tx}, writer: writer})
+	} else {
+		last.group = append(last.group, tx)
+	}
+	return true
 }
 
 // popAndGetNext removes a TX from the waiters.
 // Returns the next waiter group to release.
 // Returns true if no other TX is waiting.
 func (w *waiting) popAndGetNext() ([]*TransactionNode, bool) {
-	prev := w.queue[0]
-	prev.doneCount++
-	if prev.doneCount < len(prev.group) {
+	w.runningCount--
+	if w.runningCount > 0 {
 		return nil, false
 	}
-
-	w.queue = w.queue[1:]
 	if len(w.queue) == 0 {
 		return nil, true
 	}
-	return w.queue[0].group, false
+
+	next := w.queue[0]
+	w.queue = w.queue[1:]
+	w.runningCount = len(next.group)
+	w.runningIsWriter = next.writer
+	return next.group, false
 }

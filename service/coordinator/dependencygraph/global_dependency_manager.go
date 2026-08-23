@@ -197,8 +197,18 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			return
 		}
 		processValidatedStart := time.Now()
-		dm.waitingTxsSlots.Release(int64(len(txsNode)))
-		promutil.SubFromGauge(m.gdgWaitingTxQueueSize, len(txsNode))
+
+		// Transactions the coordinator rejected before the graph saw them return on this stream
+		// as well (see NewRejectedTransactionNode). They never took a slot, so counting them
+		// would raise the effective waiting limit by one for each of them.
+		graphTxCount := 0
+		for _, txNode := range txsNode {
+			if txNode.inDependencyGraph {
+				graphTxCount++
+			}
+		}
+		dm.waitingTxsSlots.Release(int64(graphTxCount))
+		promutil.SubFromGauge(m.gdgWaitingTxQueueSize, graphTxCount)
 
 		start := time.Now()
 		dm.mu.Lock()
@@ -225,7 +235,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		}
 		promutil.Observe(m.gdgAddFreedTxSeconds, time.Since(start))
 
-		promutil.AddToCounter(dm.metrics.gdgValidatedTxProcessedTotal, len(txsNode))
+		promutil.AddToCounter(dm.metrics.gdgValidatedTxProcessedTotal, graphTxCount)
 		promutil.Observe(m.gdgValidatedTxProcessingSeconds, time.Since(processValidatedStart))
 	}
 }

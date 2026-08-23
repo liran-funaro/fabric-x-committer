@@ -53,6 +53,12 @@ type (
 		dependentTxs utils.SyncMap[*TransactionNode, any]
 		rwKeys       readWriteKeys
 
+		// inDependencyGraph is false for a transaction the coordinator rejected before the graph
+		// saw it. Such a transaction is sent straight to the vcservice and still returns on the
+		// validated stream, so a manager that counted it would release a waiting slot that was
+		// never taken and drive its waiting count below zero.
+		inDependencyGraph bool
+
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
 		waitingKeys      []*waiting
@@ -76,8 +82,9 @@ func newTransactionNode(tx *servicepb.TxWithRef) *TransactionNode {
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
-		VerifierTx: tx,
-		rwKeys:     readAndWriteKeys(tx.Content.Namespaces),
+		VerifierTx:        tx,
+		rwKeys:            readAndWriteKeys(tx.Content.Namespaces),
+		inDependencyGraph: true,
 	}
 }
 
