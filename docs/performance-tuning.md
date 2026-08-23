@@ -147,6 +147,19 @@ blind-write path -- `queryVersionsIfPresent`, which the validator uses to decide
 99.8% of the entire commit path's time and dropped throughput from 486,941 tps to 13,160. The query
 service and read validation take the same shape and would be affected the same way.
 
+Both sides of the trade-off are real, so this is a curve to be tuned rather than a setting with a
+right answer. The same cluster, measured over 300-second windows from clean deployments:
+
+| Split | Insert-only workload | Workload with a multi-key read |
+|---|---|---|
+| 120 tablets (10 per server) | **486,941 tps** | 13,160 tps |
+| 12 tablets (1 per server) | 359,866 tps | **314,336 tps** |
+
+120 tablets is worth 35% on the insert-only workload, exactly the write concurrency it was chosen
+for, and costs a factor of 24 on anything performing a multi-key read. 12 tablets is balanced.
+Neither is simply better, and a deployment tuned only against an insert-only benchmark will pick 120
+and then fall off a cliff the first time a client reads or updates existing state.
+
 If a deployment raises the tablet count for write concurrency, measure a multi-key read before and
 after, and read `Storage Read Requests` from `EXPLAIN (ANALYZE, DIST)` rather than the plan shape.
 

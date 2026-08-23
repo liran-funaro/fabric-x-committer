@@ -437,8 +437,21 @@ the rest serialised round trips. The plan is a correct primary-key index scan ei
 request counts from `EXPLAIN (ANALYZE, DIST)` show it.
 
 The setting did what it was chosen for, and its cost was unobservable for as long as every transaction
-only inserted fresh keys, because nothing then performs a multi-key lookup. `docs/performance-tuning.md`
-records the trade-off. Behaviour under genuine contention remains unmeasured.
+only inserted fresh keys, because nothing then performs a multi-key lookup.
+
+It is a trade-off rather than a mistake, which a control run establishes. Dropping to 12 tablets takes
+the blind-write workload from 13,160 to 314,336 tps, and takes the insert-only workload the other way,
+from 486,941 to 359,866:
+
+| Split | Insert-only | With a multi-key read |
+|---|---|---|
+| 120 tablets | **486,941** | 13,160 |
+| 12 tablets | 359,866 | **314,336** |
+
+So 120 tablets is worth 35% on inserts and costs a factor of 24 on multi-key reads. Worth stating
+plainly because the evaluation nearly ended with a recommendation of 12 tablets as a pure 23x gain:
+every headline figure in this document was measured on the insert-only workload, and that
+recommendation would have cost a third of it. Behaviour under genuine contention remains unmeasured.
 
 One further finding survives, because it is a property of the commit path rather than of the
 workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key
