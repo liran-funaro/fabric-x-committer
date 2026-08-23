@@ -86,10 +86,15 @@ was not valid.
 **The waiting limit is a latency choice, not a throughput one.** In-flight tracks whatever ceiling
 the limit sets — 2,039,200 against a 2,000,000 limit — and 470,815 tps × 4.33 s reproduces that to
 three digits, so above what is needed to keep the validator-committers busy the surplus is pure
-queueing delay at about 4 KB of coordinator memory each. Memory is exactly linear: 1.0 / 8.2 / 79 GB
-at 200,000 / 2,000,000 / 20,000,000. 500,000 is the throughput maximum and 200,000 gives up 3.5% of
-it for half the mean latency and a third of the p99. 20,000,000 was simply a mistake: it bought
-nothing, and cost 100x the memory of the setting that beats it.
+queueing delay at about 4 KB of coordinator memory each. Memory tracks the limit once the limit is
+what in-flight is hitting: 8.2 GB at 2,000,000 and 79 GB at 20,000,000. The 200,000 and 500,000 rows
+read 1.0 GB and 786 MB, which inverts, because resident memory is a high-water mark that depends on
+when the collector last ran -- at those limits the difference is inside the noise, and neither is
+close to being a constraint.
+
+500,000 is the throughput maximum and 200,000 gives up 3.5% of it for half the mean latency and a
+third of the p99, so the choice between those two is a latency decision. 20,000,000 was simply a
+mistake: it bought nothing, and cost 100x the memory of the setting that beats it.
 
 ## 3. Changes that raised throughput
 

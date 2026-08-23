@@ -242,7 +242,9 @@ The dependency graph is what enables parallel dispatch to Verifier and VC servic
 Oversizing it is not free, and the cost is larger than "increases memory" suggests. On this project's
 19-machine cluster, going from 20,000,000 to 500,000 left the committed rate unchanged at roughly 500,000 tps
 while mean latency fell from 2,478 ms to 691 ms and the coordinator's resident memory fell from 79 GB to
-786 MB — about 4 KB per waiting transaction, and 100x less memory for the same throughput. The 20M limit
+786 MB — about 4 KB per waiting transaction, and 100x less memory for the same throughput. (Resident
+memory is a high-water mark and only tracks the limit while in-flight is actually reaching it; between
+200,000 and 500,000 the difference is inside measurement noise.) The 20M limit
 bought nothing: it only let 1.25 million transactions queue where 300,000 sufficed, and Little's law turns
 that excess directly into latency. Size it from the transactions actually needed in flight to keep the
 validator-committers busy, which is the bandwidth-delay product of the pipeline, not from how many the
