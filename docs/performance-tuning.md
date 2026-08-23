@@ -115,19 +115,53 @@ Too low limits client concurrency and can cause connection failures under load. 
 
 Number of goroutines that process transaction batches in parallel to construct batch-level dependency graphs. Each worker processes one batch at a time, and output is serialized in FIFO order.
 
-Increasing this parallelizes the CPU work of building dependency graphs. However, since output order is enforced via a condition variable, gains diminish beyond 2-4 workers. Default: 1.
+Increasing this parallelizes the CPU work of building dependency graphs, but measurement says it does not raise throughput at all. `BenchmarkDependencyGraph` over the no-dependency shape on a 32-core machine, 300,000 transactions per case, gives 216,886 / 249,691 / 220,000 / 246,929 / 221,484 / 228,068 tx/s at 1 / 2 / 4 / 8 / 16 / 32 constructors: no trend, and the spread is scheduling noise rather than a curve. The reason is that the pool is not what bounds the default manager -- the global manager's single graph goroutine and single validated-batch goroutine are, and no number of constructors widens them. Output order is also enforced through a condition variable, so a constructor may only run a bounded distance ahead of the last batch released. Raise this only if a profile shows the constructors themselves saturated. Default: 1.
 
 ### `dependency-graph.use-simple-manager`
 
 Selects the simple dependency graph manager. The default manager splits the work between a pool of local dependency constructors and a global graph guarded by one mutex; the simple manager keeps the whole waiting set in a single map owned by one goroutine, fed by channels, with no lock at all. `num-of-local-dep-constructors` has no effect when it is enabled.
 
-Compare `coordinator_global_dependency_graph_validated_tx_batch_processing` against `..._validated_tx_batch_processor_wait_for_lock` and `..._constructor_wait_for_lock` to see how much of the graph's busy time is contention rather than work. On this project's 19-machine cluster the validated batch processor reached 95% utilisation with 40% of it waiting for the mutex, and the constructor 86% with 43% waiting, on a 64-core machine whose busiest thread was under 20%. Enabling the simple manager did remove that entirely — those stages disappear from the utilisation sweep — but throughput did not change, because the pressure it released was absorbed by the next stage down: database commit latency rose from 90 ms to 120 ms at the same committed rate. Treat a lock-contention reading as a reason to check what is behind the lock, not as a throughput gain on its own. Default: false.
+Compare `coordinator_global_dependency_graph_validated_tx_batch_processing` against `..._validated_tx_batch_processor_wait_for_lock` and `..._constructor_wait_for_lock` to see how much of the graph's busy time is contention rather than work. On this project's 19-machine cluster the validated batch processor reached 95% utilisation with 40% of it waiting for the mutex, and the constructor 86% with 43% waiting, on a 64-core machine whose busiest thread was under 20%.
+
+Enabling the simple manager removed that contention entirely — those stages disappear from the utilisation
+sweep — but on first measurement throughput did not change, because the pressure it released was absorbed by
+the next stage down: database commit latency rose from 90 ms to 120 ms at the same committed rate. Treat a
+lock-contention reading as a reason to check what is behind the lock, not as a throughput gain on its own.
+
+Later measurement, after the manager's output path was fixed so that it no longer blocked (see the halt note
+below), does show it faster. `BenchmarkDependencyGraph` over the no-dependency shape gives 321,899 tx/s
+against 249,691 for the best default-manager configuration, a 29% gain measured in the same harness with the
+same transaction count. The cluster figures are not yet a clean comparison — the default manager's 355,995 tps
+was recorded while the load generator was itself the limit at about 358,000 tps, so it is a floor rather than
+that manager's ceiling, and it must not be compared against a later run taken after the generator was made
+faster.
+
+Two defects had to be fixed before the simple manager could sustain load, and both are worth knowing about if
+this is enabled. It held the members of every key's running group rather than counting them, so under
+sustained load — where the namespace key every transaction reads never has an idle instant — it retained every
+transaction it had ever seen, growing with transactions committed rather than transactions waiting. And its
+single goroutine both wrote the output and drained the validated input, which closes the coordinator's queue
+ring: it blocked on a full output, so it never took the validated batch that would have let that output drain.
+Nothing errored and no goroutine died; the pipeline simply stopped, after 35-45 million transactions.
+`drain_test.go` covers both. Default: false.
 
 ### `dependency-graph.waiting-txs-limit`
 
 Maximum number of transactions in the global dependency graph. The Coordinator acquires one slot per transaction before adding it to the graph. Slots are released when the VC returns validation results. When exhausted, the dependency graph construction blocks, channels fill up, and the Sidecar stops pulling blocks.
 
 The dependency graph is what enables parallel dispatch to Verifier and VC services. A small graph (e.g., 100) means once transactions are dispatched, no new ones enter until results return — creating idle gaps and reducing throughput. A very large graph increases memory for dependency tracking state and queuing latency. Incoming blocks are chunked into batches of `min(waiting-txs-limit, 500)` to prevent a single block from consuming all slots. Default: 100,000.
+
+Oversizing it is not free, and the cost is larger than "increases memory" suggests. On this project's
+19-machine cluster, going from 20,000,000 to 500,000 left the committed rate unchanged at roughly 500,000 tps
+while mean latency fell from 2,478 ms to 691 ms and the coordinator's resident memory fell from 79 GB to
+786 MB — about 4 KB per waiting transaction, and 100x less memory for the same throughput. The 20M limit
+bought nothing: it only let 1.25 million transactions queue where 300,000 sufficed, and Little's law turns
+that excess directly into latency. Size it from the transactions actually needed in flight to keep the
+validator-committers busy, which is the bandwidth-delay product of the pipeline, not from how many the
+machine could hold.
+
+Note also that this limit only becomes load-bearing once nothing upstream blocks first; it had no observable
+effect until the simple manager stopped blocking on its output channel.
 
 ### `per-channel-buffer-size-per-goroutine`
 
