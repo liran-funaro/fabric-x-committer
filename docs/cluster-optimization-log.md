@@ -413,8 +413,9 @@ version**. The validator classifies a nil-version write as a new key and routes 
 where a key that already exists can only raise `unique_violation`. That workload was not contended;
 it was impossible, in half of its transactions, and what got measured was the failure path.
 
-Nothing in this document establishes anything about behaviour under contention. A valid measurement
-needs `queries-rate` above 0 and a query service to serve it, which this inventory does not deploy.
+Nothing in this document establishes anything about behaviour under contention. Measuring it through
+read-write slots needs `queries-rate` above 0 and a query service to serve it, which this inventory
+does not deploy; measuring write contention alone does not, as the next paragraph shows.
 
 A second attempt, with the back-references placed in **blind-write** slots instead, is valid: a blind
 write carries no version by design, and the validator resolves it itself
@@ -464,7 +465,13 @@ table and the caveat that the constant is not portable.
 The useful consequence is a second lever. A deployment can keep a high tablet count and its write
 concurrency provided each lookup stays narrow -- at 120 tablets about 273 keys, roughly 136
 transactions per committed batch -- so the committed batch width is a knob this evaluation never
-touched. Behaviour under genuine contention remains unmeasured.
+touched.
+
+Behaviour under genuine contention therefore remains unmeasured, and it is worth being exact about
+what is missing. Both blind-write runs above used `key-backref-rate` 0, so neither reused a key: the
+one run that did reuse keys (13,160 tps) was taken at 120 tablets, where the lookup cost swamped
+everything else. Write contention can now be measured cheaply -- a `key-backref-rate` sweep over
+blind writes at 12 tablets, needing no query service -- and read contention still needs one.
 
 One further finding survives, because it is a property of the commit path rather than of the
 workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key
