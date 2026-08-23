@@ -79,9 +79,19 @@ continuous with the table above:
 The last row is the best result of the evaluation and the only one where a requested rate was
 actually delivered over a 300-second window: 500,000 offered, 496,807 committed, 99.4% efficient. It
 differs from the row above it only in that the state database had just been wiped, so the table
-started empty rather than holding several hundred million rows. That is a 2% difference and small
-enough not to attribute firmly, but it is the reason the two rows disagree, and it means any figure
-quoted from this cluster should say how full the database was.
+started empty rather than holding several hundred million rows.
+
+That difference is real and it is a decay, not noise. Left running at a fixed 500,000 tps request
+from an empty table, the committed rate falls steadily as the table grows: 490,378 tps at the start
+of a twenty-minute window and 477,858 at the end of it, by which point `ns_0` held 1.43 billion rows.
+About 2.5% per twenty minutes at this rate, and it is the same mechanism as the transaction ID index
+in section 3.1 — the cost is per transaction and rises with the size of the index being written into.
+
+Two consequences. Any figure quoted from this cluster has to say how full the database was when it
+was taken, because a fresh table and a billion-row table differ by more than the margin between
+several of the changes in this document. And a workload that only ever inserts new keys grows state
+at roughly a million rows per second here, which is not a steady state at all; a workload that
+updates existing keys would not.
 
 Two further results are in that table and they are worth separating.
 
