@@ -399,25 +399,32 @@ bound the default manager at all — 1 through 32 constructors give 216,886 / 24
 246,929 / 221,484 / 228,068 tx/s, no trend — because the ceiling is in the global manager's two
 single goroutines.
 
-**The dependency graph had not been measured on the work it exists for, and it matters more than
-anything else here.** Every figure above was taken with `key-backref-rate` at 0, where each
-transaction's two read-write slots get fresh unique keys. No two transactions ever touch the same
-key, so the graph tracks transactions that cannot conflict and the MVCC validator never aborts one.
+**Every figure here was measured on a workload that only ever inserts new keys, and the attempt to
+measure anything else failed.** With `key-backref-rate` at 0, each transaction's two read-write
+slots get fresh unique keys: no two transactions touch the same key, so the dependency graph tracks
+transactions that cannot conflict and the MVCC validator never aborts one. Both graph managers were
+compared on that workload and only on that workload.
 
-Turning key reuse on collapses the result. With `key-backref-rate` 0.5, `tx-reference-gap` 0 and
-`key-lookback-window` 100,000, the same deployment commits **10,514 tps rather than 486,941** — a
-factor of 46 — with 6,824 tps aborting on conflict, 25 s mean latency, and the dependent-transaction
-gauge at 189,426 where it had read exactly 0 in every earlier run. The commit machines sit at 38%
-CPU with database batch commit down to 20 ms: nothing downstream is busy, and the coordinator's
-graph is the constraint.
+Turning key reuse on collapsed throughput from 486,941 tps to about 10,000, and the first two
+explanations offered for it — the dependency graph serialising, then the database — were both wrong.
+The workload was invalid. `queries-rate` exists precisely to fetch committed versions for
+back-references before signing, and it was left at 0, so every back-reference carried a **nil
+version**. The validator classifies a nil-version write as a new key and routes it to `insert_ns`,
+where a key that already exists can only raise `unique_violation`. That workload was not contended;
+it was impossible, in half of its transactions, and what got measured was the failure path.
 
-That parameter choice is close to a worst case rather than a realistic one, and the distinction
-matters before the factor of 46 is quoted anywhere. At roughly 974,000 new keys per second, a
-100,000-key lookback window means every reference points at a key created within the last tenth of a
-second — essentially all still in flight against a pipeline latency of about a second — so nearly
-every reference is a *live* dependency rather than a reference to committed state. It also conflates
-two separate effects: serialisation in the coordinator's graph, and MVCC aborts in the validator.
+Nothing in this document establishes anything about behaviour under contention. A valid measurement
+needs `queries-rate` above 0 and a query service to serve it, which this inventory does not deploy.
+
+One real finding survives it, because it is a property of the commit path rather than of the
+workload. `insert_ns` issues a single bulk `INSERT` for the whole batch, so **one** pre-existing key
+raises `unique_violation`, rolls the whole statement back, triggers a rescan for every existing key
+in the batch, discards the work of all the non-conflicting transactions along with it, and makes
+`committer.go` retry the entire batch — a loop bounded at 1024 rounds. Any client that blind-writes a
+key whose version it did not read pays that, and one such transaction is enough to penalise the
+thousands batched with it.
 
 The lesson for anyone reading the headline figures is narrow and firm: they describe a pipeline
-carrying transactions that cannot conflict, roughly 98% of the throughput depends on that, and the
-comparison between the two graph managers is only established for that case.
+carrying transactions that cannot conflict and that only ever create keys, roughly 98% of the
+throughput depends on that, and the comparison between the two graph managers is established for
+that case alone.
