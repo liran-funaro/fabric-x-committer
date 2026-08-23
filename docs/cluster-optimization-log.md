@@ -73,9 +73,17 @@ continuous with the table above:
 | Simple manager, `waiting-txs-limit` 20,000,000 | 500,258 (60 s window only) | 2,478 ms | — | 79 GB |
 | Simple manager, `waiting-txs-limit` 2,000,000 | 470,815 | 4,329 ms | 4,980 ms | 8.2 GB |
 | Simple manager, `waiting-txs-limit` 200,000 | 470,594 | **519 ms** | **746 ms** | 1.0 GB |
-| **Simple manager, `waiting-txs-limit` 500,000** | **486,941** | 1,099 ms | 1,988 ms | 786 MB |
+| Simple manager, `waiting-txs-limit` 500,000 | 486,941 | 1,099 ms | 1,988 ms | 786 MB |
+| **Same, on a freshly wiped database** | **496,807** (99.4%, rate delivered) | **626 ms** | **968 ms** | 1.1 GB |
 
-Two results are in that table and they are worth separating.
+The last row is the best result of the evaluation and the only one where a requested rate was
+actually delivered over a 300-second window: 500,000 offered, 496,807 committed, 99.4% efficient. It
+differs from the row above it only in that the state database had just been wiped, so the table
+started empty rather than holding several hundred million rows. That is a 2% difference and small
+enough not to attribute firmly, but it is the reason the two rows disagree, and it means any figure
+quoted from this cluster should say how full the database was.
+
+Two further results are in that table and they are worth separating.
 
 **The manager choice is worth 47.6%** — 486,941 against 329,854 at an otherwise identical
 configuration. The row shows why: under the default manager, database batch commit falls to 62 ms
