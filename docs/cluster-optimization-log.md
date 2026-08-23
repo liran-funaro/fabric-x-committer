@@ -399,9 +399,25 @@ bound the default manager at all — 1 through 32 constructors give 216,886 / 24
 246,929 / 221,484 / 228,068 tx/s, no trend — because the ceiling is in the global manager's two
 single goroutines.
 
-**The dependency graph has not been measured on the work it exists for.** Every figure in this
-document was taken with `key-backref-rate` at 0, where each transaction's two read-write slots get
-fresh unique keys. No two transactions ever touch the same key, so the graph tracks transactions
-that cannot conflict and the MVCC validator never aborts one. Both managers were compared on a
-workload that gives the graph nothing to do, and the simple manager's advantage may not survive a
-workload that does.
+**The dependency graph had not been measured on the work it exists for, and it matters more than
+anything else here.** Every figure above was taken with `key-backref-rate` at 0, where each
+transaction's two read-write slots get fresh unique keys. No two transactions ever touch the same
+key, so the graph tracks transactions that cannot conflict and the MVCC validator never aborts one.
+
+Turning key reuse on collapses the result. With `key-backref-rate` 0.5, `tx-reference-gap` 0 and
+`key-lookback-window` 100,000, the same deployment commits **10,514 tps rather than 486,941** — a
+factor of 46 — with 6,824 tps aborting on conflict, 25 s mean latency, and the dependent-transaction
+gauge at 189,426 where it had read exactly 0 in every earlier run. The commit machines sit at 38%
+CPU with database batch commit down to 20 ms: nothing downstream is busy, and the coordinator's
+graph is the constraint.
+
+That parameter choice is close to a worst case rather than a realistic one, and the distinction
+matters before the factor of 46 is quoted anywhere. At roughly 974,000 new keys per second, a
+100,000-key lookback window means every reference points at a key created within the last tenth of a
+second — essentially all still in flight against a pipeline latency of about a second — so nearly
+every reference is a *live* dependency rather than a reference to committed state. It also conflates
+two separate effects: serialisation in the coordinator's graph, and MVCC aborts in the validator.
+
+The lesson for anyone reading the headline figures is narrow and firm: they describe a pipeline
+carrying transactions that cannot conflict, roughly 98% of the throughput depends on that, and the
+comparison between the two graph managers is only established for that case.
