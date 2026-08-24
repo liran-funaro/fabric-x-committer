@@ -370,7 +370,40 @@ Two things to know before reproducing this. The coordinator's `BlockProcessing` 
 coordinator needs the namespace's configuration transaction, which normally arrives through the
 sidecar; without it every transaction returns `ABORTED_SIGNATURE_INVALID`.
 
-### 6.2 What the load generator can offer
+### 6.2 Putting the sidecar back, and what it costs
+
+Nothing, once the two in-flight windows are the same size. Measured at the same request of
+1,000,000 tps that produced the best coordinator-direct figure, and over the same length of run:
+
+| | 45-minute mean | Peak | Mean latency |
+|---|---:|---:|---:|
+| Coordinator-direct, coordinator window 500,000 | 525,388 | 533,213 | 1,050 ms |
+| Full pipeline through the sidecar, both windows 500,000 | **523,316** | **548,800** | 5,400 ms |
+
+The means differ by 0.4%, which is inside this cluster's run-to-run spread, and the peak is 2.9%
+higher through the sidecar. The latency is five times higher, which is what an extra stage plus a
+deeper buffer in front of it is supposed to cost. Throughput is not.
+
+Two mistakes are worth recording because the first one produced a plausible wrong answer.
+
+**Do not let the sidecar's `waiting-txs-limit` undercut the coordinator's `dep-graph-wait-tx-limit`.**
+Every figure in the table above the sidecar was reintroduced into was taken with the coordinator's
+500,000 as the pipeline's binding in-flight window. Set the sidecar's limit to 300,000 and the
+sidecar's window silently becomes the tighter of the two and replaces it. Since throughput is
+in-flight over latency, that caps throughput and not merely latency — the earlier sweep in this
+section prices it directly at 470,594 tps for a 200,000 window against 486,941 for 500,000, and the
+first sidecar-in-path measurement, at 300,000, returned 480,689: on that curve, at that window. It
+was briefly reported as a 10% cost of having a sidecar. It was the cost of a window.
+
+**A long-run mean is not a rate the cluster held.** The 525,388 above spans an unexplained step up:
+its own first twenty-five minutes averaged 482,422 tps before throughput jumped to 531,000 within
+three minutes. The sidecar run did not reproduce that step and instead decayed monotonically from
+542,080 tps over its first five minutes to 512,080 by minute forty-five, which is the ordinary
+state-growth decay documented in section 2. So the two 45-minute means agreeing to 0.4% is partly
+coincidence; the early-window comparison, 542,080 against 482,422, favours the sidecar run, and
+neither comparison supports a throughput cost.
+
+### 6.3 What the load generator can offer
 
 Not the constraint any more, but close enough to matter. One 64-core generator benchmarks at
 598,208 tx/s on the submit path (generation, block mapping, TX ID extraction, metrics and latency
@@ -394,6 +427,8 @@ Constraints found and resolved, in order:
 | Sidecar channel buffering (latency only) | reduced 6× |
 | Load generator signing throughput | removed (Ed25519, `gen-batch`) |
 | Sidecar block delivery | shown never to have been the constraint |
+| Sidecar block store serializing unused txID index info | removed (`fabric-x-common` `serializeBlock`) |
+| Sidecar `waiting-txs-limit` below the coordinator's window | matched to it; was misread as a sidecar cost |
 | Coordinator dependency graph halting under load | fixed (`drain_test.go`) |
 | Oversized `waiting-txs-limit` (latency and memory) | 20M → 500K, 100× less memory |
 | **Database commit path** | **current** |

@@ -213,9 +213,14 @@ sidecar in front with a `waiting-txs-limit` below that, and the sidecar's window
 the coordinator's as the binding one — and since throughput is in-flight over latency, a smaller
 window caps throughput and not merely latency. That log prices the knob: 470,594 tx/s at a 200,000
 window and 486,941 at 500,000. The 480,689 above was measured at 300,000 and sits on that same
-curve. Compared like for like — the coordinator-direct run's own first twenty-five minutes averaged
-482,422 tx/s before it stepped up to 531,000 for reasons never identified — the sidecar's
-throughput cost is within half a percent of nothing.
+curve.
+
+Matching the two windows settles it. With both at 500,000 and the same 1,000,000 tps request that
+produced the best coordinator-direct figure, the full pipeline through the sidecar held 523,316 tx/s
+over forty-five minutes and peaked at 548,800, against 525,388 and 533,213 coordinator-direct — the
+means within 0.4% and the peak higher through the sidecar. Mean latency went from 1,050 ms to
+5,400 ms, which is what an extra stage and a deeper buffer are supposed to cost. Section 6.2 of
+`cluster-optimization-log.md` has the run.
 
 So keep `waiting-txs-limit` at or above the coordinator's `dep-graph-wait-tx-limit`. Sizing it below
 that does not make overload more visible; the coordinator's window already does that, and the mock
