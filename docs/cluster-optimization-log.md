@@ -75,17 +75,47 @@ continuous with the table above:
 | Simple manager, `waiting-txs-limit` 200,000 | 470,594 | **519 ms** | **746 ms** | 1.0 GB |
 | Simple manager, `waiting-txs-limit` 500,000 | 486,941 | 1,099 ms | 1,988 ms | 786 MB |
 | **Same, on a freshly wiped database** | **496,807** (99.4%, rate delivered) | **626 ms** | **968 ms** | 1.1 GB |
+| Same, sustained 11 h / 17.9 billion txs | 328,433 | 1,724 ms | — | — |
 
 The last row is the best result of the evaluation and the only one where a requested rate was
 actually delivered over a 300-second window: 500,000 offered, 496,807 committed, 99.4% efficient. It
 differs from the row above it only in that the state database had just been wiped, so the table
 started empty rather than holding several hundred million rows.
 
-That difference is real and it is a decay, not noise. Left running at a fixed 500,000 tps request
-from an empty table, the committed rate falls steadily as the table grows: 490,378 tps at the start
-of a twenty-minute window and 477,858 at the end of it, by which point `ns_0` held 1.43 billion rows.
-About 2.5% per twenty minutes at this rate, and it is the same mechanism as the transaction ID index
-in section 3.1 — the cost is per transaction and rises with the size of the index being written into.
+That difference is real and it is a decay, not noise, and over a long run it dwarfs every individual
+change in this document. Left at a fixed 500,000 tps request from an empty table for eleven and a half
+hours:
+
+| Elapsed | Committed |
+|---|---|
+| 0 h | 479,562 |
+| 2 h | **514,517** (peak) |
+| 3 h | 510,800 |
+| 4 h | 437,942 |
+| 6 h | 408,393 |
+| 8 h | 387,264 |
+| 10 h | 336,317 |
+| 11 h | **328,433** |
+
+**−36% from peak**, having committed 17.88 billion transactions and filled the tablet servers to
+roughly 640 GB each, about 7.7 TB across the cluster. (The row count is derived from the transaction
+counter — two keys per transaction, so of order 36 billion rows in `ns_0` and 17.9 billion in
+`tx_status`. Counting them directly does not finish.)
+
+The cost is per transaction and rises with the size of the index being written into, the same mechanism
+as the transaction ID index in section 3.1, and here it lands on both tables at once: per batch,
+`insert_new_key_with_value` goes from 65 ms to 133 ms and `insert_tx_status` from 52 ms to 107 ms.
+Both roughly double, the batch rate halves from 1,390/s to 664/s, the validator-committer pool
+saturates at 192 of 192 workers, and commit-host CPU rises from 76% to 84% as compaction takes the
+difference.
+
+The decay decelerates rather than continuing linearly — 43,000 tps lost over the first three hours
+after the peak against 8,000 over the last — so there is probably a floor, but this run did not reach
+it and disk sets a hard limit before it would.
+
+The honest way to state the headline is therefore two numbers: **about 500,000 tps on a fresh database
+and about 330,000 sustained after 18 billion transactions.** Quoting the first alone describes a state
+the cluster occupies for two hours out of eleven.
 
 Two consequences. Any figure quoted from this cluster has to say how full the database was when it
 was taken, because a fresh table and a billion-row table differ by more than the margin between
