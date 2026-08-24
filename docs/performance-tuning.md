@@ -193,7 +193,9 @@ CPU but the duty cycle of each per-block stage against the per-block budget:
 | `sidecar_delivery_block_verification_seconds` | 3.0 ms | 3.1 ms | 22.2 ms |
 
 An append at 22.2 ms of a 22.2 ms budget predicts 10,000 / 22.2 ms = 451,000 tx/s, and the measured
-knee was just above 450,000. A 30-second CPU profile of the live process attributed 7.4% of the whole
+knee was just above 450,000. Both columns were measured with the sidecar's `waiting-txs-limit` at
+300,000, which is itself a throughput limit — see the end of this subsection before comparing either
+figure with anything. A 30-second CPU profile of the live process attributed 7.4% of the whole
 sidecar and about 88% of `appendBlock` to `addDataBytesAndConstructTxIndexInfo`, over half of that in
 the `proto.Unmarshal` behind `GetOrComputeTxIDFromEnvelope`. `runtime.gcDrain` was 57% of all CPU,
 which is the allocation-bound picture above showing up unchanged at cluster scale.
@@ -202,9 +204,22 @@ With the append fixed the whole pipeline held 480,689 tx/s over a five-minute wi
 deployment, peaking at 483,600, and the sidecar was no longer what stopped it: 13% CPU, every
 internal queue empty, no stage above 60% of its budget. What stopped it was the database commit, and
 its arithmetic closes — 6 validator-committers × 32 committer workers = 192 concurrent commits at
-139 ms each and 341 transactions a batch is 471,000 tx/s. For reference, the same cluster reached
-533,217 tx/s with load applied straight to the coordinator and the sidecar out of the path, so the
-sidecar's whole cost end to end is about 10%.
+139 ms each and 341 transactions a batch is 471,000 tx/s.
+
+That figure is not evidence of a sidecar cost, and reading it as one is the mistake to avoid here.
+The comparable coordinator-direct numbers in `cluster-optimization-log.md` were all taken with the
+coordinator's `dep-graph-wait-tx-limit` of 500,000 as the pipeline's in-flight window. Put the
+sidecar in front with a `waiting-txs-limit` below that, and the sidecar's window silently replaces
+the coordinator's as the binding one — and since throughput is in-flight over latency, a smaller
+window caps throughput and not merely latency. That log prices the knob: 470,594 tx/s at a 200,000
+window and 486,941 at 500,000. The 480,689 above was measured at 300,000 and sits on that same
+curve. Compared like for like — the coordinator-direct run's own first twenty-five minutes averaged
+482,422 tx/s before it stepped up to 531,000 for reasons never identified — the sidecar's
+throughput cost is within half a percent of nothing.
+
+So keep `waiting-txs-limit` at or above the coordinator's `dep-graph-wait-tx-limit`. Sizing it below
+that does not make overload more visible; the coordinator's window already does that, and the mock
+orderer's ring bounds what can queue in front of the sidecar.
 
 Two lessons transfer. A per-block stage's duty cycle is the diagnostic, not machine CPU — a
 saturated single goroutine is invisible in every utilisation graph. And block size sets the budget:
