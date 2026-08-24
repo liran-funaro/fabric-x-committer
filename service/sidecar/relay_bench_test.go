@@ -93,7 +93,7 @@ func BenchmarkRelayThroughput(b *testing.B) {
 // benchBlockSize, together with the status batch the coordinator would return for each block.
 func benchBlocksWithStatuses(b *testing.B, txCount int) ([]*common.Block, []*committerpb.TxStatusBatch) {
 	b.Helper()
-	txs := workload.GenerateTransactions(b, nil, txCount)
+	txs := workload.GenerateTransactions(b, benchTxProfile(), txCount)
 	blockCount := (txCount + benchBlockSize - 1) / benchBlockSize
 	blocks := make([]*common.Block, 0, blockCount)
 	statuses := make([]*committerpb.TxStatusBatch, 0, blockCount)

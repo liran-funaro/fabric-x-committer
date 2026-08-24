@@ -29,7 +29,7 @@ const testChannelID = "chan"
 
 func BenchmarkMapOneBlock(b *testing.B) {
 	flogging.ActivateSpec("fatal")
-	txs := workload.GenerateTransactions(b, nil, b.N)
+	txs := workload.GenerateTransactions(b, benchTxProfile(), b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 
 	var dedup txIDDedup
@@ -49,7 +49,7 @@ func BenchmarkMapBlockSize(b *testing.B) {
 			// granularity. We split b.N transactions into blocks of at most
 			// blockSize (the final block may be smaller), so ns/op and tx/s are
 			// reported per transaction, independent of the block size.
-			allTxs := workload.GenerateTransactions(b, nil, b.N)
+			allTxs := workload.GenerateTransactions(b, benchTxProfile(), b.N)
 			blocks := make([]*common.Block, 0, (b.N+blockSize-1)/blockSize)
 			for off := 0; off < b.N; off += blockSize {
 				blocks = append(blocks, workload.MapToOrdererBlock(
