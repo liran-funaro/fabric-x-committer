@@ -8,6 +8,8 @@ package sidecar
 
 import (
 	"fmt"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"unicode/utf8"
 
@@ -46,6 +48,23 @@ type (
 		txIDs []string
 	}
 
+	// parsedMessage is what mapping can settle about one message of a block without looking at any
+	// other: its reference, and either the TX to accept, the status to reject it with, or the error
+	// that fails the whole block. parseMessages fills these concurrently and applyParsedMessage
+	// folds them into the block one at a time, in order.
+	parsedMessage struct {
+		ref *committerpb.TxRef
+		// tx is the TX to accept, nil unless the message is well formed.
+		tx *applicationpb.Tx
+		// status and reason are the rejection, set only when tx is nil and err is nil.
+		status committerpb.Status
+		reason string
+		// err fails the whole block rather than the TX. Only an unprocessable config TX sets it.
+		err        error
+		isConfig   bool
+		isSnapshot bool
+	}
+
 	blockWithStatus struct {
 		block        *common.Block
 		txStatus     []committerpb.Status
@@ -60,7 +79,20 @@ type (
 const (
 	statusNotYetValidated = committerpb.Status_STATUS_UNSPECIFIED
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+
+	// minMsgsPerMapWorker is the smallest share of a block worth giving a goroutine of its own.
+	// Parsing one message costs on the order of a microsecond, so a smaller share is mapped in
+	// place instead: handing it over would cost more than it saves, and a deployment that cuts
+	// small blocks has spare cores anyway, since small blocks cap throughput well below the point
+	// where parsing is what limits it.
+	minMsgsPerMapWorker = 256
 )
+
+// mapWorkers bounds how many goroutines one block's parsing is split across. Parsing is CPU bound,
+// so more workers than cores cannot help, and the cap leaves cores for the pipeline's other
+// stages — the relay's sender and receiver, the block store, and the notifier — which need to keep
+// up with mapping for the extra parsing rate to turn into throughput.
+var mapWorkers = min(runtime.NumCPU(), 16)
 
 // mapBlock maps an orderer block into the batch the relay submits to the coordinator. It records
 // every accepted TX ID in dedup, rejecting a TX whose ID is already in flight, and hands dedup the
@@ -108,10 +140,10 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 	}
 	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
-	for msgIndex, msg := range block.Data.Data {
+	parsed := parseMessages(blockNumber, block.Data.Data)
+	for msgIndex := range parsed {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
-		err := mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
-		if err != nil {
+		if err := mappedBlock.applyParsedMessage(&parsed[msgIndex]); err != nil {
 			// Either a config TX that cannot be processed (see unprocessableConfigTx),
 			// or a bug in the relay.
 			return nil, err
@@ -122,7 +154,46 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 	return mappedBlock, nil
 }
 
-func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
+// parseMessages works out what can be decided about each message on its own — parsing its
+// envelope, classifying it, and validating its form — for every message of a block at once.
+//
+// This is the bulk of mapping, and none of it depends on the other messages, so it is split across
+// goroutines: a single goroutine parsing a block caps the whole sidecar at the rate one core can
+// parse, whatever else the machine has spare. What is left afterwards does depend on the other
+// messages — the TX ID dedup set, the one-snapshot-per-block rule, and the order of the batch the
+// coordinator receives — and applyParsedMessage does it serially, in message order, so the
+// transactions a block accepts and rejects do not depend on how the parsing happened to be split.
+func parseMessages(blockNumber uint64, msgs [][]byte) []parsedMessage {
+	parsed := make([]parsedMessage, len(msgs))
+	parseRange := func(start, end int) {
+		for msgIndex := start; msgIndex < end; msgIndex++ {
+			//nolint:gosec // int -> uint32.
+			parsed[msgIndex] = parseMessage(blockNumber, uint32(msgIndex), msgs[msgIndex])
+		}
+	}
+
+	workers := min(mapWorkers, len(msgs)/minMsgsPerMapWorker)
+	if workers < 2 {
+		parseRange(0, len(msgs))
+		return parsed
+	}
+
+	var wg sync.WaitGroup
+	for worker := range workers {
+		start, end := len(msgs)*worker/workers, len(msgs)*(worker+1)/workers
+		wg.Go(func() {
+			parseRange(start, end)
+		})
+	}
+	wg.Wait()
+	return parsed
+}
+
+// parseMessage classifies and validates one message. It reads nothing but the message, and writes
+// nothing but its return value, which is what lets parseMessages run it concurrently.
+func parseMessage(blockNumber uint64, msgIndex uint32, msg []byte) parsedMessage {
+	parsed := parsedMessage{ref: committerpb.NewTxRef("", blockNumber, msgIndex)}
+
 	// UnwrapEnvelopeLite extracts only HeaderType, TxID, and Data from the envelope
 	// by scanning the protobuf wire format directly. Unlike UnwrapEnvelope, which
 	// fully deserializes all nested proto messages and validates every field, this
@@ -131,77 +202,109 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	// those fields will go undetected. This is acceptable because the committer
 	// does not use them, and for the same reason, they are not validated in the
 	// sidecar. TODO: remove unused fields from the ChannelHeader proto.
-	ref := committerpb.NewTxRef("", b.blockNumber, msgIndex)
 	envLite, envErr := serialization.UnwrapEnvelopeLite(msg)
 	if envErr != nil {
-		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
+		return parsed.reject(committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
 	headerType := common.HeaderType(envLite.HeaderType)
 
 	// A config TX is classified before its TX ID is resolved: it does not carry its TX ID where
-	// every other message type does. See mapConfigTx.
+	// every other message type does. See parseConfigTx.
 	if headerType == common.HeaderType_CONFIG {
-		return b.mapConfigTx(ref, envLite, msg)
+		return parsed.parseConfigTx(envLite, msg)
 	}
 
 	if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
-		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		return parsed.reject(committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
 	}
-	ref.TxId = envLite.TxID
+	parsed.ref.TxId = envLite.TxID
 
 	if headerType != common.HeaderType_MESSAGE {
-		return b.rejectTx(ref, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+		return parsed.reject(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 			"unsupported message type: "+headerType.String())
 	}
 
 	tx, err := serialization.UnmarshalTx(envLite.Data)
 	if err != nil {
-		return b.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
+		return parsed.reject(committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 	}
 	if status := verifyTxForm(tx); status != statusNotYetValidated {
-		return b.rejectTx(ref, status, "malformed tx")
+		return parsed.reject(status, "malformed tx")
 	}
-	if !isSnapshotTx(tx) {
-		return b.appendTx(ref, tx)
-	}
+	parsed.tx = tx
+	parsed.isSnapshot = isSnapshotTx(tx)
+	return parsed
+}
 
-	if b.snapshotTx != nil {
+// parseConfigTx validates a config TX and resolves its TX ID. Unlike a data TX, a config TX cannot
+// be rejected: the ordering service has already validated it and applied it to the channel config,
+// so a committer that rejects it would diverge from the rest of the network. It is validated here,
+// while failing the block is still an option; the verifier and the coordinator parse it again
+// later, where a failure could no longer be recovered from.
+func (p parsedMessage) parseConfigTx(envLite *serialization.EnvelopeLite, msg []byte) parsedMessage {
+	if err := policy.ValidateConfigTx(msg); err != nil {
+		return p.failBlock(err)
+	}
+	txID, err := configTxID(envLite)
+	if err != nil {
+		return p.failBlock(err)
+	}
+	p.ref.TxId = txID
+	p.tx = configTx(msg)
+	p.isConfig = true
+	return p
+}
+
+// reject marks the message as one to reject with a stored or non-stored status, as its status
+// decides. Rejecting is recorded rather than performed here, because whether a status can be
+// stored also depends on the TX ID not being a duplicate, which only applyParsedMessage knows.
+func (p parsedMessage) reject(status committerpb.Status, reason string) parsedMessage {
+	p.status = status
+	p.reason = reason
+	return p
+}
+
+// failBlock marks the message as one that fails the whole block, which only an unprocessable
+// config TX does. The error is built in applyParsedMessage, which logs it in message order.
+func (p parsedMessage) failBlock(err error) parsedMessage {
+	p.err = err
+	return p
+}
+
+// applyParsedMessage folds one parsed message into the block being mapped: it records the TX ID in
+// the dedup set, appends the TX to the batch or its rejection to the rejected list, and fills the
+// block's per-TX status. Every step of it depends on the messages before this one, so mapBlock runs
+// it serially and in message order.
+func (b *blockMappingResult) applyParsedMessage(parsed *parsedMessage) error {
+	switch {
+	case parsed.err != nil:
+		return b.unprocessableConfigTx(parsed.ref, parsed.err)
+	case parsed.status != statusNotYetValidated:
+		return b.rejectTx(parsed.ref, parsed.status, parsed.reason)
+	case parsed.isConfig:
+		return b.appendConfigTx(parsed.ref, parsed.tx)
+	case !parsed.isSnapshot:
+		return b.appendTx(parsed.ref, parsed.tx)
+	case b.snapshotTx != nil:
 		// Only the first snapshot TX in a block is processed; reject the rest with a
 		// stored status so the outcome is recorded, regardless of the first's outcome.
-		return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+		return b.rejectTx(parsed.ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
 			"duplicate snapshot tx in block")
 	}
-	txWithRef, err := b.prepareTx(ref, tx)
-	if err != nil {
+
+	txWithRef, err := b.prepareTx(parsed.ref, parsed.tx)
+	if err != nil || txWithRef == nil {
+		// A nil TxWithRef means a duplicate TX ID, already rejected by prepareTx.
 		return err
-	}
-	if txWithRef == nil {
-		// A duplicate TX ID; already rejected by prepareTx via addTxIDMapping.
-		return nil
 	}
 	// Kept off block.Txs; see the snapshotTx field comment.
 	b.snapshotTx = txWithRef
 	return nil
 }
 
-// mapConfigTx maps a config TX, which the sidecar can only accept or fail on. Unlike a data TX,
-// it cannot be rejected: the ordering service has already validated it and applied it to the
-// channel config, so a committer that rejects it would diverge from the rest of the network.
-func (b *blockMappingResult) mapConfigTx(
-	ref *committerpb.TxRef, envLite *serialization.EnvelopeLite, msg []byte,
-) error {
-	// The config TX is validated here, where failing the block is still an option. The verifier
-	// and the coordinator parse it again later, where a failure could no longer be recovered from.
-	if err := policy.ValidateConfigTx(msg); err != nil {
-		return b.unprocessableConfigTx(ref, err)
-	}
-	txID, err := configTxID(envLite)
-	if err != nil {
-		return b.unprocessableConfigTx(ref, err)
-	}
-	ref.TxId = txID
-
-	txWithRef, err := b.prepareTx(ref, configTx(msg))
+// appendConfigTx appends an accepted config TX to the batch and marks the block as a config block.
+func (b *blockMappingResult) appendConfigTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
+	txWithRef, err := b.prepareTx(ref, tx)
 	if err != nil {
 		return err
 	}

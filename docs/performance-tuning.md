@@ -79,6 +79,63 @@ Drops the block store's transaction ID index, which `GetBlockByTxID` and `GetTxB
 
 This is the block store's dominant cost at high transaction rates, because it writes one index entry per transaction rather than per block, and its LevelDB compaction rewrites those entries as the index grows. On a cluster committing around 100,000 tx/s, a CPU profile of a saturated Sidecar attributed 35% of its samples to that compaction, with the index at 33 GB against 118 GB of blocks; committed throughput fell by roughly a third over an hour at a fixed offered rate as the index kept growing. A deployment that serves neither query is better off without it. Note that the index also selects the block store's on-disk format, so this setting can only be changed against an empty ledger directory. Default: false.
 
+### What limits the sidecar on its own: `BenchmarkSidecarEndToEnd`
+
+`BenchmarkSidecarEndToEnd` (`service/sidecar/sidecar_bench_test.go`) drives the whole service on
+one machine — a block arrives over the orderer's Deliver stream and has its consenter signatures
+verified, is mapped, is submitted to the coordinator over a real gRPC stream, has its statuses
+collected, and is appended to a real on-disk ledger. The orderer and the coordinator are stubbed,
+because both sit on other machines in a deployment.
+
+Measured on a 64-core sidecar host with the ledger on a local NVMe disk, 3,000,000 transactions per
+point, `disable-tx-id-index` on. Each column adds to the one before it:
+
+| block size | baseline | + parallel mapping | + `GOGC=1000` |
+|-----------:|---------:|-------------------:|--------------:|
+| 100        |   92,000 |             89,000 |       105,000 |
+| 500        |  225,000 |            327,000 |       384,000 |
+| 1,000      |  278,000 |            395,000 |       593,000 |
+| 5,000      |  301,000 |            433,000 |       630,000 |
+| 10,000     |  311,000 |            396,000 |       609,000 |
+
+Three things decide the number, and they have to be fixed in this order — each one is invisible
+until the one before it is gone.
+
+**Block size, first and always.** Below about 1,000 transactions the sidecar cannot reach half its
+throughput at any setting, because two of its costs are per block rather than per transaction:
+verifying the block's consenter signatures, and one `fsync` every `sync-interval` blocks. Block
+signature verification alone measures 169,000 tx/s at 100 transactions per block against 1,281,000
+at 10,000 (`BenchmarkVerifyBlock` in `utils/deliverorderer`). Nothing else in this section matters
+until the blocks are wide.
+
+**The sidecar is allocation-bound, not CPU-bound.** It allocates about 50 objects and 5 KB per
+transaction, nearly all of it in `UnmarshalTx` and the `TxWithRef` the coordinator is sent. At the
+default `GOGC=100` that allocation rate keeps a garbage collection running almost continuously: the
+whole service used 331% of 6,400% available CPU while no single stage was busier than 35%, and
+raising `GOGC` to 1,000 alone was worth 36% throughput with no code change at all. Beyond about
+1,000 there is nothing left to win. Set `GOMEMLIMIT` alongside it as a backstop rather than raising
+`GOGC` unbounded, and size it from the sidecar's live heap, which `waiting-txs-limit` bounds — not
+from this benchmark, which holds its whole transaction pool in memory and so reports a far larger
+resident set than a deployment has.
+
+**Mapping is parallel within a block, and only pays once the ledger is cheap.** `mapBlock` parses
+and validates a block's messages across up to 16 goroutines, then folds them into the block one at a
+time in message order, so the TX ID dedup set and the batch order stay single-threaded and the
+outcome does not depend on how the parsing was split. That made mapping itself 5.3x faster
+(408,000 to 2,308,000 tx/s, `BenchmarkMapBlockSize`) but was worth *nothing* end to end — 334,000
+against 356,000 — until the block store stopped being the binding stage. Afterwards the same change
+was worth 26% (497,000 to 628,000). A faster stage behind a saturated one buys nothing; this is the
+clearest example of it in the repository.
+
+The block store is the remaining bottleneck, and the fix is not in this repository.
+`blkstorage.serializeBlock` calls `protoutil.GetOrComputeTxIDFromEnvelope` for every envelope, which
+unmarshals `Envelope`, then `Payload`, then `ChannelHeader`, purely to fill a `txindexInfo.txID`
+that is discarded when the transaction ID index is off. It measured 92% of the block store's CPU and
+2.04 µs per transaction, capping the pipeline near 476,000 tx/s however fast everything else gets.
+It is unconditional in `serializeBlock`, so no sidecar setting avoids it. Skipping it when
+`isAttributeIndexed(IndexableAttrTxID)` is false — a change to `fabric-x-common` — removed 10
+allocations per transaction and was worth 25%. The figures in the third column above include it.
+
 ### `channel-buffer-size`
 
 Buffer size for internal Go channels in the Sidecar — block delivery, committed blocks, and status updates. When a channel is full, the producing goroutine blocks until the consumer reads.
