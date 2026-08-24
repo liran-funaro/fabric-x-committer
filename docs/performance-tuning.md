@@ -173,6 +173,44 @@ It is unconditional in `serializeBlock`, so no sidecar setting avoids it. Skippi
 `isAttributeIndexed(IndexableAttrTxID)` is false — a change to `fabric-x-common` — removed 10
 allocations per transaction and was worth 25%. The figures in the third column above include it.
 
+#### The same finding on a nineteen-machine cluster
+
+Everything above is one machine with the coordinator stubbed, so it is worth recording what the
+block store did in a real deployment: sidecar on its own 64-core host, coordinator and three
+verifiers and six validator-committers and a twelve-node YugabyteDB behind it, 10,000-transaction
+blocks, `disable-tx-id-index` on.
+
+The sidecar looked idle and was the bottleneck anyway. At the ceiling it used 18% of its cores, 3.6
+of 156 GB, and its disk was 4% busy at 157 MB/s — because the stage that was saturated is a single
+goroutine, and one pinned core out of sixty-four is 1.6% of the machine. What identifies it is not
+CPU but the duty cycle of each per-block stage against the per-block budget:
+
+| stage | before | after | budget at 450,000 tx/s |
+|:------|-------:|------:|-----------------------:|
+| `sidecar_ledger_append_block_seconds` | 22.2 ms | 7.1 ms | 22.2 ms |
+| `sidecar_relay_block_mapping_seconds` | 9.9 ms | 8.8 ms | 22.2 ms |
+| `sidecar_relay_mapped_block_processing_seconds` | 7.5 ms | 6.9 ms | 22.2 ms |
+| `sidecar_delivery_block_verification_seconds` | 3.0 ms | 3.1 ms | 22.2 ms |
+
+An append at 22.2 ms of a 22.2 ms budget predicts 10,000 / 22.2 ms = 451,000 tx/s, and the measured
+knee was just above 450,000. A 30-second CPU profile of the live process attributed 7.4% of the whole
+sidecar and about 88% of `appendBlock` to `addDataBytesAndConstructTxIndexInfo`, over half of that in
+the `proto.Unmarshal` behind `GetOrComputeTxIDFromEnvelope`. `runtime.gcDrain` was 57% of all CPU,
+which is the allocation-bound picture above showing up unchanged at cluster scale.
+
+With the append fixed the whole pipeline held 480,689 tx/s over a five-minute window on a fresh
+deployment, peaking at 483,600, and the sidecar was no longer what stopped it: 13% CPU, every
+internal queue empty, no stage above 60% of its budget. What stopped it was the database commit, and
+its arithmetic closes — 6 validator-committers × 32 committer workers = 192 concurrent commits at
+139 ms each and 341 transactions a batch is 471,000 tx/s. For reference, the same cluster reached
+533,217 tx/s with load applied straight to the coordinator and the sidecar out of the path, so the
+sidecar's whole cost end to end is about 10%.
+
+Two lessons transfer. A per-block stage's duty cycle is the diagnostic, not machine CPU — a
+saturated single goroutine is invisible in every utilisation graph. And block size sets the budget:
+at 10,000 transactions a block, 450,000 tx/s allows 22 ms per stage, which is generous enough that a
+stage has to be badly wrong to breach it, and the append was.
+
 ### `channel-buffer-size`
 
 Buffer size for internal Go channels in the Sidecar — block delivery, committed blocks, and status updates. When a channel is full, the producing goroutine blocks until the consumer reads.
