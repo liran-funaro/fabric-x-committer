@@ -76,9 +76,33 @@ continuous with the table above:
 | Simple manager, `waiting-txs-limit` 500,000 | 486,941 | 1,099 ms | 1,988 ms | 786 MB |
 | **Same, on a freshly wiped database** | **496,807** (99.4%, rate delivered) | **626 ms** | **968 ms** | 1.1 GB |
 | Same, sustained 11 h / 17.9 billion txs | 328,433 | 1,724 ms | — | — |
+| **Same, asked for 1,000,000 rather than 500,000** | **525,388 mean, 533,213 peak** | 1,050 ms | — | — |
 
-The last row is the best result of the evaluation and the only one where a requested rate was
-actually delivered over a 300-second window: 500,000 offered, 496,807 committed, 99.4% efficient. It
+Asking for 1,000,000 rather than 500,000 raises the ceiling to **525,388 tps mean and 533,213 peak**,
+held over forty-five minutes and 2.9 billion transactions at 1,050 ms mean latency. That is the best
+figure this cluster has produced. It is not the load generator being given more room in any simple
+sense: offered tracks committed to within a few hundred transactions per second throughout, and
+in-flight stays pinned at 530,000-570,000 against a `waiting-txs-limit` of 500,000, so the graph is
+full and the generator is backpressured. The higher request simply stops the rate limiter from being
+the thing that binds.
+
+Two features of that run are worth recording because they shape how the number should be read.
+
+**It rose into it rather than starting there.** The first twenty-five minutes averaged 482,422 tps and
+then throughput stepped to 531,000 within three minutes and stayed. The trigger is not identified. Two
+candidate causes were checked and both are ruled out: the table still had exactly 120 tablets, so no
+splitting had occurred, and the count of running background compactions *rose* across the step (10 to
+58) rather than falling, which is the opposite of a backlog clearing. Something inside YugabyteDB
+settled — leader placement after the wipe is the obvious suspect — but that was not measured and is not
+claimed here.
+
+**It is a figure for a nearly empty database.** Disk sat at 17% and 67% utilisation with only 30 MB/s
+of reads, against 85-99% utilisation and 134-250 MB/s of reads in the eleven-hour run above. At that
+occupancy the working set is in page cache and compaction does not compete with user writes for disk.
+The same run will decay as it fills, on the evidence of the eleven-hour curve.
+
+The row before it is the best result over a 300-second ramp window and the only one where a requested
+rate was delivered exactly: 500,000 offered, 496,807 committed, 99.4% efficient. It
 differs from the row above it only in that the state database had just been wiped, so the table
 started empty rather than holding several hundred million rows.
 
