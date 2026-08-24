@@ -164,11 +164,17 @@ model rather than as fits to it:
 | 12 | 3,000 | 36,000 | 3,000 |
 | 6 | 5,000 | 30,000 | 3 |
 
-That gives two levers rather than one. A deployment can keep a high tablet count and its write
-concurrency provided each lookup stays narrow: at 120 tablets the budget is about 273 keys, which at
-two writes per transaction is roughly 136 transactions per committed batch. At 12 tablets the same
-budget allows about 1,365 transactions per batch. So the constraint to respect is
-`tablets × keys-per-lookup < ~32,768`, and the pair is chosen to suit the workload.
+Of the two terms in that product, **only the key count is a durable lever.** The tablet count is not
+something a deployment controls for long: YugabyteDB splits tablets automatically as a table grows, so
+`SPLIT INTO N TABLETS` sets a starting point rather than a ceiling. On this cluster a table created
+with 120 tablets held 288 after eleven hours of load, and `tx_status` had gone from 120 to 212. A table
+created with 12 will pass 29 on its own, at which point the batching breaks whatever the operator
+chose.
+
+So the budget shrinks over the life of a deployment without anyone changing a setting. At 288 tablets
+it is about 114 keys per lookup, which at two writes per transaction is roughly 57 transactions per
+committed batch. Sizing the committed batch to respect the product is therefore the fix that lasts;
+lowering the initial tablet count only postpones the problem.
 
 The constant is inferred on this cluster against YugabyteDB 2025.2.1.0 and should not be treated as
 portable. The product relationship is what to test, and `Storage Read Requests` from
@@ -187,6 +193,10 @@ with a right answer. The same cluster, measured over 300-second windows from cle
 for, and costs a factor of 24 on anything performing a multi-key read. 12 tablets is balanced.
 Neither is simply better, and a deployment tuned only against an insert-only benchmark will pick 120
 and then fall off a cliff the first time a client reads or updates existing state.
+
+Read the 12-tablet row as a starting point and not as a setting that holds, for the reason above: the
+table splits its way past the batching threshold as it grows, so the low tablet count buys time rather
+than a fix.
 
 If a deployment raises the tablet count for write concurrency, measure a multi-key read before and
 after, and read `Storage Read Requests` from `EXPLAIN (ANALYZE, DIST)` rather than the plan shape.

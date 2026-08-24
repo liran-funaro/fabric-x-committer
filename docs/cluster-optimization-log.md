@@ -102,12 +102,22 @@ roughly 640 GB each, about 7.7 TB across the cluster. (The row count is derived 
 counter — two keys per transaction, so of order 36 billion rows in `ns_0` and 17.9 billion in
 `tx_status`. Counting them directly does not finish.)
 
-The cost is per transaction and rises with the size of the index being written into, the same mechanism
-as the transaction ID index in section 3.1, and here it lands on both tables at once: per batch,
-`insert_new_key_with_value` goes from 65 ms to 133 ms and `insert_tx_status` from 52 ms to 107 ms.
-Both roughly double, the batch rate halves from 1,390/s to 664/s, the validator-committer pool
-saturates at 192 of 192 workers, and commit-host CPU rises from 76% to 84% as compaction takes the
-difference.
+Per batch, `insert_new_key_with_value` goes from 65 ms to 133 ms and `insert_tx_status` from 52 ms to
+107 ms. Both roughly double, the batch rate halves from 1,390/s to 664/s, the validator-committer pool
+saturates at 192 of 192 workers, and commit-host CPU rises from 76% to 84%.
+
+The cause is **disk bandwidth**, not anything in the committer. Every tablet server's storage is
+85-99% utilised: two virtio devices each, about 280 MB/s of writes per server, two terabytes apiece and
+68% full at 15.4 TB of SST across the cluster. With an empty database there is nothing to compact and
+nearly all of that bandwidth carries user writes; at 15.4 TB, LSM compaction claims most of it. Write
+amplification is about 13x, which is normal -- 85.7 MB/s of user data, three replicas, against roughly
+3.4 GB/s of measured disk writes. The storage is simply slow and now saturated, and the committer is
+waiting on it.
+
+Measure this from `/proc/diskstats` rather than from YugabyteDB's own compaction counters. Summing
+`rate()` over `rocksdb_compact_write_bytes` gives 19 GB/s and an implied amplification of 224x, which
+is impossible on these disks: those counters are per tablet, tablet splitting creates and destroys the
+series continuously, and `rate()` over churning series is meaningless.
 
 The decay decelerates rather than continuing linearly — 43,000 tps lost over the first three hours
 after the peak against 8,000 over the last — so there is probably a floor, but this run did not reach
@@ -515,10 +525,13 @@ tablets with 3,000 keys breaks as predicted, and 6 tablets with 5,000 keys batch
 for four including a pair straddling the boundary by 15%. `docs/performance-tuning.md` carries the
 table and the caveat that the constant is not portable.
 
-The useful consequence is a second lever. A deployment can keep a high tablet count and its write
-concurrency provided each lookup stays narrow -- at 120 tablets about 273 keys, roughly 136
-transactions per committed batch -- so the committed batch width is a knob this evaluation never
-touched.
+The useful consequence is that the committed batch width, a knob this evaluation never touched, is the
+lever that lasts -- and the tablet count is not one at all. YugabyteDB splits tablets automatically as
+a table grows: `ns_0`, created with 120, held 288 after eleven hours of load, and `tx_status` had gone
+from 120 to 212. A table created with 12 passes 29 on its own. So the batching budget shrinks over the
+life of a deployment with nobody changing a setting -- at 288 tablets it is about 114 keys per lookup,
+roughly 57 transactions per batch -- and lowering the initial tablet count postpones the cliff rather
+than removing it.
 
 **Write contention, measured once the tablet cliff is out of the way, costs about 19%.** With 12
 tablets and blind writes, `key-backref-rate` 0.5 commits 254,221 tps against 314,336 at
