@@ -90,13 +90,12 @@ because both sit on other machines in a deployment.
 Measured on a 64-core sidecar host with the ledger on a local NVMe disk, 3,000,000 transactions per
 point, `disable-tx-id-index` on. Each column adds to the one before it:
 
-| block size | baseline | + parallel mapping | + `GOGC=1000` |
-|-----------:|---------:|-------------------:|--------------:|
-| 100        |   92,000 |             89,000 |       105,000 |
-| 500        |  225,000 |            327,000 |       384,000 |
-| 1,000      |  278,000 |            395,000 |       593,000 |
-| 5,000      |  301,000 |            433,000 |       630,000 |
-| 10,000     |  311,000 |            396,000 |       609,000 |
+| configuration (`blockSize=5000`) | `GOGC=100` | `GOGC=1000` | allocs/tx |
+|:---------------------------------|-----------:|------------:|----------:|
+| baseline                         |    301,000 |           — |        61 |
+| + parallel mapping               |    326,000 |     486,000 |        61 |
+| + allocation reductions          |    364,000 |     484,000 |        56 |
+| + `fabric-x-common` block store  |    427,000 |     626,000 |        46 |
 
 Three things decide the number, and they have to be fixed in this order — each one is invisible
 until the one before it is gone.
@@ -108,14 +107,52 @@ signature verification alone measures 169,000 tx/s at 100 transactions per block
 at 10,000 (`BenchmarkVerifyBlock` in `utils/deliverorderer`). Nothing else in this section matters
 until the blocks are wide.
 
-**The sidecar is allocation-bound, not CPU-bound.** It allocates about 50 objects and 5 KB per
-transaction, nearly all of it in `UnmarshalTx` and the `TxWithRef` the coordinator is sent. At the
-default `GOGC=100` that allocation rate keeps a garbage collection running almost continuously: the
-whole service used 331% of 6,400% available CPU while no single stage was busier than 35%, and
-raising `GOGC` to 1,000 alone was worth 36% throughput with no code change at all. Beyond about
-1,000 there is nothing left to win. Set `GOMEMLIMIT` alongside it as a backstop rather than raising
-`GOGC` unbounded, and size it from the sidecar's live heap, which `waiting-txs-limit` bounds — not
-from this benchmark, which holds its whole transaction pool in memory and so reports a far larger
+**The sidecar is allocation-bound, not CPU-bound.** At the default `GOGC=100` its allocation rate
+keeps a collection running almost continuously: the whole service used 331% of 6,400% available CPU
+while no single stage was busier than 35%. Throughput tracks the allocation rate closely — roughly a
+percent of throughput per percent of allocations removed — so the two ways to spend it are reducing
+allocations and raising `GOGC`, and because both buy the same thing they do not compound: at
+`GOGC=1000` the allocation reductions below make no measurable difference at all.
+
+Where the allocations are, measured with `-memprofile` and attributed per stage (per transaction,
+`blockSize=5000`, after the reductions described here):
+
+| site | allocs/tx | note |
+|:-----|----------:|:-----|
+| `serialization.UnmarshalTx` | 15.8 | decoding each TX; 61% of the sidecar's total |
+| status batch unmarshal on the way back | 3.0 | |
+| `serialization.UnwrapEnvelopeLite` | 2.1 | |
+| block store append | 2.1 | 12.6 before the `fabric-x-common` change below |
+| block delivery | 1.1 | |
+| remainder of mapping | 1.7 | per-block slices |
+| **sidecar total** | **25.8** | |
+| the benchmark's own coordinator stub | 20.0 | not the sidecar; see below |
+
+Two of those were removed outright and cost nothing to keep off: `verifyTxForm` allocated 2.8 per
+transaction in `checkKeys` — a map and the slice its keys were copied into, per namespace — and now
+allocates none, and `TxRef` and `TxWithRef` are allocated once per block as slabs rather than twice
+per transaction. Together those were worth 12% at the default `GOGC`.
+
+What is left is dominated by `UnmarshalTx`, and it cannot be removed the way the others were. The
+sidecar decodes every transaction into an `applicationpb.Tx` and hands it straight to gRPC to
+re-encode, because `TxWithRef.Content` is a message; it needs the decode only to validate the
+transaction's form. Pooling those objects is not an option — they are queued per
+`StreamAllTransactions` subscriber and outlive the block's commit by an unbounded amount, so reusing
+them would be a use-after-free. Removing this cost means changing `TxWithRef` to carry the
+transaction's original bytes, so the sidecar validates by scanning the wire format (as
+`UnwrapEnvelopeLite` already does for envelopes) and forwards what it received. That is a decision
+for the coordinator, verifier and validator-committer as much as the sidecar, since all four read
+`Content`.
+
+Note the last row when reading any `GOGC=100` figure here. The benchmark runs the sidecar and its
+stubbed coordinator in one process, so they share a heap and a collector, and the stub allocates
+almost as much as the whole sidecar — it decodes every transaction's content just to answer with a
+status. A deployed sidecar, whose coordinator is on another machine, collects against roughly half
+this benchmark's allocation rate, so these figures understate it.
+
+If `GOGC` is raised anyway, set `GOMEMLIMIT` alongside it as a backstop rather than raising `GOGC`
+unbounded, and size it from the sidecar's live heap, which `waiting-txs-limit` bounds — not from
+this benchmark, which holds its whole transaction pool in memory and so reports a far larger
 resident set than a deployment has.
 
 **Mapping is parallel within a block, and only pays once the ledger is cheap.** `mapBlock` parses

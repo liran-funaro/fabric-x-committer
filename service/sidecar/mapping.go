@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"bytes"
 	"fmt"
 	"runtime"
 	"sync"
@@ -46,6 +47,13 @@ type (
 		// need to carry them forward.
 		dedup *txIDDedup
 		txIDs []string
+		// refs and txWithRefs back every TxRef and TxWithRef the block needs, one entry per
+		// message, allocated once for the block instead of once per transaction. Mapping is on the
+		// path that decides how fast the sidecar allocates, and these were two of its allocations
+		// per transaction. Nothing may copy an element out of them — they are proto messages, and
+		// only their addresses are ever handed on — which go vet's copylocks check enforces.
+		refs       []committerpb.TxRef
+		txWithRefs []servicepb.TxWithRef
 	}
 
 	// parsedMessage is what mapping can settle about one message of a block without looking at any
@@ -86,6 +94,11 @@ const (
 	// small blocks has spare cores anyway, since small blocks cap throughput well below the point
 	// where parsing is what limits it.
 	minMsgsPerMapWorker = 256
+
+	// maxKeysForPairwiseCheck is the largest number of keys in one namespace that checkKeys
+	// compares pairwise before it switches to building a set. At this count the comparison is a few
+	// hundred short byte-slice compares, well under the cost of the map it replaces.
+	maxKeysForPairwiseCheck = 24
 )
 
 // mapWorkers bounds how many goroutines one block's parsing is split across. Parsing is CPU bound,
@@ -135,12 +148,14 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 			txs:         make([]*servicepb.TxWithRef, txCount),
 			blockNumber: blockNumber,
 		},
-		dedup: dedup,
-		txIDs: make([]string, 0, txCount),
+		dedup:      dedup,
+		txIDs:      make([]string, 0, txCount),
+		refs:       make([]committerpb.TxRef, txCount),
+		txWithRefs: make([]servicepb.TxWithRef, txCount),
 	}
 	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
-	parsed := parseMessages(blockNumber, block.Data.Data)
+	parsed := parseMessages(blockNumber, block.Data.Data, mappedBlock.refs)
 	for msgIndex := range parsed {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		if err := mappedBlock.applyParsedMessage(&parsed[msgIndex]); err != nil {
@@ -163,12 +178,14 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 // messages — the TX ID dedup set, the one-snapshot-per-block rule, and the order of the batch the
 // coordinator receives — and applyParsedMessage does it serially, in message order, so the
 // transactions a block accepts and rejects do not depend on how the parsing happened to be split.
-func parseMessages(blockNumber uint64, msgs [][]byte) []parsedMessage {
+func parseMessages(blockNumber uint64, msgs [][]byte, refs []committerpb.TxRef) []parsedMessage {
 	parsed := make([]parsedMessage, len(msgs))
 	parseRange := func(start, end int) {
 		for msgIndex := start; msgIndex < end; msgIndex++ {
-			//nolint:gosec // int -> uint32.
-			parsed[msgIndex] = parseMessage(blockNumber, uint32(msgIndex), msgs[msgIndex])
+			ref := &refs[msgIndex]
+			ref.BlockNum = blockNumber
+			ref.TxNum = uint32(msgIndex) //nolint:gosec // int -> uint32.
+			parsed[msgIndex] = parseMessage(ref, msgs[msgIndex])
 		}
 	}
 
@@ -191,8 +208,8 @@ func parseMessages(blockNumber uint64, msgs [][]byte) []parsedMessage {
 
 // parseMessage classifies and validates one message. It reads nothing but the message, and writes
 // nothing but its return value, which is what lets parseMessages run it concurrently.
-func parseMessage(blockNumber uint64, msgIndex uint32, msg []byte) parsedMessage {
-	parsed := parsedMessage{ref: committerpb.NewTxRef("", blockNumber, msgIndex)}
+func parseMessage(ref *committerpb.TxRef, msg []byte) parsedMessage {
+	parsed := parsedMessage{ref: ref}
 
 	// UnwrapEnvelopeLite extracts only HeaderType, TxID, and Data from the envelope
 	// by scanning the protobuf wire format directly. Unlike UnwrapEnvelope, which
@@ -388,7 +405,9 @@ func (b *blockMappingResult) prepareTx(
 	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
-	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
+	txWithRef := &b.txWithRefs[ref.TxNum]
+	txWithRef.Ref = ref
+	txWithRef.Content = tx
 	b.withStatus.txs[ref.TxNum] = txWithRef
 	debugTx(ref, "included: %s", ref.TxId)
 	return txWithRef, nil
@@ -402,7 +421,8 @@ func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb
 		return err
 	}
 	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	b.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	b.txWithRefs[ref.TxNum].Ref = ref
+	b.withStatus.txs[ref.TxNum] = &b.txWithRefs[ref.TxNum]
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -421,7 +441,8 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	b.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	b.txWithRefs[ref.TxNum].Ref = ref
+	b.withStatus.txs[ref.TxNum] = &b.txWithRefs[ref.TxNum]
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }
@@ -606,18 +627,7 @@ func checkNamespaceReadsWrites(ns *applicationpb.TxNamespace) committerpb.Status
 		ns.NsId != committerpb.SnapshotNamespaceID && ns.NsId != committerpb.CheckpointNamespaceID {
 		return committerpb.Status_MALFORMED_NO_WRITES
 	}
-
-	keys := make([][]byte, 0, len(ns.ReadsOnly)+len(ns.ReadWrites)+len(ns.BlindWrites))
-	for _, r := range ns.ReadsOnly {
-		keys = append(keys, r.Key)
-	}
-	for _, r := range ns.ReadWrites {
-		keys = append(keys, r.Key)
-	}
-	for _, r := range ns.BlindWrites {
-		keys = append(keys, r.Key)
-	}
-	return checkKeys(keys)
+	return checkKeys(ns)
 }
 
 func checkMetaNamespace(txNs *applicationpb.TxNamespace) committerpb.Status {
@@ -655,17 +665,53 @@ func checkMetaNamespace(txNs *applicationpb.TxNamespace) committerpb.Status {
 	return statusNotYetValidated
 }
 
-// checkKeys verifies there are no duplicate keys and no nil keys.
-func checkKeys(keys [][]byte) committerpb.Status {
-	uniqueKeys := make(map[string]any, len(keys))
-	for _, k := range keys {
-		if len(k) == 0 {
+// checkKeys verifies that a namespace has no empty key and no duplicate key.
+//
+// Duplicates are found by comparing the keys pairwise rather than by collecting them into a set.
+// The set cost two allocations per namespace — the map, and the slice the keys were first copied
+// into — which measured 2.8 allocations per transaction, on a path where the sidecar is bound by
+// how fast it allocates rather than by CPU. Comparing pairwise costs nothing and is faster for the
+// handful of keys a transaction carries, but it is quadratic, so a namespace with more keys than
+// maxKeysForPairwiseCheck still builds a set.
+func checkKeys(ns *applicationpb.TxNamespace) committerpb.Status {
+	keyCount := len(ns.ReadsOnly) + len(ns.ReadWrites) + len(ns.BlindWrites)
+	for i := range keyCount {
+		if len(nsKey(ns, i)) == 0 {
 			return committerpb.Status_MALFORMED_EMPTY_KEY
 		}
-		uniqueKeys[string(k)] = nil
 	}
-	if len(uniqueKeys) != len(keys) {
-		return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+
+	if keyCount > maxKeysForPairwiseCheck {
+		uniqueKeys := make(map[string]any, keyCount)
+		for i := range keyCount {
+			uniqueKeys[string(nsKey(ns, i))] = nil
+		}
+		if len(uniqueKeys) != keyCount {
+			return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+		}
+		return statusNotYetValidated
+	}
+
+	for i := range keyCount {
+		for j := i + 1; j < keyCount; j++ {
+			if bytes.Equal(nsKey(ns, i), nsKey(ns, j)) {
+				return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+			}
+		}
 	}
 	return statusNotYetValidated
+}
+
+// nsKey returns the i-th key of a namespace, counting the reads-only keys first, then the
+// read-writes, then the blind writes. It lets checkKeys walk every key of a namespace without
+// first copying them into one slice, which was an allocation per namespace.
+func nsKey(ns *applicationpb.TxNamespace, i int) []byte {
+	if i < len(ns.ReadsOnly) {
+		return ns.ReadsOnly[i].Key
+	}
+	i -= len(ns.ReadsOnly)
+	if i < len(ns.ReadWrites) {
+		return ns.ReadWrites[i].Key
+	}
+	return ns.BlindWrites[i-len(ns.ReadWrites)].Key
 }
