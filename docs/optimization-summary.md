@@ -352,6 +352,7 @@ length-tagged fallback — is possible but is a schema change with a migration, 
 | Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000, run first on a fresh deployment |
 | Coordinator-direct, before section 5 | 525,388 mean / 533,213 peak | 45 min, and it rose into that figure: its own first 25 min averaged 482,422 |
 | **Coordinator-direct, with section 5** | **570,321 mean / 614,173 peak** | 43 min; its first 25 min averaged 581,158 |
+| Same, held at a fixed 500,000 for 2.4 h | **499,700–501,700 at 289–353 ms** | one transient stall recovered from; 5.4 billion transactions, 6.45 TB |
 
 **The sidecar still costs essentially nothing**, re-checked at the higher rate on matched windows:
 578,383 through the sidecar against 581,158 coordinator-direct over each run's first 25 minutes —
