@@ -239,21 +239,23 @@ point they measured.
 |---|---|---|---|---|---|
 | fresh, through the sidecar | 515,826 | 82% | 72% | 3,751 MB/s | — |
 | fresh, coordinator-direct | 597,498 | 81% | 52% | 3,985 MB/s | ~30 MB/s |
-| after 2 h at 500,000 tps | 451,654 | **90%** | **100%** | 6,363 MB/s | **4,542 MB/s** |
+| steady after 2.4 h at 500,000 | 501,026 | 83% | **88%** | 3,772 MB/s | **1,753 MB/s** |
+| during a transient stall at 2.1 h | 451,654 | 90% | **100%** | 6,363 MB/s | **4,542 MB/s** |
 
 While the tables are small the database is CPU-bound at about 81% and the disks have headroom — note
-the higher-throughput row has the *lower* disk utilisation, which is the wrong way round for disk to
-be binding. Once the dataset is large enough for LSM compaction to run continuously, the disks go to
-100% and throughput falls with them.
+the second row has both higher throughput and *lower* disk utilisation, which is the wrong way round
+for disk to be binding. As the dataset grows, compaction read traffic climbs from ~30 MB/s to
+1,753 MB/s and disk utilisation with it, from ~52% to 88%, while CPU stays flat at ~83%. So the
+constraint is migrating from CPU to disk, but had not arrived within 2.4 hours at this rate.
 
 The reads are the tell. They are **entirely compaction**: `vcservice_database_tx_batch_query_version`
 records 0 lookups per second, because this workload only inserts fresh keys and never performs a
-multi-key read. So 4.5 GB/s of reads is the database rewriting its own SST files, and it competes
-directly with user writes for the same devices.
+multi-key read. So the reads are the database rewriting its own SST files, competing with user writes
+for the same devices.
 
-Where the crossover falls here: **about two hours at 500,000 tps, 5.4 billion transactions, 6.45 TB
-across the twelve machines.** Section 2's eleven-hour run found the same mechanism further along the
-curve, at 15.4 TB and 85-99% disk utilisation. Per transaction the committer writes one `tx_status` row and two
+What that produces at this stage is not decay but an occasional **transient stall**: when a compaction
+burst takes the disks to 100%, throughput drops for a few minutes and then recovers. Section 2's
+eleven-hour run reached the state where the loss is permanent, at 15.4 TB and 85-99% disk. Per transaction the committer writes one `tx_status` row and two
 state rows, and `insertTxStatus` already batches a whole batch into one array round trip
 (`service/vc/database.go:320`), so there is no round-trip inefficiency left to remove. The commit
 splits 121 ms inserting keys and 104 ms writing statuses.
@@ -365,7 +367,7 @@ Latency at a given rate improved along with throughput, which is unusual enough 
 500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
 pipeline stop holding work upstream, so in-flight at 500,000 fell to 230,000.
 
-### 500,000 tps held for two hours, then decayed
+### 500,000 tps held for 2.4 hours, with one transient stall
 
 A fixed 500,000 tps request, coordinator-direct so that the sidecar's append-only ledger could not end
 the run first, sampled every five minutes:
@@ -374,14 +376,14 @@ the run first, sampled every five minutes:
 |---|---|---|---|
 | 5–120 min | 500,000 | **499,700–501,700, flat** | 289–353 ms |
 | 125 min | 450,400 | 451,654 | 1,305 ms |
+| 130–135 min | 518,400–526,800 | 526,812–528,848 | 905–1,104 ms |
+| 140–145 min | 500,000 | **499,689–501,026** | 318–348 ms |
 
-Flat for two hours and 5.4 billion transactions, then a sharp step rather than a gradual slide: the
-*offered* rate falls below the target, which is the pipeline pushing back. At that moment the database
-disks reach 100% busy and start reading 4.5 GB/s of compaction traffic, as above.
-
-Two hours is therefore the honest answer to "can it hold 500,000 tps" on this hardware, with the
-caveat that the limit is a dataset size rather than a duration — a workload that updates existing keys
-instead of inserting new ones would reach it much later, or not at all.
+One five-minute sample where the *offered* rate fell below the target — the pipeline pushing back —
+then two samples above the target while it drained the backlog, then back to the pre-stall steady
+state exactly. Not the onset of decay: a stall it recovered from, and the reason to distrust any
+conclusion drawn from a single sample. An earlier revision of this file read that one row as "held for
+two hours, then decayed", which the next three rows refuted.
 
 ### 500,000 tps held for half an hour, with the sidecar in the path
 
