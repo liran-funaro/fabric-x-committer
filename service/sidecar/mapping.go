@@ -40,33 +40,35 @@ type (
 		// in a block is accepted; any further snapshot TXs in the same block are rejected with
 		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
 		snapshotTx *servicepb.TxWithRef
-		// dedup is a reference to the relay's in-flight TX ID set, and txIDs collects the IDs this
-		// block added to it. Both are only used while constructing this blockMappingResult
-		// (mapBlock/addTxIDMapping); nothing reads them back off the struct afterwards, so callers
-		// that build further blockMappingResult values (e.g. submitSnapshotBlock's segments) do not
-		// need to carry them forward.
+	}
+
+	// blockMapper is the scaffolding for building one blockMappingResult: the slabs that back the
+	// result's messages, the relay's in-flight TX ID set, and the IDs this block added to it. None
+	// of it is read once mapping finishes, so it lives here rather than on the result — mapBlock
+	// drops the mapper and returns only the result, which is also why the further results
+	// submitSnapshotBlock builds by hand need none of these fields.
+	//
+	// The slabs do not become collectable when the mapper is dropped: the result's messages live
+	// inside them, so each backing array stays alive as long as anything holds one of its elements,
+	// and a StreamAllTransactions subscriber can hold a TX past the block's commit. Each array is
+	// bounded by the block size and holds only message headers — a TX's namespaces, keys and values
+	// are separately allocated and were always retained this way — so the cost is one block's
+	// unused slots, not something that grows. What dropping the mapper does release is dedup and
+	// txIDs, which every in-flight mapped block would otherwise pin.
+	blockMapper struct {
+		*blockMappingResult
+
 		dedup *txIDDedup
 		txIDs []string
-		// refs, txWithRefs and txs back every TxRef, TxWithRef and decoded Tx the block needs, one
-		// entry per message, allocated once for the block instead of once per transaction. Mapping
-		// is on the path that decides how fast the sidecar allocates, and these were three of its
-		// allocations per transaction. Nothing may copy an element out of them — they are proto
-		// messages, and only their addresses are ever handed on — which go vet's copylocks check
-		// enforces.
-		//
-		// One entry per message, not per accepted TX, so that a worker can write to its own index
-		// without coordinating with the others (see parseMessages). A rejected message's entry is
-		// left however far parsing got, and nothing reads it, which costs nothing beyond the slot.
-		//
-		// These keep the whole block's backing array alive for as long as anything holds one
-		// element, which matters because a StreamAllTransactions subscriber can hold a TX past the
-		// block's commit. The array is bounded by the block size and holds only the message
-		// headers — each TX's namespaces, keys and values are separately allocated and were always
-		// retained this way — so the exposure is the empty slots of one block, not a leak that
-		// grows.
-		refs       []committerpb.TxRef
-		txWithRefs []servicepb.TxWithRef
-		txs        []applicationpb.Tx
+
+		// One entry per message rather than per accepted TX, so a parse worker can write to its own
+		// index without coordinating with the others (see parseMessages). A rejected message's
+		// entry is left however far parsing got, and nothing reads it. Nothing may copy an element
+		// out of these — they are proto messages, and only their addresses are ever handed on —
+		// which go vet's copylocks check enforces.
+		refSlab       []committerpb.TxRef
+		txWithRefSlab []servicepb.TxWithRef
+		txSlab        []applicationpb.Tx
 	}
 
 	// parsedMessage is what mapping can settle about one message of a block without looking at any
@@ -144,43 +146,46 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 				block:       block,
 				blockNumber: blockNumber,
 			},
-			dedup: dedup,
 		}, nil
 	}
 
 	txCount := len(block.Data.Data)
-	mappedBlock := &blockMappingResult{
-		blockNumber: blockNumber,
-		block: &servicepb.CoordinatorBatch{
-			Txs:      make([]*servicepb.TxWithRef, 0, txCount),
-			Rejected: make([]*committerpb.TxStatus, 0, txCount),
-		},
-		withStatus: &blockWithStatus{
-			block:       block,
-			txStatus:    make([]committerpb.Status, txCount),
-			txs:         make([]*servicepb.TxWithRef, txCount),
+	mapper := &blockMapper{
+		blockMappingResult: &blockMappingResult{
 			blockNumber: blockNumber,
+			block: &servicepb.CoordinatorBatch{
+				Txs:      make([]*servicepb.TxWithRef, 0, txCount),
+				Rejected: make([]*committerpb.TxStatus, 0, txCount),
+			},
+			withStatus: &blockWithStatus{
+				block:       block,
+				txStatus:    make([]committerpb.Status, txCount),
+				txs:         make([]*servicepb.TxWithRef, txCount),
+				blockNumber: blockNumber,
+			},
 		},
-		dedup:      dedup,
-		txIDs:      make([]string, 0, txCount),
-		refs:       make([]committerpb.TxRef, txCount),
-		txWithRefs: make([]servicepb.TxWithRef, txCount),
-		txs:        make([]applicationpb.Tx, txCount),
+		dedup:         dedup,
+		txIDs:         make([]string, 0, txCount),
+		refSlab:       make([]committerpb.TxRef, txCount),
+		txWithRefSlab: make([]servicepb.TxWithRef, txCount),
+		txSlab:        make([]applicationpb.Tx, txCount),
 	}
-	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
+	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
-	parsed := parseMessages(blockNumber, block.Data.Data, mappedBlock.refs, mappedBlock.txs)
+	parsed := parseMessages(blockNumber, block.Data.Data, mapper.refSlab, mapper.txSlab)
 	for msgIndex := range parsed {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
-		if err := mappedBlock.applyParsedMessage(&parsed[msgIndex]); err != nil {
+		if err := mapper.applyParsedMessage(&parsed[msgIndex]); err != nil {
 			// Either a config TX that cannot be processed (see unprocessableConfigTx),
 			// or a bug in the relay.
 			return nil, err
 		}
 	}
 
-	dedup.trackBlock(blockNumber, mappedBlock.txIDs)
-	return mappedBlock, nil
+	dedup.trackBlock(blockNumber, mapper.txIDs)
+	// Only the result goes back: the mapper, its slabs, the dedup reference and the collected TX
+	// IDs all become unreachable here.
+	return mapper.blockMappingResult, nil
 }
 
 // parseMessages works out what can be decided about each message on its own — parsing its
@@ -311,7 +316,7 @@ func (p parsedMessage) failBlock(err error) parsedMessage {
 // the dedup set, appends the TX to the batch or its rejection to the rejected list, and fills the
 // block's per-TX status. Every step of it depends on the messages before this one, so mapBlock runs
 // it serially and in message order.
-func (b *blockMappingResult) applyParsedMessage(parsed *parsedMessage) error {
+func (b *blockMapper) applyParsedMessage(parsed *parsedMessage) error {
 	switch {
 	case parsed.err != nil:
 		return b.unprocessableConfigTx(parsed.ref, parsed.err)
@@ -339,7 +344,7 @@ func (b *blockMappingResult) applyParsedMessage(parsed *parsedMessage) error {
 }
 
 // appendConfigTx appends an accepted config TX to the batch and marks the block as a config block.
-func (b *blockMappingResult) appendConfigTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
+func (b *blockMapper) appendConfigTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
 	txWithRef, err := b.prepareTx(ref, tx)
 	if err != nil {
 		return err
@@ -361,7 +366,7 @@ func (b *blockMappingResult) appendConfigTx(ref *committerpb.TxRef, tx *applicat
 // only way to recover from a config TX that arrived corrupted. It is retried with a backoff, and
 // the sidecar stops once the retry profile is exhausted, as a config TX that is consistently
 // unprocessable requires human intervention.
-func (b *blockMappingResult) unprocessableConfigTx(ref *committerpb.TxRef, err error) error {
+func (b *blockMapper) unprocessableConfigTx(ref *committerpb.TxRef, err error) error {
 	err = errors.Wrapf(err, "cannot process the config TX [blk:%d,num:%d]", b.blockNumber, ref.TxNum)
 	logger.Errorf("%+v", err)
 	return errors.Join(retry.ErrBackOff, err)
@@ -404,7 +409,7 @@ func configTxID(envLite *serialization.EnvelopeLite) (string, error) {
 	return channelHdr.TxId, nil
 }
 
-func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
+func (b *blockMapper) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
 	txWithRef, err := b.prepareTx(ref, tx)
 	if err != nil || txWithRef == nil {
 		return err
@@ -418,13 +423,13 @@ func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.
 // nil TxWithRef (and nil error) when ref.TxId is a duplicate, since addTxIDMapping has already
 // rejected it with a stored status. Callers append the returned TxWithRef to block.Txs themselves
 // (immediately for appendTx, or deferred to end-of-block for the snapshot TX).
-func (b *blockMappingResult) prepareTx(
+func (b *blockMapper) prepareTx(
 	ref *committerpb.TxRef, tx *applicationpb.Tx,
 ) (*servicepb.TxWithRef, error) {
 	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
-	txWithRef := &b.txWithRefs[ref.TxNum]
+	txWithRef := &b.txWithRefSlab[ref.TxNum]
 	txWithRef.Ref = ref
 	txWithRef.Content = tx
 	b.withStatus.txs[ref.TxNum] = txWithRef
@@ -432,7 +437,7 @@ func (b *blockMappingResult) prepareTx(
 	return txWithRef, nil
 }
 
-func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {
+func (b *blockMapper) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {
 	if !IsStatusStoredInDB(status) {
 		return b.rejectNonDBStatusTx(ref, status, reason)
 	}
@@ -440,8 +445,8 @@ func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb
 		return err
 	}
 	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	b.txWithRefs[ref.TxNum].Ref = ref
-	b.withStatus.txs[ref.TxNum] = &b.txWithRefs[ref.TxNum]
+	b.txWithRefSlab[ref.TxNum].Ref = ref
+	b.withStatus.txs[ref.TxNum] = &b.txWithRefSlab[ref.TxNum]
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -449,7 +454,7 @@ func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb
 // rejectNonDBStatusTx is used to reject with statuses that are not stored in the state DB.
 // Namely, statuses for cases where we don't have a TX ID, or there is a TX ID duplication.
 // For such cases, no notification will be given by the notification service.
-func (b *blockMappingResult) rejectNonDBStatusTx(
+func (b *blockMapper) rejectNonDBStatusTx(
 	ref *committerpb.TxRef, status committerpb.Status, reason string,
 ) error {
 	if IsStatusStoredInDB(status) {
@@ -460,13 +465,13 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	b.txWithRefs[ref.TxNum].Ref = ref
-	b.withStatus.txs[ref.TxNum] = &b.txWithRefs[ref.TxNum]
+	b.txWithRefSlab[ref.TxNum].Ref = ref
+	b.withStatus.txs[ref.TxNum] = &b.txWithRefSlab[ref.TxNum]
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }
 
-func (b *blockMappingResult) addTxIDMapping(ref *committerpb.TxRef) (
+func (b *blockMapper) addTxIDMapping(ref *committerpb.TxRef) (
 	idAlreadyExists bool, err error,
 ) {
 	if b.dedup.add(ref.TxId) {
