@@ -240,22 +240,26 @@ point they measured.
 | fresh, through the sidecar | 515,826 | 82% | 72% | 3,751 MB/s | — |
 | fresh, coordinator-direct | 597,498 | 81% | 52% | 3,985 MB/s | ~30 MB/s |
 | steady after 2.4 h at 500,000 | 501,026 | 83% | **88%** | 3,772 MB/s | **1,753 MB/s** |
-| during a transient stall at 2.1 h | 451,654 | 90% | **100%** | 6,363 MB/s | **4,542 MB/s** |
+| decayed after 3.4 h, ~8 TB | 458,968 | 83% | **91%** | — | **2,453 MB/s** |
+| during a transient stall | 451,654 | 90% | **100%** | 6,363 MB/s | **4,542 MB/s** |
 
 While the tables are small the database is CPU-bound at about 81% and the disks have headroom — note
 the second row has both higher throughput and *lower* disk utilisation, which is the wrong way round
 for disk to be binding. As the dataset grows, compaction read traffic climbs from ~30 MB/s to
 1,753 MB/s and disk utilisation with it, from ~52% to 88%, while CPU stays flat at ~83%. So the
-constraint is migrating from CPU to disk, but had not arrived within 2.4 hours at this rate.
+constraint migrates from CPU to disk, and it arrives at about three hours at this rate. Note that CPU
+never becomes the limit — it sits at 81–83% throughout, because the database cannot get more work
+through its disks to use it.
 
 The reads are the tell. They are **entirely compaction**: `vcservice_database_tx_batch_query_version`
 records 0 lookups per second, because this workload only inserts fresh keys and never performs a
 multi-key read. So the reads are the database rewriting its own SST files, competing with user writes
 for the same devices.
 
-What that produces at this stage is not decay but an occasional **transient stall**: when a compaction
-burst takes the disks to 100%, throughput drops for a few minutes and then recovers. Section 2's
-eleven-hour run reached the state where the loss is permanent, at 15.4 TB and 85-99% disk. Per transaction the committer writes one `tx_status` row and two
+It shows up first as an occasional **transient stall** — a compaction burst takes the disks to 100%,
+throughput drops for a few minutes, then recovers — and later as sustained decay once compaction can
+no longer keep up between bursts. Section 2's eleven-hour run is further along the same curve, at
+15.4 TB and 85-99% disk, where it had fallen to 330,000. Per transaction the committer writes one `tx_status` row and two
 state rows, and `insertTxStatus` already batches a whole batch into one array round trip
 (`service/vc/database.go:320`), so there is no round-trip inefficiency left to remove. The commit
 splits 121 ms inserting keys and 104 ms writing statuses.
@@ -352,7 +356,7 @@ length-tagged fallback — is possible but is a schema change with a migration, 
 | Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000, run first on a fresh deployment |
 | Coordinator-direct, before section 5 | 525,388 mean / 533,213 peak | 45 min, and it rose into that figure: its own first 25 min averaged 482,422 |
 | **Coordinator-direct, with section 5** | **570,321 mean / 614,173 peak** | 43 min; its first 25 min averaged 581,158 |
-| Same, held at a fixed 500,000 for 2.4 h | **499,700–501,700 at 289–353 ms** | one transient stall recovered from; 5.4 billion transactions, 6.45 TB |
+| Same, held at a fixed 500,000 for 4 h | **500,000 for the first 3 h at ~315 ms**, then ~450,000 at ~1,300 ms | decay onset at ~7 billion transactions and ~8 TB, from compaction saturating the disks |
 
 **The sidecar still costs essentially nothing**, re-checked at the higher rate on matched windows:
 578,383 through the sidecar against 581,158 coordinator-direct over each run's first 25 minutes —
@@ -368,23 +372,28 @@ Latency at a given rate improved along with throughput, which is unusual enough 
 500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
 pipeline stop holding work upstream, so in-flight at 500,000 fell to 230,000.
 
-### 500,000 tps held for 2.4 hours, with one transient stall
+### 500,000 tps held for three hours, then decayed to 450,000
 
-A fixed 500,000 tps request, coordinator-direct so that the sidecar's append-only ledger could not end
-the run first, sampled every five minutes:
+A fixed 500,000 tps request for four hours, coordinator-direct so the sidecar's append-only ledger
+could not end the run first, sampled every five minutes and averaged into quarter-hours:
 
-| Elapsed | Offered | Committed | Latency |
+| Elapsed | Committed | Latency | |
 |---|---|---|---|
-| 5–120 min | 500,000 | **499,700–501,700, flat** | 289–353 ms |
-| 125 min | 450,400 | 451,654 | 1,305 ms |
-| 130–135 min | 518,400–526,800 | 526,812–528,848 | 905–1,104 ms |
-| 140–145 min | 500,000 | **499,689–501,026** | 318–348 ms |
+| 0–120 min | 499,416–500,879 | 302–324 ms | flat |
+| 120–135 min | 492,724 | 918 ms | transient stall |
+| 135–150 min | 509,854 | 524 ms | above target, draining the backlog |
+| 150–180 min | 499,445–499,799 | 329–368 ms | recovered exactly |
+| 180–240 min | 430,527–477,444 | 1,219–1,377 ms | sustained decay |
 
-One five-minute sample where the *offered* rate fell below the target — the pipeline pushing back —
-then two samples above the target while it drained the backlog, then back to the pre-stall steady
-state exactly. Not the onset of decay: a stall it recovered from, and the reason to distrust any
-conclusion drawn from a single sample. An earlier revision of this file read that one row as "held for
-two hours, then decayed", which the next three rows refuted.
+**Three hours at 500,000 tps, then a settled ~450,000 at four times the latency.** Onset at roughly
+7 billion transactions and 8 TB across the twelve machines.
+
+The stall at 125 minutes is worth separating from the decay at 180, because they look identical in a
+single sample and are not the same thing. The first recovered completely — two samples above target
+while the backlog drained, then the original steady state to within 0.3%. The second did not: it has
+persisted for twelve consecutive samples and the offered rate stays below the target throughout. A
+five-minute sample cannot tell them apart, and an earlier revision of this file read the 125-minute
+one as the onset of decay and had to be corrected.
 
 ### 500,000 tps held for half an hour, with the sidecar in the path
 
