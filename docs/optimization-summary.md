@@ -161,9 +161,19 @@ At a sustainable rate the same deployment measures 562 ms with 481,250 in flight
 the sidecar's window, which also confirms the 16 MB gRPC windows add no buffering at operating rates;
 they are credit limits, not filled buffers.
 
-Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: at 1.7M and 2.9M in
-flight the latency tracker's 100,000-slot table loses nearly every sampled transaction, and the loss
-is biased towards slow ones. Use `inflight / throughput` when in-flight exceeds that table.
+Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: Little's law put the
+same rows at 3,105 ms and 5,514 ms. Whenever `little_ms` and `hist_ms` disagree by more than about
+3×, trust `little_ms` — `inflight / throughput` needs no sampling and cannot lose a measurement.
+
+The cause is **not** established. The plausible mechanism is the latency tracker
+(`loadgen/metrics/tracker.go`): it indexes sampled transactions by `hash(txID) % max-tracked-txs`
+and *overwrites* on collision, so a sampled transaction whose slot is taken before its status
+returns is never measured, and the loss is biased towards slow ones. But the arithmetic does not
+obviously reach a factor of 1,550: at the deployed 1% sampling and 100,000 slots, a transaction in
+flight for 3 s at 500,000 tps competes with roughly 15,000 stores, which is a ~15% loss rather than
+a near-total one. Either something else is at work or the sampling interacts with the histogram
+buckets in a way not traced here. Worth settling before quoting any histogram-derived latency near
+these rates.
 
 ## 6. The committer is no longer the bottleneck — the database is
 
