@@ -46,8 +46,30 @@ const (
 	// TODO: All services including the orderer must use the same default maximum message size.
 	//       Hence, we need to move this constant to fabric-x-common.
 	// MaxMsgSize is set to 100MB.
-	MaxMsgSize       = 100 * 1024 * 1024
-	scResolverSchema = "sc.connection"
+	MaxMsgSize = 100 * 1024 * 1024
+	// InitialWindowSize and InitialConnWindowSize size HTTP/2 flow control.
+	//
+	// They are set because the defaults were measured to be the pipeline's ceiling. A goroutine
+	// dump of a saturated coordinator found all three of its senders to the signature verifiers and
+	// five of its six senders to the validator-committers blocked in
+	// grpc/internal/transport.(*writeQuota).get -- out of stream send quota -- while no sender used
+	// more than a quarter of a core, the verifiers held 1,700 transactions of a 128,000 capacity,
+	// and their machines ran 22 of 64 cores. The senders were not slow, they were not allowed to
+	// write.
+	//
+	// Sized against what is actually on the wire: a batch of a few hundred transactions marshals to
+	// roughly 145 KB, so a 16 MB stream window holds about a hundred of them in flight and a 32 MB
+	// connection window covers the streams that share a connection. Setting either of these
+	// disables gRPC's own BDP-based window tuning, so they have to be generous rather than merely
+	// adequate.
+	//
+	// The cost is bounded buffering per connection, which matters only under overload; in-flight
+	// work is already bounded upstream by the coordinator's dep-graph-wait-tx-limit and the
+	// sidecar's waiting-txs-limit.
+	InitialWindowSize = 16 * 1024 * 1024
+	// InitialConnWindowSize is the connection-level counterpart of InitialWindowSize.
+	InitialConnWindowSize = 32 * 1024 * 1024
+	scResolverSchema      = "sc.connection"
 )
 
 type (
@@ -190,6 +212,8 @@ func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
 			grpc.MaxCallSendMsgSize(MaxMsgSize),
 		),
 		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
+		grpc.WithInitialWindowSize(InitialWindowSize),
+		grpc.WithInitialConnWindowSize(InitialConnWindowSize),
 	}, p.AdditionalOpts...)
 
 	cc, err := grpc.NewClient(p.Address, dialOpts...)

@@ -25,6 +25,7 @@ Two scoping rules apply throughout:
 |---|---|
 | Umbrella | one new issue, referencing every child below |
 | Sections 1, 3, 5 | one child issue each row |
+| Section 6 | not yet filed — not localised |
 | Section 2 | an issue in the `fabric-x-common` repository, referenced by the umbrella here |
 | Section 4 | not filed |
 
@@ -87,7 +88,7 @@ even though no issue is filed for them.
 
 | Change | Measured | Commit |
 |---|---|---|
-| Ed25519 instead of ECDSA | 325,600 → 374,400 tps — this removed the *generator's* ceiling, not the committer's; Go's ECDSA draws a nonce per signature through `getrandom`, which serialised at ~35 concurrent callers | config |
+| Ed25519 instead of ECDSA | 325,600 → 374,400 tps — this removed the *generator's* ceiling, not the committer's. The win is allocation, not entropy: Ed25519 allocates 184 B and 4 objects per signature against ECDSA's 6,067 B and 59, and `GOGC=off` gives ECDSA 5.2x while barely moving Ed25519. Ed25519 reads no entropy at all — verified by a goroutine dump on the cluster's own load generator with zero `GetRandom` frames under load. See `cluster-optimization-log.md` section 5. | config |
 | `gen-batch` 100 → 4,096 | 495,583 → 629,884 tx/s generated; 16,384 is faster still but costs four seconds of startup dead time | config |
 | **[loadgen] Expose the target transaction rate as a metric** | distinguishes "the generator is the limit" from "the committer is" on every line of the harness | `e9e8c8eb` |
 | **[loadgen] Let the sidecar adapter bound the mock orderer's block buffer** | without a bound, an overloaded committer is absorbed rather than felt: submitted rate stays at the requested rate while latency grows without limit | `69ef27dc` |
@@ -113,20 +114,68 @@ width, and the tablet count is not a lever at all: YugabyteDB splits as a table 
 went from 120 tablets to 288 over eleven hours of load. Lowering the initial count postpones the
 cliff rather than removing it.
 
-## 5. Current constraint — identified, not fixed
+## 5. gRPC flow control was the constraint, and raising it is worth 13%
+
+| # | Optimization | Measured |
+|---|---|---|
+| 5.1 | **Size HTTP/2 flow control for the rates in play** — `grpc.WithInitialWindowSize`/`WithInitialConnWindowSize` on clients and the matching server options, 16 MB per stream and 32 MB per connection | over-driven mean 510,371 → **578,383** (+13.3%), peak 528,800 → **590,400**; sustainable knee ~500,000 → **~530,000** at *lower* latency, 645 ms → 562 ms |
+
+Nothing in the repository set a window, so gRPC's defaults applied. A goroutine dump of a saturated
+coordinator found **all three** senders to the signature verifiers and **five of six** senders to the
+validator-committers blocked in `grpc/internal/transport.(*writeQuota).get` — out of stream send
+quota. They were not slow: each used a quarter of a core. Meanwhile the verifiers held 1,700
+transactions of a 128,000 capacity and ran 22 of 64 cores, 78% of that in real signature
+verification. The senders were not allowed to write, so the verifiers starved.
+
+After the change the same dump has **zero** senders blocked on write quota — one is instead idle
+waiting on its input channel — and verifier in-flight more than doubled.
+
+Two wrong hypotheses preceded this, both recorded because they are the obvious readings:
+
+1. *"`batch-time-cutoff` of 2 ms cuts verifier batches before they fill."* Wrong: `BatchSizeCutoff`
+   and `BatchTimeCutoff` govern only the **output** batching of statuses, and `Parallelism` counts
+   per-transaction verify goroutines, not goroutines within a batch.
+2. *"128 workers contend on two per-transaction channels inside the verifier."* Wrong twice over:
+   those channels are sized 128,000 and held 1,700, and the verifier's single receiving goroutine is
+   2.5% of its CPU. A benchmark added for this
+   (`service/coordinator/signature_verifier_manager_bench_test.go`) measures the manager at
+   ~560,000 tx/s on one stream and ~1.08M on three, against mock verifiers that do no signature
+   work — 3.3× the cluster's per-sender rate, which is what ruled the manager out before any code
+   was changed.
+
+### Reading latency on an over-driven run
+
+The over-driven run reported up to **39 s** mean latency, which is not the committer's latency. At
+its peak the harness counted **22.8 million** transactions in flight while the committer's own
+windows hold at most 1.5M (the sidecar's 500,000, the coordinator's 500,000, and a 1M mock-orderer
+ring). The remaining ~20M sat inside the **load generator**, which reported 10 GB resident. In-flight
+then *decayed* to 3.5M across the run at constant throughput, which is the signature of a startup
+backlog draining rather than a steady state.
+
+At a sustainable rate the same deployment measures 562 ms with 481,250 in flight — essentially just
+the sidecar's window, which also confirms the 16 MB gRPC windows add no buffering at operating rates;
+they are credit limits, not filled buffers.
+
+Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: at 1.7M and 2.9M in
+flight the latency tracker's 100,000-slot table loses nearly every sampled transaction, and the loss
+is biased towards slow ones. Use `inflight / throughput` when in-flight exceeds that table.
+
+## 6. Current constraint — identified, not fixed
 
 | # | Constraint | Evidence |
 |---|---|---|
-| 5.1 | **Verifier batching cuts on time before a batch fills** — `batch-time-cutoff` is 2 ms while a 500-transaction batch takes 2.95 ms to fill at this rate | batches are cut at roughly 340 transactions, and split across `parallelism: 128` that is under three signatures per goroutine per dispatch; the verifier machines sit at 34% CPU while holding the only non-empty queue in the pipeline (`coordinator_verifier_input_batch_queue_size` at 58, every other queue zero) |
+| 6.1 | Unknown — the constraint moved again with 5.1 and has not been relocated | at 520,000 sustained the pipeline is 101% efficient at 562 ms; the knee is ~530,000, and which stage sets it has not been measured since the flow-control change |
 
 ## Where the pipeline stands
 
 | | Throughput | Note |
 |---|---|---|
 | Start of the evaluation | 80,000 tps | |
-| After sections 1-4 | **500,000 tps** requested and delivered, 99.9%, 645 ms mean | sustainable-rate hold, sidecar in the path |
-| Same deployment, over-driven | 510,371 mean / 528,800 peak | asking 1,000,000; latency is then buffer occupancy, 8-9 s, and says nothing about the pipeline |
-| Coordinator-direct, sidecar out of the path | 525,388 mean / 533,213 peak | so the sidecar's throughput cost is within measurement noise; it costs latency |
+| After sections 1-4 | 500,000 tps requested and delivered, 99.9%, 645 ms mean | sustainable-rate hold, sidecar in the path |
+| Same deployment, over-driven | 510,371 mean / 528,800 peak | asking 1,000,000 |
+| **After section 5 (gRPC windows)** | **527,050 sustained at 562 ms**, knee ~530,000 | higher rate *and* lower latency than before |
+| Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000 |
+| Coordinator-direct, sidecar out of the path | 525,388 mean / 533,213 peak | measured before section 5; the sidecar's throughput cost is within noise |
 
 Every figure above depends on how full the state database was and on the day it was taken: this
 cluster's baseline moves about 15% between days with identical code, which is recorded in

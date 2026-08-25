@@ -320,15 +320,34 @@ no throughput, and it is what made `channel-buffer-size` (section 3.4) matter so
 From roughly 325,000 tps onward, most measurements were of the harness rather than the committer.
 This is the single most important caveat on every number in this document.
 
-**ECDSA nonce generation.** Go's ECDSA draws a fresh nonce per signature through `getrandom(2)`,
-and the cluster's kernel has no vDSO for it, so that is a real syscall per signature — about
-300,000 per second. A goroutine dump showed 38 of 95 goroutines parked in an identical stack ending
-in `syscall.Syscall`, and the machine sat at 51% CPU because the signing workers were blocked in
-the kernel rather than computing. Nothing downstream was saturated and every queue was empty.
+**ECDSA signing.** Switching the namespace policy from `ECDSA` to `EDDSA` took the peak from
+325,600 to 374,400 tps. That result stands. The mechanism first recorded here was wrong, and the
+correction matters because it changes what to do next.
 
-Switching the namespace policy to `EDDSA` removed it: Ed25519 signing is deterministic per
-RFC 8032 and reads no entropy, so the count of goroutines in `getrandom` went to zero and the peak
-went 325,600 → 374,400.
+The original account was that Go's ECDSA draws a nonce per signature through `getrandom(2)`, for
+which this kernel has no vDSO, and that the syscall was the limiter — a goroutine dump had 38 of 95
+goroutines parked in an identical stack ending in `syscall.Syscall` while the machine sat at 51% CPU.
+The dump was real; the attribution was not. Two measurements refute it:
+
+- Replacing `rand.Reader` with a userspace ChaCha8 CSPRNG in the ECDSA path changes nothing:
+  6,615 against 6,687 ns/op at 16 procs. If entropy were the limiter, removing the syscall would
+  have moved it.
+- `GOGC=off` gives **5.2×** on 32-proc ECDSA signing (11,613 → 2,215 ns/op) while Ed25519 barely
+  moves (1,412 → 1,278). **Garbage collection was the limiter**, and the reason Ed25519 wins is that
+  it allocates 184 B and 4 objects per signature against ECDSA's 6,067 B and 59 — a factor of 33 in
+  allocation, on a machine whose throughput tracks allocation rate.
+
+`getrandom` does stop scaling past about 16 threads, but its ceiling is ~12M reads/s, orders of
+magnitude above the rates here.
+
+Ed25519 signing does not read entropy at all — RFC 8032 derives the nonce from the key and message,
+and Go's `ed25519.Sign` ignores its `rand` argument — so the claim that Ed25519 *forces* `getrandom`
+is doubly wrong. Verified on the cluster's own 64-core load generator host under load at ~570,000 tps:
+a goroutine dump held 128 signing workers with 21 inside `ed25519.SignCtx` and **zero** frames
+matching `GetRandom`, `sysrand` or `drbg`. The blocked-goroutine stacks in the original dump were
+therefore something else on the ECDSA path, most likely the MSP envelope signature (BCCSP signs with
+`ecdsa.Sign(rand.Reader, ...)`), which is active only when `policy.identity` is set — it is not set
+in this deployment.
 
 One trap: the load generator's policy template pinned `key-path` at the Fabric CA's MSP signing
 key, which is ECDSA P-256. The endorser accepts a mismatched key at construction and only fails on
@@ -492,7 +511,7 @@ Constraints found and resolved, in order:
 |---|---|
 | Sidecar block store txID index compaction | removed (`disable-tx-id-index`) |
 | Relay `sync.Map` churn | removed (single-owner tracking) |
-| Load generator ECDSA `getrandom` | removed (Ed25519) |
+| Load generator ECDSA allocation rate | removed (Ed25519, 33x fewer bytes per signature) |
 | Coordinator dependency graph mutex | removable, no throughput gain |
 | Database SQL front-end concentration | fixed, no throughput gain |
 | Sidecar channel buffering (latency only) | reduced 6× |
@@ -523,7 +542,7 @@ about 2% of the machine. Every serial constraint here was found with per-thread 
 goroutine dump, or a CPU profile — never from a host metric.
 
 **A goroutine dump says where work waits; a CPU profile says where it goes.** Both were needed and
-each alone was misleading. The dump found the `getrandom` blocking that no CPU measurement would
+each alone was misleading. The dump found the blocked signing goroutines that no CPU measurement would
 have shown. But when 128 workers appeared blocked on a channel write, the dump suggested a slow
 consumer, and the profile showed the cost was entirely parallel signing — the channel was merely
 momentarily full.

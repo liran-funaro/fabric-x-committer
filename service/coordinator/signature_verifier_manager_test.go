@@ -40,13 +40,23 @@ type svMgrTestEnv struct {
 	curBlockNum         atomic.Uint64
 }
 
-func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
-	t.Helper()
-	expectedEndError := string(expectedEndErrorMsg)
-	verifier, sc := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: numSvService})
+func newSvMgrTestEnv(tb testing.TB, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
+	tb.Helper()
+	return newSvMgrTestEnvWithQueues(tb, numSvService, 10, expectedEndErrorMsg...)
+}
 
-	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
-	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
+// newSvMgrTestEnvWithQueues is newSvMgrTestEnv with the internal queue depth exposed, so that a
+// benchmark can stop the queues themselves being what it measures. The deployment's depth is
+// per-channel-buffer-size-per-goroutine times the number of validator-committers.
+func newSvMgrTestEnvWithQueues(
+	tb testing.TB, numSvService, queueDepth int, expectedEndErrorMsg ...byte,
+) *svMgrTestEnv {
+	tb.Helper()
+	expectedEndError := string(expectedEndErrorMsg)
+	verifier, sc := mock.StartMockVerifierService(tb, test.StartServerParameters{NumService: numSvService})
+
+	inputTxBatch := make(chan dependencygraph.TxNodeBatch, queueDepth)
+	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, queueDepth)
 
 	pm := newPolicyManager()
 	metrics := newPerformanceMetrics(&channels{
@@ -65,20 +75,20 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	)
 
 	test.RunServiceForTest(
-		t.Context(), t,
+		tb.Context(), tb,
 		func(ctx context.Context) error {
 			err := connection.FilterStreamRPCError(svm.run(ctx))
 			if expectedEndError != "" {
-				require.ErrorContains(t, err, expectedEndError)
+				require.ErrorContains(tb, err, expectedEndError)
 			} else {
-				assert.NoError(t, err)
+				assert.NoError(tb, err)
 			}
 			return nil
 		},
 		nil,
 	)
 	test.WaitForConnections(
-		t, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
+		tb, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{
@@ -301,10 +311,10 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 }
 
 func createTxNodeBatchForTest(
-	t *testing.T,
+	tb testing.TB,
 	blkNum uint64, numTxs, valueSize int,
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
-	t.Helper()
+	tb.Helper()
 
 	ns := []*applicationpb.TxNamespace{{
 		BlindWrites: []*applicationpb.Write{{
