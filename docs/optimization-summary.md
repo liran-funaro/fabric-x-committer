@@ -165,15 +165,24 @@ Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: L
 same rows at 3,105 ms and 5,514 ms. Whenever `little_ms` and `hist_ms` disagree by more than about
 3×, trust `little_ms` — `inflight / throughput` needs no sampling and cannot lose a measurement.
 
-The cause is **not** established. The plausible mechanism is the latency tracker
-(`loadgen/metrics/tracker.go`): it indexes sampled transactions by `hash(txID) % max-tracked-txs`
-and *overwrites* on collision, so a sampled transaction whose slot is taken before its status
-returns is never measured, and the loss is biased towards slow ones. But the arithmetic does not
-obviously reach a factor of 1,550: at the deployed 1% sampling and 100,000 slots, a transaction in
-flight for 3 s at 500,000 tps competes with roughly 15,000 stores, which is a ~15% loss rather than
-a near-total one. Either something else is at work or the sampling interacts with the histogram
-buckets in a way not traced here. Worth settling before quoting any histogram-derived latency near
-these rates.
+The cause is **not** established, and the obvious suspect has been ruled out by measurement.
+
+That suspect was the latency tracker (`loadgen/metrics/tracker.go`), which indexes sampled
+transactions by `hash(txID) % max-tracked-txs` and *overwrites* on collision, so a sampled
+transaction whose slot is taken before its status returns is never measured — and the loss is biased
+towards slow ones. Driving the real tracker at the deployed sizing (100,000 slots, 1% sampling,
+500,000 tps) and replaying arrivals in order gives:
+
+| true latency | sampled transactions still measured |
+|---|---|
+| 300 ms | 98.4% |
+| 920 ms | 95.4% |
+| 3.1 s | 85.6% |
+
+Losing 14% of samples cannot turn 3,105 ms into 2 ms. So the tracker is not the explanation, and
+something else in the histogram path is. Until that is traced, do not quote a histogram-derived
+latency when `little_ms` disagrees with it by more than about 3× — and note that all the latencies
+quoted in this document as *results* come from rows where the two agree.
 
 ## 6. The committer is no longer the bottleneck — the database is
 
