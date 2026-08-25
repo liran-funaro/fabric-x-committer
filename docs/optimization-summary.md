@@ -194,6 +194,24 @@ splits 121 ms inserting keys and 104 ms writing statuses.
 Raising throughput further therefore means writing less per transaction — a schema and design
 question about `tx_status` granularity — or more disk. It is not a committer tuning problem.
 
+**Latency is database-bound too, by the same stage.** At a sustained 500,000 tps the pipeline holds
+230,000 transactions, and Little's law puts that at 460 ms against 519 ms measured. It divides in two:
+
+| Where | In flight | Latency |
+|---|---|---|
+| VC commit stage — 384 concurrent batches × 362 transactions | 139,000 | 278 ms |
+| Sidecar's waiting window — submitted, awaiting status | 91,000 | 182 ms |
+
+So 60% of end-to-end latency is work sitting in the commit stage. Reducing it means reducing that
+stage's concurrency, which section 6.1 measured as costing 17% of throughput for no latency gain at
+equal rate. Both throughput and latency therefore bottom out on the same resource.
+
+**The sidecar is not the next constraint**, checked from the other side: at 51.6 blocks/s its worst
+per-block stage is mapping at 11.21 ms of a 19.38 ms budget, 58% duty, with block send at 41%, ledger
+append at 29% and signature verification at 16%. Even at the over-driven ceiling mapping is about 65%.
+Worth noting that the flow-control fix also cut the block-send stage from ~13 ms to 7.87 ms, because
+that stage contains the `stream.Send` that was blocking on write quota.
+
 ### 6.1 Lowering committer concurrency was tried and reverted
 
 The reasoning was that since the database is saturated, the extra concurrency should only queue: it
