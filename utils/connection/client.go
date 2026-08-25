@@ -47,25 +47,19 @@ const (
 	//       Hence, we need to move this constant to fabric-x-common.
 	// MaxMsgSize is set to 100MB.
 	MaxMsgSize = 100 * 1024 * 1024
-	// InitialWindowSize and InitialConnWindowSize size HTTP/2 flow control.
+	// InitialWindowSize and InitialConnWindowSize size HTTP/2 flow control, per stream and per
+	// connection. They are set because gRPC's defaults measured as the whole pipeline's ceiling: every
+	// coordinator sender to the verifiers blocked in transport.(*writeQuota).get while the verifiers
+	// they feed sat at a third of their CPU. docs/performance-tuning.md carries the measurement and
+	// the diagnostic signature.
 	//
-	// They are set because the defaults were measured to be the pipeline's ceiling. A goroutine
-	// dump of a saturated coordinator found all three of its senders to the signature verifiers and
-	// five of its six senders to the validator-committers blocked in
-	// grpc/internal/transport.(*writeQuota).get -- out of stream send quota -- while no sender used
-	// more than a quarter of a core, the verifiers held 1,700 transactions of a 128,000 capacity,
-	// and their machines ran 22 of 64 cores. The senders were not slow, they were not allowed to
-	// write.
-	//
-	// Sized against what is actually on the wire: a batch of a few hundred transactions marshals to
-	// roughly 145 KB, so a 16 MB stream window holds about a hundred of them in flight and a 32 MB
-	// connection window covers the streams that share a connection. Setting either of these
-	// disables gRPC's own BDP-based window tuning, so they have to be generous rather than merely
-	// adequate.
-	//
-	// The cost is bounded buffering per connection, which matters only under overload; in-flight
-	// work is already bounded upstream by the coordinator's dep-graph-wait-tx-limit and the
-	// sidecar's waiting-txs-limit.
+	// Three things to know before changing them. Setting either at all disables gRPC's own BDP-based
+	// tuning, so they are generous rather than tight. They have to be raised on both ends, because the
+	// window a peer may write into is the one this side advertises -- utils/serve applies these same
+	// values to every server. And because they are what a peer may write before the application reads
+	// it, they bound how much unread data one connection can make a server hold; for the
+	// client-facing query and notification endpoints, bound that with the server's MaxConcurrentStreams
+	// and RateLimit rather than by shrinking the window back.
 	InitialWindowSize = 16 * 1024 * 1024
 	// InitialConnWindowSize is the connection-level counterpart of InitialWindowSize.
 	InitialConnWindowSize = 32 * 1024 * 1024
