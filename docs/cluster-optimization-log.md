@@ -347,8 +347,10 @@ would change what is being measured.
 
 ## 6. Where the constraint is now
 
-The database commit path, at roughly 487,000 tps, but only once the coordinator's dependency graph
-stops being it. With the default graph manager the constraint is the coordinator and the database
+Signature verification, as of section 6.3. It was the database commit path, at roughly 487,000 tps,
+and the rest of this section describes it as such because that is how it was found; raising the
+validator-committers' commit workers moved it. The description below still holds for the commit
+stage at 32 workers per validator-committer. With the default graph manager the constraint is the coordinator and the database
 idles behind it (section 4.2); with the simple manager the database becomes the constraint and the
 figure below is what that looks like. Of the validator-committer stages,
 `vcservice_database_tx_batch_commit` runs about 191 workers concurrently busy and
@@ -403,7 +405,76 @@ state-growth decay documented in section 2. So the two 45-minute means agreeing 
 coincidence; the early-window comparison, 542,080 against 482,422, favours the sidecar run, and
 neither comparison supports a throughput cost.
 
-### 6.3 What the load generator can offer
+### 6.3 Committer workers 32 to 64, and where the constraint went next
+
+The commit stage was running at 99.4% worker occupancy while the machines it runs on were
+not close to saturated, which is a concurrency limit and not a resource one:
+
+| | 32 workers/VC | 64 workers/VC |
+|---|---:|---:|
+| concurrent database commits | 190.9 of 192 | 228.4 of 384 |
+| transactions per batch | 331.6 | 354.5 |
+| commit latency | 139.3 ms | 159.6 ms |
+| predicted tps (concurrency ÷ latency × batch) | 454,500 | 507,400 |
+| measured tps | 454,394 | 507,537 |
+| commit-machine CPU / disk | 74% / 44% | 78% / 45% |
+
+Worth **+6.8%** on a same-day comparison, 480,000 to 512,400 over matched twelve-minute
+windows, and the resulting run was unusually flat: 512,160 tps over its first five minutes and
+509,067 over minutes 25-30, against the visible decay every earlier run showed. The connection
+pool had to grow with it (64 to 128), because 64 committer workers would otherwise consume the
+whole 64-connection pool and starve the preparer's version reads and the validator.
+
+This is not the change section 4.3 rejected. That one raised worker counts while every
+connection was pinned to a single tablet server, so the extra workers queued harder on one
+node; connections now spread across all twelve, and the workers were measurably saturated
+first. Neither was true then.
+
+**The constraint moved to signature verification.** At 64 workers the commit stage runs at 59%
+occupancy and every queue in the pipeline is empty except one:
+`coordinator_verifier_input_batch_queue_size`, at 58. The verifier machines sit at 34% CPU, so
+they are not compute-bound either — the same shape as the commit stage before this change. The
+likely mechanism is in their batching: `batch-size-cutoff` is 500 and `batch-time-cutoff` is
+2 ms, and at 169,493 tps per verifier a 500-transaction batch takes 2.95 ms to fill. Every
+batch is therefore cut by time at roughly 340 transactions, and split across `parallelism: 128`
+goroutines that is under three signatures per goroutine per dispatch — coordination rather than
+verification, which is what 34% CPU at 508,478 tps verified looks like. Untested; raising
+`batch-time-cutoff` past the fill time is the experiment.
+
+### 6.4 The cluster's baseline moves between days, so an A/B has to be same-day
+
+Identical code and configuration measured 537,567 tps one day and 454,408 the next, on fresh
+deployments both times — about 15% apart, with the database disks 90% empty in both cases and
+Raft leaders evenly balanced at 71-73 per tablet server. Nothing in this repository accounts
+for it, and it is larger than most of the individual changes in this document.
+
+The practical consequence is that a figure from yesterday is not a control for a figure from
+today. This cost a wrong conclusion: after rebasing onto the Go 1.27 upgrade, the pipeline
+measured 472,400 against the previous day's 529,471, and the isolation looked airtight — the
+only upstream commit the rebase introduced was the toolchain bump, and `go version -m` on the
+two binaries showed identical dependency sets, 88 deps with no differences, so every other
+candidate was excluded. It was reported as a 10.8% Go 1.27 regression. Rebuilding the
+pre-upgrade binaries from a safety tag and running them on the same cluster the same day
+returned 454,408 — *slower* than the rebased build. There was no regression; the baseline had
+moved.
+
+So: tag the tip before any change that could plausibly affect throughput, and when a
+measurement moves, rebuild the old artifact and measure it today rather than reasoning about
+what changed. A clean account of *what* differs is not evidence that it *caused* anything.
+
+### 6.5 The sidecar's ledger bounds how long a run can last
+
+There is no retention or pruning in the sidecar's `LedgerConfig` — the ledger is append-only.
+At roughly 334 bytes per transaction it writes about 170 MB/s at 500,000 tps, which fills the
+sidecar's 969 GB `/data1` in around 1.6 hours. A run that exceeds that ends with
+`error appending block to file: ... no space left on device`; the sidecar exits on it rather
+than corrupting the ledger, which is the right behaviour but does end the run.
+
+That is why the eleven-hour decay curve in section 2 was measured with load applied straight to
+the coordinator. Reproducing it end-to-end through the sidecar would need roughly 6 TB of
+ledger, which this hardware does not have on one mount.
+
+### 6.6 What the load generator can offer
 
 Not the constraint any more, but close enough to matter. One 64-core generator benchmarks at
 598,208 tx/s on the submit path (generation, block mapping, TX ID extraction, metrics and latency
@@ -431,7 +502,9 @@ Constraints found and resolved, in order:
 | Sidecar `waiting-txs-limit` below the coordinator's window | matched to it; was misread as a sidecar cost |
 | Coordinator dependency graph halting under load | fixed (`drain_test.go`) |
 | Oversized `waiting-txs-limit` (latency and memory) | 20M → 500K, 100× less memory |
-| **Database commit path** | **current** |
+| Sidecar `waiting-txs-limit` below the coordinator's window | matched to it; was misread as a sidecar cost |
+| Database commit worker count | 32 → 64 per VC, +6.8% |
+| **Signature verification batch cutoff** | **current, untested** |
 
 ## 7. How the constraint was located each time
 
