@@ -47,13 +47,26 @@ type (
 		// need to carry them forward.
 		dedup *txIDDedup
 		txIDs []string
-		// refs and txWithRefs back every TxRef and TxWithRef the block needs, one entry per
-		// message, allocated once for the block instead of once per transaction. Mapping is on the
-		// path that decides how fast the sidecar allocates, and these were two of its allocations
-		// per transaction. Nothing may copy an element out of them — they are proto messages, and
-		// only their addresses are ever handed on — which go vet's copylocks check enforces.
+		// refs, txWithRefs and txs back every TxRef, TxWithRef and decoded Tx the block needs, one
+		// entry per message, allocated once for the block instead of once per transaction. Mapping
+		// is on the path that decides how fast the sidecar allocates, and these were three of its
+		// allocations per transaction. Nothing may copy an element out of them — they are proto
+		// messages, and only their addresses are ever handed on — which go vet's copylocks check
+		// enforces.
+		//
+		// One entry per message, not per accepted TX, so that a worker can write to its own index
+		// without coordinating with the others (see parseMessages). A rejected message's entry is
+		// left however far parsing got, and nothing reads it, which costs nothing beyond the slot.
+		//
+		// These keep the whole block's backing array alive for as long as anything holds one
+		// element, which matters because a StreamAllTransactions subscriber can hold a TX past the
+		// block's commit. The array is bounded by the block size and holds only the message
+		// headers — each TX's namespaces, keys and values are separately allocated and were always
+		// retained this way — so the exposure is the empty slots of one block, not a leak that
+		// grows.
 		refs       []committerpb.TxRef
 		txWithRefs []servicepb.TxWithRef
+		txs        []applicationpb.Tx
 	}
 
 	// parsedMessage is what mapping can settle about one message of a block without looking at any
@@ -152,10 +165,11 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 		txIDs:      make([]string, 0, txCount),
 		refs:       make([]committerpb.TxRef, txCount),
 		txWithRefs: make([]servicepb.TxWithRef, txCount),
+		txs:        make([]applicationpb.Tx, txCount),
 	}
 	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
-	parsed := parseMessages(blockNumber, block.Data.Data, mappedBlock.refs)
+	parsed := parseMessages(blockNumber, block.Data.Data, mappedBlock.refs, mappedBlock.txs)
 	for msgIndex := range parsed {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		if err := mappedBlock.applyParsedMessage(&parsed[msgIndex]); err != nil {
@@ -178,14 +192,16 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 // messages — the TX ID dedup set, the one-snapshot-per-block rule, and the order of the batch the
 // coordinator receives — and applyParsedMessage does it serially, in message order, so the
 // transactions a block accepts and rejects do not depend on how the parsing happened to be split.
-func parseMessages(blockNumber uint64, msgs [][]byte, refs []committerpb.TxRef) []parsedMessage {
+func parseMessages(
+	blockNumber uint64, msgs [][]byte, refs []committerpb.TxRef, txs []applicationpb.Tx,
+) []parsedMessage {
 	parsed := make([]parsedMessage, len(msgs))
 	parseRange := func(start, end int) {
 		for msgIndex := start; msgIndex < end; msgIndex++ {
 			ref := &refs[msgIndex]
 			ref.BlockNum = blockNumber
 			ref.TxNum = uint32(msgIndex) //nolint:gosec // int -> uint32.
-			parsed[msgIndex] = parseMessage(ref, msgs[msgIndex])
+			parsed[msgIndex] = parseMessage(ref, msgs[msgIndex], &txs[msgIndex])
 		}
 	}
 
@@ -207,8 +223,9 @@ func parseMessages(blockNumber uint64, msgs [][]byte, refs []committerpb.TxRef) 
 }
 
 // parseMessage classifies and validates one message. It reads nothing but the message, and writes
-// nothing but its return value, which is what lets parseMessages run it concurrently.
-func parseMessage(ref *committerpb.TxRef, msg []byte) parsedMessage {
+// nothing but its return value and the ref and tx it is given, both of which belong to this
+// message alone, which is what lets parseMessages run it concurrently.
+func parseMessage(ref *committerpb.TxRef, msg []byte, tx *applicationpb.Tx) parsedMessage {
 	parsed := parsedMessage{ref: ref}
 
 	// UnwrapEnvelopeLite extracts only HeaderType, TxID, and Data from the envelope
@@ -241,8 +258,10 @@ func parseMessage(ref *committerpb.TxRef, msg []byte) parsedMessage {
 			"unsupported message type: "+headerType.String())
 	}
 
-	tx, err := serialization.UnmarshalTx(envLite.Data)
-	if err != nil {
+	// Decoded into the block's TX slab rather than a fresh allocation. A rejected message leaves
+	// its slab entry partly filled, which nothing reads: parsed.tx stays nil below, and every
+	// consumer reaches a TX through parsedMessage or TxWithRef, never through the slab.
+	if err := serialization.UnmarshalTxInto(envLite.Data, tx); err != nil {
 		return parsed.reject(committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 	}
 	if status := verifyTxForm(tx); status != statusNotYetValidated {
