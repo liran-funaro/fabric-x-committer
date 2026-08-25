@@ -236,12 +236,38 @@ round-trip cost is a larger share. It is not a throughput lever here.
 | After sections 1-4 | 500,000 tps requested and delivered, 99.9%, 645 ms mean | sustainable-rate hold, sidecar in the path |
 | Same deployment, over-driven | 510,371 mean / 528,800 peak | asking 1,000,000 |
 | **After section 5 (gRPC windows)** | **505,900 at 392 ms; 519,800 at 472 ms** | sustainable holds, fresh deployment, holds run first |
+| Same, held for 30 minutes | **499,450 at 519 ms, 99.9% of a 500,000 request** | flat, no decay over ~900M transactions |
 | Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000, run first on a fresh deployment |
 | Coordinator-direct, sidecar out of the path | 525,388 mean / 533,213 peak | measured before section 5; the sidecar's throughput cost is within noise |
 
 Latency at a given rate improved along with throughput, which is unusual enough to state plainly:
 500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
 pipeline stop holding work upstream, so in-flight at 500,000 fell to 230,000.
+
+### 500,000 tps held for half an hour
+
+A fixed 500,000 tps request, sampled every 60 s, excluding the first three minutes while the previous
+run's backlog drained:
+
+| | |
+|---|---|
+| offered | 500,017 |
+| committed | **499,450 — 99.9%** |
+| mean latency | **519 ms** |
+| five-minute buckets | 498,720 / 500,320 / 499,760 / 498,720 / 499,200 |
+
+Flat: no decay across thirty minutes and roughly 900 million transactions. Latency drifts from
+505 ms to 534 ms and database commit from 224 ms to 242 ms over the window, which is the state-growth
+effect of section 2 appearing gently rather than the throughput cliff the eleven-hour run found at a
+higher operating point.
+
+The 392 ms figure above and the 519 ms here are both honest and differ only in how much state the
+database already held: the first was the first measurement on a fresh deployment, the second came
+after roughly 1.5 billion transactions of prior load in the same cycle.
+
+**A soak with the sidecar in the path cannot run much longer than this.** The ledger is append-only
+with no retention, so at 500,000 tps it writes ~167 MB/s and fills the sidecar's 969 GB disk in about
+1.6 hours. That is why the eleven-hour decay curve in section 2 was measured coordinator-direct.
 
 Every figure above depends on how full the state database was and on the day it was taken: this
 cluster's baseline moves about 15% between days with identical code, which is recorded in
