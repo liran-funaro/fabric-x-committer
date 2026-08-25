@@ -291,7 +291,18 @@ round-trip cost is a larger share. It is not a throughput lever here.
 | **After section 5 (gRPC windows)** | **505,900 at 392 ms; 519,800 at 472 ms** | sustainable holds, fresh deployment, holds run first |
 | Same, held for 30 minutes | **499,450 at 519 ms, 99.9% of a 500,000 request** | flat, no decay over ~900M transactions |
 | Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000, run first on a fresh deployment |
-| Coordinator-direct, sidecar out of the path | 525,388 mean / 533,213 peak | measured before section 5; the sidecar's throughput cost is within noise |
+| Coordinator-direct, before section 5 | 525,388 mean / 533,213 peak | 45 min, and it rose into that figure: its own first 25 min averaged 482,422 |
+| **Coordinator-direct, with section 5** | **570,321 mean / 614,173 peak** | 43 min; its first 25 min averaged 581,158 |
+
+**The sidecar still costs essentially nothing**, re-checked at the higher rate on matched windows:
+578,383 through the sidecar against 581,158 coordinator-direct over each run's first 25 minutes —
+**0.5%**. And the flow-control fix is worth about as much in either topology, +13.3% through the
+sidecar and +15.2% on the coordinator-direct peak, which is what you would expect of a change to the
+coordinator's streams to the verifiers and validator-committers, since both topologies have them.
+
+Comparing the two coordinator-direct runs needs care: the pre-section-5 one stepped *up* mid-run for
+reasons never identified (section 6.4), while this one decays as state grows. Matched early windows or
+peaks are the honest comparison, not the full-run means.
 
 Latency at a given rate improved along with throughput, which is unusual enough to state plainly:
 500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
