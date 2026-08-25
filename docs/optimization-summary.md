@@ -194,6 +194,31 @@ splits 121 ms inserting keys and 104 ms writing statuses.
 Raising throughput further therefore means writing less per transaction — a schema and design
 question about `tx_status` granularity — or more disk. It is not a committer tuning problem.
 
+### 6.3 The one committer-side lever left, and why it is not safe
+
+`tx_status`'s primary key is a transaction ID, and the committer stores it as the 64-character hex
+string `protoutil.ComputeTxID` produces — `hex.EncodeToString(sha256.Sum(...))` — so 64 bytes carry
+32 bytes of entropy (`service/vc/database.go:341`, `ids = append(ids, []byte(status.Ref.TxId))`).
+
+Quantified: 32 wasted bytes per transaction at 527,000 tps is 16.9 MB/s of logical writes, and the key
+lands in the row and in the LSM's index and bloom structures. At the ~21× amplification measured
+above that is roughly 350 MB/s of the 3,751 MB/s the database writes — about **9%** of the resource
+that now caps the pipeline. Decoding the hex on write and re-encoding on read would be contained to
+the validator-committer, since it changes storage rather than any protocol.
+
+It is nevertheless not a safe change as stated, for three reasons worth writing down so the next
+person does not start it:
+
+- **Transaction IDs are arbitrary strings, not necessarily hex.** Fabric lets a client choose its own.
+  A decode would have to fall back for non-hex IDs, which reintroduces variable-length storage and
+  the branch that goes with it.
+- **The snapshot hash covers `tx_status`** (`service/vc/database_snapshot_hash.go`), so changing the
+  stored bytes changes the digest and breaks comparison across versions.
+- Existing deployments' rows would no longer be readable without a migration.
+
+A narrower version — store the decoded form only when the ID is exactly 64 hex characters, with a
+length-tagged fallback — is possible but is a schema change with a migration, not a tuning knob.
+
 **Latency is database-bound too, by the same stage.** At a sustained 500,000 tps the pipeline holds
 230,000 transactions, and Little's law puts that at 460 ms against 519 ms measured. It divides in two:
 
