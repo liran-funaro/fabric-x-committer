@@ -184,9 +184,19 @@ workers from 32 to 64 per validator-committer moved concurrency 228 → 384, **+
 **+1.7%** of database batches per second — 1,431 to 1,455 — while commit latency rose 160 → 264 ms.
 Adding concurrency to a saturated resource only queues.
 
-What is saturated is disk bandwidth. The twelve database machines run 82% CPU and **72% disk busy,
-writing 3,751 MB/s for 176 MB/s of user data** — about 21× write amplification from three-way
-replication and LSM compaction. Per transaction the committer writes one `tx_status` row and two
+What is saturated is the database itself, and **CPU is the more consistent of its two constraints**.
+Measured at two operating points:
+
+| | committed | db CPU | db disk busy | db writes |
+|---|---|---|---|---|
+| through the sidecar | 515,826 | 81.8% | 71.7% | 3,751 MB/s |
+| coordinator-direct | 597,498 | 80.8% | 51.6% | 3,985 MB/s |
+
+CPU sits at ~81% in both while disk busy varies from 52% to 72% — and the higher-throughput point has
+the *lower* disk utilisation, which rules disk bandwidth out as the binding resource at these rates
+(the difference is which compaction phase the run caught). Write amplification is about 21× either
+way: 3,985 MB/s of disk for roughly 200 MB/s of user data, from three-way replication and LSM
+compaction. Per transaction the committer writes one `tx_status` row and two
 state rows, and `insertTxStatus` already batches a whole batch into one array round trip
 (`service/vc/database.go:320`), so there is no round-trip inefficiency left to remove. The commit
 splits 121 ms inserting keys and 104 ms writing statuses.
