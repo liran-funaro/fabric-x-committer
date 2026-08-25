@@ -25,9 +25,9 @@ Two scoping rules apply throughout:
 |---|---|
 | Umbrella | one new issue, referencing every child below |
 | Sections 1, 3, 5 | one child issue each row |
-| Section 6 | not yet filed — not localised |
 | Section 2 | an issue in the `fabric-x-common` repository, referenced by the umbrella here |
-| Section 4 | not filed |
+| Section 4 | not filed — deployment tuning for this cluster |
+| Section 6 | not filed — the constraint is outside the committer, and 6.1–6.3 are results rather than work |
 
 `#772` already covers row 1.2 and needs no new issue.
 
@@ -165,7 +165,7 @@ Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: a
 flight the latency tracker's 100,000-slot table loses nearly every sampled transaction, and the loss
 is biased towards slow ones. Use `inflight / throughput` when in-flight exceeds that table.
 
-## 6. The committer is no longer the bottleneck — the database's write bandwidth is
+## 6. The committer is no longer the bottleneck — the database is
 
 Located after 5.1 moved the constraint. Every committer stage now has headroom:
 
@@ -203,31 +203,6 @@ splits 121 ms inserting keys and 104 ms writing statuses.
 
 Raising throughput further therefore means writing less per transaction — a schema and design
 question about `tx_status` granularity — or more disk. It is not a committer tuning problem.
-
-### 6.3 The one committer-side lever left, and why it is not safe
-
-`tx_status`'s primary key is a transaction ID, and the committer stores it as the 64-character hex
-string `protoutil.ComputeTxID` produces — `hex.EncodeToString(sha256.Sum(...))` — so 64 bytes carry
-32 bytes of entropy (`service/vc/database.go:341`, `ids = append(ids, []byte(status.Ref.TxId))`).
-
-Quantified: 32 wasted bytes per transaction at 527,000 tps is 16.9 MB/s of logical writes, and the key
-lands in the row and in the LSM's index and bloom structures. At the ~21× amplification measured
-above that is roughly 350 MB/s of the 3,751 MB/s the database writes — about **9%** of the resource
-that now caps the pipeline. Decoding the hex on write and re-encoding on read would be contained to
-the validator-committer, since it changes storage rather than any protocol.
-
-It is nevertheless not a safe change as stated, for three reasons worth writing down so the next
-person does not start it:
-
-- **Transaction IDs are arbitrary strings, not necessarily hex.** Fabric lets a client choose its own.
-  A decode would have to fall back for non-hex IDs, which reintroduces variable-length storage and
-  the branch that goes with it.
-- **The snapshot hash covers `tx_status`** (`service/vc/database_snapshot_hash.go`), so changing the
-  stored bytes changes the digest and breaks comparison across versions.
-- Existing deployments' rows would no longer be readable without a migration.
-
-A narrower version — store the decoded form only when the ID is exactly 64 hex characters, with a
-length-tagged fallback — is possible but is a schema change with a migration, not a tuning knob.
 
 **Latency is database-bound too, by the same stage.** At a sustained 500,000 tps the pipeline holds
 230,000 transactions, and Little's law puts that at 460 ms against 519 ms measured. It divides in two:
@@ -280,6 +255,31 @@ out of 264 ms.
 
 It may still be worth doing for a latency-sensitive deployment with small batches, where the fixed
 round-trip cost is a larger share. It is not a throughput lever here.
+
+### 6.3 The one committer-side lever left, and why it is not safe
+
+`tx_status`'s primary key is a transaction ID, and the committer stores it as the 64-character hex
+string `protoutil.ComputeTxID` produces — `hex.EncodeToString(sha256.Sum(...))` — so 64 bytes carry
+32 bytes of entropy (`service/vc/database.go:341`, `ids = append(ids, []byte(status.Ref.TxId))`).
+
+Quantified: 32 wasted bytes per transaction at 527,000 tps is 16.9 MB/s of logical writes, and the key
+lands in the row and in the LSM's index and bloom structures. At the ~21× amplification measured
+above that is roughly 350 MB/s of the 3,751 MB/s the database writes — about **9%** of the resource
+that now caps the pipeline. Decoding the hex on write and re-encoding on read would be contained to
+the validator-committer, since it changes storage rather than any protocol.
+
+It is nevertheless not a safe change as stated, for three reasons worth writing down so the next
+person does not start it:
+
+- **Transaction IDs are arbitrary strings, not necessarily hex.** Fabric lets a client choose its own.
+  A decode would have to fall back for non-hex IDs, which reintroduces variable-length storage and
+  the branch that goes with it.
+- **The snapshot hash covers `tx_status`** (`service/vc/database_snapshot_hash.go`), so changing the
+  stored bytes changes the digest and breaks comparison across versions.
+- Existing deployments' rows would no longer be readable without a migration.
+
+A narrower version — store the decoded form only when the ID is exactly 64 hex characters, with a
+length-tagged fallback — is possible but is a schema change with a migration, not a tuning knob.
 
 ## Where the pipeline stands
 
