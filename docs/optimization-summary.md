@@ -231,19 +231,29 @@ workers from 32 to 64 per validator-committer moved concurrency 228 → 384, **+
 **+1.7%** of database batches per second — 1,431 to 1,455 — while commit latency rose 160 → 264 ms.
 Adding concurrency to a saturated resource only queues.
 
-What is saturated is the database itself, and **CPU is the more consistent of its two constraints**.
-Measured at two operating points:
+What is saturated is the database, and **which of its resources binds migrates as the dataset grows**.
+That is why two earlier revisions of this file contradicted each other; both were right about the
+point they measured.
 
-| | committed | db CPU | db disk busy | db writes |
-|---|---|---|---|---|
-| through the sidecar | 515,826 | 81.8% | 71.7% | 3,751 MB/s |
-| coordinator-direct | 597,498 | 80.8% | 51.6% | 3,985 MB/s |
+| | committed | db CPU | disk busy | disk writes | disk reads |
+|---|---|---|---|---|---|
+| fresh, through the sidecar | 515,826 | 82% | 72% | 3,751 MB/s | — |
+| fresh, coordinator-direct | 597,498 | 81% | 52% | 3,985 MB/s | ~30 MB/s |
+| after 2 h at 500,000 tps | 451,654 | **90%** | **100%** | 6,363 MB/s | **4,542 MB/s** |
 
-CPU sits at ~81% in both while disk busy varies from 52% to 72% — and the higher-throughput point has
-the *lower* disk utilisation, which rules disk bandwidth out as the binding resource at these rates
-(the difference is which compaction phase the run caught). Write amplification is about 21× either
-way: 3,985 MB/s of disk for roughly 200 MB/s of user data, from three-way replication and LSM
-compaction. Per transaction the committer writes one `tx_status` row and two
+While the tables are small the database is CPU-bound at about 81% and the disks have headroom — note
+the higher-throughput row has the *lower* disk utilisation, which is the wrong way round for disk to
+be binding. Once the dataset is large enough for LSM compaction to run continuously, the disks go to
+100% and throughput falls with them.
+
+The reads are the tell. They are **entirely compaction**: `vcservice_database_tx_batch_query_version`
+records 0 lookups per second, because this workload only inserts fresh keys and never performs a
+multi-key read. So 4.5 GB/s of reads is the database rewriting its own SST files, and it competes
+directly with user writes for the same devices.
+
+Where the crossover falls here: **about two hours at 500,000 tps, 5.4 billion transactions, 6.45 TB
+across the twelve machines.** Section 2's eleven-hour run found the same mechanism further along the
+curve, at 15.4 TB and 85-99% disk utilisation. Per transaction the committer writes one `tx_status` row and two
 state rows, and `insertTxStatus` already batches a whole batch into one array round trip
 (`service/vc/database.go:320`), so there is no round-trip inefficiency left to remove. The commit
 splits 121 ms inserting keys and 104 ms writing statuses.
@@ -355,7 +365,25 @@ Latency at a given rate improved along with throughput, which is unusual enough 
 500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
 pipeline stop holding work upstream, so in-flight at 500,000 fell to 230,000.
 
-### 500,000 tps held for half an hour
+### 500,000 tps held for two hours, then decayed
+
+A fixed 500,000 tps request, coordinator-direct so that the sidecar's append-only ledger could not end
+the run first, sampled every five minutes:
+
+| Elapsed | Offered | Committed | Latency |
+|---|---|---|---|
+| 5–120 min | 500,000 | **499,700–501,700, flat** | 289–353 ms |
+| 125 min | 450,400 | 451,654 | 1,305 ms |
+
+Flat for two hours and 5.4 billion transactions, then a sharp step rather than a gradual slide: the
+*offered* rate falls below the target, which is the pipeline pushing back. At that moment the database
+disks reach 100% busy and start reading 4.5 GB/s of compaction traffic, as above.
+
+Two hours is therefore the honest answer to "can it hold 500,000 tps" on this hardware, with the
+caveat that the limit is a dataset size rather than a duration — a workload that updates existing keys
+instead of inserting new ones would reach it much later, or not at all.
+
+### 500,000 tps held for half an hour, with the sidecar in the path
 
 A fixed 500,000 tps request, sampled every 60 s, excluding the first three minutes while the previous
 run's backlog drained:
