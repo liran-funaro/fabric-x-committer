@@ -195,10 +195,22 @@ returned. A single sidecar-side histogram of that would give a latency signal th
 the harness at all, and would have settled today's 39-second question in one query instead of an
 in-flight accounting exercise. Worth adding before the next latency claim.
 
-One thing the arithmetic does rule out: no transaction can complete in 2 ms, because database commit
-alone is ~200 ms. So those readings are not slow transactions being under-counted — they are
-`time.Since(created)` being computed against a `created` that was set far too recently, which points
-at the send path recording a transaction more than once rather than at the sampling.
+What the arithmetic does establish is that these are not slow transactions being under-counted: no
+transaction can *complete* in 2 ms when database commit alone is ~200 ms, so the observation itself is
+impossible as a latency. `duration` is `time.Since(tx.created)`, so `created` must have been set about
+2 ms before the status was handled.
+
+Two candidate causes have been checked and eliminated:
+
+- **The tracker's hash-with-replacement table** — measured above, 85.6% of samples survive at a 3.1 s
+  latency.
+- **The send path recording a transaction twice**, which would refresh `created`. It does not:
+  `sendBlocks` calls `OnSendBatch` once per block after the send returns, `mock.Orderer.SubmitBlock`
+  blocks on a channel rather than dropping or retrying, and each block's transaction IDs are unique.
+
+So the cause is still open. It is a measurement defect, not a pipeline behaviour, and the practical
+rule above is enough to work around it — but it should be traced before anyone quotes a
+histogram-derived latency near these rates.
 
 ## 6. The committer is no longer the bottleneck — the database is
 
