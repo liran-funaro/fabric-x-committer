@@ -44,6 +44,9 @@ Two scoping rules apply throughout:
 | 1.7 | **[sidecar] Back a block's decoded TXs with one allocation** — `UnmarshalTxInto` writes into a per-block slab | 19 → 18 allocs/tx, identically at every block size | `02e9b9e8` |
 | 1.8 | **[sidecar] Separate mapping's scaffolding from its result** — the result no longer carries the slabs, the dedup set or the collected TX IDs | releases one string slice per in-flight block; allocations unchanged | `0243503f` |
 
+The largest committer code optimization of all is **section 5**, kept separate because the account of
+how it was found is most of its value. Treat it as row 1.9 when filing.
+
 ## 2. fabric-x-common
 
 | # | Optimization | Measured |
