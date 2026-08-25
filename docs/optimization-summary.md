@@ -118,7 +118,12 @@ cliff rather than removing it.
 
 | # | Optimization | Measured |
 |---|---|---|
-| 5.1 | **Size HTTP/2 flow control for the rates in play** — `grpc.WithInitialWindowSize`/`WithInitialConnWindowSize` on clients and the matching server options, 16 MB per stream and 32 MB per connection | over-driven mean 510,371 → **578,383** (+13.3%), peak 528,800 → **590,400**; sustainable knee ~500,000 → **~530,000** at *lower* latency, 645 ms → 562 ms |
+| 5.1 | **Size HTTP/2 flow control for the rates in play** — `grpc.WithInitialWindowSize`/`WithInitialConnWindowSize` on clients and the matching server options, 16 MB per stream and 32 MB per connection | over-driven mean 510,371 → **578,383** (+13.3%), peak 528,800 → **590,400** (+11.6%); at a sustainable 500,000 the latency falls **645 ms → 392 ms**, a 39% reduction at the same rate |
+
+Both over-driven figures are from runs taken first on a fresh deployment, which is the only way they
+compare: the same configuration measured 544,260 when its over-driven run followed two five-minute
+holds, because the state table had grown by ~300M rows in between. Section 6.4 of
+`cluster-optimization-log.md` covers that decay.
 
 Nothing in the repository set a window, so gRPC's defaults applied. A goroutine dump of a saturated
 coordinator found **all three** senders to the signature verifiers and **five of six** senders to the
@@ -160,11 +165,68 @@ Two of the holds above report 2 ms and 5 ms, which are artifacts, not results: a
 flight the latency tracker's 100,000-slot table loses nearly every sampled transaction, and the loss
 is biased towards slow ones. Use `inflight / throughput` when in-flight exceeds that table.
 
-## 6. Current constraint — identified, not fixed
+## 6. The committer is no longer the bottleneck — the database's write bandwidth is
 
-| # | Constraint | Evidence |
-|---|---|---|
-| 6.1 | Unknown — the constraint moved again with 5.1 and has not been relocated | at 520,000 sustained the pipeline is 101% efficient at 562 ms; the knee is ~530,000, and which stage sets it has not been measured since the flow-control change |
+Located after 5.1 moved the constraint. Every committer stage now has headroom:
+
+| Stage | Utilisation |
+|---|---|
+| sidecar | 14% CPU |
+| coordinator | 21% CPU |
+| verifiers | 34% CPU, 78% of it real signature verification |
+| VC preparer | 4.0 of 96 workers concurrently busy |
+| VC validator | 16.8 of 96 |
+| **VC committer** | **383.9 of 384** — the only saturated stage |
+| Every queue in the pipeline | zero, except the sidecar's own backpressure window |
+
+But the commit stage is not concurrency-limited any more, it is waiting on the database. Raising its
+workers from 32 to 64 per validator-committer moved concurrency 228 → 384, **+68%**, and bought
+**+1.7%** of database batches per second — 1,431 to 1,455 — while commit latency rose 160 → 264 ms.
+Adding concurrency to a saturated resource only queues.
+
+What is saturated is disk bandwidth. The twelve database machines run 82% CPU and **72% disk busy,
+writing 3,751 MB/s for 176 MB/s of user data** — about 21× write amplification from three-way
+replication and LSM compaction. Per transaction the committer writes one `tx_status` row and two
+state rows, and `insertTxStatus` already batches a whole batch into one array round trip
+(`service/vc/database.go:320`), so there is no round-trip inefficiency left to remove. The commit
+splits 121 ms inserting keys and 104 ms writing statuses.
+
+Raising throughput further therefore means writing less per transaction — a schema and design
+question about `tx_status` granularity — or more disk. It is not a committer tuning problem.
+
+### 6.1 Lowering committer concurrency was tried and reverted
+
+The reasoning was that since the database is saturated, the extra concurrency should only queue: it
+had bought +1.7% of database batches per second for +65% of commit latency. Measured at each
+configuration's own ceiling, that is wrong:
+
+| workers per VC | concurrent commits | over-driven mean | peak | db commit |
+|---|---|---|---|---|
+| 40 | 240 | 493,508 | 503,200 | 171 ms |
+| **64** | **384** | **578,383** | **590,400** | 264 ms |
+
+64 is worth **17% more throughput**, and at equal offered rate the end-to-end latency is the same
+either way — 501 ms at 510,000 with 40 workers against about 520 ms interpolated with 64. The lower
+setting buys latency only by giving up throughput, so it was reverted.
+
+The error is worth recording: the "+1.7%" came from comparing a 32-worker run taken *before* the gRPC
+flow-control fix with a 64-worker run taken *after* it, both at the same offered rate. Two
+configurations have to be compared at each one's own ceiling, not at a rate they can both serve.
+
+### 6.2 Pipelining the commit's round trips would not help — issue #307
+
+Each commit is four sequential round trips: `BEGIN`, the `tx_status` insert, one state insert per
+namespace, `COMMIT`. Batching them with `pgx.Batch` is open as #307, and for this workload it is
+worth roughly 0.4%.
+
+The reason is that a batch on one connection still executes its statements **sequentially
+server-side**, so pipelining removes network round trips and not database work. Of the 264 ms commit,
+104 ms is the status insert and 121 ms the state insert, and both are execution and queueing inside
+YugabyteDB; a local-network round trip is a fraction of a millisecond. The saving is one round trip
+out of 264 ms.
+
+It may still be worth doing for a latency-sensitive deployment with small batches, where the fixed
+round-trip cost is a larger share. It is not a throughput lever here.
 
 ## Where the pipeline stands
 
@@ -173,9 +235,13 @@ is biased towards slow ones. Use `inflight / throughput` when in-flight exceeds 
 | Start of the evaluation | 80,000 tps | |
 | After sections 1-4 | 500,000 tps requested and delivered, 99.9%, 645 ms mean | sustainable-rate hold, sidecar in the path |
 | Same deployment, over-driven | 510,371 mean / 528,800 peak | asking 1,000,000 |
-| **After section 5 (gRPC windows)** | **527,050 sustained at 562 ms**, knee ~530,000 | higher rate *and* lower latency than before |
-| Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000 |
+| **After section 5 (gRPC windows)** | **505,900 at 392 ms; 519,800 at 472 ms** | sustainable holds, fresh deployment, holds run first |
+| Same, over-driven | **578,383 mean / 590,400 peak** | asking 1,000,000, run first on a fresh deployment |
 | Coordinator-direct, sidecar out of the path | 525,388 mean / 533,213 peak | measured before section 5; the sidecar's throughput cost is within noise |
+
+Latency at a given rate improved along with throughput, which is unusual enough to state plainly:
+500,000 tps cost 645 ms before section 5 and 392 ms after. Removing the flow-control stall let the
+pipeline stop holding work upstream, so in-flight at 500,000 fell to 230,000.
 
 Every figure above depends on how full the state database was and on the day it was taken: this
 cluster's baseline moves about 15% between days with identical code, which is recorded in
