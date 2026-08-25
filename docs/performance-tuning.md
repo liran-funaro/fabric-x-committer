@@ -34,7 +34,29 @@ Each `→` is a bounded channel or gRPC stream. The system uses three types of f
 
 - **Slot-based limits** act as per-transaction semaphores. Slots are acquired before processing and released only when transactions complete downstream. When exhausted, channels fill up and the Sidecar stops pulling blocks.
 - **Channel buffers** connect adjacent stages within a process. When full, the producer blocks.
-- **gRPC flow control** operates at the transport layer between services. gRPC uses HTTP/2 flow control windows — when a receiver is slow, its window fills up and the sender is blocked from writing more data. This prevents a fast producer (e.g., Sidecar) from overwhelming a slow consumer (e.g., Coordinator) at the network level, independent of the application-level slot and channel limits.
+- **gRPC flow control** operates at the transport layer between services. gRPC uses HTTP/2 flow
+  control windows — when a receiver is slow, its window fills up and the sender is blocked from
+  writing more data. This prevents a fast producer (e.g., Sidecar) from overwhelming a slow consumer
+  (e.g., Coordinator) at the network level, independent of the application-level slot and channel
+  limits.
+
+  **This one is sized deliberately, and the defaults were once the whole pipeline's ceiling.**
+  `connection.InitialWindowSize` and `InitialConnWindowSize` (`utils/connection/client.go`) set 16 MB
+  per stream and 32 MB per connection, applied to clients when dialling and to servers in
+  `utils/serve`. Both ends need it: the window a peer may write into is the one this side advertises.
+  Note that setting them at all disables gRPC's own BDP-based window auto-tuning, so they are chosen
+  generously rather than tightly.
+
+  Without them, a saturated nineteen-machine cluster had *every* coordinator sender to the signature
+  verifiers, and five of six to the validator-committers, blocked in
+  `transport.(*writeQuota).get` — out of stream send quota — each using a quarter of a core while the
+  verifiers they feed sat at 34% CPU holding 1,700 transactions of a 128,000 capacity. Raising the
+  windows was worth 13% throughput and cut latency at a fixed 500,000 tps from 645 ms to 392 ms.
+  They are credit limits rather than allocations, so they add no buffering at operating rates.
+
+  The symptom to look for is a sender blocked in `writeQuota.get` in a goroutine dump while the
+  receiving service has spare CPU and empty queues. No CPU profile shows it, because the sender is
+  not running.
 
 Setting any limit too low starves the pipeline — stages run in lock-step rather than streaming, and throughput drops. Setting limits too high increases memory usage and queuing latency. The goal is finding the balance where the pipeline has enough in-flight work to sustain throughput without excessive queuing.
 
