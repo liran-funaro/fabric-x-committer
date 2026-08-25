@@ -187,6 +187,19 @@ something else in the histogram path is. Until that is traced, do not quote a hi
 latency when `little_ms` disagrees with it by more than about 3× — and note that all the latencies
 quoted in this document as *results* come from rows where the two agree.
 
+One structural observation while chasing it: **no measured latency in this evaluation comes from the
+committer.** Every figure is the load generator's, from `OnSendBatch` to `OnReceiveBatch`, so it
+carries the generator's own queueing and depends on the generator's sampling being sound. The sidecar
+exposes per-stage block timings but nothing for a block's whole round trip — received to statuses
+returned. A single sidecar-side histogram of that would give a latency signal that does not depend on
+the harness at all, and would have settled today's 39-second question in one query instead of an
+in-flight accounting exercise. Worth adding before the next latency claim.
+
+One thing the arithmetic does rule out: no transaction can complete in 2 ms, because database commit
+alone is ~200 ms. So those readings are not slow transactions being under-counted — they are
+`time.Since(created)` being computed against a `created` that was set far too recently, which points
+at the send path recording a transaction more than once rather than at the sampling.
+
 ## 6. The committer is no longer the bottleneck — the database is
 
 Located after 5.1 moved the constraint. Every committer stage now has headroom:
