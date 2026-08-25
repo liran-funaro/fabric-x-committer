@@ -502,7 +502,6 @@ Constraints found and resolved, in order:
 | Sidecar `waiting-txs-limit` below the coordinator's window | matched to it; was misread as a sidecar cost |
 | Coordinator dependency graph halting under load | fixed (`drain_test.go`) |
 | Oversized `waiting-txs-limit` (latency and memory) | 20M → 500K, 100× less memory |
-| Sidecar `waiting-txs-limit` below the coordinator's window | matched to it; was misread as a sidecar cost |
 | Database commit worker count | 32 → 64 per VC, +6.8% |
 | **Signature verification batch cutoff** | **current, untested** |
 
