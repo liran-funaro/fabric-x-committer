@@ -55,8 +55,19 @@ measurement that motivated each one is in its own issue, and the full account wi
 including the retracted findings, is in `docs/cluster-optimization-log.md` and
 `docs/optimization-summary.md`.
 
-Children: #784 #772 #791 #785 #786 #787 #788 #789 #790 #797 (itself the parent of the five benchmark issues),
-plus one in `fabric-x-common` for the block store's unused transaction index information.
+Children: #784 #772 #791 #785 #786 #787 #788 #789 #790 #797 (itself the parent of the five benchmark
+issues).
+
+One change lives outside this repository, so it cannot be linked as a sub-issue:
+**hyperledger/fabric-x-common#165** — *[blkstorage] Do not build tx index information no index will
+read*. `serializeBlock` extracts a transaction ID per envelope and builds a `txindexInfo` and a
+`locPointer` for each, whatever the store is configured to index, and a sidecar that indexes by block
+number alone reads none of it. Because the append is one serialized goroutine, that was the pipeline's
+ceiling: 22.2 ms of a 22.2 ms per-block budget on a machine at 18% CPU. Append went 22.2 ms → 7.1 ms,
+lifting the sidecar's own ceiling from ~451,000 tps.
+
+It pays off only together with #784 — a store still indexing transaction IDs genuinely needs that
+information — so the two belong in the same deployment.
 
 Where the constraint ends up: not in the committer. At 500,000 tps every committer stage has headroom
 — sidecar 14% CPU, coordinator 21%, verifiers 34%, validator-committer preparer 4 of 96 workers busy —
@@ -330,8 +341,9 @@ case hangs outright, so the sweep cannot be widened without it.
 
 ## hyperledger/fabric-x-common#165. [blkstorage] Do not build tx index information no index will read
 
-**Filed in `hyperledger/fabric-x-common`.** Referenced here because the committer is where the effect
-is measured.
+**Filed as `hyperledger/fabric-x-common#165`**, and named in the umbrella's body since a sub-issue
+cannot cross repositories. Recorded here because the committer is where the effect is measured, and it
+pairs with #784, which is what configures a store to index by block number alone.
 
 `serializeBlock` extracts a transaction ID for every envelope and builds a `txindexInfo` and a
 `locPointer` for each, whatever the store is configured to index. Only two indexes read any of it: the
