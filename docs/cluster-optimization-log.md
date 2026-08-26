@@ -622,17 +622,31 @@ per-namespace duplicate-key validation does not catch it because the two contrib
 different namespaces. The lesson is the ordinary one -- the claim was made from the measurement rather
 than from the code, and reading the code was what settled it, in both directions.
 
-**A benchmark that hangs looks like a benchmark that is slow.** `BenchmarkDependencyGraph` numbered
-its batches from 0, and the local dependency constructor releases a batch only after its predecessor,
-so every default-manager case waited forever on a predecessor that could not exist. It had never
-measured the production manager at all — only the simple manager, which does not use that
-constructor. What made it look like slowness rather than a deadlock is that the benchmark generates
-`b.N*3` transactions with a single-worker profile, so at large `b.N` it genuinely does spend minutes
-generating. A goroutine dump distinguished the two in one step: 1.1% CPU, and the constructor parked
-in `sync.Cond.Wait` for five minutes. With it fixed, the local constructor pool turns out not to
-bound the default manager at all — 1 through 32 constructors give 216,886 / 249,691 / 220,000 /
-246,929 / 221,484 / 228,068 tx/s, no trend — because the ceiling is in the global manager's two
-single goroutines.
+**One parked goroutine was written up as a benchmark that could not run at all.**
+`BenchmarkDependencyGraph` numbered its batches from 0, and the local dependency constructor releases
+a batch only after its predecessor, so batch 0 does `CompareAndSwap(0-1, 0)` against a counter that
+starts at 0 and can never succeed. That much is real. The conclusion drawn from it — that every
+default-manager case hung and the benchmark had never measured the production manager at all — is
+not. Batch 0 parks exactly **one** constructor goroutine; batch 1 does `CompareAndSwap(0, 1)`, which
+succeeds, and every later batch follows it. With two or more constructors the remaining ones carry
+the whole load.
+
+Measured rather than argued, on the same machine, `no-dep` shape, 20,000 iterations: batch IDs from 0
+give `global-local-2` **247,439 tx/s**, and from 1 give `global-local-1` **249,222 tx/s**. Same number
+within noise. The pre-fix table held only the 2- and 4-constructor cases, so **no case in it hung**,
+and the 47.6% cluster comparison it was said to invalidate had a valid in-process counterpart all
+along.
+
+What the fix actually bought is the `workers: 1` case, which does hang with IDs from 0 — verified, it
+times out — and which did not exist until the sweep was widened to 1 / 8 / 16 / 32. That sweep is the
+result worth keeping: the local constructor pool does not bound the default manager at all, since 1
+through 32 constructors give 216,886 / 249,691 / 220,000 / 246,929 / 221,484 / 228,068 tx/s with no
+trend, because the ceiling is in the global manager's two single goroutines.
+
+The error was reading a goroutine dump — 1.1% CPU, a constructor parked in `sync.Cond.Wait` for five
+minutes — as the state of the whole benchmark rather than of one of its goroutines, and never running
+the pre-fix case to completion to check. A hypothesis about why something hangs is testable by letting
+it run.
 
 **Every figure here was measured on a workload that only ever inserts new keys, and the attempt to
 measure anything else failed.** With `key-backref-rate` at 0, each transaction's two read-write

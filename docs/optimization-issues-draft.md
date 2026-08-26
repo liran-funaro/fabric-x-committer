@@ -38,7 +38,7 @@ hardware. See section 4 of the summary.
 | 10.2 | [coordinator] Benchmark the signature verifier manager | committer | new, child of 10 |
 | 10.3 | [loadgen] Benchmark the submit path | committer | new, child of 10 |
 | 10.4 | [loadgen] Sweep transaction generation over core count | committer | new, child of 10 |
-| 10.5 | [coordinator] The dependency graph benchmark cannot run the default manager | committer | new, child of 10 |
+| 10.5 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | new, child of 10 |
 | 11 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | new, filed there |
 
 ---
@@ -310,13 +310,22 @@ worker count is a property of the machine that will run the generator and cannot
 
 Sweep the generation rate over worker count so the setting can be measured rather than guessed.
 
-### 10.5. [coordinator] The dependency graph benchmark cannot run the default manager
+### 10.5. [coordinator] Sweep the dependency graph benchmark over the constructor pool
 
-The existing dependency graph benchmark cannot be run against the default manager, so the comparison in
-#3 — 329,854 tps against the simple manager's 486,941 — had no in-process counterpart.
+`BenchmarkDependencyGraph` covers both managers but exercises the default one at only 2 and 4 local
+dependency constructors, so it cannot say whether that pool is what bounds it — the question anyone
+tuning `num-of-local-dep-constructors` is actually asking.
 
-Fix the benchmark to cover both managers. Without it the choice between them rests on cluster runs
-alone, which is the weakest evidence available for a 47.6% difference.
+Widen the sweep to 1 / 2 / 4 / 8 / 16 / 32. The answer is that the pool is not the bound: 216,886 /
+249,691 / 220,000 / 246,929 / 221,484 / 228,068 tx/s, no trend, because the ceiling is in the global
+manager's two single goroutines. That is worth pinning in a benchmark, since the setting reads like a
+throughput knob and is not one.
+
+Number the batches from 1 while there, as the coordinator's own numbering does. Batch 0 does
+`CompareAndSwap(0-1, 0)` against a counter starting at 0, which never succeeds, so it parks one
+constructor goroutine permanently and loses that batch. With two or more constructors the rest carry
+the load and the reported rate is unaffected — 247,439 against 249,222 tx/s — but the 1-constructor
+case hangs outright, so the sweep cannot be widened without it.
 
 ## 11. [blkstorage] Do not build tx index information no index will read
 

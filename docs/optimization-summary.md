@@ -54,7 +54,7 @@ for nothing.
 | 3.2 | **A signature verifier manager benchmark** — the real manager against mock verifiers that do no signature work | ~560,000 tx/s on one stream, ~1.08M on three: 3.3× the cluster's per-sender rate, which ruled the manager out before any code was changed | `0e245c2d` |
 | 3.3 | **[loadgen] Benchmark the submit path, not just generation** | separated the generator's ceiling from the committer's, which a ramp cannot do | `2e575dd3` |
 | 3.4 | **[loadgen] Add generation sweeps for the rate a deployment can offer** | showed the generator's plateau moves with core count, so a setting must be measured on the machine that will run it | `9b3dbefb` |
-| 3.5 | **[coordinator] Fix a benchmark that could never run the default manager** | the manager comparison in 1.3 was invalid before this | `5e9a7ef8` |
+| 3.5 | **[coordinator] Sweep the dependency graph benchmark over the constructor pool** | the pool does not bound the default manager: 216,886 → 228,068 tx/s over 1–32 constructors, no trend | `5e9a7ef8` |
 
 ## 4. Configuration and deployment tuning
 
