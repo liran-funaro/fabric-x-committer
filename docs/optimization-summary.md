@@ -8,7 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 
 A summary of `cluster-optimization-log.md`, which is the full account and carries the evidence for
 every number here. The issues opened for this work, with their numbers, are in
-`optimization-issues.md`; the umbrella is #798.
+`optimization-issues.md`; the umbrella is #798. The assembled configuration that produced these
+figures — every non-default setting in one place — is in `optimization-config.md`.
 
 The evaluation ran on nineteen machines — one sidecar, one coordinator, three signature verifiers, six
 validator-committers, and a twelve-node YugabyteDB — and took the committer from 80,000 to 500,000

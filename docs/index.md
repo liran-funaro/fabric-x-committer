@@ -44,7 +44,7 @@ Ordering Service
 
 See the [Setup Guide](setup.md) for prerequisites, build instructions, and running tests.
 
-For production deployments, start with the [Deployment Guide](deployment-guide.md) for hardware sizing and topology, then the [Performance Tuning](performance-tuning.md) guide for configuration parameters.
+For production deployments, start with the [Deployment Guide](deployment-guide.md) for hardware sizing and topology, then the [Performance Tuning](performance-tuning.md) guide for configuration parameters. For a worked example, [Optimization Configuration](optimization-config.md) is the complete setup that sustained 500,000 transactions per second on nineteen machines.
 
 ## Documentation Overview
 
@@ -55,3 +55,4 @@ For production deployments, start with the [Deployment Guide](deployment-guide.m
 | [Services](sidecar.md) | Detailed documentation for each service: workflows, APIs, configuration, recovery |
 | [Configuration](tls-configurations.md) | TLS setup, logging, metrics reference, namespace policies |
 | [Development](core-concurrency-pattern.md) | Internal patterns (errgroup, context-aware channels) and load generator tooling |
+| [Performance](performance-tuning.md) | What each setting does; the [measured configuration](optimization-config.md) behind 500,000 tps, and [what each change was worth](optimization-summary.md) |

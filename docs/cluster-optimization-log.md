@@ -5,11 +5,16 @@ SPDX-License-Identifier: Apache-2.0
 -->
 # Cluster Optimization Log
 
-A record of the changes that took a nineteen-machine deployment from 80,000 to roughly 357,000
-committed transactions per second, what the evidence for each was, and which of them turned out
-to buy nothing. It is a companion to the [Performance Tuning Guide](performance-tuning.md): that
-guide says what each parameter does, this one says what actually moved on real hardware and how
-the constraint was located each time.
+A record of the changes that took a nineteen-machine deployment from 80,000 to 500,000 committed
+transactions per second sustained — 578,383 over-driven — what the evidence for each was, and which of
+them turned out to buy nothing. It is a companion to the
+[Performance Tuning Guide](performance-tuning.md): that guide says what each parameter does, this one
+says what actually moved on real hardware and how the constraint was located each time.
+
+Three shorter documents draw on this one: [`optimization-summary.md`](optimization-summary.md) for what
+each change was worth, [`optimization-config.md`](optimization-config.md) for the assembled
+configuration that produced the figures, and [`optimization-issues.md`](optimization-issues.md) for the
+issues filed.
 
 The changes that bought nothing are recorded as carefully as the ones that worked. Four of the
 six constraints found were not where the first hypothesis put them, and two well-reasoned fixes
