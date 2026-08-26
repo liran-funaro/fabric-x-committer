@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -36,7 +37,7 @@ type perfMetrics struct {
 	transactionStatusesProcessingInRelaySeconds prometheus.Histogram
 
 	waitingTransactionsQueueSize prometheus.Gauge
-	serverConnections            prometheus.Gauge
+	serverMetrics                *serve.ServerMetrics
 
 	// queue sizes
 	yetToBeCommittedBlocksQueueSize prometheus.Gauge
@@ -52,7 +53,6 @@ type perfMetrics struct {
 	transactionOutThroughput prometheus.Counter
 
 	// notifier metrics
-	notifierActiveStreams          prometheus.Gauge
 	notifierPendingTxIDs           prometheus.Gauge
 	notifierUniquePendingTxIDs     prometheus.Gauge
 	notifierTxIDsStatusDeliveries  prometheus.Counter
@@ -123,7 +123,7 @@ func newPerformanceMetrics() *perfMetrics {
 			Namespace: namespace,
 			Subsystem: "coordinator",
 		}),
-		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: "grpc",
 		}),
@@ -151,12 +151,6 @@ func newPerformanceMetrics() *perfMetrics {
 			Subsystem: subsystemRelay,
 			Name:      "transaction_out_total",
 			Help:      "Total number of transaction statuses processed from the coordinator.",
-		}),
-		notifierActiveStreams: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: subsystemNotifier,
-			Name:      "active_streams",
-			Help:      "Number of active notification streams.",
 		}),
 		notifierPendingTxIDs: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
