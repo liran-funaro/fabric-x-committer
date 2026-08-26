@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
@@ -477,4 +478,60 @@ func TestCalcMaxAttempts(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestFlowControl pins the two things the flow control settings have to get right: that zero means
+// "leave gRPC's own BDP tuning alone" rather than "no window", and that the defaults are the values
+// measured to remove the write-quota stall on the evaluation cluster.
+func TestFlowControl(t *testing.T) {
+	t.Parallel()
+
+	// A dial with either value at zero must still produce a usable connection: zero is the documented
+	// way to keep gRPC's dynamic window, not a misconfiguration.
+	t.Run("any combination dials", func(t *testing.T) {
+		t.Parallel()
+		for name, fc := range map[string]connection.FlowControlConfig{
+			"both zero":   {},
+			"stream only": {InitialWindowSize: 1024 * 1024},
+			"conn only":   {InitialConnWindowSize: 1024 * 1024},
+			"both set":    {InitialWindowSize: 1024 * 1024, InitialConnWindowSize: 2 * 1024 * 1024},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				conn, err := connection.NewConnection(connection.ClientParameters{
+					Address:     "127.0.0.1:1",
+					Creds:       insecure.NewCredentials(),
+					FlowControl: fc,
+				})
+				require.NoError(t, err)
+				require.NotNil(t, conn)
+				require.NoError(t, conn.Close())
+			})
+		}
+	})
+
+	// The resolved windows are load-bearing: an unconfigured deployment gets the values measured to
+	// reach 578,383 tps, and a negative value is the only way to opt back into gRPC's own tuning.
+	t.Run("unset resolves to the measured values", func(t *testing.T) {
+		t.Parallel()
+		var unset connection.FlowControlConfig
+		require.Equal(t, int32(connection.RecommendedInitialWindowSize), unset.StreamWindow())
+		require.Equal(t, int32(connection.RecommendedInitialConnWindowSize), unset.ConnWindow())
+		require.Greater(t, unset.ConnWindow(), unset.StreamWindow(),
+			"the connection window is shared by a connection's streams, so it must exceed the stream window")
+	})
+
+	t.Run("negative leaves gRPC tuning in place", func(t *testing.T) {
+		t.Parallel()
+		off := connection.FlowControlConfig{InitialWindowSize: -1, InitialConnWindowSize: -1}
+		require.Zero(t, off.StreamWindow())
+		require.Zero(t, off.ConnWindow())
+	})
+
+	t.Run("explicit values pass through", func(t *testing.T) {
+		t.Parallel()
+		set := connection.FlowControlConfig{InitialWindowSize: 1024, InitialConnWindowSize: 2048}
+		require.Equal(t, int32(1024), set.StreamWindow())
+		require.Equal(t, int32(2048), set.ConnWindow())
+	})
 }

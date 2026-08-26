@@ -47,23 +47,25 @@ const (
 	//       Hence, we need to move this constant to fabric-x-common.
 	// MaxMsgSize is set to 100MB.
 	MaxMsgSize = 100 * 1024 * 1024
-	// InitialWindowSize and InitialConnWindowSize size HTTP/2 flow control, per stream and per
-	// connection. They are set because gRPC's defaults measured as the whole pipeline's ceiling: every
+	// RecommendedInitialWindowSize and RecommendedInitialConnWindowSize are the HTTP/2 flow control
+	// windows applied when FlowControlConfig leaves a field unset, per stream and per connection.
+	// They exist because gRPC's own defaults measured as the whole pipeline's ceiling: every
 	// coordinator sender to the verifiers blocked in transport.(*writeQuota).get while the verifiers
 	// they feed sat at a third of their CPU. docs/performance-tuning.md carries the measurement and
 	// the diagnostic signature.
 	//
 	// Three things to know before changing them. Setting either at all disables gRPC's own BDP-based
-	// tuning, so they are generous rather than tight. They have to be raised on both ends, because the
-	// window a peer may write into is the one this side advertises -- utils/serve applies these same
-	// values to every server. And because they are what a peer may write before the application reads
+	// tuning, so they are generous rather than tight. They have to be sized on both ends, because the
+	// window a peer may write into is the one this side advertises -- utils/serve resolves the same
+	// values for every server. And because they are what a peer may write before the application reads
 	// it, they bound how much unread data one connection can make a server hold; for the
-	// client-facing query and notification endpoints, bound that with the server's MaxConcurrentStreams
-	// and RateLimit rather than by shrinking the window back.
-	InitialWindowSize = 16 * 1024 * 1024
-	// InitialConnWindowSize is the connection-level counterpart of InitialWindowSize.
-	InitialConnWindowSize = 32 * 1024 * 1024
-	scResolverSchema      = "sc.connection"
+	// client-facing query and notification endpoints, bound that with the server's
+	// MaxConcurrentStreams and RateLimit rather than by shrinking the window back.
+	RecommendedInitialWindowSize = 16 * 1024 * 1024
+	// RecommendedInitialConnWindowSize is the connection-level counterpart, shared by a connection's
+	// streams, so it exceeds RecommendedInitialWindowSize.
+	RecommendedInitialConnWindowSize = 32 * 1024 * 1024
+	scResolverSchema                 = "sc.connection"
 )
 
 type (
@@ -74,9 +76,10 @@ type (
 
 	// DialInfo contains the parameters to dial a connection.
 	DialInfo struct {
-		Endpoints []*Endpoint
-		TLS       TLSCredentials
-		Retry     *retry.Profile
+		Endpoints   []*Endpoint
+		TLS         TLSCredentials
+		Retry       *retry.Profile
+		FlowControl FlowControlConfig
 	}
 
 	// ClientParameters contain connection parameters.
@@ -84,6 +87,7 @@ type (
 		Address        string
 		Creds          credentials.TransportCredentials
 		Retry          *retry.Profile
+		FlowControl    FlowControlConfig
 		AdditionalOpts []grpc.DialOption
 	}
 )
@@ -101,9 +105,10 @@ func NewDialInfo(config *MultiClientConfig) (*DialInfo, error) {
 		return nil, err
 	}
 	return &DialInfo{
-		Endpoints: config.Endpoints,
-		Retry:     config.Retry,
-		TLS:       *tls,
+		Endpoints:   config.Endpoints,
+		Retry:       config.Retry,
+		TLS:         *tls,
+		FlowControl: config.FlowControl,
 	}, nil
 }
 
@@ -135,9 +140,10 @@ func (d *DialInfo) NewLoadBalancedConnection() (*grpc.ClientConn, error) {
 
 	if len(d.Endpoints) == 1 {
 		return NewConnection(ClientParameters{
-			Address: d.Endpoints[0].Address(),
-			Retry:   d.Retry,
-			Creds:   tlsCredentials,
+			Address:     d.Endpoints[0].Address(),
+			Retry:       d.Retry,
+			Creds:       tlsCredentials,
+			FlowControl: d.FlowControl,
 		})
 	}
 
@@ -157,6 +163,7 @@ func (d *DialInfo) NewLoadBalancedConnection() (*grpc.ClientConn, error) {
 		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), targetName),
 		Creds:          tlsCredentials,
 		Retry:          d.Retry,
+		FlowControl:    d.FlowControl,
 		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
 	})
 }
@@ -170,9 +177,10 @@ func (d *DialInfo) NewConnectionPerEndpoint() ([]*grpc.ClientConn, error) {
 	connections := make([]*grpc.ClientConn, len(d.Endpoints))
 	for i, e := range d.Endpoints {
 		connections[i], err = NewConnection(ClientParameters{
-			Address: e.Address(),
-			Creds:   tlsCreds,
-			Retry:   d.Retry,
+			Address:     e.Address(),
+			Creds:       tlsCreds,
+			Retry:       d.Retry,
+			FlowControl: d.FlowControl,
 		})
 		if err != nil {
 			CloseConnectionsLog(connections[:i]...)
@@ -189,9 +197,10 @@ func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return NewConnection(ClientParameters{
-		Address: config.Endpoint.Address(),
-		Creds:   tlsCreds,
-		Retry:   config.Retry,
+		Address:     config.Endpoint.Address(),
+		Creds:       tlsCreds,
+		Retry:       config.Retry,
+		FlowControl: config.FlowControl,
 	})
 }
 
@@ -206,9 +215,15 @@ func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
 			grpc.MaxCallSendMsgSize(MaxMsgSize),
 		),
 		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
-		grpc.WithInitialWindowSize(InitialWindowSize),
-		grpc.WithInitialConnWindowSize(InitialConnWindowSize),
 	}, p.AdditionalOpts...)
+	// Zero leaves gRPC's BDP-based window tuning in place; any value disables it. See
+	// FlowControlConfig.
+	if window := p.FlowControl.StreamWindow(); window > 0 {
+		dialOpts = append(dialOpts, grpc.WithInitialWindowSize(window))
+	}
+	if window := p.FlowControl.ConnWindow(); window > 0 {
+		dialOpts = append(dialOpts, grpc.WithInitialConnWindowSize(window))
+	}
 
 	cc, err := grpc.NewClient(p.Address, dialOpts...)
 	if err != nil {
