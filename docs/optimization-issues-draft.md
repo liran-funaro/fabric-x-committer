@@ -11,6 +11,10 @@ Drafts for the issues to open for the work in `optimization-summary.md`. Nothing
 One umbrella issue plus a child per change. Evidence for every number is in
 `cluster-optimization-log.md`; the issue bodies below state only the change and what drove it.
 
+Negative results are not filed as issues. The one that concerns an existing issue —
+`pgx.Batch` (**#307**), worth roughly 0.4% here because a batch still executes sequentially
+server-side — is recorded as a comment on #307 and is deliberately **not** a child of the umbrella.
+
 Deployment and configuration tuning is deliberately **not** filed — it is specific to this
 evaluation's nineteen-machine cluster, and a shipped default would have to be argued on other
 hardware. See section 4 of the summary.
@@ -28,8 +32,13 @@ hardware. See section 4 of the summary.
 | 6 | [sidecar] Key validation and TX references allocate per transaction | committer | new |
 | 7 | [sidecar] Back a block's decoded transactions with one allocation | committer | new |
 | 8 | [sidecar] Mapping's result carries the scaffolding that built it | committer | new |
-| 9 | [grpc] HTTP/2 flow control is unset and caps the pipeline | committer | new |
-| 10 | Benchmarks for attributing committer performance | committer | new |
+| 9 | [grpc] Add a per-client and per-server `flow-control` section; HTTP/2 windows are unset and cap the pipeline | committer | new |
+| 10 | Benchmarks for attributing committer performance | committer | new, parent |
+| 10.1 | [sidecar] Benchmark the whole service end to end | committer | new, child of 10 |
+| 10.2 | [coordinator] Benchmark the signature verifier manager | committer | new, child of 10 |
+| 10.3 | [loadgen] Benchmark the submit path | committer | new, child of 10 |
+| 10.4 | [loadgen] Sweep transaction generation over core count | committer | new, child of 10 |
+| 10.5 | [coordinator] The dependency graph benchmark cannot run the default manager | committer | new, child of 10 |
 | 11 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | new, filed there |
 
 ---
@@ -45,8 +54,8 @@ measurement that motivated each one is in its own issue, and the full account wi
 including the retracted findings, is in `docs/cluster-optimization-log.md` and
 `docs/optimization-summary.md`.
 
-Children: #1 #2 (#772) #3 #4 #5 #6 #7 #8 #9 #10, plus one in `fabric-x-common` for the block store's
-unused transaction index information.
+Children: #1 #2 (#772) #3 #4 #5 #6 #7 #8 #9 #10 (itself the parent of the five benchmark issues),
+plus one in `fabric-x-common` for the block store's unused transaction index information.
 
 Where the constraint ends up: not in the committer. At 500,000 tps every committer stage has headroom
 — sidecar 14% CPU, coordinator 21%, verifiers 34%, validator-committer preparer 4 of 96 workers busy —
@@ -151,36 +160,127 @@ send quota. They were not slow: each used a quarter of a core. The verifiers the
 transactions of a 128,000 capacity and ran 22 of 64 cores, 78% of that in real signature verification.
 The senders were not allowed to write, so the verifiers starved.
 
-Set `InitialWindowSize` and `InitialConnWindowSize` on both ends — the window a peer may write into is
-the one this side advertises. Sized against what is on the wire: a batch marshals to roughly 145 KB.
-Setting either option disables gRPC's own BDP-based tuning, so the values must be generous rather than
-merely adequate. They are credit limits, not allocations: at a sustainable rate the whole pipeline holds
-230,000 transactions, which is the sidecar's own window and essentially nothing else.
+### The change: a `flow-control` section, per client and per server
 
-Measured on the cluster, same day, same deployment shape: over-driven mean 510,371 → 578,383, peak
-528,800 → 590,400, and latency at a sustainable 500,000 tps **645 ms → 392 ms**. Higher throughput at
-lower latency. The same dump afterwards has zero senders blocked on write quota.
+The right window depends on message size and round-trip time, which differ between peers, so this is a
+setting rather than a constant — but the **default** has to be what sustains the measured throughput,
+since a deployment that has to be tuned to reach it has not been fixed.
+
+Add `FlowControlConfig` to `connection.ClientConfig`, `connection.MultiClientConfig` and
+`serve.ServerConfig`, so every client section and every server section accepts:
+
+```yaml
+flow-control:
+  initial-window-size: 16777216       # per stream
+  initial-conn-window-size: 33554432  # per connection, shared by its streams
+```
+
+Semantics, per field:
+
+| Value | Meaning |
+|---|---|
+| unset (0) | apply the recommended window — 16 MiB per stream, 32 MiB per connection |
+| positive | apply that window |
+| negative | apply no window, leaving gRPC's own BDP-based tuning in place |
+
+Three details the implementation has to respect:
+
+- **Both ends.** The window a peer may write into is the one *this* side advertises, so a client
+  raising its own achieves nothing alone. Hence the server section as well as the client one.
+- **Any explicit value disables gRPC's BDP auto-tuning**, so the values must be generous rather than
+  merely adequate — a batch marshals to roughly 145 KB, and the recommended values are ~115 batches
+  per stream. The negative case exists to opt tuning back in.
+- **The recommended values must not be `default:` struct tags.** A tag registers a viper default for a
+  key nested inside `ClientConfig`, and `ClientConfig` is reachable through optional pointer fields
+  whose nil-ness is semantic — the load generator selects its adapter by which client section is
+  present. Registering a default under such a pointer materialises it and silently changes adapter
+  selection. Resolve the recommended value at the point of use instead.
+
+These are credit limits, not allocations, so the cost is bounded buffering per connection and only
+under overload: at a sustainable rate the deployment below held 230,000 transactions in flight, which
+was its own backpressure window and essentially nothing else.
+
+### What it is worth
+
+Measured on the cluster, same day, same deployment shape:
+
+| | before | after |
+|---|---|---|
+| over-driven mean | 510,371 tps | **578,383 tps** (+13.3%) |
+| peak | 528,800 tps | **590,400 tps** |
+| latency at a sustainable 500,000 tps | 645 ms | **392 ms** |
+
+Higher throughput at lower latency. The same goroutine dump afterwards has zero senders blocked on
+write quota.
 
 ## 10. Benchmarks for attributing committer performance
 
 Three of the findings in this umbrella were invisible until the corresponding benchmark existed, and
-one of them stopped a change that would have been made for nothing.
+one of them stopped a change that would have been made for nothing. A cluster tells you the pipeline
+got slower; it does not tell you which stage, and a nineteen-machine baseline moves about 15% between
+days, so small effects are only measurable in-process.
 
-- **An end-to-end sidecar benchmark** — the whole service on one machine with a real ledger and real
-  gRPC, orderer and coordinator stubbed. The only way to attribute a sidecar stage without a cluster;
-  it found the block store ceiling.
-- **A signature-verifier-manager benchmark** — the real manager against mock verifiers that do no
-  signature work. It measures ~560,000 tx/s on one stream and ~1.08M on three, 3.3× the cluster's
-  per-sender rate, which ruled the manager out as the constraint before any code was changed.
-- **A load generator submit-path benchmark** — separates the generator's ceiling from the committer's,
-  which a ramp cannot do.
-- **Generation sweeps** — the generator's plateau moves with core count, so a setting has to be
-  measured on the machine that will run it.
-- **A fix to a coordinator benchmark that could never run the default manager**, which made the manager
-  comparison in #3 valid.
+This issue tracks the set; each benchmark is a child, independently reviewable.
 
-Several shared test helpers need widening from `*testing.T` to `testing.TB` so benchmarks can reuse
-them.
+- #10.1 — end-to-end sidecar
+- #10.2 — coordinator signature verifier manager
+- #10.3 — load generator submit path
+- #10.4 — load generator generation sweep
+- #10.5 — repair the dependency graph benchmark
+
+Shared prerequisite: several test helpers must widen from `*testing.T` to `testing.TB` so benchmarks
+can reuse them (`utils/test.WaitForConnections`, `mock.StartMockVerifierService`, and the coordinator
+and sidecar test environments). Precedent exists in `mock/test_exports.go`, where
+`StartMockCoordinatorService` and `NewOrdererTestEnv` are already `testing.TB`.
+
+### 10.1. [sidecar] Benchmark the whole service end to end
+
+The sidecar has per-function benchmarks but none of the assembled service, so no way to tell which of
+its stages binds without a cluster.
+
+Run the real service on one machine against a real block store and real gRPC, with the orderer and the
+coordinator stubbed, and report tx/s. Generate the transactions before the timed section, or setup
+dominates the profile.
+
+This is what found the block store ceiling (#1, #11): it put a serialized goroutine at a 100% per-block
+duty cycle on a machine at 18% CPU, which no machine-level metric shows.
+
+### 10.2. [coordinator] Benchmark the signature verifier manager
+
+On the cluster, `coordinator_verifier_input_batch_queue_size` was the only non-empty queue in the
+pipeline, which reads as the manager being unable to drain it.
+
+Drive the real manager against mock verifiers, which return statuses without doing signature work, so
+only the manager's own send/receive path is measured. Parameterise over the number of verifier
+endpoints.
+
+It measures ~560,000 tx/s on one stream and ~1.08M on three — 3.3x the cluster's per-sender rate — which
+ruled the manager out before any code was changed. The queue was full because the senders were blocked
+on gRPC write quota (#9), not because the manager was slow.
+
+### 10.3. [loadgen] Benchmark the submit path
+
+A ramp cannot separate the generator's own ceiling from the committer's: both present as the delivered
+rate flattening. On this cluster the generator capped every run near 325,000 tps and the committer was
+blamed for it.
+
+Benchmark the submit path alone, per signature scheme, so the generator's ceiling is a known number
+before a committer result is quoted against it.
+
+### 10.4. [loadgen] Sweep transaction generation over core count
+
+Generation throughput plateaus, and where it plateaus moves with the number of cores, so the right
+worker count is a property of the machine that will run the generator and cannot be a fixed default.
+
+Sweep the generation rate over worker count so the setting can be measured rather than guessed.
+
+### 10.5. [coordinator] The dependency graph benchmark cannot run the default manager
+
+The existing dependency graph benchmark cannot be run against the default manager, so the comparison in
+#3 — 329,854 tps against the simple manager's 486,941 — had no in-process counterpart.
+
+Fix the benchmark to cover both managers. Without it the choice between them rests on cluster runs
+alone, which is the weakest evidence available for a 47.6% difference.
 
 ## 11. [blkstorage] Do not build tx index information no index will read
 
