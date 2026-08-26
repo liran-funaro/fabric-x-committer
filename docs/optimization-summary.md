@@ -4,39 +4,25 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Optimization summary and issue plan
+# Optimization summary
 
-Everything on this branch that changes throughput, latency or allocation behaviour, relative to
-`main`, together with how it is to be tracked. `cluster-optimization-log.md` is the narrative and
-carries the evidence for every number here; this file is the index and the issue plan.
+A summary of `cluster-optimization-log.md`, which is the full account and carries the evidence for
+every number here. The issues to be opened for this work are drafted separately in
+`optimization-issues-draft.md`.
 
-Two scoping rules apply throughout:
+The evaluation ran on nineteen machines — one sidecar, one coordinator, three signature verifiers, six
+validator-committers, and a twelve-node YugabyteDB — and took the committer from 80,000 to 500,000
+transactions per second sustained.
 
-- **Section 4 is not filed and not proposed as repo defaults.** It is deployment tuning for this
-  evaluation's nineteen-machine cluster, recorded here so the numbers in the other sections can be
-  reproduced. Values that belong in a shipped default would have to be argued separately, on
-  hardware that is not this cluster.
-- Commit hashes are given for orientation only. This branch is rebased onto `main` regularly, so
-  match on the subject line rather than the hash.
-
-## How this maps to issues
-
-| | Tracked as |
-|---|---|
-| Umbrella | one new issue, referencing every child below |
-| Sections 1, 3, 5 | one child issue each row |
-| Section 2 | an issue in the `fabric-x-common` repository, referenced by the umbrella here |
-| Section 4 | not filed — deployment tuning for this cluster |
-| Section 6 | not filed — the constraint is outside the committer, and 6.1–6.3 are results rather than work |
-
-`#772` already covers row 1.2 and needs no new issue.
+Commit hashes are given for orientation only. This branch is rebased onto `main` regularly, so match
+on the subject line rather than the hash.
 
 ## 1. Committer code optimizations
 
 | # | Optimization | Measured | Commit |
 |---|---|---|---|
 | 1.1 | **[sidecar] Make the block store transaction ID index optional** — the index wrote one LevelDB entry per transaction rather than per block, and its compaction grew with the ledger | 115,200 → 297,200 tps; removed 35% of sidecar CPU and a decay from 102,102 to 67,886 tps over two hours | `5bba0aa8` |
-| 1.2 | **[sidecar] Replace the relay's sync maps with single-owner tracking** — two `sync.Map`s touched four times per transaction, at 100% key churn | 297,200 → 305,600 tps | `495aeea6` — **#772** |
+| 1.2 | **[sidecar] Replace the relay's sync maps with single-owner tracking** — two `sync.Map`s touched four times per transaction, at 100% key churn | 297,200 → 305,600 tps | `495aeea6` |
 | 1.3 | **[coordinator] Allow selecting the simple dependency graph manager** | +47.6%, 329,854 → 486,941 tps; the default manager starved the database at 62 ms batch commit and 60% CPU | `9bdabd00` |
 | 1.4 | **[coordinator] Stop the simple dependency graph latching the pipeline** — prerequisite correctness fix, not a gain in itself | without it the pipeline halts under load | `c9dd45c8` |
 | 1.5 | **[sidecar] Parse a block's transactions in parallel** — up to 16 goroutines, with the fold-in and the dedup still ordered | mapping 5.3×, 408,000 → 2,308,000 tx/s; worth +26% end to end (497,000 → 628,000) but *nothing* until the block store stopped being the binding stage | `069c1d29` |
@@ -44,8 +30,8 @@ Two scoping rules apply throughout:
 | 1.7 | **[sidecar] Back a block's decoded TXs with one allocation** — `UnmarshalTxInto` writes into a per-block slab | 19 → 18 allocs/tx, identically at every block size | `02e9b9e8` |
 | 1.8 | **[sidecar] Separate mapping's scaffolding from its result** — the result no longer carries the slabs, the dedup set or the collected TX IDs | releases one string slice per in-flight block; allocations unchanged | `0243503f` |
 
-The largest committer code optimization of all is **section 5**, kept separate because the account of
-how it was found is most of its value. Treat it as row 1.9 when filing.
+The largest committer code optimization is **section 5**, kept separate because the account of how it
+was found is most of its value.
 
 ## 2. fabric-x-common
 
@@ -53,25 +39,27 @@ how it was found is most of its value. Treat it as row 1.9 when filing.
 |---|---|---|
 | 2.1 | **[blkstorage] Do not build tx index information no index will read** — `serializeBlock` extracted a txID for every envelope, and built a `txindexInfo` and a `locPointer` each, whatever the store was configured to index | ledger append 22.2 → 7.1 ms per 10,000-transaction block; the stage was at a 100% duty cycle and capped the pipeline at ~451,000 tps |
 
-Filed in `hyperledger/fabric-x-common`. The committer's own issue for it is the umbrella's reference,
-because the committer is where the effect is measured: with `disable-tx-id-index` set, a sidecar pays
-for index information nothing reads.
+The committer is where the effect is measured: with `disable-tx-id-index` set, a sidecar pays for index
+information nothing reads.
 
 ## 3. Benchmarks and measurement apparatus
 
 Part of the optimization work rather than a by-product: three of the findings above were invisible
-until the corresponding benchmark existed.
+until the corresponding benchmark existed, and one of them stopped a change that would have been made
+for nothing.
 
 | # | Change | Why it mattered | Commit |
 |---|---|---|---|
 | 3.1 | **[sidecar, test] Add an end-to-end sidecar benchmark** — whole service on one machine, real ledger, real gRPC, stubbed orderer and coordinator | the only way to attribute a sidecar stage without a cluster; found the block store ceiling | `a90b7db6` |
-| 3.2 | **[loadgen] Benchmark the submit path, not just generation** | separated the generator's ceiling from the committer's, which a ramp cannot do | `2e575dd3` |
-| 3.3 | **[loadgen] Add generation sweeps for the rate a deployment can offer** | showed the generator's plateau moves with core count, so a setting must be measured on the machine that will run it | `9b3dbefb` |
-| 3.4 | **[coordinator] Fix a benchmark that could never run the default manager** | the manager comparison was invalid before this | `5e9a7ef8` |
+| 3.2 | **A signature verifier manager benchmark** — the real manager against mock verifiers that do no signature work | ~560,000 tx/s on one stream, ~1.08M on three: 3.3× the cluster's per-sender rate, which ruled the manager out before any code was changed | `0e245c2d` |
+| 3.3 | **[loadgen] Benchmark the submit path, not just generation** | separated the generator's ceiling from the committer's, which a ramp cannot do | `2e575dd3` |
+| 3.4 | **[loadgen] Add generation sweeps for the rate a deployment can offer** | showed the generator's plateau moves with core count, so a setting must be measured on the machine that will run it | `9b3dbefb` |
+| 3.5 | **[coordinator] Fix a benchmark that could never run the default manager** | the manager comparison in 1.3 was invalid before this | `5e9a7ef8` |
 
-## 4. Configuration and deployment tuning — not filed
+## 4. Configuration and deployment tuning
 
-Recorded so the figures above are reproducible. Not proposed as repo defaults.
+Recorded so the figures above are reproducible. These are settings for this evaluation's cluster, not
+proposed as repo defaults — a shipped default would have to be argued on other hardware.
 
 ### 4.1 Committer configuration
 
@@ -86,8 +74,7 @@ Recorded so the figures above are reproducible. Not proposed as repo defaults.
 ### 4.2 Load generator
 
 Three of these are code changes on this branch rather than settings, but they belong with the
-measurement apparatus rather than with the committer's own optimizations. They will still need a PR
-even though no issue is filed for them.
+measurement apparatus rather than with the committer's own optimizations.
 
 | Change | Measured | Commit |
 |---|---|---|
