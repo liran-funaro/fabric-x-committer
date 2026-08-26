@@ -88,8 +88,29 @@ otherwise identical configuration it commits 329,854 tps against the simple mana
 difference of 47.6%. The reason is visible downstream — under the default manager database batch commit
 falls to 62 ms and the commit machines to 60% CPU, so the database is starved while the graph sits full.
 
-Add a setting to select the simple manager. It is not a replacement: the default manager tracks
-dependencies the simple one does not, so this is a deployment choice, not a default change.
+Add a setting to select the simple manager. The two managers implement the **same** dependency
+relation, so this is an implementation choice and not a semantic one:
+
+- Both derive their keys from the same `readAndWriteKeys` (`transaction_node.go`), including the
+  meta-namespace read key that ties a namespace lifecycle transaction to the transactions in that
+  namespace.
+- Both track the same coarse-grained relation: two transactions that share a key conflict unless both
+  only read it. In the default manager that is `dependencyDetector.getDependenciesOf`, which copies
+  `writeOnly` and `readWrite` for a read key and all three maps for a write key; in the simple manager
+  it is `waiting.add`, where a reader joins a running group of readers and anything else queues behind
+  it. The default manager's own comment says it deliberately tracks only the coarse-grained relation.
+- `TestDependencyGraphManager` already asserts identical dependency behaviour against both.
+
+What differs is the data structure and the concurrency: a DAG of per-transaction dependency sets over
+three key-to-transaction-set maps, built by a worker pool and merged under one mutex, against one
+key-to-FIFO map owned by a single goroutine. Where the default manager keeps a map entry per waiting
+transaction per key, the simple manager keeps a counter — and every transaction reads the
+meta-namespace key, so that entry is the whole waiting set, inserted and deleted per transaction.
+
+Left as a setting rather than a default change for two reasons, neither of them about which
+dependencies are tracked: the 47.6% was measured with `key-backref-rate` at 0, so no two transactions
+touched the same key, which is the case that favours a single goroutine; and the simple manager has an
+unfixed defect (#4).
 
 ## 4. [coordinator] The simple dependency graph can latch the pipeline under load
 
@@ -97,8 +118,23 @@ Under sustained load the simple manager can stop releasing transactions and neve
 downstream continues to look healthy — queues drain, no errors are logged — so it presents as a hang
 rather than a failure.
 
-Prerequisite for #3 rather than a gain in itself: the manager cannot be recommended until this is
-fixed. A regression test that reproduces it belongs with the fix.
+A third defect, found while re-validating the claim above and **not** yet fixed: the simple manager can
+make a transaction wait on itself. `readAndWriteKeys` adds the composite key `_meta:<ns>` as a
+reads-only key for every non-system namespace in a transaction, and a transaction that updates that
+namespace's policy through `_meta` produces the *same* composite key as a reads-and-writes key.
+`processTxBatch` then calls `checkTXFree` for that key twice, once as a writer and once as a reader;
+the second call queues the transaction behind the running group the first call created, which is the
+transaction itself. It is never released and the key is never freed. The default manager cannot hit
+this, because `getDependenciesOf` runs before `addWaitingTx`, so a transaction is never in the
+detector when its own dependencies are computed.
+
+Reproduced with one transaction carrying namespaces `_meta` (read-write on key `ns1`) and `ns1` (a
+blind write): the default manager releases it, the simple manager releases nothing. Per-namespace
+duplicate-key validation does not catch it, since the two contributions come from different
+namespaces.
+
+Prerequisite for #3 rather than a gain in itself: the manager cannot be recommended until these are
+fixed. A regression test per defect belongs with the fix.
 
 ## 5. [sidecar] Parse a block's transactions in parallel
 

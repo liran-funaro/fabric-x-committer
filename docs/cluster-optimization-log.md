@@ -600,6 +600,28 @@ the generator's. The defensible comparison is the in-repository benchmark, where
 the same harness over the same transaction count with no generator involved: 321,899 against 249,691
 tx/s, 29%.
 
+**"The two dependency graph managers track different dependencies" was asserted and is false.** The
+issue draft for the simple manager said the default one tracks dependencies the simple one does not,
+so selecting it was a semantic trade-off. Reading both implementations refutes it. They derive their
+keys from the same `readAndWriteKeys`, and they encode the same coarse-grained relation -- two
+transactions sharing a key conflict unless both only read it -- one as `getDependenciesOf` copying the
+write maps for a read key and all three for a write key, the other as `waiting.add` letting a reader
+join a running group of readers and queueing anything else. `TestDependencyGraphManager` already
+asserts identical behaviour against both, which is evidence the repository never intended a
+difference. What differs is the data structure and the concurrency, which is what the 47.6% comes
+from.
+
+Re-validating it did find one real divergence, and it is a defect in the simple manager rather than
+extra tracking in the default: it can make a transaction wait on itself. `readAndWriteKeys` adds
+`_meta:<ns>` as a reads-only key for each non-system namespace, so a transaction that both updates a
+namespace's policy through `_meta` and writes inside that namespace carries the same composite key as
+a reads-and-writes key too. `processTxBatch` calls `checkTXFree` for it twice, and the second call
+queues the transaction behind the running group the first call created. Confirmed by driving one such
+transaction through both managers: the default releases it, the simple releases nothing, and
+per-namespace duplicate-key validation does not catch it because the two contributions come from
+different namespaces. The lesson is the ordinary one -- the claim was made from the measurement rather
+than from the code, and reading the code was what settled it, in both directions.
+
 **A benchmark that hangs looks like a benchmark that is slow.** `BenchmarkDependencyGraph` numbered
 its batches from 0, and the local dependency constructor releases a batch only after its predecessor,
 so every default-manager case waited forever on a predecessor that could not exist. It had never
