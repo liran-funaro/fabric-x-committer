@@ -4,9 +4,10 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Optimization issues: draft
+# Optimization issues
 
-Drafts for the issues to open for the work in `optimization-summary.md`. Nothing here is filed yet.
+The issues opened for the work in `optimization-summary.md`. All are filed; the numbers below are
+the real ones, and GitHub sub-issue links mirror the parent/child structure.
 
 One umbrella issue plus a child per change. Evidence for every number is in
 `cluster-optimization-log.md`; the issue bodies below state only the change and what drove it.
@@ -23,27 +24,27 @@ hardware. See section 4 of the summary.
 
 | # | Title | Repo | Status |
 |---|---|---|---|
-| U | Committer throughput and latency: findings from the nineteen-machine evaluation | committer | umbrella, new |
-| 1 | [sidecar] Make the block store transaction ID index optional | committer | new |
-| 2 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | **#772, already open** |
-| 3 | [coordinator] Allow selecting the simple dependency graph manager | committer | new |
-| 4 | [coordinator] The simple dependency graph can latch the pipeline under load | committer | new |
-| 5 | [sidecar] Parse a block's transactions in parallel | committer | new |
-| 6 | [sidecar] Key validation and TX references allocate per transaction | committer | new |
-| 7 | [sidecar] Back a block's decoded transactions with one allocation | committer | new |
-| 8 | [sidecar] Mapping's result carries the scaffolding that built it | committer | new |
-| 9 | [grpc] Add a per-client and per-server `flow-control` section; HTTP/2 windows are unset and cap the pipeline | committer | new |
-| 10 | Benchmarks for attributing committer performance | committer | new, parent |
-| 10.1 | [sidecar] Benchmark the whole service end to end | committer | new, child of 10 |
-| 10.2 | [coordinator] Benchmark the signature verifier manager | committer | new, child of 10 |
-| 10.3 | [loadgen] Benchmark the submit path | committer | new, child of 10 |
-| 10.4 | [loadgen] Sweep transaction generation over core count | committer | new, child of 10 |
-| 10.5 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | new, child of 10 |
-| 11 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | new, filed there |
+| #798 | Committer throughput and latency: findings from the nineteen-machine evaluation | committer | filed |
+| #784 | [sidecar] Make the block store transaction ID index optional | committer | filed |
+| #772 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | filed |
+| #791 | [coordinator] Allow selecting the simple dependency graph manager | committer | filed |
+| #785 | [coordinator] The simple dependency graph can latch the pipeline under load | committer | filed |
+| #786 | [sidecar] Parse a block's transactions in parallel | committer | filed |
+| #787 | [sidecar] Key validation and TX references allocate per transaction | committer | filed |
+| #788 | [sidecar] Back a block's decoded transactions with one allocation | committer | filed |
+| #789 | [sidecar] Mapping's result carries the scaffolding that built it | committer | filed |
+| #790 | [grpc] Add a per-client and per-server `flow-control` section; HTTP/2 windows are unset and cap the pipeline | committer | filed |
+| #797 | Benchmarks for attributing committer performance | committer | filed |
+| #792 | [sidecar] Benchmark the whole service end to end | committer | filed |
+| #793 | [coordinator] Benchmark the signature verifier manager | committer | filed |
+| #794 | [loadgen] Benchmark the submit path | committer | filed |
+| #795 | [loadgen] Sweep transaction generation over core count | committer | filed |
+| #796 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | filed |
+| hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | filed |
 
 ---
 
-## U. Committer throughput and latency: findings from the nineteen-machine evaluation
+## #798. Committer throughput and latency: findings from the nineteen-machine evaluation
 
 An evaluation on nineteen machines — one sidecar, one coordinator, three signature verifiers, six
 validator-committers and a twelve-node YugabyteDB — took the committer from 80,000 to 500,000
@@ -54,7 +55,7 @@ measurement that motivated each one is in its own issue, and the full account wi
 including the retracted findings, is in `docs/cluster-optimization-log.md` and
 `docs/optimization-summary.md`.
 
-Children: #1 #2 (#772) #3 #4 #5 #6 #7 #8 #9 #10 (itself the parent of the five benchmark issues),
+Children: #784 #772 #791 #785 #786 #787 #788 #789 #790 #797 (itself the parent of the five benchmark issues),
 plus one in `fabric-x-common` for the block store's unused transaction index information.
 
 Where the constraint ends up: not in the committer. At 500,000 tps every committer stage has headroom
@@ -62,7 +63,7 @@ Where the constraint ends up: not in the committer. At 500,000 tps every committ
 while the database runs 83% CPU and 88% disk busy. Raising throughput further means writing fewer
 bytes per transaction, not tuning the committer.
 
-## 1. [sidecar] Make the block store transaction ID index optional
+## #784. [sidecar] Make the block store transaction ID index optional
 
 The block store indexes `IndexableAttrTxID`, which writes one LevelDB entry **per transaction** rather
 than per block. A 20-second CPU profile of a saturated sidecar attributed 35% of its samples to
@@ -77,11 +78,11 @@ Add a setting to drop the index for deployments that serve neither `GetBlockByTx
 Worth 115,200 → 297,200 tps. The index selects the block store's on-disk format, so it can only change
 on an empty ledger.
 
-## 2. [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path
+## #772. [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path
 
 Already open as **#772**. No new issue.
 
-## 3. [coordinator] Allow selecting the simple dependency graph manager
+## #791. [coordinator] Allow selecting the simple dependency graph manager
 
 The default dependency graph manager becomes the pipeline's constraint before the database does: at an
 otherwise identical configuration it commits 329,854 tps against the simple manager's 486,941, a
@@ -110,9 +111,9 @@ meta-namespace key, so that entry is the whole waiting set, inserted and deleted
 Left as a setting rather than a default change for two reasons, neither of them about which
 dependencies are tracked: the 47.6% was measured with `key-backref-rate` at 0, so no two transactions
 touched the same key, which is the case that favours a single goroutine; and the simple manager has an
-unfixed defect (#4).
+unfixed defect (#785).
 
-## 4. [coordinator] The simple dependency graph can latch the pipeline under load
+## #785. [coordinator] The simple dependency graph can latch the pipeline under load
 
 Under sustained load the simple manager can stop releasing transactions and never resume. Everything
 downstream continues to look healthy — queues drain, no errors are logged — so it presents as a hang
@@ -133,10 +134,10 @@ blind write): the default manager releases it, the simple manager releases nothi
 duplicate-key validation does not catch it, since the two contributions come from different
 namespaces.
 
-Prerequisite for #3 rather than a gain in itself: the manager cannot be recommended until these are
+Prerequisite for #791 rather than a gain in itself: the manager cannot be recommended until these are
 fixed. A regression test per defect belongs with the fix.
 
-## 5. [sidecar] Parse a block's transactions in parallel
+## #786. [sidecar] Parse a block's transactions in parallel
 
 `mapBlock` parses and validates a block's messages one at a time on a single goroutine, and mapping is
 the sidecar's largest per-block stage.
@@ -148,7 +149,7 @@ how the parsing was split. Mapping goes 408,000 → 2,308,000 tx/s.
 Worth stating that it bought **nothing** end to end until the block store stopped being the binding
 stage, and 26% afterwards (497,000 → 628,000). A faster stage behind a saturated one buys nothing.
 
-## 6. [sidecar] Key validation and TX references allocate per transaction
+## #787. [sidecar] Key validation and TX references allocate per transaction
 
 Two allocation sites on the mapping path, which is what decides how fast the sidecar allocates — the
 collector was 57% of its CPU under load:
@@ -160,7 +161,7 @@ collector was 57% of its CPU under load:
 
 Together 61 → 56 allocations per transaction, worth 12% at the default `GOGC`.
 
-## 7. [sidecar] Back a block's decoded transactions with one allocation
+## #788. [sidecar] Back a block's decoded transactions with one allocation
 
 `serialization.UnmarshalTx` declares a local `applicationpb.Tx` and returns its address, so it escapes:
 one heap allocation per transaction on the mapping path.
@@ -174,7 +175,7 @@ The slab keeps a block's backing array alive while anything holds one element, a
 block size and holds only message headers, so the exposure is one block's unused slots — the same trade
 the existing slabs make.
 
-## 8. [sidecar] Mapping's result carries the scaffolding that built it
+## #789. [sidecar] Mapping's result carries the scaffolding that built it
 
 `blockMappingResult` carries the three per-block slabs, a reference to the relay's in-flight TX ID set,
 and the collected TX IDs. None of it is read after mapping returns — `submitSnapshotBlock` builds
@@ -185,7 +186,7 @@ Move that state to a builder that embeds the result it is filling, and return on
 frees is the dedup reference and the TX ID slice, one per in-flight block; it does not free the slabs,
 because the result's messages live inside them.
 
-## 9. [grpc] HTTP/2 flow control is unset and caps the pipeline
+## #790. [grpc] HTTP/2 flow control is unset and caps the pipeline
 
 Nothing in the repository sets a gRPC window, so the defaults apply. On a saturated cluster that is the
 pipeline's ceiling.
@@ -249,7 +250,7 @@ Measured on the cluster, same day, same deployment shape:
 Higher throughput at lower latency. The same goroutine dump afterwards has zero senders blocked on
 write quota.
 
-## 10. Benchmarks for attributing committer performance
+## #797. Benchmarks for attributing committer performance
 
 Three of the findings in this umbrella were invisible until the corresponding benchmark existed, and
 one of them stopped a change that would have been made for nothing. A cluster tells you the pipeline
@@ -258,18 +259,18 @@ days, so small effects are only measurable in-process.
 
 This issue tracks the set; each benchmark is a child, independently reviewable.
 
-- #10.1 — end-to-end sidecar
-- #10.2 — coordinator signature verifier manager
-- #10.3 — load generator submit path
-- #10.4 — load generator generation sweep
-- #10.5 — repair the dependency graph benchmark
+- #792 — end-to-end sidecar
+- #793 — coordinator signature verifier manager
+- #794 — load generator submit path
+- #795 — load generator generation sweep
+- #796 — repair the dependency graph benchmark
 
 Shared prerequisite: several test helpers must widen from `*testing.T` to `testing.TB` so benchmarks
 can reuse them (`utils/test.WaitForConnections`, `mock.StartMockVerifierService`, and the coordinator
 and sidecar test environments). Precedent exists in `mock/test_exports.go`, where
 `StartMockCoordinatorService` and `NewOrdererTestEnv` are already `testing.TB`.
 
-### 10.1. [sidecar] Benchmark the whole service end to end
+### #792. [sidecar] Benchmark the whole service end to end
 
 The sidecar has per-function benchmarks but none of the assembled service, so no way to tell which of
 its stages binds without a cluster.
@@ -278,10 +279,10 @@ Run the real service on one machine against a real block store and real gRPC, wi
 coordinator stubbed, and report tx/s. Generate the transactions before the timed section, or setup
 dominates the profile.
 
-This is what found the block store ceiling (#1, #11): it put a serialized goroutine at a 100% per-block
+This is what found the block store ceiling (#784, hyperledger/fabric-x-common#165): it put a serialized goroutine at a 100% per-block
 duty cycle on a machine at 18% CPU, which no machine-level metric shows.
 
-### 10.2. [coordinator] Benchmark the signature verifier manager
+### #793. [coordinator] Benchmark the signature verifier manager
 
 On the cluster, `coordinator_verifier_input_batch_queue_size` was the only non-empty queue in the
 pipeline, which reads as the manager being unable to drain it.
@@ -292,9 +293,9 @@ endpoints.
 
 It measures ~560,000 tx/s on one stream and ~1.08M on three — 3.3x the cluster's per-sender rate — which
 ruled the manager out before any code was changed. The queue was full because the senders were blocked
-on gRPC write quota (#9), not because the manager was slow.
+on gRPC write quota (#790), not because the manager was slow.
 
-### 10.3. [loadgen] Benchmark the submit path
+### #794. [loadgen] Benchmark the submit path
 
 A ramp cannot separate the generator's own ceiling from the committer's: both present as the delivered
 rate flattening. On this cluster the generator capped every run near 325,000 tps and the committer was
@@ -303,14 +304,14 @@ blamed for it.
 Benchmark the submit path alone, per signature scheme, so the generator's ceiling is a known number
 before a committer result is quoted against it.
 
-### 10.4. [loadgen] Sweep transaction generation over core count
+### #795. [loadgen] Sweep transaction generation over core count
 
 Generation throughput plateaus, and where it plateaus moves with the number of cores, so the right
 worker count is a property of the machine that will run the generator and cannot be a fixed default.
 
 Sweep the generation rate over worker count so the setting can be measured rather than guessed.
 
-### 10.5. [coordinator] Sweep the dependency graph benchmark over the constructor pool
+### #796. [coordinator] Sweep the dependency graph benchmark over the constructor pool
 
 `BenchmarkDependencyGraph` covers both managers but exercises the default one at only 2 and 4 local
 dependency constructors, so it cannot say whether that pool is what bounds it — the question anyone
@@ -327,7 +328,7 @@ constructor goroutine permanently and loses that batch. With two or more constru
 the load and the reported rate is unaffected — 247,439 against 249,222 tx/s — but the 1-constructor
 case hangs outright, so the sweep cannot be widened without it.
 
-## 11. [blkstorage] Do not build tx index information no index will read
+## hyperledger/fabric-x-common#165. [blkstorage] Do not build tx index information no index will read
 
 **Filed in `hyperledger/fabric-x-common`.** Referenced here because the committer is where the effect
 is measured.
