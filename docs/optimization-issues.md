@@ -261,6 +261,41 @@ Measured on the cluster, same day, same deployment shape:
 Higher throughput at lower latency. The same goroutine dump afterwards has zero senders blocked on
 write quota.
 
+## Candidate. [applicationpb] The signing digest is built by reflection
+
+Not filed yet — measured, not implemented, and deliberately left as a proposal because it changes
+the bytes every signature covers.
+
+`TxNamespace.ASN1Marshal` builds the digest that every transaction is signed over and that every
+verifier recomputes. It does so by translating the namespace into an intermediate struct tree and
+handing that to `encoding/asn1.Marshal`, which is reflection driven. A CPU profile of the load
+generator at 451,826 tps:
+
+| frame | % process CPU |
+|---|---|
+| `encoding/asn1.Marshal` | 14.31 |
+| ├ from `TxNamespace.ASN1Marshal` | **11.5** (80.5% of it) |
+| └ from `testsig.ecdsaSigner.Sign` | 2.8 (19.5%) |
+| of which `encoding/asn1.makeField` (pure reflection) | 85.9% of the marshal |
+
+For comparison, the elliptic curve multiplication in the same signature is 21.79%, so building the
+message to sign costs over half of signing it. `translate`'s own intermediate allocations are a
+further ~1.4%.
+
+The signature half of that 14.31% has already been fixed: `utils/testsig` now emits the signature's
+DER with `cryptobyte` rather than `encoding/asn1`, worth 3.2% on the signing path and 8 fewer
+allocations (1,409 -> 1,364 ns/op, 48 -> 40 allocs). The same treatment applied to the digest is
+worth roughly four times as much, and unlike the signature it would also cut the committer's
+**verifier** cost, which recomputes this digest per transaction.
+
+Why it is a proposal rather than a change: the output must stay byte-identical or every signature in
+every deployment becomes invalid, and Go's `encoding/asn1` has non-obvious marshal rules to
+reproduce — a `nil` `Metadata` is omitted while a non-nil empty slice encodes as an empty SEQUENCE,
+`optional,default:-1` omits only on an exact match, and `TxID`/`NamespaceID` carry explicit
+`utf8` tags. `api/applicationpb/asn1_test.go` already has `FuzzASN1MarshalTxNamespace` and a
+`generateTxNs` helper, so the safety net is a differential fuzz test asserting byte equality against
+the current implementation before the old path is removed.
+
 ## #797. Benchmarks for attributing committer performance
 
 Three of the findings in this umbrella were invisible until the corresponding benchmark existed, and

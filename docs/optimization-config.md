@@ -176,6 +176,26 @@ not measured at all: it needs `queries-rate` above 0 and a query service to serv
 deployment does not run. An attempt to measure it without one produced a workload that was *impossible*
 in half its transactions, and what got measured was the failure path.
 
+## Ordering service configuration (real-orderer arm)
+
+Four settings, three of which were found this session. The topology is four parties x four shards,
+one component per machine except the batchers, which run two per machine.
+
+| setting | value | why |
+|---|---|---|
+| `orderer_cluster_send_buffer_size` | 10,000 | the node-to-node egress buffer, default 100 messages. Its own documentation says transaction messages "are waiting for space to be freed" when full, i.e. transaction backpressure. Worth +10%: 306,000 -> 336,000 tps offered |
+| shards | **4**, not 2 | per-shard throughput is a hard ~158,000 tps that neither batch size nor decision interval moves, so shard count is the scaling dimension. 336,000 -> 488,800 tps. Batchers sat at 15-20% of a 32-core machine, so shards 3 and 4 were co-located on the existing batcher machines on port 7051 |
+| `armageddon_request_batch_max_interval` | 50ms | a latency lever, not a throughput one. 500ms -> 100ms was worth 350 ms; 100ms -> 50ms a further 64 ms (353 -> 289 ms). Doubling the decision rate halves transactions per decision, leaving throughput flat |
+| `armageddon_batch_max_message_count` | 10,000 (default) | **tested at 20,000 and reverted.** Halved the batch rate exactly and left the transaction rate untouched, for 210 ms of extra latency |
+
+Each of the three variables above needed a collection change to become settable:
+`orderer/parameterize-consensus-batch-interval`, `orderer/parameterize-batch-size`, and
+`orderer_cluster_send_buffer_size` which already existed.
+
+Note the genesis block's `BatchTimeout` is **not** one of these. It was tested at 100ms against the
+500ms default and changed nothing measurable — Arma's consenter does not read it — so a branch
+parameterizing it was withdrawn rather than shipped.
+
 ## Settings deliberately left alone
 
 | Setting | Left at | Why |

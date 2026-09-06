@@ -256,6 +256,98 @@ benchmark suggested.
 The repository's tuned benchmark options already used 4096 while the deployment ran the role
 default of 100.
 
+### 3.6 Skip the tx index information no index reads — latency 1,574 → 325 ms at 482,000 tps
+
+The largest latency win on this cluster, and it came from a stage that looked like I/O and was not.
+
+The sidecar's ledger append runs on **one serialized goroutine**, so its cost shows up as a duty
+cycle rather than as CPU on a busy machine. Ramping the mock-orderer arm, that duty cycle went 18%
+→ 55% → 75% → **100%** while no machine in the cluster passed 78% CPU, and throughput stopped at
+481,200 tps with mean latency jumping 249 → 1,574 ms. A request for 627,484 tps was only offered
+482,400, because a full committer backpressures through the mock orderer's bounded buffer.
+
+A CPU profile of the saturated sidecar, taken over mTLS from its monitoring endpoint, attributed the
+serialized path precisely:
+
+```
+blockStore.appendBlock -> FileLedger.AppendNoSync -> blockfileMgr.addBlockInternal   0.94 cores
+  blkstorage.serializeBlock                                                   92% of that path
+    addDataBytesAndConstructTxIndexInfo                                       100% of serializeBlock
+  blockfileWriter.append (the actual disk write)                              6%
+```
+
+So 92% of the ceiling was CPU turning a block into bytes, and 6% was writing them — consistent with
+the disk sitting 4-13% busy. Separately the sidecar spent 36.5% of its CPU in GC, with `growslice`
+41% of `mallocgc`.
+
+`addDataBytesAndConstructTxIndexInfo` called `GetOrComputeTxIDFromEnvelope` — a full envelope
+unmarshal — for **every transaction in every block**, and allocated a `txindexInfo` and a
+`locPointer` each, regardless of what the store indexes. This deployment already runs
+`disable-tx-id-index: true` (section 3.1), so every one of those txIDs was computed and thrown away.
+
+The fix is fabric-x-common's `blkstorage/skip-unused-tx-index-info`: `serializeBlock` takes an
+`indexNeeds` from `blockIndex.serializationNeeds()` and produces offsets and txIDs only when an
+index will read them, and pre-sizes its buffer from `serializedBlockSize` rather than growing it.
+
+Same day, same inventory, same Ed25519 generator, `serializeBlock` the only change:
+
+| offered | append ms/block | append duty | mean latency |
+|---|---|---|---|
+| 100,000 | 18.18 → **3.37** | 18% → **3%** | 150 → **130 ms** |
+| 285,610 | 19.36 → **3.44** | 55% → **10%** | 197 → **170 ms** |
+| 371,293 | 20.25 → **3.53** | 75% → **13%** | 249 → **227 ms** |
+| 482,680 | 20.78 → **3.65** | **100% → 18%** | **1,574 → 325 ms** |
+
+Peak committed rose 481,200 → **509,200 tps**. Note the per-block cost is now flat at ~3.5 ms where
+it used to climb with load — that climb was the per-transaction work scaling with how full each
+block was.
+
+The constraint then moved off the sidecar entirely: at the top step append was 19%, the generator
+offered only 491,600 of 627,484 requested, and the busiest machine was a validator-committer at 82%
+with batch commit latency 156 ms.
+
+### 3.7 GOGC on the load generator — offered ceiling 491,600 → 552,000
+
+Once section 3.6 removed the sidecar's serialization waste, the generator became the binding
+constraint: at a requested 627,484 tps it offered only 491,600 while the sidecar's append duty sat
+at 19% and its waiting queue was well below its limit.
+
+The mock-orderer inventory had never set `loadgen_bin_env`, because the GOGC measurement that
+motivated it was taken on the real-orderer arm and Ed25519 signing barely responds to GOGC. That
+reasoning was too narrow — the generator builds and marshals every transaction, so its allocation
+rate matters even when its signer does not.
+
+`GOGC=400` with `GOMEMLIMIT=96GiB`: highest delivered rate 482,000 → **537,200 tps**, and the
+offered ceiling 491,600 → 552,000. Latency at the new figure is 509 ms against 325 ms at 482,000,
+which is the pipeline being driven closer to saturation rather than a cost of the setting.
+
+### 3.8 Where the committer-only arm stands
+
+Confirmed by a 300 s hold on a drained deployment, both fixes in, Ed25519 generator:
+
+| | value |
+|---|---|
+| committed | **537,458 tps** |
+| aborted | 0 |
+| mean / p50 / p99 latency | **560 / 560 / 770 ms** |
+| sidecar append duty | 20% |
+| database batch commit | 190 ms |
+| busiest machine | 82% |
+
+**600,000 tps is not reachable on this hardware.** At a requested 602,112 the sidecar's waiting
+queue hit its 500,000 limit and backpressured the generator to 552,000 offered, committing 548,000
+— so the wall is the committer, not the generator and no longer the ledger. The database commit
+path is what saturates: batch commit latency climbs 131.9 → 179.2 → 188.5 ms over the last three
+steps while append stays at 19%.
+
+Progression on this arm, all measured the same day:
+
+| | committed | mean latency | constraint |
+|---|---|---|---|
+| reference | 481,200 | 1,574 ms | sidecar append, 100% duty |
+| + skip unused tx index info | 482,000 | 325 ms | load generator |
+| + GOGC on the generator | **537,458** | 560 ms | database commit path |
+
 ## 4. Changes that fixed a real problem but did not raise throughput
 
 These are worth recording precisely because the reasoning behind them was sound and the outcome
@@ -319,6 +411,125 @@ and 26% at 80,000 for both block sizes — because the cost is per transaction, 
 
 The change was kept because it is harmless here and closer to the intended workload, but it bought
 no throughput, and it is what made `channel-buffer-size` (section 3.4) matter so much.
+
+## 4A. The orderer arm after the committer fixes, and what the ~306,000 tps wall is not
+
+Carrying the ECDSA signer fix, the blkstorage fix and GOGC onto the real-orderer inventory:
+
+| offered | mean latency | append ms/block | append duty | verdict |
+|---|---|---|---|---|
+| 150,000 | 302 ms (was 327) | 3.50 (was 18.51) | 5% (was 28%) | met |
+| 187,500 | 298 ms | 3.49 | 7% | met |
+| 234,375 | 305 ms | 3.43 | 8% | met |
+| 292,968 | 323 ms | 3.53 | 10% | met |
+| 366,210 | — | — | 11% | SHORT, only 306,000 offered |
+
+The blkstorage win carries over unchanged. The ceiling did not move — but **its cause did**, which
+matters more than the number:
+
+- before the ECDSA fix the load generator was the busiest machine in the cluster at 77% CPU
+- after it, **nothing is saturated**: routers 1018% of 3200%, batchers 486-687%, consenters 8%,
+  assemblers 43%, commit machines ~60%, generator 56%
+
+and the generator is now being *backpressured* rather than running out of CPU. What holds it back is
+visible in the batchers: shard 1's mempools sit pinned at their **1,000,000 cap** on all four
+replicas while shard 2's hold 9,000-57,000. That asymmetry is not routing skew — routers deliver
+153,200/s to each shard and both shards cut batches at the same rate. Shard 1 simply filled during an
+earlier overshoot and, running at in = out, can never drain.
+
+### What the wall is not
+
+At the ceiling the offered rate obeys
+
+```
+tps = decisions/s x batches/decision x batch size = 9.02 x 3.41 x 10,000 = 308,000
+```
+
+which matched the measured 308,000 exactly, and the batches were full (9,999.5 of 10,000). That made
+batch size look like a free throughput multiplier, so it was raised to 20,000 (6.8 MB against the
+10 MB `AbsoluteMaxBytes`). **It bought nothing:**
+
+| | 10,000 | 20,000 |
+|---|---|---|
+| batches/s per batcher | 15.32 | **7.66** |
+| transactions/s per shard | 153,200 | **153,200** |
+| offered ceiling | 306,000 | **306,800** |
+| mean latency at 300,000 | ~302 ms | **513 ms** |
+
+The batch rate halved exactly as the size doubled, leaving the transaction rate untouched, and it
+cost 210 ms of latency because a batch twice the size takes twice as long to fill. Reverted.
+
+The value of that is what it eliminates: **the limit is per transaction, not per batch**, so it is
+neither consensus batch slots nor the 100 ms decision interval. Two other candidates were ruled out
+by inspection rather than by a run — the orderer does no signature work
+(`ClientSignatureVerificationRequired: false`), and no component is CPU-bound.
+
+That left flow control, and the ordering service's node-to-node egress buffer is
+`SendBufferSize: 100` messages, whose own documentation says transaction messages "are waiting for
+space to be freed" when it is full.
+
+### 4A.1 `SendBufferSize` 100 -> 10,000 — 306,000 -> 336,000 offered
+
+A real constraint, worth +10%, and the first thing all session to move that ceiling at all. Not the
+whole wall though: shard 1's mempools still pinned at 1,000,000.
+
+### 4A.2 The decision interval does not buy throughput — but it does buy latency
+
+`requestbatchmaxinterval` 100ms -> 50ms doubled the decision rate as intended, 9.04 -> **17.04/s**,
+and throughput did not follow. Transactions per decision simply halved:
+
+| interval | decisions/s | tx/decision/shard | **tx/s/shard** |
+|---|---|---|---|
+| 100 ms | 9.04 | 17,200 | ~155,000 |
+| 50 ms | 17.04 | 9,390 | ~160,000 |
+
+So the conserved quantity is **per-shard transactions per second (~158,000)**, not transactions per
+decision — which is also why batch size did nothing. Latency did improve, 353 -> **289 ms**, so 50 ms
+is worth keeping on its own merits.
+
+### 4A.3 Four shards instead of two — 336,000 -> 488,800
+
+The quantity that would not move was defined *per shard*, and every batcher process was sitting at
+15-20% of a 32-core machine. So the spare capacity to run another shard was already on the box:
+shards 3 and 4 were added by co-locating a second batcher on each existing batcher machine, on port
+7051, giving 4 parties x 4 shards = 16 batchers across the same 8 machines.
+
+| offered | committed | mean | p99 | mempool | busiest |
+|---|---|---|---|---|---|
+| 340,000 | 340,000 | 334 ms | 489 ms | 157,008 | commit6 66% |
+| 408,000 | 407,600 | 346 ms | 501 ms | 184,729 | loadgen 75% |
+| 489,600 | 488,800 | 409 ms | 686 ms | 223,026 | loadgen 81% |
+| 587,520 | 502,800 | — | — | 229,547 | loadgen 84%, SHORT |
+
+The mempools stopped pinning — 229,547 spread over four shards at the top step against 4.1 million
+pinned with two — which is the signature of the constraint having moved off the ordering service.
+
+Confirmed by a 300 s hold on a drained deployment at 460,000: offered 459,831, committed **459,898
+tps**, zero aborts, **440 ms mean / 440 ms p50 / 690 ms p99**, database batch commit 130 ms, busiest
+machine 80%.
+
+An earlier attempt at this hold was thrown away rather than reported: it was set to 489,600 straight
+after the 587,520 overshoot, committed 501,898 (above its own limit, i.e. still draining) and showed
+a 4.78 s p99 against a 0.60 s p50. That gap between mean and median is the tell for a backlog rather
+than a rate.
+
+### 4A.4 Where the orderer arm stands
+
+| change | sustained | mean latency | constraint |
+|---|---|---|---|
+| ECDSA signer + blkstorage + GOGC | 292,800 | 323 ms | orderer egress flow control |
+| + `SendBufferSize` 10,000 | 335,600 | 353 ms | per-shard throughput |
+| + 50 ms decision interval | 318,800 | **289 ms** | per-shard throughput |
+| + **4 shards** | **488,800** | 409 ms | **load generator** |
+
+**1.67x on this arm**, and the ordering service is no longer the bottleneck: at the top step nothing
+in it is saturated (mempools unpinned, sidecar wait below its limit, ledger append 19%) while the
+load generator sits at 84% CPU and cannot offer more than ~503,000 tps.
+
+The committer's own wall, measured independently on the mock-orderer arm, is ~548,000 tps at the
+database commit path — so for the first time the two limits are within 10% of each other, and the
+next real gain needs either a second load generator (legitimate here: the one-generator rule is a
+mock-orderer artifact) or the database.
 
 ## 5. The load generator became the limit
 

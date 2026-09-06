@@ -34,14 +34,54 @@ on the subject line rather than the hash.
 The largest committer code optimization is **section 5**, kept separate because the account of how it
 was found is most of its value.
 
+### 1.x [testsig] Plain-nonce ECDSA signing for the load generator
+
+Not a committer-path optimization — it removes the *measuring instrument* as the bottleneck, which
+is what let the ceilings below be attributed at all.
+
+`crypto/ecdsa.SignASN1` signs "hedged" (FIPS 186-5 via `draft-irtf-cfrg-det-sigs-with-noise-04`):
+every signature builds a fresh HMAC-SHA-512 DRBG personalized with the private key and the digest.
+A CPU profile of the load generator at 193,000 tps attributed:
+
+| frame | % process CPU |
+|---|---|
+| `ecdsa.newDRBG` | 8.11 |
+| `hmacDRBG.Generate` | 3.69 |
+| `nistec.P256Point.ScalarBaseMult` (k·G, the real work) | 8.80 |
+| `unix.GetRandom` (entropy) | 0.54 |
+
+So building the nonce generator cost **1.34× the elliptic-curve multiplication it exists to feed**,
+and `newDRBG` alone was 23% of everything the process allocated. Two earlier diagnoses were wrong:
+entropy/`getrandom` is a rounding error, and "allocation" was right but non-specific.
+
+`utils/testsig` now derives the nonce itself and reaches the same assembly-optimized P-256 through
+`elliptic.P256().ScalarBaseMult`, keeping the signature ordinary ECDSA that `ecdsa.VerifyASN1`
+accepts. Hedging protects a key against RNG failure; this package signs synthetic transactions with
+throwaway test identities.
+
+| measured on 32 cores | stdlib hedged | plain nonce |
+|---|---|---|
+| `-cpu=1` | 37,625 ns/op | 21,342 (**1.76×**) |
+| `-cpu=32`, GOGC default | 6,702 ns/op | 2,883 (**2.32×**) |
+| `-cpu=32`, GOGC=400 | 2,898 ns/op | 1,409 (**2.06×**) |
+| allocation | 6,064 B / 59 allocs | 2,305 B / 48 |
+
+`gnark-crypto`'s `secp256r1/ecdsa` was tried first and rejected: 306,730 ns/op, **8× slower** than
+the standard library, because its generic big.Int field arithmetic swamps any nonce saving.
+
 ## 2. fabric-x-common
 
 | # | Optimization | Measured |
 |---|---|---|
-| 2.1 | **[blkstorage] Do not build tx index information no index will read** — `serializeBlock` extracted a txID for every envelope, and built a `txindexInfo` and a `locPointer` each, whatever the store was configured to index | ledger append 22.2 → 7.1 ms per 10,000-transaction block; the stage was at a 100% duty cycle and capped the pipeline at ~451,000 tps |
+| 2.1 | **[blkstorage] Do not build tx index information no index will read** — `serializeBlock` extracted a txID for every envelope, and built a `txindexInfo` and a `locPointer` each, whatever the store was configured to index. Also pre-sizes the output buffer from `serializedBlockSize` instead of growing it | ledger append **20.78 → 3.65 ms** per 10,000-transaction block on the 19-machine cluster; append duty cycle at 482,000 tps **100% → 18%**; mean latency at that rate **1,574 → 325 ms** |
 
 The committer is where the effect is measured: with `disable-tx-id-index` set, a sidecar pays for index
 information nothing reads.
+
+Confirmed on the cluster, same day, same inventory, `serializeBlock` the only change — see
+`cluster-optimization-log.md` §3.9. An earlier single-machine benchmark put this at 22.2 → 7.1 ms;
+the cluster figure is larger because the discarded work scales with how full each block is, and the
+cluster runs 10,000-transaction blocks at a rate that keeps them full.
 
 ## 3. Benchmarks and measurement apparatus
 
