@@ -35,7 +35,8 @@ func TestDigestSigners(t *testing.T) {
 	priv, _ := NewKeyPair(signature.Ecdsa)
 	signingKey, err := ParseSigningKey(priv)
 	require.NoError(t, err)
-	curEcdsaSigner := &ecdsaSigner{signingKey: signingKey}
+	curEcdsaSigner, err := newEcdsaSigner(signingKey)
+	require.NoError(t, err)
 
 	for _, tc := range []struct {
 		name   string

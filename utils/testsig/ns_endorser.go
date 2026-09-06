@@ -37,8 +37,14 @@ func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, err
 		e = nil
 	case signature.Ecdsa:
 		signingKey, parseErr := ParseSigningKey(key)
-		err = parseErr
-		e = &keyEndorser{signer: &ecdsaSigner{signingKey: signingKey}}
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		signer, signerErr := newEcdsaSigner(signingKey)
+		if signerErr != nil {
+			return nil, signerErr
+		}
+		e = &keyEndorser{signer: signer}
 	case signature.Bls:
 		sk := big.NewInt(0)
 		sk.SetBytes(key)
