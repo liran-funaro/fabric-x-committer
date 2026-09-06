@@ -531,6 +531,31 @@ database commit path — so for the first time the two limits are within 10% of 
 next real gain needs either a second load generator (legitimate here: the one-generator rule is a
 mock-orderer artifact) or the database.
 
+### 4A.5 A one-hour soak: no decay
+
+Peak measurements cannot see drift, and this pipeline has drifted before — section 3.1's txID
+index took committed throughput from 102,102 to 67,886 tps over two hours at a fixed offered rate
+as its LevelDB compaction grew with the ledger. The new append path touches the same subsystem, so
+it is worth showing it does not reintroduce that.
+
+One hour at 200,000 tps on the four-shard configuration, drained start:
+
+| | t+20m | t+40m | t+60m |
+|---|---|---|---|
+| committed | 200,000 | 200,000 | 200,034 |
+| mean latency | 320 ms | 330 ms | 340 ms |
+| database batch commit | 40 ms | 40 ms | 40 ms |
+| aborted | 0 | 0 | 0 |
+
+Flat, with p99 at 500 ms and 1.098 billion transactions committed cumulatively. Nothing down.
+
+The soak length is bounded by disk, not by stability. Measured by `deriv` on the filesystem
+gauges, the sidecar and **each of the four assemblers** independently write 68.7 MB/s at 200,000
+tps — 344 bytes per transaction each, matching the envelope size, but **five copies cluster-wide**,
+about 1.7 KB of disk per transaction. The assemblers' 485 GB volumes therefore reach the watchdog's
+80 GB floor long before the sidecar's 968 GB does: roughly 70 minutes at 200,000 tps, or 1 hour 25
+minutes at 280,000 as section "Ninety minutes of disk" records.
+
 ## 5. The load generator became the limit
 
 From roughly 325,000 tps onward, most measurements were of the harness rather than the committer.
