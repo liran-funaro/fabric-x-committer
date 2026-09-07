@@ -297,38 +297,40 @@ Worth recording so it is not tried again.
 
 ## Needs opening. [applicationpb] The signing digest is built by reflection
 
-To be filed against fabric-x-common. Measured but deliberately not implemented, because it changes the
-bytes every signature covers.
+To be filed against fabric-x-common. **An implementation already exists** on the
+`quick-asn1-marshal` branch of the fork (`8d004a10f`, marked wip); the review notes below are from
+measuring it, and the artefacts are in `fx-cluster-logs/asn1-review/`.
 
 `TxNamespace.ASN1Marshal` builds the digest that every transaction is signed over and that every
-verifier recomputes. It does so by translating the namespace into an intermediate struct tree and
-handing that to `encoding/asn1.Marshal`, which is reflection driven. A CPU profile of the load
-generator at 451,826 tps:
+verifier recomputes. It translates the namespace into an intermediate struct tree and hands that to
+`encoding/asn1.Marshal`, which is reflection driven. A CPU profile of the load generator at 451,826
+tps put `encoding/asn1.Marshal` at 14.31% of process CPU, of which **80.5% is this digest** (11.5% of
+the process) and 19.5% was the signature's own DER; `asn1.makeField` is 85.9% of the marshal. For
+comparison the elliptic curve multiplication in the same signature is 21.79%, so building the message
+to sign cost over half of signing it. The signature half is already fixed (`b1dc7dc6`, `cryptobyte`).
 
-| frame | % process CPU |
-|---|---|
-| `encoding/asn1.Marshal` | 14.31 |
-| ├ from `TxNamespace.ASN1Marshal` | **11.5** (80.5% of it) |
-| └ from `testsig.ecdsaSigner.Sign` | 2.8 (19.5%) |
-| of which `encoding/asn1.makeField` (pure reflection) | 85.9% of the marshal |
+The branch adds `QuickASN1Marshal` alongside the existing method rather than replacing it, and wires a
+byte-equality assertion into `requireASN1Marshal`, so `FuzzASN1MarshalTxNamespace` compares the two on
+every input. That is the right shape: the output must stay byte-identical or every signature in every
+deployment becomes invalid.
 
-For comparison, the elliptic curve multiplication in the same signature is 21.79%, so building the
-message to sign costs over half of signing it. `translate`'s own intermediate allocations are a
-further ~1.4%.
+Three findings from reviewing it:
 
-The signature half of that 14.31% has already been fixed: `utils/testsig` now emits the signature's
-DER with `cryptobyte` rather than `encoding/asn1`, worth 3.2% on the signing path and 8 fewer
-allocations (1,409 -> 1,364 ns/op, 48 -> 40 allocs). The same treatment applied to the digest is
-worth roughly four times as much, and unlike the signature it would also cut the committer's
-**verifier** cost, which recomputes this digest per transaction.
-
-Why it is a proposal rather than a change: the output must stay byte-identical or every signature in
-every deployment becomes invalid, and Go's `encoding/asn1` has non-obvious marshal rules to
-reproduce — a `nil` `Metadata` is omitted while a non-nil empty slice encodes as an empty SEQUENCE,
-`optional,default:-1` omits only on an exact match, and `TxID`/`NamespaceID` carry explicit
-`utf8` tags. `api/applicationpb/asn1_test.go` already has `FuzzASN1MarshalTxNamespace` and a
-`generateTxNs` helper, so the safety net is a differential fuzz test asserting byte equality against
-the current implementation before the old path is removed.
+- **Byte-identical under fuzzing.** 2.96 million executions with no mismatch.
+- **One divergence the fuzzer cannot reach.** Its harness always passes a two-element metadata slice,
+  so nil and empty are never compared. For a non-nil *empty* `metadata`, `encoding/asn1` emits an
+  empty SEQUENCE — its `optional` rule omits only on `DeepEqual` to the zero value, which is nil —
+  while `QuickASN1Marshal`'s `len(metadata) > 0` omits it, giving a different digest. Changing that
+  guard to `metadata != nil` fixes it, and a further 1.35 million fuzz executions pass. Not reachable
+  through the load generator (which builds nil or one element) or protobuf decoding (empty repeated
+  fields decode to nil), so latent rather than active.
+- **It is 4-5x faster for realistic shapes and slower for very large values.** At the shape this
+  cluster generates, two read-writes with 32-byte keys and values: 7,510 -> **1,512 ns/op** and 61 ->
+  **9 allocations**. The ratio holds at 8, 64 and 512 read-writes. But on the `varying length` test
+  fixture, whose keys run to 1 MB, it is **4.7x slower** and allocates 5.5 MB against 1.25 MB, because
+  nested `bytes.Buffer`s copy the payload three times — element into child sequence, child into main
+  sequence, main into the outer wrap — where `encoding/asn1` sizes its output once. Worth resolving
+  before submission if large values are a supported workload.
 
 ## #797. Benchmarks for attributing committer performance
 
