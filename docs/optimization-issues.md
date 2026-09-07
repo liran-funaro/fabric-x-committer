@@ -6,8 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # Optimization issues
 
-The issues opened for the work in `optimization-summary.md`. All are filed; the numbers below are
-the real ones, and GitHub sub-issue links mirror the parent/child structure.
+The issues opened for the work in `optimization-summary.md`. Everything with a number is filed and
+the numbers are the real ones, with GitHub sub-issue links mirroring the parent/child structure.
+Two entries at the end are drafted but **not yet opened**, and are marked as such in the table.
 
 One umbrella issue plus a child per change. Evidence for every number is in
 `cluster-optimization-log.md`; the issue bodies below state only the change and what drove it.
@@ -41,6 +42,8 @@ hardware. See section 4 of the summary.
 | #795 | [loadgen] Sweep transaction generation over core count | committer | filed |
 | #796 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | filed |
 | hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | filed |
+| — | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | **needs opening** |
+| — | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **needs opening** |
 
 ---
 
@@ -261,10 +264,41 @@ Measured on the cluster, same day, same deployment shape:
 Higher throughput at lower latency. The same goroutine dump afterwards has zero senders blocked on
 write quota.
 
-## Candidate. [applicationpb] The signing digest is built by reflection
+## Needs opening. [utils] The load generator builds an HMAC-DRBG for every ECDSA signature
 
-Not filed yet — measured, not implemented, and deliberately left as a proposal because it changes
-the bytes every signature covers.
+To be filed against the committer. The change is already implemented (`b1dc7dc6`) and is waiting on
+this issue to reference; the evidence is in `cluster-optimization-log.md` and the benchmark numbers in
+section 1 of the summary.
+
+`crypto/ecdsa.SignASN1` signs "hedged" per FIPS 186-5: every signature reads 32 bytes of entropy and
+then builds a fresh HMAC-SHA-512 DRBG personalized with the private key and the digest. On this
+cluster that cost **1.34x the `k*G` scalar multiplication it exists to feed** — `newDRBG` 8.11% of
+process CPU and `hmacDRBG.Generate` 3.69% against `ScalarBaseMult`'s 8.80% — and `newDRBG` alone was
+23% of everything the generator allocated. The entropy read itself is 0.54%.
+
+`utils/testsig` now derives the nonce itself, reaches the same assembly-optimized P-256 through
+`elliptic.P256().ScalarBaseMult`, and emits the signature's DER with `cryptobyte` instead of
+reflection-driven `encoding/asn1`. Worth 2.14x on the signing path at the deployment's settings
+(2,920 -> 1,364 ns/op on 32 cores at GOGC=400) and 6,064 -> 2,249 B/op.
+
+Two things the issue has to say beyond the change itself:
+
+- It is safe **here specifically**. Hedging protects a private key against an RNG failure; this
+  package signs synthetic transactions with throwaway test identities, and the signatures remain
+  ordinary ECDSA that `ecdsa.VerifyASN1` accepts unchanged.
+- It retires two explanations recorded earlier in this evaluation. "The getrandom syscall" is 0.54%
+  of CPU, and that claim was load-bearing for `loadgen_workers: 128` — which therefore now has no
+  justification behind it and wants re-sweeping at 64. "Allocation" was right but non-specific: the
+  allocation has one dominant source, and with `GOGC=400` the collector itself is only ~4.9%.
+
+`gnark-crypto`'s `secp256r1/ecdsa` was measured first and rejected at 306,730 ns/op, **8x slower**
+than the standard library, because its generic big.Int field arithmetic swamps any nonce saving.
+Worth recording so it is not tried again.
+
+## Needs opening. [applicationpb] The signing digest is built by reflection
+
+To be filed against fabric-x-common. Measured but deliberately not implemented, because it changes the
+bytes every signature covers.
 
 `TxNamespace.ASN1Marshal` builds the digest that every transaction is signed over and that every
 verifier recomputes. It does so by translating the namespace into an intermediate struct tree and
