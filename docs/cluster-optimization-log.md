@@ -520,7 +520,48 @@ than a rate.
 | ECDSA signer + blkstorage + GOGC | 292,800 | 323 ms | orderer egress flow control |
 | + `SendBufferSize` 10,000 | 335,600 | 353 ms | per-shard throughput |
 | + 50 ms decision interval | 318,800 | **289 ms** | per-shard throughput |
-| + **4 shards** | **488,800** | 409 ms | **load generator** |
+| + **4 shards** | 488,800 | 409 ms | load generator |
+| + **quick ASN.1 digest** | **480,057** | 460 ms | **generator and database, jointly** |
+
+### 4A.6 Replacing the reflection-built digest, and where the arm finally balances
+
+`QuickASN1Marshal` (fabric-x-common `quick-asn1-marshal`, plus the empty-metadata fix) hand-rolls the
+DER the digest is built from, replacing `encoding/asn1`. Both call sites use it — `utils/signature`'s
+verifier and `utils/testsig`'s signer — so the change lands on the committer's verification path as
+well as the generator's signing path. At the transaction shape this cluster generates it is 5x cheaper
+(7,510 -> 1,512 ns/op, 61 -> 9 allocations).
+
+Verified by drained 300 s holds:
+
+| | before | after |
+|---|---|---|
+| hold at 460,000 | 460,136 tps, 390 ms, 600 ms p99 | **460,000 tps, 380 ms, 580 ms p99** |
+| hold at 480,000 | — | **480,057 tps, 460 ms, 700 ms p99** |
+| offered ceiling | ~503,000 | ~496,400 |
+| busiest machine at the ceiling | loadgen | **commit6, with loadgen level** |
+
+Zero aborts throughout, which is the load-bearing check: the verifier recomputes the digest
+independently of the signer, so a single byte of disagreement would fail every transaction.
+
+The ceiling itself did not move, and that is the result. What changed is that the generator stopped
+being the sole constraint — at 496,400 tps the machines sit at:
+
+```
+commit machines (database + validator-committer)  73.8 - 79.4%
+load generator                                    78.4%
+verifiers                                         40%
+coordinator                                       18.8%
+sidecar                                            8.3%
+```
+
+The generator and the database arrived at the same utilisation together, so neither alone is the
+bottleneck any more and freeing one buys nothing without the other. Database batch commit latency
+climbing 110.7 -> 169.6 ms over the last two steps is the database's half of that.
+
+One measurement note. The first 300 s hold at 480,000 reported a 4.48 s p99 against a 460 ms p50; a
+fresh window on the same unchanged hold read 700 ms. The gap between mean and median is the tell — the
+five-minute window still contained the ramp-up transient. In-flight was flat at 203,704 both times,
+which is what says the rate itself was steady.
 
 **1.67x on this arm**, and the ordering service is no longer the bottleneck: at the top step nothing
 in it is saturated (mempools unpinned, sidecar wait below its limit, ledger append 19%) while the

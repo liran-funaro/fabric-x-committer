@@ -324,6 +324,12 @@ Three findings from reviewing it:
   guard to `metadata != nil` fixes it, and a further 1.35 million fuzz executions pass. Not reachable
   through the load generator (which builds nil or one element) or protobuf decoding (empty repeated
   fields decode to nil), so latent rather than active.
+- **Verified on the cluster.** Both call sites switched (`utils/signature`'s verifier and
+  `utils/testsig`'s signer), drained 300 s holds: 460,000 tps at 380 ms / 580 ms p99 against 390 /
+  600 before, and 480,057 tps at 460 ms / 700 ms p99, with zero aborts throughout. The ceiling did
+  not move — instead the generator stopped being the sole constraint, and at ~496,400 tps the load
+  generator (78.4%) and the database machines (73.8-79.4%) sit at the same utilisation. See
+  `cluster-optimization-log.md` 4A.6.
 - **It is 4-5x faster for realistic shapes and slower for very large values.** At the shape this
   cluster generates, two read-writes with 32-byte keys and values: 7,510 -> **1,512 ns/op** and 61 ->
   **9 allocations**. The ratio holds at 8, 64 and 512 read-writes. But on the `varying length` test
