@@ -523,6 +523,38 @@ the knees conservative. So the figure this evaluation was asked for is what foun
 which is an argument for publishing curves over operating-point tables independent of anything measured
 here.
 
+## The figures
+
+![Committer throughput and tail latency](figures/figure9.png)
+
+*The paper's Figure 9, as six panels rather than three. Throughput counts committed plus rejected
+transactions; the whisker is the rate search's 8% step, one-sided because a knee is a lower bound. The
+paper's bars appear only where it publishes a number.*
+
+![What the committer delivers at a given tail latency](figures/latency-throughput.png)
+
+*In place of the paper's validator-committer failure figure. Eleven rates, each held 300 s in one
+deployment, so there is no latency gate in this measurement and no cold start after the first point. The
+shaded band is the block-formation wait the clock excludes -- zero for a transaction that arrives as its
+block is cut, one whole interval for one that arrives just after the previous cut -- with the mean-
+corrected line dashed inside it. Corrected, the minimum is near 200,000 tps rather than at low load.*
+
+![What the block size trades](figures/latency-throughput-blocks.png)
+
+*The night's most useful finding. 500-transaction blocks sit left of 10,000-transaction blocks at every
+throughput the two share, at equal cluster CPU, and reach 380,100 tps at 208 ms with nothing saturated.
+The small-block ceiling is unmeasured because the load generator's own block rate (853-859 blocks/s)
+runs out before the committer does.*
+
+The table of every reported point, with its rate limit, aborts, latencies, database commit latency,
+table fill and per-tier CPU, is [`figures/figures-table.md`](figures/figures-table.md). Regenerate all
+of it from the raw measurements with:
+
+```sh
+rsync monitor:/data1/logs/figures.jsonl .
+~/workspace/fx-cluster/bin/fx-plot-figures.py figures.jsonl docs/figures/
+```
+
 ## Apparatus
 
 - `fx-cluster/bin/fx-figures.py` — the driver: the experiment matrix, the per-point deployment, the
@@ -661,6 +693,19 @@ spends. Four things are worth separating:
   looked three times better: that run was also on a fresh, barely-split table, so its advantage there is
   understated rather than overstated.
 
+  Reproduced twice more overnight, and the second reproduction is the clearest single number in this
+  section. On the two-read-write shape at the default split, 181,031 tps offered gives **150 ms p99 on a
+  table that has been under load for twenty minutes and 14,950 ms on a fresh one** -- the same rate, the
+  same configuration, a hundredfold difference in tail latency, entirely from how far the table had
+  split. Any measurement of this configuration is a measurement of its warm-up state, and a per-point
+  fresh deployment guarantees the coldest possible reading.
+
+  Also worth recording, since it is the one comparison the warm readings do support: at comparable rates
+  the default split has the *better* tail -- 150 ms at 180,909 tps against the 120-way split's 197 ms at
+  200,000 tps on the same shape. Fewer tablets means less write parallelism and a ceiling around a third
+  as high, but lower per-request overhead. That is the shape of the trade, even though its magnitude is
+  not measurable here.
+
 - **The tablet split is implicated in the conflict collapse but does not explain it.** At 9% conflicts the default split
   delivered 70,727 against 22,727 for the 120-way split at 2.6% -- better at three and a half times the
   conflict rate -- so the read-batching cliff is real and it bites on lookups that *hit*, which is why
@@ -703,6 +748,12 @@ spends. Four things are worth separating:
   | a convoy of conflicts on in-flight keys | widening the reference window made it three times worse |
   | transactions never receiving a status | in-flight is exactly Little's law at the measured latency |
   | the validator-committer's retry backoff | 5 ms behaves identically to 500 ms |
+  | the dependency graph's admission limit | a 40x larger limit (20 M) gives the same ~20,700 tps capacity |
+
+  The graph limit deserves a note of its own, because during the collapse the graph sits pinned at it and
+  that looks causal. It is not: raising `committer_coordinator_dep_graph_wait_tx_limit` from 500,000 to
+  20,000,000 leaves capacity at about 20,700 tps against 19,000-21,000 with the default. The graph is
+  full because in-flight equals throughput times latency and the latency is seconds -- effect, not cause.
 
   What remains unexplained: about six seconds of latency per transaction at 2,000 tps with 0.75% of
   transactions conflicting, on a cluster at 6% CPU with no queue anywhere. Candidates that have not been
