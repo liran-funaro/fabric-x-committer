@@ -544,13 +544,15 @@ here.
 transactions; the whisker is the rate search's 8% step, one-sided because a knee is a lower bound. The
 paper's bars appear only where it publishes a number.*
 
-![What the committer delivers at a given tail latency](figures/latency-throughput.png)
+![What latency the committer costs at a given throughput](figures/latency-throughput.png)
 
 *In place of the paper's validator-committer failure figure. Eleven rates, each held 300 s in one
-deployment, so there is no latency gate in this measurement and no cold start after the first point. The
-shaded band is the block-formation wait the clock excludes -- zero for a transaction that arrives as its
-block is cut, one whole interval for one that arrives just after the previous cut -- with the mean-
-corrected line dashed inside it. Corrected, the minimum is near 200,000 tps rather than at low load.*
+deployment, so there is no latency gate in this measurement and no cold start after the first point.
+Throughput is on x because it is what an operator chooses and latency is what they get. The solid line
+is the median and the shaded envelope reaches the 99th percentile: across the top three rungs the median
+rises monotonically while the 99th percentile is not even ordered, so a line through the tail would draw
+a spike the distribution does not have. The dashed line adds the mean block-formation wait the clock
+excludes, and with it the true minimum sits near 200,000 tps rather than at low load.*
 
 ![What the block size trades](figures/latency-throughput-blocks.png)
 
@@ -564,18 +566,21 @@ table fill and per-tier CPU, is [`figures/figures-table.md`](figures/figures-tab
 of it from the raw measurements with:
 
 ```sh
-rsync monitor:/data1/logs/figures.jsonl .
-~/workspace/fx-cluster/bin/fx-plot-figures.py figures.jsonl docs/figures/
+eval/scripts/fx-plot-figures.py eval/figures.jsonl eval/figures/
 ```
+
+The raw measurements are `eval/figures.jsonl` -- one object per probe and per hold, including the ones
+that failed and the ones later retracted, so every figure here can be rebuilt or disputed from the same
+data. `eval/graph.jsonl` is the dependency-graph and database sampler's series over the same runs.
 
 ## Apparatus
 
-- `fx-cluster/bin/fx-figures.py` — the driver: the experiment matrix, the per-point deployment, the
+- `eval/scripts/fx-figures.py` — the driver: the experiment matrix, the per-point deployment, the
   rate search, and the confirmation hold. Appends one JSON object per probe to
   `/data1/logs/figures.jsonl`.
-- `fx-cluster/bin/fx-figures-run.sh` — switches the cluster from the real-orderer arm to the
+- `eval/scripts/fx-figures-run.sh` — switches the cluster from the real-orderer arm to the
   committer-only arm, then runs the driver.
-- `fx-cluster/bin/fx-plot-figures.py` — reads the JSONL and writes `figure9.png`,
+- `eval/scripts/fx-plot-figures.py` — reads the JSONL and writes `figure9.png`,
   `latency-throughput.png` and a table of every reported point.
 
 The figure differs from the paper's in one respect on purpose. The paper draws throughput bars and a

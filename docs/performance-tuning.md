@@ -230,7 +230,7 @@ its arithmetic closes — 6 validator-committers × 32 committer workers = 192 c
 139 ms each and 341 transactions a batch is 471,000 tx/s.
 
 That figure is not evidence of a sidecar cost, and reading it as one is the mistake to avoid here.
-The comparable coordinator-direct numbers in `cluster-optimization-log.md` were all taken with the
+The comparable coordinator-direct numbers in `eval/cluster-optimization-log.md` were all taken with the
 coordinator's `dep-graph-wait-tx-limit` of 500,000 as the pipeline's in-flight window. Put the
 sidecar in front with a `waiting-txs-limit` below that, and the sidecar's window silently replaces
 the coordinator's as the binding one — and since throughput is in-flight over latency, a smaller
@@ -243,7 +243,7 @@ produced the best coordinator-direct figure, the full pipeline through the sidec
 over forty-five minutes and peaked at 548,800, against 525,388 and 533,213 coordinator-direct — the
 means within 0.4% and the peak higher through the sidecar. Mean latency went from 1,050 ms to
 5,400 ms, which is what an extra stage and a deeper buffer are supposed to cost. Section 6.2 of
-`cluster-optimization-log.md` has the run.
+`eval/cluster-optimization-log.md` has the run.
 
 So keep `waiting-txs-limit` at or above the coordinator's `dep-graph-wait-tx-limit`. Sizing it below
 that does not make overload more visible; the coordinator's window already does that, and the mock

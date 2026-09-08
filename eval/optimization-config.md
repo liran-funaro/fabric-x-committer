@@ -14,7 +14,7 @@ Three companion documents, and what each is for:
 | Document | Answers |
 |---|---|
 | this one | *what was configured* |
-| [`performance-tuning.md`](performance-tuning.md) | *what each setting does*, and how to tune it on other hardware |
+| [`performance-tuning.md`](../docs/performance-tuning.md) | *what each setting does*, and how to tune it on other hardware |
 | [`optimization-summary.md`](optimization-summary.md) | *what each change was worth* |
 | [`cluster-optimization-log.md`](cluster-optimization-log.md) | *how it was found*, with the evidence and the retractions |
 

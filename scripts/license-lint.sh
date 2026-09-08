@@ -6,10 +6,10 @@
 #
 REQUIRED_HEADER="SPDX-License-Identifier: Apache-2.0"
 
-# - JSON does not support comments.
+# - JSON, JSON Lines and images cannot carry a comment, so they cannot carry the header.
 # - `goheader` linter already covers the `.go` files.
 # - `go.sum` is automatically generated from the `go.mod` file.
-IGNORE_REGEXP="(.*\.(json|go)|go.sum|LICENSE|AGENTS.md|\.bob/.*|\.claude/.*)$"
+IGNORE_REGEXP="(.*\.(json|jsonl|go|png|jpg|svg)|go.sum|LICENSE|AGENTS.md|\.bob/.*|\.claude/.*)$"
 
 # Symlinks may point outside the repo (e.g. generated files or vendored assets) and their
 # targets are not required to carry a license header. `[ -L "$f" ]` returns true for symlinks,

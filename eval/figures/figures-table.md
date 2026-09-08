@@ -1,3 +1,8 @@
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
 | figure | condition | rate limit | finished tx/s | of which aborted | mean ms | p50 ms | p99 ms | db commit ms | fill Mtx | verifier cpu | coord cpu | gen cpu | busiest host |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 9a | 1 | 604,661 | 604,545 | 0 | 485 | 481 | 684 | 219.0 | 696 | 32% | 21% | 29% | commit6 |
@@ -10,6 +15,7 @@
 | 9b | 30% | 518,400 | 518,727 | 155,602 | 378 | 373 | 542 | 143.0 | 135 | 22% | 18% | 20% | commit5 |
 | 9c | 0.0% rejected | 518,399 | 518,000 | 0 | 360 | 356 | 509 | 147.3 | 195 | 29% | 18% | 26% | commit6 |
 | curve500 | 500-tx blocks | 380,000 | 380,100 | 0 | 126 | 125 | 208 | 61.5 | 602 | 20% | 14% | 19% | commit6 |
+| split | 10% double spend, default tablet split | 40,814 | 40,727 | 3,872 | 141 | 128 | 195 | 18.0 | 27 | 2% | 1% | 2% | commit4 |
 | graph | 1 read-writes, global graph | 432,000 | 431,273 | 0 | 220 | 216 | 371 | 77.5 | 162 | 23% | 16% | 20% | commit6 |
 | graph | 4 read-writes, global graph | 184,237 | 184,364 | 0 | 182 | 178 | 245 | 37.5 | 69 | 10% | 9% | 9% | commit6 |
 | curve | 10,000 offered | 10,000 | 10,000 | 0 | 123 | 125 | 150 | 30.2 | 4 | 1% | 0% | 1% | commit5 |
