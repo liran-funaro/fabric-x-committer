@@ -30,6 +30,7 @@ on the subject line rather than the hash.
 | 1.6 | **[sidecar] Stop allocating per transaction in key validation and TX references** — a map and a slice per namespace in `verifyTxForm`, plus `TxRef`/`TxWithRef` | 61 → 56 allocs/tx, +12% at default `GOGC` | `128bb575` |
 | 1.7 | **[sidecar] Back a block's decoded TXs with one allocation** — `UnmarshalTxInto` writes into a per-block slab | 19 → 18 allocs/tx, identically at every block size | `02e9b9e8` |
 | 1.8 | **[sidecar] Separate mapping's scaffolding from its result** — the result no longer carries the slabs, the dedup set or the collected TX IDs | releases one string slice per in-flight block; allocations unchanged | `0243503f` |
+| 1.9 | **[loadgen] Stop block preparation capping the generator at small block sizes** — the embedded mock orderer deep-cloned and rehashed every block on one goroutine; `fast-block-prepare` moves the hash to the mapper stage and prepares in place | preparation **608 µs → 8.4 µs** per 500-tx block and **12.05 ms → 8.3 µs** per 10,000-tx block, and becomes independent of block size; expected ~2× on the cluster, where preparation was about half the per-block budget | `ae27afe4` |
 
 The largest committer code optimization is **section 5**, kept separate because the account of how it
 was found is most of its value.
@@ -75,8 +76,16 @@ the standard library, because its generic big.Int field arithmetic swamps any no
 |---|---|---|
 | 2.1 | **[blkstorage] Do not build tx index information no index will read** — `serializeBlock` extracted a txID for every envelope, and built a `txindexInfo` and a `locPointer` each, whatever the store was configured to index. Also pre-sizes the output buffer from `serializedBlockSize` instead of growing it | ledger append **20.78 → 3.65 ms** per 10,000-transaction block on the 19-machine cluster; append duty cycle at 482,000 tps **100% → 18%**; mean latency at that rate **1,574 → 325 ms** |
 
+| 2.2 | **[testcrypto] Let a block's owner prepare it without a clone or a rehash** — `PrepareBlockHeaderAndMetadata` opened with `proto.CloneOf` and always recomputed the data hash; `InPlace` and `ReuseDataHash` make both opt-out for a caller that owns the block and hashed it a stage earlier | the clone and the hash are the entire cost of the call: 0.16 + 0.54 ms at 500 transactions and 3.1 + 11.1 ms at 10,000, against 0.05 ms for numbering, chaining, signing and metadata | `fc7b1c8a` |
+
 The committer is where the effect is measured: with `disable-tx-id-index` set, a sidecar pays for index
 information nothing reads.
+
+2.2 is only reachable through 1.9 — it is what makes the load generator's block preparation cheap, and it
+is opt-in for exactly the reason the clone exists: a caller that reuses a block still needs the copy.
+Misusing it is not silent, which is worth knowing: a submitter that reuses one block while preparing in
+place gives the orderer's cache several entries aliasing one object, and a consumer waiting for a block
+number that has been overwritten stalls rather than reading a wrong block.
 
 Confirmed on the cluster, same day, same inventory, `serializeBlock` the only change — see
 `cluster-optimization-log.md` §3.9. An earlier single-machine benchmark put this at 22.2 → 7.1 ms;

@@ -646,6 +646,44 @@ The committer's own ceiling is therefore **not known** above roughly 370,000 tps
 needs a faster generator — a second generator machine, or less signing work per transaction, which
 would change what is being measured.
 
+**Block preparation, the second generator limit.** Signing is not the only place the harness caps the
+measurement, and the second one is what made the small-block figures the generator's rather than the
+committer's. The sidecar adapter cuts its own blocks and hands each to an embedded mock orderer, whose
+single goroutine calls `testcrypto.PrepareBlockHeaderAndMetadata` before serving it. That call
+deep-clones the block and hashes all of its data, and both costs scale with the block. Benchmarked on
+300-byte transactions:
+
+| per block | 500 tx | 10,000 tx |
+|---|---|---|
+| `proto.CloneOf` | 0.16 ms | 3.1 ms |
+| `ComputeBlockDataHash` | 0.54 ms | 11.1 ms |
+| number, chain, sign, marshal metadata | 0.05 ms | 0.05 ms |
+
+Fitting the two cluster measurements — 853 blocks/s at 500 transactions, 60.5 blocks/s at 10,000 — gives
+1.62 µs per transaction and 0.36 ms fixed per block, and the 1.62 µs agrees with the 1.68 µs the clone
+and the hash cost together in the benchmark. That is the whole small-block story: the same per-block
+cost spread over a twentieth as many transactions.
+
+Neither cost needs to be there. The clone protects a caller who reuses a block, and this producer builds
+one per call; the hash covers the block's own data, so unlike the number and the previous hash it does
+not depend on the chain and can be computed a stage earlier. With `fast-block-prepare` the adapter
+hashes in its mapper goroutine — which was nearly idle, since transactions arrive already serialized —
+and preparation falls to **8.4 µs at 500 transactions and 8.3 µs at 10,000**, independent of block size.
+
+Two cautions. The flag is off by default, so no figure already taken is silently compared against a
+generator that behaves differently; and the expected cluster gain is about **2×, not the 72× the stage
+benchmark shows**, because preparation was only about half the generator's per-block budget and the
+mapper now carries the hash, which makes it the next limit near 1,850 blocks/s. Past that the hash needs
+an ordered pool rather than one goroutine.
+
+This also cost three false diagnoses worth recording. A first benchmark reported 537 ns/block, which was
+the channel write to the preparing goroutine and not the preparation behind it — `SubmitBlock` only hands
+the block over, so the buffer between submitter and preparer has to be pinned to two blocks for the
+number to mean anything. A first attribution blamed the mock orderer's per-envelope dedup cache, which
+SHA-256s and base64-encodes every payload; that path is real, and expensive, but this adapter never uses
+it, because it submits whole blocks. And three runs were killed on the belief that the fast path
+deadlocked, when what was slow was per-case crypto generation in the benchmark's own setup.
+
 ## 6. Where the constraint is now
 
 Signature verification, as of section 6.3. It was the database commit path, at roughly 487,000 tps,

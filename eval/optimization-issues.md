@@ -44,6 +44,8 @@ hardware. See section 4 of the summary.
 | hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | filed |
 | — | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | **needs opening** |
 | — | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **needs opening** |
+| — | [loadgen] Block preparation caps the generator at small block sizes | committer | **needs opening** |
+| — | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | **needs opening** |
 
 ---
 
@@ -294,6 +296,73 @@ Two things the issue has to say beyond the change itself:
 `gnark-crypto`'s `secp256r1/ecdsa` was measured first and rejected at 306,730 ns/op, **8x slower**
 than the standard library, because its generic big.Int field arithmetic swamps any nonce saving.
 Worth recording so it is not tried again.
+
+## Needs opening. [loadgen] Block preparation caps the generator at small block sizes
+
+To be filed against the committer. The change is implemented on `eval/fast-block-prepare` (`ae27afe4`)
+and pairs with the fabric-x-common issue below it, which is what makes the cheap path possible. The
+evidence is in `cluster-optimization-log.md` §5.
+
+The sidecar adapter cuts its own blocks and hands each to an embedded mock orderer, whose single
+goroutine calls `testcrypto.PrepareBlockHeaderAndMetadata` before serving it. That deep-clones the block
+and hashes all of its data, and both scale with the block: 0.16 ms and 0.54 ms for 500 transactions of
+300 bytes, 3.1 ms and 11.1 ms for 10,000, against 0.05 ms for everything else the call does. Fitting the
+cluster's two block sizes gives 1.62 µs per transaction against the benchmark's 1.68 µs for the clone plus
+the hash, so that pair is the whole per-transaction cost of preparing a block.
+
+The consequence is a measurement problem, not a product one. The evaluation's 500-transaction ladder
+stopped at 853 blocks a second, which is the generator, so the committer's ceiling at that block size was
+never measured and the block-size trade-off is quoted from a generator-bound point.
+
+`fast-block-prepare` moves `ComputeBlockDataHash` into the adapter's mapper goroutine — one stage ahead,
+and nearly idle, because transactions arrive already serialized — and lets the orderer prepare in place.
+Preparation falls to 8.4 µs at 500 transactions and 8.3 µs at 10,000, independent of block size.
+
+Three things the issue should say beyond the change:
+
+- **Off by default**, so a figure taken with it is never silently compared against one taken without it.
+  What the committer receives is identical either way; only the cost of producing it changes.
+- The expected cluster gain is **about 2×, not the 72× the stage benchmark shows**. Preparation was
+  roughly half the generator's per-block budget, and the mapper now carries the hash, which becomes the
+  next limit near 1,850 blocks a second. Beyond that the hash wants an ordered pool, not one goroutine.
+- It retires nothing already recorded, but it does add a second generator limit alongside signing. §5 of
+  the log previously named signing as the reason the committer's ceiling is unknown above ~370,000 tps;
+  at small block sizes block preparation binds first.
+
+One finding for a separate issue, not fixed here: the mock orderer's *envelope* path — used when a client
+broadcasts rather than submitting whole blocks — SHA-256s and base64-encodes every payload for a dedup
+cache, 1.17 µs per transaction, and then the block data hash SHA-256s the same bytes again. The cache
+cannot be turned off, because `payload-cache-size: 0` means "use the default" of 1024, and 1024 entries at
+400,000 tps is a 2.4 ms replay window. This adapter never uses that path, so it is not what capped
+anything measured here.
+
+## Needs opening. [testcrypto] Preparing a block clones and rehashes it unconditionally
+
+To be filed against fabric-x-common. **An implementation already exists** on `eval/fast-block-prepare`
+(`fc7b1c8a`). It is the enabling half of the committer issue above.
+
+`PrepareBlockHeaderAndMetadata` opens with `proto.CloneOf(block)` and then sets
+`DataHash: ComputeBlockDataHash(block.Data)`. Those two are the entire cost of the call — see the table in
+the issue above — and neither is always needed:
+
+- The clone makes it safe to prepare a block the caller intends to reuse or submit twice. A producer that
+  builds a block for this call alone pays a full copy of every transaction for nothing.
+- The data hash covers the block's own data. Unlike the number and the previous hash it does not depend on
+  the chain, so it does not have to be computed in chain order and a producer can compute it off the
+  critical path.
+
+`InPlace` and `ReuseDataHash` make each opt-in. `ReuseDataHash` is ignored when the block carries no
+header or an empty hash, so a caller that sets it and forgets to supply one gets a correct block rather
+than a silently corrupt one.
+
+The test is an equivalence test, which is the only thing that makes the options worth having: a block
+prepared the fast way is proto-identical to one prepared the cloning way, in place returns the object it
+was given, and reusing a hash that was never supplied still produces the right one.
+
+Worth stating in the issue that misuse is loud rather than silent. A submitter that reuses one block while
+preparing in place hands a block cache several entries that alias one object, and a consumer waiting for a
+number that has been overwritten stalls; it does not read a wrong block. That was found by writing a
+benchmark that did exactly this.
 
 ## Needs opening. [applicationpb] The signing digest is built by reflection
 

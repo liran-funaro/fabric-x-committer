@@ -247,10 +247,18 @@ EXPERIMENTS = [
     # that delivers ~69,000 -- so it spent both points' attempts over-driven and exhausted without ever
     # offering a rate the shape could meet. The over-driven probes are what bracket it: 300,000,
     # 255,000 and 216,750 offered all returned 68,900-70,000 finished.
-    dict(id="9a-utxo1", figure="9a-utxo", x=1, label="1 in / 1 out", seed=90000,
-         vars=shape(1, 1)),
-    dict(id="9a-utxo4", figure="9a-utxo", x=4, label="4 in / 4 out", seed=40000,
-         vars=shape(4, 4)),
+    # Ladders, not searches. A search looks for the highest rate that meets the conditions, and this
+    # shape meets them at no rate: it delivers every rate offered with a flat queue -- 40,000 of 39,933,
+    # 55,273 of 55,271 -- while the 99th percentile sits at a constant ~2,990 ms, at 34,000 tps with the
+    # busiest machine at 29% CPU. That is a latency floor, roughly three seconds of it, and not
+    # saturation, so the answer to what output creation costs is a floor rather than a knee and the
+    # search can only ever report "no rate met the conditions" after spending six deployments finding
+    # out. The rates bracket what the searches did measure: about 70,000 tps for one output and about
+    # 6,500 for four.
+    dict(id="9a-utxo1", figure="9a-utxo", x=1, label="1 in / 1 out", mode="curve",
+         rates=[10000, 20000, 35000, 50000, 65000], vars=shape(1, 1)),
+    dict(id="9a-utxo4", figure="9a-utxo", x=4, label="4 in / 4 out", mode="curve",
+         rates=[1000, 2000, 4000, 6000, 8000], vars=shape(4, 4)),
 
     # One rung of the invalid-signature panel is unresolved and three probes would settle it. At
     # 559,872 the 0% configuration held twice on two deployments while 10% and 20% each failed once,
