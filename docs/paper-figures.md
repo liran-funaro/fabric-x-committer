@@ -605,6 +605,32 @@ spends. Four things are worth separating:
   delivered 70,727 against 22,727 for the 120-way split at 2.6% -- better at three and a half times the
   conflict rate -- so the read-batching cliff is real and it bites on lookups that *hit*, which is why
   nothing else in this matrix touched it. It does not rescue the workload.
+- **The penalty is fixed per transaction, not congestion, and the likely mechanism is a retry backoff.**
+  Three windows on one fresh deployment at rates far below capacity, so no backlog exists anywhere:
+
+    | offered | finished | measured conflicts | mean latency | p99 | busiest CPU |
+    |---|---|---|---|---|---|
+    | 2,000 | 2,001 | 0.75% | 5.9 s | 7.5 s | 7% |
+    | 5,000 | 5,003 | 2.9% | 6.8 s | 13.6 s | 14% |
+    | 10,000 | 9,273 | 4.9% | 7.8 s | 14.5 s | 25% |
+
+  Mean latency barely moves across a fivefold rate change, and at the full conflict rate delivery falls
+  short at 9,273 tps -- a **56x collapse** against the 518,000 baseline. A queue would grow with rate; a
+  fixed per-batch cost would not. (This also disposes of an earlier suspicion of mine that conflicts
+  leave transactions permanently outstanding: in-flight of ~12,000 at 2,000 tps is exactly Little's law
+  at 5.9 s, not a leak.)
+
+  The candidate mechanism, from the source rather than the metrics: the validator-committer retries a
+  database batch with an exponential backoff whose initial interval is 500 ms (`initial-interval`,
+  multiplier 1.5, +/-50% jitter), and it can retry twice, once specifically for attempting to insert keys
+  that already exist. With about 377 transactions per batch, a 5% per-transaction conflict rate puts a
+  conflict in essentially every batch, so every batch pays that backoff. That accounts for all four
+  observations: seconds of latency at any rate, the collapse, nothing saturated, and the dependency
+  graph pinned at its admission limit as a consequence rather than a cause.
+
+  Queued rather than concluded: the same workload with `committer_database_retry_initial_interval: 5ms`.
+  If throughput recovers, the mechanism is confirmed and the fix is configuration; if it does not, the
+  retry is not what costs the seconds.
 - **Nothing is saturated during the collapse.** The busiest machine in the cluster sat at 21% CPU while
   throughput was a seventh of baseline. Whatever is happening is serialisation or blocking, not
   capacity, and it is the largest unexplained result of this evaluation.
