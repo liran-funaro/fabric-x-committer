@@ -188,4 +188,4 @@ require (
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
 
-replace github.com/hyperledger/fabric-x-common => /home/vpcuser/workspace/fabric-x-common.blkstorage
+replace github.com/hyperledger/fabric-x-common => /home/vpcuser/workspace/fabric-x-common.eval
