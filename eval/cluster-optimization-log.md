@@ -412,6 +412,49 @@ and 26% at 80,000 for both block sizes — because the cost is per transaction, 
 The change was kept because it is harmless here and closer to the intended workload, but it bought
 no throughput, and it is what made `channel-buffer-size` (section 3.4) matter so much.
 
+### 4.5 The simple dependency graph's per-key allocations
+
+Opened as PR **#815** (`depgraph/size-scaling`) and recorded here because the null result is the
+finding. `SimpleManager.checkTXFree` built four heap objects for every key of every transaction that
+found its key free — the `waiting`, its `queue` slice, a `waiterGroup`, and that group's
+`[]*TransactionNode` — all with the same lifetime, all becoming garbage together when the key was
+released. A workload with no contention, where a key is claimed once and released once, paid four
+allocations to describe a queue of one. Holding the first group and its first member inline as fields of
+`waiting` makes that case cost one. `add` is untouched: a second group's `append` sees a slice of length
+and capacity one and moves the queue to the heap exactly as before, so contended ordering is unchanged.
+
+Allocations fall by three per key, which is what the diff predicts and what `-benchmem` reports exactly
+(medians over six runs of 200,000 transactions):
+
+| shape | keys/tx | allocs/tx | bytes/tx |
+|---|---|---|---|
+| `rw=1` | 1 | 13 → 10 | 763 → 742 |
+| `rw=4` | 4 | 30 → 18 | 1,530 → 1,440 |
+| `rw=4,bw=4` | 8 | 53 → 29 | 2,525 → 2,349 |
+
+**It saves no measurable time.** Six runs per arm, the change checked out and reverted between them, gave
++3.3% at `rw=1` and +4.2% at `rw=4` — both far inside a spread that reaches 54% — and a second machine
+came out 3% the *other* way at `rw=4`. Two machines disagreeing on the sign settles it. An earlier
+three-run comparison suggested 13% and was wrong for exactly this reason: six runs per arm is the minimum
+this benchmark supports, and even that cannot resolve less than about 20%.
+
+Two things bound what it is worth. `SimpleManager` **has no production caller** — `NewSimpleManager` is
+referenced only by its own file and by tests, since the coordinator always constructs the global-local
+manager — so on `main` the change is inert and becomes live only if the selection wiring of §3.7 lands.
+And the reason to want it is memory rather than speed: this deployment's coordinator reached 79 GB of RSS
+at roughly 4 KB retained per transaction, so 40% fewer allocations per transaction at four read-writes is
+less for the collector to chase.
+
+What the same work established about the graph is the more useful half, and it stands independently of the
+allocation change: the graph's cost is **per key**, about 420 ns each, flat from one key per transaction
+to eight. So a four-read-write transaction costs the graph four times a one-read-write transaction, and at
+four the simple manager's ceiling on a single machine is around half a million transactions a second —
+the same order as this cluster's 604,545 tps at one read-write and 517,273 at two. That is the mechanism
+behind 9a's fall in `paper-figures.md`, and it is not the paper's: the paper attributes its own fall
+across transaction sizes to lock contention in the dependency graph, while on this configuration both
+lock-wait histograms have a count rate of exactly **zero**, because the simple manager takes those loops
+out of the path. Per-key work produces the fall on its own.
+
 ## 4A. The orderer arm after the committer fixes, and what the ~306,000 tps wall is not
 
 Carrying the ECDSA signer fix, the blkstorage fix and GOGC onto the real-orderer inventory:

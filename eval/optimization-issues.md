@@ -8,7 +8,9 @@ SPDX-License-Identifier: Apache-2.0
 
 The issues opened for the work in `optimization-summary.md`. Everything with a number is filed and
 the numbers are the real ones, with GitHub sub-issue links mirroring the parent/child structure.
-Three entries are drafted but **not yet opened**, and are marked as such in the table.
+Three entries are drafted but **not yet opened**, and are marked as such in the table. Two entries have a
+pull request and no issue behind them at all — #181, which is merged, and #815, which is open — because the
+work was raised straight as a pull request; both are recorded here so the set is complete.
 
 **Status column, checked against GitHub on 2026-09-08.** `filed` means open with no pull request yet;
 `PR open` names the pull request; `resolved` means the change is merged. Three are resolved: the two
@@ -51,6 +53,7 @@ hardware. See section 4 of the summary.
 | hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | **resolved** — PR #166 merged |
 | — | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | **needs opening** |
 | hyperledger/fabric-x-common#181 | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **resolved** — PR #181 merged, no issue was opened |
+| #815 | [coordinator] Hold a waiting key's first group inline | committer | **PR open** — #815, opened without an issue |
 | — | [loadgen] Block preparation caps the generator at small block sizes | committer | **needs opening** |
 | — | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | **needs opening** |
 
@@ -306,6 +309,40 @@ Two things the issue has to say beyond the change itself:
 `gnark-crypto`'s `secp256r1/ecdsa` was measured first and rejected at 306,730 ns/op, **8x slower**
 than the standard library, because its generic big.Int field arithmetic swamps any nonce saving.
 Worth recording so it is not tried again.
+
+## #815. [coordinator] Hold a waiting key's first group inline
+
+**PR #815 is open**, and there is no issue behind it — it was raised straight as a pull request, which is
+why nothing in these documents referenced it until now. Recorded here for completeness; the account is in
+`cluster-optimization-log.md` §4.5 and the figures in the summary at 1.10 and 3.6.
+
+`SimpleManager.checkTXFree` built four heap objects for every key of every transaction that found its key
+free: the `waiting`, its `queue` slice, a `waiterGroup`, and that group's `[]*TransactionNode`. All four
+share a lifetime and become garbage together when the key is released, so an uncontended workload — a key
+claimed once and released once — paid four allocations to describe a queue of one. Holding the first group
+and its first member inline as fields of `waiting` makes that case one allocation, and leaves `add`
+untouched, so a second group still moves the queue to the heap and contended ordering is unchanged.
+
+Allocations per transaction fall by three per key: 13 → 10 at one, 30 → 18 at four, 53 → 29 at eight.
+
+Three things any reader of the PR needs, and they are the reason it should not be read as a throughput
+change:
+
+- **It saves no measurable time**, and that is the result rather than a caveat. Six runs per arm gave
+  +3.3% and +4.2%, inside a spread reaching 54%, and a second machine came out 3% the other way. An
+  earlier three-run comparison suggested 13% and was wrong for that reason.
+- **`SimpleManager` has no production caller.** The coordinator always constructs the global-local
+  manager, so this is inert on `main` and becomes live only if #791's selection wiring lands. The
+  benchmark it adds is not inert: it covers both managers.
+- The reason to want it is **memory**, not speed — this deployment's coordinator reached 79 GB of RSS at
+  about 4 KB retained per transaction.
+
+The durable finding from the same work is separate from the allocation change and outlives it: the graph's
+cost is **per key**, about 420 ns each and flat from one key per transaction to eight, so a
+four-read-write transaction costs four times a one-read-write transaction. That is what produces 9a's fall
+in `paper-figures.md`. It also contradicts the paper's own explanation, which is lock contention in the
+dependency graph: on this configuration both lock-wait histograms have a count rate of exactly zero,
+because the simple manager takes those loops out of the path.
 
 ## Needs opening. [loadgen] Block preparation caps the generator at small block sizes
 

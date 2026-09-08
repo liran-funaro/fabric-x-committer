@@ -30,10 +30,16 @@ on the subject line rather than the hash.
 | 1.6 | **[sidecar] Stop allocating per transaction in key validation and TX references** — a map and a slice per namespace in `verifyTxForm`, plus `TxRef`/`TxWithRef` | 61 → 56 allocs/tx, +12% at default `GOGC` | `128bb575` |
 | 1.7 | **[sidecar] Back a block's decoded TXs with one allocation** — `UnmarshalTxInto` writes into a per-block slab | 19 → 18 allocs/tx, identically at every block size | `02e9b9e8` |
 | 1.8 | **[sidecar] Separate mapping's scaffolding from its result** — the result no longer carries the slabs, the dedup set or the collected TX IDs | releases one string slice per in-flight block; allocations unchanged | `0243503f` |
+| 1.10 | **[coordinator] Hold a waiting key's first group inline** — `SimpleManager.checkTXFree` built four heap objects per key to describe a queue of one; the first group and its first member are now inline fields | **no measurable time**, and that is the result: +3.3%/+4.2% inside a 54% spread, and a second machine 3% the other way. Allocations per transaction 30 → 18 at four read-writes, 53 → 29 at eight keys | `#815`, open |
 | 1.9 | **[loadgen] Stop block preparation capping the generator at small block sizes** — the embedded mock orderer deep-cloned and rehashed every block on one goroutine; `fast-block-prepare` moves the hash to the mapper stage and prepares in place | preparation **608 µs → 8.4 µs** per 500-tx block and **12.05 ms → 8.3 µs** per 10,000-tx block, and becomes independent of block size; expected ~2× on the cluster, where preparation was about half the per-block budget | `ae27afe4` |
 
 The largest committer code optimization is **section 5**, kept separate because the account of how it
 was found is most of its value.
+
+1.10 is the one entry here that bought **nothing measurable**, and it is listed rather than dropped because
+the null result is worth as much as the others: it is a memory change on a manager that has no production
+caller, so it is inert on `main` until the selection wiring of 1.3 lands. Its account is in
+`cluster-optimization-log.md` §4.5, with the benchmark that came out of it at 3.6.
 
 ### 1.x [testsig] Plain-nonce ECDSA signing for the load generator
 
@@ -105,6 +111,7 @@ for nothing.
 | 3.3 | **[loadgen] Benchmark the submit path, not just generation** | separated the generator's ceiling from the committer's, which a ramp cannot do | `2e575dd3` |
 | 3.4 | **[loadgen] Add generation sweeps for the rate a deployment can offer** | showed the generator's plateau moves with core count, so a setting must be measured on the machine that will run it | `9b3dbefb` |
 | 3.5 | **[coordinator] Sweep the dependency graph benchmark over the constructor pool** | the pool does not bound the default manager: 216,886 → 228,068 tx/s over 1–32 constructors, no trend | `5e9a7ef8` |
+| 3.6 | **[coordinator] `BenchmarkDependencyGraphBySize`** — the graph's cost per transaction as the transaction grows, for both managers; returns each released batch immediately as validated instead of holding it for a simulated ten seconds, which is what let a large `-benchtime` finish | established that the graph's cost is **per key**, ~420 ns each and flat from one key to eight, which is the mechanism behind 9a's fall in `paper-figures.md` — and not the paper's, whose account is lock contention, while both lock-wait histograms here count exactly zero | `#815`, open |
 
 ## 4. Configuration and deployment tuning
 
