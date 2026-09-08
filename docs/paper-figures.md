@@ -556,6 +556,33 @@ So this deployment is 27.5% ahead at the smallest transaction and level with the
 which is 3.4 search steps and well inside one step respectively -- a real lead and a real tie. The fall
 across the sweep is steeper than the paper's: -55% against its -41%.
 
+**That lead belongs to a coordinator setting the shipped system does not have.** Every point above runs
+the simple dependency-graph manager, whose selector exists only on this evaluation branch. Measured with
+the global-local manager that `upstream/main` constructs unconditionally, everything else identical:
+
+| | simple manager (this branch only) | global-local (what upstream ships) | ratio |
+|---|---|---|---|
+| 1 read-write | 604,545 tps @ 684 ms | **431,273 @ 371 ms** | 1.40x |
+| 4 read-writes | 274,364 @ 271 ms | **184,364 @ 245 ms** | 1.49x |
+| against the paper at 1 read-write | +27.5% | **-9.0%** | |
+| against the paper at 4 read-writes | -2.0% | **-34.2%** | |
+
+So the honest headline is conditional: **an upstream-configurable Fabric-X committer does not beat the
+paper's Figure 9a at one read-write -- it comes in 9% below it.** The 27.5% lead requires a manager
+selection that has to land upstream first, and at four read-writes the shipped configuration is 34%
+below the paper rather than level with it.
+
+**The stage benchmark's trend does not transfer either.** A benchmark of the two managers in isolation
+put them 1.60x apart at one key and 1.16x at four, predicting the gap would close as transactions grew.
+End to end the ratio is 1.40x at one read-write and 1.49x at four -- flat, or slightly widening. So
+neither the magnitude nor the direction of a stage-level ratio survived the pipeline, which is a
+sharper caution about microbenchmark inference than either measurement alone: the benchmark was right
+that the simple manager is faster and wrong about how much and about which way the difference moves.
+
+The shipped manager's latency is also better, 371 ms against 684 ms, because its knee is a lower rate
+with less in flight. So the two managers trade throughput against tail, and the shipped one is the
+slower, calmer half of that trade.
+
 Latency falls as transactions grow, from 684 ms to 271 ms, because each point sits at its own knee and
 a larger transaction's knee is a lower rate with less in flight. It is not comparable across the panel
 for that reason, and neither is the paper's -- which rises, 83 to 101 ms, over the same sweep.
@@ -601,7 +628,40 @@ spends. Four things are worth separating:
   than the keys created so far reaches out of range, and the point configured for 5% generated 2.6%.
 - **Where the reference points matters more than how many there are.** References to keys created two
   milliseconds ago cost 86% of throughput; references to keys committed seconds ago cost 96%.
-- **The tablet split is implicated but not the whole story.** At 9% conflicts the default split
+- **The tablet split cannot be compared to the pre-split configuration with this methodology, and the
+  reason is worth more than the number would have been.** With `table-pre-split-tablets: 0` YugabyteDB
+  starts the table with few tablets and splits them as it grows, so the configuration's throughput is a
+  function of how long it has been under load. One search shows the whole ramp:
+
+    | time | offered | delivered | p99 | note |
+    |---|---|---|---|---|
+    | 00:51 | 300,000 | 41,636 | >60 s | fresh table, barely split |
+    | 00:56 | 255,000 | 113,455 | 20-30 s | over-driven plateau |
+    | 01:04 | 184,237 | 114,000 | 20-30 s | same plateau |
+    | 01:11 | 133,110 | 133,091 | **199 ms** | delivered in full, 20 min of splitting behind it |
+    | 01:22 | 133,110 | 88,727 | 30-45 s | the same rate, on a FRESH deployment |
+    | 01:44 | 114,119 | 114,364 | 20-30 s | fresh, delivers the rate but not the latency |
+
+  (The tens-of-seconds figures are given as bucket ranges: a p99 reported as exactly 29,900 ms appeared
+  five times across these probes, which is the 20-30 s bucket's interpolated top edge rather than a
+  measurement. The histogram's resolution above a few seconds is a decade, not a millisecond.)
+
+  The last two rows are the point. The same offered rate delivers 133,091 at 199 ms on a table that has
+  been splitting for twenty minutes and 88,727 at 44.7 s on a fresh one. Meanwhile the 120-way pre-split
+  runs at full parallelism from its first transaction, which is exactly why it was chosen.
+
+  So this evaluation's per-point fresh-deployment rule -- right for everything else, and the thing that
+  made the rest of the matrix comparable -- is precisely wrong for a configuration that needs sustained
+  load to reach steady state. A fair comparison needs a long pre-load phase before measurement, which no
+  point in this matrix has. What the data does say: the 120-way split delivered 274,364 tps on the
+  insert-only shape where the default split delivered between 88,727 and 133,091 depending on warm-up,
+  and neither was CPU-bound anywhere (12-14% at the default split's limit).
+
+  The same caveat applies in the other direction to the conflict measurement, where the default split
+  looked three times better: that run was also on a fresh, barely-split table, so its advantage there is
+  understated rather than overstated.
+
+- **The tablet split is implicated in the conflict collapse but does not explain it.** At 9% conflicts the default split
   delivered 70,727 against 22,727 for the 120-way split at 2.6% -- better at three and a half times the
   conflict rate -- so the read-batching cliff is real and it bites on lookups that *hit*, which is why
   nothing else in this matrix touched it. It does not rescue the workload.
