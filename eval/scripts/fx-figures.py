@@ -296,6 +296,35 @@ E2E_EXPERIMENTS = [
     dict(id="e2e-curve", figure="curve", x=0, label="2 read-writes, real ordering", mode="curve",
          rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000, 350000, 400000],
          vars=shape(2, 0)),
+
+    # Figure 7b: throughput against transaction size. The paper measures its ordering service alone at
+    # 4 parties and 2 shards, which is this arm's topology, and reports (bytes -> tps):
+    #
+    #   128 -> 596,000   256 -> 496,000   300 -> 413,000   512 -> 245,000
+    #   1024 -> 123,000  2048 -> 55,000   3500 -> 35,000   4096 -> 27,000
+    #
+    # Every one of those is within 10% of 120 MB/s, so past ~300 bytes its ordering service is moving a
+    # fixed number of bytes a second and the transaction rate is just that divided by the size. The
+    # interesting question for this arm is therefore not whether throughput falls -- it must -- but
+    # whether it falls on the same byte ceiling once a committer is in the path, or on a lower one.
+    #
+    # Size is set through `read-write-value-size`, because a transaction here carries two read-write
+    # operations and their values are the only part that scales. Measured on the generator itself, the
+    # serialized envelope is 202 + 2x the value size, so the values below hit the paper's sizes: the
+    # default 32 gives 262 bytes, near its 256-byte point.
+    #
+    # Seeds are the paper's own ratios against its 300-byte point, so one FX_SEED scales the whole sweep
+    # from whatever the ladder above finds.
+    dict(id="e2e-size300", figure="size", x=300, label="300 B transactions", seed=BASE_SEED,
+         vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=49)),
+    dict(id="e2e-size512", figure="size", x=512, label="512 B transactions",
+         seed=int(BASE_SEED * 0.59), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=155)),
+    dict(id="e2e-size1024", figure="size", x=1024, label="1 KB transactions",
+         seed=int(BASE_SEED * 0.30), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=411)),
+    dict(id="e2e-size2048", figure="size", x=2048, label="2 KB transactions",
+         seed=int(BASE_SEED * 0.13), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=923)),
+    dict(id="e2e-size4096", figure="size", x=4096, label="4 KB transactions",
+         seed=int(BASE_SEED * 0.065), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1947)),
 ]
 
 if os.environ.get("FX_MATRIX") == "e2e":
@@ -372,7 +401,8 @@ def rendered_shape():
     """The shape the load generator will actually run, read back off its own config file."""
     r = subprocess.run(
         ["ssh", "-o", "StrictHostKeyChecking=no", "loadgen",
-         f"grep -E '^ +(read-write-count|write-count|invalid-signatures|key-backref-rate):' "
+         f"grep -E '^ +(read-write-count|write-count|invalid-signatures|key-backref-rate|"
+         f"read-write-value-size):' "
          f"{LOADGEN_CONFIG}"],
         capture_output=True, text=True, timeout=60)
     shape = {}
@@ -421,6 +451,15 @@ def deploy(exp):
     if shape.get("read-write-count") != want_rw or shape.get("write-count") != want_w:
         log(f"[{exp['id']}] rendered shape {shape} is not the requested "
             f"{want_rw} in / {want_w} out; skipping")
+        return False
+    # The transaction size sweep is verified the same way and for the same reason: a size that failed to
+    # apply would be reported as a measurement of the size that was asked for. The collection's variable
+    # is `loadgen_read_write_tx_val_size`, which is not the config key it renders, so a rename upstream
+    # would break silently rather than loudly.
+    want_value = exp["vars"].get("loadgen_read_write_tx_val_size")
+    if want_value is not None and shape.get("read-write-value-size") != str(want_value):
+        log(f"[{exp['id']}] rendered value size {shape.get('read-write-value-size')} is not the "
+            f"requested {want_value}; skipping")
         return False
     log(f"[{exp['id']}] rendered shape {shape}")
     if not make("start", extra_vars=True):
