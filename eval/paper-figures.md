@@ -787,6 +787,19 @@ spends. Four things are worth separating:
   the ~6 seconds per transaction measured, and it is why nothing was ever saturated: the pipeline was
   waiting on serialised storage round trips, not working.
 
+  **What it costs to fix it without giving up the tablet split.** The cliff constrains the pair -- tablets
+  times keys per lookup -- so narrowing the lookup is the other lever, and the coordinator's chunk size
+  bounds it. Measured on the insert-only four-read-write shape, where there is no cliff to avoid because
+  every lookup misses, a 64-transaction chunk costs **6.9% of throughput and 10% of latency**: 255,455 tps
+  at 299 ms against 274,364 at 271 ms, both confirmed on fresh deployments.
+
+  That is the price side. At two read-writes a 64-transaction chunk puts a validation array at ~128 keys,
+  under the ~273 the 120-way split allows, so a conflict workload's lookups should batch per tablet
+  again -- the benefit side, queued as `9c-ds10-chunk64`. If it recovers toward the default split's
+  41,273 tps, the recommendation is "keep the tablet split, narrow the chunk" and the whole trade is 7%
+  of insert throughput for roughly twice the conflict throughput and a several-hundred-fold better
+  conflict tail.
+
   So the double-spend panel measured a database configuration, as suspected, and the configuration is
   identified. The 120-way pre-split buys write parallelism on insert-only workloads and destroys any
   workload whose lookups hit -- which is every workload with contention, and the one the paper's Figure
