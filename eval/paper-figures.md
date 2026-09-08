@@ -768,7 +768,7 @@ spends. Four things are worth separating:
   | the validator-committer's retry backoff | 5 ms behaves identically to 500 ms |
   | the dependency graph's admission limit | a 40x larger limit (20 M) gives the same ~20,700 tps capacity |
 
-  **And then the seventh explanation held: it is the tablet split.** The same 10% double-spend workload
+  **The seventh finding is a lever, not a mechanism: it is the tablet split.** The same 10% double-spend workload
   at the default split rather than the 120-way pre-split, confirmed on a fresh deployment:
 
   | tablet split | finished | measured conflicts | median | p99 | busiest CPU |
@@ -780,25 +780,42 @@ spends. Four things are worth separating:
   consecutive rungs from 30,000 to 40,814 tps met the one second bound at the default split, where the
   120-way configuration met it at no rate at all.
 
-  This does not contradict the earlier refutation of the cliff -- it locates it. The cliff was refuted as
-  the explanation for **9a's size sweep**, correctly: every key there is fresh, so every multi-key lookup
-  *misses*. 9c's conflicting reads target committed keys, so they *hit*, and at 120 tablets a ~750-key
-  validation array degenerates to hundreds of serial storage reads. At a few milliseconds each that is
-  the ~6 seconds per transaction measured, and it is why nothing was ever saturated: the pipeline was
-  waiting on serialised storage round trips, not working.
+  **The tablet split is the lever. The read-batching cliff was the explanation for why, and the test that
+  should have confirmed it did not.** The cliff constrains tablets times keys per lookup, so narrowing the
+  lookup should work as well as reducing the tablet count. Narrowing it does work mechanically -- a
+  64-transaction chunk took transactions per read-validation call from ~377 to ~106, so ~212 keys per
+  array, under the ~273 a 120-way split allows, with read validation itself at 3.2 ms -- and the workload
+  still holds a 35 second mean at 30,000 tps. Better than the ~55 s at the default chunk, nowhere near the
+  160 ms the default tablet split gives.
 
-  **What it costs to fix it without giving up the tablet split.** The cliff constrains the pair -- tablets
+  So both levers move in the same direction and only one of them fixes it:
+
+  | configuration | finished | median | read validation |
+  |---|---|---|---|
+  | 120 tablets, 500-tx chunk | ~19,000 | ~55 s | 2.2 ms |
+  | 120 tablets, 64-tx chunk (~212 keys/array) | ~30,000 | ~35 s | 3.2 ms |
+  | **default split, 500-tx chunk** | **41,273** | **160 ms** | -- |
+
+  If the mechanism were keys per lookup crossing the batching threshold, the middle row would look like
+  the bottom one. It does not, and read validation is a few milliseconds in every row, so whatever the
+  tablet count changes for a contended workload is not the size of the read-validation array. The write
+  path is the untested half: with conflicts the second transaction updates an existing key rather than
+  inserting a new one, and YugabyteDB resolves write-write conflicts internally with its own retries and
+  backoff, invisible to the committer's instrumentation and plausibly sensitive to how the table is
+  split. That is where the next person should look, with the database's own conflict metrics.
+
+  **What narrowing the chunk costs, and what it does not buy.** The cliff constrains the pair -- tablets
   times keys per lookup -- so narrowing the lookup is the other lever, and the coordinator's chunk size
   bounds it. Measured on the insert-only four-read-write shape, where there is no cliff to avoid because
   every lookup misses, a 64-transaction chunk costs **6.9% of throughput and 10% of latency**: 255,455 tps
   at 299 ms against 274,364 at 271 ms, both confirmed on fresh deployments.
 
-  That is the price side. At two read-writes a 64-transaction chunk puts a validation array at ~128 keys,
-  under the ~273 the 120-way split allows, so a conflict workload's lookups should batch per tablet
-  again -- the benefit side, queued as `9c-ds10-chunk64`. If it recovers toward the default split's
-  41,273 tps, the recommendation is "keep the tablet split, narrow the chunk" and the whole trade is 7%
-  of insert throughput for roughly twice the conflict throughput and a several-hundred-fold better
-  conflict tail.
+  That is the price side, and the benefit side did not arrive. The prediction was that a narrower chunk
+  would keep a conflict workload's lookups under the threshold and so substitute for reducing the tablet
+  count. It bounded the array as intended -- ~106 transactions per validation call instead of ~377 -- and
+  bought 1.6x of throughput and 1.6x of latency, against the tablet split's 2x and 340x. So the chunk is a
+  real but partial lever, the trade remains a choice rather than a fix, and the mechanism behind the
+  tablet count is still open.
 
   So the double-spend panel measured a database configuration, as suspected, and the configuration is
   identified. The 120-way pre-split buys write parallelism on insert-only workloads and destroys any
