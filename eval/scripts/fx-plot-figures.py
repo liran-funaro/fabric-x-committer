@@ -13,7 +13,8 @@ Two outputs:
 
   latency-throughput.png   throughput against latency, which is what replaces the paper's
                 failure figure. Read it as "what does this cluster deliver if you can tolerate
-                this much latency".
+                this much latency". Both block sizes share one pair of axes, because the point of
+                the figure is the trade between them rather than either one alone.
 
 Colors are the validated categorical slots 1 and 2 (blue, orange) on the light surface, used for
 the only comparison in these figures: this cluster against the paper's published numbers.
@@ -26,6 +27,7 @@ from collections import defaultdict
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt                                     # noqa: E402
+from matplotlib.patches import Patch                                # noqa: E402
 from matplotlib.ticker import FuncFormatter                         # noqa: E402
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "figures.jsonl"
@@ -34,11 +36,17 @@ OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
 OURS = "#2a78d6"        # categorical slot 1
 PAPER = "#eb6834"       # categorical slot 2
 SMALL = "#1baf7a"       # categorical slot 3, the second block size
+OURS_DARK = "#17457f"   # slot 1, stepped down: the rejected share of our own bars
+PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper's bars
+# What the latency axis shows before it starts labelling instead of drawing. The sustained medians run
+# 38 ms to 438 ms and one unsustained rate reached 7.5 s, so an axis that fits everything spends nine
+# tenths of its height on the points nobody would operate at, and the 40-vs-125 ms difference that is
+# the whole block size result becomes two adjacent pixels.
+LAT_AXIS_MS = 400
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRID = "#e6e5e1"
 SURFACE = "#fcfcfb"
-SLO_MS = 1000
 # The latency histogram's last finite bound. A percentile that lands on it is not a measurement: it
 # means the ladder was exceeded, and the conflict points read p50 AND p99 both at 60,000 with means
 # above both, which is impossible for real percentiles. Those are reported as ">60 s" with the mean,
@@ -46,19 +54,43 @@ SLO_MS = 1000
 TOP_BUCKET_MS = 60_000
 STEP = 1.08          # the rate search's multiplier, and so each knee's one-sided uncertainty
 
-# The paper's own numbers, for the reference series. Section 6.3 gives the ends of each sweep
-# explicitly and not the middle, so only the published points are drawn. Its Figure 9a x axis is
-# inputs/outputs per transaction; one read-write operation is one input read and one output
-# written, so its 1/1 sits at 1 and its 4/4 at 4.
+# The paper's own numbers, for the reference series, as (total tx/s, rejected tx/s, p99 seconds).
+#
+# Section 6.3 quotes only the ends of each sweep in prose, so the intermediate points are read off
+# Figure 9 itself at 400 dpi against its own gridlines. The quoted ends agree with the reading to
+# within a percent, which is the accuracy to assume for the rest: 474,000 and 280,000 for 9a's ends,
+# 419,000 -> 459,000 for 9b, 419,000 -> 280,000 at 10% and 260,000 at 30% for 9c, and p99 83 -> 101 ms
+# (9a), 75-83 ms (9b), 85 -> over 1,100 ms (9c).
+#
+# The rejected series matters as much as the total. The paper's 9b and 9c panels each plot THREE bars
+# -- total, valid and invalid throughput -- so the share of work that was rejected is visible in the
+# original, and a comparison that shows only totals can silently compare a 30%-rejected point against
+# a 23%-rejected one. Total = valid + invalid holds in the paper's own bars, which is the same
+# convention as this driver's `finished`.
+#
+# Its 9a x axis is inputs/outputs per transaction; one read-write operation is one input read and one
+# output written, so its 1/1 sits at 1 and its 4/4 at 4.
 PAPER_DATA = {
-    "9a": {1: (474_000, 0.083), 4: (280_000, 0.101)},
-    "9b": {0: (419_000, 0.083), 30: (459_000, 0.075)},
-    "9c": {0: (419_000, 0.085), 10: (280_000, 1.100), 30: (260_000, None)},
+    "9a": {1: (474_000, None, 0.083), 2: (419_000, None, 0.083),
+           3: (340_000, None, 0.093), 4: (280_000, None, 0.101)},
+    "9b": {0: (419_000, 0, 0.083), 10: (428_000, 43_000, 0.076),
+           20: (429_000, 86_000, 0.075), 30: (459_000, 138_000, 0.0755)},
+    "9c": {0: (419_000, 0, 0.085), 10: (282_000, 26_000, 1.140),
+           20: (281_000, 48_000, 1.400), 30: (260_000, 60_000, 1.420)},
 }
+
+
+
+# The x wording is the paper's own, so a panel here and its panel there are read the same way. Every
+# panel has a formatter: 9c used to label its ticks with the share it actually rejected rather than the
+# share configured, which put its bars at x positions the paper's bars could not be placed against.
+# The generated share is annotated on the bar instead, which is where a discrepancy belongs.
 PANELS = [
-    ("9a", "Transaction size", "read-write operations per transaction", lambda x: f"{x}"),
-    ("9b", "Invalid signatures", "share of transactions (%)", lambda x: f"{x}%"),
-    ("9c", "Double spends", "share of transactions rejected (%)", None),
+    ("9a", "Transaction size", "#inputs and #outputs in each transaction",
+     lambda x: f"in={x}\nout={x}"),
+    ("9b", "Invalid signatures", "percentage of transactions with invalid signature",
+     lambda x: f"{x}%"),
+    ("9c", "Double spends", "percentage of transactions doing double spend", lambda x: f"{x}%"),
 ]
 
 
@@ -194,240 +226,225 @@ def style(ax):
 
 
 def figure9(rows, path):
-    fig, axes = plt.subplots(2, 3, figsize=(13.5, 7.2), sharex="col")
+    fig, axes = plt.subplots(2, 3, figsize=(14.2, 8.0), sharex="col")
     fig.patch.set_facecolor(SURFACE)
 
     for col, (figure, title, xlabel, xfmt) in enumerate(PANELS):
         data = best_per_x(rows, figure)
-        xs = list(data)
-        labels = [xfmt(x) if xfmt else f"{measured_conflicts(data[x]) * 100:.1f}%" for x in xs]
-        pos = range(len(xs))
         paper = PAPER_DATA[figure]
+        # The union, not just what was measured. A panel drawn over its own x values only hides the
+        # published points it has nothing to compare against -- which for 9c is three of the four,
+        # and those three are the paper's whole result.
+        xs = sorted(set(data) | set(paper))
+        pos = list(range(len(xs)))
+        labels = [xfmt(x) for x in xs]
 
         top, bottom = axes[0][col], axes[1][col]
         style(top)
         style(bottom)
         top.set_title(title, color=INK, fontsize=11, pad=8, loc="left")
-        if not xs:
-            # A panel with no points yet is left blank with a note, rather than drawn with an
-            # empty axis whose ticks read "0k" and "-0k".
-            for ax in (top, bottom):
-                ax.set_xticks([])
-                ax.set_yticks([])
-                for side in ("left", "bottom"):
-                    ax.spines[side].set_visible(False)
-            top.text(0.5, 0.5, "not measured yet", transform=top.transAxes, ha="center",
-                     va="center", fontsize=9, color=INK2)
-            continue
 
         width, gap = 0.38, 0.012
-        ours = [throughput(data[x]) for x in xs]
-        # A knee is the highest rate that passed, resolved to the search's 8% step, so it is a lower
-        # bound: the sustainable rate lies between the bar and one step above it. The whisker is that
-        # step, and it is one-sided for the same reason. Without it a reader takes a one-step
-        # difference between neighbouring bars for a result.
-        top.bar([p - width / 2 - gap for p in pos], ours, width, color=OURS, label="this cluster",
-                yerr=[[0] * len(ours), [v * (STEP - 1) for v in ours]], error_kw={
-                    "ecolor": INK2, "elinewidth": 1, "capsize": 3, "capthick": 1, "zorder": 4},
-                zorder=3)
-        pxs = [(p, paper[x][0]) for p, x in zip(pos, xs) if x in paper]
-        if pxs:
-            top.bar([p + width / 2 + gap for p, _ in pxs], [v for _, v in pxs],
-                    width, color=PAPER, label="paper", zorder=3)
+
+        def draw(xp, total, rejected, base, dark):
+            """One bar, with the rejected part of it drawn inside it.
+
+            The paper breaks each of its 9b and 9c bars into total, valid and invalid; this draws the
+            total and overlays the invalid share on the same footing, so the two sit at the same x
+            and the reject shares can be read against each other directly.
+            """
+            top.bar(xp, total, width, color=base, zorder=3)
+            if rejected:
+                top.bar(xp, rejected, width, color=dark, zorder=4, edgecolor=SURFACE,
+                        linewidth=0.8, hatch="///")
+                top.annotate(f"{100 * rejected / total:.0f}% rej",
+                             (xp, rejected), textcoords="offset points", xytext=(0, 3),
+                             ha="center", fontsize=6.5, color=INK)
+
+        for pp, x in zip(pos, xs):
+            if x in data:
+                r = data[x]
+                total = throughput(r)
+                # A knee is the highest rate that passed, resolved to the search's 8% step, so it is
+                # a lower bound: the sustainable rate lies between the bar and one step above it. The
+                # whisker is that step, one-sided for the same reason.
+                top.errorbar(pp - width / 2 - gap, total, yerr=[[0], [total * (STEP - 1)]],
+                             ecolor=INK2, elinewidth=1, capsize=3, capthick=1, fmt="none", zorder=5)
+                draw(pp - width / 2 - gap, total, r.get("aborted") or 0, OURS, OURS_DARK)
+                top.annotate(f"{total / 1000:,.0f}k",
+                             (pp - width / 2 - gap, total * STEP), textcoords="offset points",
+                             xytext=(0, 4), ha="center", fontsize=8, color=INK2)
+            elif figure == "9c":
+                # 9c is the panel where the absence is the result: every rate offered at 5% and above
+                # failed the conditions, so there is no bar to draw and saying so is the measurement.
+                top.annotate("no rate\nqualified", (pp - width / 2 - gap, paper[x][0] * 1.04),
+                             ha="center", va="bottom", fontsize=7.5, color=INK2)
+            if x in paper:
+                total, rejected, _ = paper[x]
+                draw(pp + width / 2 + gap, total, rejected, PAPER, PAPER_DARK)
+
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
+        # Both rows carry the tick labels. With sharex the bar row's labels are hidden by default,
+        # which leaves the panel a reader looks at first with no x axis at all.
+        top.set_xticks(pos)
+        top.set_xticklabels(labels)
+        top.tick_params(labelbottom=True)
+        top.set_xlabel(xlabel, color=INK2, fontsize=8.5)
         if col == 0:
             top.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
-            handles, names = top.get_legend_handles_labels()
-            fig.legend(handles, names, frameon=False, fontsize=9, labelcolor=INK2,
-                       loc="upper right", bbox_to_anchor=(0.995, 0.995), ncol=2)
 
-        # The measured point of every panel is labelled: three or four bars per panel is few
-        # enough that the number belongs on the mark rather than in an axis lookup.
-        for p, x in zip(pos, xs):
-            top.annotate(f"{throughput(data[x]) / 1000:,.0f}k",
-                         (p - width / 2 - gap, throughput(data[x]) * STEP),
-                         textcoords="offset points", xytext=(0, 4), ha="center",
-                         fontsize=8, color=INK2)
-
-        finite = [(p, latency_ms(data[x])) for p, x in zip(pos, xs) if latency_ms(data[x])]
-        if finite:
-            bottom.plot([p for p, _ in finite], [v for _, v in finite],
-                        color=OURS, linewidth=2, marker="o", markersize=8, zorder=3)
-        for p, x in zip(pos, xs):
-            if latency_ms(data[x]) is None:
+        ours = [(pp, latency_ms(data[x])) for pp, x in zip(pos, xs)
+                if x in data and latency_ms(data[x])]
+        if ours:
+            bottom.plot([pp for pp, _ in ours], [v for _, v in ours], color=OURS, linewidth=2,
+                        marker="o", markersize=8, zorder=3)
+        for pp, x in zip(pos, xs):
+            if x in data and latency_ms(data[x]) is None:
                 bottom.annotate(f">60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
-                                (p, 0), xytext=(0, 18), textcoords="offset points", ha="center",
+                                (pp, 0), xytext=(0, 18), textcoords="offset points", ha="center",
                                 fontsize=7.5, color=INK2)
-        lat = [(p, paper[x][1] * 1000) for p, x in zip(pos, xs)
-               if x in paper and paper[x][1] is not None]
+        lat = [(pp, paper[x][2] * 1000) for pp, x in zip(pos, xs)
+               if x in paper and paper[x][2] is not None]
         if lat:
-            bottom.plot([p for p, _ in lat], [v for _, v in lat], color=PAPER, linewidth=2,
+            bottom.plot([pp for pp, _ in lat], [v for _, v in lat], color=PAPER, linewidth=2,
                         marker="s", markersize=8, linestyle="--", zorder=3)
-        bottom.set_xticks(list(pos))
+        bottom.set_xticks(pos)
         bottom.set_xticklabels(labels)
         bottom.set_xlabel(xlabel, color=INK2, fontsize=9)
         bottom.set_ylim(bottom=0)
         if col == 0:
             bottom.set_ylabel("99th percentile latency (ms)", color=INK2, fontsize=9)
 
+    legend = [Patch(color=OURS, label="this cluster"),
+              Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
+                    label="of which rejected"),
+              Patch(color=PAPER, label="paper"),
+              Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
+                    label="of which rejected")]
+    fig.legend(handles=legend, frameon=False, fontsize=9, labelcolor=INK2,
+               loc="upper right", bbox_to_anchor=(0.997, 0.999), ncol=4)
     fig.suptitle("Committer throughput and tail latency, at a one second latency bound",
                  color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
-    fig.text(0.006, 0.95,
+    fig.text(0.006, 0.951,
              "Each bar is the highest rate held for 300 s with 99th percentile latency under one "
-             "second, no queue growth, and the offered rate arriving.\nThroughput counts committed "
-             "plus rejected transactions. The whisker is the search's 8% step, one-sided because a "
-             "knee is a lower bound.",
+             "second, no queue growth, and the offered rate arriving. Throughput counts committed "
+             "plus rejected transactions,\nand the hatched part of a bar is the rejected share, "
+             "labelled where it is non-zero, so the two experiments are compared at a matched "
+             "reject rate. The whisker is the search's 8% step,\none-sided because a knee is a "
+             "lower bound. The paper's series is its Figure 9: the ends as quoted in its text, the "
+             "intermediate points read off its plots.",
              color=INK2, fontsize=8, ha="left", va="top", linespacing=1.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.925))
+    fig.tight_layout(rect=(0, 0, 1, 0.915))
     fig.savefig(path, dpi=160, facecolor=SURFACE)
     print("wrote", path)
 
 
-def curve(rows, path, figure="curve", ax=None, color=None, label=None, minimal=False):
-    """Throughput on x, latency on y.
+def sustained(row):
+    """Whether a ladder point delivered its offered rate out of a flat queue.
 
-    The first version of this figure put latency on x, which is what the request asked for, and it read
-    badly: the sustained points span 40 ms to 600 ms while one unsustained rate reached 7.5 s, so the
-    interesting range was squeezed into a sliver, and a reader scanning left to right was scanning the
-    dependent variable. Throughput is what an operator chooses and latency is what they get, so
-    throughput belongs on x.
+    `met` is the panels\' gate and it is the wrong test here, because it includes the one second
+    latency bound: 500,000 tps was delivered in full with a flat queue at 1,351 ms, which the gate
+    rejects and the curve should absolutely show -- a curve with a latency gate in it cannot answer
+    "what does this deliver if you tolerate more latency", which is the whole question.
+
+    What does disqualify a point is failing to deliver its rate, or delivering it out of a growing
+    queue: then its latency is the queue\'s drain time rather than the cost of the rate.
     """
-    every = [r for r in rows if r.get("figure") == figure and throughput(r)]
-    every.sort(key=lambda r: r["limit"])
-    # `met` is the panels' gate and it is the wrong test here, because it includes the one second
-    # latency bound: 500,000 tps was delivered in full with a flat queue at 1,351 ms, which the gate
-    # rejects and the curve should absolutely show -- a curve with a latency gate in it cannot answer
-    # "what does this deliver if you tolerate more latency", which is the whole question.
-    #
-    # What does disqualify a ladder point is failing to deliver its rate, or delivering it out of a
-    # growing queue: then its latency is the queue's drain time rather than the cost of the rate.
-    def sustained(r):
-        offered_met = throughput(r) >= r["limit"] * 0.98
-        queue_flat = (r.get("inflight_growth") or 0) <= r["limit"] * 0.02
-        return offered_met and queue_flat
+    offered_met = throughput(row) >= row["limit"] * 0.98
+    queue_flat = (row.get("inflight_growth") or 0) <= row["limit"] * 0.02
+    return offered_met and queue_flat
 
+
+def series(rows, ax, figure, color, label):
+    """One block size\'s curve: median as the line, the tail as an envelope above it.
+
+    The median is the shape and the tail is an envelope around it. That is not a stylistic choice:
+    across the top three rungs p50 rises monotonically 272 -> 351 -> 438 ms while p99 goes
+    482 -> 1,351 -> 591, so the 99th percentile is not even ordered and a line through it draws a
+    spike where the distribution has none.
+
+    Returns the points that ran off the top of the axis, for the caller to label.
+    """
+    every = sorted([r for r in rows if r.get("figure") == figure and throughput(r)],
+                   key=lambda r: r["limit"])
     points = [r for r in every if sustained(r)]
-    saturated = [r for r in every if not sustained(r)]
+    missed = [r for r in every if not sustained(r)]
     if not points:
-        print("no curve data yet")
-        return
-
-    own_figure = ax is None
-    color = color or OURS
-    if own_figure:
-        fig, ax = plt.subplots(figsize=(9.5, 6))
-        fig.patch.set_facecolor(SURFACE)
-        style(ax)
-        ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+        return []
 
     tps = [throughput(r) for r in points]
-    lat = [r["lat_p99"] * 1000 for r in points]
     p50 = [(r.get("lat_p50") or 0) * 1000 for r in points]
-    # The median is the curve's shape and the tail is an envelope around it. That is not a stylistic
-    # choice: across the top three rungs p50 rises monotonically 272 -> 351 -> 438 ms while p99 goes
-    # 482 -> 1,351 -> 591, so the 99th percentile is not even ordered and a line through it draws a
-    # spike where the distribution has none.
-    ax.plot(tps, p50, color=color, linewidth=2, marker="o", markersize=8, zorder=3)
-    ax.plot(tps, lat, color=color, linewidth=1, alpha=0.55, zorder=2)
-    ax.fill_between(tps, p50, lat, color=color, alpha=0.10, linewidth=0, zorder=1)
+    p99 = [(r.get("lat_p99") or 0) * 1000 for r in points]
+    ax.fill_between(tps, p50, p99, color=color, alpha=0.10, linewidth=0, zorder=1)
+    ax.plot(tps, p99, color=color, linewidth=1, alpha=0.55, zorder=2)
+    ax.plot(tps, p50, color=color, linewidth=2, marker="o", markersize=8, zorder=3, label=label)
 
-    # The band spans the block-formation wait the measurement leaves out: zero for a transaction that
-    # arrived as its block was cut, one whole interval for one that arrived just after the previous
-    # cut. It is invisible at the top of the ladder and covers most of the latency at the bottom.
     waits = [block_wait_ms(r) for r in points]
     if all(w is not None for w in waits):
         ax.plot(tps, [m + w / 2 for m, w in zip(p50, waits)], color=color, linewidth=1,
                 linestyle="--", zorder=2)
 
-    if minimal:
-        ax.plot([], [], color=color, linewidth=2, marker="o", markersize=8, label=label)
-        return
-
-    # The one second gate every knee in the matrix was selected by. The curve itself has no gate in
-    # it, so drawing the line shows how much of the curve the knees were chosen from.
-    ax.axhline(SLO_MS, color=INK2, linewidth=1, linestyle=":", zorder=2)
-    ax.annotate("1 s latency bound (the knees are selected by this line)", (0, SLO_MS),
-                xytext=(8, 4), textcoords="offset points", ha="left", va="bottom",
-                fontsize=7.5, color=INK2)
-
-    # Two labels, not thirteen: the best sustainable point, and the fastest one.
-    peak = max(points, key=throughput)
-    quickest = min(points, key=lambda r: r["lat_p99"])
-    quickest = min(points, key=lambda r: r.get("lat_p50") or 9)
-    for r, note, xoff, ha in ((peak, "peak sustained", -10, "right"),
-                              (quickest, "lowest median", 10, "left")):
-        ax.annotate(f"{note}: {throughput(r) / 1000:,.0f}k tx/s, "
-                    f"median {(r.get('lat_p50') or 0) * 1000:,.0f} ms",
-                    (throughput(r), (r.get("lat_p50") or 0) * 1000), textcoords="offset points",
-                    xytext=(xoff, 14), ha=ha, fontsize=8, color=INK2)
-
-    if saturated:
-        ax.plot([throughput(r) for r in saturated],
-                [(r.get("lat_p50") or 0) * 1000 for r in saturated],
+    if missed:
+        ax.plot([throughput(r) for r in missed], [(r.get("lat_p50") or 0) * 1000 for r in missed],
                 marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=color,
-                markeredgewidth=2, linestyle="none", zorder=3,
-                label="rate offered but not sustained")
-
-    # A rate that was not sustained sits at seconds while every sustained one is under one, so letting
-    # the axis span both compresses the whole measurement into a sliver. The axis is clipped to the
-    # sustained range and the off-scale points are named instead.
-    span = max(max(lat[:-1] or lat), SLO_MS * 1.2) if lat else SLO_MS
-    off = [r for r in saturated if r["lat_p99"] * 1000 > span]
-    if off:
-        ax.set_ylim(0, span)
-        named = ", ".join("%dk at %.1f s" % (r["limit"] // 1000, r["lat_p99"]) for r in off)
-        plural = "s" if len(off) > 1 else ""
-        ax.text(0.99, 0.99, "%d offered rate%s not sustained, above this axis (%s)"
-                % (len(off), plural, named),
-                transform=ax.transAxes, ha="right", va="top", fontsize=7.5, color=INK2)
-
-    paper = PAPER_DATA["9b"][0]
-    ax.plot([paper[0]], [paper[1] * 1000], color=PAPER, marker="s", markersize=9, zorder=4,
-            linestyle="none", label="paper, Figure 9b at 0% invalid")
-    ax.plot([], [], color=color, linewidth=2, marker="o", markersize=8,
-            label=label or f"this cluster, {points[0].get('label') or 'measured'}")
-    ax.plot([], [], color=INK2, linewidth=1, linestyle="--",
-            label="+ mean wait for the block to be cut (band: 0 to one interval)")
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper left")
-
-    if not own_figure:
-        return
-    ax.xaxis.set_major_formatter(FuncFormatter(thousands))
-    ax.set_xlabel("throughput (tx/s)", color=INK2, fontsize=9)
-    ax.set_ylabel("latency (ms): median, with the 99th percentile above it", color=INK2, fontsize=9)
-    ax.set_title("What latency the committer costs at a given throughput",
-                 color=INK, fontsize=13, loc="left", pad=10)
-    fig.tight_layout()
-    fig.savefig(path, dpi=160, facecolor=SURFACE)
-    print("wrote", path)
+                markeredgewidth=2, linestyle="none", zorder=3)
+    return [r for r in points + missed if (r.get("lat_p50") or 0) * 1000 > LAT_AXIS_MS]
 
 
-def both(rows, path):
-    """The two block sizes on one pair of axes: the trade-off, rather than one point of it."""
-    fig, ax = plt.subplots(figsize=(9.5, 6))
+def latency_curve(rows, path):
+    """Throughput on x, latency on y, both block sizes on one pair of axes.
+
+    An earlier version put latency on x, which is what the request asked for, and it read badly: a
+    reader scanning left to right was scanning the dependent variable. Throughput is what an operator
+    chooses and latency is what they get, so throughput belongs on x.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6.4))
     fig.patch.set_facecolor(SURFACE)
     style(ax)
     ax.grid(True, axis="x", color=GRID, linewidth=0.8)
-    curve(rows, path, "curve", ax, OURS, "10,000-transaction blocks (tuned for throughput)",
-          minimal=True)
-    curve(rows, path, "curve500", ax, SMALL, "500-transaction blocks", minimal=True)
-    paper = PAPER_DATA["9b"][0]
-    ax.plot([paper[0]], [paper[1] * 1000], color=PAPER, marker="s", markersize=9, linestyle="none",
-            zorder=4, label="paper, 419,000 tx/s at 85 ms")
-    ax.axhline(SLO_MS, color=INK2, linewidth=1, linestyle=":", zorder=2)
-    ax.annotate("1 s bound", (0, SLO_MS), xytext=(8, 4), textcoords="offset points",
-                ha="left", va="bottom", fontsize=7.5, color=INK2)
-    # The sustained rungs top out just under 600 ms; leaving room for the unsustained 7.5 s point
-    # would compress every measurement into the bottom eighth of the plot.
-    ax.set_ylim(0, 1600)
+
+    off = []
+    off += series(rows, ax, "curve", OURS, "10,000-transaction blocks (tuned for throughput)")
+    off += series(rows, ax, "curve500", SMALL, "500-transaction blocks")
+
+    total, rejected, p99 = PAPER_DATA["9b"][0]
+    ax.plot([total], [p99 * 1000], color=PAPER, marker="s", markersize=9, linestyle="none",
+            zorder=4, label=f"paper: {total:,} tx/s at {p99 * 1000:,.0f} ms (99th pct)")
+
+    # Every mark on the plot gets a legend row. The thin line and the dashed line carry as much of
+    # the result as the median does -- the tail and the block wait -- and an unlabelled line is a
+    # line a reader has to guess at.
+    ax.plot([], [], color=INK2, linewidth=1, alpha=0.55,
+            label="thin line above each curve: 99th percentile (shaded to the median)")
+    ax.plot([], [], color=INK2, linewidth=1, linestyle="--",
+            label="dashed: median + mean wait for the block to be cut (excluded from the measurement)")
+    ax.plot([], [], marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=INK2,
+            markeredgewidth=2, linestyle="none", label="hollow: rate offered but not sustained")
+
+    ax.set_ylim(0, LAT_AXIS_MS)
+    ax.set_xlim(left=0)
+    # What the axis cuts off is named rather than drawn, which is the point of cutting it: the region
+    # worth reading is 40-400 ms and these points would own the plot if the axis reached them. One
+    # block of text, not a label per point -- the off-scale rungs are within a few percent of each
+    # other in throughput, so labels at their own x positions land on top of one another.
+    if off:
+        lines = ["above this axis:"]
+        for r in sorted(off, key=throughput):
+            lines.append(f"{throughput(r) / 1000:,.0f}k tx/s: median "
+                         f"{(r.get('lat_p50') or 0) * 1000:,.0f} ms, p99 "
+                         f"{(r.get('lat_p99') or 0) * 1000:,.0f} ms"
+                         + ("" if sustained(r) else " (not sustained)"))
+        # Upper middle-left: the only region of the axes both curves and both envelopes stay out of.
+        ax.text(0.22, 0.98, "\n".join(lines), transform=ax.transAxes, ha="left", va="top",
+                fontsize=7.5, color=INK2, linespacing=1.6)
+
     ax.xaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("throughput (tx/s)", color=INK2, fontsize=9)
-    ax.set_ylabel("99th percentile latency (ms)", color=INK2, fontsize=9)
-    ax.set_title("What the block size trades: throughput against tail latency",
-                 color=INK, fontsize=13, loc="left", pad=10)
-    ax.plot([], [], color=INK2, linewidth=1, linestyle="--",
-            label="+ mean wait for the block to be cut (band: 0 to one interval)")
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="lower right")
+    ax.set_ylabel("latency (ms): median, with the 99th percentile above it", color=INK2, fontsize=9)
+    ax.set_title("What latency the committer costs at a given throughput, and what the block "
+                 "size trades", color=INK, fontsize=13, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper center",
+              bbox_to_anchor=(0.5, -0.11), ncol=2)
     fig.tight_layout()
     fig.savefig(path, dpi=160, facecolor=SURFACE)
     print("wrote", path)
@@ -519,9 +536,7 @@ def main():
     print(f"{len(rows)} rows from {SRC}")
     print(summary(rows))
     figure9(rows, os.path.join(OUTDIR, "figure9.png"))
-    curve(rows, os.path.join(OUTDIR, "latency-throughput.png"))
-    if any(r.get("figure") == "curve500" for r in rows):
-        both(rows, os.path.join(OUTDIR, "latency-throughput-blocks.png"))
+    latency_curve(rows, os.path.join(OUTDIR, "latency-throughput.png"))
     table(rows, os.path.join(OUTDIR, "figures-table.md"))
 
 

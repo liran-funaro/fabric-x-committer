@@ -116,6 +116,16 @@ Two honest limits on that mapping:
   graph has to serialise, which is the convoy effect the paper describes. Window 1024 spreads
   references over the 1024 newest keys; window 0 funnels every reference onto one key and serialises
   the whole workload, which cost this cluster 46x throughput when it was tried.
+- **The paper rejects fewer than it configures, and this cluster rejects exactly what it configures.**
+  Its 9b and 9c panels each plot three bars -- total, valid and invalid throughput -- so the share
+  actually rejected can be read off them. On 9b that share is its nominal one: 43,000 of 428,000 at
+  10%, 86,000 of 429,000 at 20%, 138,000 of 459,000 at 30%. On 9c it is consistently *below* nominal
+  -- about 9% at 10%, 17% at 20% and 23% at 30% -- while this cluster's back-references abort at the
+  configured rate to within a tenth of a point (4.9% measured at 5%). So a double-spend point here is
+  a slightly harsher workload than the paper's point at the same x, and the figure prints the rejected
+  share on every bar so the comparison is made at a matched reject rate rather than a matched label.
+  Whether their shortfall is a winner among contenders, a sampled rather than derived decision, or
+  references that fell out of range is not something their text settles.
 
 ## The measurement rule
 
@@ -566,8 +576,6 @@ is the median and the shaded envelope reaches the 99th percentile: across the to
 rises monotonically while the 99th percentile is not even ordered, so a line through the tail would draw
 a spike the distribution does not have. The dashed line adds the mean block-formation wait the clock
 excludes, and with it the true minimum sits near 200,000 tps rather than at low load.*
-
-![What the block size trades](figures/latency-throughput-blocks.png)
 
 *The night's most useful finding. 500-transaction blocks sit left of 10,000-transaction blocks at every
 throughput the two share, at equal cluster CPU, and reach 380,100 tps at 208 ms with nothing saturated.
