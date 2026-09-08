@@ -270,9 +270,14 @@ EXPERIMENTS = [
     # resolves its version itself (populateVersionsAndCategorizeBlindWrites), which is a lookup per
     # output key inside the commit path. n read-writes plus n blind writes touches 2n keys, which is
     # the paper's UTXO shape read literally.
-    dict(id="9a-utxo1", figure="9a-utxo", x=1, label="1 in / 1 out", seed=300000,
+    # Seeded from the measured brackets, not from the read-write knees. The first attempt seeded these
+    # at 300,000 and 200,000, where the search's six 15% steps bottom out at 113,145 -- above a shape
+    # that delivers ~69,000 -- so it spent both points' attempts over-driven and exhausted without ever
+    # offering a rate the shape could meet. The over-driven probes are what bracket it: 300,000,
+    # 255,000 and 216,750 offered all returned 68,900-70,000 finished.
+    dict(id="9a-utxo1", figure="9a-utxo", x=1, label="1 in / 1 out", seed=90000,
          vars=shape(1, 1)),
-    dict(id="9a-utxo4", figure="9a-utxo", x=4, label="4 in / 4 out", seed=200000,
+    dict(id="9a-utxo4", figure="9a-utxo", x=4, label="4 in / 4 out", seed=40000,
          vars=shape(4, 4)),
 
     # One rung of the invalid-signature panel is unresolved and three probes would settle it. At
