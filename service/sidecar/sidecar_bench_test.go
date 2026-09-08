@@ -289,7 +289,7 @@ func startBenchCoordinator(b *testing.B) (*benchCoordinator, *test.Servers) {
 // same goroutine: the sidecar reads statuses on a goroutine of its own and buffers them, so a
 // status batch never has to wait for the sidecar to finish with the previous one.
 func (*benchCoordinator) BlockProcessing(
-	stream grpc.BidiStreamingServer[servicepb.CoordinatorBatch, committerpb.TxStatusBatch],
+	stream grpc.BidiStreamingServer[servicepb.CoordinatorBatch, servicepb.TxStatusBatch],
 ) error {
 	for stream.Context().Err() == nil {
 		batch, err := stream.Recv()
@@ -301,7 +301,7 @@ func (*benchCoordinator) BlockProcessing(
 		for _, tx := range batch.Txs {
 			status = append(status, &committerpb.TxStatus{Ref: tx.Ref, Status: committerpb.Status_COMMITTED})
 		}
-		if err := stream.Send(&committerpb.TxStatusBatch{Status: status}); err != nil {
+		if err := stream.Send(&servicepb.TxStatusBatch{Status: status}); err != nil {
 			return errors.Wrap(err, "failed to send statuses")
 		}
 	}

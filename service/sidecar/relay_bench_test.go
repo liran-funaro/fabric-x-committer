@@ -59,7 +59,7 @@ func BenchmarkRelayThroughput(b *testing.B) {
 
 	stream := newBenchStream(ctx, statuses)
 	mappedBlockQueue := make(chan *blockMappingResult, 8)
-	statusBatch := make(chan *committerpb.TxStatusBatch, 8)
+	statusBatch := make(chan *servicepb.TxStatusBatch, 8)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error { return r.preProcessBlock(gCtx, mappedBlockQueue) })
@@ -91,12 +91,12 @@ func BenchmarkRelayThroughput(b *testing.B) {
 
 // benchBlocksWithStatuses builds txCount transactions grouped into blocks of at most
 // benchBlockSize, together with the status batch the coordinator would return for each block.
-func benchBlocksWithStatuses(b *testing.B, txCount int) ([]*common.Block, []*committerpb.TxStatusBatch) {
+func benchBlocksWithStatuses(b *testing.B, txCount int) ([]*common.Block, []*servicepb.TxStatusBatch) {
 	b.Helper()
 	txs := workload.GenerateTransactions(b, benchTxProfile(), txCount)
 	blockCount := (txCount + benchBlockSize - 1) / benchBlockSize
 	blocks := make([]*common.Block, 0, blockCount)
-	statuses := make([]*committerpb.TxStatusBatch, 0, blockCount)
+	statuses := make([]*servicepb.TxStatusBatch, 0, blockCount)
 	for offset := 0; offset < txCount; offset += benchBlockSize {
 		blockTxs := txs[offset:min(offset+benchBlockSize, txCount)]
 		blockNum := uint64(len(blocks))
@@ -109,7 +109,7 @@ func benchBlocksWithStatuses(b *testing.B, txCount int) ([]*common.Block, []*com
 				Status: committerpb.Status_COMMITTED,
 			}
 		}
-		statuses = append(statuses, &committerpb.TxStatusBatch{Status: blockStatus})
+		statuses = append(statuses, &servicepb.TxStatusBatch{Status: blockStatus})
 	}
 	return blocks, statuses
 }
@@ -122,14 +122,14 @@ func benchBlocksWithStatuses(b *testing.B, txCount int) ([]*common.Block, []*com
 type benchStream struct {
 	grpc.ClientStream
 	ctx      context.Context //nolint:containedctx // a stream stub has to return a context.
-	statuses []*committerpb.TxStatusBatch
+	statuses []*servicepb.TxStatusBatch
 	sent     int
-	echoW    channel.Writer[*committerpb.TxStatusBatch]
-	echoR    channel.Reader[*committerpb.TxStatusBatch]
+	echoW    channel.Writer[*servicepb.TxStatusBatch]
+	echoR    channel.Reader[*servicepb.TxStatusBatch]
 }
 
-func newBenchStream(ctx context.Context, statuses []*committerpb.TxStatusBatch) *benchStream {
-	echo := make(chan *committerpb.TxStatusBatch, 8)
+func newBenchStream(ctx context.Context, statuses []*servicepb.TxStatusBatch) *benchStream {
+	echo := make(chan *servicepb.TxStatusBatch, 8)
 	return &benchStream{
 		ctx:      ctx,
 		statuses: statuses,
@@ -147,7 +147,7 @@ func (s *benchStream) Send(*servicepb.CoordinatorBatch) error {
 	return nil
 }
 
-func (s *benchStream) Recv() (*committerpb.TxStatusBatch, error) {
+func (s *benchStream) Recv() (*servicepb.TxStatusBatch, error) {
 	status, ok := s.echoR.Read()
 	if !ok {
 		return nil, errors.Wrap(s.ctx.Err(), "context ended")

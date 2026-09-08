@@ -38,7 +38,7 @@ type relayTestEnv struct {
 	// The relay's own stages are connected by these two. The session owns them in production, so
 	// the test supplies them here; leaving them nil would silently drop every block.
 	mappedBlockQueue chan *blockMappingResult
-	statusBatch      chan *committerpb.TxStatusBatch
+	statusBatch      chan *servicepb.TxStatusBatch
 	metrics          *perfMetrics
 	waitingTxsLimit  int
 }
@@ -71,7 +71,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		committedBlock:             make(chan *common.Block, 10),
 		statusQueue:                make(chan []*committerpb.TxStatus, 10),
 		mappedBlockQueue:           make(chan *blockMappingResult, 10),
-		statusBatch:                make(chan *committerpb.TxStatusBatch, 10),
+		statusBatch:                make(chan *servicepb.TxStatusBatch, 10),
 		metrics:                    metrics,
 		waitingTxsLimit:            100,
 	}
@@ -598,8 +598,8 @@ func TestRelayStatusRouting(t *testing.T) {
 		},
 	}
 
-	statusBatch := make(chan *committerpb.TxStatusBatch, 1)
-	statusBatch <- &committerpb.TxStatusBatch{Status: append(slices.Clone(dropped), applied...)}
+	statusBatch := make(chan *servicepb.TxStatusBatch, 1)
+	statusBatch <- &servicepb.TxStatusBatch{Status: append(slices.Clone(dropped), applied...)}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	g, gCtx := errgroup.WithContext(ctx)

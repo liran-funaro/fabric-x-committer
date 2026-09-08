@@ -135,7 +135,6 @@ func NewCoordinatorService(c *Config) *Service {
 		IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 		NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
 		WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
-		QueueMonitorSamplingTime:  c.QueueMonitorSamplingTime,
 		PrometheusMetricsProvider: metrics.Provider,
 	}
 	var depMgr dependencygraph.DependencyManager
@@ -274,7 +273,7 @@ func (c *Service) GetNextBlockNumberToCommit(
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
 	q *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
 	return c.validatorCommitterAPI.getTransactionsStatus(ctx, q)
 }

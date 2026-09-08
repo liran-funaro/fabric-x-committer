@@ -108,7 +108,6 @@ func requireManagerDrains(t *testing.T, manType string, rejectedCount int) {
 		// High enough that the run never reaches it: this is about losing track of a release,
 		// not about backpressure.
 		WaitingTxsLimit:           drainBatchSize * drainBatchCount * 2,
-		QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 		PrometheusMetricsProvider: monitoring.NewProvider(),
 	})
 
@@ -175,7 +174,6 @@ func requireManagerSurvivesSaturation(t *testing.T, manType string) {
 		// The cluster runs with 20,000,000, which is far more than the pipeline can hold, so the
 		// limit never engages and cannot be what keeps the graph draining.
 		WaitingTxsLimit:           ringBatchSize * ringBatchCount * 2,
-		QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 		PrometheusMetricsProvider: monitoring.NewProvider(),
 	})
 
@@ -226,7 +224,6 @@ func TestSimpleManagerForgetsValidatedTxs(t *testing.T) {
 		IncomingValidatedTxsNode:  validatedTxs,
 		NumOfLocalDepConstructors: 1,
 		WaitingTxsLimit:           forgetTxCount * 2,
-		QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 		PrometheusMetricsProvider: monitoring.NewProvider(),
 	})
 
@@ -253,7 +250,7 @@ func TestSimpleManagerForgetsValidatedTxs(t *testing.T) {
 	expectedReleased := int64(submitted - forgetBatchSize)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, expectedReleased, released.Load())
-		require.Equal(ct, forgetBatchSize, test.GetIntMetricValue(ct, metrics.gdgWaitingTxQueueSize))
+		require.Equal(ct, forgetBatchSize, test.GetIntMetricValue(ct, metrics.gdgWaitingTxCount))
 	}, drainTimeout, drainPollPeriod)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -364,7 +361,7 @@ func requireEveryTxReleased(t *testing.T, metrics *perfMetrics, released *atomic
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, int64(submitted), released.Load(),
 			"every submitted transaction must be released exactly once")
-		require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.gdgWaitingTxQueueSize),
+		require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.gdgWaitingTxCount),
 			"no transaction may be left waiting")
 	}, drainTimeout, drainPollPeriod)
 }

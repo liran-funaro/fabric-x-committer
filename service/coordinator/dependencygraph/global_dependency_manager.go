@@ -142,7 +142,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 			return
 		}
 
-		promutil.AddToGauge(m.gdgWaitingTxQueueSize, len(txsNode))
+		promutil.AddToGauge(m.gdgWaitingTxCount, len(txsNode))
 		depFreeTxs := make(TxNodeBatch, 0, len(txsNode))
 
 		start := time.Now()
@@ -158,7 +158,7 @@ func (dm *globalDependencyManager) constructDependencyGraph(ctx context.Context)
 		for _, txNode := range txsNode {
 			dependsOnTx := dm.dependencyDetector.getDependenciesOf(txNode)
 			if len(dependsOnTx) > 0 {
-				promutil.AddToGauge(m.dependentTransactionsQueueSize, 1)
+				promutil.AddToGauge(m.dependentTxCount, 1)
 				txNode.addDependenciesAndUpdateDependents(dependsOnTx)
 			} else if len(txNode.dependsOnTxs) == 0 {
 				depFreeTxs = append(depFreeTxs, txNode)
@@ -208,7 +208,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			}
 		}
 		dm.waitingTxsSlots.Release(int64(graphTxCount))
-		promutil.SubFromGauge(m.gdgWaitingTxQueueSize, graphTxCount)
+		promutil.SubFromGauge(m.gdgWaitingTxCount, graphTxCount)
 
 		start := time.Now()
 		dm.mu.Lock()
@@ -229,7 +229,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		// Step 2: Send the fullyFreedDependents to the outgoingDepFreeTransactionsNode.
 		start = time.Now()
 		if len(fullyFreedDependents) > 0 {
-			promutil.SubFromGauge(m.dependentTransactionsQueueSize, len(fullyFreedDependents))
+			promutil.SubFromGauge(m.dependentTxCount, len(fullyFreedDependents))
 			dm.freedTransactionsSet.add(fullyFreedDependents)
 			fullyFreedDependents = nil
 		}

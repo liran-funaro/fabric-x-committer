@@ -24,8 +24,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-const DefaultQueueMonitorSamplingTime = 100 * time.Millisecond
-
 // Manager kinds under test.
 const (
 	managerKindGlobalLocal = "global-local"
@@ -113,7 +111,6 @@ func BenchmarkDependencyGraph(b *testing.B) {
 						IncomingValidatedTxsNode:  val,
 						NumOfLocalDepConstructors: tc.workers,
 						WaitingTxsLimit:           20_000_000,
-						QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 						PrometheusMetricsProvider: monitoring.NewProvider(),
 					})
 
@@ -213,12 +210,11 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
-				QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 
 			t.Log("check reads and writes dependency tracking")
-			test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
+			test.RequireIntMetricValue(t, 0, metrics.dependentTxCount)
 
 			// t2 depends on t1
 			t1 := createTxForTest(t, 0, nsID1ForTest, keys(0, 1), keys(2, 3), keys(4, 5))
@@ -229,7 +225,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				Txs: []*servicepb.TxWithRef{t1, t2},
 			}
 
-			test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
+			test.EventuallyIntMetric(t, 1, metrics.dependentTxCount, 5*time.Second, 100*time.Millisecond)
 
 			// t3 depends on t2 and t1
 			t3 := createTxForTest(t, 0, nsID1ForTest, keys(7), keys(2, 3), keys(8, 5))
@@ -241,7 +237,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				Txs: []*servicepb.TxWithRef{t3, t4},
 			}
 
-			test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
+			test.EventuallyIntMetric(t, 3, metrics.dependentTxCount, 5*time.Second, 100*time.Millisecond)
 
 			// only t1 is dependency free
 			depFreeTxs := <-outgoingTxs
@@ -259,7 +255,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			test.RequireProtoEqual(t, t2.Ref, actualT2.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
-			test.RequireIntMetricValue(t, 2, metrics.dependentTransactionsQueueSize)
+			test.RequireIntMetricValue(t, 2, metrics.dependentTxCount)
 
 			validatedTxs <- TxNodeBatch{actualT2}
 
@@ -278,7 +274,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			test.RequireProtoEqual(t, t4.Ref, actualT4.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
-			test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
+			test.RequireIntMetricValue(t, 0, metrics.dependentTxCount)
 
 			validatedTxs <- TxNodeBatch{actualT3, actualT4}
 
@@ -395,14 +391,14 @@ func TestDependencyGraphManager(t *testing.T) {
 func ensureWaitingTXsLimit(t *testing.T, metrics *perfMetrics, expectedValue int) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, expectedValue, test.GetIntMetricValue(t, metrics.gdgWaitingTxQueueSize))
+		require.Equal(ct, expectedValue, test.GetIntMetricValue(t, metrics.gdgWaitingTxCount))
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func ensureNeverGreaterWaitingTXsLimit(t *testing.T, metrics *perfMetrics, expectedValue int) {
 	t.Helper()
 	require.Never(t, func() bool {
-		return test.GetIntMetricValue(t, metrics.gdgWaitingTxQueueSize) > expectedValue
+		return test.GetIntMetricValue(t, metrics.gdgWaitingTxCount) > expectedValue
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
