@@ -688,9 +688,31 @@ spends. Four things are worth separating:
   observations: seconds of latency at any rate, the collapse, nothing saturated, and the dependency
   graph pinned at its admission limit as a consequence rather than a cause.
 
-  Queued rather than concluded: the same workload with `committer_database_retry_initial_interval: 5ms`.
-  If throughput recovers, the mechanism is confirmed and the fix is configuration; if it does not, the
-  retry is not what costs the seconds.
+  **Tested and refuted.** The same workload with `committer_database_retry_initial_interval: 5ms`, a
+  hundredfold reduction, gives 5,819 ms mean and 7,475 ms p99 at 2,000 tps against 5,920 and 7,475 with
+  the 500 ms default. No change. The validator-committer's database retry backoff is not what costs the
+  seconds.
+
+  So five explanations for this collapse have now been proposed and refuted by measurement, which is
+  worth listing because the eliminations are the durable part:
+
+  | explanation | refuted by |
+  |---|---|
+  | a capacity limit | nothing is saturated -- 6-25% CPU at every rate |
+  | the tablet-split read cliff | the workload was already past the cliff at one read-write |
+  | a convoy of conflicts on in-flight keys | widening the reference window made it three times worse |
+  | transactions never receiving a status | in-flight is exactly Little's law at the measured latency |
+  | the validator-committer's retry backoff | 5 ms behaves identically to 500 ms |
+
+  What remains unexplained: about six seconds of latency per transaction at 2,000 tps with 0.75% of
+  transactions conflicting, on a cluster at 6% CPU with no queue anywhere. Candidates that have not been
+  tested, in the order I would try them: YugabyteDB's own internal conflict handling, which retries
+  server-side with its own backoff and is invisible to the committer's retry configuration (two
+  transactions writing a referenced key concurrently is a write-write conflict inside the database, not
+  a read conflict the validator catches); the dependency graph's release path for a *rejected*
+  transaction, which is the one path a no-conflict workload never exercises; and the coordinator's status
+  routing for aborted transactions. The next person should start by turning on YugabyteDB's conflict and
+  retry metrics, which this evaluation never scraped.
 - **Nothing is saturated during the collapse.** The busiest machine in the cluster sat at 21% CPU while
   throughput was a seventh of baseline. Whatever is happening is serialisation or blocking, not
   capacity, and it is the largest unexplained result of this evaluation.
