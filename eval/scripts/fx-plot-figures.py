@@ -32,6 +32,15 @@ from matplotlib.ticker import FuncFormatter                         # noqa: E402
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "figures.jsonl"
 OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
+# Pass "e2e" as a third argument for the arm with a real ordering service in the path. The panels are
+# the same and the workload knobs are the same, but what the paper's series MEANS changes: there is no
+# published end-to-end figure to recreate. Section 6.2 measures ordering alone and 6.3 measures the
+# committer alone, so the honest reference is both of those, labelled as what they are, with the
+# ordering ceiling drawn as a line the end-to-end number cannot exceed.
+E2E = len(sys.argv) > 3 and sys.argv[3] == "e2e"
+# Figure 7a, read at 4 parties and 2 shards, which is this cluster's orderer topology: 280,000 tps at
+# one shard, 414,000 at two, 430,000 at four, at about 0.6 s latency with 300 B transactions.
+PAPER_ORDERING = 414_000
 
 OURS = "#2a78d6"        # categorical slot 1
 PAPER = "#eb6834"       # categorical slot 2
@@ -283,6 +292,14 @@ def figure9(rows, path):
                 total, rejected, _ = paper[x]
                 draw(pp + width / 2 + gap, total, rejected, PAPER, PAPER_DARK)
 
+        if E2E:
+            # Ordering alone cannot go faster than this, so neither can anything with ordering in it.
+            top.axhline(PAPER_ORDERING, color=INK2, linewidth=1, linestyle=":", zorder=2)
+            if col == 0:
+                top.annotate(f"paper: ordering alone, {PAPER_ORDERING / 1000:,.0f}k",
+                             (top.get_xlim()[0], PAPER_ORDERING), xytext=(4, 3),
+                             textcoords="offset points", ha="left", va="bottom", fontsize=7,
+                             color=INK2)
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
         # Both rows carry the tick labels. With sharex the bar row's labels are hidden by default,
         # which leaves the panel a reader looks at first with no x axis at all.
@@ -315,16 +332,20 @@ def figure9(rows, path):
         if col == 0:
             bottom.set_ylabel("99th percentile latency (ms)", color=INK2, fontsize=9)
 
-    legend = [Patch(color=OURS, label="this cluster"),
+    ours_label = "this cluster, end to end" if E2E else "this cluster"
+    paper_label = "paper, committer only (no ordering)" if E2E else "paper"
+    legend = [Patch(color=OURS, label=ours_label),
               Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
-              Patch(color=PAPER, label="paper"),
+              Patch(color=PAPER, label=paper_label),
               Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected")]
     fig.legend(handles=legend, frameon=False, fontsize=9, labelcolor=INK2,
                loc="upper right", bbox_to_anchor=(0.997, 0.999), ncol=4)
-    fig.suptitle("Committer throughput and tail latency, at a one second latency bound",
-                 color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
+    title = ("End-to-end throughput and tail latency with a real ordering service, at a one second "
+             "latency bound" if E2E else
+             "Committer throughput and tail latency, at a one second latency bound")
+    fig.suptitle(title, color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
     fig.text(0.006, 0.951,
              "Each bar is the highest rate held for 300 s with 99th percentile latency under one "
              "second, no queue growth, and the offered rate arriving. Throughput counts committed "
@@ -408,8 +429,14 @@ def latency_curve(rows, path):
     off += series(rows, ax, "curve500", SMALL, "500-transaction blocks")
 
     total, rejected, p99 = PAPER_DATA["9b"][0]
-    ax.plot([total], [p99 * 1000], color=PAPER, marker="s", markersize=9, linestyle="none",
-            zorder=4, label=f"paper: {total:,} tx/s at {p99 * 1000:,.0f} ms (99th pct)")
+    ax.plot([total], [p99 * 1000], color=PAPER, marker="s", markersize=9, linestyle="none", zorder=4,
+            label=(f"paper, committer only: {total:,} tx/s at {p99 * 1000:,.0f} ms" if E2E else
+                   f"paper: {total:,} tx/s at {p99 * 1000:,.0f} ms (99th pct)"))
+    if E2E:
+        ax.axvline(PAPER_ORDERING, color=INK2, linewidth=1, linestyle=":", zorder=2)
+        ax.annotate(f"paper: ordering alone at this topology, {PAPER_ORDERING / 1000:,.0f}k tx/s",
+                    (PAPER_ORDERING, 0), xytext=(-6, 8), textcoords="offset points", ha="right",
+                    va="bottom", fontsize=7.5, color=INK2, rotation=90)
 
     # Every mark on the plot gets a legend row. The thin line and the dashed line carry as much of
     # the result as the median does -- the tail and the block wait -- and an unlabelled line is a
@@ -441,7 +468,9 @@ def latency_curve(rows, path):
     ax.xaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("throughput (tx/s)", color=INK2, fontsize=9)
     ax.set_ylabel("latency (ms): median, with the 99th percentile above it", color=INK2, fontsize=9)
-    ax.set_title("What latency the committer costs at a given throughput, and what the block "
+    ax.set_title("What latency the whole pipeline costs at a given throughput, ordering included"
+                 if E2E else
+                 "What latency the committer costs at a given throughput, and what the block "
                  "size trades", color=INK, fontsize=13, loc="left", pad=10)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper center",
               bbox_to_anchor=(0.5, -0.11), ncol=2)

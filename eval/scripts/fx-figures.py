@@ -121,6 +121,10 @@ def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
 
 
 BASE_SEED = int(os.environ.get("FX_SEED", "480000"))
+# What a fresh point costs to deploy. "configs" re-renders configuration only, which is all the
+# committer-only arm needs; "setup" also rebuilds binaries, crypto and genesis blocks, which the
+# real-orderer arm does need. See deploy().
+DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
 # Points to measure again even though the output already holds a confirmed hold for them. The first
 # two points of the size sweep were measured before the driver held its confirmation on a fresh
 # deployment, so they ran against a table holding several times as many rows as the later points --
@@ -294,6 +298,59 @@ EXPERIMENTS = [
          rates=[559872], vars=shape(2, 0, invalid=0.2)),
 ]
 
+# The end-to-end matrix, for the arm that has a real Arma ordering service in the path. Selected with
+# FX_MATRIX=e2e, and kept separate rather than merged into the list above because every seed here is
+# wrong for the committer-only arm and every seed above is wrong for this one.
+#
+# The paper has no end-to-end figure to recreate. Its Section 6.2 measures ordering alone -- 414,000 tps
+# at this arm's 4 parties and 2 shards, reading Figure 7a, and 430,000 at 4 shards -- and its
+# Section 6.3 measures the committer alone with a mock orderer, which is the arm the matrix above ran
+# on. So these points are not a recreation of a published number; they price what putting real ordering
+# in the path costs, against two published ceilings that bracket it.
+#
+# The ladder runs first and the panels are seeded from what it finds, because this arm's ceiling has
+# never been measured: the only load it has carried is a 2,000 tps soak. Pass the ladder's answer back
+# in as FX_SEED for the panel run.
+#
+# One knob does not carry over. On this arm the batchers cut the blocks, not the generator, so
+# `loadgen_block_max_size` does nothing and there is no block-size ladder here; the observed batch is
+# about 489 transactions, which is already near the 500 the committer-only arm found best.
+E2E_EXPERIMENTS = [
+    dict(id="e2e-curve", figure="curve", x=0, label="2 read-writes, real ordering", mode="curve",
+         rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000, 350000, 400000],
+         vars=shape(2, 0)),
+    dict(id="e2e-9a-rw1", figure="9a", x=1, label="1 read-write", seed=BASE_SEED,
+         vars=shape(1, 0)),
+    dict(id="e2e-9a-rw2", figure="9a", x=2, label="2 read-writes", seed=BASE_SEED,
+         vars=shape(2, 0)),
+    dict(id="e2e-9a-rw3", figure="9a", x=3, label="3 read-writes", seed=int(BASE_SEED * 0.85),
+         vars=shape(3, 0)),
+    dict(id="e2e-9a-rw4", figure="9a", x=4, label="4 read-writes", seed=int(BASE_SEED * 0.7),
+         vars=shape(4, 0)),
+    dict(id="e2e-9b-inv0", figure="9b", x=0, label="0% invalid", seed=BASE_SEED,
+         vars=shape(2, 0, invalid=0.0)),
+    dict(id="e2e-9b-inv10", figure="9b", x=10, label="10% invalid", seed=BASE_SEED,
+         vars=shape(2, 0, invalid=0.1)),
+    dict(id="e2e-9b-inv20", figure="9b", x=20, label="20% invalid", seed=BASE_SEED,
+         vars=shape(2, 0, invalid=0.2)),
+    dict(id="e2e-9b-inv30", figure="9b", x=30, label="30% invalid", seed=BASE_SEED,
+         vars=shape(2, 0, invalid=0.3)),
+    # The double-spend panel at the paper's own x values. The committer-only arm's 5% point is dropped:
+    # it cost a whole night of searching and the answer at every rate was the same collapse, and this
+    # arm has a longer pipeline for a conflict to sit in, not a shorter one.
+    dict(id="e2e-9c-ds0", figure="9c", x=0, label="0% double spend", seed=BASE_SEED,
+         vars=shape(2, 0, backref=0.0)),
+    dict(id="e2e-9c-ds10", figure="9c", x=10, label="10% double spend",
+         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.10)),
+    dict(id="e2e-9c-ds20", figure="9c", x=20, label="20% double spend",
+         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.20)),
+    dict(id="e2e-9c-ds30", figure="9c", x=30, label="30% double spend",
+         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.30)),
+]
+
+if os.environ.get("FX_MATRIX") == "e2e":
+    EXPERIMENTS = E2E_EXPERIMENTS
+
 
 def query(expr):
     cmd = ["curl", "-sk", "--max-time", "20", "-G",
@@ -382,13 +439,26 @@ def deploy(exp):
     deploy directory, so shipping the configs before it deletes exactly what was just shipped and
     the generator comes back up on the previous shape -- which is how the first attempt at this
     measured 1/1 with a 2/2 config.
+
+    On the real-orderer arm `configs` is not enough to put the cluster back. Teardown takes the
+    whole remote deploy directory, which on that arm holds the generated crypto and each node's
+    genesis block; `configs` only re-renders configuration, so the orderer comes back up with no
+    identity. `setup` (binaries, crypto, genesis, configs) is what rebuilds it -- and regenerating
+    crypto needs the Fabric CA's stale enrollment cleared first, because teardown drops the CA's
+    database while leaving the admin's enrolled MSP on disk, so the next enrollment presents a
+    certificate the fresh registry has never issued and crypto generation stops at
+    "Authentication failure".
     """
     with open(VARS_FILE, "w") as f:
         json.dump(exp["vars"], f, indent=2)   # JSON is valid YAML, and needs no quoting rules
-    log(f"[{exp['id']}] teardown + configs + start: {exp['vars']}")
+    log(f"[{exp['id']}] teardown + {DEPLOY_PLAN} + start: {exp['vars']}")
     if not make("teardown", extra_vars=True):
         return False
-    if not make("configs", extra_vars=True):
+    if DEPLOY_PLAN == "setup":
+        make("hard-wipe TARGET_HOSTS=fabric_cas", timeout=900)
+        if not make("setup", extra_vars=True, timeout=5400):
+            return False
+    elif not make("configs", extra_vars=True):
         return False
     # Verify the artifact rather than the exit code: a shape that silently failed to apply would
     # otherwise be reported as a measurement of the shape that was asked for.
