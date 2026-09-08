@@ -30,6 +30,18 @@ abort rate, latencies, database commit latency, table fill and per-tier CPU.
 
 ## Apparatus and data
 
+## Two arms
+
+Every figure above measures the **committer only**: the load generator embeds a mock orderer, cuts and
+signs the blocks itself, and serves them to the sidecar. That is what the paper's Section 6.3 does, so
+it is the comparable measurement. The second arm puts a real ordering service in the path — 4 parties,
+2 shards, one component per machine over 20 machines — and measures the same panels end to end, into
+`figures-orderer.jsonl` and `figures/e2e/`.
+
+The paper has no end-to-end figure to compare against. It publishes ordering alone (414,000 tps at 4
+parties and 2 shards, Figure 7a) and the committer alone (419,000–474,000 tps, Figure 9), and those two
+bracket what an end-to-end number can be.
+
 `figures.jsonl` is the raw output: one JSON object per probe and per hold, including the measurements
 that failed and the ones later retracted, so any figure here can be rebuilt or disputed from the same
 data. `graph.jsonl` is the dependency-graph and database sampler's 30-second series over the same runs.
@@ -38,6 +50,7 @@ data. `graph.jsonl` is the dependency-graph and database sampler's 30-second ser
 |---|---|
 | `scripts/fx-figures.py` | the driver: the experiment matrix, a fresh deployment per point, the rate search and the confirmation hold |
 | `scripts/fx-figures-run.sh` | switches the cluster from the real-orderer arm to the committer-only arm, then runs the driver |
+| `scripts/fx-figures-e2e-run.sh` | switches the other way — a real Arma ordering service in the path — smoke-checks it, then measures the same panels end to end |
 | `scripts/fx-plot-figures.py` | reads `figures.jsonl` and writes the two figures and the table |
 | `scripts/fx-graph-sampler.py` | samples the dependency graph, the database and per-machine CPU every 30 s alongside a run |
 | `scripts/fx-join-graph.py` | joins the sampler's series to each confirmed hold |
