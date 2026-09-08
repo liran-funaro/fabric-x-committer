@@ -206,36 +206,6 @@ EXPERIMENTS = [
          rates=[170000, 200000, 240000, 280000, 330000, 380000],
          vars=shape(2, 0, block=500)),
 
-    # The mechanism, tested by removing it. A conflict workload holds ~6 seconds of latency per
-    # transaction at 2,000 tps on a fresh deployment with the cluster at 7% CPU -- so it is not a queue
-    # and not capacity. The validator-committer retries a database batch with an exponential backoff
-    # starting at 500 ms (`initial-interval`, multiplier 1.5, +/-50% jitter) and can retry twice, once
-    # for inserting keys that already exist. With about 377 transactions per batch, a 5% per-transaction
-    # conflict rate puts a conflict in essentially EVERY batch (1 - 0.95^377), so every batch pays
-    # 500-1,250 ms of backoff. That produces multi-second latency at any rate, a collapse to ~19,000
-    # tps, and nothing saturated anywhere -- all four of which are observed.
-    #
-    # 5 ms initial interval keeps the retry behaviour and removes the wait. If throughput recovers, the
-    # backoff is the mechanism and the fix is a configuration one; if it does not, the retry is not what
-    # costs the six seconds.
-    dict(id="9c-ds5-fastretry", figure="retry", x=5, label="5% double spend, 5ms retry backoff",
-         mode="curve", rates=[2000, 20000, 100000],
-         vars=dict(shape(2, 0, backref=0.05),
-                   committer_database_retry_initial_interval="5ms")),
-
-    # Cause or effect. During the conflict collapse the dependency graph sits pinned at its 500,000
-    # admission limit (`committer_coordinator_dep_graph_wait_tx_limit`) while validation runs at 2.2 ms
-    # and commit at 21 ms -- both healthy. But throughput x latency = 20,000 x 25 s = 500,000, which is
-    # exactly the limit, so a full graph is what ANY admission-controlled pipeline looks like when
-    # something downstream is slow. Raising the limit to the role default separates the two: if
-    # throughput rises, the limit was throttling a pipeline that could have gone faster; if throughput
-    # holds at 20,000 and the graph simply grows past 500,000 with latency rising to match, the limit
-    # is innocent and the slowness is elsewhere.
-    dict(id="9c-ds5-bigraph", figure="graphlimit", x=5, label="5% double spend, 20M graph limit",
-         seed=30000,
-         vars=dict(shape(2, 0, backref=0.05),
-                   committer_coordinator_dep_graph_wait_tx_limit=20000000)),
-
     # Whether the tablet split costs anything on the conflict workload, where read validation looks
     # up keys that exist rather than keys that do not. The zero-conflict point is the control: if
     # the default split is slower there and faster at 10%, the split is a workload-dependent trade
@@ -246,6 +216,17 @@ EXPERIMENTS = [
     dict(id="split0-ds10", figure="split", x=10, label="10% double spend, default split",
          seed=30000,
          vars=dict(shape(2, 0, backref=0.10), committer_database_table_pre_split_tablets=0)),
+    # The rest of the double-spend series, at the split where a double spend is measurable at all. The
+    # 9c panel has one bar and three "no rate qualified": at the 120-way pre-split every conflict point
+    # collapses to tens of seconds and no rate meets the conditions. At the default split 10% held
+    # cleanly at 41,273 tps, so these two turn 9c into a series -- lower in absolute terms than the
+    # panel's 0% bar, which keeps the 120-way split, and the split has to be stated with them.
+    dict(id="split0-ds20", figure="split", x=20, label="20% double spend, default split",
+         seed=30000,
+         vars=dict(shape(2, 0, backref=0.20), committer_database_table_pre_split_tablets=0)),
+    dict(id="split0-ds30", figure="split", x=30, label="30% double spend, default split",
+         seed=30000,
+         vars=dict(shape(2, 0, backref=0.30), committer_database_table_pre_split_tablets=0)),
 
     # The shippable side of the same threshold: it constrains the PAIR (tablets x keys per lookup),
     # so narrowing the lookup preserves batching as well as reducing tablets does, and unlike
@@ -256,24 +237,11 @@ EXPERIMENTS = [
     dict(id="chunk-rw4", figure="chunk", x=64, label="4 read-writes, 64-tx chunks", seed=300000,
          vars=dict(shape(4, 0), committer_coordinator_dep_graph_chunk_size=64)),
 
-    # Written to test the multi-key batching cliff as the double-spend mechanism, by narrowing the
-    # validation array instead of reducing the tablet count: at a 64-transaction chunk and two
-    # read-writes an array is ~128 keys, well under the ~273 a 120-way split allows, so a lookup that
-    # was issuing one storage read per key should batch per tablet again.
-    #
-    # It refuted the hypothesis it was written for. The narrower chunk did reduce the arrays and the
-    # read validation stayed a few milliseconds, yet latency stayed in the tens of seconds -- so the
-    # tablet split is a large lever on double spends without the cliff being why. Kept because the
-    # negative result is the evidence for that, and because the point exhausted its search: no rate
-    # met the conditions, which is itself the measurement.
-    dict(id="9c-ds10-chunk64", figure="chunkfix", x=10,
-         label="10% double spend, 120 tablets, 64-tx chunks", seed=30000,
-         vars=dict(shape(2, 0, backref=0.10), committer_coordinator_dep_graph_chunk_size=64)),
-
     # What creating output keys costs. A blind write is an output at a new key and the validator
     # resolves its version itself (populateVersionsAndCategorizeBlindWrites), which is a lookup per
     # output key inside the commit path. n read-writes plus n blind writes touches 2n keys, which is
     # the paper's UTXO shape read literally.
+    #
     # Seeded from the measured brackets, not from the read-write knees. The first attempt seeded these
     # at 300,000 and 200,000, where the search's six 15% steps bottom out at 113,145 -- above a shape
     # that delivers ~69,000 -- so it spent both points' attempts over-driven and exhausted without ever
