@@ -74,10 +74,23 @@ per transaction, and this is the knob its generator exposes for that.
 The literal reading — n inputs *and* n separate output keys, so n read-write operations plus n blind
 writes, 2n keys — is a different and slower experiment, because the validator resolves a blind
 write's version itself (`populateVersionsAndCategorizeBlindWrites` calls `queryVersionsIfPresent`),
-which is a database lookup per output key inside the commit path. Measured at "1 in / 1 out" that
-shape gave 255,091 tps against 474,000 published, which is not a recreation of anything. It is kept
-as a separate pair of points, 1/1 and 4/4, to price output creation rather than to hide it inside
-the size sweep.
+which is a database lookup per output key inside the commit path. It is kept as a separate pair of
+points, 1/1 and 4/4, to price output creation rather than to hide it inside the size sweep.
+
+A correction on the number, because it was quoted here and in a report. The figure first cited for the
+1/1 shape, 255,091 tps, came from the run whose workload had silently failed to apply — that deployment
+was serving two read-writes and no blind writes at all. Re-measured with the rendered shape verified,
+the same one-input-one-output shape delivers about **69,000 tps**: 300,000, 255,000 and 216,750 offered
+all returned 68,900–70,000 finished at a 45-second p99, with the cluster at 75% CPU and the sidecar's
+append at 3%. So output creation as a blind write costs a factor of six against the 431,273 the same
+two-key transaction reaches when both keys are read-writes, not the factor of 1.7 first reported. The
+conclusion is unchanged and better supported: this shape measures a per-output version lookup, not the
+paper's transaction size.
+
+Worth recording as a data caveat about the raw file. Each row's `vars` is what the driver *requested*,
+not what the deployment rendered. The rendered-shape read-back added after that first run guards the
+experiment but not the recorded field, so a row from before it can describe a workload it did not run.
+Only rows carrying a verified shape describe themselves.
 
 **Invalid signatures (9b): `invalid-signatures` = 0, 0.1, 0.2, 0.3.** Direct, and the decision is
 derived from the transaction index, so the share is exact rather than sampled.

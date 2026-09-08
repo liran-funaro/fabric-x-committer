@@ -252,6 +252,20 @@ EXPERIMENTS = [
     dict(id="chunk-rw4", figure="chunk", x=64, label="4 read-writes, 64-tx chunks", seed=300000,
          vars=dict(shape(4, 0), committer_coordinator_dep_graph_chunk_size=64)),
 
+    # Written to test the multi-key batching cliff as the double-spend mechanism, by narrowing the
+    # validation array instead of reducing the tablet count: at a 64-transaction chunk and two
+    # read-writes an array is ~128 keys, well under the ~273 a 120-way split allows, so a lookup that
+    # was issuing one storage read per key should batch per tablet again.
+    #
+    # It refuted the hypothesis it was written for. The narrower chunk did reduce the arrays and the
+    # read validation stayed a few milliseconds, yet latency stayed in the tens of seconds -- so the
+    # tablet split is a large lever on double spends without the cliff being why. Kept because the
+    # negative result is the evidence for that, and because the point exhausted its search: no rate
+    # met the conditions, which is itself the measurement.
+    dict(id="9c-ds10-chunk64", figure="chunkfix", x=10,
+         label="10% double spend, 120 tablets, 64-tx chunks", seed=30000,
+         vars=dict(shape(2, 0, backref=0.10), committer_coordinator_dep_graph_chunk_size=64)),
+
     # What creating output keys costs. A blind write is an output at a new key and the validator
     # resolves its version itself (populateVersionsAndCategorizeBlindWrites), which is a lookup per
     # output key inside the commit path. n read-writes plus n blind writes touches 2n keys, which is
