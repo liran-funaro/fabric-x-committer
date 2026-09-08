@@ -183,6 +183,19 @@ inside every ratio in the panel that the paper's largest claim is compared again
 of each conflict sweep is measured in its own deployment even when a pooled figure was available, and
 hence the driver retries a failed hold a rung lower rather than abandoning the point.
 
+**The requested rate is not always the offered rate, and the gate is what caught it.** On three
+successive confirmation holds -- each on a fresh deployment -- the generator offered 110%, 119% and 140%
+of the rate it had been given, while a probe at the same rate inside an already-running deployment
+offered exactly 100%. So `make limit-rate` does not reliably take effect after a restart, and a
+measurement that assumes it did would be measuring an unknown rate.
+
+Auditing every measurement in this matrix: of 66 that met their conditions, **all 66 offered within 2% of
+their limit**, and every overshoot occurred on a measurement that had already failed. That is the gate
+working rather than luck -- an over-driven generator violates the latency and queue-growth conditions, so
+an overshooting window cannot be reported as met. Anyone reusing this driver to hold a *specific* rate
+rather than to find a knee needs to check `offered` against `limit` per window, because nothing else
+will.
+
 **A queue depth would make a better gate than a percentile.** The sidecar's waiting-transaction queue
 separates the measurements cleanly, and with a physical meaning rather than a distributional one: over
 every probe and hold taken with correct accounting, each one that met its conditions sat between 32,231
