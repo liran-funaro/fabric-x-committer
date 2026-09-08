@@ -8,7 +8,14 @@ SPDX-License-Identifier: Apache-2.0
 
 The issues opened for the work in `optimization-summary.md`. Everything with a number is filed and
 the numbers are the real ones, with GitHub sub-issue links mirroring the parent/child structure.
-Two entries at the end are drafted but **not yet opened**, and are marked as such in the table.
+Three entries are drafted but **not yet opened**, and are marked as such in the table.
+
+**Status column, checked against GitHub on 2026-09-08.** `filed` means open with no pull request yet;
+`PR open` names the pull request; `resolved` means the change is merged. Three are resolved: the two
+fabric-x-common changes the paper-figure measurements were taken against (#166 and #181), and #789 in the
+committer. Note that a merged change cannot be found by looking for its commit in `main` — these branches
+are squash-merged, so the SHAs in `optimization-summary.md` are the pre-merge ones and exist only on the
+evaluation branch. The pull request state is what to trust.
 
 One umbrella issue plus a child per change. Evidence for every number is in
 `cluster-optimization-log.md`; the issue bodies below state only the change and what drove it.
@@ -27,13 +34,13 @@ hardware. See section 4 of the summary.
 |---|---|---|---|
 | #798 | Committer throughput and latency: findings from the nineteen-machine evaluation | committer | filed |
 | #784 | [sidecar] Make the block store transaction ID index optional | committer | filed |
-| #772 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | filed |
+| #772 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | **PR open** — #814 |
 | #791 | [coordinator] Allow selecting the simple dependency graph manager | committer | filed |
 | #785 | [coordinator] The simple dependency graph can latch the pipeline under load | committer | filed |
 | #786 | [sidecar] Parse a block's transactions in parallel | committer | filed |
 | #787 | [sidecar] Key validation and TX references allocate per transaction | committer | filed |
 | #788 | [sidecar] Back a block's decoded transactions with one allocation | committer | filed |
-| #789 | [sidecar] Mapping's result carries the scaffolding that built it | committer | filed |
+| #789 | [sidecar] Mapping's result carries the scaffolding that built it | committer | **resolved** — PR #800 merged |
 | #790 | [grpc] Add a per-client and per-server `flow-control` section; HTTP/2 windows are unset and cap the pipeline | committer | filed |
 | #797 | Benchmarks for attributing committer performance | committer | filed |
 | #792 | [sidecar] Benchmark the whole service end to end | committer | filed |
@@ -41,9 +48,9 @@ hardware. See section 4 of the summary.
 | #794 | [loadgen] Benchmark the submit path | committer | filed |
 | #795 | [loadgen] Sweep transaction generation over core count | committer | filed |
 | #796 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | filed |
-| hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | filed |
+| hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | **resolved** — PR #166 merged |
 | — | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | **needs opening** |
-| — | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **needs opening** |
+| hyperledger/fabric-x-common#181 | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **resolved** — PR #181 merged, no issue was opened |
 | — | [loadgen] Block preparation caps the generator at small block sizes | committer | **needs opening** |
 | — | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | **needs opening** |
 
@@ -96,7 +103,8 @@ on an empty ledger.
 
 ## #772. [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path
 
-Already open as **#772**. No new issue.
+Already open as **#772**, and **PR #814 is open against it** (`sidecar-relay-single-owner-tracking`).
+No new issue.
 
 ## #791. [coordinator] Allow selecting the simple dependency graph manager
 
@@ -192,6 +200,8 @@ block size and holds only message headers, so the exposure is one block's unused
 the existing slabs make.
 
 ## #789. [sidecar] Mapping's result carries the scaffolding that built it
+
+**Resolved.** PR **#800** is merged and the issue is closed. The description below is what was filed.
 
 `blockMappingResult` carries the three per-block slabs, a reference to the relay's in-flight TX ID set,
 and the collected TX IDs. None of it is read after mapping returns — `submitSnapshotBlock` builds
@@ -364,11 +374,16 @@ preparing in place hands a block cache several entries that alias one object, an
 number that has been overwritten stalls; it does not read a wrong block. That was found by writing a
 benchmark that did exactly this.
 
-## Needs opening. [applicationpb] The signing digest is built by reflection
+## hyperledger/fabric-x-common#181. [applicationpb] The signing digest is built by reflection
 
-To be filed against fabric-x-common. **An implementation already exists** on the
-`quick-asn1-marshal` branch of the fork (`8d004a10f`, marked wip); the review notes below are from
-measuring it, and the artefacts are in `fx-cluster-logs/asn1-review/`.
+**Resolved.** No issue was ever opened: the work went straight to a pull request, and PR
+**hyperledger/fabric-x-common#181** is merged. The change is in that repository's `main` as `3818db81a`,
+and it is the second of the two upstream changes the paper-figure measurements were taken against.
+
+Upstream's merged version inlines the two length helpers this branch kept separate; the encoding is
+identical either way, which was verified by diffing the branch against `main` and running the branch's
+own tests against it. The review notes below are from measuring the implementation, and the artefacts are
+in `fx-cluster-logs/asn1-review/`.
 
 `TxNamespace.ASN1Marshal` builds the digest that every transaction is signed over and that every
 verifier recomputes. It translates the namespace into an intermediate struct tree and hands that to
@@ -486,6 +501,10 @@ the load and the reported rate is unaffected — 247,439 against 249,222 tx/s �
 case hangs outright, so the sweep cannot be widened without it.
 
 ## hyperledger/fabric-x-common#165. [blkstorage] Do not build tx index information no index will read
+
+**Resolved.** PR **hyperledger/fabric-x-common#166** is merged and the issue is closed; the change is in
+that repository's `main` as `ce8ca3d6d`. It is one of the two upstream changes the paper-figure
+measurements were taken against — see `paper-figures.md` on which fabric-x-common the cluster ran.
 
 **Filed as `hyperledger/fabric-x-common#165`**, and named in the umbrella's body since a sub-issue
 cannot cross repositories. Recorded here because the committer is where the effect is measured, and it
