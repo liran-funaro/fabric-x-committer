@@ -12,8 +12,9 @@
 # has published so far measures the committer with a mock orderer inside the load generator, which
 # is what the paper's Section 6.3 does. This arm puts a real Arma ordering service in the path --
 # 4 parties, 2 shards, one component per machine across 20 machines -- so the numbers include
-# ordering. The paper has no end-to-end figure; it publishes ordering alone (414,000 tps at this
-# topology) and the committer alone, and those two bracket what this should find.
+# ordering. It reports one figure, the latency-throughput curve. The paper has no end-to-end figure;
+# it publishes ordering alone (414,000 tps at this topology) and the committer alone, and those two
+# bracket what this should find.
 set -u -o pipefail
 
 source /data1/cluster/bin/fx-env.sh
@@ -73,9 +74,9 @@ if [ "${now:-0}" -le "${first:-0}" ]; then
   exit 1
 fi
 
-say "running the end-to-end figures"
-# The ladder first: this arm's ceiling has never been measured, so the panels have nothing to seed
-# from until it reports. The panel run is a second invocation with FX_SEED set from its answer.
+say "running the end-to-end ladder"
+# One ladder, one figure: what the whole pipeline costs at a given rate. No knee searches -- there are
+# no bar panels on this arm, because the paper has no end-to-end figure for them to sit beside.
 exec env FX_MATRIX=e2e \
   FX_INVENTORY=$ORDERER \
   FX_OUT=/data1/logs/figures-orderer.jsonl \

@@ -32,11 +32,11 @@ from matplotlib.ticker import FuncFormatter                         # noqa: E402
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "figures.jsonl"
 OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
-# Pass "e2e" as a third argument for the arm with a real ordering service in the path. The panels are
-# the same and the workload knobs are the same, but what the paper's series MEANS changes: there is no
-# published end-to-end figure to recreate. Section 6.2 measures ordering alone and 6.3 measures the
-# committer alone, so the honest reference is both of those, labelled as what they are, with the
-# ordering ceiling drawn as a line the end-to-end number cannot exceed.
+# Pass "e2e" as a third argument for the arm with a real ordering service in the path. That arm reports
+# one figure, the latency-throughput curve, which is the question asked of it: what the whole pipeline
+# costs at a given rate. It gets no bar panels -- the paper has no end-to-end figure for them to sit
+# beside, since its Section 6.2 measures ordering alone and its 6.3 the committer alone. Those two are
+# still the only published bounds, so the curve carries the ordering ceiling as a line.
 E2E = len(sys.argv) > 3 and sys.argv[3] == "e2e"
 # Figure 7a, read at 4 parties and 2 shards, which is this cluster's orderer topology: 280,000 tps at
 # one shard, 414,000 at two, 430,000 at four, at about 0.6 s latency with 300 B transactions.
@@ -292,14 +292,6 @@ def figure9(rows, path):
                 total, rejected, _ = paper[x]
                 draw(pp + width / 2 + gap, total, rejected, PAPER, PAPER_DARK)
 
-        if E2E:
-            # Ordering alone cannot go faster than this, so neither can anything with ordering in it.
-            top.axhline(PAPER_ORDERING, color=INK2, linewidth=1, linestyle=":", zorder=2)
-            if col == 0:
-                top.annotate(f"paper: ordering alone, {PAPER_ORDERING / 1000:,.0f}k",
-                             (top.get_xlim()[0], PAPER_ORDERING), xytext=(4, 3),
-                             textcoords="offset points", ha="left", va="bottom", fontsize=7,
-                             color=INK2)
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
         # Both rows carry the tick labels. With sharex the bar row's labels are hidden by default,
         # which leaves the panel a reader looks at first with no x axis at all.
@@ -332,20 +324,16 @@ def figure9(rows, path):
         if col == 0:
             bottom.set_ylabel("99th percentile latency (ms)", color=INK2, fontsize=9)
 
-    ours_label = "this cluster, end to end" if E2E else "this cluster"
-    paper_label = "paper, committer only (no ordering)" if E2E else "paper"
-    legend = [Patch(color=OURS, label=ours_label),
+    legend = [Patch(color=OURS, label="this cluster"),
               Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
-              Patch(color=PAPER, label=paper_label),
+              Patch(color=PAPER, label="paper"),
               Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected")]
     fig.legend(handles=legend, frameon=False, fontsize=9, labelcolor=INK2,
                loc="upper right", bbox_to_anchor=(0.997, 0.999), ncol=4)
-    title = ("End-to-end throughput and tail latency with a real ordering service, at a one second "
-             "latency bound" if E2E else
-             "Committer throughput and tail latency, at a one second latency bound")
-    fig.suptitle(title, color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
+    fig.suptitle("Committer throughput and tail latency, at a one second latency bound",
+                 color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
     fig.text(0.006, 0.951,
              "Each bar is the highest rate held for 300 s with 99th percentile latency under one "
              "second, no queue growth, and the offered rate arriving. Throughput counts committed "
@@ -564,7 +552,8 @@ def main():
     rows = load(SRC)
     print(f"{len(rows)} rows from {SRC}")
     print(summary(rows))
-    figure9(rows, os.path.join(OUTDIR, "figure9.png"))
+    if not E2E:
+        figure9(rows, os.path.join(OUTDIR, "figure9.png"))
     latency_curve(rows, os.path.join(OUTDIR, "latency-throughput.png"))
     table(rows, os.path.join(OUTDIR, "figures-table.md"))
 

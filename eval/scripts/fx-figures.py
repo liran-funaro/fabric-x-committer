@@ -308,9 +308,10 @@ EXPERIMENTS = [
 # on. So these points are not a recreation of a published number; they price what putting real ordering
 # in the path costs, against two published ceilings that bracket it.
 #
-# The ladder runs first and the panels are seeded from what it finds, because this arm's ceiling has
-# never been measured: the only load it has carried is a 2,000 tps soak. Pass the ladder's answer back
-# in as FX_SEED for the panel run.
+# This arm reports one figure, the latency-throughput curve, so it runs one ladder and no knee searches.
+# A ladder is the right instrument for it anyway: this arm's ceiling has never been measured -- the only
+# load it has carried is a 2,000 tps soak -- and a ladder finds where the curve turns up without needing
+# a seed anywhere near the answer.
 #
 # One knob does not carry over. On this arm the batchers cut the blocks, not the generator, so
 # `loadgen_block_max_size` does nothing and there is no block-size ladder here; the observed batch is
@@ -319,33 +320,6 @@ E2E_EXPERIMENTS = [
     dict(id="e2e-curve", figure="curve", x=0, label="2 read-writes, real ordering", mode="curve",
          rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000, 350000, 400000],
          vars=shape(2, 0)),
-    dict(id="e2e-9a-rw1", figure="9a", x=1, label="1 read-write", seed=BASE_SEED,
-         vars=shape(1, 0)),
-    dict(id="e2e-9a-rw2", figure="9a", x=2, label="2 read-writes", seed=BASE_SEED,
-         vars=shape(2, 0)),
-    dict(id="e2e-9a-rw3", figure="9a", x=3, label="3 read-writes", seed=int(BASE_SEED * 0.85),
-         vars=shape(3, 0)),
-    dict(id="e2e-9a-rw4", figure="9a", x=4, label="4 read-writes", seed=int(BASE_SEED * 0.7),
-         vars=shape(4, 0)),
-    dict(id="e2e-9b-inv0", figure="9b", x=0, label="0% invalid", seed=BASE_SEED,
-         vars=shape(2, 0, invalid=0.0)),
-    dict(id="e2e-9b-inv10", figure="9b", x=10, label="10% invalid", seed=BASE_SEED,
-         vars=shape(2, 0, invalid=0.1)),
-    dict(id="e2e-9b-inv20", figure="9b", x=20, label="20% invalid", seed=BASE_SEED,
-         vars=shape(2, 0, invalid=0.2)),
-    dict(id="e2e-9b-inv30", figure="9b", x=30, label="30% invalid", seed=BASE_SEED,
-         vars=shape(2, 0, invalid=0.3)),
-    # The double-spend panel at the paper's own x values. The committer-only arm's 5% point is dropped:
-    # it cost a whole night of searching and the answer at every rate was the same collapse, and this
-    # arm has a longer pipeline for a conflict to sit in, not a shorter one.
-    dict(id="e2e-9c-ds0", figure="9c", x=0, label="0% double spend", seed=BASE_SEED,
-         vars=shape(2, 0, backref=0.0)),
-    dict(id="e2e-9c-ds10", figure="9c", x=10, label="10% double spend",
-         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.10)),
-    dict(id="e2e-9c-ds20", figure="9c", x=20, label="20% double spend",
-         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.20)),
-    dict(id="e2e-9c-ds30", figure="9c", x=30, label="30% double spend",
-         seed=int(BASE_SEED * 0.2), vars=shape(2, 0, backref=0.30)),
 ]
 
 if os.environ.get("FX_MATRIX") == "e2e":
