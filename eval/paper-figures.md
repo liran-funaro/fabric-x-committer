@@ -768,6 +768,30 @@ spends. Four things are worth separating:
   | the validator-committer's retry backoff | 5 ms behaves identically to 500 ms |
   | the dependency graph's admission limit | a 40x larger limit (20 M) gives the same ~20,700 tps capacity |
 
+  **And then the seventh explanation held: it is the tablet split.** The same 10% double-spend workload
+  at the default split rather than the 120-way pre-split, confirmed on a fresh deployment:
+
+  | tablet split | finished | measured conflicts | median | p99 | busiest CPU |
+  |---|---|---|---|---|---|
+  | 120-way pre-split | ~19,000 | 2.4-4.9% | ~55 s | >60 s | 68% |
+  | **default** | **41,273** | **9.5%** | **160 ms** | **533 ms** | **5%** |
+
+  Twice the throughput at nearly *four times* the conflict rate, and a median 340 times lower. Four
+  consecutive rungs from 30,000 to 40,814 tps met the one second bound at the default split, where the
+  120-way configuration met it at no rate at all.
+
+  This does not contradict the earlier refutation of the cliff -- it locates it. The cliff was refuted as
+  the explanation for **9a's size sweep**, correctly: every key there is fresh, so every multi-key lookup
+  *misses*. 9c's conflicting reads target committed keys, so they *hit*, and at 120 tablets a ~750-key
+  validation array degenerates to hundreds of serial storage reads. At a few milliseconds each that is
+  the ~6 seconds per transaction measured, and it is why nothing was ever saturated: the pipeline was
+  waiting on serialised storage round trips, not working.
+
+  So the double-spend panel measured a database configuration, as suspected, and the configuration is
+  identified. The 120-way pre-split buys write parallelism on insert-only workloads and destroys any
+  workload whose lookups hit -- which is every workload with contention, and the one the paper's Figure
+  9c reports. Whether the paper's deployment used a comparable split is not stated in it.
+
   The graph limit deserves a note of its own, because during the collapse the graph sits pinned at it and
   that looks causal. It is not: raising `committer_coordinator_dep_graph_wait_tx_limit` from 500,000 to
   20,000,000 leaves capacity at about 20,700 tps against 19,000-21,000 with the default. The graph is
