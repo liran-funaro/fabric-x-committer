@@ -46,6 +46,55 @@ database machines also host a validator-committer. Blocks carry 10,000 transacti
 transaction writes a fresh unique key, so there are no read-write conflicts and no MVCC aborts —
 this measures the pipeline's ceiling rather than its conflict behaviour.
 
+### 1.1 Storage, and what it can actually do
+
+Every machine has a small root volume and **two data volumes**, both XFS, mounted `/data1` and `/data2`.
+On the committer machines they are 969 GB each; on the twenty ordering machines, 485 GB each. All are
+virtio block devices (`/dev/vdb`, `/dev/vdc`) with the `none` I/O scheduler — there is no `/dev/nvme*` on
+any host and `lsblk` reports no device model, so the backing medium is not something this deployment can
+observe. Earlier notes here called it local NVMe; that was never verified and the numbers below are what
+replace it.
+
+A tablet server is given **one data directory per physical disk**, `/data1/yb-tserver` and
+`/data2/yb-tserver`, rather than a stripe underneath it: YugabyteDB then sees the disk boundary and reads
+and writes both in parallel, which one directory cannot do however fast the device behind it is. The three
+masters use `/data1/yb-master` only and share that disk with the tablet server on the same machine, which
+is why no validator-committer is placed on those three.
+
+Measured with fio 3.35, direct I/O, 20 s per job, on a deployed but unloaded cluster:
+
+| job | committer machine | ordering machine |
+|---|---|---|
+| sequential write, 1 MiB, QD32 | **1,007 MiB/s**, 31.8 ms mean | **504 MiB/s**, 63.6 ms mean |
+| random read, 4 KiB, QD64 | 505–600 MiB/s, 129k–154k IOPS, 0.42–0.49 ms | 397 MiB/s, 102k IOPS, 0.63 ms |
+| random write, 4 KiB, QD64 | 399 MiB/s, 102k IOPS, 0.63 ms | 190 MiB/s, 49k IOPS, 1.31 ms |
+| `fdatasync` per write, 4 KiB, QD1 | 2,318–2,438 IOPS, **0.082–0.092 ms** mean, 0.12 ms p99 | 2,970 IOPS, **0.069 ms** mean, 0.087 ms p99 |
+
+**These are provisioned caps, not device characteristics.** The sequential figure came back as
+1007.3 MiB/s and 31.790 ms on `commit7`'s `/data1`, on `commit7`'s `/data2`, and on the sidecar's `/data1`
+— identical to four significant figures across two machines and three volumes, which no physical device
+does. The ordering machines land on exactly half, 503.6 MiB/s. Random write sits at ~100k IOPS on the
+committer machines and ~49k on the ordering machines, the same halving.
+
+Two things follow for the figures in this document. The WAL's `fdatasync` costs **0.08 ms**, two orders of
+magnitude below the 2–21 ms per-batch database commit latency these runs report, so the disk is not what
+bounds commit latency — that time is spent above the device. And at the peak of 604,545 tps the sidecar's
+ledger takes about 158 MB/s of transaction bytes, 15% of one volume's sequential ceiling, so the append
+path is not bandwidth-bound either at these rates.
+
+It does put a number on §3's decay finding, and slightly reshapes it. That section attributes the
+long-run decay to **disk bandwidth**, on 85–99% device utilisation at about 280 MB/s of writes per server.
+Per volume that is ~140 MB/s against a measured random-write ceiling of 399 MB/s, so the volumes are busy
+almost all the time while carrying about a third of their bandwidth — which points at IOPS and per-request
+latency under mixed compaction traffic rather than at raw bandwidth. The direction of that finding stands;
+"the storage is simply slow" is better stated as "the storage runs out of operations before it runs out of
+bytes". Worth re-measuring with the fio numbers in hand before anyone quotes a bandwidth ceiling.
+
+One caveat on the table itself: a `make start` play was transferring files elsewhere in the cluster while
+these ran. The sequential and `fdatasync` figures are cap-bound and repeated exactly across volumes, so
+they are solid; the random-read spread (129k on one machine, 154k on another) may carry some of that
+contention and should be read as a lower bound.
+
 ## 2. Progression
 
 Two figures matter and they are not the same. **Sustained** is the highest requested rate the

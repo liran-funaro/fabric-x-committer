@@ -68,6 +68,17 @@ Ed25519-signed, in \num{10000}-transaction blocks. The published committer deplo
 shape --- nine validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}
 --- so what follows compares deployments, not matched hardware.
 
+Storage is two \SI{969}{\giga\byte} XFS volumes per machine on virtio devices, handed to the tablet server
+as one data directory per disk rather than a stripe, so YugabyteDB sees the disk boundary. fio 3.35 at
+direct I/O on the deployed but unloaded cluster gives each volume
+\SI{1007}{\mebi\byte\per\second} sequential write (\SI{1}{\mebi\byte}, QD32), \num{102000}
+random-write IOPS (\SI{4}{\kibi\byte}, QD64) and \SI{0.08}{\milli\second} mean \texttt{fdatasync}
+(\SI{4}{\kibi\byte}, QD1) --- provisioned caps rather than device characteristics, since the first repeats
+to four significant figures across two machines and three volumes and the ordering machines land on exactly
+half. That \SI{0.08}{\milli\second} synchronous write is two orders below the
+\SIrange{2}{21}{\milli\second} per-batch commit latency measured here, so what bounds commit sits above
+the device.
+
 The end-to-end arm adds twenty machines of 32 cores and \SI{78}{\gibi\byte} for the ordering service:
 four parties, each a router, a consenter, an assembler and four batchers, one per shard --- so
 \textbf{four parties and four shards}. Routers, consenters and assemblers get a machine each; the sixteen
