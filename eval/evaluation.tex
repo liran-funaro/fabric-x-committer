@@ -184,8 +184,8 @@ so a difference between the two arms is attributable to ordering.
   published line measures \emph{ordering alone} at two shards; this one measures the complete pipeline
   at four, so the comparison is of shape rather than of values. Each point is annotated with the byte
   rate it implies, which is where the two diverge: the published line is flat near
-  \SI{126}{\mega\byte\per\second} and this one rises from \SI{133}{} to
-  \SI{319}{\mega\byte\per\second}.}
+  \SI{126}{\mega\byte\per\second} and this one rises from \SI{122}{} to
+  \SI{410}{\mega\byte\per\second}.}
   \label{fig:size}
 \end{figure*}
 
@@ -325,8 +325,8 @@ rate is what shows why (Fig.~\ref{fig:size}). The published measurement is bandw
 \SI{300}{\byte}: each of its points sits within \SI{10}{\percent} of
 \SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second divided by size. This
 deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{rises} with size, from
-\SI{133}{\mega\byte\per\second} at \SI{300}{\byte} to \SI{319}{\mega\byte\per\second} at
-\SI{2}{\kibi\byte}, because what it pays per transaction dominates what it pays per byte: halving the
+\SI{122}{\mega\byte\per\second} at \SI{300}{\byte} to \SI{410}{\mega\byte\per\second} at
+\SI{4}{\kibi\byte}, because what it pays per transaction dominates what it pays per byte: halving the
 transaction count at twice the size is a net gain. Throughput therefore falls about
 \num{0.76}$\times$ per doubling rather than the \num{0.5}$\times$ a bandwidth-bound service gives.
 
@@ -358,7 +358,7 @@ not measuring the same limit.
     Size & Throughput & Byte rate & Evidence \\
     \midrule
     \SI{300}{\byte}  & \num{408000} & \SI{122}{MB/s} & two holds, low one \\
-    \SI{512}{\byte}  & \num{385000} & \SI{197}{MB/s} & hold, lower bound \\
+    \SI{512}{\byte}  & \num{415000} & \SI{213}{MB/s} & confirmed hold \\
     \SI{1}{\kibi\byte} & \num{285000} & \SI{292}{MB/s} & probe; hold had no disk \\
     \SI{2}{\kibi\byte} & \num{156000} & \SI{319}{MB/s} & confirmed hold \\
     \SI{4}{\kibi\byte} & \num{100000} & \SI{410}{MB/s} & probe; disk-bound \\
@@ -373,9 +373,11 @@ not measuring the same limit.
   \num{443800} tps --- \SI{8.8}{\percent} apart. The lower is tabulated, since it is the one measured
   with the driver draining between attempts. Its own probes disagreed more than that, one passing
   \num{480000} at \SI{589}{\milli\second} and the other failing the same rate at
-  \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. \emph{Lower bound}: the \SI{512}{\byte} search met every step of
-  its climb and never bracketed a knee, so this is the highest rate tried rather than the highest
-  sustainable. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
+  \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. The \SI{512}{\byte} figure is the re-measured one. Its first
+  search met every step of a four-step climb and reported its highest probe, \num{385000}, as though
+  it were a knee; given sixteen steps it bracketed one at \num{416000} and confirmed \num{415000} on a
+  hold --- \SI{8}{\percent} higher, and evidence that a climb which never misses is reporting the
+  search's limit rather than the system's. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
   assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
   \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run --- and at
   \SI{4}{\kibi\byte} the attempt filled it completely, to \SI{4.9}{\mega\byte} free, stopping the
