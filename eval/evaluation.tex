@@ -86,9 +86,13 @@ ledger uses \texttt{/data1} alone.
 
 Transactions carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, in
 \num{10000}-transaction blocks, and each transaction slot takes a fresh key, so there are no
-read--write conflicts. Signatures are ECDSA P-256. Blocks come from the load generator's embedded mock
-ordering service, which cuts and signs them itself and serves them to the sidecar over the Atomic
-Broadcast API, so no ordering service is in the path.
+read--write conflicts. Blocks come from the load generator's embedded mock ordering service, which cuts and signs them
+itself and serves them to the sidecar over the Atomic Broadcast API, so no ordering service is in the
+path.
+
+Signatures are ECDSA P-256, matching Part~II. \emph{The figures in this part were measured under
+Ed25519} and are being re-measured; until they are, the two parts differ in signature scheme as well
+as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
 
 A measured point is the highest offered rate that arrived in full, committed within \SI{2}{\percent},
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
@@ -319,10 +323,6 @@ the nonce directly, and block preparation, which caps the small-block curve in F
 knee is resolved to the search's \SI{8}{\percent} step, so it is a lower bound, drawn one-sided in
 Fig.~\ref{fig:panels}. The baseline drifts \SI{10}{\percent} between days, so only same-day
 comparisons are used.
-
-The Part~I figures were measured with Ed25519 signatures, before the ECDSA path was fast enough to
-carry them. The setup now specifies ECDSA for both arms; those figures will be re-measured under it,
-and until they are, Part~I and Part~II differ in signature scheme as well as in ordering.
 
 One limit is stated in advance of the end-to-end data rather than after it. That arm measures a ladder
 on a single deployment, so rate and table fill rise together and the ladder cannot separate them: if
