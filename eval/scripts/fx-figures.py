@@ -771,7 +771,17 @@ def main():
             for attempt in range(3):
                 if not deploy(exp):
                     break
-                log(f"[{exp['id']}] confirming {rate:,} for {hold}s on a fresh deployment"
+                if SKIP_DEPLOY:
+                    # deploy() only verified the rendered shape -- it did not redeploy -- so the
+                    # queue the search left above the knee is still in the pipeline, and this hold
+                    # would report its drain time as latency. Observed exactly that: a hold at
+                    # 479,999 delivered 502,545 (more than offered, because it was draining) with
+                    # p99 15 s and the in-flight count falling 30,767/s, then stepped down against a
+                    # baseline that was never the rate's own. Drain first, and give it more rounds
+                    # than the in-search drain: past the knee the backlog is millions deep.
+                    drain(exp, rounds=8)
+                log(f"[{exp['id']}] confirming {rate:,} for {hold}s"
+                    f"{' on a fresh deployment' if not SKIP_DEPLOY else ', drained'}"
                     f"{'' if attempt == 0 else f' (attempt {attempt + 1})'}")
                 row = measure(exp, rate, settle, hold, "hold")
                 if row is not None and row["met"]:
