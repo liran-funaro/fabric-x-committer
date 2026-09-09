@@ -357,26 +357,29 @@ not measuring the same limit.
     \toprule
     Size & Throughput & Byte rate & Evidence \\
     \midrule
-    \SI{300}{\byte}  & \num{443818} & \SI{133}{MB/s} & hold, conservative \\
-    \SI{512}{\byte}  & \num{384909} & \SI{197}{MB/s} & hold, lower bound \\
-    \SI{1}{\kibi\byte} & \num{285353} & \SI{292}{MB/s} & probe; hold had no disk \\
-    \SI{2}{\kibi\byte} & \num{155936} & \SI{319}{MB/s} & confirmed hold \\
-    \SI{4}{\kibi\byte} & \num{100212} & \SI{410}{MB/s} & probe; disk-bound \\
+    \SI{300}{\byte}  & \num{408000} & \SI{122}{MB/s} & two holds, low one \\
+    \SI{512}{\byte}  & \num{385000} & \SI{197}{MB/s} & hold, lower bound \\
+    \SI{1}{\kibi\byte} & \num{285000} & \SI{292}{MB/s} & probe; hold had no disk \\
+    \SI{2}{\kibi\byte} & \num{156000} & \SI{319}{MB/s} & confirmed hold \\
+    \SI{4}{\kibi\byte} & \num{100000} & \SI{410}{MB/s} & probe; disk-bound \\
     \bottomrule
   \end{tabular}
   \caption{What each size point rests on, since they do not all meet the same bar --- and where a hold
   exists it is quoted in preference to a higher probe, because a 90\,s probe is routinely optimistic:
   \SI{300}{\byte} passed \num{518182} on a probe and then failed its \SI{300}{\second} hold at that
-  rate outright. \emph{Confirmed hold} is the full criterion. \emph{Conservative}: the \SI{300}{\byte} point was measured before the
-  driver drained between attempts, so its confirmation stepped down against a queue left by the rate
-  above it and the figure is a floor. \emph{Lower bound}: the \SI{512}{\byte} search met every step of
+  rate outright. \emph{Confirmed hold} is the full criterion. The \SI{300}{\byte} point was measured twice, and the pair is the
+  best estimate available of this rig's repeatability: two \SI{300}{\second} holds of the same
+  configuration, both with flat queues and tails under \SI{600}{\milli\second}, at \num{408000} and
+  \num{443800} tps --- \SI{8.8}{\percent} apart. The lower is tabulated, since it is the one measured
+  with the driver draining between attempts. Its own probes disagreed more than that, one passing
+  \num{480000} at \SI{589}{\milli\second} and the other failing the same rate at
+  \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. \emph{Lower bound}: the \SI{512}{\byte} search met every step of
   its climb and never bracketed a knee, so this is the highest rate tried rather than the highest
   sustainable. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
   assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
   \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run --- and at
   \SI{4}{\kibi\byte} the attempt filled it completely, to \SI{4.9}{\mega\byte} free, stopping the
-  ordering service. A hold is now refused unless there is room for what it will write. The first two
-  points are being re-measured.}
+  ordering service. A hold is now refused unless there is room for what it will write. }
   \label{tab:size}
 \end{table}
 
