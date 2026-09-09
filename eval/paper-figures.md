@@ -127,6 +127,27 @@ Two honest limits on that mapping:
   Whether their shortfall is a winner among contenders, a sampled rather than derived decision, or
   references that fell out of range is not something their text settles.
 
+## What the end-to-end ladder cannot separate
+
+Stated before its data exists, so it is a pre-registered limit rather than an excuse found afterwards.
+
+The end-to-end arm measures a **ladder on one deployment**: every teardown on that arm breaks the Fabric
+CA, so a per-point redeploy costs a full reset, and the driver measures the running deployment instead.
+That is defensible for a single monotonic sweep, but it means the offered rate and the table's fill rise
+together, and a ladder cannot tell them apart. If the curve bends upward at the top, that shape is as
+consistent with a fuller database as with the rate.
+
+The committer arm settled the same question with a within-hold test — rate fixed, fill rising through one
+375 s window — and found commit latency flat at 142.2 to 143.0 ms across 68% fill growth. That result
+belongs to the committer arm and does not transfer: this arm has a longer pipeline, different machines
+(32 cores and 78 GiB against 64 and 156), and its own database state. Until the test is repeated here, an
+upward bend in the end-to-end curve **is not attributable to rate**.
+
+What makes it recoverable rather than lost: every row carries `committed_total`, so each rung records the
+fill it ran against and the question can be answered from the data afterwards. And a rung that fails drains
+before the next one starts, so no rung inherits the previous one's queue — which is a different confound,
+and one that is handled.
+
 ## The measurement rule
 
 Per point, the highest rate that satisfies all four of:

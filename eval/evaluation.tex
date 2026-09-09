@@ -194,4 +194,13 @@ block preparation, which caps the small-block curve. A knee is resolved to the s
 step, so it is a lower bound, drawn one-sided in Fig.~\ref{fig:panels}; and the baseline drifts
 \SI{10}{\percent} between days, so only same-day comparisons are used.
 
+One limit is stated in advance of the end-to-end data rather than after it. That arm measures a ladder on a
+single deployment, so rate and table fill rise together and the ladder cannot separate them: if its curve
+bends upward at the top, that is as consistent with a fuller database as with the offered rate. On the
+committer arm the question was settled by holding the rate fixed while fill grew through one
+\SI{375}{\second} window, where commit latency stayed flat --- \SIrange{142.2}{143.0}{\milli\second}
+across \SI{68}{\percent} fill growth --- but that test belongs to that arm and does not transfer. Until it
+is repeated here, an upward bend in the end-to-end curve is not attributable to rate. Each rung does record
+the fill it ran against, so the question stays auditable rather than lost.
+
 \end{document}
