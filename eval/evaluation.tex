@@ -94,12 +94,16 @@ Signatures are ECDSA P-256, matching Part~II. \emph{The figures in this part wer
 Ed25519} and are being re-measured; until they are, the two parts differ in signature scheme as well
 as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
 
-The first re-measured point suggests the change is not a cost but a correction. At one read--write
-operation ECDSA holds \num{653000} tps against Ed25519's \num{605000} --- \SI{8}{\percent}
-\emph{higher} --- with the load generator at \SI{32}{\percent} rather than co-limiting near
-\SI{80}{\percent}. The Ed25519 figure was therefore probably understating the committer too, having
-been measured with the instrument close to its own limit; this is the first measurement of this panel
-that clearly bounds the pipeline alone.
+The re-measured points so far show the change costs nothing. ECDSA holds \num{653000} tps at one
+read--write operation against Ed25519's \num{605000}, and \num{518000} at two against
+\num{517000} --- so one shape is a dead tie and the other is \SI{8}{\percent} higher, which is inside
+the repeatability established below and therefore not a difference this cluster can resolve. The
+scheme has stopped mattering, which is the point.
+
+What is outside the noise is where the load stands: the generator runs at \SIrange{25}{32}{\percent}
+while the busiest validator--committer is at \SIrange{80}{81}{\percent}. Under Ed25519 the generator
+was close to co-limiting, so these are the first measurements of this panel that bound the pipeline
+rather than the pair.
 
 A measured point is the highest offered rate that arrived in full, committed within \SI{2}{\percent},
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
