@@ -51,3 +51,7 @@ venv
 site/
 graphify-out/
 docs/superpowers/
+
+# LaTeX build products for eval/evaluation.tex; the PDF is committed, its scaffolding is not.
+eval/*.aux
+eval/*.log

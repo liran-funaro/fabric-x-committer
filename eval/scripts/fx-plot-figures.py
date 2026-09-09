@@ -45,6 +45,7 @@ PAPER_ORDERING = 414_000
 OURS = "#2a78d6"        # categorical slot 1
 PAPER = "#eb6834"       # categorical slot 2
 SMALL = "#1baf7a"       # categorical slot 3, the second block size
+SMALL_DARK = "#0f7050"  # slot 3, stepped down
 OURS_DARK = "#17457f"   # slot 1, stepped down: the rejected share of our own bars
 PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper's bars
 # What the latency axis shows before it starts labelling instead of drawing. The sustained medians run
@@ -219,6 +220,20 @@ def measured_conflicts(row):
     return (row.get("aborted") or 0) / total if total else 0
 
 
+def save(fig, path):
+    """Write the figure as both PDF and PNG.
+
+    PDF is what the evaluation section includes: it is vector, so it survives being scaled into a column
+    and its text stays selectable and searchable. PNG is what `README.md` embeds, because GitHub will not
+    render a PDF inline in Markdown. Same figure, two containers -- so neither reader is served a
+    resampled plot.
+    """
+    stem = os.path.splitext(path)[0]
+    for ext in (".pdf", ".png"):
+        fig.savefig(stem + ext, dpi=160, facecolor=SURFACE)
+        print("wrote", stem + ext)
+
+
 def thousands(v, _pos=None):
     return f"{v / 1000:,.0f}k"
 
@@ -235,7 +250,7 @@ def style(ax):
 
 
 def figure9(rows, path):
-    fig, axes = plt.subplots(2, 3, figsize=(14.2, 8.0), sharex="col")
+    fig, axes = plt.subplots(2, 3, figsize=(16.5, 6.8), sharex="col")
     fig.patch.set_facecolor(SURFACE)
 
     for col, (figure, title, xlabel, xfmt) in enumerate(PANELS):
@@ -244,7 +259,12 @@ def figure9(rows, path):
         # The union, not just what was measured. A panel drawn over its own x values only hides the
         # published points it has nothing to compare against -- which for 9c is three of the four,
         # and those three are the paper's whole result.
-        xs = sorted(set(data) | set(paper))
+        # The double-spend panel carries a second measured series. At the 120-way tablet split every
+        # conflict point collapses and no rate qualifies, so the panel would otherwise be one bar and
+        # three absences; at the default split the same shapes hold. Two series make the panel say what
+        # the measurement actually found, which is that the split is the difference.
+        alt = best_per_x(rows, "split") if figure == "9c" else {}
+        xs = sorted(set(data) | set(paper) | set(alt))
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
 
@@ -253,7 +273,9 @@ def figure9(rows, path):
         style(bottom)
         top.set_title(title, color=INK, fontsize=11, pad=8, loc="left")
 
-        width, gap = 0.38, 0.012
+        width, gap = (0.26, 0.010) if alt else (0.38, 0.012)
+        # Three bars per tick need their own offsets; two keep the original placement.
+        offsets = (-width - gap, 0.0, width + gap) if alt else (-width / 2 - gap, None, width / 2 + gap)
 
         def draw(xp, total, rejected, base, dark):
             """One bar, with the rejected part of it drawn inside it.
@@ -277,20 +299,27 @@ def figure9(rows, path):
                 # A knee is the highest rate that passed, resolved to the search's 8% step, so it is
                 # a lower bound: the sustainable rate lies between the bar and one step above it. The
                 # whisker is that step, one-sided for the same reason.
-                top.errorbar(pp - width / 2 - gap, total, yerr=[[0], [total * (STEP - 1)]],
+                top.errorbar(pp + offsets[0], total, yerr=[[0], [total * (STEP - 1)]],
                              ecolor=INK2, elinewidth=1, capsize=3, capthick=1, fmt="none", zorder=5)
-                draw(pp - width / 2 - gap, total, r.get("aborted") or 0, OURS, OURS_DARK)
+                draw(pp + offsets[0], total, r.get("aborted") or 0, OURS, OURS_DARK)
                 top.annotate(f"{total / 1000:,.0f}k",
-                             (pp - width / 2 - gap, total * STEP), textcoords="offset points",
+                             (pp + offsets[0], total * STEP), textcoords="offset points",
                              xytext=(0, 4), ha="center", fontsize=8, color=INK2)
             elif figure == "9c":
                 # 9c is the panel where the absence is the result: every rate offered at 5% and above
                 # failed the conditions, so there is no bar to draw and saying so is the measurement.
-                top.annotate("no rate\nqualified", (pp - width / 2 - gap, paper[x][0] * 1.04),
+                top.annotate("no rate\nqualified", (pp + offsets[0], paper[x][0] * 1.04),
                              ha="center", va="bottom", fontsize=7.5, color=INK2)
+            if x in alt:
+                r = alt[x]
+                total = throughput(r)
+                draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK)
+                top.annotate(f"{total / 1000:,.0f}k", (pp + offsets[1], total),
+                             textcoords="offset points", xytext=(0, 4), ha="center", fontsize=8,
+                             color=INK2)
             if x in paper:
                 total, rejected, _ = paper[x]
-                draw(pp + width / 2 + gap, total, rejected, PAPER, PAPER_DARK)
+                draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK)
 
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
         # Both rows carry the tick labels. With sharex the bar row's labels are hidden by default,
@@ -325,13 +354,14 @@ def figure9(rows, path):
             bottom.set_ylabel("99th percentile latency (ms)", color=INK2, fontsize=9)
 
     legend = [Patch(color=OURS, label="this cluster"),
+              Patch(color=SMALL, label="this cluster, default tablet split (9c only)"),
               Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
               Patch(color=PAPER, label="paper"),
               Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected")]
     fig.legend(handles=legend, frameon=False, fontsize=9, labelcolor=INK2,
-               loc="upper right", bbox_to_anchor=(0.997, 0.999), ncol=4)
+               loc="upper right", bbox_to_anchor=(0.997, 0.999), ncol=5)
     fig.suptitle("Committer throughput and tail latency, at a one second latency bound",
                  color=INK, fontsize=13, x=0.006, ha="left", y=0.985)
     fig.text(0.006, 0.951,
@@ -344,8 +374,7 @@ def figure9(rows, path):
              "intermediate points read off its plots.",
              color=INK2, fontsize=8, ha="left", va="top", linespacing=1.5)
     fig.tight_layout(rect=(0, 0, 1, 0.915))
-    fig.savefig(path, dpi=160, facecolor=SURFACE)
-    print("wrote", path)
+    save(fig, path)
 
 
 def sustained(row):
@@ -407,7 +436,7 @@ def latency_curve(rows, path):
     reader scanning left to right was scanning the dependent variable. Throughput is what an operator
     chooses and latency is what they get, so throughput belongs on x.
     """
-    fig, ax = plt.subplots(figsize=(10, 6.4))
+    fig, ax = plt.subplots(figsize=(13.5, 5.4))
     fig.patch.set_facecolor(SURFACE)
     style(ax)
     ax.grid(True, axis="x", color=GRID, linewidth=0.8)
@@ -463,8 +492,7 @@ def latency_curve(rows, path):
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper center",
               bbox_to_anchor=(0.5, -0.11), ncol=2)
     fig.tight_layout()
-    fig.savefig(path, dpi=160, facecolor=SURFACE)
-    print("wrote", path)
+    save(fig, path)
 
 
 def fmt_ms(row, key):

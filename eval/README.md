@@ -28,6 +28,10 @@ actually moved.
 [`figures/figures-table.md`](figures/figures-table.md) is every reported point with its rate limit,
 abort rate, latencies, database commit latency, table fill and per-tier CPU.
 
+The figures above are the PNG copies, because GitHub will not render a PDF inline. The PDF beside each
+one is what [`evaluation.tex`](evaluation.tex) includes: vector, so it survives being scaled into a
+column and its text stays selectable.
+
 ## Apparatus and data
 
 ## Two arms
@@ -52,7 +56,7 @@ data. `graph.jsonl` is the dependency-graph and database sampler's 30-second ser
 | `scripts/fx-figures.py` | the driver: the experiment matrix, a fresh deployment per point, the rate search and the confirmation hold |
 | `scripts/fx-figures-run.sh` | switches the cluster from the real-orderer arm to the committer-only arm, then runs the driver |
 | `scripts/fx-figures-e2e-run.sh` | switches the other way — a real Arma ordering service in the path — smoke-checks it, then measures the end-to-end latency-throughput curve |
-| `scripts/fx-plot-figures.py` | reads `figures.jsonl` and writes the two figures and the table |
+| `scripts/fx-plot-figures.py` | reads `figures.jsonl` and writes the two figures — PDF for `evaluation.tex`, PNG for the embeds above — and the table |
 | `scripts/fx-graph-sampler.py` | samples the dependency graph, the database and per-machine CPU every 30 s alongside a run |
 | `scripts/fx-join-graph.py` | joins the sampler's series to each confirmed hold |
 | `scripts/fx-fill-test.py` | the within-hold test of whether table size costs commit latency |
