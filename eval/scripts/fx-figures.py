@@ -141,7 +141,11 @@ SKIP_DEPLOY = os.environ.get("FX_SKIP_DEPLOY") == "1"
 # deployment, so they ran against a table holding several times as many rows as the later points --
 # and commit latency rises with the table, at about 0.18 ms per million transactions committed.
 REDO = set(filter(None, os.environ.get("FX_REDO", "").split(",")))
-UP_STEPS = int(os.environ.get("FX_UP_STEPS", "4"))
+# Four 8% steps is a 1.36x climb from the seed, and the size sweep showed that is not enough: the
+# 512 B point met all four and held at its highest probe, so it reported a lower bound rather than a
+# knee. Ten steps is 2.16x, which brackets a seed that turns out pessimistic. Unmet steps cost one
+# probe each and only until the first miss, so a seed that was already close pays almost nothing.
+UP_STEPS = int(os.environ.get("FX_UP_STEPS", "10"))
 
 EXPERIMENTS = [
     # Figure 9a: throughput and latency against transaction size. n read-write operations per
