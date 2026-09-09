@@ -786,7 +786,7 @@ SHA-256s and base64-encodes every payload; that path is real, and expensive, but
 it, because it submits whole blocks. And three runs were killed on the belief that the fast path
 deadlocked, when what was slow was per-case crypto generation in the benchmark's own setup.
 
-## 5B. The ordering arm is four shards, and its second disk is idle
+## 5C. The ordering arm is four shards, and what its second disk is now for
 
 Two facts about that arm, both verified against `cluster-orderer.yaml` and the machines rather than
 inherited from the plan or the paper:
@@ -803,12 +803,24 @@ tps at one shard, 414,000 at two and **430,000 at four**, so 430,000 is the orde
 topology, not 414,000. It also means the published size sweep (Figure 7b) is a *two-shard* measurement: its
 shape is comparable, its absolute values are not.
 
-**Each batcher machine has two 484 GB disks and both batchers use the first.** `/data1/fabric-x` holds
-`batcher1-1` and `batcher1-3` side by side while `/data2` is mounted and empty. If the intent of pairing
-shards on a machine was a spindle each, the deployment does not do it -- two batchers' ledgers contend for
-one device while a whole disk sits idle. Worth fixing before the arm's numbers are quoted as a shard-scaling
-result, since it confounds exactly that. (Both devices report `rotational=1` and are virtio-backed, so they
-are not NVMe whatever the provisioning notes say.)
+**Each batcher machine has two 484 GB disks, and now each co-located batcher gets one.** They both used
+`/data1` originally -- `batcher1-1` and `batcher1-3` side by side while `/data2` sat mounted and empty -- so
+if the point of pairing shards on a machine was a spindle each, the deployment was not doing it. That
+confounds exactly the shard-scaling question the arm exists to answer, so `orderer_data_dir` now names
+`/data2` for the second batcher on each machine. No collection change was needed: `orderer_data_dir`
+resolves per *inventory host*, and each batcher process is its own inventory host sharing an
+`ansible_host`.
+
+That produces the two configurations now being compared, which separate the two things a shard needs -- a
+core budget and a disk:
+
+| | shards | batchers | per machine | volume |
+|---|---|---|---|---|
+| `cluster-orderer.yaml` | 4 | 16 | 2 | one each |
+| `cluster-orderer-8shard.yaml` | 8 | 32 | 4 | two share one |
+
+(Both devices report `rotational=1` and are virtio-backed, so they are not NVMe whatever the provisioning
+notes say.)
 
 ## 5A. Switching arms: three faults that all look identical
 
@@ -854,6 +866,67 @@ certificate with `find ... | head -1`, happened to pick a freshly enrolled user 
 deployment proceed that could not start. When the fault is one bad member of a set, sampling the set is
 not verification --- the gate now checks every certificate in every org tree. This is the same lesson as
 "verify the artifact, not the exit code", one level down: verify the *whole* artifact.
+
+## 5D. Why the end-to-end arm never committed, twice over
+
+The arm produced no valid measurement at all until 2026-09-09, across roughly a dozen bring-ups. Two
+distinct faults, and the reason it took so long is that **both present identically**: the whole pipeline
+runs, Arma cuts blocks, the sidecar delivers them, the committer validates them, block height climbs, and
+100% of transactions come back `ABORTED_SIGNATURE_INVALID`.
+
+### The wipe was never wiping the database
+
+`make hard-wipe` clears `/data1/fabric-x`. YugabyteDB's data directories are
+
+```
+yb-master   --fs_data_dirs=/data1/yb-master
+yb-tserver  --fs_data_dirs=/data1/yb-tserver,/data2/yb-tserver
+```
+
+which are **siblings** of `/data1/fabric-x`, not children of it. So every "clean" bring-up ran on a
+database that predated the crypto reissued minutes earlier, keeping a namespace policy signed by a retired
+key. That is the 880,706 `ABORTED_SIGNATURE_INVALID` against exactly 1 `COMMITTED` recorded in section 5A,
+with the pipeline entirely healthy --- healthy because it was.
+
+It also hangs YugabyteDB's own init script. `01-yb-init.sql` opens with `create database yugabyte`, which
+should fail instantly against a database that already exists; instead it sat 22 minutes in
+`RPCWait/CatalogRead` while the cluster reported three masters with a leader, twelve tservers `ALIVE` and
+sub-second heartbeats. A stale catalog under re-keyed masters does not error, it waits.
+
+Three of my own diagnoses of that hang were wrong and are retracted: that two of every ten `tx_status`
+tablets were leaderless and needed an election nudge; that the 120-way tablet pre-split was too expensive
+(a fresh 120-tablet table creates in 336 ms); and that raising `committer_db_init_timeout` to 20m would
+cover it (the 20m run failed after 15:33 with the same once-a-minute pattern). Pre-split is back to 120 and
+`init-db` completes in **4 minutes**. The lesson is narrower than any of those theories: read the data
+directories off the running process, do not infer them from the deployment directory.
+
+Worse than missing both paths was catching one. An intermediate version of the wipe removed
+`/data2/yb-tserver` only, which leaves each tablet server with one live data directory and one deleted ---
+corrupt rather than merely stale. The wipe now covers all three paths and **gates** on them: `ls -d
+/data1/yb-master /data1/yb-tserver /data2/yb-tserver` must come back empty on every host before `setup`
+runs.
+
+### The namespace has to be created by `make init`
+
+`loadgen_generate_namespace` is `false` on this arm, deliberately: a namespace-creation transaction writes
+to the `_meta` namespace, whose policy is an MSP rule, and the loadgen role renders `artifacts-path` only
+when the mock orderer is in use. Without it the generator builds a `_meta` endorser with no identities and
+the transaction arrives carrying zero signatures (`MALFORMED_MISSING_SIGNATURE`). So namespace creation
+belongs to `make init`, where `fxconfig` submits the envelopes through a router signed with the Fabric CA
+identity it enrolled --- and the bring-up script simply never ran it.
+
+`make init` reports every non-loadgen host as `skipped` and exits 0 regardless; the real work runs on the
+loadgen host alone. Read the namespace list, not the exit code.
+
+The working order for this arm is therefore:
+
+```
+stop -> wipe (both volumes AND all three yb paths) -> setup -> gate on crypto
+     -> start -> init -> gate on a committed rate
+```
+
+Sixty seconds after `make init` the arm committed full blocks (`COMMITTED x 256`) and the first ladder
+began.
 
 ## 5B. What the disks are, and what they bound
 
