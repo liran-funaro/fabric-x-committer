@@ -37,7 +37,13 @@ PROM = os.environ.get("FX_PROM", "https://localhost:9090")
 PROJECT = os.environ.get(
     "FX_PROJECT", "/data1/collections/ansible_collections/hyperledger/fabricx")
 INVENTORY = os.environ.get("FX_INVENTORY", "/data1/cluster/inventory/cluster.yaml")
-OUT = os.environ.get("FX_OUT", "/data1/logs/figures.jsonl")
+# The two arms must not share a results file: the e2e ladders are named curve* like the committer's
+# own curve, so a shared file would silently merge two different experiments into one plot. Default
+# by matrix rather than relying on every caller to remember FX_OUT.
+OUT = os.environ.get(
+    "FX_OUT",
+    "/data1/logs/figures-orderer.jsonl" if os.environ.get("FX_MATRIX") == "e2e"
+    else "/data1/logs/figures.jsonl")
 VARS_FILE = "/data1/logs/exp-vars.yaml"
 
 WINDOW = "60s"

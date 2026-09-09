@@ -54,7 +54,12 @@ PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper'
 # 38 ms to 438 ms and one unsustained rate reached 7.5 s, so an axis that fits everything spends nine
 # tenths of its height on the points nobody would operate at, and the 40-vs-125 ms difference that is
 # the whole block size result becomes two adjacent pixels.
-LAT_AXIS_MS = 400
+#
+# The end-to-end arm needs a taller one. There the batchers cut the blocks and
+# `BatchCreationTimeout` is 500 ms, so its median floor sits ABOVE 400 ms -- at that clip every rung
+# is off-scale and the plot is empty. 1,000 ms keeps the same principle (show the operating region,
+# label what is past it) against a floor set half a second higher.
+LAT_AXIS_MS = 1000 if E2E else 400
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRID = "#e6e5e1"
@@ -385,6 +390,16 @@ def sustained(row):
     return offered_met and queue_flat
 
 
+def series_name(row):
+    """What series a row belongs to.
+
+    The figure name, except that both shard configurations record figure="shape" -- they are the
+    same kind of measurement on different deployments -- so those are told apart by experiment id.
+    """
+    name = row.get("figure") or ""
+    return row.get("experiment") or name if name == "shape" else name
+
+
 def series(rows, ax, figure, color, label):
     """One block size\'s curve: median as the line, the tail as an envelope above it.
 
@@ -395,7 +410,7 @@ def series(rows, ax, figure, color, label):
 
     Returns the points that ran off the top of the axis, for the caller to label.
     """
-    every = sorted([r for r in rows if r.get("figure") == figure and throughput(r)],
+    every = sorted([r for r in rows if series_name(r) == figure and throughput(r)],
                    key=lambda r: r["limit"])
     points = [r for r in every if sustained(r)]
     missed = [r for r in every if not sustained(r)]
@@ -441,8 +456,15 @@ def latency_curve(rows, path):
         # data and their names from the rows, so a new ladder appears without editing this file.
         ladders = []
         for r in rows:
-            name = r.get("figure") or ""
-            if name.startswith("curve") and name not in [n for n, _ in ladders]:
+            # Every ladder point records kind="curve", whichever variable the ladder sweeps -- the
+            # shard/storage comparison and the block-size comparison are both
+            # latency-against-throughput series measured identically, and both belong on this plot.
+            # Matching on the name instead is what broke: a series called "e2e-shape-4s" starts
+            # with neither "curve" nor "shape".
+            if r.get("kind") != "curve":
+                continue
+            name = series_name(r)
+            if name not in [n for n, _ in ladders]:
                 ladders.append((name, r.get("label") or name))
         for (name, label), colour in zip(sorted(ladders), (OURS, SMALL, PAPER_DARK, OURS_DARK)):
             off += series(rows, ax, name, colour, label)
@@ -457,7 +479,7 @@ def latency_curve(rows, path):
     if E2E:
         ax.axvline(PAPER_ORDERING, color=INK2, linewidth=1, linestyle=":", zorder=2)
         ax.annotate(f"paper: ordering alone at this topology, {PAPER_ORDERING / 1000:,.0f}k tx/s",
-                    (PAPER_ORDERING, 0), xytext=(-6, 8), textcoords="offset points", ha="right",
+                    (PAPER_ORDERING, 0), xytext=(-4, 6), textcoords="offset points", ha="right",
                     va="bottom", fontsize=7.5, color=INK2, rotation=90)
 
     # Every mark on the plot gets a legend row. The thin line and the dashed line carry as much of
