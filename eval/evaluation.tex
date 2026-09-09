@@ -330,6 +330,11 @@ deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{ris
 transaction count at twice the size is a net gain. Throughput therefore falls about
 \num{0.76}$\times$ per doubling rather than the \num{0.5}$\times$ a bandwidth-bound service gives.
 
+The tabulated \SI{512}{\byte} figure is nominally above the \SI{300}{\byte} one, which is not a real
+inversion: the \SI{300}{\byte} point's two holds span \numrange{408000}{443800} tps and
+\SI{512}{\byte} sits inside that, so the sweep is flat between those sizes rather than rising. It is
+the kind of difference the previous paragraph's repeatability figure exists to rule out.
+
 Where that stops is measurable, and it is the assembler's disk. At \SI{4}{\kibi\byte} throughput
 plateaus near \num{120000} tps --- \SI{492}{\mega\byte\per\second} of transaction payload ---
 with no machine anywhere above \SI{54}{\percent} CPU, so it is not a processing limit. The
@@ -358,7 +363,7 @@ not measuring the same limit.
     Size & Throughput & Byte rate & Evidence \\
     \midrule
     \SI{300}{\byte}  & \num{408000} & \SI{122}{MB/s} & two holds, low one \\
-    \SI{512}{\byte}  & \num{415000} & \SI{213}{MB/s} & confirmed hold \\
+    \SI{512}{\byte}  & \num{416000} & \SI{213}{MB/s} & probe; hold running \\
     \SI{1}{\kibi\byte} & \num{285000} & \SI{292}{MB/s} & probe; hold had no disk \\
     \SI{2}{\kibi\byte} & \num{156000} & \SI{319}{MB/s} & confirmed hold \\
     \SI{4}{\kibi\byte} & \num{100000} & \SI{410}{MB/s} & probe; disk-bound \\
@@ -375,9 +380,9 @@ not measuring the same limit.
   \num{480000} at \SI{589}{\milli\second} and the other failing the same rate at
   \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. The \SI{512}{\byte} figure is the re-measured one. Its first
   search met every step of a four-step climb and reported its highest probe, \num{385000}, as though
-  it were a knee; given sixteen steps it bracketed one at \num{416000} and confirmed \num{415000} on a
-  hold --- \SI{8}{\percent} higher, and evidence that a climb which never misses is reporting the
-  search's limit rather than the system's. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
+  it were a knee; given sixteen steps it bracketed one at \num{416000}, with
+  \num{449000} missing --- \SI{8}{\percent} higher, and evidence that a climb which never misses is
+  reporting the search's limit rather than the system's. Its confirmation hold is still running. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
   assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
   \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run --- and at
   \SI{4}{\kibi\byte} the attempt filled it completely, to \SI{4.9}{\mega\byte} free, stopping the
