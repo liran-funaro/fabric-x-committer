@@ -363,7 +363,7 @@ not measuring the same limit.
     Size & Throughput & Byte rate & Evidence \\
     \midrule
     \SI{300}{\byte}  & \num{408000} & \SI{122}{MB/s} & two holds, low one \\
-    \SI{512}{\byte}  & \num{416000} & \SI{213}{MB/s} & probe; hold running \\
+    \SI{512}{\byte}  & \num{414000} & \SI{212}{MB/s} & confirmed hold \\
     \SI{1}{\kibi\byte} & \num{285000} & \SI{292}{MB/s} & probe; hold had no disk \\
     \SI{2}{\kibi\byte} & \num{156000} & \SI{319}{MB/s} & confirmed hold \\
     \SI{4}{\kibi\byte} & \num{100000} & \SI{410}{MB/s} & probe; disk-bound \\
@@ -381,8 +381,9 @@ not measuring the same limit.
   \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. The \SI{512}{\byte} figure is the re-measured one. Its first
   search met every step of a four-step climb and reported its highest probe, \num{385000}, as though
   it were a knee; given sixteen steps it bracketed one at \num{416000}, with
-  \num{449000} missing --- \SI{8}{\percent} higher, and evidence that a climb which never misses is
-  reporting the search's limit rather than the system's. Its confirmation hold is still running. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
+  \num{449000} missing, and held \num{414000} for \SI{300}{\second} --- \SI{8}{\percent} higher than
+  its first run reported, and evidence that a climb which never misses is reporting the search's limit
+  rather than the system's. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
   assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
   \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run --- and at
   \SI{4}{\kibi\byte} the attempt filled it completely, to \SI{4.9}{\mega\byte} free, stopping the
