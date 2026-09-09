@@ -213,25 +213,56 @@ machines before it belongs to ordering.
 
 \subsection*{Shard count and storage}
 
-Four shards, each co-located batcher on its own volume, deliver every rate offered up to
-\num{300364} tps with no aborts, a flat queue and p99 \SI{473}{\milli\second}
-(Fig.~\ref{fig:e2e}). That is the top of the ladder, not a knee: the routers were the busiest
-machines in the deployment and still only \SI{65}{\percent} busy, and the median had stopped moving.
-The configuration's ceiling is therefore above \num{300000} tps and not yet known; higher rungs are
-running, as is the eight-shard ladder. \textbf{TODO --- the comparison itself.}
+Both configurations sustain the same throughput and hit the same knee: \num{499091} tps at four
+shards against \num{500000} at eight, \SI{0.2}{\percent} apart, and neither sustains \num{550000}
+(Fig.~\ref{fig:e2e}). Four shards is the better configuration on every other axis --- p99 lower by
+\SIrange{100}{250}{\milli\second} at every matched rate from \num{100000} tps up
+(\SI{658}{\milli\second} against \SI{754}{\milli\second} at the knee), fewer processes, and a volume
+per batcher rather than two sharing one.
 
-Latency \emph{falls} as the rate rises --- p99 \SI{684}{\milli\second} at \num{25000} tps against
-\SI{460}{\milli\second} at \num{250000} --- which is the \SI{500}{\milli\second}
-\texttt{BatchCreationTimeout} being the binding constraint at the bottom of the range and not at the
-top. At low rates a batch waits out the timeout before it is cut; at high rates it fills first. So on
-this arm the low end of the curve measures the timeout, and only its high end measures the system.
+Doubling the shards buys nothing because ordering is not what limits this arm. Through \num{400000}
+tps the busiest machine is a router; from \num{450000} on it is a validator--committer at
+\SIrange{78}{82}{\percent}, on both configurations and at low fill as well as high. Extra shards add
+capacity to the tier that is not binding.
+
+They also cost latency, for a reason the block size makes plain. At a given total rate each of eight
+shards sees half the per-shard rate that four do, so batches take twice as long to reach
+\num{10000} transactions and the \SI{500}{\milli\second} \texttt{BatchCreationTimeout} cuts them early
+over twice as wide a range of rates. The eight-shard curve shows exactly that shape: p99 rises to
+\SI{793}{\milli\second} at \num{150000} tps, then falls monotonically ---
+\SI{687}{}, \SI{614}{}, \SI{591}{\milli\second} --- as the rate grows enough to fill a batch before the
+timer fires.
+
+\subsection*{Is the knee the rate, or a full database?}
+
+It is the rate. This needed testing rather than asserting, because each ladder climbs on one
+deployment, so offered rate and table fill rise together: over the eight-shard ladder the database
+grew from \num{9.4} million rows to \num{1.31} billion, free disk fell from \SI{513}{\giga\byte} to
+\SI{62}{\giga\byte}, and database commit latency went from \SI{18}{\milli\second} to
+\SI{232}{\milli\second}. On that evidence alone a knee at \num{500000} tps is as consistent with a
+full table as with the rate.
+
+The two ladders settle it between them, because they reached the same rungs at very different fill.
+At \num{550000} tps four shards failed with \num{843} million rows committed, while eight shards
+failed with \num{1104} million --- the emptier database by \SI{24}{\percent}, and it failed too. Had
+fill been the cause, the emptier one would have passed. What fill does change is how much gets
+delivered at a failing rate: \num{532909} tps at the lower fill against \num{497603} at the higher.
+So the ceiling is a rate between \num{500000} and \num{533000} tps, and fill moves the delivered
+figure a few percent within it rather than creating the limit.
 
 \subsection*{Latency against throughput, ordering included}
 
-\textbf{TODO --- running.} Two block sizes on whichever shard configuration wins above, with rates low
-enough that the \SI{500}{\milli\second} \texttt{BatchCreationTimeout} floor is visible. The published
-work has no end-to-end figure: ordering alone reaches \num{430000} tps at four parties and four shards
-and the committer alone \num{419000}--\num{474000}, which bracket it.
+End to end, ordering included, this deployment sustains \num{499091} tps at
+\SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
+transactions at any rung. Two comparisons place it. The published work has no end-to-end figure, but
+its ordering service alone reaches \num{430000} tps at four parties and four shards --- so the
+complete pipeline here exceeds the published figure for one part of it. And the same committer without
+an ordering service reaches \num{604545} tps, so real ordering costs about \SI{17}{\percent} of the
+committer's own ceiling rather than an order of magnitude.
+
+\textbf{TODO --- running.} The \num{500}-transaction batch ladder, which the reasoning above predicts
+should remove most of the low-rate latency penalty: a batch a twentieth the size fills twenty times
+sooner, so the \SI{500}{\milli\second} timer should stop being the binding constraint at low rates.
 
 \subsection*{Transaction size}
 

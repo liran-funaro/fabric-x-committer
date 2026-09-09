@@ -515,7 +515,7 @@ def latency_curve(rows, path):
             lines.append(f"held: {throughput(r) / 1000:,.0f}k at median "
                          f"{(r.get('lat_p50') or 0) * 1000:,.0f} ms, p99 "
                          f"{(r.get('lat_p99') or 0) * 1000:,.0f} ms")
-        ax.text(0.985, 0.04, "\n".join(lines), transform=ax.transAxes, ha="right", va="bottom",
+        ax.text(0.015, 0.04, "\n".join(lines), transform=ax.transAxes, ha="left", va="bottom",
                 fontsize=6.5, color=INK2, linespacing=1.5)
 
     ax.xaxis.set_major_formatter(FuncFormatter(thousands))

@@ -334,6 +334,24 @@ E2E_EXPERIMENTS = [
     dict(id="e2e-shape-8s-hi", figure="shape", x=8, label="8 shards, two per volume", mode="curve",
          rates=[450000, 500000, 550000, 600000], vars=shape(2, 0)),
 
+    # The discriminator for the fill confound. Both ladders above climb on ONE deployment, so rate and
+    # table fill rise together: over the eight-shard ladder the database went from 9.4M rows to 1.31
+    # billion and the disk from 513 GB free to 62, while db_commit latency went 18 ms to 232. Its knee
+    # at 500,000 tps is therefore as consistent with a full database as with the offered rate, and the
+    # four-shard extension is worse off still -- it began after a reset, so its top rungs face a
+    # fraction of the fill the eight-shard ones did and the two cannot be compared there at all.
+    #
+    # These re-measure only the top of the range, each on a fresh deployment, so fill is low and
+    # matched. Same rates for both shapes. If a rate that missed at high fill holds at low fill, the
+    # ceiling was fill; if it misses either way, the ceiling is the rate.
+    #
+    # Separate ids and labels, so they form their own series rather than merging into the ladders whose
+    # confound they exist to test.
+    dict(id="e2e-fresh-4s", figure="shape", x=4, mode="curve",
+         label="4 shards, fresh database", rates=[450000, 500000, 550000], vars=shape(2, 0)),
+    dict(id="e2e-fresh-8s", figure="shape", x=8, mode="curve",
+         label="8 shards, fresh database", rates=[450000, 500000, 550000], vars=shape(2, 0)),
+
     # Step 2: the latency-throughput curve at two block sizes, on whichever shape won. On this arm the
     # batchers cut the blocks, so the knob is the shared config's Batching.BatchSize.MaxMessageCount, set
     # through `armageddon_batch_max_message_count` -- which means a block size change needs the shared
