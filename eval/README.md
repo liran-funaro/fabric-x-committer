@@ -39,12 +39,12 @@ column and its text stays selectable.
 Every figure above measures the **committer only**: the load generator embeds a mock orderer, cuts and
 signs the blocks itself, and serves them to the sidecar. That is what the paper's Section 6.3 does, so
 it is the comparable measurement. The second arm puts a real ordering service in the path — 4 parties,
-2 shards, one component per machine over 20 machines — and measures what the whole pipeline
+4 shards, sixteen batchers two to a machine over 20 machines — and measures what the whole pipeline
 costs at a given rate, into `figures-orderer.jsonl` and `figures/e2e/`. That arm reports the
 latency-throughput curve only, not the bar panels.
 
-The paper has no end-to-end figure to compare against. It publishes ordering alone (414,000 tps at 4
-parties and 2 shards, Figure 7a) and the committer alone (419,000–474,000 tps, Figure 9), and those two
+The paper has no end-to-end figure to compare against. It publishes ordering alone (430,000 tps at 4
+parties and 4 shards, Figure 7a; 414,000 at two) and the committer alone (419,000–474,000 tps, Figure 9), and those two
 bracket what an end-to-end number can be.
 
 `figures.jsonl` is the raw output: one JSON object per probe and per hold, including the measurements

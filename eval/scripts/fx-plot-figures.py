@@ -38,9 +38,11 @@ OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
 # beside, since its Section 6.2 measures ordering alone and its 6.3 the committer alone. Those two are
 # still the only published bounds, so the curve carries the ordering ceiling as a line.
 E2E = len(sys.argv) > 3 and sys.argv[3] == "e2e"
-# Figure 7a, read at 4 parties and 2 shards, which is this cluster's orderer topology: 280,000 tps at
-# one shard, 414,000 at two, 430,000 at four, at about 0.6 s latency with 300 B transactions.
-PAPER_ORDERING = 414_000
+# Figure 7a at four parties: 280,000 tps at one shard, 414,000 at two, 430,000 at four, at about 0.6 s
+# latency with 300 B transactions. This arm runs FOUR shards -- sixteen batchers, two to a machine -- so
+# the comparable ceiling is the four-shard one. It was 414,000 here while the arm was believed to be two
+# shards, which would have drawn the wrong line on the figure.
+PAPER_ORDERING = 430_000
 
 OURS = "#2a78d6"        # categorical slot 1
 PAPER = "#eb6834"       # categorical slot 2
@@ -508,10 +510,13 @@ def latency_curve(rows, path):
     save(fig, path)
 
 
-# The published ordering-service line, Figure 7b at four parties and two shards, read off the plot at
+# The published ordering-service line, Figure 7b at four parties and TWO shards, read off the plot at
 # 400 dpi: bytes -> tps. Every point is within 10% of 120 MB/s, so past 300 bytes that service is
-# bandwidth-bound and the rate is simply bytes per second divided by transaction size. Whether this arm
-# meets the same byte ceiling with a committer in the path is what the sweep answers.
+# bandwidth-bound and the rate is simply bytes per second divided by transaction size.
+#
+# This arm runs four shards, so the absolute values are not comparable and only the SHAPE is -- whether
+# throughput falls as 1/size, meaning a fixed byte rate, or falls more slowly. The figure says so, because
+# a figure gets read on its own.
 PAPER_7B = {128: 596_000, 256: 496_000, 300: 413_000, 512: 245_000,
             1024: 123_000, 2048: 55_000, 3500: 35_000, 4096: 27_000}
 
@@ -534,7 +539,7 @@ def size_curve(rows, path):
 
     px = sorted(PAPER_7B)
     ax.plot(px, [PAPER_7B[x] for x in px], color=PAPER, linewidth=2, marker="s", markersize=7,
-            linestyle="--", label="paper, ordering only (Fig. 7b, 4 parties)")
+            linestyle="--", label="paper, ordering only (Fig. 7b, 4 parties, two shards)")
     xs = sorted(data)
     ax.plot(xs, [throughput(data[x]) for x in xs], color=OURS, linewidth=2, marker="o", markersize=8,
             label="this cluster, end to end")
@@ -552,8 +557,9 @@ def size_curve(rows, path):
     ax.yaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("transaction size (bytes, log scale)", color=INK2, fontsize=9)
     ax.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
-    ax.set_title("What transaction size costs, end to end against ordering alone",
-                 color=INK, fontsize=13, loc="left", pad=10)
+    ax.set_title("What transaction size costs, end to end against ordering alone\n"
+                 "(published line is two shards, this arm four: compare the shape, not the values)",
+                 color=INK, fontsize=11.5, loc="left", pad=8)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper right")
     fig.tight_layout()
     save(fig, path)

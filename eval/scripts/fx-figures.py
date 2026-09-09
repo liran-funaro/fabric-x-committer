@@ -283,8 +283,8 @@ EXPERIMENTS = [
 # FX_MATRIX=e2e, and kept separate rather than merged into the list above because every seed here is
 # wrong for the committer-only arm and every seed above is wrong for this one.
 #
-# The paper has no end-to-end figure to recreate. Its Section 6.2 measures ordering alone -- 414,000 tps
-# at this arm's 4 parties and 2 shards, reading Figure 7a, and 430,000 at 4 shards -- and its
+# The paper has no end-to-end figure to recreate. Its Section 6.2 measures ordering alone -- 430,000 tps
+# at this arm's 4 parties and 4 shards, reading Figure 7a, and 414,000 at 2 shards -- and its
 # Section 6.3 measures the committer alone with a mock orderer, which is the arm the matrix above ran
 # on. So these points are not a recreation of a published number; they price what putting real ordering
 # in the path costs, against two published ceilings that bracket it.
