@@ -283,9 +283,31 @@ complete pipeline here exceeds the published figure for one part of it. And the 
 an ordering service reaches \num{604545} tps, so real ordering costs about \SI{17}{\percent} of the
 committer's own ceiling rather than an order of magnitude.
 
-\textbf{TODO --- running.} The \num{500}-transaction batch ladder, which the reasoning above predicts
-should remove most of the low-rate latency penalty: a batch a twentieth the size fills twenty times
-sooner, so the \SI{500}{\milli\second} timer should stop being the binding constraint at low rates.
+Batch size is the latency--throughput knob here, and it trades one for the other almost exactly.
+Cutting the batch from \num{10000} transactions to 500 removes most of the latency at every rate the
+two share --- p99 \SI{197}{\milli\second} against \SI{693}{\milli\second} at \num{100000} tps,
+\SI{286}{\milli\second} against \SI{460}{\milli\second} at \num{250000}, and mean latency a
+third of what large batches give. That is the predicted effect and its direction confirms the
+mechanism: a batch a twentieth the size fills twenty times sooner, so the
+\SI{500}{\milli\second} \texttt{BatchCreationTimeout} stops being what cuts it.
+
+What it costs is the ceiling, and the reason is exact. The block rate tracks the offered rate
+precisely --- 200 blocks a second at \num{100000} tps, 400 at \num{200000}, 500 at
+\num{250000} --- and between 500 and 600 blocks a second the arm stops working. \num{250000} tps is
+therefore not a transaction limit at all: it is $500 \times 500$, a \emph{block}-rate ceiling near
+500 a second. At \num{10000} transactions a batch the same block rate would carry five million
+transactions a second, which is why that configuration is limited by transactions instead and reaches
+\num{499091}.
+
+So the two configurations are bounded by different things, and the choice is a real trade rather than
+a tuning win: small batches halve the latency and halve the ceiling.
+
+The failure at \num{300000} tps is worth recording because it is not graceful. Throughput does not
+level off, it collapses --- to \num{773} transactions and 2 blocks a second, with every machine under
+\SI{2}{\percent} CPU and the disk untouched. The load generator then begins resubmitting
+transactions it has already had committed, and about a tenth of what does arrive comes back
+\texttt{REJECTED\_DUPLICATE\_TX\_ID}, so the retry amplifies the stall it is responding to. A
+deployment run just past this ceiling does not degrade, it stops.
 
 \subsection*{Transaction size}
 
