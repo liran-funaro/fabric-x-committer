@@ -265,13 +265,22 @@ grew from \num{9.4} million rows to \num{1.31} billion, free disk fell from \SI{
 \SI{232}{\milli\second}. On that evidence alone a knee at \num{500000} tps is as consistent with a
 full table as with the rate.
 
-The two ladders settle it between them, because they reached the same rungs at very different fill.
-At \num{550000} tps four shards failed with \num{843} million rows committed, while eight shards
-failed with \num{1104} million --- the emptier database by \SI{24}{\percent}, and it failed too. Had
-fill been the cause, the emptier one would have passed. What fill does change is how much gets
-delivered at a failing rate: \num{532909} tps at the lower fill against \num{497603} at the higher.
-So the ceiling is a rate between \num{500000} and \num{533000} tps, and fill moves the delivered
-figure a few percent within it rather than creating the limit.
+Both rates were therefore re-measured on fresh deployments, at low and matched fill. Four attempts
+now exist at \num{550000} tps across a \num{140}$\times$ range of fill, and \emph{none} sustains it;
+three exist at \num{500000} and three of those pass. The boundary does not move with fill, so it is a
+rate.
+
+What fill does change is the tail, and only near the knee. At \num{550000} tps the same eight-shard
+configuration gives p99 \SI{1.43}{\second} on a fresh database against \SI{4.9}{\second} at
+\num{1.1} billion rows, and how much is delivered tracks fill the same way --- \num{546364},
+\num{543818}, \num{532909} and \num{497603} tps in order of increasing fill. Below the knee the
+effect is a few percent; above it, queues form and fill multiplies what they cost.
+
+The re-measurement also refines which configuration to prefer, in the direction the batching
+mechanism predicts: extra shards pay only once fewer have run out of capacity. Up to
+\num{500000} tps four shards is better, as above. At \num{550000} eight shards degrades far more
+gracefully --- \SI{1.43}{\second} against \SI{7.5}{\second} at matched low fill --- because there the
+constraint is capacity rather than batch fill. Neither sustains it under a one-second bound.
 
 \subsection*{Latency against throughput, ordering included}
 
