@@ -177,6 +177,18 @@ The second arm puts a real Arma ordering service in the path. The committer tier
 \textbf{unchanged from Part~I} --- the same nineteen machines, the same components, the same tuning ---
 so a difference between the two arms is attributable to ordering.
 
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures-e2e/size-throughput.pdf}
+  \caption{Throughput against transaction size, end to end, beside the published Figure 7b. The
+  published line measures \emph{ordering alone} at two shards; this one measures the complete pipeline
+  at four, so the comparison is of shape rather than of values. Each point is annotated with the byte
+  rate it implies, which is where the two diverge: the published line is flat near
+  \SI{126}{\mega\byte\per\second} and this one rises from \SI{133}{} to
+  \SI{319}{\mega\byte\per\second}.}
+  \label{fig:size}
+\end{figure*}
+
 \subsection*{Setup: the ordering machines}
 
 Twenty further machines, each 32 cores and \SI{78}{\gibi\byte}, holding four parties of a router, a
@@ -277,12 +289,46 @@ sooner, so the \SI{500}{\milli\second} timer should stop being the binding const
 
 \subsection*{Transaction size}
 
-\textbf{TODO --- queued.} One configuration held fixed, varying only transaction size across
-\SIlist{300;512;1024;2048;4096}{\byte}. The published size sweep is a two-shard measurement falling
-\num{413000} to \num{27000} tps over that range, each point within \SI{10}{\percent} of
-\SI{120}{\mega\byte\per\second} --- so past \SI{300}{\byte} it is bandwidth-bound and the rate is
-simply bytes per second over size. Its shape is the comparable part, not its absolute values, since
-this arm runs four or eight shards.
+Throughput falls with transaction size but far more slowly than the published sweep, and the byte
+rate is what shows why (Fig.~\ref{fig:size}). The published measurement is bandwidth-bound past
+\SI{300}{\byte}: each of its points sits within \SI{10}{\percent} of
+\SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second divided by size. This
+deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{rises} with size, from
+\SI{133}{\mega\byte\per\second} at \SI{300}{\byte} to \SI{319}{\mega\byte\per\second} at
+\SI{2}{\kibi\byte}, because what it pays per transaction dominates what it pays per byte: halving the
+transaction count at twice the size is a net gain. Throughput therefore falls about
+\num{0.76}$\times$ per doubling rather than the \num{0.5}$\times$ a bandwidth-bound service gives.
+
+The consequence for the comparison is that only the direction is shared. Both lines fall, and this
+one is above the published line at every size they have in common --- but it is a whole pipeline
+against one of its parts, at four shards against two, so the gap is not a speedup and the shapes are
+not measuring the same limit.
+
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \begin{tabular}{@{}lrrl@{}}
+    \toprule
+    Size & Throughput & Byte rate & Evidence \\
+    \midrule
+    \SI{300}{\byte}  & \num{443818} & \SI{133}{MB/s} & hold, conservative \\
+    \SI{512}{\byte}  & \num{384909} & \SI{197}{MB/s} & hold, lower bound \\
+    \SI{1}{\kibi\byte} & \num{287850} & \SI{292}{MB/s} & knee, hold blocked \\
+    \SI{2}{\kibi\byte} & \num{155936} & \SI{319}{MB/s} & confirmed hold \\
+    \SI{4}{\kibi\byte} & TODO & & running \\
+    \bottomrule
+  \end{tabular}
+  \caption{What each size point rests on, since they do not all meet the same bar. \emph{Confirmed
+  hold} is the full criterion. \emph{Conservative}: the \SI{300}{\byte} point was measured before the
+  driver drained between attempts, so its confirmation stepped down against a queue left by the rate
+  above it and the figure is a floor. \emph{Lower bound}: the \SI{512}{\byte} search met every step of
+  its climb and never bracketed a knee, so this is the highest rate tried rather than the highest
+  sustainable. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
+  assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
+  \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run. The first two are
+  being re-measured.}
+  \label{tab:size}
+\end{table}
 
 \section*{Storage characterisation}
 

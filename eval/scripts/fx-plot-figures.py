@@ -570,14 +570,13 @@ def size_curve(rows, path):
     ax.plot([], [], " ", label=f"published line holds {PAPER_7B[1024] * 1024 / 1e6:.0f} MB/s at 1 KiB")
 
     ax.set_xscale("log", base=2)
-    ax.set_xticks(px)
-    ax.set_xticklabels([f"{x}" for x in px])
+    ticks = [128, 300, 512, 1024, 2048, 4096]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([f"{t}" for t in ticks])
+    ax.minorticks_off()
     ax.yaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("transaction size (bytes, log scale)", color=INK2, fontsize=9)
     ax.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
-    ax.set_title("What transaction size costs, end to end against ordering alone\n"
-                 "(published line is two shards, this arm four: compare the shape, not the values)",
-                 color=INK, fontsize=11.5, loc="left", pad=8)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper right")
     fig.tight_layout()
     save(fig, path)
