@@ -94,6 +94,13 @@ Signatures are ECDSA P-256, matching Part~II. \emph{The figures in this part wer
 Ed25519} and are being re-measured; until they are, the two parts differ in signature scheme as well
 as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
 
+The first re-measured point suggests the change is not a cost but a correction. At one read--write
+operation ECDSA holds \num{653000} tps against Ed25519's \num{605000} --- \SI{8}{\percent}
+\emph{higher} --- with the load generator at \SI{32}{\percent} rather than co-limiting near
+\SI{80}{\percent}. The Ed25519 figure was therefore probably understating the committer too, having
+been measured with the instrument close to its own limit; this is the first measurement of this panel
+that clearly bounds the pipeline alone.
+
 A measured point is the highest offered rate that arrived in full, committed within \SI{2}{\percent},
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
 on a fresh deployment.
