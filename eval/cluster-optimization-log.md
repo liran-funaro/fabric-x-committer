@@ -856,10 +856,16 @@ results elsewhere in this document.
 backing media cannot be identified from inside the guest, only measured. The I/O scheduler is `none` on
 every device.
 
-**Only `/data1` is used.** `/data2` is empty on every node of both arms. Nothing splits a write-ahead log
-from its data: YugabyteDB's data directory, the sidecar's ledger, and each batcher's and assembler's store
-all sit on the first disk while the second idles. On the batcher machines this compounds — two batcher
-processes share one machine, one shard each, and both write to `/data1`.
+**Use differs by role, and an early version of this section got it wrong.** Each database node gives
+YugabyteDB *both* volumes as separate data directories rather than a stripe, so it sees the disk boundary:
+`/data2/yb-tserver` exists on every tablet host. The sidecar's ledger and every ordering component — router,
+batcher, consenter, assembler — write to `/data1` alone and leave the second volume idle, and on the batcher
+machines two batchers share a host, one shard each, both on the first volume.
+
+The correction is worth recording because of how the error was made: `/data2` was observed empty on three
+nodes and written up as "unused on every node", but the observation was taken minutes after
+`hard-wipe TARGET_HOSTS=all`, when no database had started yet. An empty data directory on a wiped cluster
+is evidence of nothing. The database nodes — the heaviest disk consumers here — do use both.
 
 **Measured with `fio` 3.35**, `libaio`, `direct=1`, 20 s per pattern, run on the *unused* second disk of
 each class so nothing live was touched:
@@ -880,8 +886,11 @@ Two conclusions, and one methodological trap.
   read against the cap before it is attributed to ordering. The synchronous row is the exception that
   proves the point: there the ordering disks are *faster*, 297 µs against 395 µs, because a cap on
   bandwidth does not bind a latency-bound single-queue write.
-- **A per-record `fsync` path could never have worked here.** A synchronous 4 KiB write costs about 400 µs,
-  so any design that syncs once per transaction is capped near 2,400 a second — three orders of magnitude
+- **A per-record `fsync` path could never have worked here.** Making one 4 KiB record durable with an
+  `O_DSYNC` write costs about 400 µs. The barrier alone is far cheaper — an `fdatasync` after a buffered
+  write returns in about 0.08 ms, measured separately — so it is the write and not the sync that costs, and
+  a figure quoted for "synchronous write" has to say which of the two it means. Any design that syncs once
+  per transaction is therefore capped near 2,400 a second — three orders of magnitude
   below the rates in this document. The ledger only survives because it batches: it appends a whole block
   and syncs every hundredth (`sync-interval: 100`), which is why §3 could measure the append path at
   0.23 ms per 10,000-transaction block rather than at 400 µs per transaction.

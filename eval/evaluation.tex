@@ -48,11 +48,19 @@
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{figures/figure9.pdf}
+  \includegraphics[width=\textwidth,height=2.5in,keepaspectratio]{figures/figure9.pdf}
   \caption{Throughput and 99th-percentile latency against transaction size, invalid-signature share and
   double-spend share, against the published figures. Hatched bars are the rejected share, so the two
   experiments are compared at matched reject rates rather than matched labels.}
   \label{fig:panels}
+\end{figure*}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.8\textwidth,height=2.2in,keepaspectratio]{figures/latency-throughput.pdf}
+  \caption{Latency against throughput at two block sizes; axis clipped at \SI{400}{\milli\second}, points
+  above it labelled.}
+  \label{fig:curve}
 \end{figure*}
 
 
@@ -68,17 +76,6 @@ Ed25519-signed, in \num{10000}-transaction blocks. The published committer deplo
 shape --- nine validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}
 --- so what follows compares deployments, not matched hardware.
 
-Storage is two \SI{969}{\giga\byte} XFS volumes per machine on virtio devices, handed to the tablet server
-as one data directory per disk rather than a stripe, so YugabyteDB sees the disk boundary. fio 3.35 at
-direct I/O on the deployed but unloaded cluster gives each volume
-\SI{1007}{\mebi\byte\per\second} sequential write (\SI{1}{\mebi\byte}, QD32), \num{102000}
-random-write IOPS (\SI{4}{\kibi\byte}, QD64) and \SI{0.08}{\milli\second} mean \texttt{fdatasync}
-(\SI{4}{\kibi\byte}, QD1) --- provisioned caps rather than device characteristics, since the first repeats
-to four significant figures across two machines and three volumes and the ordering machines land on exactly
-half. That \SI{0.08}{\milli\second} synchronous write is two orders below the
-\SIrange{2}{21}{\milli\second} per-batch commit latency measured here, so what bounds commit sits above
-the device.
-
 The end-to-end arm adds twenty machines of 32 cores and \SI{78}{\gibi\byte} for the ordering service:
 four parties, each a router, a consenter, an assembler and four batchers, one per shard --- so
 \textbf{four parties and four shards}. Routers, consenters and assemblers get a machine each; the sixteen
@@ -93,23 +90,25 @@ The committer tier is unchanged across both arms, so a difference is attributabl
 arms do not share hardware generation --- the ordering machines have half the cores and half the memory of
 the committer machines.
 
-\textbf{Storage.} Every node that writes --- the sidecar's ledger, each database node, and each router,
-batcher, consenter and assembler --- has two data disks, XFS with \texttt{noatime}, mounted
-\texttt{/data1} and \texttt{/data2}: \SI{969}{\giga\byte} each on the committer machines and
-\SI{485}{\giga\byte} each on the ordering machines. Only \texttt{/data1} is used; \texttt{/data2} is
-empty on every node in both arms, so half the provisioned spindles are idle and no component splits its
-write-ahead log from its data. The disks are \texttt{virtio} devices, which report neither a model nor a
-meaningful rotational flag, so the backing media cannot be identified from inside the guest and is
-characterised by measurement instead.
+\textbf{Storage.} Every node that writes has two XFS volumes with \texttt{noatime}, mounted
+\texttt{/data1} and \texttt{/data2}: \SI{969}{\giga\byte} each on the committer machines,
+\SI{485}{\giga\byte} each on the ordering machines. They are \texttt{virtio} devices reporting neither a
+model nor a meaningful rotational flag, so the backing media cannot be identified from inside the guest and
+is characterised by measurement instead. Use differs by role: each database node gives
+YugabyteDB \emph{both} volumes as separate data directories rather than a stripe, so it sees the disk
+boundary, while the sidecar's ledger and every ordering component write to \texttt{/data1} alone and leave
+the second idle --- including the batcher machines, where two batchers share a host, one shard each.
 
-Table~\ref{tab:disk} gives \texttt{fio} 3.35 on the idle second disk of each class, four patterns this
-deployment actually produces. Two things follow. Ordering machines have half the disk bandwidth as well as
-half the cores, at almost exactly a factor of two on every bandwidth row and at round figures --- these are
-rate-capped volumes, not device limits, so a ceiling on that arm must be read against the cap rather than
-against the committer arm. And a synchronous \SI{4}{\kibi\byte} write costs about
-\SI{400}{\micro\second}, capping any per-record \texttt{fsync} path near \num{2400} operations a
-second: three orders of magnitude below the rates measured here, which the ledger only survives because it
-batches, appending a whole block at a time and syncing every hundredth.
+Table~\ref{tab:disk} gives \texttt{fio} 3.35 in four patterns this deployment produces. Two things follow.
+Ordering machines have half the disk bandwidth as well as half the cores, at almost exactly a factor of two
+on every bandwidth row, at round figures, and repeating to four significant figures across machines and
+volumes --- these are provisioned caps, not device characteristics, so a ceiling on that arm must be read
+against the cap before it is attributed to ordering. And durability is the expensive direction: making one
+\SI{4}{\kibi\byte} record durable with an \texttt{O\_DSYNC} write costs about
+\SI{400}{\micro\second}, capping any per-record design near \num{2400} operations a second, three orders
+of magnitude below the rates measured here. The ledger survives that only by batching --- it appends a whole
+block and syncs every hundredth. Syncing alone is cheap by comparison, an \texttt{fdatasync} after a
+buffered write returning in about \SI{0.08}{\milli\second}: it is the write, not the barrier, that costs.
 
 \begin{table}[t]
   \centering
@@ -124,8 +123,8 @@ batches, appending a whole block at a time and syncing every hundredth.
     \SI{8}{\kibi\byte} random write     & 32 & \num{102000} IOPS & \num{51165} IOPS \\
     \bottomrule
   \end{tabular}
-  \caption{\texttt{fio} 3.35, \texttt{libaio}, \texttt{direct=1}, 20\,s per pattern, on the unused
-  second disk of each machine class. The synchronous row is the exception to the pattern: the ordering
+  \caption{\texttt{fio} 3.35, \texttt{libaio}, \texttt{direct=1}, 20\,s per pattern, run on a volume the
+  deployment was not using at the time. The synchronous row is the exception to the pattern: the ordering
   disks are \emph{faster} there (\SI{297}{\micro\second} against \SI{395}{\micro\second} at the
   median) despite half the bandwidth. Committer figures are the range across a database node and the
   sidecar; a synchronous engine caps fio's queue depth at 1 while still reporting the depth asked for, so
@@ -166,13 +165,6 @@ tablets collapse unresolved.
 
 \subsection*{What latency costs at a given throughput}
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/latency-throughput.pdf}
-  \caption{Latency against throughput at two block sizes; axis clipped at \SI{400}{\milli\second}, points
-  above it labelled.}
-  \label{fig:curve}
-\end{figure*}
 
 At \num{10000}-transaction blocks the median has a floor near \SI{125}{\milli\second} that does not fall
 with the rate, since nothing in a block moves until the block is cut (Fig.~\ref{fig:curve}). At 500
