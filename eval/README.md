@@ -60,6 +60,7 @@ data. `graph.jsonl` is the dependency-graph and database sampler's 30-second ser
 | `scripts/fx-graph-sampler.py` | samples the dependency graph, the database and per-machine CPU every 30 s alongside a run |
 | `scripts/fx-join-graph.py` | joins the sampler's series to each confirmed hold |
 | `scripts/fx-fill-test.py` | the within-hold test of whether table size costs commit latency |
+| `scripts/fx-disk-bench.sh` | characterises a node's disk with `fio`, in the four patterns this deployment produces; runs on the unused second disk so nothing live is touched |
 
 Regenerate the figures from the data:
 

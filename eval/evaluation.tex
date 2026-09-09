@@ -82,6 +82,46 @@ The committer tier is unchanged across both arms, so a difference is attributabl
 arms do not share hardware generation --- the ordering machines have half the cores and half the memory of
 the committer machines.
 
+\textbf{Storage.} Every node that writes --- the sidecar's ledger, each database node, and each router,
+batcher, consenter and assembler --- has two data disks, XFS with \texttt{noatime}, mounted
+\texttt{/data1} and \texttt{/data2}: \SI{969}{\giga\byte} each on the committer machines and
+\SI{485}{\giga\byte} each on the ordering machines. Only \texttt{/data1} is used; \texttt{/data2} is
+empty on every node in both arms, so half the provisioned spindles are idle and no component splits its
+write-ahead log from its data. The disks are \texttt{virtio} devices, which report neither a model nor a
+meaningful rotational flag, so the backing media cannot be identified from inside the guest and is
+characterised by measurement instead.
+
+Table~\ref{tab:disk} gives \texttt{fio} 3.35 on the idle second disk of each class, four patterns this
+deployment actually produces. Two things follow. Ordering machines have half the disk bandwidth as well as
+half the cores, at almost exactly a factor of two on every bandwidth row and at round figures --- these are
+rate-capped volumes, not device limits, so a ceiling on that arm must be read against the cap rather than
+against the committer arm. And a synchronous \SI{4}{\kibi\byte} write costs about
+\SI{400}{\micro\second}, capping any per-record \texttt{fsync} path near \num{2400} operations a
+second: three orders of magnitude below the rates measured here, which the ledger only survives because it
+batches, appending a whole block at a time and syncing every hundredth.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{llrr}
+    \toprule
+    Pattern & Depth & Committer & Ordering \\
+    \midrule
+    \SI{1}{\mebi\byte} sequential write & 4  & \SI{1058}{MiB/s} & \SI{529}{MiB/s} \\
+    \SI{4}{\kibi\byte} write, O\_DSYNC  & 1  & \num{2400} IOPS  & \num{3249} IOPS \\
+    \SI{8}{\kibi\byte} random read      & 32 & \num{126000} IOPS & \num{67689} IOPS \\
+    \SI{8}{\kibi\byte} random write     & 32 & \num{102000} IOPS & \num{51165} IOPS \\
+    \bottomrule
+  \end{tabular}
+  \caption{\texttt{fio} 3.35, \texttt{libaio}, \texttt{direct=1}, 20\,s per pattern, on the unused
+  second disk of each machine class. The synchronous row is the exception to the pattern: the ordering
+  disks are \emph{faster} there (\SI{297}{\micro\second} against \SI{395}{\micro\second} at the
+  median) despite half the bandwidth. Committer figures are the range across a database node and the
+  sidecar; a synchronous engine caps fio's queue depth at 1 while still reporting the depth asked for, so
+  the deep rows use \texttt{libaio}.}
+  \label{tab:disk}
+\end{table}
+
 A point is the highest offered rate that arrived in full, committed within \SI{2}{\percent}, kept p99
 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold on a fresh
 deployment. Queue flatness matters as much as the latency bound: a rate can be committed in full out of a

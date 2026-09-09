@@ -784,6 +784,51 @@ deployment proceed that could not start. When the fault is one bad member of a s
 not verification --- the gate now checks every certificate in every org tree. This is the same lesson as
 "verify the artifact, not the exit code", one level down: verify the *whole* artifact.
 
+## 5B. What the disks are, and what they bound
+
+Every node that writes has the same shape, and it is worth stating because two of the numbers below bound
+results elsewhere in this document.
+
+**Configuration.** Two data disks per node, XFS with `noatime,nofail`, mounted `/data1` and `/data2`:
+969 GB each on the nineteen committer machines, 485 GB each on the twenty ordering machines. They are
+`virtio` block devices, so they report no model string and their rotational flag is meaningless — the
+backing media cannot be identified from inside the guest, only measured. The I/O scheduler is `none` on
+every device.
+
+**Only `/data1` is used.** `/data2` is empty on every node of both arms. Nothing splits a write-ahead log
+from its data: YugabyteDB's data directory, the sidecar's ledger, and each batcher's and assembler's store
+all sit on the first disk while the second idles. On the batcher machines this compounds — two batcher
+processes share one machine, one shard each, and both write to `/data1`.
+
+**Measured with `fio` 3.35**, `libaio`, `direct=1`, 20 s per pattern, run on the *unused* second disk of
+each class so nothing live was touched:
+
+| pattern | depth | committer class | ordering class |
+|---|---|---|---|
+| 1 MiB sequential write | 4 | 1,058 MiB/s, p50 4.1 ms | 529 MiB/s, p50 8.2 ms |
+| 4 KiB write, `O_DSYNC` | 1 | 2,336–2,474 IOPS, p50 395 µs | 3,249 IOPS, p50 297 µs |
+| 8 KiB random read | 32 | 121,628–131,575 IOPS, p50 ~240 µs | 67,689 IOPS, p50 489 µs |
+| 8 KiB random write | 32 | ~102,000 IOPS, p50 315 µs | 51,165 IOPS, p50 651 µs |
+
+Two conclusions, and one methodological trap.
+
+- **These are rate-capped volumes, not devices.** Every bandwidth row differs between the classes by almost
+  exactly a factor of two, at round numbers — 1,057.6 against 528.8 MiB/s. A cap explains that; two
+  generations of physical media would not land on 2.000. So the ordering machines have half the disk
+  bandwidth on top of half the cores and half the memory, and any ceiling measured on that arm has to be
+  read against the cap before it is attributed to ordering. The synchronous row is the exception that
+  proves the point: there the ordering disks are *faster*, 297 µs against 395 µs, because a cap on
+  bandwidth does not bind a latency-bound single-queue write.
+- **A per-record `fsync` path could never have worked here.** A synchronous 4 KiB write costs about 400 µs,
+  so any design that syncs once per transaction is capped near 2,400 a second — three orders of magnitude
+  below the rates in this document. The ledger only survives because it batches: it appends a whole block
+  and syncs every hundredth (`sync-interval: 100`), which is why §3 could measure the append path at
+  0.23 ms per 10,000-transaction block rather than at 400 µs per transaction.
+- **The trap:** fio's default `psync` engine silently caps the queue depth at 1 while still printing the
+  depth that was asked for. A first run reported "iodepth=32" figures that were depth-1 measurements. The
+  deep rows above use `libaio`; a `note:` line on stdout is the only warning fio gives, and it also breaks
+  JSON output parsing.
+
 ## 6. Where the constraint is now
 
 Signature verification, as of section 6.3. It was the database commit path, at roughly 487,000 tps,
