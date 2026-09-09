@@ -141,11 +141,15 @@ SKIP_DEPLOY = os.environ.get("FX_SKIP_DEPLOY") == "1"
 # deployment, so they ran against a table holding several times as many rows as the later points --
 # and commit latency rises with the table, at about 0.18 ms per million transactions committed.
 REDO = set(filter(None, os.environ.get("FX_REDO", "").split(",")))
-# Four 8% steps is a 1.36x climb from the seed, and the size sweep showed that is not enough: the
-# 512 B point met all four and held at its highest probe, so it reported a lower bound rather than a
-# knee. Ten steps is 2.16x, which brackets a seed that turns out pessimistic. Unmet steps cost one
-# probe each and only until the first miss, so a seed that was already close pays almost nothing.
-UP_STEPS = int(os.environ.get("FX_UP_STEPS", "10"))
+# Sixteen 8% steps is a 3.43x climb from the seed. Four (1.36x) and then ten (2.16x) were both too
+# few, and for a reason worth stating rather than patching around: the size sweep's seeds are the
+# paper's own ratios against its 300 B point, and the paper's sweep is bandwidth-bound near
+# 120 MB/s past 300 B. This deployment is not -- 1024 B transactions sustain 292 MB/s here -- so
+# every seed derived that way is low by more than a factor of two, and the climb rather than the
+# system was setting the reported number. The log line to look for is a search whose LAST probe met
+# its rate: that is a lower bound, not a knee. Unmet steps cost one probe each and only until the
+# first miss, so a seed that was already close pays almost nothing for the headroom.
+UP_STEPS = int(os.environ.get("FX_UP_STEPS", "16"))
 
 EXPERIMENTS = [
     # Figure 9a: throughput and latency against transaction size. n read-write operations per
