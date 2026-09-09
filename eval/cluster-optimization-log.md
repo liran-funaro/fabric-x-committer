@@ -727,6 +727,30 @@ SHA-256s and base64-encodes every payload; that path is real, and expensive, but
 it, because it submits whole blocks. And three runs were killed on the belief that the fast path
 deadlocked, when what was slow was per-case crypto generation in the benchmark's own setup.
 
+## 5B. The ordering arm is four shards, and its second disk is idle
+
+Two facts about that arm, both verified against `cluster-orderer.yaml` and the machines rather than
+inherited from the plan or the paper:
+
+**It is four parties by four shards, not four by two.** Sixteen batchers, `batcher{party}-{shard}`, share
+eight machines two apiece on ports 7050 and 7051 with operations on 7060 and 7061; routers, consenters and
+assemblers get a machine each. The pairing has a measured justification recorded in the inventory: at two
+shards the service capped near 158,000 tps **per shard** whatever the batch size or decision interval,
+while batcher processes sat at 15-20% of a 32-core machine, so the constraint is per shard and the spare
+capacity for a second one was already on the box.
+
+This changes which published number the arm is compared against. Figure 7a at four parties reads 280,000
+tps at one shard, 414,000 at two and **430,000 at four**, so 430,000 is the ordering ceiling for this
+topology, not 414,000. It also means the published size sweep (Figure 7b) is a *two-shard* measurement: its
+shape is comparable, its absolute values are not.
+
+**Each batcher machine has two 484 GB disks and both batchers use the first.** `/data1/fabric-x` holds
+`batcher1-1` and `batcher1-3` side by side while `/data2` is mounted and empty. If the intent of pairing
+shards on a machine was a spindle each, the deployment does not do it -- two batchers' ledgers contend for
+one device while a whole disk sits idle. Worth fixing before the arm's numbers are quoted as a shard-scaling
+result, since it confounds exactly that. (Both devices report `rotational=1` and are virtio-backed, so they
+are not NVMe whatever the provisioning notes say.)
+
 ## 5A. Switching arms: three faults that all look identical
 
 Recorded because five bring-up attempts were spent on it, and because each fault produces the *same*
