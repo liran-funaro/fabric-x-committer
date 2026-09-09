@@ -68,6 +68,13 @@ Ed25519-signed, in \num{10000}-transaction blocks. The published committer deplo
 shape --- nine validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}
 --- so what follows compares deployments, not matched hardware.
 
+The end-to-end arm adds twenty machines of 32 cores and \SI{78}{\gibi\byte} for the ordering service,
+one component per machine: four parties of five, each a router, a consenter, an assembler and two
+batchers, one per shard. That is four parties and two shards, the topology the published ordering figures
+use, and the committer tier above is unchanged across both arms so a difference is attributable to
+ordering. Note the two arms do not share hardware generation: the ordering machines have half the cores
+and half the memory of the committer machines.
+
 A point is the highest offered rate that arrived in full, committed within \SI{2}{\percent}, kept p99
 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold on a fresh
 deployment. Queue flatness matters as much as the latency bound: a rate can be committed in full out of a
@@ -120,8 +127,8 @@ preparation caps it near 850 blocks per second (\num{425000} tps here; \num{4500
 \subsection*{End to end, with a real ordering service}
 
 
-\textbf{TODO --- running.} A second arm puts a real Arma ordering service in the path (four parties, two
-shards, twenty further machines, committer tier unchanged). The published work has no end-to-end figure:
+\textbf{TODO --- running.} The second arm puts a real Arma ordering service in the path. The published
+work has no end-to-end figure:
 ordering alone reaches \num{414000} tps at this topology and the committer alone
 \num{419000}--\num{474000}, which bracket it. A size sweep against its Figure~7b is queued at
 \SIlist{300;512;1024;2048;4096}{\byte}, where ordering alone reaches \num{413000} down to \num{27000}
