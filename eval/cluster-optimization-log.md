@@ -78,7 +78,17 @@ committer machines and ~49k on the ordering machines, the same halving.
 
 Two things follow for the figures in this document. The WAL's `fdatasync` costs **0.08 ms**, two orders of
 magnitude below the 2–21 ms per-batch database commit latency these runs report, so the disk is not what
-bounds commit latency — that time is spent above the device. And at the peak of 604,545 tps the sidecar's
+bounds commit latency — that time is spent above the device. That statement is about the *barrier* only,
+and it would be wrong to read it as "durable writes are cheap here": an `O_DSYNC` write of one 4 KiB record
+costs about **400 µs** on the same volume, which caps any per-record durable design near 2,400 operations a
+second, three orders of magnitude below the rates measured here. It is the write that costs, not the sync
+after it, and the ledger survives that only by batching — a whole block appended, a sync every hundredth.
+`evaluation.tex` carries the fuller version of this in its storage table.
+
+The two sets of numbers were taken at different block sizes and queue depths (1 MiB at QD32 and 4 KiB at
+QD64 here; 1 MiB at QD4 and 8 KiB at QD32 there), which is why the sequential figure reads 1,007 MiB/s in
+this table and 1,058 MiB/s in that one. Both are the same ~1 GiB/s cap approached from different depths,
+not a disagreement. And at the peak of 604,545 tps the sidecar's
 ledger takes about 158 MB/s of transaction bytes, 15% of one volume's sequential ceiling, so the append
 path is not bandwidth-bound either at these rates.
 
