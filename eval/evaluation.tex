@@ -58,12 +58,15 @@
 
 \subsection*{Setup}
 
-Nineteen machines of 64 cores and \SI{156}{\gibi\byte}: nine validator--committer services co-located
-with nine YugabyteDB nodes, three signature verifiers, one coordinator, one sidecar, one load generator.
-The generator embeds a mock ordering service and serves blocks to the sidecar over the Atomic Broadcast
-API, so these figures measure the validation and commit path with no ordering service in it. Transactions
-carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, Ed25519-signed,
-in \num{10000}-transaction blocks.
+Nineteen machines of 64 cores and \SI{156}{\gibi\byte}: three signature verifiers, one coordinator, one
+sidecar, one load generator, and a YugabyteDB cluster of twelve tablet servers and three masters. Six of
+the twelve database machines also host a validator--committer and three others host a master, so no
+machine runs both. The generator embeds a mock ordering service and serves blocks to the sidecar over the
+Atomic Broadcast API, so these figures measure the validation and commit path with no ordering service in
+it. Transactions carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized,
+Ed25519-signed, in \num{10000}-transaction blocks. The published committer deployment is not the same
+shape --- nine validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}
+--- so what follows compares deployments, not matched hardware.
 
 A point is the highest offered rate that arrived in full, committed within \SI{2}{\percent}, kept p99
 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold on a fresh
