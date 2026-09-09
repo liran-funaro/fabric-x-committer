@@ -298,28 +298,49 @@ EXPERIMENTS = [
 # `loadgen_block_max_size` does nothing and there is no block-size ladder here; the observed batch is
 # about 489 transactions, which is already near the 500 the committer-only arm found best.
 E2E_EXPERIMENTS = [
-    dict(id="e2e-curve", figure="curve", x=0, label="2 read-writes, real ordering", mode="curve",
-         rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000, 350000, 400000],
+    # Step 1: find the best-throughput configuration, before spending ladders on it. Both of these are
+    # deployment shapes rather than workloads, so each needs its own bring-up -- they are listed here to
+    # document the sequence, and are selected one at a time with an id filter.
+    #
+    #   4 shards, one volume per co-located shard: the batchers already sit two to a machine, and until now
+    #   both wrote to /data1 while /data2 idled. `orderer_data_dir` is per inventory host and each batcher
+    #   process is its own inventory host, so the second shard on each machine now writes to the second
+    #   volume. Run with inventory/cluster-orderer.yaml.
+    #
+    #   8 shards, four to a machine: the per-shard ceiling was ~158,000 tps while batcher processes sat at
+    #   15-20% of a 32-core box, so more shards per machine is the cheapest way to buy throughput if the
+    #   constraint really is per shard. Run with inventory/cluster-orderer-8shard.yaml.
+    #
+    # A ladder rather than a knee search for both: what is wanted is where each configuration turns up, and
+    # a search on this arm cannot redeploy per point without breaking the CA.
+    dict(id="e2e-shape-4s", figure="shape", x=4, label="4 shards, one volume each", mode="curve",
+         rates=[25000, 50000, 100000, 150000, 200000, 250000, 300000], vars=shape(2, 0)),
+    dict(id="e2e-shape-8s", figure="shape", x=8, label="8 shards, two per volume", mode="curve",
+         rates=[25000, 50000, 100000, 150000, 200000, 250000, 300000, 400000], vars=shape(2, 0)),
+
+    # Step 2: the latency-throughput curve at two block sizes, on whichever shape won. On this arm the
+    # batchers cut the blocks, so the knob is the shared config's Batching.BatchSize.MaxMessageCount, set
+    # through `armageddon_batch_max_message_count` -- which means a block size change needs the shared
+    # config regenerated, not a loadgen file re-rendered. One deployment per ladder.
+    #
+    # The rates run down to 10,000 deliberately. `BatchCreationTimeout` is 500 ms and hardcoded in the
+    # shared-config template, so at low rates a batch is cut by that timer rather than by size, and the
+    # floor it puts under latency is the whole point of comparing the two block sizes -- the same shape as
+    # the committer arm's finding that a 10,000-transaction block costs ~590 ms at low rates because
+    # nothing in a block moves until the block is cut. Measuring only near the knee would hide it.
+    #
+    # The batch size is in the label because that is what the figure's legend reads.
+    dict(id="e2e-curve-large", figure="curve", x=10000, label="10,000-transaction batches",
+         mode="curve", rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000],
+         vars=shape(2, 0)),
+    dict(id="e2e-curve-small", figure="curve500", x=500, label="500-transaction batches",
+         mode="curve", rates=[10000, 25000, 50000, 100000, 150000, 200000, 250000, 300000],
          vars=shape(2, 0)),
 
-    # Figure 7b: throughput against transaction size. The paper measures its ordering service alone at
-    # 4 parties and 2 shards, which is this arm's topology, and reports (bytes -> tps):
-    #
-    #   128 -> 596,000   256 -> 496,000   300 -> 413,000   512 -> 245,000
-    #   1024 -> 123,000  2048 -> 55,000   3500 -> 35,000   4096 -> 27,000
-    #
-    # Every one of those is within 10% of 120 MB/s, so past ~300 bytes its ordering service is moving a
-    # fixed number of bytes a second and the transaction rate is just that divided by the size. The
-    # interesting question for this arm is therefore not whether throughput falls -- it must -- but
-    # whether it falls on the same byte ceiling once a committer is in the path, or on a lower one.
-    #
-    # Size is set through `read-write-value-size`, because a transaction here carries two read-write
-    # operations and their values are the only part that scales. Measured on the generator itself, the
-    # serialized envelope is 202 + 2x the value size, so the values below hit the paper's sizes: the
-    # default 32 gives 262 bytes, near its 256-byte point.
-    #
-    # Seeds are the paper's own ratios against its 300-byte point, so one FX_SEED scales the whole sweep
-    # from whatever the ladder above finds.
+    # Step 3: one setup, transaction size only. The paper's Figure 7b sizes; seeds are its own ratios
+    # against its 300-byte point, so one FX_SEED scales the sweep. Size is set through the read-write
+    # value, and the rendered value size is read back before each point is measured, because a size that
+    # silently failed to apply is exactly how a committer point came to be mislabelled earlier.
     dict(id="e2e-size300", figure="size", x=300, label="300 B transactions", seed=BASE_SEED,
          vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=49)),
     dict(id="e2e-size512", figure="size", x=512, label="512 B transactions",
