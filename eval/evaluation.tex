@@ -158,6 +158,17 @@ offered delivered \num{432309}), so the committer's own ceiling at 500 transacti
 
 \section*{Part II --- End to end, with a real ordering service}
 
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures-e2e/latency-throughput.pdf}
+  \caption{Latency against throughput end to end, with a real ordering service in the path, by shard
+  count and batcher storage layout. Marks as in Fig.~\ref{fig:curve}. The axis is clipped at
+  \SI{1000}{\milli\second} rather than \SI{400}{\milli\second}, because here the batchers cut the
+  blocks with a \SI{500}{\milli\second} \texttt{BatchCreationTimeout} and the median floor sits above
+  \SI{400}{\milli\second}. The dotted line is the published ordering-alone figure for this topology.}
+  \label{fig:e2e}
+\end{figure*}
+
 The second arm puts a real Arma ordering service in the path. The committer tier is
 \textbf{unchanged from Part~I} --- the same nineteen machines, the same components, the same tuning ---
 so a difference between the two arms is attributable to ordering.
@@ -202,8 +213,18 @@ machines before it belongs to ordering.
 
 \subsection*{Shard count and storage}
 
-\textbf{TODO --- running.} Both ladders are measured on their own deployment, since the shard count is
-a different inventory rather than a reconfiguration.
+Four shards, each co-located batcher on its own volume, deliver every rate offered up to
+\num{300364} tps with no aborts, a flat queue and p99 \SI{473}{\milli\second}
+(Fig.~\ref{fig:e2e}). That is the top of the ladder, not a knee: the routers were the busiest
+machines in the deployment and still only \SI{65}{\percent} busy, and the median had stopped moving.
+The configuration's ceiling is therefore above \num{300000} tps and not yet known; higher rungs are
+running, as is the eight-shard ladder. \textbf{TODO --- the comparison itself.}
+
+Latency \emph{falls} as the rate rises --- p99 \SI{684}{\milli\second} at \num{25000} tps against
+\SI{460}{\milli\second} at \num{250000} --- which is the \SI{500}{\milli\second}
+\texttt{BatchCreationTimeout} being the binding constraint at the bottom of the range and not at the
+top. At low rates a batch waits out the timeout before it is cut; at high rates it fills first. So on
+this arm the low end of the curve measures the timeout, and only its high end measures the system.
 
 \subsection*{Latency against throughput, ordering included}
 

@@ -397,7 +397,12 @@ def series_name(row):
     same kind of measurement on different deployments -- so those are told apart by experiment id.
     """
     name = row.get("figure") or ""
-    return row.get("experiment") or name if name == "shape" else name
+    if name != "shape":
+        return name
+    # Keyed on the label, not the experiment id, so a ladder extended with higher rungs under a new
+    # id joins the same curve instead of drawing a second one. The label names the configuration,
+    # which is what the series actually is.
+    return row.get("label") or row.get("experiment") or name
 
 
 def series(rows, ax, figure, color, label):

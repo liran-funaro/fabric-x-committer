@@ -324,6 +324,16 @@ E2E_EXPERIMENTS = [
     dict(id="e2e-shape-8s", figure="shape", x=8, label="8 shards, two per volume", mode="curve",
          rates=[25000, 50000, 100000, 150000, 200000, 250000, 300000, 400000], vars=shape(2, 0)),
 
+    # Both ladders topped out at their own highest rung rather than at a knee -- four shards held
+    # 300,000 tps with the routers at 65% CPU -- so the ceiling is above the range first measured
+    # and the two configurations cannot be compared over different ranges. These extend each ladder
+    # upward. They carry the same `label` as the ladder they extend, which is what joins them into
+    # one series, and a separate id so the driver does not treat the original as needing a re-run.
+    dict(id="e2e-shape-4s-hi", figure="shape", x=4, label="4 shards, one volume each", mode="curve",
+         rates=[350000, 400000, 450000, 500000, 550000], vars=shape(2, 0)),
+    dict(id="e2e-shape-8s-hi", figure="shape", x=8, label="8 shards, two per volume", mode="curve",
+         rates=[450000, 500000, 550000, 600000], vars=shape(2, 0)),
+
     # Step 2: the latency-throughput curve at two block sizes, on whichever shape won. On this arm the
     # batchers cut the blocks, so the knob is the shared config's Batching.BatchSize.MaxMessageCount, set
     # through `armageddon_batch_max_message_count` -- which means a block size change needs the shared
