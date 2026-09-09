@@ -727,6 +727,39 @@ SHA-256s and base64-encodes every payload; that path is real, and expensive, but
 it, because it submits whole blocks. And three runs were killed on the belief that the fast path
 deadlocked, when what was slow was per-case crypto generation in the benchmark's own setup.
 
+## 5A. Switching arms: three faults that all look identical
+
+Recorded because five bring-up attempts were spent on it, and because each fault produces the *same*
+assembler panic --- so fixing one and retrying looks like no progress at all:
+
+```
+setting up the MSP manager failed: the supplied identity is not valid:
+x509: certificate signed by unknown authority ... candidate authority certificate "fca-org1"
+```
+
+- **`make teardown` does not remove a host's MSP.** The committer sidecar's certificate from the previous
+  arm survived every teardown. `make setup` fetches each host's existing MSP into the org tree, so that
+  stale leaf landed in org1's `msp/knowncerts`, the genesis block embedded it, and the assembler rejected
+  the bundle. Fabric validates **every** certificate in an MSP, so one stale leaf is fatal while the
+  freshly enrolled ones beside it verify perfectly.
+- **Wiping only the CA re-initialises its key.** `make hard-wipe TARGET_HOSTS=fabric_cas`, carried over
+  from the committer arm's stale-admin-MSP problem, gives a new CA key while hosts keep identities
+  enrolled under the old one --- measured as a cacert and a leaf 92 seconds apart, both named `fca-org1`,
+  that fail `openssl verify` against each other.
+- **Teardown without a CA wipe fails a third way.** Teardown clears the CA's registry, which lives on its
+  own database host, while the admin MSP on the CA host survives, so the next enrolment gets
+  `Code:20 Authentication failure`.
+
+The recipe that satisfies all three is `make hard-wipe TARGET_HOSTS=all` before `setup`: one fresh CA key,
+one fresh registry, no host holding an older identity. It discards the database and the ledgers, which a
+measurement wants anyway.
+
+**And a method note that cost more than the faults.** The first gate written to catch this sampled one
+certificate with `find ... | head -1`, happened to pick a freshly enrolled user cert, passed, and let a
+deployment proceed that could not start. When the fault is one bad member of a set, sampling the set is
+not verification --- the gate now checks every certificate in every org tree. This is the same lesson as
+"verify the artifact, not the exit code", one level down: verify the *whole* artifact.
+
 ## 6. Where the constraint is now
 
 Signature verification, as of section 6.3. It was the database commit path, at roughly 487,000 tps,

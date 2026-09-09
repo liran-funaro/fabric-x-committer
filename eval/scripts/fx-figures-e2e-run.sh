@@ -26,25 +26,59 @@ LOG=/data1/logs/figures-orderer.log
 
 say() { echo "=== $(date +%H:%M:%S) $*"; }
 
-say "tearing down the committer-only arm"
-ANSIBLE_INVENTORY=$COMMITTER make teardown || echo "!! teardown returned $?, continuing"
+# Hard-wipe every host, not teardown, and not a CA-only wipe. Five bring-up attempts established why,
+# and each of the two faults below produces the SAME assembler panic -- which is why fixing one and
+# retrying looks like no progress:
+#
+#  * `make teardown` does not remove a host's MSP. The committer sidecar's certificate from an earlier
+#    generation survived every teardown; `make setup` fetches each host's existing MSP into the org tree,
+#    so that stale leaf landed in org1's msp/knowncerts, the genesis block embedded it, and the assembler
+#    rejected the whole bundle. Fabric validates every certificate in an MSP, so one stale leaf is fatal.
+#  * `make hard-wipe TARGET_HOSTS=fabric_cas` re-initialises the CA's key. Wiping only the CA while hosts
+#    keep identities enrolled under the old key guarantees that mismatch: a cacert and a leaf minutes
+#    apart that cannot verify each other.
+#  * Teardown without a CA wipe fails a third way -- it clears the CA's registry, which lives on its own
+#    database host, while the admin MSP on the CA host survives, giving "Code:20 Authentication failure".
+#
+# Wiping everything at once leaves one fresh CA key, one fresh registry, and no host holding an older
+# identity. It also discards the database and the ledgers, which a measurement wants anyway.
+say "hard-wiping every host: MSPs, CA registry, CA key, database, ledgers"
+ANSIBLE_INVENTORY=$ORDERER make hard-wipe TARGET_HOSTS=all || echo "!! hard-wipe returned $?, continuing"
 
-# Teardown drops the Fabric CA's database, but the admin's enrolled MSP is on disk in the CA's
-# deploy directory and outlives it, so the next enrollment presents a certificate the fresh
-# registry has never seen and crypto generation stops at "Authentication failure". The CA's own
-# state has to go with its database.
-say "wiping the Fabric CA's stale enrollment state"
-ANSIBLE_INVENTORY=$ORDERER make hard-wipe TARGET_HOSTS=fabric_cas || echo "!! CA wipe returned $?"
+say "clearing the control node's fetch and config trees"
+rm -rf "$FX_PROJECT/out/control-node/fetched" "$FX_PROJECT/out/control-node/config"
 
-# committer_build_bin is false, so the committer and loadgen binaries are built on the workstation
-# and staged into the collection's out/ tree; a setup run empties that tree before the transfer play
-# reads from it, and then fails every host with "could not find ... on the Ansible Controller".
+# committer_build_bin is false, so the committer and loadgen binaries are built on the workstation and
+# staged into the collection's out/ tree; a setup run empties that tree before the transfer play reads
+# from it, and then fails every host with "could not find ... on the Ansible Controller".
 say "restoring the staged committer binaries"
 install -m 0750 -D /data1/bin-stage/committer /data1/bin-stage/loadgen \
   -t "$FX_PROJECT/out/control-node/bin/Linux/x86_64/" || echo "!! staging restore returned $?"
 
 say "setting up the real-orderer arm (binaries, crypto, genesis, configs)"
 ANSIBLE_INVENTORY=$ORDERER make setup || { echo "!! setup failed"; exit 1; }
+
+# Gate on the crypto before deploying it. Every certificate in every org tree, not a sample: the fault
+# this catches is one bad member of a set, and an earlier version of this check sampled with
+# `find ... | head -1`, happened to pick a freshly enrolled cert, passed, and let a deployment proceed
+# that could not start. Verifying the wrong artifact is not verification.
+say "gate: every certificate in every org MSP must verify against its own CA"
+bad=0
+for D in "$FX_PROJECT"/out/control-node/fetched/crypto/peerOrganizations/* \
+         "$FX_PROJECT"/out/control-node/fetched/crypto/ordererOrganizations/*; do
+  [ -d "$D" ] || continue
+  CA=$(ls "$D"/msp/cacerts/*.pem 2>/dev/null | head -1)
+  [ -n "$CA" ] || continue
+  while read -r c; do
+    [ -n "$c" ] || continue
+    openssl verify -CAfile "$CA" "$c" >/dev/null 2>&1 || {
+      echo "!! does not verify: $c"
+      bad=$((bad + 1))
+    }
+  done < <(find "$D" -name '*.pem' | grep -vE 'cacerts|tlscacerts|keystore|tls/')
+done
+[ "$bad" -gt 0 ] && { echo "!! $bad certificate(s) do not verify; not starting"; exit 1; }
+say "all org certificates verify"
 
 say "starting it"
 ANSIBLE_INVENTORY=$ORDERER make start || { echo "!! start failed"; exit 1; }
