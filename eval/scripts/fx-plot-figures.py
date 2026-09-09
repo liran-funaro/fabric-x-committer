@@ -442,8 +442,21 @@ def latency_curve(rows, path):
     ax.grid(True, axis="x", color=GRID, linewidth=0.8)
 
     off = []
-    off += series(rows, ax, "curve", OURS, "10,000-transaction blocks (tuned for throughput)")
-    off += series(rows, ax, "curve500", SMALL, "500-transaction blocks")
+    if E2E:
+        # On this arm the batchers cut the blocks, so a ladder's series is whatever
+        # `armageddon_batch_max_message_count` it ran at -- there is no fixed pair of block sizes to
+        # hard-code, and the driver may add ladders as configurations are tried. Take the series from the
+        # data and their names from the rows, so a new ladder appears without editing this file.
+        ladders = []
+        for r in rows:
+            name = r.get("figure") or ""
+            if name.startswith("curve") and name not in [n for n, _ in ladders]:
+                ladders.append((name, r.get("label") or name))
+        for (name, label), colour in zip(sorted(ladders), (OURS, SMALL, PAPER_DARK, OURS_DARK)):
+            off += series(rows, ax, name, colour, label)
+    else:
+        off += series(rows, ax, "curve", OURS, "10,000-transaction blocks (tuned for throughput)")
+        off += series(rows, ax, "curve500", SMALL, "500-transaction blocks")
 
     total, rejected, p99 = PAPER_DATA["9b"][0]
     ax.plot([total], [p99 * 1000], color=PAPER, marker="s", markersize=9, linestyle="none", zorder=4,
@@ -491,6 +504,57 @@ def latency_curve(rows, path):
                  "size trades", color=INK, fontsize=13, loc="left", pad=10)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper center",
               bbox_to_anchor=(0.5, -0.11), ncol=2)
+    fig.tight_layout()
+    save(fig, path)
+
+
+# The published ordering-service line, Figure 7b at four parties and two shards, read off the plot at
+# 400 dpi: bytes -> tps. Every point is within 10% of 120 MB/s, so past 300 bytes that service is
+# bandwidth-bound and the rate is simply bytes per second divided by transaction size. Whether this arm
+# meets the same byte ceiling with a committer in the path is what the sweep answers.
+PAPER_7B = {128: 596_000, 256: 496_000, 300: 413_000, 512: 245_000,
+            1024: 123_000, 2048: 55_000, 3500: 35_000, 4096: 27_000}
+
+
+def size_curve(rows, path):
+    """Throughput against transaction size, ours against the published ordering-only line.
+
+    Plotted as bytes per second on a second axis as well as transactions per second, because the
+    published line is flat in the former and steep in the latter -- and which of those this arm is flat in
+    is the actual result.
+    """
+    data = best_per_x(rows, "size")
+    if not data:
+        print("no transaction-size data yet")
+        return
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    fig.patch.set_facecolor(SURFACE)
+    style(ax)
+    ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+
+    px = sorted(PAPER_7B)
+    ax.plot(px, [PAPER_7B[x] for x in px], color=PAPER, linewidth=2, marker="s", markersize=7,
+            linestyle="--", label="paper, ordering only (Fig. 7b, 4 parties)")
+    xs = sorted(data)
+    ax.plot(xs, [throughput(data[x]) for x in xs], color=OURS, linewidth=2, marker="o", markersize=8,
+            label="this cluster, end to end")
+    for x in xs:
+        r = data[x]
+        ax.annotate(f"{throughput(r) / 1000:,.0f}k\n{throughput(r) * x / 1e6:,.0f} MB/s",
+                    (x, throughput(r)), textcoords="offset points", xytext=(0, 10), ha="center",
+                    fontsize=7.5, color=INK2)
+    # The published line's own byte rate, for the comparison the caption makes.
+    ax.plot([], [], " ", label=f"published line holds {PAPER_7B[1024] * 1024 / 1e6:.0f} MB/s at 1 KiB")
+
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(px)
+    ax.set_xticklabels([f"{x}" for x in px])
+    ax.yaxis.set_major_formatter(FuncFormatter(thousands))
+    ax.set_xlabel("transaction size (bytes, log scale)", color=INK2, fontsize=9)
+    ax.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
+    ax.set_title("What transaction size costs, end to end against ordering alone",
+                 color=INK, fontsize=13, loc="left", pad=10)
+    ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper right")
     fig.tight_layout()
     save(fig, path)
 
@@ -583,6 +647,8 @@ def main():
     if not E2E:
         figure9(rows, os.path.join(OUTDIR, "figure9.png"))
     latency_curve(rows, os.path.join(OUTDIR, "latency-throughput.png"))
+    if E2E:
+        size_curve(rows, os.path.join(OUTDIR, "size-throughput.png"))
     table(rows, os.path.join(OUTDIR, "figures-table.md"))
 
 
