@@ -390,9 +390,9 @@ E2E_EXPERIMENTS = [
     dict(id="e2e-size1024", figure="size", x=1024, label="1 KB transactions",
          seed=int(BASE_SEED * 0.30), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=411)),
     dict(id="e2e-size2048", figure="size", x=2048, label="2 KB transactions",
-         seed=int(BASE_SEED * 0.13), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=923)),
+         seed=int(BASE_SEED * 0.45), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=923)),
     dict(id="e2e-size4096", figure="size", x=4096, label="4 KB transactions",
-         seed=int(BASE_SEED * 0.065), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1947)),
+         seed=int(BASE_SEED * 0.34), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1947)),
 ]
 
 if os.environ.get("FX_MATRIX") == "e2e":
@@ -792,7 +792,11 @@ def main():
                     f"{' on a fresh deployment' if not SKIP_DEPLOY else ', drained'}"
                     f"{'' if attempt == 0 else f' (attempt {attempt + 1})'}")
                 row = measure(exp, rate, settle, hold, "hold")
-                if row is not None and row["met"]:
+                if row is None:
+                    log(f"[{exp['id']}] the hold could not be measured; not stepping down, since a "
+                        f"lower rate faces the same limit. The bracketed knee stands as a probe.")
+                    break
+                if row["met"]:
                     break
                 rate = int(rate / 1.08)
                 log(f"[{exp['id']}] the hold did not hold; stepping down to {rate:,}")
