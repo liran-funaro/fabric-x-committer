@@ -55,3 +55,7 @@ docs/superpowers/
 # LaTeX build products for eval/evaluation.tex; the PDF is committed, its scaffolding is not.
 eval/*.aux
 eval/*.log
+
+# LaTeX build products from eval/evaluation.tex
+eval/*.aux
+eval/*.log
