@@ -125,6 +125,11 @@ BASE_SEED = int(os.environ.get("FX_SEED", "480000"))
 # committer-only arm needs; "setup" also rebuilds binaries, crypto and genesis blocks, which the
 # real-orderer arm does need. See deploy().
 DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
+# Measure on the deployment that is already running, rather than replacing it. The shape is still read
+# back and still has to match, so this cannot silently measure the wrong workload -- it only skips the
+# teardown. For an arm that is expensive or fragile to bring up, that is the difference between measuring
+# and starting over: the real-orderer arm took six attempts to start, and its ladder needs no shape change.
+SKIP_DEPLOY = os.environ.get("FX_SKIP_DEPLOY") == "1"
 # Points to measure again even though the output already holds a confirmed hold for them. The first
 # two points of the size sweep were measured before the driver held its confirmation on a fresh
 # deployment, so they ran against a table holding several times as many rows as the later points --
@@ -431,11 +436,35 @@ def deploy(exp):
     """
     with open(VARS_FILE, "w") as f:
         json.dump(exp["vars"], f, indent=2)   # JSON is valid YAML, and needs no quoting rules
+    if SKIP_DEPLOY:
+        shape = rendered_shape()
+        if not shape_matches(exp, shape):
+            log(f"[{exp['id']}] rendered shape {shape} does not match this experiment and "
+                f"FX_SKIP_DEPLOY is set; skipping rather than redeploying")
+            return False
+        log(f"[{exp['id']}] measuring the running deployment, rendered shape {shape}")
+        return True
+    if DEPLOY_PLAN == "none":
+        # Verify the running deployment is the shape this point wants, and measure it as it stands. The
+        # read-back is the whole safety net here: nothing was re-rendered, so a mismatch would mean this
+        # point is not the experiment it claims to be.
+        shape = rendered_shape()
+        want_rw = str(exp["vars"]["loadgen_read_write_tx_keys"])
+        if shape.get("read-write-count") != want_rw:
+            log(f"[{exp['id']}] running deployment is {shape}, not {want_rw} read-writes; skipping")
+            return False
+        log(f"[{exp['id']}] measuring the running deployment as it stands, shape {shape}")
+        return True
     log(f"[{exp['id']}] teardown + {DEPLOY_PLAN} + start: {exp['vars']}")
     if not make("teardown", extra_vars=True):
         return False
     if DEPLOY_PLAN == "setup":
-        make("hard-wipe TARGET_HOSTS=fabric_cas", timeout=900)
+        # No CA wipe here. `hard-wipe TARGET_HOSTS=fabric_cas` re-initialises the CA's key, which leaves
+        # every host holding an identity the new key did not sign; six bring-up attempts died on exactly
+        # that, with the assembler rejecting a genesis block whose org MSP could not verify itself. If a
+        # per-point redeploy on this arm ever needs the CA reset, it needs `hard-wipe TARGET_HOSTS=all`
+        # plus removal of the CA's own containers and state, so that nothing anywhere predates the new
+        # key -- see cluster-optimization-log.md section 5A.
         if not make("setup", extra_vars=True, timeout=5400):
             return False
     elif not make("configs", extra_vars=True):
@@ -443,27 +472,40 @@ def deploy(exp):
     # Verify the artifact rather than the exit code: a shape that silently failed to apply would
     # otherwise be reported as a measurement of the shape that was asked for.
     shape = rendered_shape()
-    want_rw = str(exp["vars"]["loadgen_read_write_tx_keys"])
-    # The template omits write-count entirely when blind-write generation is off, so a shape with
-    # no outputs is verified by that absence rather than by a zero.
-    outputs = exp["vars"]["loadgen_write_only_tx_keys"]
-    want_w = str(outputs) if outputs else None
-    if shape.get("read-write-count") != want_rw or shape.get("write-count") != want_w:
-        log(f"[{exp['id']}] rendered shape {shape} is not the requested "
-            f"{want_rw} in / {want_w} out; skipping")
-        return False
-    # The transaction size sweep is verified the same way and for the same reason: a size that failed to
-    # apply would be reported as a measurement of the size that was asked for. The collection's variable
-    # is `loadgen_read_write_tx_val_size`, which is not the config key it renders, so a rename upstream
-    # would break silently rather than loudly.
-    want_value = exp["vars"].get("loadgen_read_write_tx_val_size")
-    if want_value is not None and shape.get("read-write-value-size") != str(want_value):
-        log(f"[{exp['id']}] rendered value size {shape.get('read-write-value-size')} is not the "
-            f"requested {want_value}; skipping")
+    if not shape_matches(exp, shape):
+        log(f"[{exp['id']}] rendered shape {shape} is not what was requested; skipping")
         return False
     log(f"[{exp['id']}] rendered shape {shape}")
     if not make("start", extra_vars=True):
         return False
+    return wait_healthy(exp)
+
+
+def shape_matches(exp, shape):
+    """Whether the generator's rendered config is the workload this experiment asked for.
+
+    Verify the artifact rather than the exit code: a shape that silently failed to apply would otherwise
+    be reported as a measurement of the shape that was requested, which is how an earlier point in this
+    evaluation came to be labelled 1/1 while running 2/2.
+    """
+    want_rw = str(exp["vars"]["loadgen_read_write_tx_keys"])
+    # The template omits write-count entirely when blind-write generation is off, so a shape with no
+    # outputs is verified by that absence rather than by a zero.
+    outputs = exp["vars"]["loadgen_write_only_tx_keys"]
+    want_w = str(outputs) if outputs else None
+    if shape.get("read-write-count") != want_rw or shape.get("write-count") != want_w:
+        return False
+    # The size sweep is verified the same way. The collection's variable is
+    # `loadgen_read_write_tx_val_size`, which is not the config key it renders, so a rename upstream would
+    # break silently rather than loudly.
+    want_value = exp["vars"].get("loadgen_read_write_tx_val_size")
+    if want_value is not None and shape.get("read-write-value-size") != str(want_value):
+        return False
+    return True
+
+
+def wait_healthy(exp):
+    """Wait for the pipeline to commit, not merely for Ansible to return."""
     # A component that is up is not a component that is committing, so wait for the pipeline to
     # actually move transactions rather than for Ansible to return.
     for attempt in range(40):
