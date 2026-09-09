@@ -66,38 +66,43 @@
 
 \subsection*{Setup}
 
-Nineteen machines of 64 cores and \SI{156}{\gibi\byte}: three signature verifiers, one coordinator, one
-sidecar, one load generator, and a YugabyteDB cluster of twelve tablet servers and three masters. Six of
-the twelve database machines also host a validator--committer and three others host a master, so no
-machine runs both. The generator embeds a mock ordering service and serves blocks to the sidecar over the
-Atomic Broadcast API, so these figures measure the validation and commit path with no ordering service in
-it. Transactions carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized,
-Ed25519-signed, in \num{10000}-transaction blocks. The published committer deployment is not the same
-shape --- nine validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}
---- so what follows compares deployments, not matched hardware.
-
-The end-to-end arm adds twenty machines of 32 cores and \SI{78}{\gibi\byte} for the ordering service:
-four parties, each a router, a consenter, an assembler and four batchers, one per shard --- so
-\textbf{four parties and four shards}. Routers, consenters and assemblers get a machine each; the sixteen
-batchers share eight, two per machine on separate ports. That pairing is measured rather than assumed: at
-two shards the service capped near \num{158000} tps \emph{per shard} whatever the batch size or decision
-interval, while batcher processes sat at \SIrange{15}{20}{\percent} of a 32-core machine, so the
-constraint is per shard and the spare capacity for a second one was already on the box. Each batcher
-machine carries two \SI{484}{\giga\byte} local disks, but both of its batchers currently write to the
-first, leaving the second unused.
-
-The committer tier is unchanged across both arms, so a difference is attributable to ordering, and the two
-arms do not share hardware generation --- the ordering machines have half the cores and half the memory of
-the committer machines.
-
-\textbf{Storage.} Every node that writes has two XFS volumes with \texttt{noatime}, mounted
-\texttt{/data1} and \texttt{/data2}: \SI{969}{\giga\byte} each on the committer machines,
-\SI{485}{\giga\byte} each on the ordering machines. They are \texttt{virtio} devices reporting neither a
-model nor a meaningful rotational flag, so the backing media cannot be identified from inside the guest and
-is characterised by measurement instead. Use differs by role: each database node gives
+\textbf{The committer machines.} Nineteen machines, each 64 cores and \SI{156}{\gibi\byte}: three
+signature verifiers, one coordinator, one sidecar, one load generator, and a YugabyteDB cluster of twelve
+tablet servers and three masters. Six of the twelve database machines also host a validator--committer and
+three others host a master, so no machine runs both. Storage is two \SI{969}{\giga\byte} XFS volumes per
+machine, \texttt{noatime}, mounted \texttt{/data1} and \texttt{/data2}; each database node gives
 YugabyteDB \emph{both} volumes as separate data directories rather than a stripe, so it sees the disk
-boundary, while the sidecar's ledger and every ordering component write to \texttt{/data1} alone and leave
-the second idle --- including the batcher machines, where two batchers share a host, one shard each.
+boundary, while the sidecar's ledger uses \texttt{/data1} alone and leaves the second idle.
+
+The published committer deployment is not this shape --- nine validator--committers on nine database nodes,
+dual 48-core servers with \SI{64}{\giga\byte} --- so what follows compares deployments, not matched
+hardware.
+
+\textbf{The ordering machines.} Twenty further machines, each 32 cores and \SI{78}{\gibi\byte}: four
+parties, each a router, a consenter, an assembler and four batchers, one per shard --- so \textbf{four
+parties and four shards}. Routers, consenters and assemblers get a machine each; the sixteen batchers share
+eight, two per machine on separate ports. That pairing is measured rather than assumed: at two shards the
+service capped near \num{158000} tps \emph{per shard} whatever the batch size or decision interval, while
+batcher processes sat at \SIrange{15}{20}{\percent} of a 32-core machine, so the constraint is per shard
+and the spare capacity for a second was already on the box. Storage is two \SI{485}{\giga\byte} XFS
+volumes per machine, same mount layout; every ordering component writes to \texttt{/data1} alone.
+
+Half the cores, half the memory and --- per Table~\ref{tab:disk} --- half the disk bandwidth of a
+committer machine, so a ceiling measured on this arm belongs to these machines before it belongs to
+ordering.
+
+\textbf{Both arms.} The volumes are \texttt{virtio} devices reporting neither a model nor a meaningful
+rotational flag, so the backing media cannot be identified from inside the guest and is characterised by
+measurement instead. The committer tier is unchanged across both arms, so a difference between them is
+attributable to ordering. Transactions carry two read--write operations over \SI{32}{\byte} keys,
+\SI{262}{\byte} serialized, in \num{10000}-transaction blocks. The committer-only arm signs Ed25519, its
+generator inventing the namespace key; the end-to-end arm is obliged to use ECDSA, because there the policy
+derives from a real MSP identity --- and ECDSA signing caps that generator near \num{325000} tps, so a
+plateau there is the instrument, not the pipeline.
+
+The committer-only figures come from the generator's embedded mock ordering service, which cuts and signs
+blocks itself and serves them to the sidecar over the Atomic Broadcast API --- so they measure the
+validation and commit path with no ordering service in it.
 
 Table~\ref{tab:disk} gives \texttt{fio} 3.35 in four patterns this deployment produces. Two things follow.
 Ordering machines have half the disk bandwidth as well as half the cores, at almost exactly a factor of two
