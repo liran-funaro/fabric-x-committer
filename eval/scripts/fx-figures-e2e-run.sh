@@ -42,8 +42,21 @@ say() { echo "=== $(date +%H:%M:%S) $*"; }
 #
 # Wiping everything at once leaves one fresh CA key, one fresh registry, and no host holding an older
 # identity. It also discards the database and the ledgers, which a measurement wants anyway.
-say "hard-wiping every host: MSPs, CA registry, CA key, database, ledgers"
+say "hard-wiping every worker host: MSPs, database, ledgers"
 ANSIBLE_INVENTORY=$ORDERER make hard-wipe TARGET_HOSTS=all || echo "!! hard-wipe returned $?, continuing"
+
+# The CA has to go too, and the wipe above cannot do it: the CA runs on the control node, which that play
+# does not clean, so its key and admin MSP survive. Wiping only the workers leaves them enrolled under a
+# key the surviving CA no longer uses; wiping only the CA leaves the workers holding identities the new
+# key never signed. Both produce the same panic, which is why this does both.
+#
+# `podman unshare` is required for the database directory: its contents are owned by a container-mapped
+# uid, so a plain rm -rf fails with "Permission denied: .../pgdata" and silently leaves the old registry
+# in place -- which is how one attempt ended up with a fresh CA key and a registry from a previous one.
+say "removing the CA and its database on the control node"
+podman rm -f fca-org1 fca-org1-db >/dev/null 2>&1 || true
+podman unshare rm -rf /data1/fabric-x/fca-org1-db 2>/dev/null || rm -rf /data1/fabric-x/fca-org1-db
+rm -rf /data1/fabric-x/fca-org1
 
 say "clearing the control node's fetch and config trees"
 rm -rf "$FX_PROJECT/out/control-node/fetched" "$FX_PROJECT/out/control-node/config"

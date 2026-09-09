@@ -774,9 +774,21 @@ x509: certificate signed by unknown authority ... candidate authority certificat
   own database host, while the admin MSP on the CA host survives, so the next enrolment gets
   `Code:20 Authentication failure`.
 
-The recipe that satisfies all three is `make hard-wipe TARGET_HOSTS=all` before `setup`: one fresh CA key,
-one fresh registry, no host holding an older identity. It discards the database and the ledgers, which a
-measurement wants anyway.
+The recipe that satisfies all three is `make hard-wipe TARGET_HOSTS=all` **and** removing the CA's
+containers and directories on the control node, in the same pass. Neither alone is enough, and this took
+several attempts to see because each one fixes half the problem: the wipe play does not clean the control
+node, where the CA lives, so its key and admin MSP survive it; and removing only the CA leaves every
+worker holding an identity the new key never signed. The gate below caught both halves, twice, naming the
+four surviving certificates each time.
+
+One trap inside the trap: the CA database's directory is owned by a container-mapped uid, so a plain
+`rm -rf` fails with `Permission denied: .../pgdata` and *silently* leaves the old registry behind --- one
+attempt ran with a CA key from 07:45 and a registry from 07:27 as a result. It needs
+`podman unshare rm -rf`.
+
+A per-point redeploy on this arm is therefore not just slow but self-defeating: every `teardown` breaks the
+CA and costs a full reset to recover. That is what `FX_DEPLOY_PLAN=none` exists for --- one deployment for
+a whole ladder, with the bias that consecutive rungs share it.
 
 **And a method note that cost more than the faults.** The first gate written to catch this sampled one
 certificate with `find ... | head -1`, happened to pick a freshly enrolled user cert, passed, and let a
