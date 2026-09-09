@@ -229,6 +229,13 @@ tps the busiest machine is a router; from \num{450000} on it is a validator--com
 \SIrange{78}{82}{\percent}, on both configurations and at low fill as well as high. Extra shards add
 capacity to the tier that is not binding.
 
+What the knee itself is cannot be attributed so cleanly, and the honest statement is narrower than
+``committer-bound''. At \num{500000} tps no machine anywhere exceeds \SI{82}{\percent}: the busiest
+validator--committer is at \SI{81}{\percent} and \emph{the load generator is at
+\SI{77}{\percent}}, four points behind it. So the ceiling is neither a CPU wall on any tier nor
+separable by this experiment --- the two candidates are within each other's margin, and a ladder on
+one deployment cannot tell them apart. Naming the busiest host names a correlate, not a cause.
+
 They also cost latency, for a reason the block size makes plain. At a given total rate each of eight
 shards sees half the per-shard rate that four do, so batches take twice as long to reach
 \num{10000} transactions and the \SI{500}{\milli\second} \texttt{BatchCreationTimeout} cuts them early
@@ -319,7 +326,13 @@ write, not the barrier, that costs.
 \section*{Threats to validity}
 
 The load generator is the instrument and twice became the limit: ECDSA signing, resolved by deriving
-the nonce directly, and block preparation, which caps the small-block curve in Fig.~\ref{fig:curve}. A
+the nonce directly, and block preparation, which caps the small-block curve in Fig.~\ref{fig:curve}.
+It is close to being the limit a third time. At the end-to-end knee it runs at \SI{77}{\percent} of
+its 64 cores against the busiest validator--committer's \SI{81}{\percent}, and on the
+\SI{300}{\byte} size point at \SI{80}{\percent} against \SI{81}{\percent} --- tied, within the
+noise. Every figure near \num{500000} tps should therefore be read as a bound on the pair, generator
+and pipeline together, not on the pipeline alone. Separating them needs a second generator, and there
+is no spare machine for one without taking it from the committer. A
 knee is resolved to the search's \SI{8}{\percent} step, so it is a lower bound, drawn one-sided in
 Fig.~\ref{fig:panels}. The baseline drifts \SI{10}{\percent} between days, so only same-day
 comparisons are used.
