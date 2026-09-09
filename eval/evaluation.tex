@@ -299,6 +299,21 @@ deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{ris
 transaction count at twice the size is a net gain. Throughput therefore falls about
 \num{0.76}$\times$ per doubling rather than the \num{0.5}$\times$ a bandwidth-bound service gives.
 
+Where that stops is measurable, and it is the assembler's disk. At \SI{4}{\kibi\byte} throughput
+plateaus near \num{120000} tps --- \SI{492}{\mega\byte\per\second} of transaction payload ---
+with no machine anywhere above \SI{54}{\percent} CPU, so it is not a processing limit. The
+assemblers at that point are writing \SIrange{527}{546}{\mega\byte\per\second} to their data
+volume, against the \SI{529}{MiB/s} sequential write Table~\ref{tab:disk} measures on these
+machines: the device is saturated. Each of the four assemblers writes the \emph{complete} block
+stream, where a batcher writes only its own shard's share, so the assembler is where a byte rate
+first meets a disk. At \SI{2}{\kibi\byte} the same figure is \SI{319}{\mega\byte\per\second},
+three fifths of that ceiling, which is why that point holds cleanly and this one does not.
+
+So the sweep has two regimes rather than one. Below \SI{2}{\kibi\byte} the arm is limited per
+transaction and the byte rate climbs; at \SI{4}{\kibi\byte} it is limited per byte by one
+component's disk, and the published bandwidth-bound model finally applies here too --- at four times
+the bandwidth, on a volume half the size.
+
 The consequence for the comparison is that only the direction is shared. Both lines fall, and this
 one is above the published line at every size they have in common --- but it is a whole pipeline
 against one of its parts, at four shards against two, so the gap is not a speedup and the shapes are
