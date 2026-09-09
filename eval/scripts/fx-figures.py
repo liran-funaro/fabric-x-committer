@@ -356,6 +356,15 @@ E2E_EXPERIMENTS = [
 if os.environ.get("FX_MATRIX") == "e2e":
     EXPERIMENTS = E2E_EXPERIMENTS
 
+# The e2e stages need different inventories (4-shard vs 8-shard) and different shared configs
+# (block size), so they cannot all run under one deployment. FX_ONLY picks the rows that match the
+# deployment that is actually up: a comma-separated list of ids or id prefixes.
+ONLY = [p for p in os.environ.get("FX_ONLY", "").split(",") if p]
+if ONLY:
+    EXPERIMENTS = [e for e in EXPERIMENTS if any(e["id"].startswith(p) for p in ONLY)]
+    if not EXPERIMENTS:
+        sys.exit(f"FX_ONLY={os.environ['FX_ONLY']} matched no experiment")
+
 
 def query(expr):
     cmd = ["curl", "-sk", "--max-time", "20", "-G",
