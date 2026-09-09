@@ -779,6 +779,21 @@ def main():
             for attempt in range(3):
                 if not deploy(exp):
                     break
+                # A pre-check against the floor is not enough for a high-byte-rate workload: the
+                # floor was clear when the 4 KiB hold started and the hold itself wrote through the
+                # remaining 135 GB, filled every assembler volume to 4.9 MB free, and killed the arma
+                # process on all four. Require room for what this hold will actually write.
+                #
+                # Each assembler writes the COMPLETE block stream, so the volume that matters sees the
+                # whole payload, not a shard of it. +20% for block framing and metadata.
+                envelope = exp.get("x") if exp.get("figure") == "size" else 262
+                need_gb = rate * envelope * hold * 1.2 / 1e9
+                free = query(QUERIES["disk_free_gb"])[0]
+                if free is not None and free < need_gb + DISK_FLOOR_GB:
+                    log(f"[{exp['id']}] a {hold}s hold at {rate:,} would write "
+                        f"{need_gb:,.0f} GB and only {free:,.0f} GB is free; not attempting it. "
+                        f"The bracketed knee stands as a probe.")
+                    break
                 if SKIP_DEPLOY:
                     # deploy() only verified the rendered shape -- it did not redeploy -- so the
                     # queue the search left above the knee is still in the pipeline, and this hold
