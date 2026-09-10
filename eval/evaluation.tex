@@ -164,10 +164,11 @@ re-measured under ECDSA, those two searches --- the clean \SI{0}{\percent} point
 two-read--write point --- both hold \num{518000}, to the transaction. A clean baseline near
 \num{518000} rather than \num{558000} makes the series flat across its whole range, so rejection
 costs nothing in throughput. It is still not the published \SI{10}{\percent} \emph{gain}. The
-ECDSA series settles it: \num{518000}, \num{517999} and \num{517090} tps at \SI{0}{\percent},
-\SI{10}{\percent} and \SI{20}{\percent} invalid, all confirmed holds with the reject share verified at
-the rate asked for --- \SI{0.18}{\percent} of spread while the rejected fraction goes from nothing to
-a fifth.
+ECDSA series settles it: \num{518000}, \num{517999}, \num{517090} and \num{518544} tps at
+\SI{0}{\percent}, \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} invalid, every one a
+confirmed hold with the reject share verified at the rate asked for. That is \SI{0.28}{\percent} of
+spread across the whole range --- \num{1454} tps --- while the rejected fraction goes from nothing to
+three tenths.
 Driven instead at one common \num{559872} tps, all three deliver it while the tail grows with the
 invalid share (\SI{1.1}{}, \SI{5.0}{} and \SI{7.5}{\second}): rejection is cheap in throughput and
 expensive in latency.
