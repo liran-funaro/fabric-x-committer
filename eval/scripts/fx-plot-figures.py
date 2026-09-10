@@ -169,6 +169,12 @@ def disqualified_rates(rows):
     for r in rows:
         if r.get("kind") != "hold":
             continue
+        # A hold that produced no measurement did not fail the rate -- it never tested it. The
+        # 4 KiB size point was recorded that way, its volume having filled before the hold could run,
+        # and treating it as a failure disqualified the rate and dropped the point off the figure
+        # entirely while the text still cited its probe.
+        if not throughput(r) or r.get("lat_p99") is None:
+            continue
         key = (config_key(r), r["limit"])
         if key not in latest or r.get("at", 0) > latest[key].get("at", 0):
             latest[key] = r
@@ -652,8 +658,13 @@ def latency_curve(rows, path):
             label="99th percentile (shaded to median)")
     ax.plot([], [], color=INK2, linewidth=1, linestyle="--",
             label="median + wait for the block to be cut")
-    ax.plot([], [], marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=INK2,
-            markeredgewidth=2, linestyle="none", label="offered but not sustained")
+    # Only when one is actually on the plot. A rate that was not sustained is almost always far above
+    # a latency axis sized to the sustained region, so it lands in the corner note instead -- and a
+    # legend row for a mark that appears nowhere sends the reader hunting for it.
+    if any(not sustained(r) and throughput(r) and 0 < (r.get("lat_p50") or 0) * 1000 <= axis_ms
+           for r in rows if series_name(r) in drawn):
+        ax.plot([], [], marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=INK2,
+                markeredgewidth=2, linestyle="none", label="offered but not sustained")
 
     ax.set_ylim(0, axis_ms)
     ax.set_xlim(left=0)
@@ -667,7 +678,10 @@ def latency_curve(rows, path):
         # be cut. That is why this says so plainly and no longer has a branch for naming the held
         # ones -- there are none to name. Per-point detail is in figures-table.md.
         #
-        lo, hi = throughput(min(off, key=throughput)), throughput(max(off, key=throughput))
+        # The rates as OFFERED, not as delivered. A rung that collapsed delivered almost nothing --
+        # 773 tps at one point -- so a range built from delivered throughput read "1k-533k tx/s" for
+        # rates that were 300k and 560k.
+        lo, hi = min(r["limit"] for r in off), max(r["limit"] for r in off)
         note = (f"above this axis: {len(off)} rate{'s' if len(off) > 1 else ''} offered but not "
                 f"sustained, {lo / 1000:,.0f}k-{hi / 1000:,.0f}k tx/s")
         # Which bottom corner is free depends on the plot, so measure rather than hardcode. The
@@ -749,8 +763,6 @@ def size_curve(rows, path):
         ax.annotate(f"{throughput(r) / 1000:,.0f}k\n{throughput(r) * x / 1e6:,.0f} MB/s",
                     (x, throughput(r)), textcoords="offset points", xytext=(0, 10), ha="center",
                     fontsize=7.5, color=INK2)
-    # The published line's own byte rate, for the comparison the caption makes.
-    ax.plot([], [], " ", label=f"published line holds {PAPER_7B[1024] * 1024 / 1e6:.0f} MB/s at 1 KiB")
 
     ax.set_xscale("log", base=2)
     ticks = [128, 300, 512, 1024, 2048, 4096]

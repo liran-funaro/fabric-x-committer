@@ -113,20 +113,21 @@ def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
         # as ABORTED_MVCC_CONFLICT -- the same path a real double spend trips.
         #
         # The gap is how far back, in TRANSACTIONS, a reference reaches, and the lookback window is
-        # drawn downward from the frontier as it stood there. 1,000 is the paper's value, so it is the
-        # one used here: the comparison is only a comparison if the workload parameter matches.
+        # drawn downward from the frontier as it stood there. What has to match the paper is not the
+        # gap but what the gap buys: the share of references that name a key whose creating transaction
+        # has not committed yet. Those are dependencies the coordinator must order, not conflicts it
+        # can reject, and they are why gap 0 measured a convoy instead of double spends.
         #
-        # It was 0, which is not the paper's and is not a double spend either. At 0 the window's top is
-        # the frontier the generator is writing right now, so a reference can name a key whose creating
-        # transaction has not committed -- a live dependency the coordinator serialises rather than a
-        # conflict it aborts. Measured over the real generator at this shape, gap 0 puts 4.23% of
-        # references inside the in-flight window against a 10,000,000-key window, and 100% against
-        # 1,024.
+        # That share is the residual overlap between the window and the in-flight keys, over the window.
+        # In flight is (rate x latency x fresh keys per transaction), and the two deployments differ by
+        # 7x there: ~440,300 keys here at 518,000 tps and a 500 ms pipeline, against ~60,500 in the
+        # paper at 419,000 tps and 85 ms. So its gap of 1,000 transactions leaves 58,846 keys of overlap
+        # and 5.9% of references in flight, while the SAME 1,000 here leaves 438,600 and 43.8%.
         #
-        # 1,000 transactions is about 2 ms of production at these rates, which is inside this
-        # deployment's own in-flight window and was inside the paper's much shorter one too. Whether
-        # that matters is exactly what the re-measurement answers.
-        v["loadgen_tx_reference_gap"] = 1_000
+        # Matching the share means leaving the same residual overlap: 440,300 - 58,846 = 381,454 keys,
+        # which at 1.7 fresh keys a transaction is ~225,000 transactions. Measured over the real
+        # generator, that puts 5.9% of references in flight -- the paper's figure.
+        v["loadgen_tx_reference_gap"] = 225_000
         v["loadgen_key_lookback_window"] = 1_000_000
     return v
 
@@ -419,6 +420,8 @@ E2E_EXPERIMENTS = [
          seed=int(BASE_SEED * 0.30), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=411)),
     dict(id="e2e-size2048", figure="size", x=2048, label="2 KB transactions",
          seed=int(BASE_SEED * 0.45), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=923)),
+    dict(id="e2e-size3072", figure="size", x=3072, label="3 KB transactions",
+         seed=int(BASE_SEED * 0.39), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1435)),
     dict(id="e2e-size4096", figure="size", x=4096, label="4 KB transactions",
          seed=int(BASE_SEED * 0.34), vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1947)),
 ]
@@ -713,8 +716,17 @@ def drain(exp, rounds=4):
 
 
 def search(exp, settle, window):
-    """Find the highest rate that meets every condition, starting from the shape's seed."""
+    """Find the highest rate that meets every condition, starting from the shape's seed.
+
+    The first probe is drained into like every other one. Without that it can measure a backlog the
+    bring-up left -- the health gate runs the generator before any rate is set -- and a probe measuring
+    a drain reports MORE than it was offered with a tail to match, which the search reads as the seed
+    being too high and steps down from. That is what put the 300 B size point at 408,000 tps: its first
+    probe delivered 492,182 against 480,000 offered at a 1,354 ms tail, while the same workload on the
+    shard ladder held 499,091 the same day.
+    """
     rate, best = exp["seed"], None
+    drain(exp, rounds=2)
     first = measure(exp, rate, settle, window, "probe")
     if first is None:
         return None

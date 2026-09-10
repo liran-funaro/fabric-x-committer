@@ -8,14 +8,14 @@ SPDX-License-Identifier: Apache-2.0
 
 The issues opened for the work in `optimization-summary.md`. Everything with a number is filed and
 the numbers are the real ones, with GitHub sub-issue links mirroring the parent/child structure.
-Three entries are drafted but **not yet opened**, and are marked as such in the table. Two entries have a
+Every entry is now opened. Two entries have a
 pull request and no issue behind them at all — #181, which is merged, and #815, which is open — because the
 work was raised straight as a pull request; both are recorded here so the set is complete.
 
-**Status column, checked against GitHub on 2026-09-08.** `filed` means open with no pull request yet;
-`PR open` names the pull request; `resolved` means the change is merged. Three are resolved: the two
-fabric-x-common changes the paper-figure measurements were taken against (#166 and #181), and #789 in the
-committer. Note that a merged change cannot be found by looking for its commit in `main` — these branches
+**Status column, checked against GitHub on 2026-09-10.** `filed` means open with no pull request yet;
+`PR open` names the pull request; `resolved` means the change is merged. Four are resolved: the two
+fabric-x-common changes the paper-figure measurements were taken against (#166 and #181), and #789 and
+#772 in the committer. Note that a merged change cannot be found by looking for its commit in `main` — these branches
 are squash-merged, so the SHAs in `optimization-summary.md` are the pre-merge ones and exist only on the
 evaluation branch. The pull request state is what to trust.
 
@@ -36,11 +36,11 @@ hardware. See section 4 of the summary.
 |---|---|---|---|
 | #798 | Committer throughput and latency: findings from the nineteen-machine evaluation | committer | filed |
 | #784 | [sidecar] Make the block store transaction ID index optional | committer | filed |
-| #772 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | **PR open** — #814 |
+| #772 | [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path | committer | **resolved** — PR #814 merged |
 | #791 | [coordinator] Allow selecting the simple dependency graph manager | committer | filed |
 | #785 | [coordinator] The simple dependency graph can latch the pipeline under load | committer | filed |
 | #786 | [sidecar] Parse a block's transactions in parallel | committer | filed |
-| #787 | [sidecar] Key validation and TX references allocate per transaction | committer | filed |
+| #787 | [sidecar] Key validation and TX references allocate per transaction | committer | **PR open** — #821 |
 | #788 | [sidecar] Back a block's decoded transactions with one allocation | committer | filed |
 | #789 | [sidecar] Mapping's result carries the scaffolding that built it | committer | **resolved** — PR #800 merged |
 | #790 | [grpc] Add a per-client and per-server `flow-control` section; HTTP/2 windows are unset and cap the pipeline | committer | filed |
@@ -51,11 +51,11 @@ hardware. See section 4 of the summary.
 | #795 | [loadgen] Sweep transaction generation over core count | committer | filed |
 | #796 | [coordinator] Sweep the dependency graph benchmark over the constructor pool | committer | filed |
 | hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | **resolved** — PR #166 merged |
-| — | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | **needs opening** |
+| #812 | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | filed |
 | hyperledger/fabric-x-common#181 | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **resolved** — PR #181 merged, no issue was opened |
 | #815 | [coordinator] Hold a waiting key's first group inline | committer | **PR open** — #815, opened without an issue |
-| — | [loadgen] Block preparation caps the generator at small block sizes | committer | **needs opening** |
-| — | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | **needs opening** |
+| #824 | [loadgen] Block preparation caps the generator at small block sizes | committer | filed |
+| hyperledger/fabric-x-common#185 | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | filed |
 
 ---
 
@@ -106,8 +106,8 @@ on an empty ledger.
 
 ## #772. [sidecar] The relay tracks in-flight blocks and TX IDs in sync maps on its per-TX path
 
-Already open as **#772**, and **PR #814 is open against it** (`sidecar-relay-single-owner-tracking`).
-No new issue.
+Already open as **#772**, and **PR #814 is merged** (`sidecar-relay-single-owner-tracking`). No new
+issue.
 
 ## #791. [coordinator] Allow selecting the simple dependency graph manager
 
@@ -187,6 +187,10 @@ collector was 57% of its CPU under load:
 - `TxRef` and `TxWithRef` are allocated twice per transaction, and can be backed by one slice per block.
 
 Together 61 → 56 allocations per transaction, worth 12% at the default `GOGC`.
+
+**PR #821 is open against it** (`sidecar-mapping-no-per-tx-allocations`). It also fixes the workload the
+mapping benchmarks measured: `workload.DefaultProfile`'s `NoScheme` leaves every namespace with a nil
+endorsement, so mapping rejected all of them before validating a key or building a `TxWithRef`.
 
 ## #788. [sidecar] Back a block's decoded transactions with one allocation
 
@@ -279,11 +283,11 @@ Measured on the cluster, same day, same deployment shape:
 Higher throughput at lower latency. The same goroutine dump afterwards has zero senders blocked on
 write quota.
 
-## Needs opening. [utils] The load generator builds an HMAC-DRBG for every ECDSA signature
+## #812. [utils] The load generator builds an HMAC-DRBG for every ECDSA signature
 
-To be filed against the committer. The change is already implemented (`b1dc7dc6`) and is waiting on
-this issue to reference; the evidence is in `cluster-optimization-log.md` and the benchmark numbers in
-section 1 of the summary.
+Filed as **#812** against the committer, a child of #798. The change is already implemented
+(`b1dc7dc6`); the evidence is in `cluster-optimization-log.md` and the benchmark numbers in section 1 of
+the summary.
 
 `crypto/ecdsa.SignASN1` signs "hedged" per FIPS 186-5: every signature reads 32 bytes of entropy and
 then builds a fresh HMAC-SHA-512 DRBG personalized with the private key and the digest. On this
@@ -344,11 +348,11 @@ in `paper-figures.md`. It also contradicts the paper's own explanation, which is
 dependency graph: on this configuration both lock-wait histograms have a count rate of exactly zero,
 because the simple manager takes those loops out of the path.
 
-## Needs opening. [loadgen] Block preparation caps the generator at small block sizes
+## #824. [loadgen] Block preparation caps the generator at small block sizes
 
-To be filed against the committer. The change is implemented on `eval/fast-block-prepare` (`ae27afe4`)
-and pairs with the fabric-x-common issue below it, which is what makes the cheap path possible. The
-evidence is in `cluster-optimization-log.md` §5.
+Filed as **#824** against the committer, a child of #798. The change is implemented on
+`eval/fast-block-prepare` (`ae27afe4`) and pairs with the fabric-x-common issue below it, which is what
+makes the cheap path possible. The evidence is in `cluster-optimization-log.md` §5.
 
 The sidecar adapter cuts its own blocks and hands each to an embedded mock orderer, whose single
 goroutine calls `testcrypto.PrepareBlockHeaderAndMetadata` before serving it. That deep-clones the block
@@ -383,10 +387,15 @@ cannot be turned off, because `payload-cache-size: 0` means "use the default" of
 400,000 tps is a 2.4 ms replay window. This adapter never uses that path, so it is not what capped
 anything measured here.
 
-## Needs opening. [testcrypto] Preparing a block clones and rehashes it unconditionally
+## hyperledger/fabric-x-common#185. [testcrypto] Preparing a block clones and rehashes it unconditionally
 
-To be filed against fabric-x-common. **An implementation already exists** on `eval/fast-block-prepare`
-(`fc7b1c8a`). It is the enabling half of the committer issue above.
+Filed as **hyperledger/fabric-x-common#185**. **An implementation already exists** on
+`eval/fast-block-prepare` (`fc7b1c8a`). It is the enabling half of #824 above.
+
+The parallel work on the committer side is `mock.Orderer.SubmitPreparedBlock`, added with the sidecar's
+end-to-end benchmark (#792): it caches blocks prepared before the run and bypasses the orderer's `Run`
+goroutine entirely. The load generator cannot do that — it chains its blocks as it produces them — which
+is why it needs the call itself to be cheap.
 
 `PrepareBlockHeaderAndMetadata` opens with `proto.CloneOf(block)` and then sets
 `DataHash: ComputeBlockDataHash(block.Data)`. Those two are the entire cost of the call — see the table in
