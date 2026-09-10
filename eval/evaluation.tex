@@ -59,8 +59,9 @@ coordinator, one sidecar, one load generator, six validator--committers, twelve 
 servers and three YugabyteDB masters. The six validator--committers and the three masters sit on nine
 of the twelve database machines, and no machine runs both a validator--committer and a master.
 
-Storage is two \SI{969}{\gibi\byte} XFS volumes per machine, \texttt{noatime}, mounted \texttt{/data1}
-and \texttt{/data2}. Each database node passes YugabyteDB both volumes as separate data directories
+Every machine on both arms runs Red Hat Enterprise Linux 9.8, kernel 5.14. Storage is two
+\SI{969}{\gibi\byte} XFS volumes per machine, \texttt{noatime}, mounted \texttt{/data1} and
+\texttt{/data2}. Each database node passes YugabyteDB both volumes as separate data directories
 (\texttt{-{}-fs\_data\_dirs}, one path per volume) rather than a stripe. The sidecar's
 ledger uses \texttt{/data1} alone.
 
@@ -91,9 +92,13 @@ on a fresh deployment.
 
 \subsection*{Why this setup}
 
-\textbf{The shape is not the SIGMOD'26 paper's.} Its committer deployment is nine
-validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}. What
-follows therefore compares deployments, not matched hardware.
+\textbf{The shape is not the SIGMOD'26 paper's, and neither is the hardware.} Its committer
+deployment is nine validator--committers on nine database nodes across three IBM Cloud regions, on
+\emph{bare-metal} servers: dual 48-core Xeon 8260 at \SI{2.40}{\giga\hertz}, \SI{64}{\giga\byte} of
+RAM, a \SI{1}{\tera\byte} SSD in RAID~0, and Ubuntu 20.04. This deployment is virtualized, at
+\SI{2.10}{\giga\hertz}, with more memory per machine and storage reached through a hypervisor rather
+than attached to it. What follows therefore compares deployments, not matched hardware, and the storage
+path is the difference that bears on the results.
 
 \textbf{Both volumes, not a stripe}, so YugabyteDB sees the disk boundary and places data across it
 itself.
@@ -152,13 +157,15 @@ At two keys our key rate is the higher of the two; by four theirs is \SI{53}{\pe
 still rising.
 
 Where that key budget goes is a hypothesis rather than a result. The dependency graph is ruled out
-above, which leaves the state database, where every key costs a version lookup and a write. The
-published deployment ran on AWS instances, whose storage should deliver both more operations a second
-and less latency per operation than the \texttt{virtio} volumes of Table~\ref{tab:disk} --- where one
-durable \SI{4}{\kibi\byte} record costs about \SI{400}{\micro\second}, capping any per-record path
-near \num{2400} a second. Its nine validator--committers against our six is a second candidate that
-scales with key work rather than with transactions. Separating the two needs the same committer
-measured against both storage classes at both tier sizes, which nothing here provides.
+above, which leaves the state database, where every key costs a version lookup and a write --- so the
+suspect is the storage path. The SIGMOD'26 committers ran on bare metal, addressing a RAID~0 SSD
+directly. These run in guests, reaching \texttt{virtio} volumes whose bandwidth Table~\ref{tab:disk}
+measures at round figures repeating to four significant figures across machines: a provisioned cap, not
+a device. On that path one durable \SI{4}{\kibi\byte} record costs about \SI{400}{\micro\second},
+which caps any per-record design near \num{2400} a second. Nine validator--committers against our six
+is a second candidate that also scales with key work rather than with transactions. Separating the two
+needs the same committer measured on both storage paths at both tier sizes, which nothing here
+provides.
 
 Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps with none, then \num{517455}, \num{519455} and
 \num{518727} at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} --- all four flat within
@@ -248,10 +255,9 @@ the two configurations separate the two things a shard needs: a core budget and 
 give each co-located batcher its own volume; eight give twice the shards but make two share one.
 
 \textbf{These machines are half a committer machine}, and half is the whole of the difference. They are
-the same processor at the same clock, so a serialized stage runs no faster on one class than on the
-other and a comparison between the arms is one of width rather than of generation. What differs is half
-the threads, half the memory and, per Table~\ref{tab:disk}, half the disk bandwidth; what favours the
-ordering machines is twice the L3 per core. So a ceiling measured on this arm belongs to these machines before it belongs to
+the same processor at the same clock, so a comparison between the arms is one of width rather than of
+generation. What differs is half the threads, half the memory and, per Table~\ref{tab:disk}, half the
+disk bandwidth; what favours the ordering machines is twice the L3 per core. So a ceiling measured on this arm belongs to these machines before it belongs to
 ordering, while a per-core one belongs to neither class in particular.
 
 \textbf{A \SI{50}{\milli\second} decision interval} because the default \SI{500}{\milli\second} was
@@ -279,7 +285,10 @@ End to end, ordering included, this deployment sustains \num{499091} tps at
 \SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
 transactions at any rung. Two comparisons place it. The SIGMOD'26 paper has no end-to-end figure, but
 its ordering service alone reaches \num{430000} tps at four parties and four shards --- so the
-complete pipeline here exceeds the published figure for one part of it. And the same committer at the
+complete pipeline here exceeds the published figure for one part of it. That is the one comparison in
+this section between comparable machines: those experiments ran on 32-vCPU VMs with
+\SI{64}{\gibi\byte} of memory, against the 32 threads and \SI{78}{\gibi\byte} here, and on EBS
+volumes rated below what Table~\ref{tab:disk} measures on these. And the same committer at the
 same workload without an ordering service holds \num{518000} tps, reaching \num{530364} on the ladder
 of Fig.~\ref{fig:curve}, so putting real ordering in the path costs under \SI{6}{\percent} of the
 committer's own ceiling --- inside this cluster's repeatability rather than a separate order of
@@ -351,9 +360,10 @@ a tuning win: small batches halve the latency and halve the ceiling.
 Throughput falls with transaction size, but far more slowly than in the SIGMOD'26 sweep, and the byte
 rate is what shows why (Fig.~\ref{fig:size}). The sweep keeps the same two read--write operations and
 varies only the value each one carries, so the serialized envelope is \num{202} bytes plus twice that
-value. That measurement is bandwidth-bound past
-\SI{300}{\byte}: each of its points sits within \SI{10}{\percent} of
-\SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second divided by size. This
+value. That measurement is bandwidth-bound past \SI{300}{\byte}: each of its points sits within
+\SI{10}{\percent} of \SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second
+divided by size --- and the figure is the cap its own storage carried, since those experiments ran on
+AWS VMs on EBS General Purpose volumes rated at \SI{125}{\mebi\byte\per\second}. This
 deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{rises} with size, from
 \SI{122}{\mega\byte\per\second} at \SI{300}{\byte} to \SI{410}{\mega\byte\per\second} at
 \SI{4}{\kibi\byte}, because what it pays per transaction dominates what it pays per byte: halving the

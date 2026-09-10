@@ -19,10 +19,22 @@ maps onto the load generator's knobs, and the measurement rule.
 ## What the paper measured, and with what
 
 Its committer deployment was three signature verifiers, nine validator-committers co-located with
-nine database nodes, one coordinator, one sidecar, on dual 48-core servers with 64 GB of RAM. Every
-point is an average over at least five minutes at one-second sampling, and every point is taken at a
-rate chosen to keep latency under one second — "the workload was managed to keep latency below one
+nine database nodes, one coordinator, one sidecar. Every point is an average over at least five minutes
+at one-second sampling, and every point is taken at a rate chosen to keep latency under one second — "the workload was managed to keep latency below one
 second to prevent queuing from committer overload".
+
+**Two different setups, one per arm** (§6, §6.2), which matters for every comparison drawn against
+them:
+
+| | machine | storage |
+|---|---|---|
+| committer, Figure 9 (§6, §6.3) | IBM Cloud **bare metal** across London, Paris and Milan: dual 48-core Xeon 8260 @ 2.40 GHz, 64 GB RAM, 10 Gbps, Ubuntu 20.04 | 1 TB SSD, RAID 0, directly attached |
+| ordering, Figures 7a-c (§6.2) | 4 **AWS** sites (Ohio, N. Virginia, N. California, Oregon): 32 vCPU, 64 GiB, RHEL 10 | EBS General Purpose (SSD), 3000 IOPS, 125 MiB/s |
+
+The EBS figure is why Figure 7b is bandwidth-bound: its points sit within 10% of 120 MB/s, which is
+that cap. Do not attribute the paper's committer numbers to AWS -- that arm was bare metal, and the
+directly-attached SSD against a `virtio` volume behind a hypervisor is the difference this cluster's
+per-key ceiling most likely turns on.
 
 The reported numbers:
 
