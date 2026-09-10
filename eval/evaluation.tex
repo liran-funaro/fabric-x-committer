@@ -85,8 +85,7 @@ validator--committers on nine database nodes, dual 48-core servers with \SI{64}{
 follows therefore compares deployments, not matched hardware.
 
 \textbf{Both volumes, not a stripe}, so YugabyteDB sees the disk boundary and places data across it
-itself. The data directories are siblings of the deployment directory rather than children of it, so
-the two are wiped independently.
+itself.
 
 \textbf{A conflict-free workload} measures the pipeline's ceiling rather than its conflict behaviour,
 at the cost of a state database and a ledger that grow with every transaction. Conflicts are then
