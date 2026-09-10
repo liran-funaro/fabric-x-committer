@@ -49,7 +49,9 @@ Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a 
 Figure 1a/1b under ECDSA, which the document now draws · figure 2 both block sizes (superseded by #1) ·
 figure 3 four and eight shards · figure 4 batch size · figure 5 at 300 B, 512 B, 1 KiB, 2 KiB, 4 KiB ·
 table 2 disk characterisation · the dependency-graph per-key cost · the fill check · the reference gap
-scaled to the paper's in-flight share.
+scaled to the paper's in-flight share · the default-split series removed from figure 1c, since the paper
+used the same 120-way split and those runs carried the unscaled gap · figure 2 capped at one second ·
+figure 1 ticked every 100k.
 
 Plot fixes: figure 1 ticks every 100k on all three panels · figure 2's y axis capped at the one-second
 bound, so a rung with a 5,333 ms median no longer flattens every rate anyone would run into the bottom

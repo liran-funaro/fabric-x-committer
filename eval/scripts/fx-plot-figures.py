@@ -325,6 +325,7 @@ def figure9(rows, path):
     fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.9))
     fig.patch.set_facecolor(SURFACE)
 
+    drew_collapsed = False
     for col, (figure, title, xlabel, xfmt) in enumerate(PANELS):
         data = best_per_x(rows, figure)
         paper = PAPER_DATA[figure]
@@ -335,12 +336,16 @@ def figure9(rows, path):
         # conflict point collapses and no rate qualifies, so the panel would otherwise be one bar and
         # three absences; at the default split the same shapes hold. Two series make the panel say what
         # the measurement actually found, which is that the split is the difference.
-        alt = best_per_x(rows, "split") if figure == "9c" else {}
+        # The default-split series is gone from this panel. It was here to show that the same
+        # conflict shapes hold at the other tablet split, but the paper used the same 120-way split
+        # this deployment does, so the split was never the variable those runs treated it as -- and
+        # every one of them was measured with the reference gap that made the workload a dependency
+        # convoy rather than a double spend. What belongs here comes from the conflict analysis.
         # Shares that were measured at this split and collapsed. Drawn, because "no rate qualified" is
         # a claim the reader should be able to see the evidence for.
         weak = {x: r for x, r in collapsed_per_x(rows, figure).items()
                 if x not in data} if figure == "9c" else {}
-        xs = sorted(set(data) | set(paper) | set(alt) | set(weak))
+        xs = sorted(set(data) | set(paper) | set(weak))
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
 
@@ -356,9 +361,8 @@ def figure9(rows, path):
         bottom.tick_params(colors=INK2, labelsize=8, length=0)
         top.set_title(f"({'abc'[col]}) {title.lower()}", color=INK, fontsize=10, pad=6, loc="left")
 
-        width, gap = (0.26, 0.010) if alt else (0.38, 0.012)
-        # Three bars per tick need their own offsets; two keep the original placement.
-        offsets = (-width - gap, 0.0, width + gap) if alt else (-width / 2 - gap, None, width / 2 + gap)
+        width, gap = 0.38, 0.012
+        offsets = (-width / 2 - gap, None, width / 2 + gap)
 
         def draw(xp, total, rejected, base, dark, dy=3):
             """One bar, with the rejected part of it drawn inside it.
@@ -400,6 +404,7 @@ def figure9(rows, path):
                 # result of the same standing as the others.
                 r = weak[x]
                 total = throughput(r)
+                drew_collapsed = True
                 top.bar(pp + offsets[0], total, width, facecolor="none", edgecolor=OURS,
                         linewidth=1.2, linestyle=":", zorder=3)
                 tail = r.get("lat_p99") or 0
@@ -415,10 +420,6 @@ def figure9(rows, path):
                 # split, so saying "none" here would claim a measurement that does not exist.
                 top.annotate("not run", (pp + offsets[0], paper[x][0] * 1.06),
                              ha="center", va="bottom", fontsize=6.5, color=INK2, rotation=90)
-            if x in alt:
-                r = alt[x]
-                total = throughput(r)
-                draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK)
             if x in paper:
                 total, rejected, _ = paper[x]
                 draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK, dy=11)
@@ -433,7 +434,6 @@ def figure9(rows, path):
         # Room above the tallest bar for its value label and for the latency marks to clear it.
         top.set_ylim(top=1.22 * max([throughput(r) for r in data.values()] +
                                     [paper[x][0] for x in paper] +
-                                    [throughput(r) for r in alt.values()] +
                                     [throughput(r) for r in weak.values()]))
         if col == 0:
             top.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
@@ -449,18 +449,6 @@ def figure9(rows, path):
                 bottom.annotate(f"p99 >60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
                                 (pp, 0), xytext=(0, 14), textcoords="offset points", ha="center",
                                 fontsize=6, color=INK2)
-        # The alternate series belongs in this row too. Without it the double-spend panel showed a
-        # single latency mark -- the 0% point -- while its three measured conflict rates contributed
-        # bars above and nothing here, which read as "this cluster has one data point" against the
-        # paper's four. Their latencies are the interesting half of that panel: the throughput
-        # collapses but the tail stays in the hundreds of milliseconds.
-        alt_lat = [(pp, latency_ms(alt[x])) for pp, x in zip(pos, xs)
-                   if x in alt and latency_ms(alt[x])]
-        if alt_lat:
-            bottom.plot([pp for pp, _ in alt_lat], [v for _, v in alt_lat], color=SMALL,
-                        linewidth=1.6, marker="o", markersize=6, markerfacecolor=SURFACE,
-                        markeredgewidth=1.6, zorder=6)
-
         lat = [(pp, paper[x][2] * 1000) for pp, x in zip(pos, xs)
                if x in paper and paper[x][2] is not None]
         if lat:
@@ -471,18 +459,22 @@ def figure9(rows, path):
         if col == len(PANELS) - 1:
             bottom.set_ylabel("p99 latency (ms)", color=INK2, fontsize=9)
 
-    legend = [Patch(color=OURS, label="this cluster"),
-              Patch(facecolor="none", edgecolor=OURS, linestyle=":",
-                    label="measured, missed the latency bound"),
-              Patch(color=SMALL, label="this cluster, default tablet split (9c only)"),
-              Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
+    # The dotted outline is listed only when a panel drew one, for the same reason the curve figures
+    # list their hollow marker conditionally: a legend row for a mark that appears nowhere sends the
+    # reader hunting for it. A condition that collapsed without even delivering its offered rate is not
+    # drawn at all, so this row comes and goes with the data.
+    legend = [Patch(color=OURS, label="this cluster")]
+    if drew_collapsed:
+        legend.append(Patch(facecolor="none", edgecolor=OURS, linestyle=":",
+                            label="measured, missed the latency bound"))
+    legend += [Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
-              Patch(color=PAPER, label="SIGMOD'26 paper"),
-              Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
-                    label="of which rejected"),
-              Line2D([], [], color=INK2, marker="o", markersize=6, markerfacecolor=SURFACE,
-                     markeredgewidth=1.6, linewidth=1.6,
-                     label="p99 latency (right axis)")]
+               Patch(color=PAPER, label="SIGMOD'26 paper"),
+               Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
+                     label="of which rejected"),
+               Line2D([], [], color=INK2, marker="o", markersize=6, markerfacecolor=SURFACE,
+                      markeredgewidth=1.6, linewidth=1.6,
+                      label="p99 latency (right axis)")]
     fig.legend(handles=legend, frameon=False, fontsize=6.5, labelcolor=INK2,
                loc="upper center", bbox_to_anchor=(0.5, 1.005), ncol=3,
                columnspacing=1.2, handlelength=1.6, handletextpad=0.5)

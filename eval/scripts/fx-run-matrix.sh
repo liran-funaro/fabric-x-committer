@@ -17,6 +17,8 @@
 #   OUT     results file; one file per scheme or arm, since ids repeat across them
 #   SCHEME  the signature scheme to insist on, read back off the running generator
 #   HOURS   deadline, checked before each experiment (default 11)
+#   REDO    ids to re-measure even though the results file already holds a confirmed hold for them --
+#           what to pass after a change that invalidates a point rather than adds one
 #   E2E     1 selects the end-to-end experiment list, and with it `setup` per point rather than
 #           `configs`: on that arm teardown takes the crypto and each node's genesis block with it,
 #           so re-rendering configuration alone brings the orderer back with no identity
@@ -95,7 +97,7 @@ fi
 say "rate limiter answers"
 
 say "matrix: ${ONLY:-<everything>} -> $OUT"
-FX_ONLY=$ONLY FX_DEADLINE_HOURS=$HOURS FX_OUT=$OUT FX_INVENTORY=$INV \
+FX_ONLY=$ONLY FX_REDO=${REDO:-} FX_DEADLINE_HOURS=$HOURS FX_OUT=$OUT FX_INVENTORY=$INV \
 FX_MATRIX=$MATRIX FX_DEPLOY_PLAN=$PLAN \
   python3 ./fx-figures.py > "$LOGS/$TAG.log" 2>&1
 grep -E "hold limit|no rate met|deadline|run done" "$LOGS/$TAG.log" | tail -20
