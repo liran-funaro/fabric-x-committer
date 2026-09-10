@@ -228,14 +228,7 @@ volumes as above.
 
 A batcher cuts batches and the assemblers turn each one into a block, so on this arm the block-size
 knob is the shared configuration's \texttt{Batching.BatchSize.MaxMessageCount} rather than a
-load-generator setting, and
-\texttt{BatchCreationTimeout} is \SI{500}{\milli\second}. Signatures are ECDSA P-256, and here the
-scheme is forced rather than a free choice. \texttt{fxconfig} registers namespace~0 with a threshold rule
-over the endorsing user's MSP signing certificate, and only that key satisfies it --- every other
-scheme signs with a synthetic key pair no policy in this deployment knows, so the workload would be
-rejected wholesale for invalid signatures. Namespace creation is governed by a different policy again:
-an MSP rule on the \texttt{\_meta} namespace, which the load generator has no material for, so
-\texttt{fxconfig} creates the namespace before load is applied.
+load-generator setting, and \texttt{BatchCreationTimeout} is \SI{500}{\milli\second}.
 
 \subsection*{Why this setup}
 
