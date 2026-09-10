@@ -63,12 +63,17 @@
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/latency-throughput.pdf}
-  \caption{Latency against throughput at two block sizes. The thick line is the median and the thin
+  \caption{Latency against throughput at two block sizes, both at the \textbf{two} read--write
+  operation workload --- so this figure's maximum, \num{530364} tps, belongs beside the
+  \num{517272} of Fig.~\ref{fig:panels}'s two-key bar and not beside its \num{604545} at one key, which
+  is a workload no curve here measures. The thick line is the median and the thin
   line above it the 99th percentile, shaded between; the dashed line adds the mean wait for a block to
   be cut, which the measurement itself excludes. Hollow markers are rates offered but not sustained.
-  The axis is clipped at \SI{400}{\milli\second} because the region worth reading is
-  \SIrange{40}{400}{\milli\second}; what the clip cuts off is named in the corner, and recorded per
-  point in \texttt{figures-table.md}.}
+  The latency axis is floored at \SI{400}{\milli\second}, so the
+  \SIrange{40}{125}{\milli\second} difference that is the block-size result stays legible, and grows
+  beyond it to contain every sustained rate --- the highest throughput reached is on the plot, not
+  named beside it. Anything above the axis is therefore a rate offered and not sustained, summarised
+  in the corner; the 99th-percentile envelope may still leave the top, being non-monotonic.}
   \label{fig:curve}
 \end{figure*}
 
@@ -149,7 +154,16 @@ growing queue, which reports the queue's drain time as latency.
 \subsection*{Throughput and tail latency}
 
 Throughput falls with transaction size (Fig.~\ref{fig:panels}), \num{604545} tps at one read--write
-operation to \num{274364} at four: \SI{55}{\percent} against the published \SI{41}{\percent}. The
+operation to \num{274364} at four. Comparing that with the published figure needs the axes aligned,
+and an earlier version of this section did not have them: the paper's x axis counts inputs and
+outputs, and one in with one out is a \emph{two} read--write total, so its $N/N$ sits at our $2N$.
+Only two of our four sizes therefore have a published counterpart, and over that matched span the
+comparison goes the other way from the mistaken one. At two read--writes this cluster holds
+\num{517272} tps against the paper's \num{474000}, \SI{9}{\percent} ahead; at four it holds
+\num{274364} against \num{419000}, \SI{35}{\percent} behind. Over those same two sizes our throughput
+falls \SI{47}{\percent} where the paper's falls \SI{12}{\percent}, so whatever this pipeline pays per
+key, it pays much more steeply than the published one. The paper's six- and eight-key points were
+never measured here, and our one- and three-key points have nothing to compare against. The
 mechanism is not the published one, which is lock contention in the coordinator's dependency graph.
 Here both lock-wait histograms have a count rate of exactly zero, and the graph's cost is per key
 instead --- about \SI{420}{\nano\second} each, flat from one key per transaction to eight.
@@ -179,7 +193,11 @@ or above --- about \num{20000} tps at tens of seconds with every machine under \
 so neither capacity nor a queue. At the default split the same shapes hold: \num{41273}, \num{30000}
 and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} with
 \SIrange{334}{533}{\milli\second} p99, flat rather than declining --- while costing the conflict-free
-case \num{1.8}$\times$ (\num{518000} against \num{294893}). The split is therefore a
+case by a factor this experiment cannot pin down: at the default split \emph{no} rate got a confirmed
+hold with no conflicts at all. Nine holds were attempted between \num{155204} and \num{294780} tps and
+every one failed, including one at the same \num{294780} whose probe had passed at
+\SI{150}{\milli\second} --- which is why Fig.~\ref{fig:panels} shows no bar there rather than the
+\num{294893} an earlier draft quoted from that probe. The split is therefore a
 workload-dependent trade, not a tuning win. Narrowing the graph's chunk width refuted multi-key
 batching as the mechanism, leaving why 120 tablets collapse unresolved.
 
@@ -483,14 +501,10 @@ workload reached by separate searches: under Ed25519 they returned \num{558364} 
 \num{518000}, to the transaction. A difference under about a tenth is therefore not a result here, and
 no claim in this section rests on one.
 
-One limit is stated in advance of the end-to-end data rather than after it. That arm measures a ladder
-on a single deployment, so rate and table fill rise together and the ladder cannot separate them: if
-its curve bends upward at the top, that is as consistent with a fuller database as with the offered
-rate. On the committer arm the question was settled by holding the rate fixed while fill grew through
-one \SI{375}{\second} window, where commit latency stayed flat ---
-\SIrange{142.2}{143.0}{\milli\second} across \SI{68}{\percent} fill growth --- but that test belongs to
-that arm and does not transfer. Until it is repeated here, an upward bend in the end-to-end curve is
-not attributable to rate. Each rung records the fill it ran against, so the question stays auditable
-rather than lost.
+One limit was stated in advance of the end-to-end data and has since been tested. Each ladder there
+climbs on a single deployment, so rate and table fill rise together and a ladder alone cannot separate
+them. Both were therefore re-measured on fresh deployments, which is what licenses calling the knee a
+rate: the boundary does not move across a \num{140}$\times$ range of fill, though the tail near it
+does. Every rung records the fill it ran against, so the question stays auditable.
 
 \end{document}

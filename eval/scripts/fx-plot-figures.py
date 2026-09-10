@@ -59,7 +59,12 @@ PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper'
 # `BatchCreationTimeout` is 500 ms, so its median floor sits ABOVE 400 ms -- at that clip every rung
 # is off-scale and the plot is empty. 1,000 ms keeps the same principle (show the operating region,
 # label what is past it) against a floor set half a second higher.
-LAT_AXIS_MS = 1000 if E2E else 400
+# It is a FLOOR, not a ceiling. Clipping at a fixed height cut the highest-throughput point off the
+# top -- the committer's best sustained rate, 530,364 tps at a 438 ms median, was drawn nowhere and
+# mentioned only in the corner text, so the curve appeared to stop at 499,818. The maximum throughput
+# is the one number a reader looks for on this plot. `latency_axis_ms` therefore raises the floor
+# until every sustained point's median fits.
+LAT_FLOOR_MS = 1000 if E2E else 400
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRID = "#e6e5e1"
@@ -85,11 +90,18 @@ STEP = 1.08          # the rate search's multiplier, and so each knee's one-side
 # a 23%-rejected one. Total = valid + invalid holds in the paper's own bars, which is the same
 # convention as this driver's `finished`.
 #
-# Its 9a x axis is inputs/outputs per transaction; one read-write operation is one input read and one
-# output written, so its 1/1 sits at 1 and its 4/4 at 4.
+# Its 9a x axis is inputs/outputs per transaction, and the earlier reading of that here was wrong. It
+# assumed one read-write operation was one input read plus one output written, which put the paper's
+# 1/1 at our x=1. It is not: 1 in and 1 out is a **two** read-write total, so the paper's N/N sits at
+# our 2N. The mistake was flattering -- it compared our 1-key point against the paper's 2-key point
+# all the way along, and turned a +9%/-35% split into a uniform +23% to +28%.
+#
+# Consequences of the correction: only our x=2 and x=4 have a published counterpart (the paper's 1/1
+# and 2/2), our x=1 and x=3 have none, and the paper's 3/3 and 4/4 -- six and eight keys -- were never
+# measured here. The panel shows that rather than hiding it behind a shared tick.
 PAPER_DATA = {
-    "9a": {1: (474_000, None, 0.083), 2: (419_000, None, 0.083),
-           3: (340_000, None, 0.093), 4: (280_000, None, 0.101)},
+    "9a": {2: (474_000, None, 0.083), 4: (419_000, None, 0.083),
+           6: (340_000, None, 0.093), 8: (280_000, None, 0.101)},
     "9b": {0: (419_000, 0, 0.083), 10: (428_000, 43_000, 0.076),
            20: (429_000, 86_000, 0.075), 30: (459_000, 138_000, 0.0755)},
     "9c": {0: (419_000, 0, 0.085), 10: (282_000, 26_000, 1.140),
@@ -103,8 +115,8 @@ PAPER_DATA = {
 # share configured, which put its bars at x positions the paper's bars could not be placed against.
 # The generated share is annotated on the bar instead, which is where a discrepancy belongs.
 PANELS = [
-    ("9a", "Transaction size", "read-write operations",
-     lambda x: f"in={x}\nout={x}"),
+    ("9a", "Transaction size", "read-write operations per transaction",
+     lambda x: f"{x}"),
     ("9b", "Invalid signatures", "invalid signatures (%)",
      lambda x: f"{x}%"),
     ("9c", "Double spends", "double spends (%)", lambda x: f"{x}%"),
@@ -348,6 +360,17 @@ def figure9(rows, path):
                 bottom.annotate(f">60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
                                 (pp, 0), xytext=(0, 18), textcoords="offset points", ha="center",
                                 fontsize=7.5, color=INK2)
+        # The alternate series belongs in this row too. Without it the double-spend panel showed a
+        # single latency mark -- the 0% point -- while its three measured conflict rates contributed
+        # bars above and nothing here, which read as "this cluster has one data point" against the
+        # paper's four. Their latencies are the interesting half of that panel: the throughput
+        # collapses but the tail stays in the hundreds of milliseconds.
+        alt_lat = [(pp, latency_ms(alt[x])) for pp, x in zip(pos, xs)
+                   if x in alt and latency_ms(alt[x])]
+        if alt_lat:
+            bottom.plot([pp for pp, _ in alt_lat], [v for _, v in alt_lat], color=SMALL,
+                        linewidth=2, marker="o", markersize=8, zorder=3)
+
         lat = [(pp, paper[x][2] * 1000) for pp, x in zip(pos, xs)
                if x in paper and paper[x][2] is not None]
         if lat:
@@ -405,7 +428,40 @@ def series_name(row):
     return row.get("label") or row.get("experiment") or name
 
 
-def series(rows, ax, figure, color, label):
+def latency_axis_ms(rows, floor=None):
+    """How tall the latency axis has to be to contain every sustained point's median.
+
+    The floor keeps the operating region legible -- at 400 ms the 40-vs-125 ms difference that is the
+    whole block-size result stays readable, where an axis fitting the 7.5 s outlier would make it two
+    adjacent pixels. Above the floor the data decides, because a clipped maximum is worse than a
+    slightly compressed low end: the point of the plot is where throughput stops.
+
+    The 99th-percentile envelope may still leave the top, which is expected and not a defect. It is
+    not monotonic in throughput (482 -> 1,351 -> 591 ms across the top three rungs), so fitting it
+    would give an axis governed by one spike.
+    """
+    floor = LAT_FLOOR_MS if floor is None else floor
+    medians = [(r.get("lat_p50") or 0) * 1000 for r in rows if sustained(r) and throughput(r)]
+    return max(floor, 1.1 * max(medians, default=0))
+
+
+def curve_series_names(rows):
+    """The series this plot will draw, so the axis can be sized from them alone.
+
+    Needed because `rows` is the whole results file: the 9a/9b/9c panels carry deliberate multi-second
+    points -- a 30% double-spend rung sits at tens of seconds -- and sizing the axis over all of them
+    produced a 60,000 ms axis with every curve flat against zero.
+    """
+    if not E2E:
+        return {"curve", "curve500"}
+    # Mirror the selection latency_curve() makes, or the axis is sized from a series that is not
+    # drawn: including the 500-transaction batch ladder put a 91 ms point in the calculation and sent
+    # the off-scale note to the wrong corner.
+    return {series_name(r) for r in rows
+            if r.get("kind") == "curve" and r.get("figure") == "shape"}
+
+
+def series(rows, ax, figure, color, label, axis_ms):
     """One block size\'s curve: median as the line, the tail as an envelope above it.
 
     The median is the shape and the tail is an envelope around it. That is not a stylistic choice:
@@ -438,7 +494,7 @@ def series(rows, ax, figure, color, label):
         ax.plot([throughput(r) for r in missed], [(r.get("lat_p50") or 0) * 1000 for r in missed],
                 marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=color,
                 markeredgewidth=2, linestyle="none", zorder=3)
-    return [r for r in points + missed if (r.get("lat_p50") or 0) * 1000 > LAT_AXIS_MS]
+    return [r for r in points + missed if (r.get("lat_p50") or 0) * 1000 > axis_ms]
 
 
 def latency_curve(rows, path):
@@ -452,6 +508,11 @@ def latency_curve(rows, path):
     fig.patch.set_facecolor(SURFACE)
     style(ax)
     ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+    # Computed once from the series on this plot, so the tallest sustained median sets the height and
+    # no curve is cut short of the throughput it reached.
+    drawn = curve_series_names(rows)
+    axis_ms = latency_axis_ms([r for r in rows if series_name(r) in drawn])
+
 
     off = []
     if E2E:
@@ -459,6 +520,10 @@ def latency_curve(rows, path):
         # `armageddon_batch_max_message_count` it ran at -- there is no fixed pair of block sizes to
         # hard-code, and the driver may add ladders as configurations are tried. Take the series from the
         # data and their names from the rows, so a new ladder appears without editing this file.
+        # Only the shard/storage ladders belong on this figure -- that is what its caption compares.
+        # The block-size ladders (500-transaction batches) are a different configuration and are
+        # reported in prose; they used to be picked up here by accident and then dropped just as
+        # silently, because zip() against a four-colour tuple truncated the fifth series.
         ladders = []
         for r in rows:
             # Every ladder point records kind="curve", whichever variable the ladder sweeps -- the
@@ -466,16 +531,16 @@ def latency_curve(rows, path):
             # latency-against-throughput series measured identically, and both belong on this plot.
             # Matching on the name instead is what broke: a series called "e2e-shape-4s" starts
             # with neither "curve" nor "shape".
-            if r.get("kind") != "curve":
+            if r.get("kind") != "curve" or r.get("figure") != "shape":
                 continue
             name = series_name(r)
             if name not in [n for n, _ in ladders]:
                 ladders.append((name, r.get("label") or name))
         for (name, label), colour in zip(sorted(ladders), (OURS, SMALL, PAPER_DARK, OURS_DARK)):
-            off += series(rows, ax, name, colour, label)
+            off += series(rows, ax, name, colour, label, axis_ms)
     else:
-        off += series(rows, ax, "curve", OURS, "10,000-tx blocks")
-        off += series(rows, ax, "curve500", SMALL, "500-tx blocks")
+        off += series(rows, ax, "curve", OURS, "10,000-tx blocks", axis_ms)
+        off += series(rows, ax, "curve500", SMALL, "500-tx blocks", axis_ms)
 
     total, rejected, p99 = PAPER_DATA["9b"][0]
     ax.plot([total], [p99 * 1000], color=PAPER, marker="s", markersize=9, linestyle="none", zorder=4,
@@ -497,26 +562,33 @@ def latency_curve(rows, path):
     ax.plot([], [], marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=INK2,
             markeredgewidth=2, linestyle="none", label="offered but not sustained")
 
-    ax.set_ylim(0, LAT_AXIS_MS)
+    ax.set_ylim(0, axis_ms)
     ax.set_xlim(left=0)
     # What the axis cuts off is named rather than drawn, which is the point of cutting it: the region
     # worth reading is 40-400 ms and these points would own the plot if the axis reached them. One
     # block of text, not a label per point -- the off-scale rungs are within a few percent of each
     # other in throughput, so labels at their own x positions land on top of one another.
     if off:
-        # Naming what the axis cuts off, in the space the axis freed by cutting it. A line per rung
-        # did not fit at this width and landed on the paper's marker, so the rungs are summarised as
-        # a range and only the ones that actually held are named -- those are the results, and the
-        # rest are recorded per point in figures-table.md.
+        # Whatever is above the axis is, by construction, a rate that was offered and not sustained:
+        # latency_axis_ms() sizes the axis to contain every sustained median, so a held point cannot
+        # be cut. That is why this says so plainly and no longer has a branch for naming the held
+        # ones -- there are none to name. Per-point detail is in figures-table.md.
+        #
         lo, hi = throughput(min(off, key=throughput)), throughput(max(off, key=throughput))
-        lines = [f"above this axis: {len(off)} rung{'s' if len(off) > 1 else ''}, "
-                 f"{lo / 1000:,.0f}k-{hi / 1000:,.0f}k tx/s"]
-        for r in sorted((r for r in off if sustained(r)), key=throughput):
-            lines.append(f"held: {throughput(r) / 1000:,.0f}k at median "
-                         f"{(r.get('lat_p50') or 0) * 1000:,.0f} ms, p99 "
-                         f"{(r.get('lat_p99') or 0) * 1000:,.0f} ms")
-        ax.text(0.015, 0.04, "\n".join(lines), transform=ax.transAxes, ha="left", va="bottom",
-                fontsize=6.5, color=INK2, linespacing=1.5)
+        note = (f"above this axis: {len(off)} rate{'s' if len(off) > 1 else ''} offered but not "
+                f"sustained, {lo / 1000:,.0f}k-{hi / 1000:,.0f}k tx/s")
+        # Which bottom corner is free depends on the plot, so measure rather than hardcode. The
+        # published reference marker sits at a fixed throughput in the right half of both plots, and
+        # the committer's small-block curve runs along the bottom left, so neither corner is reliably
+        # empty: on the committer arm the left is occupied by a curve at 40 ms, and end to end the
+        # right is occupied by a marker at 83 ms on a 1,000 ms axis.
+        drawn_pts = [r for r in rows if series_name(r) in drawn and sustained(r) and throughput(r)]
+        mid = max(throughput(r) for r in drawn_pts) / 2
+        left_low = min(((r.get("lat_p50") or 0) * 1000 for r in drawn_pts
+                        if throughput(r) < mid), default=axis_ms)
+        on_left = left_low / axis_ms > 0.18
+        ax.text(0.015 if on_left else 0.985, 0.05, note, transform=ax.transAxes,
+                ha="left" if on_left else "right", va="bottom", fontsize=6.5, color=INK2)
 
     ax.xaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("throughput (tx/s)", color=INK2, fontsize=9)
