@@ -62,7 +62,11 @@ that introduces them deliberately. Blocks come from the load generator's embedde
 service, which cuts and signs them itself and serves them to the sidecar over the Atomic Broadcast
 API, so no ordering service is in the path.
 
-Signatures are ECDSA P-256.\footnote{The figures in this part were measured under Ed25519 and are
+Signatures are ECDSA P-256, which is what namespace~0's endorsement policy requires: a threshold
+rule over the endorsing user's MSP signing certificate, which the Fabric CA issues as an ECDSA
+P-256 key. Here the load generator creates the namespace itself, so the policy and the key it
+signs with match by construction.\footnote{The figures in this part were measured under Ed25519
+and are
 being re-measured; until that finishes, the two parts differ in signature scheme as well as in
 ordering. The re-measurement so far is a null result. Against Ed25519's
 \numlist{605000;517000;419000;274000} tps at one to four read--write operations, ECDSA holds
@@ -75,7 +79,7 @@ too: throughput falls \SI{58}{\percent} from one read--write operation to four a
 signature scheme. What does change is where the load sits --- the generator runs at
 \SIrange{19}{32}{\percent} against the busiest validator--committer's \SIrange{75}{81}{\percent}, where
 under Ed25519 it was close to co-limiting, so these are the first figures here that bound the pipeline
-rather than the pair. Why the scheme changed at all is in the next subsection.}
+rather than the pair.}
 
 A measured point is the highest offered rate that arrived in full, committed within \SI{2}{\percent},
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
@@ -91,15 +95,6 @@ follows therefore compares deployments, not matched hardware.
 itself. This also has to be stated because it is what a wipe must cover: the data directories are
 siblings of the deployment directory, not children, so clearing the deployment directory leaves the
 database intact --- which silently invalidated every earlier bring-up of the arm in Part~II.
-
-\textbf{ECDSA rather than Ed25519}, so the two arms differ only in whether an ordering service is
-present. This was Ed25519 until the generator stopped being the constraint: \texttt{crypto/ecdsa}
-signs hedged, building an HMAC-SHA-512 DRBG per signature, which a CPU profile at \num{193000} tps put
-at \SI{8.11}{\percent} of process CPU against \SI{8.80}{\percent} for the elliptic-curve multiplication
-it feeds --- nonce setup costing more than the work it exists to serve. Deriving the nonce directly is
-worth \num{2.06}$\times$ at 32 cores, about \num{709000} signatures a second, above the ceilings below.
-Entropy was never the mechanism (\texttt{GetRandom} was \SI{0.54}{\percent}), and two earlier
-explanations --- \texttt{getrandom} contention, then unspecific allocation --- were both wrong.
 
 \textbf{A conflict-free workload} measures the pipeline's ceiling rather than its conflict behaviour,
 at the cost of a state database and a ledger that grow with every transaction. Conflicts are then
@@ -213,10 +208,13 @@ volumes as above.
 
 Blocks are cut by the batchers, so the block-size knob on this arm is the shared configuration's
 \texttt{Batching.BatchSize.MaxMessageCount}, not a load-generator setting, and
-\texttt{BatchCreationTimeout} is \SI{500}{\milli\second}. Signatures are ECDSA P-256, as in Part~I,
-and here the policy derives from a real MSP identity so no other scheme is available. The namespace is
-created by \texttt{fxconfig} before load is applied, because the transaction that creates it endorses
-against an MSP rule that the load generator has no material for.
+\texttt{BatchCreationTimeout} is \SI{500}{\milli\second}. Signatures are ECDSA P-256, as in Part~I, but here the
+scheme is forced rather than incidental. \texttt{fxconfig} registers namespace~0 with a threshold rule
+over the endorsing user's MSP signing certificate, and only that key satisfies it --- every other
+scheme signs with a synthetic key pair no policy in this deployment knows, so the workload would be
+rejected wholesale for invalid signatures. Namespace creation is governed by a different policy again:
+an MSP rule on the \texttt{\_meta} namespace, which the load generator has no material for, so
+\texttt{fxconfig} creates the namespace before load is applied.
 
 \subsection*{Why this setup}
 
