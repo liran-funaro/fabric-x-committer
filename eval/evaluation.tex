@@ -52,7 +52,9 @@ deployments.
 
 \subsection*{Setup: the committer machines}
 
-Nineteen machines, each 64 cores and \SI{156}{\gibi\byte} RAM, running three signature verifiers, one
+Nineteen machines, each two sockets of sixteen Intel Xeon Sapphire Rapids cores at
+\SI{2.10}{\giga\hertz} --- 64 hardware threads, \SI{16}{\mebi\byte} of L3 per socket --- with
+\SI{156}{\gibi\byte} of RAM, running three signature verifiers, one
 coordinator, one sidecar, one load generator, six validator--committers, twelve YugabyteDB tablet
 servers and three YugabyteDB masters. The six validator--committers and the three masters sit on nine
 of the twelve database machines, and no machine runs both a validator--committer and a master.
@@ -212,7 +214,9 @@ so a difference between the two arms is attributable to ordering.
 
 \subsection*{Setup: the ordering machines}
 
-Twenty further machines, each 32 cores and \SI{78}{\gibi\byte}, holding four parties of a router, a
+Twenty further machines of the same processor, each two sockets of eight cores --- 32 hardware
+threads, \SI{16}{\mebi\byte} of L3 per socket --- with \SI{78}{\gibi\byte} of RAM, holding four
+parties of a router, a
 consenter, an assembler and one batcher per shard. Routers, consenters and assemblers take a machine
 each, twelve in all; the batchers share the remaining eight. Two configurations are compared:
 
@@ -228,7 +232,9 @@ volumes as above.
 
 A batcher cuts batches and the assemblers turn each one into a block, so on this arm the block-size
 knob is the shared configuration's \texttt{Batching.BatchSize.MaxMessageCount} rather than a
-load-generator setting, and \texttt{BatchCreationTimeout} is \SI{500}{\milli\second}.
+load-generator setting, and \texttt{BatchCreationTimeout} is \SI{500}{\milli\second}. The
+consensus decision interval, \texttt{RequestBatchMaxInterval}, is \SI{50}{\milli\second}, reduced
+from the default \SI{500}{\milli\second}.
 
 \subsection*{Why this setup}
 
@@ -241,15 +247,19 @@ the spare capacity for a second was already on the box.
 the two configurations separate the two things a shard needs: a core budget and a disk. Four shards
 give each co-located batcher its own volume; eight give twice the shards but make two share one.
 
-\textbf{These machines are half a committer machine}, and half is the whole of the difference. Both
-classes are the same part at the same clock --- Sapphire Rapids, family 6 model 143 stepping 4,
-\SI{2.10}{\giga\hertz}, and an identical instruction-set flag set --- so a serialized stage runs
-neither faster nor slower on one than on the other, and a comparison between the arms is a comparison
-of width rather than of generation. The ordering machines have 8 cores per socket against 16,
-\SI{78}{\gibi\byte} of memory against \SI{156}{\gibi\byte}, and per Table~\ref{tab:disk} half the
-disk bandwidth. Their one advantage is cache, the same \SI{16}{\mebi\byte} of L3 per socket spread
-over half as many cores. So a ceiling measured on this arm belongs to these machines before it belongs
-to ordering, and a per-core one belongs to neither class in particular.
+\textbf{These machines are half a committer machine}, and half is the whole of the difference. They are
+the same processor at the same clock, so a serialized stage runs no faster on one class than on the
+other and a comparison between the arms is one of width rather than of generation. What differs is half
+the threads, half the memory and, per Table~\ref{tab:disk}, half the disk bandwidth; what favours the
+ordering machines is twice the L3 per core. So a ceiling measured on this arm belongs to these machines before it belongs to
+ordering, while a per-core one belongs to neither class in particular.
+
+\textbf{A \SI{50}{\milli\second} decision interval} because the default \SI{500}{\milli\second} was
+the largest single term in end-to-end latency and a ceiling on throughput as well. A consenter sees
+batch attestations rather than transactions --- some 28 a second across two shards at \num{280000} tps
+--- so \texttt{RequestBatchMaxCount} of 100 would take seconds to fill and the interval is what cuts
+every decision. Throughput then follows the interval directly, since it is decisions a second times
+transactions a decision, and the second term is near-constant at the ceiling.
 
 \begin{figure*}[t]
   \centering
