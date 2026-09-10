@@ -148,8 +148,9 @@ never measured here, and our one- and three-key points have nothing to compare a
 The mechanism behind that slope is not the SIGMOD'26 one, which is lock contention in the
 coordinator's dependency graph. There is no such lock here: the simple manager has one owning goroutine
 where the sharded graph has a mutex, and across \num{2326} samples of a run its two lock-wait
-histograms never leave zero. What the graph costs instead is per key --- about
-\SI{420}{\nano\second} each, flat from one key per transaction to eight. Running the sharded graph on
+histograms never leave zero. What the graph costs instead is per key: a stage benchmark of the
+manager puts it at about \SI{420}{\nano\second} a key, flat from one key per transaction to eight, which
+is a fall of the shape this panel shows. Running the sharded graph on
 this deployment instead does register on those histograms, so the difference is the manager and not the
 instrument.
 
