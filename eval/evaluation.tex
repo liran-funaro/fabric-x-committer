@@ -74,8 +74,7 @@ Every transaction slot takes a fresh key, so there are no read--write conflicts 
 that introduces them deliberately. There a share of transactions carries one back-reference: an
 existing key in a read--write slot with a nil expected version, which read validation rejects on the
 same path a double spend takes. That share is the panel's x axis, and the reference is drawn from the
-newest million keys as they stood \num{1000} transactions earlier --- the reference gap the SIGMOD'26
-paper uses. Blocks come from the load generator's embedded mock ordering
+newest million keys as they stood \num{225000} transactions earlier. Blocks come from the load generator's embedded mock ordering
 service, which cuts and signs them itself and serves them to the sidecar over the Atomic Broadcast
 API, so no ordering service is in the path.
 
@@ -113,15 +112,16 @@ itself.
 \textbf{A conflict-free workload} measures the pipeline's ceiling rather than its conflict behaviour,
 at the cost of a state database and a ledger that grow with every transaction.
 
-\textbf{The reference gap is the paper's}, so the conflict workload is the same specification on both
-deployments --- but the same specification is not the same workload. The gap is counted in
-transactions, so what it excludes depends on how many transactions a deployment holds in flight. At
-\num{1000} transactions and a million-key window, \SI{44}{\percent} of the references here name keys
-whose creating transaction has not yet committed, against \SI{6}{\percent} at the SIGMOD'26 pipeline's
-latency. A reference of that kind is a dependency the coordinator must order, not a conflict it can
-reject, so the same parameter puts seven times as much of this workload on live dependencies as it does
-on that one. Conflicts are then
-introduced deliberately as their own variable.
+\textbf{The reference gap is scaled, not copied.} What a conflict workload has to match across two
+deployments is not the gap but what the gap buys: the share of references that name a key whose creating
+transaction has not committed yet. Those are dependencies the coordinator must order rather than
+conflicts it can reject, and the share they take is set by how many keys a deployment holds in flight
+--- about \num{440300} here at \num{518000} tps over a \SI{500}{\milli\second} pipeline, against
+\num{60500} in the SIGMOD'26 deployment at \num{419000} tps over \SI{85}{\milli\second}. Copying its
+gap of \num{1000} transactions would therefore put \SI{44}{\percent} of these references in flight
+where it put \SI{6}{\percent} of the paper's. Leaving the same residual overlap instead takes
+\num{225000} transactions, which the generator's own key assignment puts at \SI{5.9}{\percent} against
+the published \SI{5.9}{\percent}. Conflicts are then introduced deliberately as their own variable.
 
 \textbf{A flat in-flight count is required} because throughput alone cannot tell a rate the pipeline
 sustains from one it is absorbing into a growing backlog: both commit everything offered for as long

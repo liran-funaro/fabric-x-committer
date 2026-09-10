@@ -53,6 +53,7 @@ hardware. See section 4 of the summary.
 | hyperledger/fabric-x-common#165 | [blkstorage] Do not build tx index information no index will read | **fabric-x-common** | **resolved** — PR #166 merged |
 | #812 | [utils] The load generator builds an HMAC-DRBG for every ECDSA signature | committer | filed |
 | hyperledger/fabric-x-common#181 | [applicationpb] The signing digest is built by reflection | **fabric-x-common** | **resolved** — PR #181 merged, no issue was opened |
+| #813 | [loadgen] Use the quick ASN.1 marshal for the transaction digest | committer | filed |
 | #815 | [coordinator] Hold a waiting key's first group inline | committer | **PR open** — #815, opened without an issue |
 | #824 | [loadgen] Block preparation caps the generator at small block sizes | committer | filed |
 | hyperledger/fabric-x-common#185 | [testcrypto] Preparing a block clones and rehashes it unconditionally | **fabric-x-common** | filed |
@@ -70,8 +71,8 @@ measurement that motivated each one is in its own issue, and the full account wi
 including the retracted findings, is in `docs/cluster-optimization-log.md` and
 `docs/optimization-summary.md`.
 
-Children: #784 #772 #791 #785 #786 #787 #788 #789 #790 #797 (itself the parent of the five benchmark
-issues).
+Children: #784 #772 #791 #785 #786 #787 #788 #789 #790 #812 #813 #824 #797 (itself the parent of the
+five benchmark issues).
 
 One change lives outside this repository, so it cannot be linked as a sub-issue:
 **hyperledger/fabric-x-common#165** — *[blkstorage] Do not build tx index information no index will
