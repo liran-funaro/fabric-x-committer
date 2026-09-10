@@ -27,6 +27,7 @@ from collections import defaultdict
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt                                     # noqa: E402
+from matplotlib.lines import Line2D                                 # noqa: E402
 from matplotlib.patches import Patch                                # noqa: E402
 from matplotlib.ticker import FuncFormatter                         # noqa: E402
 
@@ -304,7 +305,15 @@ def style(ax):
 
 
 def figure9(rows, path):
-    fig, axes = plt.subplots(2, 3, figsize=(7.2, 5.0), sharex="col")
+    """Three panels in a row, each with its latency overlaid on its bars.
+
+    The paper's own Figure 9 puts throughput and latency in one panel per condition, and doing the
+    same here halves the height: two stacked rows of three spent most of a page restating the same x
+    axis three times over. Latency goes on a twin right axis, so a bar and the mark above it are the
+    same measurement -- which is also why the marks carry each series' own colour rather than a
+    separate latency colour.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.9))
     fig.patch.set_facecolor(SURFACE)
 
     for col, (figure, title, xlabel, xfmt) in enumerate(PANELS):
@@ -326,10 +335,17 @@ def figure9(rows, path):
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
 
-        top, bottom = axes[0][col], axes[1][col]
+        top = axes[col]
+        # The latency twin carries no grid of its own: two grids over one panel read as a moire.
+        bottom = top.twinx()
         style(top)
-        style(bottom)
-        top.set_title(title, color=INK, fontsize=11, pad=8, loc="left")
+        bottom.grid(False)
+        bottom.set_facecolor("none")
+        for side in ("top", "left"):
+            bottom.spines[side].set_visible(False)
+        bottom.spines["right"].set_color(GRID)
+        bottom.tick_params(colors=INK2, labelsize=8, length=0)
+        top.set_title(f"({'abc'[col]}) {title.lower()}", color=INK, fontsize=10, pad=6, loc="left")
 
         width, gap = (0.26, 0.010) if alt else (0.38, 0.012)
         # Three bars per tick need their own offsets; two keep the original placement.
@@ -360,9 +376,6 @@ def figure9(rows, path):
                 top.errorbar(pp + offsets[0], total, yerr=[[0], [total * (STEP - 1)]],
                              ecolor=INK2, elinewidth=1, capsize=3, capthick=1, fmt="none", zorder=5)
                 draw(pp + offsets[0], total, r.get("aborted") or 0, OURS, OURS_DARK)
-                top.annotate(f"{total / 1000:,.0f}k",
-                             (pp + offsets[0], total * STEP), textcoords="offset points",
-                             xytext=(0, 4), ha="center", fontsize=8, color=INK2)
             elif x in weak:
                 # Measured and collapsed: an outline, because it is not a rate anyone would run, with
                 # the tail that disqualified it named beside it. A filled bar here would read as a
@@ -372,10 +385,12 @@ def figure9(rows, path):
                 top.bar(pp + offsets[0], total, width, facecolor="none", edgecolor=OURS,
                         linewidth=1.2, linestyle=":", zorder=3)
                 tail = r.get("lat_p99") or 0
-                top.annotate(f"{total / 1000:,.0f}k\nat {tail:,.1f} s" if tail < 10 else
-                             f"{total / 1000:,.0f}k\nat {tail:,.0f} s",
-                             (pp + offsets[0], total), textcoords="offset points", xytext=(0, 3),
-                             ha="center", fontsize=6, color=INK2)
+                # Stacked rather than run together: a one-line label here is wider than the panel's
+                # own tick spacing and was clipped by the axis.
+                top.annotate(f"{total / 1000:,.0f}k\n{tail:,.1f} s" if tail < 10 else
+                             f"{total / 1000:,.0f}k\n{tail:,.0f} s",
+                             (pp + offsets[0], total), textcoords="offset points", xytext=(0, 2),
+                             ha="center", fontsize=5.5, color=INK2)
             elif figure == "9c":
                 # Never attempted at this split, which is not the same as attempted and failed. The 5%
                 # collapse was taken as sufficient and the higher shares were only run at the default
@@ -386,42 +401,33 @@ def figure9(rows, path):
                 r = alt[x]
                 total = throughput(r)
                 draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK)
-                top.annotate(f"{total / 1000:,.0f}k", (pp + offsets[1], total),
-                             textcoords="offset points", xytext=(0, 4), ha="center", fontsize=8,
-                             color=INK2)
             if x in paper:
                 total, rejected, _ = paper[x]
                 draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK, dy=11)
 
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
-        # Both rows carry the tick labels. With sharex the bar row's labels are hidden by default,
-        # which leaves the panel a reader looks at first with no x axis at all.
         top.set_xticks(pos)
         top.set_xticklabels(labels)
-        top.tick_params(labelbottom=True)
         top.set_xlabel(xlabel, color=INK2, fontsize=8.5)
+        # Room above the tallest bar for its value label and for the latency marks to clear it.
+        top.set_ylim(top=1.22 * max([throughput(r) for r in data.values()] +
+                                    [paper[x][0] for x in paper] +
+                                    [throughput(r) for r in alt.values()] +
+                                    [throughput(r) for r in weak.values()]))
         if col == 0:
             top.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
 
         ours = [(pp, latency_ms(data[x])) for pp, x in zip(pos, xs)
                 if x in data and latency_ms(data[x])]
         if ours:
-            bottom.plot([pp for pp, _ in ours], [v for _, v in ours], color=OURS, linewidth=2,
-                        marker="o", markersize=8, zorder=3)
+            bottom.plot([pp for pp, _ in ours], [v for _, v in ours], color=OURS, linewidth=1.6,
+                        marker="o", markersize=6, markerfacecolor=SURFACE, markeredgewidth=1.6,
+                        linestyle="-", zorder=6)
         for pp, x in zip(pos, xs):
-            if x in weak:
-                # The blue series exists at this x; it is simply far off this axis. Naming it keeps the
-                # series present in both rows, where drawing it would set the axis to 9.9 s and flatten
-                # every point that met the bound.
-                # x in data coordinates, y as a fraction of the axes: get_ylim() here reads a limit
-                # that later data still changes, which put this halfway up the panel.
-                bottom.text(pp, 0.93, f"{(weak[x].get('lat_p99') or 0):,.1f} s",
-                            transform=bottom.get_xaxis_transform(), ha="center", va="top",
-                            fontsize=6.5, color=OURS)
             if x in data and latency_ms(data[x]) is None:
-                bottom.annotate(f">60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
-                                (pp, 0), xytext=(0, 18), textcoords="offset points", ha="center",
-                                fontsize=7.5, color=INK2)
+                bottom.annotate(f"p99 >60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
+                                (pp, 0), xytext=(0, 14), textcoords="offset points", ha="center",
+                                fontsize=6, color=INK2)
         # The alternate series belongs in this row too. Without it the double-spend panel showed a
         # single latency mark -- the 0% point -- while its three measured conflict rates contributed
         # bars above and nothing here, which read as "this cluster has one data point" against the
@@ -431,18 +437,17 @@ def figure9(rows, path):
                    if x in alt and latency_ms(alt[x])]
         if alt_lat:
             bottom.plot([pp for pp, _ in alt_lat], [v for _, v in alt_lat], color=SMALL,
-                        linewidth=2, marker="o", markersize=8, zorder=3)
+                        linewidth=1.6, marker="o", markersize=6, markerfacecolor=SURFACE,
+                        markeredgewidth=1.6, zorder=6)
 
         lat = [(pp, paper[x][2] * 1000) for pp, x in zip(pos, xs)
                if x in paper and paper[x][2] is not None]
         if lat:
-            bottom.plot([pp for pp, _ in lat], [v for _, v in lat], color=PAPER, linewidth=2,
-                        marker="s", markersize=8, linestyle="--", zorder=3)
-        bottom.set_xticks(pos)
-        bottom.set_xticklabels(labels)
-        bottom.set_xlabel(xlabel, color=INK2, fontsize=9)
+            bottom.plot([pp for pp, _ in lat], [v for _, v in lat], color=PAPER, linewidth=1.6,
+                        marker="s", markersize=6, markerfacecolor=SURFACE, markeredgewidth=1.6,
+                        linestyle="--", zorder=6)
         bottom.set_ylim(bottom=0)
-        if col == 0:
+        if col == len(PANELS) - 1:
             bottom.set_ylabel("p99 latency (ms)", color=INK2, fontsize=9)
 
     legend = [Patch(color=OURS, label="this cluster"),
@@ -451,13 +456,16 @@ def figure9(rows, path):
               Patch(color=SMALL, label="this cluster, default tablet split (9c only)"),
               Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
-              Patch(color=PAPER, label="paper"),
+              Patch(color=PAPER, label="SIGMOD'26 paper"),
               Patch(facecolor=PAPER_DARK, hatch="///", edgecolor=SURFACE,
-                    label="of which rejected")]
-    fig.legend(handles=legend, frameon=False, fontsize=7, labelcolor=INK2,
+                    label="of which rejected"),
+              Line2D([], [], color=INK2, marker="o", markersize=6, markerfacecolor=SURFACE,
+                     markeredgewidth=1.6, linewidth=1.6,
+                     label="p99 latency (right axis)")]
+    fig.legend(handles=legend, frameon=False, fontsize=6.5, labelcolor=INK2,
                loc="upper center", bbox_to_anchor=(0.5, 1.005), ncol=3,
-               columnspacing=1.4, handlelength=1.6, handletextpad=0.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+               columnspacing=1.2, handlelength=1.6, handletextpad=0.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.89), w_pad=2.4)
     save(fig, path)
 
 

@@ -43,6 +43,11 @@
 
 \begin{document}
 
+Every comparison in this section is against the results reported in the SIGMOD'26 paper: its
+Figure~9 for the committer sweeps and its Figure~7b for throughput against transaction size. That is a
+different deployment from this one, so a difference between the two is a difference between
+deployments.
+
 \section*{Part I --- The committer on its own}
 
 \subsection*{Setup: the committer machines}
@@ -80,7 +85,7 @@ on a fresh deployment.
 
 \subsection*{Why this setup}
 
-\textbf{The shape is not the paper's.} The published committer deployment is nine
+\textbf{The shape is not the SIGMOD'26 paper's.} Its committer deployment is nine
 validator--committers on nine database nodes, dual 48-core servers with \SI{64}{\giga\byte}. What
 follows therefore compares deployments, not matched hardware.
 
@@ -100,38 +105,56 @@ collapses once it fills.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/figure9.pdf}
-  \caption{Committer throughput (top) and 99th-percentile latency (bottom) against transaction size, invalid-signature share and double-spend share, beside the published Figure 9. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share with its percentage. Whiskers are the search's \SI{8}{\percent} step, one-sided. A dotted outline is a condition that was measured and missed the latency bound, labelled with the tail that disqualified it; \emph{not run} marks one never attempted at that configuration.}
+  \caption{Committer throughput against (a) transaction size, (b) invalid-signature share and (c) double-spend share, beside the SIGMOD'26 paper's Figure~9. Bars are throughput on the left axis; the marks above them are the 99th-percentile latency of the same measurement on the right axis, in that series' own colour. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share with its percentage. Whiskers are the search's \SI{8}{\percent} step, one-sided. A dotted outline is a condition that was measured and missed the latency bound, labelled with its throughput and the tail that disqualified it; \emph{not run} marks one never attempted at that configuration.}
   \label{fig:panels}
 \end{figure*}
 
 \subsection*{Throughput and tail latency}
 
-Throughput falls with transaction size (Fig.~\ref{fig:panels}), \num{604545} tps at one read--write
-operation to \num{274364} at four. Comparing that with the published figure needs the axes aligned: the
-paper's x axis counts inputs and outputs, and one in with one out is a \emph{two} read--write total,
+Throughput falls with transaction size (Fig.~\ref{fig:panels}a), \num{604545} tps at one read--write
+operation to \num{274364} at four. Comparing that with the SIGMOD'26 figure needs the axes aligned:
+its x axis counts inputs and outputs, and one in with one out is a \emph{two} read--write total,
 so its $N/N$ sits at our $2N$. Only two of our four sizes therefore have a published counterpart. At
 two read--writes this cluster holds
-\num{518000} tps against the paper's \num{474000}, \SI{9}{\percent} ahead; at four it holds
+\num{518000} tps against the SIGMOD'26 \num{474000}, \SI{9}{\percent} ahead; at four it holds
 \num{274364} against \num{419000}, \SI{35}{\percent} behind. Over those same two sizes our throughput
-falls \SI{47}{\percent} where the paper's falls \SI{12}{\percent}, so whatever this pipeline pays per
-key, it pays much more steeply than the published one. The paper's six- and eight-key points were
+falls \SI{47}{\percent} where the SIGMOD'26 sweep falls \SI{12}{\percent}, so whatever this pipeline
+pays per key, it pays much more steeply. Its six- and eight-key points were
 never measured here, and our one- and three-key points have nothing to compare against.
 
-The mechanism behind that slope is not the published one, which is lock contention in the
+The mechanism behind that slope is not the SIGMOD'26 one, which is lock contention in the
 coordinator's dependency graph.
 Here both lock-wait histograms have a count rate of exactly zero, and the graph's cost is per key
 instead --- about \SI{420}{\nano\second} each, flat from one key per transaction to eight.
 
-Invalid signatures are close to free: \num{518000} tps with none, then \num{517455}, \num{519455} and
+Read as a key rate rather than a transaction rate, the difference between the two sweeps has a shape.
+Multiplying each point by its keys per transaction gives \numlist{604545;1036000;1258365;1097456} keys
+a second at one to four keys: it climbs to about \num{1200000} and stops. Above one key this pipeline
+is therefore bounded per key, and its transaction rate falls because each transaction spends more keys
+out of a fixed key budget. The SIGMOD'26 sweep does not reach a boundary over its range ---
+\num{948000} keys a second at two keys, then \numlist{1676000;2040000;2240000} at four, six and eight.
+At two keys our key rate is the higher of the two; by four theirs is \SI{53}{\percent} above ours and
+still rising.
+
+Where that key budget goes is a hypothesis rather than a result. The dependency graph is ruled out
+above, which leaves the state database, where every key costs a version lookup and a write. The
+published deployment ran on AWS instances, whose storage should deliver both more operations a second
+and less latency per operation than the \texttt{virtio} volumes of Table~\ref{tab:disk} --- where one
+durable \SI{4}{\kibi\byte} record costs about \SI{400}{\micro\second}, capping any per-record path
+near \num{2400} a second. Its nine validator--committers against our six is a second candidate that
+scales with key work rather than with transactions. Separating the two needs the same committer
+measured against both storage classes at both tier sizes, which nothing here provides.
+
+Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps with none, then \num{517455}, \num{519455} and
 \num{518727} at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} --- all four flat within
 \SI{0.4}{\percent}, far inside this cluster's \SI{8.8}{\percent} repeatability, so rejection costs
-nothing measurable in throughput. It is not the published \SI{10}{\percent} \emph{gain} either. Where
+nothing measurable in throughput. It is not the SIGMOD'26 \SI{10}{\percent} \emph{gain} either. Where
 it does cost is the tail. Driven at a common \num{559872} tps, above the qualifying rate, every share
 still delivers that rate to within \SI{2.4}{\percent}, but p99 goes from \SI{0.70}{\second} with
 nothing rejected to \SIrange{1.2}{3.0}{\second} once a tenth or more is: rejection is cheap in
 throughput and expensive in latency.
 
-Double spends do not reproduce, and a deployment setting is why. At the 120-way tablet pre-split this
+Double spends do not reproduce (Fig.~\ref{fig:panels}c), and a deployment setting is why. At the 120-way tablet pre-split this
 cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: no offered rate
 qualified. Its best attempt at the bound delivered \num{8160} tps with a \SI{9.9}{\second} tail, and
 its highest-throughput attempt \num{21636} tps with the tail pinned at the \SI{60}{\second} measurement
@@ -144,7 +167,7 @@ and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent
 \SIrange{334}{533}{\milli\second} p99, flat rather than declining --- while costing the conflict-free
 case by a factor this experiment cannot pin down: at the default split \emph{no} rate between
 \num{155204} and \num{294780} tps got a confirmed hold with no conflicts at all, so
-Fig.~\ref{fig:panels} shows no bar there. The split is therefore a workload-dependent trade rather than
+Fig.~\ref{fig:panels}c shows no bar there. The split is therefore a workload-dependent trade rather than
 a tuning win, and why 120 tablets collapse under conflicts is unresolved.
 
 \begin{figure*}[t]
@@ -218,7 +241,7 @@ machines before it belongs to ordering.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-e2e/latency-throughput.pdf}
-  \caption{Latency against throughput end to end, with a real ordering service in the path, by shard count and batcher storage layout. Marks as Fig.~\ref{fig:curve}. The dotted vertical line is the published ordering-alone figure for this topology.}
+  \caption{Latency against throughput end to end, with a real ordering service in the path, by shard count and batcher storage layout. Marks as Fig.~\ref{fig:curve}. The dotted vertical line is the SIGMOD'26 ordering-alone figure for this topology.}
   \label{fig:e2e}
 \end{figure*}
 
@@ -230,7 +253,7 @@ comparable at matched rates and differ only in whether an ordering service is in
 
 End to end, ordering included, this deployment sustains \num{499091} tps at
 \SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
-transactions at any rung. Two comparisons place it. The published work has no end-to-end figure, but
+transactions at any rung. Two comparisons place it. The SIGMOD'26 paper has no end-to-end figure, but
 its ordering service alone reaches \num{430000} tps at four parties and four shards --- so the
 complete pipeline here exceeds the published figure for one part of it. And the same committer at the
 same workload without an ordering service holds \num{518000} tps, reaching \num{530364} on the ladder
@@ -295,16 +318,16 @@ a tuning win: small batches halve the latency and halve the ceiling.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-e2e/size-throughput.pdf}
-  \caption{Throughput against transaction size end to end, beside the published Figure 7b. Each point is annotated with the byte rate it implies.}
+  \caption{Throughput against transaction size end to end, beside the SIGMOD'26 paper's Figure~7b. Each point is annotated with the byte rate it implies.}
   \label{fig:size}
 \end{figure*}
 
 \subsection*{Throughput against transaction size}
 
-Throughput falls with transaction size, but far more slowly than in the published sweep, and the byte
+Throughput falls with transaction size, but far more slowly than in the SIGMOD'26 sweep, and the byte
 rate is what shows why (Fig.~\ref{fig:size}). The sweep keeps the same two read--write operations and
 varies only the value each one carries, so the serialized envelope is \num{202} bytes plus twice that
-value. The published measurement is bandwidth-bound past
+value. That measurement is bandwidth-bound past
 \SI{300}{\byte}: each of its points sits within \SI{10}{\percent} of
 \SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second divided by size. This
 deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{rises} with size, from
@@ -333,11 +356,11 @@ three fifths of that ceiling, which is why that point holds cleanly and this one
 
 So the sweep has two regimes rather than one. Below \SI{2}{\kibi\byte} the arm is limited per
 transaction and the byte rate climbs; at \SI{4}{\kibi\byte} it is limited per byte by one
-component's disk, and the published bandwidth-bound model finally applies here too, at about four
+component's disk, and the SIGMOD'26 bandwidth-bound model finally applies here too, at about four
 times the bandwidth.
 
 The consequence for the comparison is that only the direction is shared. Both lines fall, and this
-one is above the published line at every size they have in common --- but it is a whole pipeline
+one is above the SIGMOD'26 line at every size they have in common --- but it is a whole pipeline
 against one of its parts, at four shards against two, so the gap is not a speedup and the shapes are
 not measuring the same limit.
 
