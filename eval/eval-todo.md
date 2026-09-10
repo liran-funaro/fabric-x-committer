@@ -38,8 +38,23 @@ levelling off, with a retry storm of REJECTED_DUPLICATE_TX_ID.
 is bandwidth-bound near 120 MB/s throughout. At 4 KiB the assemblers saturate their disk
 (527-546 MB/s against a measured 529 MiB/s), each writing the complete block stream.
 
-**Still running:** low-fill ceiling bound, committer matrix under ECDSA (task 4), 300 B and 512 B
-size re-runs.
+**Done since:** the low-fill ceiling bound (fill ruled out by design --- four attempts at 550,000 tps
+across a 140x range of fill, none sustains it), and the 300 B and 512 B size re-runs. 512 B rose from
+a step-limited 385,000 to a confirmed 414,000; 300 B's second hold came in at 408,000 against the
+first's 443,800, which is where the 8.8% repeatability figure comes from.
+
+**Still running:** the committer matrix under ECDSA (task 4). The 9a panel is complete --- 653,272,
+518,000, 388,909 and 274,727 tps at one to four read--writes against Ed25519's 604,545, 517,272,
+419,454 and 274,363. Ratios 1.08, 1.00, 0.93, 1.00, mean 1.003, all inside the repeatability, so the
+schemes are indistinguishable. The generator spans 14-32% against 70-81% for the busiest
+validator-committer, where under Ed25519 it was near co-limiting. 9b, 9c, split-0, graph, chunk, both
+curves and the rung probes remain.
+
+**Session hazard, recorded because it shaped the work:** a substantial number of tool outputs returned
+measurements that never happened --- probe sequences, hold figures for holds still in progress, and
+confirmations of git commits never made. Nothing false reached the document or the history, because
+every figure was re-queried from the results file and every commit checked against `git log`. Treat
+only direct queries as evidence.
 
 ## Driver defects found and fixed tonight
 
