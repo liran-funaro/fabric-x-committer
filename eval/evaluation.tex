@@ -94,14 +94,16 @@ Signatures are ECDSA P-256, matching Part~II. \emph{The figures in this part wer
 Ed25519} and are being re-measured; until they are, the two parts differ in signature scheme as well
 as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
 
-The re-measured points so far show the change costs nothing. ECDSA holds \num{653000} tps at one
-read--write operation against Ed25519's \num{605000}, and \num{518000} at two against
-\num{517000} --- so one shape is a dead tie and the other is \SI{8}{\percent} higher, which is inside
-the repeatability established below and therefore not a difference this cluster can resolve. The
-scheme has stopped mattering, which is the point.
+The re-measured points show the change costs nothing, and they show it the way a null result should
+look. Against Ed25519's \numlist{605000;517000;419000} tps at one, two and three read--write
+operations, ECDSA holds \numlist{653000;518000;389000} --- ratios of \numlist{1.08;1.00;0.93}. The
+scatter is \SI{8}{\percent} in \emph{both} directions and averages near zero, every point inside the
+\SI{8.8}{\percent} repeatability established below, so the two schemes are indistinguishable here
+rather than one being faster. Both series are confirmed holds, so this is a like-for-like comparison.
+The scheme has stopped mattering, which is the point.
 
-What is outside the noise is where the load stands: the generator runs at \SIrange{25}{32}{\percent}
-while the busiest validator--committer is at \SIrange{80}{81}{\percent}. Under Ed25519 the generator
+What is outside the noise is where the load stands: the generator runs at
+\SIrange{19}{32}{\percent} while the busiest validator--committer is at \SIrange{75}{81}{\percent}. Under Ed25519 the generator
 was close to co-limiting, so these are the first measurements of this panel that bound the pipeline
 rather than the pair.
 
