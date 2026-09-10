@@ -241,9 +241,15 @@ the spare capacity for a second was already on the box.
 the two configurations separate the two things a shard needs: a core budget and a disk. Four shards
 give each co-located batcher its own volume; eight give twice the shards but make two share one.
 
-\textbf{These machines are half a committer machine} --- half the cores, half the memory and, per
-Table~\ref{tab:disk}, half the disk bandwidth --- so a ceiling measured on this arm belongs to these
-machines before it belongs to ordering.
+\textbf{These machines are half a committer machine}, and half is the whole of the difference. Both
+classes are the same part at the same clock --- Sapphire Rapids, family 6 model 143 stepping 4,
+\SI{2.10}{\giga\hertz}, and an identical instruction-set flag set --- so a serialized stage runs
+neither faster nor slower on one than on the other, and a comparison between the arms is a comparison
+of width rather than of generation. The ordering machines have 8 cores per socket against 16,
+\SI{78}{\gibi\byte} of memory against \SI{156}{\gibi\byte}, and per Table~\ref{tab:disk} half the
+disk bandwidth. Their one advantage is cache, the same \SI{16}{\mebi\byte} of L3 per socket spread
+over half as many cores. So a ceiling measured on this arm belongs to these machines before it belongs
+to ordering, and a per-core one belongs to neither class in particular.
 
 \begin{figure*}[t]
   \centering
