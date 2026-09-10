@@ -95,12 +95,20 @@ Ed25519} and are being re-measured; until they are, the two parts differ in sign
 as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
 
 The re-measured points show the change costs nothing, and they show it the way a null result should
-look. Against Ed25519's \numlist{605000;517000;419000} tps at one, two and three read--write
-operations, ECDSA holds \numlist{653000;518000;389000} --- ratios of \numlist{1.08;1.00;0.93}. The
+look. Against Ed25519's \numlist{605000;517000;419000;274000} tps at one, two, three read--write
+operations and four, ECDSA holds \numlist{653000;518000;389000;275000} --- ratios of
+\numlist{1.08;1.00;0.93;1.00}, mean \num{1.003}. The
 scatter is \SI{8}{\percent} in \emph{both} directions and averages near zero, every point inside the
 \SI{8.8}{\percent} repeatability established below, so the two schemes are indistinguishable here
-rather than one being faster. Both series are confirmed holds, so this is a like-for-like comparison.
-The scheme has stopped mattering, which is the point.
+rather than one being faster. Both series are confirmed holds --- the Ed25519 side was
+checked to be hold-based rather than probe-based --- so the comparison is like-for-like. The scheme
+has stopped mattering, which is the point.
+
+The panel's shape survives the change: throughput falls \SI{58}{\percent} from one read--write
+operation to four against Ed25519's \SI{55}{\percent}. The mechanism argued below --- per-key
+dependency-graph cost rather than the published lock contention --- is therefore a property of the
+pipeline rather than of the signature scheme, which is worth establishing where this evaluation
+contradicts the paper.
 
 What is outside the noise is where the load stands: the generator runs at
 \SIrange{19}{32}{\percent} while the busiest validator--committer is at \SIrange{75}{81}{\percent}. Under Ed25519 the generator
