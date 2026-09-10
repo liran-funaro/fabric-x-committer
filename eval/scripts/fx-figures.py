@@ -108,21 +108,25 @@ def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
         # block size is the knob that decides which end of that trade a point sits at.
         v["loadgen_block_max_size"] = block
     if backref:
-        # The window decides what a "double spend" means here, and it matters more than the conflict
-        # rate. A reference is drawn from the newest `key_lookback_window` keys, and at ~500,000
-        # transactions a second the 1024 newest were created about two milliseconds ago -- so with a
-        # 1024-key window every reference targets a key still deep inside a ~500 ms pipeline, every
-        # conflicting transaction blocks behind one in flight, and the convoy swallows the workload:
-        # measured at 5% back-references, throughput fell from 518,000 to 71,455 tps with a 60 s tail,
-        # a 7.3x collapse that says nothing about double spends and everything about contention
-        # concentration.
+        # `key_backref_rate` is the double-spend rate: at 0.05, five per cent of transactions put an
+        # existing key in a read-write slot with a nil expected version, which read validation rejects
+        # as ABORTED_MVCC_CONFLICT -- the same path a real double spend trips.
         #
-        # 10,000,000 keys is about twenty seconds of production at these rates, so a reference points
-        # at a key that is almost always already committed. That is the paper's double spend: two
-        # transactions spend the same input, the first commits, and the second is rejected by read
-        # validation for reading a key whose committed version contradicts its nil expectation.
-        v["loadgen_tx_reference_gap"] = 0
-        v["loadgen_key_lookback_window"] = 10_000_000
+        # The gap is what makes it a double spend rather than a dependency. It is how far back, in
+        # TRANSACTIONS, a reference reaches, and the window is drawn downward from the frontier as it
+        # stood there. At gap 0 that frontier is the one the generator is writing right now, so a
+        # reference can name a key whose creating transaction has not committed: the coordinator then
+        # has to serialise the pair, and one convoy behind a ~500 ms pipeline stalls everything queued
+        # behind it. Measured over the real generator at this shape, gap 0 puts 4.23% of references
+        # inside the in-flight window with a 10,000,000-key window and 100% of them with 1024 -- the
+        # nearest 1,448 and 1 keys below the frontier respectively, microseconds old. A gap of a
+        # million transactions puts every reference at least 1,700,000 keys below it, and none in
+        # flight, so every conflicting transaction contends at commit time and nowhere else.
+        #
+        # The window then only spreads that contention across keys, and so across tablets: a million
+        # keys over a 120-way split is some 8,000 per tablet.
+        v["loadgen_tx_reference_gap"] = 1_000_000
+        v["loadgen_key_lookback_window"] = 1_000_000
     return v
 
 
@@ -174,8 +178,20 @@ EXPERIMENTS = [
     # ("the key exists in the committed state but the expected version is null"), so the
     # transaction is rejected as ABORTED_MVCC_CONFLICT by the same read validation a real double
     # spend trips, and its writes are dropped before the commit stage.
+    #
+    # Every share runs at the deployment's own 120-way tablet pre-split, which is what the paper used
+    # too, so the panel is one workload variable against one published series. `key_backref_rate` IS
+    # the share: 0.05 is a 5% double spend.
     dict(id="9c-ds0", figure="9c", x=0, label="0% double spend", seed=BASE_SEED,
          vars=shape(2, 0, backref=0.0)),
+    dict(id="9c-ds5", figure="9c", x=5, label="5% double spend", seed=BASE_SEED,
+         vars=shape(2, 0, backref=0.05)),
+    dict(id="9c-ds10", figure="9c", x=10, label="10% double spend", seed=BASE_SEED,
+         vars=shape(2, 0, backref=0.10)),
+    dict(id="9c-ds20", figure="9c", x=20, label="20% double spend", seed=BASE_SEED,
+         vars=shape(2, 0, backref=0.20)),
+    dict(id="9c-ds30", figure="9c", x=30, label="30% double spend", seed=BASE_SEED,
+         vars=shape(2, 0, backref=0.30)),
     # The throughput-against-latency curve, in place of the paper's failure figure: a rate ladder rather
     # than a search, so there is no gate in it and every point after the first arrives warm. It is the
     # figure this evaluation was asked for and the one that exposed the block-size finding.

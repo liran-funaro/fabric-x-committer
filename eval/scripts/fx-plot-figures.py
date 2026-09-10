@@ -357,14 +357,23 @@ def figure9(rows, path):
             The paper breaks each of its 9b and 9c bars into total, valid and invalid; this draws the
             total and overlays the invalid share on the same footing, so the two sit at the same x
             and the reject shares can be read against each other directly.
+
+            The share is written beside the segment in 9c only. In 9b it is the x value, so labelling
+            it put the same number -- "10%" -- beside two segments of visibly different height, one a
+            tenth of 517,455 and the other a tenth of 428,000. The label read as a claim that the
+            geometry then denied. 9c's two labels differ from each other and from x, so each is read
+            against its own segment.
             """
             top.bar(xp, total, width, color=base, zorder=3)
             if rejected:
                 top.bar(xp, rejected, width, color=dark, zorder=4, edgecolor=SURFACE,
                         linewidth=0.8, hatch="///")
-                top.annotate(f"{100 * rejected / total:.0f}%",
-                             (xp, rejected), textcoords="offset points", xytext=(0, dy),
-                             ha="center", fontsize=6, color=INK)
+                # zorder above the bars: at the default a neighbouring bar painted over the label,
+                # which is what clipped "10%" to "10(".
+                if figure == "9c":
+                    top.annotate(f"{100 * rejected / total:.0f}%",
+                                 (xp, rejected), textcoords="offset points", xytext=(0, dy),
+                                 ha="center", fontsize=6, color=INK, zorder=7)
 
         for pp, x in zip(pos, xs):
             if x in data:

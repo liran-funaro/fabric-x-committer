@@ -148,11 +148,8 @@ measured against both storage classes at both tier sizes, which nothing here pro
 Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps with none, then \num{517455}, \num{519455} and
 \num{518727} at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} --- all four flat within
 \SI{0.4}{\percent}, far inside this cluster's \SI{8.8}{\percent} repeatability, so rejection costs
-nothing measurable in throughput. It is not the SIGMOD'26 \SI{10}{\percent} \emph{gain} either. Where
-it does cost is the tail. Driven at a common \num{559872} tps, above the qualifying rate, every share
-still delivers that rate to within \SI{2.4}{\percent}, but p99 goes from \SI{0.70}{\second} with
-nothing rejected to \SIrange{1.2}{3.0}{\second} once a tenth or more is: rejection is cheap in
-throughput and expensive in latency.
+nothing measurable in throughput. It is not the SIGMOD'26 \SI{10}{\percent} \emph{gain} either. The
+tail is flat with it too, \SIrange{496}{542}{\milli\second} p99 across the four shares.
 
 Double spends do not reproduce (Fig.~\ref{fig:panels}c), and a deployment setting is why. At the 120-way tablet pre-split this
 cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: no offered rate
