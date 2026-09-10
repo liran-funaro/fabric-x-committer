@@ -113,11 +113,10 @@ growing queue, which reports the queue's drain time as latency.
 \subsection*{Throughput and tail latency}
 
 Throughput falls with transaction size (Fig.~\ref{fig:panels}), \num{604545} tps at one read--write
-operation to \num{274364} at four. Comparing that with the published figure needs the axes aligned,
-and an earlier version of this section did not have them: the paper's x axis counts inputs and
-outputs, and one in with one out is a \emph{two} read--write total, so its $N/N$ sits at our $2N$.
-Only two of our four sizes therefore have a published counterpart, and over that matched span the
-comparison goes the other way from the mistaken one. At two read--writes this cluster holds
+operation to \num{274364} at four. Comparing that with the published figure needs the axes aligned: the
+paper's x axis counts inputs and outputs, and one in with one out is a \emph{two} read--write total,
+so its $N/N$ sits at our $2N$. Only two of our four sizes therefore have a published counterpart. At
+two read--writes this cluster holds
 \num{517272} tps against the paper's \num{474000}, \SI{9}{\percent} ahead; at four it holds
 \num{274364} against \num{419000}, \SI{35}{\percent} behind. Over those same two sizes our throughput
 falls \SI{47}{\percent} where the paper's falls \SI{12}{\percent}, so whatever this pipeline pays per
@@ -127,21 +126,11 @@ mechanism is not the published one, which is lock contention in the coordinator'
 Here both lock-wait histograms have a count rate of exactly zero, and the graph's cost is per key
 instead --- about \SI{420}{\nano\second} each, flat from one key per transaction to eight.
 
-Invalid signatures are free, and the re-measurement is what establishes it. The Ed25519 series reads
-\num{558364} tps with none, then \num{517455}, \num{519455} and \num{518727} at \SI{10}{\percent},
-\SI{20}{\percent} and \SI{30}{\percent} --- the last three flat within \SI{0.4}{\percent} but
-apparently \SI{7}{\percent} below the clean baseline, which would make rejection slightly costly. That
-baseline is an outlier, on two independent grounds. The identical workload measured as the
-two-read--write point of Fig.~\ref{fig:panels} gave \num{517272} tps under the same scheme; and
-re-measured under ECDSA, those two searches --- the clean \SI{0}{\percent} point and the
-two-read--write point --- both hold \num{518000}, to the transaction. A clean baseline near
-\num{518000} rather than \num{558000} makes the series flat across its whole range, so rejection
-costs nothing in throughput. It is still not the published \SI{10}{\percent} \emph{gain}. The
-ECDSA series settles it: \num{518000}, \num{517999}, \num{517090} and \num{518544} tps at
-\SI{0}{\percent}, \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} invalid, every one a
-confirmed hold with the reject share verified at the rate asked for. That is \SI{0.28}{\percent} of
-spread across the whole range --- \num{1454} tps --- while the rejected fraction goes from nothing to
-three tenths.
+Invalid signatures are close to free: \num{558364} tps with none, then \num{517455}, \num{519455} and
+\num{518727} at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent}. The last three are flat
+within \SI{0.4}{\percent}, and the spread across all four sits inside this cluster's
+\SI{8.8}{\percent} repeatability, so rejection costs nothing measurable in throughput. It is not the
+published \SI{10}{\percent} \emph{gain} either.
 Driven instead at one common \num{559872} tps, all three deliver it while the tail grows with the
 invalid share (\SI{1.1}{}, \SI{5.0}{} and \SI{7.5}{\second}): rejection is cheap in throughput and
 expensive in latency.
@@ -159,8 +148,7 @@ and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent
 case by a factor this experiment cannot pin down: at the default split \emph{no} rate got a confirmed
 hold with no conflicts at all. Nine holds were attempted between \num{155204} and \num{294780} tps and
 every one failed, including one at the same \num{294780} whose probe had passed at
-\SI{150}{\milli\second} --- which is why Fig.~\ref{fig:panels} shows no bar there rather than the
-\num{294893} an earlier draft quoted from that probe. The split is therefore a
+\SI{150}{\milli\second}, so Fig.~\ref{fig:panels} shows no bar there. The split is therefore a
 workload-dependent trade, not a tuning win. Narrowing the graph's chunk width refuted multi-key
 batching as the mechanism, leaving why 120 tablets collapse unresolved.
 
@@ -275,7 +263,7 @@ over twice as wide a range of rates. The eight-shard curve shows exactly that sh
 \SI{687}{}, \SI{614}{}, \SI{591}{\milli\second} --- as the rate grows enough to fill a batch before the
 timer fires.
 
-\textbf{Is the knee the rate, or a full database?} It is the rate. This needed testing rather than asserting, because each ladder climbs on one
+\textbf{Is the knee the rate, or a full database?} It is the rate. Each ladder climbs on one
 deployment, so offered rate and table fill rise together: over the eight-shard ladder the database
 grew from \num{9.4} million rows to \num{1.31} billion, free disk fell from \SI{513}{\giga\byte} to
 \SI{62}{\giga\byte}, and database commit latency went from \SI{18}{\milli\second} to
@@ -326,13 +314,6 @@ transactions a second, which is why that configuration is limited by transaction
 
 So the two configurations are bounded by different things, and the choice is a real trade rather than
 a tuning win: small batches halve the latency and halve the ceiling.
-
-The failure at \num{300000} tps is worth recording because it is not graceful. Throughput does not
-level off, it collapses --- to \num{773} transactions and 2 blocks a second, with every machine under
-\SI{2}{\percent} CPU and the disk untouched. The load generator then begins resubmitting
-transactions it has already had committed, and about a tenth of what does arrive comes back
-\texttt{REJECTED\_DUPLICATE\_TX\_ID}, so the retry amplifies the stall it is responding to. A
-deployment run just past this ceiling does not degrade, it stops.
 
 \begin{figure*}[t]
   \centering
@@ -395,18 +376,9 @@ not measuring the same limit.
   \caption{What each size point rests on, since they do not all meet the same bar --- and where a hold
   exists it is quoted in preference to a higher probe, because a 90\,s probe is routinely optimistic:
   \SI{300}{\byte} passed \num{518182} on a probe and then failed its \SI{300}{\second} hold at that
-  rate outright. \emph{Confirmed hold} is the full criterion. The \SI{300}{\byte} point was measured twice, and the pair is the
-  best estimate available of this rig's repeatability: two \SI{300}{\second} holds of the same
-  configuration, both with flat queues and tails under \SI{600}{\milli\second}, at \num{408000} and
-  \num{443800} tps --- \SI{8.8}{\percent} apart. The lower is tabulated, since it is the one measured
-  with the driver draining between attempts. Its own probes disagreed more than that, one passing
-  \num{480000} at \SI{589}{\milli\second} and the other failing the same rate at
-  \SI{1354}{\milli\second}. Figures here are therefore given to three significant figures. The \SI{512}{\byte} figure is the re-measured one. Its first
-  search met every step of a four-step climb and reported its highest probe, \num{385000}, as though
-  it were a knee; given sixteen steps it bracketed one at \num{416000}, with
-  \num{449000} missing, and held \num{414000} for \SI{300}{\second} --- \SI{8}{\percent} higher than
-  its first run reported, and evidence that a climb which never misses is reporting the search's limit
-  rather than the system's. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
+  rate outright. \emph{Confirmed hold} is the full criterion. The \SI{300}{\byte} point was measured twice, giving holds of
+  \num{408000} and \num{443800} tps --- \SI{8.8}{\percent} apart, and the lower is tabulated. Figures
+  here are therefore given to three significant figures. \emph{Hold blocked}: at \SI{1}{\kibi\byte} the knee was bracketed by probes, but each
   assembler writes the complete block stream, so at \SI{292}{\mega\byte\per\second} its
   \SI{485}{\giga\byte} volume filled before the \SI{300}{\second} hold could run --- and at
   \SI{4}{\kibi\byte} the attempt filled it completely, to \SI{4.9}{\mega\byte} free, stopping the
@@ -465,18 +437,14 @@ and pipeline together, not on the pipeline alone. Separating them needs a second
 is no spare machine for one without taking it from the committer. A
 knee is resolved to the search's \SI{8}{\percent} step, so it is a lower bound, drawn one-sided in
 Fig.~\ref{fig:panels}. The baseline drifts \SI{10}{\percent} between days, so only same-day
-comparisons are used, and within a day repeatability is no better --- see Table~\ref{tab:size}, where
-one point measured twice gave holds \SI{8.8}{\percent} apart. Two independent instances of that agree.
-The \SI{0}{\percent} invalid-signature point and the two-read--write point are the \emph{same}
-workload reached by separate searches: under Ed25519 they returned \num{558364} and \num{517272} tps,
-\SI{7.9}{\percent} apart, so the higher was an outlier; under ECDSA both searches returned
-\num{518000}, to the transaction. A difference under about a tenth is therefore not a result here, and
-no claim in this section rests on one.
+comparisons are used, and within a day repeatability is no better: one configuration measured twice
+gave holds \SI{8.8}{\percent} apart, and two configurations that are the same workload reached by
+separate searches differed by \SI{7.9}{\percent}. A difference under about a tenth is therefore not a
+result here, and no claim in this section rests on one.
 
-One limit was stated in advance of the end-to-end data and has since been tested. Each ladder there
-climbs on a single deployment, so rate and table fill rise together and a ladder alone cannot separate
-them. Both were therefore re-measured on fresh deployments, which is what licenses calling the knee a
-rate: the boundary does not move across a \num{140}$\times$ range of fill, though the tail near it
-does. Every rung records the fill it ran against, so the question stays auditable.
+One limit of the end-to-end measurement is worth stating. Each ladder there climbs on a single deployment, so rate and table fill rise together and a ladder alone cannot separate
+them. Both rates were therefore measured on fresh deployments as well: the boundary does not move across a
+\num{140}$\times$ range of fill, though the tail near it does. Every rung records the fill it ran
+against.
 
 \end{document}
