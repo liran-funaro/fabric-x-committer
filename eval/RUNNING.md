@@ -123,9 +123,16 @@ second, and held a flat in-flight count.
   its latency.
 
 Knobs, all optional: `FX_HOLD`, `FX_SETTLE`, `FX_WINDOW`, `FX_SLO_P99`, `FX_TOLERANCE`, `FX_SEED`,
-`FX_UP_STEPS`, `FX_REDO` (re-measure ids that already hold), `FX_SKIP_DEPLOY=1` (measure whatever is
-running, refusing any experiment whose shape does not match), `HOURS` (deadline, checked before each
-experiment).
+`FX_UP_STEPS`, `FX_SKIP_DEPLOY=1` (measure whatever is running, refusing any experiment whose shape does
+not match), `HOURS` (deadline, checked before each experiment).
+
+**To re-measure a point that already holds, pass `REDO=<ids>` to the runner** — not `FX_REDO`, which the
+runner overrides with an empty string. Getting that wrong is silent: the run skips every experiment it
+was meant to re-measure and still finishes with `MATRIX COMPLETE`. The runner echoes `redo=` on its
+matrix line, so check that line before walking away.
+
+Each run writes two logs: `<TAG>.log` for the runner's own gates and `<TAG>-driver.log` for the
+measurements.
 
 **Never restart the load generator mid-run.** With the mock orderer, restarting any pipeline component
 freezes the sidecar's ledger for good. Change configuration before `make start`, not after.
