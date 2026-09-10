@@ -124,16 +124,17 @@ def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
         # has not committed yet. Those are dependencies the coordinator must order, not conflicts it
         # can reject, and they are why gap 0 measured a convoy instead of double spends.
         #
-        # That share is the residual overlap between the window and the in-flight keys, over the window.
-        # In flight is (rate x latency x fresh keys per transaction), and the two deployments differ by
-        # 7x there: ~440,300 keys here at 518,000 tps and a 500 ms pipeline, against ~60,500 in the
-        # paper at 419,000 tps and 85 ms. So its gap of 1,000 transactions leaves 58,846 keys of overlap
-        # and 5.9% of references in flight, while the SAME 1,000 here leaves 438,600 and 43.8%.
+        # In flight is rate x latency x fresh keys per transaction. At 518,000 tps the committer's mean
+        # latency is 345 ms and its p99 457 ms, so 304,000 to 402,000 keys have been handed out and not
+        # committed. A gap has to clear the larger of those, and 300,000 transactions is 510,000 keys.
+        # Measured over the real generator at this shape: gap 1,000 (the paper's own value, whose
+        # pipeline is 85 ms and whose window is therefore ~60,500 keys) puts 40% of references inside
+        # this deployment's window, gap 225,000 puts 2.0%, and gap 300,000 puts none.
         #
-        # Matching the share means leaving the same residual overlap: 440,300 - 58,846 = 381,454 keys,
-        # which at 1.7 fresh keys a transaction is ~225,000 transactions. Measured over the real
-        # generator, that puts 5.9% of references in flight -- the paper's figure.
-        v["loadgen_tx_reference_gap"] = 225_000
+        # Erring long is the safe direction: a reference to an older key is still a double spend, while
+        # one to an uncommitted key is a dependency the coordinator must order and not a conflict it can
+        # reject. That is what made the first 9c measurements a convoy rather than a conflict result.
+        v["loadgen_tx_reference_gap"] = 300_000
         v["loadgen_key_lookback_window"] = 1_000_000
     return v
 
