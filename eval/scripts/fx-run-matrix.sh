@@ -96,9 +96,14 @@ if ! ANSIBLE_INVENTORY=$INV bash -c \
 fi
 say "rate limiter answers"
 
-say "matrix: ${ONLY:-<everything>} -> $OUT"
+# REDO is echoed because it is the one input whose absence looks like success: passing FX_REDO in the
+# environment instead of REDO here is silently overridden by the assignment below, and the run then
+# skips every experiment it was meant to re-measure and still reports MATRIX COMPLETE.
+say "matrix: ${ONLY:-<everything>} -> $OUT   redo=${REDO:-<none>}"
+# The driver writes its own log. Callers redirect this script to $TAG.log, and when the driver used
+# that name too the two truncated each other.
 FX_ONLY=$ONLY FX_REDO=${REDO:-} FX_DEADLINE_HOURS=$HOURS FX_OUT=$OUT FX_INVENTORY=$INV \
 FX_MATRIX=$MATRIX FX_DEPLOY_PLAN=$PLAN \
-  python3 ./fx-figures.py > "$LOGS/$TAG.log" 2>&1
-grep -E "hold limit|no rate met|deadline|run done" "$LOGS/$TAG.log" | tail -20
+  python3 ./fx-figures.py > "$LOGS/$TAG-driver.log" 2>&1
+grep -E "hold limit|no rate met|deadline|run done" "$LOGS/$TAG-driver.log" | tail -20
 say "MATRIX COMPLETE: $TAG"
