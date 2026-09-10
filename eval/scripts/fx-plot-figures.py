@@ -600,7 +600,7 @@ def series(rows, ax, figure, color, label, axis_ms):
         ax.plot([throughput(r) for r in missed], [(r.get("lat_p50") or 0) * 1000 for r in missed],
                 marker="o", markersize=8, markerfacecolor=SURFACE, markeredgecolor=color,
                 markeredgewidth=2, linestyle="none", zorder=3)
-    return [r for r in points + missed if (r.get("lat_p50") or 0) * 1000 > axis_ms]
+    return [r for r in sustained_pts + missed if (r.get("lat_p50") or 0) * 1000 > axis_ms]
 
 
 def latency_curve(rows, path):

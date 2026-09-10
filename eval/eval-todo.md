@@ -50,3 +50,10 @@ Figure 1a/1b under ECDSA, which the document now draws · figure 2 both block si
 figure 3 four and eight shards · figure 4 batch size · figure 5 at 300 B, 512 B, 1 KiB, 2 KiB, 4 KiB ·
 table 2 disk characterisation · the dependency-graph per-key cost · the fill check · the reference gap
 scaled to the paper's in-flight share.
+
+Plot fixes: figure 1 ticks every 100k on all three panels · figure 2's y axis capped at the one-second
+bound, so a rung with a 5,333 ms median no longer flattens every rate anyone would run into the bottom
+twelfth — it is named in the corner note, and the segment leading to it is not drawn, which had put a
+vertical line up the plot exactly where the ceiling is read · figure 5 draws its 4 KiB point again and
+its legend carries marks rather than prose · "offered but not sustained" appears in a legend only when
+such a mark is on the plot.
