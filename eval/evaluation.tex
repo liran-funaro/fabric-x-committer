@@ -158,11 +158,14 @@ Invalid signatures are free, and the re-measurement is what establishes it. The 
 \num{558364} tps with none, then \num{517455}, \num{519455} and \num{518727} at \SI{10}{\percent},
 \SI{20}{\percent} and \SI{30}{\percent} --- the last three flat within \SI{0.4}{\percent} but
 apparently \SI{7}{\percent} below the clean baseline, which would make rejection slightly costly. That
-baseline is an outlier: the identical workload measured as the two-read--write point of
-Fig.~\ref{fig:panels} gave \num{517272}, and under ECDSA the two searches return \num{518000} and
-\num{517455}, a change of \SI{-0.1}{\percent} rather than \SI{-7.3}{\percent}. With the baseline
-corrected the whole series is flat, so rejection costs nothing in throughput --- and it is still not
-the published \SI{10}{\percent} \emph{gain}.
+baseline is an outlier, on two independent grounds. The identical workload measured as the
+two-read--write point of Fig.~\ref{fig:panels} gave \num{517272} tps under the same scheme; and
+re-measured under ECDSA, those two searches --- the clean \SI{0}{\percent} point and the
+two-read--write point --- both hold \num{518000}, to the transaction. A clean baseline near
+\num{518000} rather than \num{558000} makes the series flat across its whole range, so rejection
+costs nothing in throughput. It is still not the published \SI{10}{\percent} \emph{gain}. The
+\SI{10}{\percent} point's ECDSA confirmation is pending; its knee has bracketed at \num{518400},
+which is consistent with a flat series but is a probe and not yet a hold.
 Driven instead at one common \num{559872} tps, all three deliver it while the tail grows with the
 invalid share (\SI{1.1}{}, \SI{5.0}{} and \SI{7.5}{\second}): rejection is cheap in throughput and
 expensive in latency.
