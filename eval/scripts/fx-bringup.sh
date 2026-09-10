@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Bring up the real-orderer arm in the only order that works:
+# Bring up a cluster arm in the only order that works. INV selects the arm; everything else is the
+# same sequence for both, and the one step that is not (`make init`) is gated on the inventory:
+#
+#   INV=inventory/cluster.yaml                 the committer-only arm, mock orderer in the generator
+#   INV=inventory/cluster-orderer.yaml         the end-to-end arm, four shards
+#   INV=inventory/cluster-orderer-8shard.yaml  the end-to-end arm, eight shards
+#
+# The order:
 #
 #   stop -> wipe -> setup -> gate on crypto -> start -> init -> gate on a committed rate
 #
@@ -36,7 +43,8 @@
 # not), no database state on any host, and a non-zero committed rate with a present latency series.
 # Block height is not a gate -- a 100% abort run satisfies it happily.
 #
-# INV selects the arm's topology, e.g. inventory/cluster-orderer-8shard.yaml for eight shards.
+# Every path here is on the control node, which is where this runs: it is one detached process so that
+# losing the controlling session cannot leave a half-switched cluster.
 set -u -o pipefail
 source /data1/cluster/bin/fx-env.sh
 cd "$FX_PROJECT" || exit 1
@@ -105,8 +113,16 @@ ANSIBLE_INVENTORY=$INV make start || { echo "!! start failed"; exit 1; }
 # identity. Without this the pipeline runs perfectly and every TX is ABORTED_SIGNATURE_INVALID.
 # Its summary line reports every non-loadgen host as skipped and still exits 0 -- read the
 # namespace list, not the exit code.
-say "init: create the namespace via fxconfig (the loadgen cannot on this arm)"
-ANSIBLE_INVENTORY=$INV make init || { echo "!! init failed"; exit 1; }
+# Only the end-to-end arm needs this. On the committer-only arm the load generator creates the
+# namespace itself -- loadgen_generate_namespace is true there, because the mock-orderer path renders
+# the artifacts-path that endorsing against _meta needs -- and the collection gates its init target on
+# there being an ordering service anyway.
+if grep -q "orderer_component_type" "$INV"; then
+  say "init: create the namespace via fxconfig (the loadgen cannot on this arm)"
+  ANSIBLE_INVENTORY=$INV make init || { echo "!! init failed"; exit 1; }
+else
+  say "init: skipped, no ordering service in this inventory -- the loadgen creates the namespace"
+fi
 
 say "gate: non-zero committed rate AND a present latency series"
 for i in $(seq 1 40); do
