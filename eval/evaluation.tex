@@ -45,40 +45,6 @@
 
 \section*{Part I --- The committer on its own}
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/figure9.pdf}
-  \caption{Committer throughput and 99th-percentile latency against transaction size, invalid-signature
-  share and double-spend share, beside the published figures. Each bar is the highest rate held for
-  \SI{300}{\second} with p99 under one second, no queue growth, and the offered rate arriving.
-  Throughput counts transactions \emph{finished}, committed plus rejected; the hatched part of a bar is
-  the rejected share, labelled as a percentage, so the two experiments are compared at matched reject
-  rates rather than at matched labels. Whiskers are the search's \SI{8}{\percent} step, one-sided
-  because a knee is a lower bound. a dotted outline is a condition measured that missed the latency bound, labelled
-  with the tail that disqualified it; the lowest-tail attempt is the one shown, since the claim being
-  evidenced is that nothing qualified. \emph{Not run} marks a condition never attempted at that
-  configuration, which is not the same as one attempted and failed. The published series is Figure 9 of the paper: its endpoints as quoted in the
-  text, intermediate points read off the plots at \SI{400}{dpi}.}
-  \label{fig:panels}
-\end{figure*}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/latency-throughput.pdf}
-  \caption{Latency against throughput at two block sizes, both at the \textbf{two} read--write
-  operation workload --- so this figure's maximum, \num{530364} tps, belongs beside the
-  \num{517272} of Fig.~\ref{fig:panels}'s two-key bar and not beside its \num{604545} at one key, which
-  is a workload no curve here measures. The thick line is the median and the thin
-  line above it the 99th percentile, shaded between; the dashed line adds the mean wait for a block to
-  be cut, which the measurement itself excludes. Hollow markers are rates offered but not sustained.
-  The latency axis is floored at \SI{400}{\milli\second}, so the
-  \SIrange{40}{125}{\milli\second} difference that is the block-size result stays legible, and grows
-  beyond it to contain every sustained rate --- the highest throughput reached is on the plot, not
-  named beside it. Anything above the axis is therefore a rate offered and not sustained, summarised
-  in the corner; the 99th-percentile envelope may still leave the top, being non-monotonic.}
-  \label{fig:curve}
-\end{figure*}
-
 \subsection*{Setup: the committer machines}
 
 Nineteen machines, each 64 cores and \SI{156}{\gibi\byte} RAM, running three signature verifiers, one
@@ -142,6 +108,13 @@ introduced deliberately as their own variable.
 \textbf{Queue flatness is part of the definition} because a rate can be committed in full out of a
 growing queue, which reports the queue's drain time as latency.
 
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/figure9.pdf}
+  \caption{Committer throughput (top) and 99th-percentile latency (bottom) against transaction size, invalid-signature share and double-spend share, beside the published Figure 9. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share with its percentage. Whiskers are the search's \SI{8}{\percent} step, one-sided. A dotted outline is a condition that was measured and missed the latency bound, labelled with the tail that disqualified it; \emph{not run} marks one never attempted at that configuration.}
+  \label{fig:panels}
+\end{figure*}
+
 \subsection*{Throughput and tail latency}
 
 Throughput falls with transaction size (Fig.~\ref{fig:panels}), \num{604545} tps at one read--write
@@ -196,7 +169,14 @@ every one failed, including one at the same \num{294780} whose probe had passed 
 workload-dependent trade, not a tuning win. Narrowing the graph's chunk width refuted multi-key
 batching as the mechanism, leaving why 120 tablets collapse unresolved.
 
-\subsection*{What latency costs at a given throughput}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/latency-throughput.pdf}
+  \caption{Latency against throughput for the committer alone, at two block sizes and a fixed workload of two read--write operations. Thick line: the median; the thin line above it the 99th percentile, shaded between; dashed: the median plus the mean wait for a block to be cut, which the measurement excludes. Hollow markers are rates offered but not sustained. The latency axis is floored and then grown to contain every sustained rate; rates above it are summarised in a corner.}
+  \label{fig:curve}
+\end{figure*}
+
+\subsection*{Latency against throughput}
 
 Both curves carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, and
 differ only in the number of transactions the generator puts in a block.
@@ -211,32 +191,9 @@ offered delivered \num{432309}), so the committer's own ceiling at 500 transacti
 
 \section*{Part II --- End to end, with a real ordering service}
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures-e2e/latency-throughput.pdf}
-  \caption{Latency against throughput end to end, with a real ordering service in the path, by shard
-  count and batcher storage layout. Marks as in Fig.~\ref{fig:curve}. The axis is clipped at
-  \SI{1000}{\milli\second} rather than \SI{400}{\milli\second}, because here the batchers cut the
-  blocks with a \SI{500}{\milli\second} \texttt{BatchCreationTimeout} and the median floor sits above
-  \SI{400}{\milli\second}. The dotted line is the published ordering-alone figure for this topology.}
-  \label{fig:e2e}
-\end{figure*}
-
 The second arm puts a real Arma ordering service in the path. The committer tier is
 \textbf{unchanged from Part~I} --- the same nineteen machines, the same components, the same tuning ---
 so a difference between the two arms is attributable to ordering.
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures-e2e/size-throughput.pdf}
-  \caption{Throughput against transaction size, end to end, beside the published Figure 7b. The
-  published line measures \emph{ordering alone} at two shards; this one measures the complete pipeline
-  at four, so the comparison is of shape rather than of values. Each point is annotated with the byte
-  rate it implies, which is where the two diverge: the published line is flat near
-  \SI{126}{\mega\byte\per\second} and this one rises from \SI{122}{} to
-  \SI{410}{\mega\byte\per\second}.}
-  \label{fig:size}
-\end{figure*}
 
 \subsection*{Setup: the ordering machines}
 
@@ -276,7 +233,22 @@ give each co-located batcher its own volume; eight give twice the shards but mak
 Table~\ref{tab:disk}, half the disk bandwidth --- so a ceiling measured on this arm belongs to these
 machines before it belongs to ordering.
 
-\subsection*{Shard count and storage}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures-e2e/latency-throughput.pdf}
+  \caption{Latency against throughput end to end, with a real ordering service in the path, by shard count and batcher storage layout. Marks as Fig.~\ref{fig:curve}. The dotted vertical line is the published ordering-alone figure for this topology.}
+  \label{fig:e2e}
+\end{figure*}
+
+\subsection*{Latency against throughput, by shard count and storage}
+
+End to end, ordering included, this deployment sustains \num{499091} tps at
+\SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
+transactions at any rung. Two comparisons place it. The published work has no end-to-end figure, but
+its ordering service alone reaches \num{430000} tps at four parties and four shards --- so the
+complete pipeline here exceeds the published figure for one part of it. And the same committer without
+an ordering service reaches \num{604545} tps, so real ordering costs about \SI{17}{\percent} of the
+committer's own ceiling rather than an order of magnitude.
 
 Both configurations sustain the same throughput and hit the same knee: \num{499091} tps at four
 shards against \num{500000} at eight, \SI{0.2}{\percent} apart, and neither sustains \num{550000}
@@ -305,9 +277,7 @@ over twice as wide a range of rates. The eight-shard curve shows exactly that sh
 \SI{687}{}, \SI{614}{}, \SI{591}{\milli\second} --- as the rate grows enough to fill a batch before the
 timer fires.
 
-\subsection*{Is the knee the rate, or a full database?}
-
-It is the rate. This needed testing rather than asserting, because each ladder climbs on one
+\textbf{Is the knee the rate, or a full database?} It is the rate. This needed testing rather than asserting, because each ladder climbs on one
 deployment, so offered rate and table fill rise together: over the eight-shard ladder the database
 grew from \num{9.4} million rows to \num{1.31} billion, free disk fell from \SI{513}{\giga\byte} to
 \SI{62}{\giga\byte}, and database commit latency went from \SI{18}{\milli\second} to
@@ -331,19 +301,18 @@ mechanism predicts: extra shards pay only once fewer have run out of capacity. U
 gracefully --- \SI{1.43}{\second} against \SI{7.5}{\second} at matched low fill --- because there the
 constraint is capacity rather than batch fill. Neither sustains it under a one-second bound.
 
-\subsection*{Latency against throughput, ordering included}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures-e2e-batch/latency-throughput.pdf}
+  \caption{Latency against throughput end to end, by batch size, on four shards with a volume per batcher. Marks as Fig.~\ref{fig:curve}.}
+  \label{fig:e2ebatch}
+\end{figure*}
 
-End to end, ordering included, this deployment sustains \num{499091} tps at
-\SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
-transactions at any rung. Two comparisons place it. The published work has no end-to-end figure, but
-its ordering service alone reaches \num{430000} tps at four parties and four shards --- so the
-complete pipeline here exceeds the published figure for one part of it. And the same committer without
-an ordering service reaches \num{604545} tps, so real ordering costs about \SI{17}{\percent} of the
-committer's own ceiling rather than an order of magnitude.
+\subsection*{Latency against throughput, by batch size}
 
-Batch size is the latency--throughput knob here, and it trades one for the other almost exactly.
-Cutting the batch from \num{10000} transactions to 500 removes most of the latency at every rate the
-two share --- p99 \SI{197}{\milli\second} against \SI{693}{\milli\second} at \num{100000} tps,
+Batch size is the latency--throughput knob here, and it trades one for the other almost exactly
+(Fig.~\ref{fig:e2ebatch}). Cutting the batch from \num{10000} transactions to 500 removes most of
+the latency at every rate the two share --- p99 \SI{197}{\milli\second} against \SI{693}{\milli\second} at \num{100000} tps,
 \SI{286}{\milli\second} against \SI{460}{\milli\second} at \num{250000}, and mean latency a
 third of what large batches give. That is the predicted effect and its direction confirms the
 mechanism: a batch a twentieth the size fills twenty times sooner, so the
@@ -367,7 +336,14 @@ transactions it has already had committed, and about a tenth of what does arrive
 \texttt{REJECTED\_DUPLICATE\_TX\_ID}, so the retry amplifies the stall it is responding to. A
 deployment run just past this ceiling does not degrade, it stops.
 
-\subsection*{Transaction size}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures-e2e/size-throughput.pdf}
+  \caption{Throughput against transaction size end to end, beside the published Figure 7b. Each point is annotated with the byte rate it implies.}
+  \label{fig:size}
+\end{figure*}
+
+\subsection*{Throughput against transaction size}
 
 Throughput falls with transaction size but far more slowly than the published sweep, and the byte
 rate is what shows why (Fig.~\ref{fig:size}). The published measurement is bandwidth-bound past

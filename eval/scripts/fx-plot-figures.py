@@ -37,7 +37,12 @@ OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
 # costs at a given rate. It gets no bar panels -- the paper has no end-to-end figure for them to sit
 # beside, since its Section 6.2 measures ordering alone and its 6.3 the committer alone. Those two are
 # still the only published bounds, so the curve carries the ordering ceiling as a line.
-E2E = len(sys.argv) > 3 and sys.argv[3] == "e2e"
+# "e2e" draws the shard/storage ladders, "e2e-batch" the block-size ladders. Both are
+# latency-against-throughput on the same arm, but six series on one pair of axes is unreadable and the
+# two answer different questions, so they get a figure each.
+MODE = sys.argv[3] if len(sys.argv) > 3 else ""
+E2E = MODE.startswith("e2e")
+E2E_LADDER = "shape" if MODE == "e2e" else "curve"
 # Figure 7a at four parties: 280,000 tps at one shard, 414,000 at two, 430,000 at four, at about 0.6 s
 # latency with 300 B transactions. This arm runs FOUR shards -- sixteen batchers, two to a machine -- so
 # the comparable ceiling is the four-shard one. It was 414,000 here while the arm was believed to be two
@@ -504,6 +509,10 @@ def latency_axis_ms(rows, floor=None):
     return max(floor, 1.1 * max(medians, default=0))
 
 
+BATCH_SERIES = [("4 shards, one volume each", "10,000-transaction batches"),
+                ("curve500", "500-transaction batches")]
+
+
 def curve_series_names(rows):
     """The series this plot will draw, so the axis can be sized from them alone.
 
@@ -516,8 +525,10 @@ def curve_series_names(rows):
     # Mirror the selection latency_curve() makes, or the axis is sized from a series that is not
     # drawn: including the 500-transaction batch ladder put a 91 ms point in the calculation and sent
     # the off-scale note to the wrong corner.
-    return {series_name(r) for r in rows
-            if r.get("kind") == "curve" and r.get("figure") == "shape"}
+    if E2E_LADDER == "shape":
+        return {series_name(r) for r in rows
+                if r.get("kind") == "curve" and r.get("figure") == "shape"}
+    return {name for name, _ in BATCH_SERIES}
 
 
 def series(rows, ax, figure, color, label, axis_ms):
@@ -595,6 +606,9 @@ def latency_curve(rows, path):
             name = series_name(r)
             if name not in [n for n, _ in ladders]:
                 ladders.append((name, r.get("label") or name))
+        if E2E_LADDER != "shape":
+            ladders = [(n, l) for n, l in BATCH_SERIES
+                       if any(series_name(r) == n for r in rows)]
         for (name, label), colour in zip(sorted(ladders), (OURS, SMALL, PAPER_DARK, OURS_DARK)):
             off += series(rows, ax, name, colour, label, axis_ms)
     else:
@@ -643,11 +657,29 @@ def latency_curve(rows, path):
         # right is occupied by a marker at 83 ms on a 1,000 ms axis.
         drawn_pts = [r for r in rows if series_name(r) in drawn and sustained(r) and throughput(r)]
         mid = max(throughput(r) for r in drawn_pts) / 2
-        left_low = min(((r.get("lat_p50") or 0) * 1000 for r in drawn_pts
-                        if throughput(r) < mid), default=axis_ms)
-        on_left = left_low / axis_ms > 0.18
-        ax.text(0.015 if on_left else 0.985, 0.05, note, transform=ax.transAxes,
-                ha="left" if on_left else "right", va="bottom", fontsize=6.5, color=INK2)
+        # Clearance in each bottom corner, as a fraction of the axis. The published marker sits in the
+        # right half at a fixed latency, so it occupies that corner whenever the axis is tall enough to
+        # push it down -- which is why the batch-size figure has neither bottom corner free: a curve at
+        # 90 ms on the left and the marker at 83 ms on the right.
+        def clearance(half):
+            lows = [(r.get("lat_p50") or 0) * 1000 for r in drawn_pts
+                    if (throughput(r) < mid) == (half == "left")]
+            return min(lows, default=axis_ms) / axis_ms
+        # Two different obstacles with two different thresholds. A curve has to clear the note's whole
+        # height, but the marker only blocks it by sitting inside it: the note occupies roughly the
+        # bottom eighth, so a marker at 0.17 of the axis passes above it while one at 0.08 does not.
+        marker_frac = (PAPER_DATA["9b"][0][2] * 1000) / axis_ms
+        # One line at 6.5pt sits between about 0.05 and 0.09 of the axis, so an obstacle needs to clear
+        # roughly 0.13 -- not 0.18, which rejected a corner the note fits under with room to spare.
+        if clearance("left") > 0.13:
+            xy, ha, va = (0.015, 0.05), "left", "bottom"
+        elif clearance("right") > 0.13 and marker_frac > 0.14:
+            xy, ha, va = (0.985, 0.05), "right", "bottom"
+        else:
+            # Both corners taken; go above the curves, which are at their lowest on the right.
+            xy, ha, va = (0.985, 0.97), "right", "top"
+        ax.text(xy[0], xy[1], note, transform=ax.transAxes, ha=ha, va=va,
+                fontsize=6.5, color=INK2)
 
     ax.xaxis.set_major_formatter(FuncFormatter(thousands))
     ax.set_xlabel("throughput (tx/s)", color=INK2, fontsize=9)
