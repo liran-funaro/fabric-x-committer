@@ -200,6 +200,37 @@ EXPERIMENTS = [
          vars=shape(2, 0, backref=0.20)),
     dict(id="9c-ds30", figure="9c", x=30, label="30% double spend", seed=BASE_SEED,
          vars=shape(2, 0, backref=0.30)),
+
+    # Why the conflict workload collapses, as three falsifiable variants of one 5% point. Every
+    # conflict share at every gap lands near 20,000 tps against 518,000 conflict-free, rate-independent,
+    # with the busiest DATABASE node at 73% CPU -- so the suspect is not the rate and not the
+    # coordinator.
+    #
+    # The prime suspect is YugabyteDB's multi-key read batching. `key = ANY(array)` is batched into
+    # per-tablet requests only while tablets x keys-per-lookup stays under ~32,768; above it, one
+    # storage read request per key. `database.validateNamespaceReads` passes EVERY read key of a
+    # validation batch in one array with no chunking, so keys per lookup is (transactions in the batch)
+    # x (keys per transaction) -- thousands, against 120 tablets. It is invisible on a conflict-free
+    # workload because inserting fresh keys performs no multi-key lookup; a back-reference is the first
+    # thing that does. The same cliff took a blind-write workload from 314,336 to 13,160 tps.
+    #
+    # Two ways to stay under the cliff, and they predict the same outcome for different reasons: fewer
+    # tablets, or a narrower batch. If either recovers the rate, the cliff is the mechanism. If neither
+    # does, the third variant asks whether it is the dependency-graph manager instead -- this deployment
+    # runs the simple one and the paper ran the global one, and a read-write reference is a WRITER on
+    # its key there, which never joins a running group.
+    #
+    # An earlier chunk-width test was read as refuting the batching explanation. It ran the
+    # conflict-FREE shape, where the cliff cannot appear, so it refuted nothing.
+    dict(id="9c-ds5-split8", figure="conflict-why", x=8, label="5% double spend, 8 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=8)),
+    dict(id="9c-ds5-chunk64", figure="conflict-why", x=64, label="5% double spend, 64-tx chunks",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_coordinator_dep_graph_chunk_size=64)),
+    dict(id="9c-ds5-gdg", figure="conflict-why", x=0, label="5% double spend, global graph",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_coordinator_dep_graph_use_simple_manager=False)),
     # The throughput-against-latency curve, in place of the paper's failure figure: a rate ladder rather
     # than a search, so there is no gate in it and every point after the first arrives warm. It is the
     # figure this evaluation was asked for and the one that exposed the block-size finding.
