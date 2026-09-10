@@ -91,8 +91,11 @@ itself.
 at the cost of a state database and a ledger that grow with every transaction. Conflicts are then
 introduced deliberately as their own variable.
 
-\textbf{Queue flatness is part of the definition} because a rate can be committed in full out of a
-growing queue, which reports the queue's drain time as latency.
+\textbf{A flat in-flight count is required} because throughput alone cannot tell a rate the pipeline
+sustains from one it is absorbing into a growing backlog: both commit everything offered for as long
+as the queue has room to grow. What separates them is latency, since a transaction waits in that queue
+before anything processes it, and what happens next --- the queue is bounded, so a rate above capacity
+collapses once it fills.
 
 \begin{figure*}[t]
   \centering
