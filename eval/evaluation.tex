@@ -81,7 +81,7 @@
 
 \subsection*{Setup: the committer machines}
 
-Nineteen machines, each 64 cores and \SI{156}{\gibi\byte}, running three signature verifiers, one
+Nineteen machines, each 64 cores and \SI{156}{\gibi\byte} RAM, running three signature verifiers, one
 coordinator, one sidecar, one load generator, six validator--committers, twelve YugabyteDB tablet
 servers and three YugabyteDB masters. The six validator--committers and the three masters sit on nine
 of the twelve database machines, and no machine runs both a validator--committer and a master.
@@ -91,36 +91,25 @@ and \texttt{/data2}. Each database node passes YugabyteDB both volumes as separa
 (\texttt{-{}-fs\_data\_dirs}, one path per volume) rather than a stripe. The sidecar's
 ledger uses \texttt{/data1} alone.
 
-Transactions carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, in
-\num{10000}-transaction blocks, and each transaction slot takes a fresh key, so there are no
-read--write conflicts. Blocks come from the load generator's embedded mock ordering service, which cuts and signs them
-itself and serves them to the sidecar over the Atomic Broadcast API, so no ordering service is in the
-path.
+Every transaction slot takes a fresh key, so there are no read--write conflicts except in the panel
+that introduces them deliberately. Blocks come from the load generator's embedded mock ordering
+service, which cuts and signs them itself and serves them to the sidecar over the Atomic Broadcast
+API, so no ordering service is in the path.
 
-Signatures are ECDSA P-256, matching Part~II. \emph{The figures in this part were measured under
-Ed25519} and are being re-measured; until they are, the two parts differ in signature scheme as well
-as in ordering. The reason for the change, and for the Ed25519 that preceded it, is below.
-
-The re-measured points show the change costs nothing, and they show it the way a null result should
-look. Against Ed25519's \numlist{605000;517000;419000;274000} tps at one, two, three read--write
-operations and four, ECDSA holds \numlist{653000;518000;389000;275000} --- ratios of
-\numlist{1.08;1.00;0.93;1.00}, mean \num{1.003}. The
-scatter is \SI{8}{\percent} in \emph{both} directions and averages near zero, every point inside the
-\SI{8.8}{\percent} repeatability established below, so the two schemes are indistinguishable here
-rather than one being faster. Both series are confirmed holds --- the Ed25519 side was
-checked to be hold-based rather than probe-based --- so the comparison is like-for-like. The scheme
-has stopped mattering, which is the point.
-
-The panel's shape survives the change: throughput falls \SI{58}{\percent} from one read--write
-operation to four against Ed25519's \SI{55}{\percent}. The mechanism argued below --- per-key
-dependency-graph cost rather than the published lock contention --- is therefore a property of the
-pipeline rather than of the signature scheme, which is worth establishing where this evaluation
-contradicts the paper.
-
-What is outside the noise is where the load stands: the generator runs at
-\SIrange{19}{32}{\percent} while the busiest validator--committer is at \SIrange{75}{81}{\percent}. Under Ed25519 the generator
-was close to co-limiting, so these are the first measurements of this panel that bound the pipeline
-rather than the pair.
+Signatures are ECDSA P-256.\footnote{The figures in this part were measured under Ed25519 and are
+being re-measured; until that finishes, the two parts differ in signature scheme as well as in
+ordering. The re-measurement so far is a null result. Against Ed25519's
+\numlist{605000;517000;419000;274000} tps at one to four read--write operations, ECDSA holds
+\numlist{653000;518000;389000;275000} --- ratios \numlist{1.08;1.00;0.93;1.00}, mean \num{1.003},
+scattered \SI{8}{\percent} in \emph{both} directions and every point inside the \SI{8.8}{\percent}
+repeatability established below, so the schemes are indistinguishable here. Both series are confirmed
+holds, the Ed25519 side checked to be hold-based rather than probe-based. The panel's shape survives
+too: throughput falls \SI{58}{\percent} from one read--write operation to four against Ed25519's
+\SI{55}{\percent}, so the per-key mechanism argued below belongs to the pipeline and not to the
+signature scheme. What does change is where the load sits --- the generator runs at
+\SIrange{19}{32}{\percent} against the busiest validator--committer's \SIrange{75}{81}{\percent}, where
+under Ed25519 it was close to co-limiting, so these are the first figures here that bound the pipeline
+rather than the pair. Why the scheme changed at all is in the next subsection.}
 
 A measured point is the highest offered rate that arrived in full, committed within \SI{2}{\percent},
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
@@ -208,6 +197,9 @@ workload-dependent trade, not a tuning win. Narrowing the graph's chunk width re
 batching as the mechanism, leaving why 120 tablets collapse unresolved.
 
 \subsection*{What latency costs at a given throughput}
+
+Both curves carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, and
+differ only in the number of transactions the generator puts in a block.
 
 At \num{10000}-transaction blocks the median has a floor near \SI{125}{\milli\second} that does not
 fall with the rate, since nothing in a block moves until the block is cut (Fig.~\ref{fig:curve}). At
