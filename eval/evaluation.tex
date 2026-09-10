@@ -43,6 +43,11 @@
 
 \begin{document}
 
+\twocolumn[\begin{center}
+  \Large\bfseries Evaluating the Fabric-X committer: on its own, and behind a real ordering service
+  \vspace{1ex}
+\end{center}]
+
 Every comparison in this section is against the results reported in the SIGMOD'26 paper: its
 Figure~9 for the committer sweeps and its Figure~7b for throughput against transaction size. That is a
 different deployment from this one, so a difference between the two is a difference between
@@ -50,7 +55,7 @@ deployments.
 
 \section*{Part I --- The committer on its own}
 
-\subsection*{Setup: the committer machines}
+\section{Setup: the committer machines}
 
 Nineteen machines, each two sockets of sixteen Intel Xeon Sapphire Rapids cores at
 \SI{2.10}{\giga\hertz} --- 64 hardware threads, \SI{16}{\mebi\byte} of L3 per socket --- with
@@ -90,7 +95,7 @@ A measured point is the highest offered rate that arrived in full, committed wit
 kept p99 under \SI{1}{\second} and held a flat in-flight count, confirmed by a \SI{300}{\second} hold
 on a fresh deployment.
 
-\subsection*{Why this setup}
+\section{Why this setup}
 
 \textbf{The shape is not the SIGMOD'26 paper's, and neither is the hardware.} Its committer
 deployment is nine validator--committers on nine database nodes across three IBM Cloud regions, on
@@ -129,7 +134,7 @@ collapses once it fills.
   \label{fig:panels}
 \end{figure*}
 
-\subsection*{Throughput and tail latency}
+\section{Throughput and tail latency}
 
 Throughput falls with transaction size (Fig.~\ref{fig:panels}a), \num{604545} tps at one read--write
 operation to \num{274364} at four. Comparing that with the SIGMOD'26 figure needs the axes aligned:
@@ -200,7 +205,7 @@ tail is flat with it too, \SIrange{496}{542}{\milli\second} p99 across the four 
   \label{fig:curve}
 \end{figure*}
 
-\subsection*{Latency against throughput}
+\section{Latency against throughput}
 
 Both curves carry two read--write operations over \SI{32}{\byte} keys, \SI{262}{\byte} serialized, and
 differ only in the number of transactions the generator puts in a block.
@@ -219,7 +224,7 @@ The second arm puts a real Arma ordering service in the path. The committer tier
 \textbf{unchanged from Part~I} --- the same nineteen machines, the same components, the same tuning ---
 so a difference between the two arms is attributable to ordering.
 
-\subsection*{Setup: the ordering machines}
+\section{Setup: the ordering machines}
 
 Twenty further machines of the same processor, each two sockets of eight cores --- 32 hardware
 threads, \SI{16}{\mebi\byte} of L3 per socket --- with \SI{78}{\gibi\byte} of RAM, holding four
@@ -243,7 +248,7 @@ load-generator setting, and \texttt{BatchCreationTimeout} is \SI{500}{\milli\sec
 consensus decision interval, \texttt{RequestBatchMaxInterval}, is \SI{50}{\milli\second}, reduced
 from the default \SI{500}{\milli\second}.
 
-\subsection*{Why this setup}
+\section{Why this setup}
 
 \textbf{Two batchers to a machine} is measured rather than assumed. At two shards the service capped
 near \num{158000} tps \emph{per shard} whatever the batch size or decision interval, while batcher
@@ -275,7 +280,7 @@ second.
   \label{fig:e2e}
 \end{figure*}
 
-\subsection*{Latency against throughput, by shard count and storage}
+\section{Latency against throughput, by shard count and storage}
 
 Both ladders here carry the workload of Fig.~\ref{fig:curve} --- two read--write operations over
 \SI{32}{\byte} keys, \SI{262}{\byte} serialized, every slot taking a fresh key --- so the two arms are
@@ -327,7 +332,7 @@ before the timer fires --- \SI{687}{}, \SI{614}{} and \SI{591}{\milli\second} at
   \label{fig:e2ebatch}
 \end{figure*}
 
-\subsection*{Latency against throughput, by batch size}
+\section{Latency against throughput, by batch size}
 
 Batch size is the latency--throughput knob here, and it trades one for the other almost exactly
 (Fig.~\ref{fig:e2ebatch}), at the same workload again. Cutting the batch from \num{10000} transactions to 500 removes most of
@@ -355,7 +360,7 @@ a tuning win: small batches halve the latency and halve the ceiling.
   \label{fig:size}
 \end{figure*}
 
-\subsection*{Throughput against transaction size}
+\section{Throughput against transaction size}
 
 Throughput falls with transaction size, but far more slowly than in the SIGMOD'26 sweep, and the byte
 rate is what shows why (Fig.~\ref{fig:size}). The sweep keeps the same two read--write operations and
@@ -422,7 +427,7 @@ not measuring the same limit.
   \end{tabular}
 \end{table}
 
-\section*{Storage characterisation}
+\section{Storage characterisation}
 
 Two properties of these volumes bound the results above, and both had to be measured: the volumes are
 \texttt{virtio} devices reporting neither a model nor a meaningful rotational flag, so the backing
@@ -462,7 +467,7 @@ write, not the barrier, that costs.
   \end{tabular}
 \end{table}
 
-\section*{Threats to validity}
+\section{Threats to validity}
 
 The load generator is the instrument, and in one figure it is the limit: its block preparation caps the
 small-block curve in Fig.~\ref{fig:curve}. Elsewhere it is close to being one. At the end-to-end knee it runs at \SI{77}{\percent} of
