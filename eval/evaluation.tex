@@ -44,7 +44,7 @@
 \begin{document}
 
 \twocolumn[\begin{center}
-  \Large\bfseries Evaluating the Fabric-X committer: on its own, and behind a real ordering service
+  \Large\bfseries End to End Evaluation of Fabric-X Committer and Orderer
   \vspace{1ex}
 \end{center}]
 
@@ -97,13 +97,15 @@ on a fresh deployment.
 
 \section{Why this setup}
 
-\textbf{The shape is not the SIGMOD'26 paper's, and neither is the hardware.} Its committer
-deployment is nine validator--committers on nine database nodes across three IBM Cloud regions, on
-\emph{bare-metal} servers: dual 48-core Xeon 8260 at \SI{2.40}{\giga\hertz}, \SI{64}{\giga\byte} of
-RAM, a \SI{1}{\tera\byte} SSD in RAID~0, and Ubuntu 20.04. This deployment is virtualized, at
-\SI{2.10}{\giga\hertz}, with more memory per machine and storage reached through a hypervisor rather
-than attached to it. What follows therefore compares deployments, not matched hardware, and the storage
-path is the difference that bears on the results.
+\textbf{The shape is not the SIGMOD'26 paper's, and neither is the hardware.} Its committer deployment
+is nine validator--committers on nine database nodes, and both of its arms ran on AWS: 32-vCPU
+instances at \SI{3.5}{\giga\hertz} for each validator--committer with its database node, 64-vCPU
+instances for the coordinator, the sidecar and the load generator, 32-vCPU AMD instances at
+\SI{3.3}{\giga\hertz} for the verifiers, all on EBS General Purpose volumes rated at \num{3000} IOPS
+and \SI{125}{\mebi\byte\per\second}. This deployment is wider and slower per core --- 64 hardware
+threads at \SI{2.10}{\giga\hertz} a machine --- with more memory, and with local volumes that
+Table~\ref{tab:disk} measures at two orders of magnitude more random write IOPS than that EBS rating.
+What follows therefore compares deployments, not matched hardware.
 
 \textbf{Both volumes, not a stripe}, so YugabyteDB sees the disk boundary and places data across it
 itself.
@@ -161,16 +163,22 @@ out of a fixed key budget. The SIGMOD'26 sweep does not reach a boundary over it
 At two keys our key rate is the higher of the two; by four theirs is \SI{53}{\percent} above ours and
 still rising.
 
-Where that key budget goes is a hypothesis rather than a result. The dependency graph is ruled out
-above, which leaves the state database, where every key costs a version lookup and a write --- so the
-suspect is the storage path. The SIGMOD'26 committers ran on bare metal, addressing a RAID~0 SSD
-directly. These run in guests, reaching \texttt{virtio} volumes whose bandwidth Table~\ref{tab:disk}
-measures at round figures repeating to four significant figures across machines: a provisioned cap, not
-a device. On that path one durable \SI{4}{\kibi\byte} record costs about \SI{400}{\micro\second},
-which caps any per-record design near \num{2400} a second. Nine validator--committers against our six
-is a second candidate that also scales with key work rather than with transactions. Separating the two
-needs the same committer measured on both storage paths at both tier sizes, which nothing here
-provides.
+Where that key budget goes is a hypothesis rather than a result, and the storage path is not the
+answer. Every key costs a version lookup and a write in the state database, but the published
+deployment's volumes are rated at \num{3000} IOPS and \SI{125}{\mebi\byte\per\second} against the
+\num{102000} random-write IOPS and \SI{1058}{\mebi\byte\per\second} Table~\ref{tab:disk} measures
+here, so whatever the key budget is spent on, it is not disk this deployment lacks. Neither ceiling is
+disk-bound at these rates in any case: nine volumes at that rating supply \num{27000} IOPS against the
+\num{1676000} keys a second the published sweep reaches at four keys, so both deployments must serve
+reads from memory and batch their writes.
+
+That leaves the compute side, where the two differ in opposite directions. Each published
+validator--committer runs on 32 vCPUs at \SI{3.5}{\giga\hertz}, \SI{67}{\percent} more clock per core
+than here; this deployment answers with more cores and more memory per machine, and with six
+validator--committers against nine. So the published pipeline is the faster one per key and this one the
+wider one, which is consistent with a per-key cost that is partly serialized --- and that is as far as a
+ladder on one deployment can place it. Settling it needs the two tier sizes measured at a matched clock,
+which nothing here provides.
 
 Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps with none, then \num{517455}, \num{519455} and
 \num{518727} at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} --- all four flat within

@@ -23,18 +23,27 @@ nine database nodes, one coordinator, one sidecar. Every point is an average ove
 at one-second sampling, and every point is taken at a rate chosen to keep latency under one second — "the workload was managed to keep latency below one
 second to prevent queuing from committer overload".
 
-**Two different setups, one per arm** (§6, §6.2), which matters for every comparison drawn against
-them:
+**The hardware, from the authors.** §6 of the paper describes IBM Cloud bare-metal servers across
+London, Paris and Milan (dual 48-core Xeon 8260, 1 TB SSD in RAID 0). **That text is wrong.** Both arms
+ran on AWS, on EBS General Purpose (SSD) volumes as §6.2 describes for ordering:
 
-| | machine | storage |
-|---|---|---|
-| committer, Figure 9 (§6, §6.3) | IBM Cloud **bare metal** across London, Paris and Milan: dual 48-core Xeon 8260 @ 2.40 GHz, 64 GB RAM, 10 Gbps, Ubuntu 20.04 | 1 TB SSD, RAID 0, directly attached |
-| ordering, Figures 7a-c (§6.2) | 4 **AWS** sites (Ohio, N. Virginia, N. California, Oregon): 32 vCPU, 64 GiB, RHEL 10 | EBS General Purpose (SSD), 3000 IOPS, 125 MiB/s |
+| role | instance | vCPU / memory | processor |
+|---|---|---|---|
+| verifier | `c5a.8xlarge` | 32 / 64 GiB | AMD EPYC 7R32, 3.3 GHz |
+| coordinator, sidecar, load generator | `c6id.16xlarge` | 64 / 128 GiB | Intel Xeon 8375C (Ice Lake), 3.5 GHz |
+| validator-committer with its database node | `c6id.8xlarge` | 32 / 64 GiB | Intel Xeon 8375C (Ice Lake), 3.5 GHz |
 
-The EBS figure is why Figure 7b is bandwidth-bound: its points sit within 10% of 120 MB/s, which is
-that cap. Do not attribute the paper's committer numbers to AWS -- that arm was bare metal, and the
-directly-attached SSD against a `virtio` volume behind a hypervisor is the difference this cluster's
-per-key ceiling most likely turns on.
+Storage on both arms: **EBS General Purpose (SSD), 3000 IOPS, 125 MiB/s** — the `c6id` local NVMe was
+not used. Ordering additionally ran across four AWS sites (Ohio, N. Virginia, N. California, Oregon).
+
+Two consequences for every comparison drawn against these numbers:
+
+- **Their storage is far slower than this cluster's**, not faster: 3000 IOPS against the 102,000
+  random-write IOPS and 1058 MiB/s of `tab:disk`. So the storage path cannot explain their gentler
+  per-key slope, and an earlier draft that blamed it was wrong in both directions. What remains is
+  per-core clock (3.5 GHz against 2.10 here) and nine validator-committers against six.
+- **The 125 MiB/s is why Figure 7b is bandwidth-bound**: its points sit within 10% of 120 MB/s, which
+  is that cap.
 
 The reported numbers:
 
