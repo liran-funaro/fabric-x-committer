@@ -94,6 +94,12 @@ QUERIES = {
 # resolves with its own version lookup). n/n therefore touches 2n keys, as the paper's does.
 def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
     v = {
+        # Recorded per experiment rather than set in the inventory, so every row says which block
+        # producer measured it. The mock orderer otherwise prepares blocks on one goroutine -- 0.75 ms
+        # each at 500 transactions, which caps the generator near 850 blocks a second and is what the
+        # small-block curve measured instead of the committer. Rows taken with and without it have
+        # different `vars`, so the plotting cannot pool them into one point.
+        "loadgen_mock_orderer_fast_block_prepare": True,
         "loadgen_generate_read_write_tx": True,
         "loadgen_read_write_tx_keys": inputs,
         "loadgen_generate_write_only_tx": outputs > 0,

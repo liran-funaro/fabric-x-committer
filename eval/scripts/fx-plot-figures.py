@@ -29,7 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                                     # noqa: E402
 from matplotlib.lines import Line2D                                 # noqa: E402
 from matplotlib.patches import Patch                                # noqa: E402
-from matplotlib.ticker import FuncFormatter                         # noqa: E402
+from matplotlib.ticker import FuncFormatter, MultipleLocator        # noqa: E402
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "figures.jsonl"
 OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
@@ -65,12 +65,15 @@ PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper'
 # `BatchCreationTimeout` is 500 ms, so its median floor sits ABOVE 400 ms -- at that clip every rung
 # is off-scale and the plot is empty. 1,000 ms keeps the same principle (show the operating region,
 # label what is past it) against a floor set half a second higher.
-# It is a FLOOR, not a ceiling. Clipping at a fixed height cut the highest-throughput point off the
-# top -- the committer's best sustained rate, 530,364 tps at a 438 ms median, was drawn nowhere and
-# mentioned only in the corner text, so the curve appeared to stop at 499,818. The maximum throughput
-# is the one number a reader looks for on this plot. `latency_axis_ms` therefore raises the floor
-# until every sustained point's median fits.
+# It is a FLOOR, and the SLO is the ceiling. The floor exists because clipping at a fixed height cut
+# the highest-throughput point off the top -- the committer's best sustained rate, 531,455 tps at a
+# 407 ms median, was drawn nowhere and mentioned only in the corner text, so the curve appeared to stop
+# short. The ceiling exists because the opposite is just as unreadable: a rung that delivers its rate
+# out of a flat queue at a 5,333 ms median is sustained by that test, and letting it size the axis put
+# every rate anyone would run in the bottom twelfth. One second is the bound every reported point meets,
+# so it is where the plot stops drawing and starts naming.
 LAT_FLOOR_MS = 1000 if E2E else 400
+SLO_CEILING_MS = 1000
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRID = "#e6e5e1"
@@ -421,6 +424,9 @@ def figure9(rows, path):
                 draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK, dy=11)
 
         top.yaxis.set_major_formatter(FuncFormatter(thousands))
+        # A tick every 100k on all three panels, so a bar in one is read against a bar in another
+        # without counting gridlines: matplotlib's own choice was 200k here and 250k there.
+        top.yaxis.set_major_locator(MultipleLocator(100_000))
         top.set_xticks(pos)
         top.set_xticklabels(labels)
         top.set_xlabel(xlabel, color=INK2, fontsize=8.5)
@@ -516,12 +522,14 @@ def series_name(row):
 
 
 def latency_axis_ms(rows, floor=None):
-    """How tall the latency axis has to be to contain every sustained point's median.
+    """How tall the latency axis is: at least the floor, at most one second.
 
     The floor keeps the operating region legible -- at 400 ms the 40-vs-125 ms difference that is the
-    whole block-size result stays readable, where an axis fitting the 7.5 s outlier would make it two
-    adjacent pixels. Above the floor the data decides, because a clipped maximum is worse than a
-    slightly compressed low end: the point of the plot is where throughput stops.
+    whole block-size result stays readable. The ceiling is the SLO. A rung can deliver its offered rate
+    out of a flat queue and still take seconds to do it, and letting one of those size the axis is what
+    made this plot unreadable: a 5,333 ms median gave a 5,866 ms axis, on which every rate anyone would
+    operate at sat in the bottom twelfth. Past a second is past the bound every reported point meets, so
+    those rungs are named in the corner note instead of drawn.
 
     The 99th-percentile envelope may still leave the top, which is expected and not a defect. It is
     not monotonic in throughput (482 -> 1,351 -> 591 ms across the top three rungs), so fitting it
@@ -529,7 +537,7 @@ def latency_axis_ms(rows, floor=None):
     """
     floor = LAT_FLOOR_MS if floor is None else floor
     medians = [(r.get("lat_p50") or 0) * 1000 for r in rows if sustained(r) and throughput(r)]
-    return max(floor, 1.1 * max(medians, default=0))
+    return min(SLO_CEILING_MS, max(floor, 1.1 * max(medians, default=0)))
 
 
 BATCH_SERIES = [("4 shards, one volume each", "10,000-transaction batches"),
@@ -567,8 +575,12 @@ def series(rows, ax, figure, color, label, axis_ms):
     """
     every = sorted([r for r in rows if series_name(r) == figure and throughput(r)],
                    key=lambda r: r["limit"])
-    points = [r for r in every if sustained(r)]
+    sustained_pts = [r for r in every if sustained(r)]
     missed = [r for r in every if not sustained(r)]
+    # A sustained rung whose median is past the axis is named in the corner note, not drawn. Drawing it
+    # means matplotlib clips the segment leading to it, which puts a vertical line up the top of the
+    # plot at the highest throughput -- exactly where a reader looks for the ceiling.
+    points = [r for r in sustained_pts if (r.get("lat_p50") or 0) * 1000 <= axis_ms]
     if not points:
         return []
 
@@ -673,17 +685,17 @@ def latency_curve(rows, path):
     # block of text, not a label per point -- the off-scale rungs are within a few percent of each
     # other in throughput, so labels at their own x positions land on top of one another.
     if off:
-        # Whatever is above the axis is, by construction, a rate that was offered and not sustained:
-        # latency_axis_ms() sizes the axis to contain every sustained median, so a held point cannot
-        # be cut. That is why this says so plainly and no longer has a branch for naming the held
-        # ones -- there are none to name. Per-point detail is in figures-table.md.
+        # Two kinds of point sit above the axis and the note must not conflate them: rates that were
+        # offered and not delivered, and rates that were delivered out of a flat queue but took longer
+        # than the one-second bound to do it. Naming them by what they have in common -- a median past
+        # the axis -- is accurate for both. Per-point detail is in figures-table.md.
         #
         # The rates as OFFERED, not as delivered. A rung that collapsed delivered almost nothing --
         # 773 tps at one point -- so a range built from delivered throughput read "1k-533k tx/s" for
         # rates that were 300k and 560k.
         lo, hi = min(r["limit"] for r in off), max(r["limit"] for r in off)
-        note = (f"above this axis: {len(off)} rate{'s' if len(off) > 1 else ''} offered but not "
-                f"sustained, {lo / 1000:,.0f}k-{hi / 1000:,.0f}k tx/s")
+        note = (f"above this axis: {len(off)} offered rate{'s' if len(off) > 1 else ''} with a median "
+                f"past {axis_ms / 1000:,.0f} s, {lo / 1000:,.0f}k-{hi / 1000:,.0f}k tx/s")
         # Which bottom corner is free depends on the plot, so measure rather than hardcode. The
         # published reference marker sits at a fixed throughput in the right half of both plots, and
         # the committer's small-block curve runs along the bottom left, so neither corner is reliably
