@@ -267,30 +267,6 @@ over twice as wide a range of rates. The eight-shard curve shows exactly that sh
 \SI{687}{}, \SI{614}{}, \SI{591}{\milli\second} --- as the rate grows enough to fill a batch before the
 timer fires.
 
-\textbf{Is the knee the rate, or a full database?} It is the rate. Each ladder climbs on one
-deployment, so offered rate and table fill rise together: over the eight-shard ladder the database
-grew from \num{9.4} million rows to \num{1.31} billion, free disk fell from \SI{513}{\giga\byte} to
-\SI{62}{\giga\byte}, and database commit latency went from \SI{18}{\milli\second} to
-\SI{232}{\milli\second}. On that evidence alone a knee at \num{500000} tps is as consistent with a
-full table as with the rate.
-
-Both rates were therefore re-measured on fresh deployments, at low and matched fill. Four attempts
-now exist at \num{550000} tps across a \num{140}$\times$ range of fill, and \emph{none} sustains it;
-three exist at \num{500000} and three of those pass. The boundary does not move with fill, so it is a
-rate.
-
-What fill does change is the tail, and only near the knee. At \num{550000} tps the same eight-shard
-configuration gives p99 \SI{1.43}{\second} on a fresh database against \SI{4.9}{\second} at
-\num{1.1} billion rows, and how much is delivered tracks fill the same way --- \num{546364},
-\num{543818}, \num{532909} and \num{497603} tps in order of increasing fill. Below the knee the
-effect is a few percent; above it, queues form and fill multiplies what they cost.
-
-The re-measurement also refines which configuration to prefer, in the direction the batching
-mechanism predicts: extra shards pay only once fewer have run out of capacity. Up to
-\num{500000} tps four shards is better, as above. At \num{550000} eight shards degrades far more
-gracefully --- \SI{1.43}{\second} against \SI{7.5}{\second} at matched low fill --- because there the
-constraint is capacity rather than batch fill. Neither sustains it under a one-second bound.
-
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-e2e-batch/latency-throughput.pdf}
@@ -448,9 +424,9 @@ gave holds \SI{8.8}{\percent} apart, and two configurations that are the same wo
 separate searches differed by \SI{7.9}{\percent}. A difference under about a tenth is therefore not a
 result here, and no claim in this section rests on one.
 
-One limit of the end-to-end measurement is worth stating. Each ladder there climbs on a single deployment, so rate and table fill rise together and a ladder alone cannot separate
-them. Both rates were therefore measured on fresh deployments as well: the boundary does not move across a
-\num{140}$\times$ range of fill, though the tail near it does. Every rung records the fill it ran
-against.
+A ladder climbs on a single deployment, so rate and table fill rise together along it. Repeating the
+rates around the knee on fresh deployments moves the boundary by less than the spread above, so the
+knee is a property of the rate; the tail near it does grow with fill. Every rung records the fill it
+ran against.
 
 \end{document}

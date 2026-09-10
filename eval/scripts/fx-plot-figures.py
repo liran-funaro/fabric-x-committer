@@ -527,7 +527,8 @@ def curve_series_names(rows):
     # the off-scale note to the wrong corner.
     if E2E_LADDER == "shape":
         return {series_name(r) for r in rows
-                if r.get("kind") == "curve" and r.get("figure") == "shape"}
+                if r.get("kind") == "curve" and r.get("figure") == "shape"
+                and not str(r.get("experiment") or "").startswith("e2e-fresh")}
     return {name for name, _ in BATCH_SERIES}
 
 
@@ -602,6 +603,8 @@ def latency_curve(rows, path):
             # Matching on the name instead is what broke: a series called "e2e-shape-4s" starts
             # with neither "curve" nor "shape".
             if r.get("kind") != "curve" or r.get("figure") != "shape":
+                continue
+            if str(r.get("experiment") or "").startswith("e2e-fresh"):
                 continue
             name = series_name(r)
             if name not in [n for n, _ in ladders]:
