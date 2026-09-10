@@ -21,8 +21,8 @@ Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a 
 |---|---|---|---|
 | 3 | **Re-measure 300 B.** Its first probe measured a draining backlog — delivered 492,182 against 480,000 offered — so the search stepped down to 408,000, while the same workload held 499,091 on the shard ladder. The driver now drains before the first probe. Figure 5's leftmost point is ~20% low until this runs. | `e2e-size300` | ready |
 | 4 | **3 KiB size point.** The sweep jumps 2 KiB → 4 KiB, which is where it becomes disk-bound, so the knee is unbracketed. | `e2e-size3072` | ready |
-| 5 | **Holds for 1 KiB and 4 KiB.** Both are probes: an assembler volume fills in under twenty minutes at those sizes, so a search and a hold do not fit in one deployment. Needs two phases — search, redeploy, hold at the found rate. | `e2e-size1024`, `e2e-size4096` | needs the two-phase runner |
-| 6 | **The 500-transaction batch ladder, again.** Same reason as #1 if the generator was the constraint on this arm too — here the batchers cut the blocks, so check before spending a run. | `e2e-curve-small` | check first |
+| 5 | **Holds for 1 KiB and 4 KiB.** Both are probes today, but the two phases already exist: the driver redeploys before every hold and refuses one that would not fit the volume. Their failures predate both. On a fresh volume a 300 s hold writes 105 GB at 1 KiB and 148 GB at 4 KiB, against ~485 GB — so they fit, and run as part of #3/#4. | `e2e-size1024`, `e2e-size4096` | ready, folded into 3 |
+| 6 | ~~The 500-transaction batch ladder, again.~~ **Dropped**: the fast producer is a mock-orderer path, and on this arm the batchers cut the blocks — the generator submits to routers and cuts nothing. | `e2e-curve-small` | n/a |
 
 ## Evaluation document
 
