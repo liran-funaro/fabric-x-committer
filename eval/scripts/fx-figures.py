@@ -112,20 +112,21 @@ def shape(inputs, outputs, invalid=0.0, backref=0.0, block=None):
         # existing key in a read-write slot with a nil expected version, which read validation rejects
         # as ABORTED_MVCC_CONFLICT -- the same path a real double spend trips.
         #
-        # The gap is what makes it a double spend rather than a dependency. It is how far back, in
-        # TRANSACTIONS, a reference reaches, and the window is drawn downward from the frontier as it
-        # stood there. At gap 0 that frontier is the one the generator is writing right now, so a
-        # reference can name a key whose creating transaction has not committed: the coordinator then
-        # has to serialise the pair, and one convoy behind a ~500 ms pipeline stalls everything queued
-        # behind it. Measured over the real generator at this shape, gap 0 puts 4.23% of references
-        # inside the in-flight window with a 10,000,000-key window and 100% of them with 1024 -- the
-        # nearest 1,448 and 1 keys below the frontier respectively, microseconds old. A gap of a
-        # million transactions puts every reference at least 1,700,000 keys below it, and none in
-        # flight, so every conflicting transaction contends at commit time and nowhere else.
+        # The gap is how far back, in TRANSACTIONS, a reference reaches, and the lookback window is
+        # drawn downward from the frontier as it stood there. 1,000 is the paper's value, so it is the
+        # one used here: the comparison is only a comparison if the workload parameter matches.
         #
-        # The window then only spreads that contention across keys, and so across tablets: a million
-        # keys over a 120-way split is some 8,000 per tablet.
-        v["loadgen_tx_reference_gap"] = 1_000_000
+        # It was 0, which is not the paper's and is not a double spend either. At 0 the window's top is
+        # the frontier the generator is writing right now, so a reference can name a key whose creating
+        # transaction has not committed -- a live dependency the coordinator serialises rather than a
+        # conflict it aborts. Measured over the real generator at this shape, gap 0 puts 4.23% of
+        # references inside the in-flight window against a 10,000,000-key window, and 100% against
+        # 1,024.
+        #
+        # 1,000 transactions is about 2 ms of production at these rates, which is inside this
+        # deployment's own in-flight window and was inside the paper's much shorter one too. Whether
+        # that matters is exactly what the re-measurement answers.
+        v["loadgen_tx_reference_gap"] = 1_000
         v["loadgen_key_lookback_window"] = 1_000_000
     return v
 
@@ -239,6 +240,17 @@ EXPERIMENTS = [
     # of latency for nothing.
     dict(id="curve500hi", figure="curve500", x=500, label="500-tx blocks", mode="curve",
          rates=[170000, 200000, 240000, 280000, 330000, 380000],
+         vars=shape(2, 0, block=500)),
+
+    # Above 380,000 the ladder has never been run since the generator's block preparation was fixed.
+    # What it measured before was the generator: at 450,000 offered it SENT 429,355 and the committer
+    # finished 428,945 of that, 99.9% of what arrived, so the 430,000 plateau was production and not
+    # commitment. Preparation deep-cloned and hashed every block in one goroutine, 608 us per block at
+    # this size; `fast-block-prepare` takes it to 8.4 us. These rungs are what says whether the
+    # committer's own small-block ceiling is above the old one -- they need a loadgen built from a
+    # branch containing that change, with `fast-block-prepare` and `prepare-in-place` both on.
+    dict(id="curve500top", figure="curve500", x=500, label="500-tx blocks", mode="curve",
+         rates=[430000, 480000, 530000, 580000],
          vars=shape(2, 0, block=500)),
 
     # Whether the tablet split costs anything on the conflict workload, where read validation looks

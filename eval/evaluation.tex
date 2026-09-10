@@ -63,7 +63,11 @@ and \texttt{/data2}. Each database node passes YugabyteDB both volumes as separa
 ledger uses \texttt{/data1} alone.
 
 Every transaction slot takes a fresh key, so there are no read--write conflicts except in the panel
-that introduces them deliberately. Blocks come from the load generator's embedded mock ordering
+that introduces them deliberately. There a share of transactions carries one back-reference: an
+existing key in a read--write slot with a nil expected version, which read validation rejects on the
+same path a double spend takes. That share is the panel's x axis, and the reference is drawn from the
+newest million keys as they stood \num{1000} transactions earlier --- the reference gap the SIGMOD'26
+paper uses. Blocks come from the load generator's embedded mock ordering
 service, which cuts and signs them itself and serves them to the sidecar over the Atomic Broadcast
 API, so no ordering service is in the path.
 
@@ -93,7 +97,16 @@ follows therefore compares deployments, not matched hardware.
 itself.
 
 \textbf{A conflict-free workload} measures the pipeline's ceiling rather than its conflict behaviour,
-at the cost of a state database and a ledger that grow with every transaction. Conflicts are then
+at the cost of a state database and a ledger that grow with every transaction.
+
+\textbf{The reference gap is the paper's}, so the conflict workload is the same specification on both
+deployments --- but the same specification is not the same workload. The gap is counted in
+transactions, so what it excludes depends on how many transactions a deployment holds in flight. At
+\num{1000} transactions and a million-key window, \SI{44}{\percent} of the references here name keys
+whose creating transaction has not yet committed, against \SI{6}{\percent} at the SIGMOD'26 pipeline's
+latency. A reference of that kind is a dependency the coordinator must order, not a conflict it can
+reject, so the same parameter puts seven times as much of this workload on live dependencies as it does
+on that one. Conflicts are then
 introduced deliberately as their own variable.
 
 \textbf{A flat in-flight count is required} because throughput alone cannot tell a rate the pipeline
@@ -151,21 +164,25 @@ Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps 
 nothing measurable in throughput. It is not the SIGMOD'26 \SI{10}{\percent} \emph{gain} either. The
 tail is flat with it too, \SIrange{496}{542}{\milli\second} p99 across the four shares.
 
-Double spends do not reproduce (Fig.~\ref{fig:panels}c), and a deployment setting is why. At the 120-way tablet pre-split this
-cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: no offered rate
-qualified. Its best attempt at the bound delivered \num{8160} tps with a \SI{9.9}{\second} tail, and
-its highest-throughput attempt \num{21636} tps with the tail pinned at the \SI{60}{\second} measurement
-ceiling --- the former with the busiest machine at \SI{18}{\percent} CPU, so neither capacity nor a
-queue. \SI{5}{\percent} is the only conflict share measured at this split; the higher shares were
-measured at the default split instead.
-
-At the default split the same shapes hold: \num{41273}, \num{30000}
-and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} with
-\SIrange{334}{533}{\milli\second} p99, flat rather than declining --- while costing the conflict-free
-case by a factor this experiment cannot pin down: at the default split \emph{no} rate between
-\num{155204} and \num{294780} tps got a confirmed hold with no conflicts at all, so
-Fig.~\ref{fig:panels}c shows no bar there. The split is therefore a workload-dependent trade rather than
-a tuning win, and why 120 tablets collapse under conflicts is unresolved.
+% The double-spend results are being re-measured with the corrected reference gap (1,000,
+% the paper's, against the 0 these numbers were taken at) at the 120-way split the paper also
+% used. Restore this subsection from the new rows when the run lands; the numbers below are
+% from the superseded workload.
+% Double spends do not reproduce (Fig.~\ref{fig:panels}c), and a deployment setting is why. At the 120-way tablet pre-split this
+% cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: no offered rate
+% qualified. Its best attempt at the bound delivered \num{8160} tps with a \SI{9.9}{\second} tail, and
+% its highest-throughput attempt \num{21636} tps with the tail pinned at the \SI{60}{\second} measurement
+% ceiling --- the former with the busiest machine at \SI{18}{\percent} CPU, so neither capacity nor a
+% queue. \SI{5}{\percent} is the only conflict share measured at this split; the higher shares were
+% measured at the default split instead.
+%
+% At the default split the same shapes hold: \num{41273}, \num{30000}
+% and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} with
+% \SIrange{334}{533}{\milli\second} p99, flat rather than declining --- while costing the conflict-free
+% case by a factor this experiment cannot pin down: at the default split \emph{no} rate between
+% \num{155204} and \num{294780} tps got a confirmed hold with no conflicts at all, so
+% Fig.~\ref{fig:panels}c shows no bar there. The split is therefore a workload-dependent trade rather than
+% a tuning win, and why 120 tablets collapse under conflicts is unresolved.
 
 \begin{figure*}[t]
   \centering
