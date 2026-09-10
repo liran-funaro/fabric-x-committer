@@ -228,6 +228,10 @@ machines before it belongs to ordering.
 
 \subsection*{Latency against throughput, by shard count and storage}
 
+Both ladders here carry the workload of Fig.~\ref{fig:curve} --- two read--write operations over
+\SI{32}{\byte} keys, \SI{262}{\byte} serialized, every slot taking a fresh key --- so the two arms are
+comparable at matched rates and differ only in whether an ordering service is in the path.
+
 End to end, ordering included, this deployment sustains \num{499091} tps at
 \SI{658}{\milli\second} p99, with every offered rate up to that arriving in full and no aborted
 transactions at any rung. Two comparisons place it. The published work has no end-to-end figure, but
@@ -297,7 +301,7 @@ constraint is capacity rather than batch fill. Neither sustains it under a one-s
 \subsection*{Latency against throughput, by batch size}
 
 Batch size is the latency--throughput knob here, and it trades one for the other almost exactly
-(Fig.~\ref{fig:e2ebatch}). Cutting the batch from \num{10000} transactions to 500 removes most of
+(Fig.~\ref{fig:e2ebatch}), at the same workload again. Cutting the batch from \num{10000} transactions to 500 removes most of
 the latency at every rate the two share --- p99 \SI{197}{\milli\second} against \SI{693}{\milli\second} at \num{100000} tps,
 \SI{286}{\milli\second} against \SI{460}{\milli\second} at \num{250000}, and mean latency a
 third of what large batches give. That is the predicted effect and its direction confirms the
@@ -324,8 +328,10 @@ a tuning win: small batches halve the latency and halve the ceiling.
 
 \subsection*{Throughput against transaction size}
 
-Throughput falls with transaction size but far more slowly than the published sweep, and the byte
-rate is what shows why (Fig.~\ref{fig:size}). The published measurement is bandwidth-bound past
+This sweep keeps the same two read--write operations and varies only the value each one carries, so
+the serialized envelope is \num{202} bytes plus twice that value. Throughput falls with transaction
+size but far more slowly than the published sweep, and the byte rate is what shows why
+(Fig.~\ref{fig:size}). The published measurement is bandwidth-bound past
 \SI{300}{\byte}: each of its points sits within \SI{10}{\percent} of
 \SI{120}{\mega\byte\per\second}, so its rate is simply bytes per second divided by size. This
 deployment is not bandwidth-bound anywhere in the range. Its byte rate \emph{rises} with size, from
