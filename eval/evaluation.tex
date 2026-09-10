@@ -128,7 +128,7 @@ collapses once it fills.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-ecdsa/figure9.pdf}
-  \caption{Committer throughput against (a) transaction size, (b) invalid-signature share and (c) double-spend share, beside the SIGMOD'26 paper's Figure~9. Bars are throughput on the left axis; the marks above them are the 99th-percentile latency of the same measurement on the right axis, in that series' own colour. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share with its percentage. Whiskers are the search's \SI{8}{\percent} step, one-sided. A dotted outline is a condition that was measured and missed the latency bound, labelled with its throughput and the tail that disqualified it; \emph{not run} marks one never attempted at that configuration.}
+  \caption{Committer throughput against (a) transaction size, (b) invalid-signature share and (c) double-spend share, beside the SIGMOD'26 paper's Figure~9. Bars are throughput on the left axis; the marks above them are the 99th-percentile latency of the same measurement on the right axis, in that series' own colour. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share --- labelled with the share it measured only in (c), where what the generator produced differs from what was asked for; elsewhere it is the x value. Whiskers are the search's \SI{8}{\percent} step, one-sided. \emph{Not run} marks a condition never attempted at that configuration.}
   \label{fig:panels}
 \end{figure*}
 
@@ -147,8 +147,8 @@ never measured here, and our one- and three-key points have nothing to compare a
 
 The mechanism behind that slope is not the SIGMOD'26 one, which is lock contention in the
 coordinator's dependency graph. There is no such lock here: the simple manager has one owning goroutine
-where the sharded graph has a mutex, and across \num{2326} samples of a run its two lock-wait
-histograms never leave zero. What the graph costs instead is per key: a stage benchmark of the
+where the sharded graph has a mutex, and its two lock-wait histograms read zero in every one of
+\num{2326} thirty-second samples across these runs. What the graph costs instead is per key: a stage benchmark of the
 manager puts it at about \SI{420}{\nano\second} a key, flat from one key per transaction to eight, which
 is a fall of the shape this panel shows. Running the sharded graph on
 this deployment instead does register on those histograms, so the difference is the manager and not the
@@ -186,10 +186,10 @@ Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps 
 \SI{8.8}{\percent} repeatability, so rejection costs nothing measurable in throughput. It is not the
 SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 
-% The double-spend results are being re-measured with the corrected reference gap (1,000,
-% the paper's, against the 0 these numbers were taken at) at the 120-way split the paper also
-% used. Restore this subsection from the new rows when the run lands; the numbers below are
-% from the superseded workload.
+% Parked. Every number below was measured with a reference gap that let a back-reference name a key
+% still in flight, which measures dependency ordering rather than double spends. The gap is now derived
+% from the in-flight window (300,000 transactions) and the collapse is under investigation -- see
+% eval-todo.md item 2. Rewrite this section from the new rows; do not restore these.
 % Double spends do not reproduce (Fig.~\ref{fig:panels}c), and a deployment setting is why. At the 120-way tablet pre-split this
 % cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: no offered rate
 % qualified. Its best attempt at the bound delivered \num{8160} tps with a \SI{9.9}{\second} tail, and
@@ -209,7 +209,7 @@ SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-ecdsa/latency-throughput.pdf}
-  \caption{Latency against throughput for the committer alone, at two block sizes and a fixed workload of two read--write operations. Thick line: the median; the thin line above it the 99th percentile, shaded between; dashed: the median plus the mean wait for a block to be cut, which the measurement excludes. Hollow markers are rates offered but not sustained. The latency axis is floored and then grown to contain every sustained rate; rates above it are summarised in a corner.}
+  \caption{Latency against throughput for the committer alone, at two block sizes and a fixed workload of two read--write operations. Thick line: the median; the thin line above it the 99th percentile, shaded between; dashed: the median plus the mean wait for a block to be cut, which the measurement excludes. The latency axis runs to one second, the bound every reported point meets: it is floored so the operating region stays legible and capped so a rung that took seconds cannot flatten the rest. Offered rates whose median is past it are summarised in a corner rather than drawn, and a hollow marker appears only where one falls inside the axis.}
   \label{fig:curve}
 \end{figure*}
 
