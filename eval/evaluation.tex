@@ -258,8 +258,9 @@ ordering, while a per-core one belongs to neither class in particular.
 the largest single term in end-to-end latency and a ceiling on throughput as well. A consenter sees
 batch attestations rather than transactions --- some 28 a second across two shards at \num{280000} tps
 --- so \texttt{RequestBatchMaxCount} of 100 would take seconds to fill and the interval is what cuts
-every decision. Throughput then follows the interval directly, since it is decisions a second times
-transactions a decision, and the second term is near-constant at the ceiling.
+every decision. Throughput follows the interval for the same reason: at the ceiling each decision
+carries about the same number of transactions, so more decisions a second is more transactions a
+second.
 
 \begin{figure*}[t]
   \centering
