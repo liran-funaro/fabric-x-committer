@@ -204,10 +204,13 @@ transaction.
 at 70–81%. Under Ed25519 the generator was near co-limiting, so these are the first 9a/9b figures
 here that bound the pipeline rather than the instrument-plus-pipeline pair.
 
-### Unverified at handoff
+### Verified checkpoint at handoff
 
-9c-ds0 had begun (two probes reported MET at 480,000 and 518,400 — **not verified**). Nothing after
-that is confirmed.
+Re-read at cluster time **02:43:49**: `figures-ecdsa.jsonl` holds **37 rows** with **9 hold rows**
+(8 met + the one failed `9a-rw3` attempt), and the driver is alive. The hold count is unchanged from
+02:32, so **9c-ds0 has probes only and no confirmed hold** — the eight holds tabulated above are still
+the complete verified set. Its probes at 480,000 and 518,400 tps were reported MET but are not part of
+the verified set and should be re-read rather than trusted.
 
 ---
 
