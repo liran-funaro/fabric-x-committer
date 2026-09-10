@@ -567,6 +567,21 @@ def series(rows, ax, figure, color, label, axis_ms):
     """
     every = sorted([r for r in rows if series_name(r) == figure and throughput(r)],
                    key=lambda r: r["limit"])
+    # One configuration per curve. A ladder is drawn as a single line across several experiment ids --
+    # curve500, curve500hi and curve500top are one series -- so a configuration change that lands in only
+    # some of them would otherwise be drawn as one curve made of two different systems. It happened with
+    # `fast-block-prepare`: the rungs above 380,000 tps were re-measured with it while the ones below
+    # were not, and nothing in the plot would have said so. Keep the newest configuration and say what
+    # was dropped, so a half-finished re-measurement is visible rather than silent.
+    configs = {}
+    for r in every:
+        configs.setdefault(config_key(r), []).append(r)
+    if len(configs) > 1:
+        newest = max(configs.values(), key=lambda g: max(r.get("at") or 0 for r in g))
+        stale = sum(len(g) for g in configs.values()) - len(newest)
+        print(f"  {figure}: {len(configs)} configurations; drawing the newest {len(newest)} rung(s) "
+              f"and dropping {stale} measured under another")
+        every = sorted(newest, key=lambda r: r["limit"])
     sustained_pts = [r for r in every if sustained(r)]
     missed = [r for r in every if not sustained(r)]
     # A sustained rung whose median is past the axis is named in the corner note, not drawn. Drawing it
