@@ -90,11 +90,12 @@ on a fresh deployment.
 \section{Why this setup}
 
 \textbf{The shape is not the SIGMOD'26 paper's, and neither is the hardware.} Its committer deployment
-is nine validator--committers on nine database nodes, and both of its arms ran on AWS: 32-vCPU
-instances at \SI{3.5}{\giga\hertz} for each validator--committer with its database node, 64-vCPU
-instances for the coordinator, the sidecar and the load generator, 32-vCPU AMD instances at
-\SI{3.3}{\giga\hertz} for the verifiers, all on EBS General Purpose volumes rated at \num{3000} IOPS
-and \SI{125}{\mebi\byte\per\second}. This deployment is wider and slower per core --- 64 hardware
+is nine validator--committers on nine database nodes, and both of its arms ran on AWS: a
+\texttt{c6id.8xlarge} for each validator--committer with its database node (32 vCPUs of Ice Lake at
+\SI{3.5}{\giga\hertz}, \SI{64}{\gibi\byte}), a \texttt{c6id.16xlarge} each for the coordinator, the
+sidecar and the load generator, and a \texttt{c5a.8xlarge} for each verifier (32 vCPUs of EPYC at
+\SI{3.3}{\giga\hertz}). Storage on both arms is EBS General Purpose, rated at \num{3000} IOPS and
+\SI{125}{\mebi\byte\per\second} --- the \texttt{c6id} local NVMe was not used. This deployment is wider and slower per core --- 64 hardware
 threads at \SI{2.10}{\giga\hertz} a machine --- with more memory, and with local volumes that
 Table~\ref{tab:disk} measures at two orders of magnitude more random write IOPS than that EBS rating.
 What follows therefore compares deployments, not matched hardware.

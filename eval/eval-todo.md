@@ -31,8 +31,8 @@ Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a 
 | 7 | **Restore the double-spend section.** Its two paragraphs are commented out, and figure 1c still draws the gap-0 rows — the panel is orphaned until #2 replaces them. | 2 |
 | 8 | **Update figure 2 and its section** — the ladder, the 40 ms floor, the 136 ms median at 379,764 tps, and the sentence attributing the ceiling to the generator's block preparation. | 1 |
 | 9 | **Update figure 5, Table 1 and the size section** with 300 B re-measured, 3 KiB added, and holds where they exist. | 3, 4, 5 |
-| 10 | **Say what the paper's committer machines were** now that the setup is known (AWS `c6id.8xlarge` per validator-committer with its database node, `c5a.8xlarge` verifiers, `c6id.16xlarge` coordinator/sidecar/loadgen, EBS gp). Currently one bullet; it bears on the per-key hypothesis. | — |
-| 11 | **Mention that the published committer tier spans three regions** where this one is in one datacentre. It makes their per-key result more striking, not less. | — |
+| 10 | ~~Name the paper's committer machines.~~ **Done**: the bullet now gives the three instance types and the EBS rating. | — |
+| 11 | ~~Mention that the published committer tier spans three regions.~~ **Dropped**: that came from the §6 text the authors say is wrong. Its arms ran on AWS, and whether the committer tier was multi-region there is not something this repo can establish. | — |
 
 ## Not scheduled
 
