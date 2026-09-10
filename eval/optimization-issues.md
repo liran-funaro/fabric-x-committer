@@ -469,6 +469,15 @@ Three findings from reviewing it:
   sequence, main into the outer wrap — where `encoding/asn1` sizes its output once. Worth resolving
   before submission if large values are a supported workload.
 
+## #813. [loadgen] Use the quick ASN.1 marshal for the transaction digest
+
+Filed as **#813** against the committer, a child of #798. The committer-side half of the
+fabric-x-common change above: once upstream exposes the directly-encoded alternative, point
+`utils/testsig`'s endorser (`ns_endorser.go:94`) and `utils/signature`'s verifier at it. Worth 7,510 ->
+1,512 ns/op and 61 -> 9 allocations at the shape this generator produces, on a generator that after #812
+co-limits the deployment with the database machines rather than being spare capacity. The change is
+implemented on this branch (`d8b7642d`).
+
 ## #797. Benchmarks for attributing committer performance
 
 Three of the findings in this umbrella were invisible until the corresponding benchmark existed, and
