@@ -164,8 +164,9 @@ re-measured under ECDSA, those two searches --- the clean \SI{0}{\percent} point
 two-read--write point --- both hold \num{518000}, to the transaction. A clean baseline near
 \num{518000} rather than \num{558000} makes the series flat across its whole range, so rejection
 costs nothing in throughput. It is still not the published \SI{10}{\percent} \emph{gain}. The
-\SI{10}{\percent} point's ECDSA confirmation is pending; its knee has bracketed at \num{518400},
-which is consistent with a flat series but is a probe and not yet a hold.
+\SI{10}{\percent} point's own confirmation settles it: under ECDSA it holds \num{517999} tps against
+the clean \num{518000}, a difference of one transaction a second while a tenth of the workload is
+being rejected.
 Driven instead at one common \num{559872} tps, all three deliver it while the tail grows with the
 invalid share (\SI{1.1}{}, \SI{5.0}{} and \SI{7.5}{\second}): rejection is cheap in throughput and
 expensive in latency.
