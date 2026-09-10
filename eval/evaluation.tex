@@ -463,7 +463,13 @@ and pipeline together, not on the pipeline alone. Separating them needs a second
 is no spare machine for one without taking it from the committer. A
 knee is resolved to the search's \SI{8}{\percent} step, so it is a lower bound, drawn one-sided in
 Fig.~\ref{fig:panels}. The baseline drifts \SI{10}{\percent} between days, so only same-day
-comparisons are used.
+comparisons are used, and within a day repeatability is no better --- see Table~\ref{tab:size}, where
+one point measured twice gave holds \SI{8.8}{\percent} apart. Two independent instances of that agree.
+The \SI{0}{\percent} invalid-signature point and the two-read--write point are the \emph{same}
+workload reached by separate searches: under Ed25519 they returned \num{558364} and \num{517272} tps,
+\SI{7.9}{\percent} apart, so the higher was an outlier; under ECDSA both searches returned
+\num{518000}, to the transaction. A difference under about a tenth is therefore not a result here, and
+no claim in this section rests on one.
 
 One limit is stated in advance of the end-to-end data rather than after it. That arm measures a ladder
 on a single deployment, so rate and table fill rise together and the ladder cannot separate them: if
