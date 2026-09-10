@@ -169,6 +169,36 @@ def disqualified_rates(rows):
     return {key for key, r in latest.items() if not r.get("met")}
 
 
+def collapsed_per_x(rows, figure):
+    """The best measurement per x among points that delivered their rate but missed the latency bound.
+
+    `best_per_x` admits only `met` rows, which is right for a headline bar but hid the double-spend
+    result: at the 120-way tablet split the 5% share was measured eleven times and every attempt blew
+    the bound, so the blue series was one bar at 0% and the panel looked as though nothing had been
+    run. The absence of a qualifying rate IS the result there, but a reader cannot check a result that
+    is drawn nowhere.
+
+    "Delivered" is the same test the latency curve uses -- offered rate arrived within 2% -- so a point
+    that merely queued does not qualify as evidence of anything.
+
+    Among those, the one with the LOWEST tail is kept, not the highest throughput. The claim being
+    evidenced is that no rate qualified, so the fair witness is the configuration's best attempt at the
+    bound it failed. At 5% double spends the highest-throughput attempt was 22,000 tps with the tail
+    pinned at the 60 s measurement ceiling, which invites the reply that a gentler rate would have been
+    fine; the lowest-tail attempt answers it, because backing off to 8,000 tps still left a 9.9 s tail.
+    """
+    best = {}
+    for r in rows:
+        if r.get("figure") != figure or r.get("met"):
+            continue
+        tps, p99 = throughput(r), r.get("lat_p99")
+        if not tps or not p99 or tps < r["limit"] * 0.98:
+            continue
+        if r["x"] not in best or p99 < best[r["x"]]["lat_p99"]:
+            best[r["x"]] = r
+    return best
+
+
 def best_per_x(rows, figure):
     """The reported point for each x: the best rate that is still standing.
 
@@ -283,7 +313,11 @@ def figure9(rows, path):
         # three absences; at the default split the same shapes hold. Two series make the panel say what
         # the measurement actually found, which is that the split is the difference.
         alt = best_per_x(rows, "split") if figure == "9c" else {}
-        xs = sorted(set(data) | set(paper) | set(alt))
+        # Shares that were measured at this split and collapsed. Drawn, because "no rate qualified" is
+        # a claim the reader should be able to see the evidence for.
+        weak = {x: r for x, r in collapsed_per_x(rows, figure).items()
+                if x not in data} if figure == "9c" else {}
+        xs = sorted(set(data) | set(paper) | set(alt) | set(weak))
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
 
@@ -324,10 +358,24 @@ def figure9(rows, path):
                 top.annotate(f"{total / 1000:,.0f}k",
                              (pp + offsets[0], total * STEP), textcoords="offset points",
                              xytext=(0, 4), ha="center", fontsize=8, color=INK2)
+            elif x in weak:
+                # Measured and collapsed: an outline, because it is not a rate anyone would run, with
+                # the tail that disqualified it named beside it. A filled bar here would read as a
+                # result of the same standing as the others.
+                r = weak[x]
+                total = throughput(r)
+                top.bar(pp + offsets[0], total, width, facecolor="none", edgecolor=OURS,
+                        linewidth=1.2, linestyle=":", zorder=3)
+                tail = r.get("lat_p99") or 0
+                top.annotate(f"{total / 1000:,.0f}k\nat {tail:,.1f} s" if tail < 10 else
+                             f"{total / 1000:,.0f}k\nat {tail:,.0f} s",
+                             (pp + offsets[0], total), textcoords="offset points", xytext=(0, 3),
+                             ha="center", fontsize=6, color=INK2)
             elif figure == "9c":
-                # 9c is the panel where the absence is the result: every rate offered at 5% and above
-                # failed the conditions, so there is no bar to draw and saying so is the measurement.
-                top.annotate("none", (pp + offsets[0], paper[x][0] * 1.06),
+                # Never attempted at this split, which is not the same as attempted and failed. The 5%
+                # collapse was taken as sufficient and the higher shares were only run at the default
+                # split, so saying "none" here would claim a measurement that does not exist.
+                top.annotate("not run", (pp + offsets[0], paper[x][0] * 1.06),
                              ha="center", va="bottom", fontsize=6.5, color=INK2, rotation=90)
             if x in alt:
                 r = alt[x]
@@ -356,6 +404,15 @@ def figure9(rows, path):
             bottom.plot([pp for pp, _ in ours], [v for _, v in ours], color=OURS, linewidth=2,
                         marker="o", markersize=8, zorder=3)
         for pp, x in zip(pos, xs):
+            if x in weak:
+                # The blue series exists at this x; it is simply far off this axis. Naming it keeps the
+                # series present in both rows, where drawing it would set the axis to 9.9 s and flatten
+                # every point that met the bound.
+                # x in data coordinates, y as a fraction of the axes: get_ylim() here reads a limit
+                # that later data still changes, which put this halfway up the panel.
+                bottom.text(pp, 0.93, f"{(weak[x].get('lat_p99') or 0):,.1f} s",
+                            transform=bottom.get_xaxis_transform(), ha="center", va="top",
+                            fontsize=6.5, color=OURS)
             if x in data and latency_ms(data[x]) is None:
                 bottom.annotate(f">60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
                                 (pp, 0), xytext=(0, 18), textcoords="offset points", ha="center",
@@ -384,6 +441,8 @@ def figure9(rows, path):
             bottom.set_ylabel("p99 latency (ms)", color=INK2, fontsize=9)
 
     legend = [Patch(color=OURS, label="this cluster"),
+              Patch(facecolor="none", edgecolor=OURS, linestyle=":",
+                    label="measured, missed the latency bound"),
               Patch(color=SMALL, label="this cluster, default tablet split (9c only)"),
               Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),

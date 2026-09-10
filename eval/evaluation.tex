@@ -54,8 +54,10 @@
   Throughput counts transactions \emph{finished}, committed plus rejected; the hatched part of a bar is
   the rejected share, labelled as a percentage, so the two experiments are compared at matched reject
   rates rather than at matched labels. Whiskers are the search's \SI{8}{\percent} step, one-sided
-  because a knee is a lower bound. \emph{none} marks a condition where no offered rate qualified --- the
-  absence is the result. The published series is Figure 9 of the paper: its endpoints as quoted in the
+  because a knee is a lower bound. a dotted outline is a condition measured that missed the latency bound, labelled
+  with the tail that disqualified it; the lowest-tail attempt is the one shown, since the claim being
+  evidenced is that nothing qualified. \emph{Not run} marks a condition never attempted at that
+  configuration, which is not the same as one attempted and failed. The published series is Figure 9 of the paper: its endpoints as quoted in the
   text, intermediate points read off the plots at \SI{400}{dpi}.}
   \label{fig:panels}
 \end{figure*}
@@ -188,9 +190,13 @@ invalid share (\SI{1.1}{}, \SI{5.0}{} and \SI{7.5}{\second}): rejection is cheap
 expensive in latency.
 
 Double spends do not reproduce, and a deployment setting is why. At the 120-way tablet pre-split this
-cluster uses, \SI{0}{\percent} holds \num{518000} tps and \emph{no} rate qualifies at \SI{5}{\percent}
-or above --- about \num{20000} tps at tens of seconds with every machine under \SI{10}{\percent} CPU,
-so neither capacity nor a queue. At the default split the same shapes hold: \num{41273}, \num{30000}
+cluster uses, \SI{0}{\percent} holds \num{518000} tps and \SI{5}{\percent} collapses: eleven rates were
+offered and not one qualified. Its best attempt at the bound delivered \num{8158} tps with a
+\SI{9.9}{\second} tail, and its highest-throughput attempt \num{21636} tps with the tail pinned at the
+\SI{60}{\second} measurement ceiling --- with every machine under \SI{10}{\percent} CPU, so neither
+capacity nor a queue. \SI{5}{\percent} is the only conflict share attempted at this split; the higher
+shares were measured at the default split instead, so Fig.~\ref{fig:panels} marks them \emph{not run}
+rather than implying they were tried and failed. At the default split the same shapes hold: \num{41273}, \num{30000}
 and \num{40909} tps at \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent} with
 \SIrange{334}{533}{\milli\second} p99, flat rather than declining --- while costing the conflict-free
 case by a factor this experiment cannot pin down: at the default split \emph{no} rate got a confirmed
