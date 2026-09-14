@@ -203,17 +203,19 @@ because it measures status arrivals in a sixty-second window while several milli
 ahead of them. Its mean, \num{20610}, agrees with the committers' counters; its variance is the queue's, not
 the pipeline's. Figures here are the committers'.}
 
-The cost is a database read amplification, and three measurements place it there rather than in conflict
-handling. Per transaction, the busiest machine spends \SI{2133}{\micro\second} of CPU under conflicts
-against \SI{99}{\micro\second} without them, so the work is real rather than queued --- no queue makes a
-transaction cost twenty times the CPU. The insert step of a commit takes \SI{1.72}{\second} a call at
-\num{1.91} calls a commit, the second call being a retry. And the same workload at eight tablets instead
-of \num{120} commits \num{172260} tps at \SI{239}{\milli\second}, with per-transaction CPU back to
-\SI{75}{\micro\second}: for the ninety seconds that probe runs the penalty is absent rather
-than reduced.\footnote{That rate is a
-\SI{90}{\second} probe. Its \SI{300}{\second} hold delivered about \num{125000} tps with a
-\SI{26}{\second} mean, so the rate is not sustained at eight tablets; the sweep below gives the
-\SI{300}{\second} figure.}
+The cost is work done in the database rather than time spent queueing, and three measurements place it
+there. Under conflicts the busiest machine spends \emph{twenty-two times} the CPU per transaction that it
+spends without them, and no amount of queueing makes a transaction cost more
+CPU.\footnote{Busiest-host CPU per cent times its \num{64} threads, divided by transactions finished a
+second. That attributes a whole machine to one workload, so it is a comparison and not a per-transaction
+cost: the ratio is the claim, and the absolute figures behind it are \SI{2133}{\micro\second} against
+\SI{99}{\micro\second}.} The insert step of a commit takes \SI{1.72}{\second} a call at \num{1.91} calls a
+commit, the second call being a retry. And the same workload at eight tablets instead of \num{120} commits
+\num{172260} tps at \SI{239}{\milli\second} --- six times the rate --- so the penalty is a property of the
+layout and not of conflicts.\footnote{That rate is a \SI{90}{\second} probe, and it is the last of this
+section's figures to rest on one: its \SI{300}{\second} hold at the same offered rate delivered
+\num{125000} tps at a \SI{26}{\second} mean, so eight tablets does not sustain the bound either. The sweep
+below gives both figures.}
 
 The mechanism is visible in the state database's own procedure. A batch of new keys is inserted blind and
 returns on success, performing no lookup at all. One key that already exists raises a uniqueness violation,
