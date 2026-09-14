@@ -209,7 +209,8 @@ against \SI{99}{\micro\second} without them, so the work is real rather than que
 transaction cost twenty times the CPU. The insert step of a commit takes \SI{1.72}{\second} a call at
 \num{1.91} calls a commit, the second call being a retry. And the same workload at eight tablets instead
 of \num{120} commits \num{172260} tps at \SI{239}{\milli\second}, with per-transaction CPU back to
-\SI{75}{\micro\second}: the penalty is gone, not reduced.\footnote{That rate is a
+\SI{75}{\micro\second}: for the ninety seconds that probe runs the penalty is absent rather
+than reduced.\footnote{That rate is a
 \SI{90}{\second} probe. Its \SI{300}{\second} hold delivered about \num{125000} tps with a
 \SI{26}{\second} mean, so the rate is unconfirmed at eight tablets; the \SI{300}{\second} figures below
 are not.}
@@ -223,13 +224,22 @@ distributed transaction that has to reach every tablet the batch touched.
 
 What the failure path costs is measured; what sets its cost is not. Backing the clean attempt out of the
 insert histogram puts a failing attempt between \num{1.2} and \SI{2.6}{\second}, against the
-\SI{23}{\milli\second} a whole clean commit takes. Two of the three quantities that could explain it ---
+\SI{23}{\milli\second} a whole clean commit takes. All three quantities that could explain it ---
 tablets, keys an insert, and utilization --- move together in every measurement, so none can be separated:
 at a fixed \num{88} tablets and a fixed width the insert still moves by a fifth as the offered rate falls,
 and at \num{88} tablets the product of keys and tablets is \num{26488}, below the threshold at which this
 database stops batching a multi-key lookup, while the insert still costs \SI{1.2}{\second}. The one thing
 that is not responsible is table size: over an eightfold growth of the table at fixed width the insert moves
 by \SI{0.8}{\percent}.
+
+Why no rate can pass is arithmetic rather than contention: the commit's own service time exceeds the
+bound. A steady-state measurement at \num{96} tablets --- \num{15659} tps offered and fully retired, the
+in-flight count neither growing nor draining --- spends \SI{1.76}{\second} in the insert at \num{1.90}
+attempts, so \SI{3.35}{\second} inside one commit before any transaction waits for another; at a lower
+utilization the same quantity reads \SI{2.29}{\second}. That is a lower bound, since the measurement
+brackets the insert alone and leaves the distributed transaction's rollback and the retry loop outside it. A
+service time of two to three seconds cannot produce a one-second 99th-percentile at any offered rate,
+which is why lowering the rate removes the queueing term and nothing else.
 
 The layout, however, is decisive, and it is the whole of the effect. At the \num{120}-way pre-split this
 deployment uses, no conflict share meets the one-second bound at any offered rate. With pre-splitting
