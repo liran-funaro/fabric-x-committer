@@ -1454,9 +1454,11 @@ search rather than merely being wrong:
 - *The database is idle.* Read from `commit_util` at 2–4 of 192 workers and `tx_batch_commit_latency` at
   17–28 ms. Both were true and both were the wrong instrument: the VC's workers were blocked on a
   tserver that was at 70–71% CPU, and the outer commit metric excludes the insert path that dominates it.
-- *Three rungs of the 5M ladder show throughput flat in offered rate* (50,000 → 23,004; 100,000 →
-  20,928; 200,000 → 17,121). Withdrawn under the drain defect below. Only rung 1 stands: 25,000 offered,
-  20,235 committed, on a fresh deployment.
+- *The latencies of every 5M ladder rung past the first.* Withdrawn under the drain defect below: means
+  of 148,000–155,000 ms are the inherited queue, and the p99s sit on the 60,000 ms measurement ceiling,
+  which is not a percentile. The **throughput** column of those rungs is not withdrawn — see below, where
+  the distinction is drawn — and this entry replaces an earlier, wider withdrawal of mine that took the
+  throughputs with the latencies.
 
 - *A column read of `tiers.log`.* The cross-tier sampler's `awk` collapses a row when any single metric
   is absent, so positions shift silently and every column-wise reading of that file is unsafe. Numbers
@@ -1536,6 +1538,22 @@ row on committed instead reads 78 µs rather than 74.
 At 120 tablets a conflicting transaction costs **22 times** what a conflict-free one does, and at 8
 tablets it costs the same as one — 74 µs against 99. The work is not inherent to conflicts; it is the
 unbatched lookup, and it disappears when the lookup stays batched.
+
+**Throughput is rate-independent; latency from the same rungs is not usable.** These separate, and it
+took three revisions to state correctly. At saturation the committed rate *is* the drain rate whatever is
+queued upstream, so an inherited backlog inflates latency and cannot inflate or deflate throughput. What
+licenses that here is the steady-width measurement above: since width does not follow queue depth
+(172–175 tx while in-flight rose 82%), a backlog does not change the cost of a batch and therefore does not
+change capacity. So the throughput column of the 5M ladder stands:
+
+| offered | 25,000 | 50,000 | 100,000 | 200,000 | 300,000 | 400,000 |
+|---|---|---|---|---|---|---|
+| committed | 20,235 | 23,004 | 20,928 | 17,121 | 24,041 | 18,332 |
+
+Mean 20,610 over a **16x range of offered rate**, with a regression slope of −396 tps per 100,000 offered
+— flat. But the spread is real: sd 2,650, **CV 12.9%**, which is 1.5x this cluster's own 8.8%
+repeatability. So the claim is "rate-independent at roughly 20,600", not a constant, and the dip at
+200,000 is noise rather than structure. Every mean and p99 from those same rungs stays withdrawn.
 
 **One 90-second probe met the SLO at 8 tablets, and no 300-second hold has reproduced it.** The row:
 
