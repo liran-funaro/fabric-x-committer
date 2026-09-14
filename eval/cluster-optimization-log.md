@@ -2087,16 +2087,29 @@ boundary, and the mean moved 58% with it. Rung 1's 519 ms is the more marginal r
 an unmoved mean — so the two should not be treated as one phenomenon.
 
 So the section's claim needs a boundary rather than a universal: **at twelve tablets the conflict share costs
-nothing in throughput up to 30%, and nothing in latency up to 20%, but between 20% and 30% the tail breaks the
-bound while the mean barely moves.** That is a narrower claim than three ladders suggested and a more useful
+nothing in throughput up to 30%, and nothing in latency up to 20% at any rate measured; at 30% it holds to
+10,000 tps and the tail breaks the bound by 25,000, while the mean barely moves.**
+
+**One caveat the section must carry**: the failing rung is one measurement on a rate list that has since been
+superseded. A boundary quoted from a single row is thin, and repeating 25,000 costs one rung — which is why the
+re-run should repeat it rather than only bracket it at 15,000 and 30,000. That is a narrower claim than three ladders suggested and a more useful
 one, and it is exactly what the registration was for — had the prediction not been written down, three passing
 ladders would have made a fourth look like confirmation.
 
 **Not explained**: why each insert becomes 3.65x more expensive between 18% and 26% generated share, with
 retries and width both held. Contention between conflicting inserts on the same recent keys is the obvious
-candidate; it would be the tenth mechanism proposed today and needs its own evidence, not this row. Note also
-that share and rate are not separated here — the boundary is somewhere between 20% and 30% in share *or*
-between 10,000 and 25,000 in rate at 30%, and one batch cannot tell which. The 50,000 and 80,000 rungs of ds30 will say whether the
+candidate; it would be the tenth mechanism proposed today and needs its own evidence, not this row. **Correction to my own reading**: I recorded that
+share and rate were not separated by this batch. They are, by rows already in hand. Rate alone would need a
+threshold at or below 25,000, since it fails there — but 18.1% *passes* at 50,000 and 80,000, up to **3.2x the
+failing rate**, so rate alone is refuted. Share alone is refuted too, since 25.9% passes at 10,000. The failure
+therefore needs **both** a share above ~18% and a rate above 10,000: a boundary that is a curve in
+(share, rate), already bracketed on three sides.
+
+That makes the operator's sentence more useful than "20% is safe and 30% breaks": **up to 20% the share is
+bookkeeping at every rate measured, to 80,000; at 30% it is bookkeeping to 10,000 and fails by 25,000.** Two
+numbers rather than one. What would tighten it further is 20% above 80,000, or 30% at an intermediate rate —
+ds30's remaining 50,000 and 80,000 rungs only test whether the failure persists upward, which both readings
+already predict, so they confirm rather than separate. The 50,000 and 80,000 rungs of ds30 will say whether the
 tail keeps growing or plateaus, and `ds1`/`ds01`/`ds001`/`ds0001` bracket the other end of the axis.
 
 Rungs 2 and up only: rung 1 of every ladder is measured while the table is still splitting — two tablets three
