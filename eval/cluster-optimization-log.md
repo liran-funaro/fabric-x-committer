@@ -1903,6 +1903,17 @@ different pre-splits, offered rates, block producers and days, with a spread of 
 it is **not negligible at the top of the axis**: a bar labelled 30% rejects 25.8%, so the axis has to carry
 what was generated, which is what `measured_conflicts` and the figure caption already do.
 
+**The end-to-end arm's reported numbers were audited against `figures-orderer.jsonl` and are clean.** Recorded
+so it is not repeated: 499,091 tps at a 447 ms median and 658 ms p99 is a 300-second window, fully retired,
+with zero aborts at every rung; every rate below it arrived within 0.2% (350,000 → 350,000; 400,000 → 399,636;
+450,000 → 450,182); eight shards reach 500,000 against four shards' 499,091, 0.18% apart; four shards hold the
+lower p99 at both matched rates (658 against 754 ms at 500,000, 547 against 684 at 450,000); the busiest
+machine is `commit6`/`commit5` at the top of both ladders and a router below, which is what "the knee is not an
+ordering component" rests on; 81.6% is the true maximum behind "no machine exceeds 82%", with the load
+generator at 76.7%; and the 250,000 tps small-batch ceiling reads `blk_rate` **499.98**, so "a block-rate limit
+near 500 blocks a second" is measured rather than inferred. Also checked: after the reference-gap filter, no
+plotted point in either arm mixes configurations within an x.
+
 **A rule for proposing mechanisms at all, since five in this section were retracted and the next one is
 below.** The five that died were each *fitted to the quantity they then explained*: a curve was drawn through
 the numbers and the numbers were offered as its confirmation. The one that survives was **derived from the
