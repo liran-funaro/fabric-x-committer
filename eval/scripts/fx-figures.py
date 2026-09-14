@@ -84,7 +84,13 @@ QUERIES = {
     # Inserts per commit: 1.0 when nothing conflicts, and the retry loop in committer.go re-running a
     # batch after `insert_ns` raises unique_violation when something does. Measured at 1.91 during the
     # collapse. Recording it means a future run shows the retry rather than leaving it to be inferred.
-    # Transactions per insert, and so keys per insert at two per transaction. The threshold that matters
+    # Transactions per insert CALL, which is NOT the batch width: `insertStates` is called once per commit
+    # ATTEMPT, and a conflicting batch attempts ~1.8 times (`db_insert_per_commit`), so this quotient is
+    # width / attempts. Multiply the two to recover the width -- 84 x 1.79 = 150 transactions, ~300 keys,
+    # not the 168 that reading this series directly gives. Both factors are recorded per row, so any
+    # analysis can correct it, but three separate models were fitted to the uncorrected figure first and
+    # the correction moves the fit: at 88 tablets it takes keys x tablets from 14,784 to 26,400.
+    # The threshold that matters
     # is tablets x keys-per-lookup, and this width is NOT the graph's chunk size: measured median 152
     # against a chunk of 500, range 1-418, and it collapses from ~300 to ~125-150 under the very
     # conditions being measured. A tablet sweep without it cannot be interpreted -- every point could sit

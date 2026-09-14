@@ -117,7 +117,10 @@ latency times the fresh keys a transaction introduces, so \numrange{304000}{4020
 is \num{510000} keys and clears all of it. The SIGMOD'26 gap of \num{1000} transactions clears its own
 \SI{85}{\milli\second} pipeline and would leave two fifths of these references inside this one, which
 is why the parameter is derived here rather than copied. Erring long costs nothing --- an older key is
-still a double spend. Conflicts are then introduced deliberately as their own variable.
+still a double spend --- and erring short would have cost the result: the database raises
+\texttt{unique\_violation} only for a key it has already committed, so a gap inside the in-flight window
+routes most references into dependency ordering and never reaches the insert path that carries the cost
+reported for the double-spend panel. Conflicts are then introduced deliberately as their own variable.
 
 \textbf{A flat in-flight count is required} because throughput alone cannot tell a rate the pipeline
 sustains from one it is absorbing into a growing backlog: both commit everything offered for as long
