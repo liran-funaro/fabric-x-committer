@@ -292,6 +292,19 @@ EXPERIMENTS = [
          rates=[430000, 480000, 530000, 580000],
          vars=shape(2, 0, block=500)),
 
+    # What actually caps the generator at 500 transactions a block, since block preparation does not.
+    # With `fast-block-prepare` on, preparation is 1,133x cheaper and the ladder did not move: 430,000
+    # to 580,000 offered all SENT about 400,000, with the generator at 20% CPU. Blocked, not busy.
+    #
+    # The suspect is the buffer between the workload and the sidecar, which is counted in BLOCKS:
+    # `out-block-capacity: 100` is 1,000,000 transactions at 10,000 a block and only 50,000 at 500 --
+    # twenty times less headroom for the same transaction rate. A generator that fills it stalls on the
+    # channel, which is what 20% CPU while failing to send looks like. This ladder gives the small-block
+    # buffer the same transaction depth the large-block one has.
+    dict(id="curve500buf", figure="curve500buf", x=500, label="500-tx blocks, 2,000-block buffer",
+         mode="curve", rates=[330000, 380000, 430000, 480000, 530000],
+         vars=dict(shape(2, 0, block=500), loadgen_mock_orderer_out_block_capacity=2000)),
+
     # Whether the tablet split costs anything on the conflict workload, where read validation looks
     # up keys that exist rather than keys that do not. The zero-conflict point is the control: if
     # the default split is slower there and faster at 10%, the split is a workload-dependent trade

@@ -72,7 +72,11 @@ CFG=$(sshq "pgrep -af '[l]oadgen start' | grep -oE '\-\-config=[^ ]+' | head -1 
 say "generator config in use: ${CFG:-<none>}"
 [ -n "$CFG" ] || { say "!! no running load generator"; exit 1; }
 
-MOCK=$(sshq "grep -c 'mock orderer' $CFG" || echo 0)
+# `grep -c` exits 1 when the count is zero, so `|| echo 0` appended a SECOND zero and the integer
+# test below then failed with "0 0: integer expression expected" -- which read as a mock orderer being
+# present and refused an end-to-end batch that was correctly configured. Count inside the remote shell.
+MOCK=$(sshq "grep -c 'mock orderer' $CFG || true")
+MOCK=${MOCK:-0}
 GOT=$(sshq "awk '/namespace-policies:/{f=1} f && /^[[:space:]]*scheme:/{print \$2; exit}' $CFG")
 say "mock-orderer refs: $MOCK   scheme: ${GOT:-<none>}"
 [ "$GOT" = "$SCHEME" ] || { say "!! scheme is $GOT, expected $SCHEME"; exit 1; }
