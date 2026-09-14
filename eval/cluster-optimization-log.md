@@ -2065,6 +2065,37 @@ the first probe at 30,000 (4.05 s) and descended instead of climbing, which is t
 below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
 five days, so the series cannot share an axis with current numbers until it is re-run.
 
+**Read p99 against the mean, always — it separates "a burst hit some transactions" from "everything was
+slower", for free, from two columns already in every row.** This is the most reusable thing in this section and
+it arrived last, after a day of treating single p99 values as measurements. A tail event moves p99 while the
+mean barely follows; a uniform slowdown moves both together, and the *ratio* to the mean is then unchanged:
+
+| | r1 p99 | r2 p99 | p99 x | r1 mean | r2 mean | mean x | reading |
+|---|---|---|---|---|---|---|---|
+| nosplit-ds5 | 408 ms | 192 ms | **2.12** | 148 ms | 138 ms | 1.07 | tail event |
+| nosplit-ds10 | 409 ms | 150 ms | **2.73** | 146 ms | 133 ms | 1.10 | tail event |
+| nosplit-ds20 | 227 ms | 195 ms | 1.16 | 163 ms | 140 ms | **1.17** | uniform shift |
+
+`ds20`'s two ratios are 1.164 and 1.164 — identical to three digits — so nothing about the distribution's
+shape changed between its rungs, while `ds5`'s went 2.76 to 1.39. The constant ratio is the argument, not its
+value.
+
+**It also sizes the event.** If a fraction *f* of transactions are delayed by roughly the p99 excess, the mean
+excess is *f* times it, so *f* ≈ mean excess ÷ p99 excess (6f's): `ds5` gives 10/216 ≈ **4.6%** and `ds10`
+13/259 ≈ **5.0%**, two independent ladders agreeing. The estimate self-checks, since it needs *f* above 1% for
+p99 to sit inside the delayed group at all, and 5% clears that.
+
+What 5% of *transactions* localises is open, and the two readings differ in a way worth stating rather than
+resolving. Temporally it is a burst covering some fifteen seconds of a three-hundred-second window — but
+splitting spanned those whole windows, so that would need something brief *within* splitting rather than
+splitting itself. Spatially it needs no burst at all: a transaction is delayed if it touches a tablet that is
+mid-split, and one or two concurrent splits across twelve tablets is 8-17% of transactions, the right order
+without any time localisation. Neither is adopted; both are checkable, because `tabhold12`'s pinned rung should
+reproduce *f* near 5% if the mechanism is the same one.
+
+Three of today's wrong readings would have been caught by this test alone: the censored p99s below, the
+single-bucket ones, and a 3.35 s service time quoted from a p99 whose mean said otherwise.
+
 **p99 clamps at 60,000 ms only; everything below it is bucket resolution.** The first version of this
 paragraph called every repeated value a clamp — 60,000 ms on 114 rows, 29,900 on 26, 7,475 on 17, 44,850 on
 10, 19,950 on 8, 14,950 on 8 — and that was too wide. The histogram's actual `le` set is 2 ms through 10 s,
