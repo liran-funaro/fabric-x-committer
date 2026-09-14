@@ -1974,58 +1974,71 @@ though every numerical law fitted to it did not. It also confirms the service-ti
 side rather than by absence: 31 ms of service against a one-second bound is why this configuration meets it,
 where 3.29 s could not at any offered rate.
 
-**The tablet count at `pre_split_tablets: 0` is 23, and it makes this a cliff.** Read from the yb-master's
-own API, which needs no credentials beyond the Prometheus CA already on the control node:
-`GET /api/v1/tables` for the uuid, then `GET /api/v1/table?id=<uuid>` and count the `tablets` array. `ns_0`
-and `tx_status` both hold 23. With that the sweep prices out:
+**Withdrawn: there is no tablet count at `pre_split_tablets: 0`.** I recorded 23, read from the yb-master's
+`/api/v1/table?id=<uuid>`, as the layout of the no-split configuration. It is not a configuration value. The
+setting creates **one** tablet and automatic splitting grows it from there, with each bring-up resetting it —
+so `0` names a starting point, not a layout. A 30-second sampler over one ladder:
 
-| tablets | insert | keys per call | ms per tablet | keys x tablets |
-|---|---|---|---|---|
-| **23** | **0.0152 s** | 356 | **0.66** | 8,188 |
-| 88 | 1.196 s | 168 | 13.59 | 14,784 |
-| 96 | 1.764 s | 172 | 18.38 | 16,512 |
-| 120 | 1.720 s | 184 | 14.33 | 22,080 |
+    12:35:27  ns_0   3 tablets   2 running
+    12:35:57  ns_0   5 tablets   4 running
+    12:36:27  ns_0   9 tablets   6 running
 
-23 to 88 tablets is a **3.8x** change in the layout for a **79x** change in cost, so a linear per-tablet law
-under-predicts it by a factor of twenty-one, and ms per tablet spans 0.66 to 18.4 — a factor of twenty-eight
-across the sweep. **Per-tablet is refuted in the same form per-key was**, and by a wider margin. What is left
-is a cliff somewhere between 23 and 88 tablets, which the sweep's own gap between 8 and 88 already implied and
-which nothing between those two counts has ever probed.
+Two sessions published 23 and 10 for "the same configuration" and both were right at the moment they looked,
+minutes apart on different tables. The gap between them has a second cause worth knowing: the API's `tablets`
+array **includes mid-split tablets** (9 against 6 Running above), which `yb-admin list_tablets` filters. So
+the Running count is the number to quote, and even that is a timestamp. `tablets.log` now records both every
+30 seconds.
 
-The product of keys and tablets is under 32,768 at **every** row including the slow ones, so §6's threshold
-explains none of this sweep. Nor does a smooth function of the product: from 23 tablets to 88 it rises only
-1.8x (356 x 23 = 8,188 against 168 x 88 = 14,784) while the cost rises 79x, so a product model
-under-predicts by a factor of forty-four. That is not a refutation of monotonicity — both quantities do rise
-— but it leaves any product law needing to be steeply superlinear over a 1.8x interval, which is a
-discontinuity described in other words. That is now three ways of saying the same thing, and the honest position is that
-the shape of the cost between 23 and 88 tablets is unmeasured rather than modelled. `9c-ds5-tabhold{32,48}`
-are the rungs that would place it, and they are already queued.
+**The growth is a control rather than a confound, which is the useful part.** Over the no-split ladder the
+offered rate rises 6.7-fold *and the tablet count grows about sixfold*, while the insert **falls** from 15.2
+to 13.6 ms. So in this range the failure path is insensitive to the count as well as to the load — which is
+why the ladder is quotable despite the layout moving under it, and it is stronger evidence than a pinned
+layout would have been, because the count varied and the cost did not.
 
-One caveat on the count, and it is 6f's: `enable_automatic_tablet_splitting` is on by default and nothing here
-sets it, and this deployment has watched a table go from 120 tablets to 288 under eleven hours of load
-(§6). So 23 is where the no-split configuration *is*, not necessarily where it started, and a count per rung
-is the only version that also answers whether the layout drifts during a ladder. Rung 1's 15.2 ms insert is
-the baseline: if a later rung reads tens of milliseconds, that is the split moving rather than the rate.
+That reshapes the cliff rather than removing it: flat near 14 ms from one tablet to at least twenty, above a
+second by 88, and the interval between is where the transition lives. On the settled count of **12** running,
+12 to 88 is a 7.3x layout change for an 83x cost change, so linear per-tablet under-predicts by eleven and
+ms per tablet spans 1.20 to 18.4 — a factor of fifteen. `tabhold{12,24,48,64}` with splitting pinned off are
+what place it.
 
-**Two instrument notes from the same pair of rungs.**
+**And splitting does not stop at 12, which puts an expiry date on the positive result.** This is 6f's, and the
+master's own flags settle it:
 
-*The first rung after a deployment has an inflated tail.* Rung 1's p99 was **2.8x** its mean (408 ms against
-148 ms); rung 2's was 1.4x (192 against 138) at **double** the offered rate. A tail that shrinks when the rate
-doubles is a start-of-hold transient, not a property of the rate, so the first rung of any curve carries
-warm-up in its p99 and the mean is the statistic to read there. This matters more than it looks: the rungs
-that follow a fresh deployment are the ones this evaluation has been treating as cleanest, and they are
-exactly the ones affected. It is harmless where both rungs pass and would be misleading where only the first
-one runs.
+    tablet_split_low_phase_shard_count_per_node    1        -> low phase ends at 12 tablets (128 MiB each)
+    tablet_split_high_phase_shard_count_per_node   24       -> high phase runs to 288 (10 GiB each)
+    tablet_force_split_threshold_bytes             100 GiB
+    enable_automatic_tablet_splitting              true     (set nowhere in this repo)
 
-*The tablet count cannot be read from the tserver's metrics.* `metric_type="tablet"` on
-`/prometheus-metrics` is rolled **up** per table — the series carry `table_id`, `table_name` and
-`namespace_name` but no `tablet_id` — so a distinct count of tablet ids returns zero rather than the count.
-Recorded so nobody spends the attempt again; the master API above is the route that works.
+So a table created without a split clause has the **same destination** as one created with 120 — 288 tablets
+on twelve servers — and merely starts further away. §6 already records `ns_0`, created with 120, holding 288
+after eleven hours of load. The no-split ladder ran about twenty minutes on a table that began at one tablet,
+and the 88/96/120 rows, whose inserts are 1.19-1.76 s, may be showing where a no-split table *ends up* rather
+than a different configuration at all.
 
-*And the count is stable across the ladder, so far.* Between rungs 1 and 2 the insert went **down**, 15.2 ms
-to 13.9 ms, at double the rate, with keys per call (356 against 357) and attempts per commit (1.911 against
-1.904) identical to three digits. Auto-splitting is therefore not moving this configuration over the first
-ten minutes. Split thresholds are size-driven and the table keeps growing, so rung 4 is the real test.
+If that is right, "disabling the pre-split buys the latency bound" is a statement about the first tens of
+minutes and possibly false of a day — the difference between a deployment recommendation and a measurement
+artefact, and the only thing here a reader would act on. **It is unmeasured.** Two ways to settle it, both
+cheap against what it is worth: re-measure one rung — 60,000 — after the table has aged an hour or two at
+load on the same deployment, and compare against 13.7 ms; or plot `db_insert` against `tablets.log`'s running
+count across everything left in the queue. If the two are uncorrelated below ~20 and correlated above, the
+cliff is a count effect and the advantage is temporary. If the insert stays flat as the count climbs past 88,
+then the count was never the variable and *how* a table reaches a count matters — which would be the more
+surprising result of the two. `9c-nosplit-ds10` is running now with the sampler on it, so the second
+comparison is being collected for free.
+
+
+
+My first form of the rung-1 argument was circular and 6f caught it: I argued that fewer tablets should make
+the failure path cheaper, so rung 1 being *more* expensive rules the count out — but the reason to believe the
+cost is insensitive in that range is precisely that the count rose while the cost fell, so monotonicity cannot
+then be assumed as a premise. The non-circular form: between about 2 and 23 tablets the cost does not track
+the count in either direction, therefore rung 1's excess is not a count effect and cold start is what remains.
+
+I also over-read the confound when reporting it, and the correction is worth recording next to the claim:
+having found the count moving, I told the driver the four conflict shares might not share a layout and
+suggested pinning splitting off for the remaining ladders. The insert's insensitivity above already answers
+most of that — the shares can differ in count by a factor of several without the comparison moving, so the
+per-share counts are worth reporting but were not worth changing the plan for.
 
 **Unexplained, and flagged rather than fitted:** the batches are wider at no pre-split (682 keys against
 350) even though the downstream is 108x faster, which is backwards for a batcher whose only floor is
