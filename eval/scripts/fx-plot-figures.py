@@ -425,7 +425,7 @@ def figure9(rows, path):
             width, gap = 0.38, 0.012
             offsets = (-width / 2 - gap, None, width / 2 + gap)
 
-        def draw(xp, total, rejected, base, dark, dy=3, value=False):
+        def draw(xp, total, rejected, base, dark, dy=3, value=False, share=True):
             """One bar, with the rejected part of it drawn inside it.
 
             The paper breaks each of its 9b and 9c bars into total, valid and invalid; this draws the
@@ -449,7 +449,10 @@ def figure9(rows, path):
                         linewidth=0.8, hatch="///")
                 # zorder above the bars: at the default a neighbouring bar painted over the label,
                 # which is what clipped "10%" to "10(".
-                if figure == "9c":
+                # `share` is off for the no-split series for the same reason 9b carries no share label at
+                # all: at 10% double spends it rejects 9.5%, so the label restates the x value, and on a
+                # bar this short it lands on top of the value label instead.
+                if figure == "9c" and share:
                     top.annotate(f"{100 * rejected / total:.0f}%",
                                  (xp, rejected), textcoords="offset points", xytext=(0, dy),
                                  ha="center", fontsize=6, color=INK, zorder=7)
@@ -509,7 +512,8 @@ def figure9(rows, path):
                 total = throughput(r)
                 # No whisker: these are fixed-rate holds, not a search, so the rate is what was offered
                 # rather than a knee resolved to a step -- there is no bracketing interval to draw.
-                draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK, value=True)
+                draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK,
+                     value=True, share=False)
             if x in paper:
                 total, rejected, _ = paper[x]
                 draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK, dy=11)
