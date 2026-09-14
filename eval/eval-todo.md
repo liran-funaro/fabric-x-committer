@@ -70,10 +70,31 @@ Figure 5 and Table 1 wait on batch 7. One thing needs a decision rather than a r
 deeper block buffer joins the tuned setup**, and so whether figure 2 carries that ladder as its own series
 (item 8).
 
-**First `nosplit` rung, 12:10.** 5% double spends, pre-splitting off, 15,000 offered → 15,091 finished,
-14,354 committed at a 4.9% abort share, **p99 408 ms**, growth 0, busiest host **2% CPU**. Verified from `vars`
-as gap 300,000 and lookback 1,000,000, so it is the valid configuration rather than another convoy. A
-conflicting workload does have a sub-second operating point — and 2% CPU says the rungs above have room.
+**`nosplit` ds5 is done and it is the section's positive result.** Four rungs, each held 300 s, each arriving
+in full at flat in-flight, 4.88% abort throughout:
+
+| offered | committed | p99 | insert | busiest CPU |
+|---|---|---|---|---|
+| 15,000 | 14,354 | 408 ms | 15.2 ms | 1.9% |
+| 30,000 | 28,537 | 192 ms | 13.9 ms | 3.3% |
+| 60,000 | 56,899 | 189 ms | 13.7 ms | 7.3% |
+| 100,000 | **95,123** | **190 ms** | 13.6 ms | 10.6% |
+
+So **at least 95,123 tps** — the ladder ran out of rungs, not the pipeline out of capacity — against ~20,300
+at the 120-way split where no rate meets the bound. 4.7x and the SLO. The 408 ms is rung 1's warm-up; steady
+state is 190 ms.
+
+**The tablet count is a function of time, so no row may be labelled with one.** Three reads of a no-pre-split
+`ns_0`: **2** three minutes after bring-up, **12** twenty-six minutes into the ds5 ladder, **23** later and
+holding. All correct — YugabyteDB splits as the table grows, and 12 is the documented low-phase boundary (one
+per server) it crossed rather than a resting point. `ns_0` created with 120 held 288 after eleven hours. The
+document's column is now headed **pre-split** and the row reads **none**. Two consequences: `tabhold`'s rows
+will drift during their own measurements unless splitting is pinned, and since insert cost *fell* while the
+count grew sixfold during the ds5 ladder, the cliff sits between roughly **23 and 88** — so `tabhold32` and
+`tabhold48` are the informative rungs.
+
+**Also settled**: `yb-admin list_tablets` truncates at `max_tablets = 10` and exits 0, so any count of exactly
+10 from it is suspect. Pass `0`.
 
 **Nothing is publishable from a rate search after a miss.** Every descent probe inherits the previous rung's
 backlog, so its latency is not its own — `tab96` returned "no rate met" from seven probes for that reason
