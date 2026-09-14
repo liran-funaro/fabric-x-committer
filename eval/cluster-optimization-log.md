@@ -1364,3 +1364,68 @@ The lesson for anyone reading the headline figures is narrow and firm: they desc
 carrying transactions that cannot conflict and that only ever create keys, roughly 98% of the
 throughput depends on that, and the comparison between the two graph managers is established for
 that case alone.
+
+## 9. What the conflict workload actually costs, priced rather than inferred
+
+Every conflict share, at every reference gap and both signature schemes, drains near 20,000 tps against
+518,000 conflict-free. Five explanations were tried and four were wrong. This section records the
+measurement that priced it, and each retraction, because the wrong ones were each consistent with the
+evidence available at the time.
+
+**The measurement.** Two `/metrics` snapshots 40 s apart from one validator-committer, during a 5%
+double-spend run at the deployment's 120-way tablet split. Ratios of counters, not a rate ladder:
+
+| quantity | value |
+|---|---|
+| `insert_new_key_with_value_latency` | **1.69 s** per call |
+| `tx_batch_commit_latency` | 0.023 s per commit |
+| insert calls per commit | **1.91** |
+| batch width | 175 tx = **349 keys**, steady (cumulative 179) |
+| throughput | 3,447 tps per VC, 20,681 over six |
+
+The first two lines are the finding. `tx_batch_commit_latency` is what a reader reaches for and it is
+**75x smaller** than the insert path it contains; quoting it is what supported "the database is fast"
+through three wrong explanations.
+
+**The mechanism.** `insert_ns_<ns>` attempts a bulk insert, and on any existing key its
+`EXCEPTION WHEN unique_violation` handler runs `key = ANY(_keys)` over *every* key in the batch. The
+whole database transaction then rolls back and the batch is redone — which is the 1.91 calls. That
+lookup is where the tablet split acts: 349 keys x 120 tablets = 41,939, over YugabyteDB's ~32,768
+batching threshold, so it issues one storage read per key. 349 reads at ~4 ms is 1.4 s against the
+measured 1.69 s. At 8 tablets it is 2,863, under the threshold, and the same workload runs
+124,181–130,233 tps. The predicted edge is 32,768/349 = **93 tablets**, which is the test that would
+falsify this: 88 should recover and 96 should not.
+
+It is invisible on the headline workload because inserting only fresh keys never raises the exception,
+so nothing ever performs a multi-key lookup. A back-reference is the first thing that does.
+
+**What was wrong, and why it looked right.**
+
+- *The nil-version insert path is unique to this generator.* It is not — the published run's generator
+  also wrote no version on a conflicting key, so both take the same branch.
+- *The 120-way pre-split is ours and postdates the published run.* The published run had it too.
+- *The reference gap is smaller than the graph's window, so references become dependencies.* The abort
+  rate matches the configured share exactly, so references do land on committed keys and abort as
+  intended. Blocked transactions are 2,411 of 500,000.
+- *Over `waiting-txs-limit` the graph admits one batch per validation and the pipeline goes lock-step.*
+  Refuted by raising the limit to 5,000,000, verified in the coordinator's rendered config: the graph
+  sat at ~500,000, never near its limit, and throughput did not move. The population is bounded by
+  `committer_sidecar_waiting_txs_limit`, which is also 500,000 — raising one of two equal limits could
+  not have shown anything.
+- *Batch width is a self-reinforcing loop: a deeper queue widens the batch, which lengthens the lookup.*
+  Refuted by conjunction: in-flight rose 1.83M → 3.34M (+82%) while width went 179 → 175.
+  `MinTransactionBatchSize` defaults to **1**, so the VC's batcher dispatches as soon as anything is
+  queued and never reaches its 5 s timer under load. Width is arrival-per-send-cycle, set by the
+  downstream service rate. There is also no maximum width anywhere in `service/vc`, so capping it is a
+  code change rather than configuration — and it is the wrong lever, since 349 keys is what 175
+  transactions of this shape cost.
+
+**One harness defect found on the way, which invalidates part of the evidence above.** `drain()` parks
+the generator at `FX_DRAIN_RATE`, default 20,000, and this workload's capacity is 20,235 — so the
+backlog never falls, and the guard's own `inflight >= previous` early return gives up after ~120 s with
+millions queued. In-flight *rose* 1,830,000 → 3,340,000 while the log read "draining". Only the first
+rung after a fresh deployment is clean; later rungs measure an inherited queue, and their means are that
+queue rather than a service time. "Flat in offered rate" is therefore not established — it needs
+`FX_DRAIN_RATE` well below capacity, or a drain that parks at a fraction of measured throughput instead
+of a fixed rate. The counter ratios above are unaffected: a backlog changes neither the keys in a batch
+nor the reads that batch provokes.

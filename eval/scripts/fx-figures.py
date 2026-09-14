@@ -74,6 +74,27 @@ QUERIES = {
                    f"(rate(loadgen_valid_transaction_latency_seconds_bucket[{WINDOW}])))"),
     "db_commit":  (f"sum(rate(vcservice_database_tx_batch_commit_latency_seconds_sum[{WINDOW}]))"
                    f" / sum(rate(vcservice_database_tx_batch_commit_latency_seconds_count[{WINDOW}]))"),
+    # `db_commit` does NOT cover the insert step, and assuming it did cost two days. During the conflict
+    # collapse it reads 22.9 ms while the insert on the same VC in the same window reads 1.72 SECONDS --
+    # 75x. Every log that said "the database is healthy at 17-28 ms" was reading a metric that excludes
+    # the operation doing the work, which sent three sessions after the coordinator, the dependency
+    # graph, the tablet split and the reference gap instead. Measure the insert directly.
+    "db_insert":  (f"sum(rate(vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds_sum[{WINDOW}]))"
+                   f" / sum(rate(vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds_count[{WINDOW}]))"),
+    # Inserts per commit: 1.0 when nothing conflicts, and the retry loop in committer.go re-running a
+    # batch after `insert_ns` raises unique_violation when something does. Measured at 1.91 during the
+    # collapse. Recording it means a future run shows the retry rather than leaving it to be inferred.
+    # Transactions per insert, and so keys per insert at two per transaction. The threshold that matters
+    # is tablets x keys-per-lookup, and this width is NOT the graph's chunk size: measured median 152
+    # against a chunk of 500, range 1-418, and it collapses from ~300 to ~125-150 under the very
+    # conditions being measured. A tablet sweep without it cannot be interpreted -- every point could sit
+    # on the same side of the threshold and look like a null result.
+    "tx_per_insert": (
+        f"sum(rate(vcservice_committed_transaction_total[{WINDOW}]))"
+        f" / sum(rate(vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds_count[{WINDOW}]))"),
+    "db_insert_per_commit": (
+        f"sum(rate(vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds_count[{WINDOW}]))"
+        f" / sum(rate(vcservice_database_tx_batch_commit_latency_seconds_count[{WINDOW}]))"),
     "cpu_max":    ("max(1 - avg by (instance) "
                    f"(rate(node_cpu_seconds_total{{mode=\"idle\"}}[{WINDOW}])))"),
     "cpu_busiest": ("topk(1, 1 - avg by (instance) "
@@ -304,6 +325,14 @@ EXPERIMENTS = [
     #
     # If this and the 5,000,000 graph limit both restore throughput, the cliff is the mechanism and either
     # value is a fix. If only one does, the difference says which side the pressure comes from.
+    # A ladder where capacity is high enough to bracket a knee. At 120 tablets capacity is under 25,000,
+    # so every rung of the 5M ladder sat above it and measured the collapsed regime rather than a curve.
+    dict(id="9c-ds5-ladder8tab", figure="conflict-ladder", x=8, mode="curve",
+         label="5% double spend, 8 tablets",
+         rates=[25000, 50000, 100000, 150000, 200000, 250000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=8)),
+
     # The tablet sweep, which turns a 9x observation into a threshold prediction.
     #
     # CPU per transaction on the busiest host is what separates a cost from a queueing artefact:
@@ -320,15 +349,20 @@ EXPERIMENTS = [
     #
     # Prediction: 8, 16 and 32 fast and near conflict-free CPU per transaction; 64 and 120 collapsed. If
     # 32 collapses too, the threshold constant is wrong on this version and needs re-measuring.
-    dict(id="9c-ds5-tab16", figure="conflict-tablets", x=16, label="5% double spend, 16 tablets",
-         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
-                                   committer_database_table_pre_split_tablets=16)),
-    dict(id="9c-ds5-tab32", figure="conflict-tablets", x=32, label="5% double spend, 32 tablets",
-         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
-                                   committer_database_table_pre_split_tablets=32)),
+    # Points chosen for the width that actually reaches the insert, not for the graph's chunk. At ~304
+    # keys an insert, tablets x keys reaches 32,768 near 108 tablets, so 8/16/32/64 all sit UNDER the
+    # threshold and only 120 is over -- a sweep across those would likely show no crossing and be read as
+    # refuting a constant that was never tested. These four bracket 108 from both sides. Each row records
+    # tx_per_insert, so the result can be plotted against tablets x keys even if the width moves.
     dict(id="9c-ds5-tab64", figure="conflict-tablets", x=64, label="5% double spend, 64 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=64)),
+    dict(id="9c-ds5-tab96", figure="conflict-tablets", x=96, label="5% double spend, 96 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=96)),
+    dict(id="9c-ds5-tab160", figure="conflict-tablets", x=160, label="5% double spend, 160 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=160)),
     dict(id="9c-ds5-sc200k", figure="conflict-why", x=200, label="5% double spend, 200k sidecar limit",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_sidecar_waiting_txs_limit=200_000)),
@@ -918,10 +952,17 @@ def drain(exp, rounds=4):
     latency. Observed at 3 read-writes -- a probe met 420,000 tps at 374 ms, the probe above it
     pinned the sidecar's waiting set at its 500,000 limit, and the confirmation hold at the same
     420,000 then reported 9,975 ms and was rejected.
+
+    The drain rate has to be far below the workload's capacity, not merely below the rate being
+    searched, and the default of 20,000 is not that for a conflict workload whose capacity IS about
+    20,235. Parked there the queue does not fall at all: a 5% double-spend ladder logged 1,830,000 in
+    flight falling to 1,430,000 and then RISING to 3,340,000 while nominally draining, and every rung
+    after the first reported the previous rung's backlog as its own latency -- 148,836 ms at 23,000 tps
+    is a 3.4M queue, not a measurement. Set FX_DRAIN_RATE well under capacity for such a workload.
     """
     if not set_rate(DRAIN_RATE):
         return
-    previous = None
+    previous, stalled = None, False
     for _ in range(rounds):
         time.sleep(60)
         s = sample()
@@ -930,9 +971,20 @@ def drain(exp, rounds=4):
         inflight = s["sent_total"] - s["committed_total"] - (s.get("aborted_total") or 0)
         log(f"[{exp['id']}] draining: {inflight:,.0f} in flight, "
             f"sidecar waiting {(s.get('sc_waiting') or 0):,.0f}")
-        # Stop when the queue is small, or when it has stopped shrinking (nothing more to gain).
-        if inflight < 4 * DRAIN_RATE or (previous is not None and inflight >= previous):
+        # Stop when the queue is small, or when two consecutive samples fail to improve on it. One
+        # non-improving sample is not enough: it fires on a single noisy reading, and when the drain rate
+        # is near capacity it fires immediately and permanently, which is how a contaminated ladder
+        # passes for a measured one.
+        if inflight < 4 * DRAIN_RATE:
             return
+        if previous is not None and inflight >= previous:
+            if stalled:
+                log(f"[{exp['id']}] draining is not reducing the queue at {DRAIN_RATE:,} tx/s; "
+                    f"capacity is likely at or below that rate")
+                return
+            stalled = True
+        else:
+            stalled = False
         previous = inflight
 
 
