@@ -1761,6 +1761,27 @@ rate rather than on configuration. It is the [[compare-like-for-like-before-blam
 workload in place of the build. **The gap is not uniform even inside `9c-ds*`**, so it has to be read off
 `vars` for both sides of any conflict comparison.
 
+**No conflicting workload has ever been offered a sub-capacity rate at the 120-way split.** Sorting every
+gap-300,000 conflict row at that split by offered rate, the floor is **25,000 tps** — `ladder5m` rung 1, which
+committed 20,235 at `grow +4,100` and a 69.3 s mean. Capacity is ~20,300. So all 70-odd measurements are of a
+workload past its own capacity, and "no offered rate qualifies however low" was never measured: what was
+measured is that a saturated conflicting workload misses the bound by two orders of magnitude.
+
+The service-time argument does not close the gap either, because its cleanest row is not clean. The 96-tablet
+measurement at 15,659 offered and fully retired has a **flat in-flight count of 103,160** — flat is not empty,
+the same trap as reading `grow` for saturation. Little's law on it gives 103,160/15,636 = 6.60 s against the
+6.94 s mean, so that residence is the descent's leftover backlog, and the 1.76 s insert inside it carries
+contention from those 103,160 transactions. The same quantity reads 1.325 s where the pipeline is nearly idle,
+24% lower, which is why 1.76 x 1.90 = 3.35 s is a cost under load rather than a service time and cannot carry
+a universal over all rates.
+
+What settles it is `ladderlow` and `tabhold` at 10,000 and 15,000, which are the first sub-capacity rates the
+120-way split will have been offered. And the first `nosplit` rung shows the question is live rather than
+academic: 5% double spends with pre-splitting off, 15,000 offered, 15,091 finished, 14,354 committed at a 4.9%
+abort share, **p99 408 ms**, growth 0, busiest host **2% CPU** — verified from `vars` as gap 300,000 and
+lookback 1,000,000, so it is the valid configuration. A conflicting workload does have a sub-second operating
+point at some layout, at a rate the 120-way split has never been given.
+
 **The layout result that does hold, at one fixed workload.** Every row 5% double spends at gap 300,000, so the
 pre-split is the only variable:
 
