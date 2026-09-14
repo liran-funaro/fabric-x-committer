@@ -1383,9 +1383,15 @@ double-spend run at the deployment's 120-way tablet split. Ratios of counters, n
 | batch width | 175 tx = **349 keys**, steady (cumulative 179) |
 | throughput | 3,447 tps per VC, 20,681 over six |
 
-The first two lines are the finding. `tx_batch_commit_latency` is what a reader reaches for and it is
-**75x smaller** than the insert path it contains; quoting it is what supported "the database is fast"
-through three wrong explanations.
+The first two lines are the finding, and the second one is not merely smaller than the first — it was
+**excluding the very batches that were slow**. `commit()` returned at its conflict path *before* reaching
+its `Observe`, so a conflicted batch never entered `tx_batch_commit_latency` at all: the 22.9 ms was an
+average over only the batches that never conflicted, while the conflicting attempts on the same batches
+cost 1.7 s. The same missing observation was in `updateStates` and `insertTxStatus`. That is what supported
+"the database is fast" through three wrong explanations, and it is now fixed — the observations are
+deferred so every outcome counts, and a separate `vcservice_database_tx_batch_commit_conflict_latency_seconds`
+keeps the expensive path out of the common one's average. `insertStates` was always observed on a `defer`,
+which is the only reason the 1.7 s was visible at all.
 
 **The mechanism.** `insert_ns_<ns>` attempts a bulk insert, and on any existing key its
 `EXCEPTION WHEN unique_violation` handler runs `key = ANY(_keys)` over *every* key in the batch. The
@@ -1539,21 +1545,28 @@ At 120 tablets a conflicting transaction costs **22 times** what a conflict-free
 tablets it costs the same as one — 74 µs against 99. The work is not inherent to conflicts; it is the
 unbatched lookup, and it disappears when the lookup stays batched.
 
-**Throughput is rate-independent; latency from the same rungs is not usable.** These separate, and it
-took three revisions to state correctly. At saturation the committed rate *is* the drain rate whatever is
-queued upstream, so an inherited backlog inflates latency and cannot inflate or deflate throughput. What
-licenses that here is the steady-width measurement above: since width does not follow queue depth
-(172–175 tx while in-flight rose 82%), a backlog does not change the cost of a batch and therefore does not
-change capacity. So the throughput column of the 5M ladder stands:
+**What the 5M ladder shows is capacity, and nothing about load.** This claim was wrong three ways before
+it was right, so the sequence is recorded rather than just the conclusion: first the throughputs were
+withdrawn along with the latencies, then reinstated as evidence of rate-independence across a 16x range of
+offered rate, and only then checked against what the generator actually sent:
 
-| offered | 25,000 | 50,000 | 100,000 | 200,000 | 300,000 | 400,000 |
+| rung limit | 25,000 | 50,000 | 100,000 | 200,000 | 300,000 | 400,000 |
 |---|---|---|---|---|---|---|
-| committed | 20,235 | 23,004 | 20,928 | 17,121 | 24,041 | 18,332 |
+| generator **sent** | 24,909 | 21,636 | 21,455 | 21,455 | 21,091 | 21,091 |
+| % of the requested rate | 99.6 | 43.3 | 21.5 | 10.7 | 7.0 | **5.3** |
 
-Mean 20,610 over a **16x range of offered rate**, with a regression slope of −396 tps per 100,000 offered
-— flat. But the spread is real: sd 2,650, **CV 12.9%**, which is 1.5x this cluster's own 8.8%
-repeatability. So the claim is "rate-independent at roughly 20,600", not a constant, and the dip at
-200,000 is noise rather than structure. Every mean and p99 from those same rungs stays withdrawn.
+**The applied load never varied.** The sidecar's window holds the generator near 21,000 whatever rate is
+requested, so the ladder measured one applied rate six times. The `grow` field said so all along and was
+read past: at 400,000 against a ~20,000 capacity the backlog would have to grow ~380,000/s, and it reads
+between +4,100/s and −100/s. So the rungs establish that the pipeline cannot be driven past its capacity —
+true of any saturated system — and **not** that capacity is independent of load. Rate-independence is
+therefore unmeasured, not established.
+
+What the rungs do give is capacity, and the VC's own counters give it far more tightly than the generator's
+status arrivals do: **20,617 / 20,501 / 20,445 / 20,362 / 20,182 / 20,226**, flat within 2.1% for a capacity
+of **20,400**. The generator's figures for the same rungs spread ±17% (CV 12.9%, 1.5x this cluster's 8.8%
+repeatability) because it counts status arrivals with millions of transactions queued ahead of them — the
+noise was the instrument's, not the system's. Every mean and p99 from these rungs stays withdrawn.
 
 **One 90-second probe met the SLO at 8 tablets, and no 300-second hold has reproduced it.** The row:
 
