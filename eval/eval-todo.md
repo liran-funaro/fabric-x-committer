@@ -17,7 +17,7 @@ is detail; this is the whole of what is outstanding.
 |---|---|---|---|
 | 1 | `nosplit` | **Figure 1c.** Whether a conflicting workload has any sub-second operating point. Ascending fixed-rate ladders with pre-splitting off, at the documented reference gap. | running |
 | 2 | `ladder8tab`, `hold8` | The 8-tablet anomaly: one probe at 172,260 / 252 ms against six holds in the 20–30 s band. | queued |
-| 3 | `ladderlow` | The only uncontaminated latency for the 120-way split — every rung below its ~20,235 capacity. | queued |
+| 3 | `ladderlow` | **Decides the section's conclusion.** Every gap-300,000 conflict row at the 120-way split was offered 25,000 tps or more, above its ~20,300 capacity — so it has never been given a sustainable rate, and "no rate qualifies however low" was never measured. Misses at 15,000 → the strong claim is earned; passes → pre-splitting costs capacity, not the bound. | queued, promote |
 | 4 | `tabhold` | The tablet axis at one fixed rate, which is the only way it can be asked (see 2a). | queued |
 | 5 | `ds1`…`ds0001` | Conflict share from 1% down to 0.001%, at fixed layout. | queued |
 | 6 | `vc9` | The published tier width: nine validator--committers on the nine non-master database nodes. | queued |
@@ -28,6 +28,11 @@ measured bar (0%) and four collapsed shares, which is what the measurement suppo
 Figure 5 and Table 1 wait on batch 7. One thing needs a decision rather than a run: **whether the generator's
 deeper block buffer joins the tuned setup**, and so whether figure 2 carries that ladder as its own series
 (item 8).
+
+**First `nosplit` rung, 12:10.** 5% double spends, pre-splitting off, 15,000 offered → 15,091 finished,
+14,354 committed at a 4.9% abort share, **p99 408 ms**, growth 0, busiest host **2% CPU**. Verified from `vars`
+as gap 300,000 and lookback 1,000,000, so it is the valid configuration rather than another convoy. A
+conflicting workload does have a sub-second operating point — and 2% CPU says the rungs above have room.
 
 **Nothing is publishable from a rate search after a miss.** Every descent probe inherits the previous rung's
 backlog, so its latency is not its own — `tab96` returned "no rate met" from seven probes for that reason
