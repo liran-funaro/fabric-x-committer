@@ -57,11 +57,13 @@ deployments.
 
 \section{Setup: the committer machines}
 
-Nineteen machines, each two sockets of sixteen Intel Xeon Sapphire Rapids cores at
+Eighteen machines, each two sockets of sixteen Intel Xeon Sapphire Rapids cores at
 \SI{2.10}{\giga\hertz} --- 64 hardware threads, \SI{16}{\mebi\byte} of L3 per socket --- with
 \SI{156}{\gibi\byte} of RAM, running three signature verifiers, one
 coordinator, one sidecar, one load generator, six validator--committers, twelve YugabyteDB tablet
-servers and three YugabyteDB masters. The six validator--committers and the three masters sit on nine
+servers and three YugabyteDB masters. A nineteenth machine of the same class is the control node: it
+holds the certificate authority and the monitoring stack, and no component of the measured pipeline,
+so it is excluded from every count here. The six validator--committers and the three masters sit on nine
 of the twelve database machines, and no machine runs both a validator--committer and a master.
 
 The coordinator tracks dependencies with the simple manager --- one map of keys to waiting
@@ -285,7 +287,7 @@ committer's capacity.
 \section*{Part II --- End to end, with a real ordering service}
 
 The second arm puts a real Arma ordering service in the path. The committer tier is
-\textbf{unchanged from Part~I} --- the same nineteen machines, the same components, the same tuning ---
+\textbf{unchanged from Part~I} --- the same eighteen machines, the same components, the same tuning ---
 so a difference between the two arms is attributable to ordering.
 
 \section{Setup: the ordering machines}
