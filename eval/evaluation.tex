@@ -280,11 +280,11 @@ and that is where every other figure in this evaluation sits: the \num{120}-way 
 on a conflict-free workload. How much that is worth over no pre-split we can bound from one side only. The
 highest conflict-free rate ever \emph{offered} without a pre-split, \num{213091} tps, was retired in full at
 \SI{150}{\milli\second} and never pushed higher, so it is a lower bound on that configuration and not a
-ceiling --- and the conflicting ladder has since passed it, retiring \num{250209} tps at \SI{243}{\milli\second}
-with \SI{5}{\percent} double spends and the busiest machine at \SI{24}{\percent}. The ratio is therefore at
-most \num{2.1}, and the true figure is smaller by however much both configurations have left. What the
-pre-split buys is real but unmeasured; we keep it because every other figure here was taken with it, not
-because the margin is established. The conflict figure stands as a limitation of this deployment rather than
+ceiling. Dividing by it would give \num{2.4}, but that is a ratio of one measured number to one lower bound
+and so is itself only an upper bound on the advantage --- the opposite of how such a figure is usually read.
+No ladder has yet found where the no-pre-split configuration stops on a conflict-free workload. What the
+pre-split buys is therefore real but unquantified; we keep it because every other figure here was taken with
+it, not because the margin is established. The conflict figure stands as a limitation of this deployment rather than
 a configuration to be tuned away.
 
 A sweep of the conflict share at twelve tablets says the same thing from the other side: what costs is that
