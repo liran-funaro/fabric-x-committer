@@ -68,17 +68,20 @@ numbers wearing an end-to-end label, and figure 5 and Table 1 are what this batc
 - The loadgen on .9 holds **16 established connections to each of the four routers** on 7050 with full
   send queues — `broadcast-parallelism: 16`, actively broadcasting.
 
-**Warning for anyone using the Phase 3 plan document as a map: its component-to-IP assignment is
-inverted relative to the inventory that was actually built.**
+**Read component IPs off the inventory, never off the plan document.** The plan lists the machines as
+"`router1-4`, `batcher1-1` through `batcher4-2`, `consenter1-4`, `assembler1-4` (10.241.64.23–42)" — a
+name list beside an IP range, with no per-component assignment. The natural reading is that the order maps
+onto the range, putting routers at .23–.26. The inventory as built is the other way round:
 
-| component | plan document | `cluster-orderer.yaml` as built |
+| component | implied by the plan's ordering | `cluster-orderer.yaml` as built |
 |---|---|---|
 | assembler1-4 | .39–.42 | **.23–.26** |
 | router1-4 | .23–.26 | **.39–.42** |
 
-Batchers (.27–.34) and consenters (.35–.38) agree. I checked .23–.26 for broadcast traffic first, found
-none, and briefly took that as evidence the arm was not real — it was evidence that the plan's map is
-stale. The inventory is authoritative.
+Batchers (.27–.34) and consenters (.35–.38) land the same either way, which is what makes the other two
+easy to get wrong. To be fair to the plan it never states the mapping, and its Phase 3 section keys
+components by hostname, which is correct; the misleading part is only the implied ordering. I checked
+.23–.26 for broadcast traffic, found none, and briefly read that as the arm not being real.
 
 ### The tablet sampler died silently (20:03, caught 20:11 by luck)
 
