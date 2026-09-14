@@ -18,7 +18,7 @@ rolls back and the Go retry loop re-runs it.
 
 | evidence | conflict-free | 5% conflicts, 120 tablets | 5% conflicts, 8 tablets |
 |---|---|---|---|
-| throughput | 518,727 tps | 21,273 | **181,091** |
+| throughput | 518,727 tps | 21,273 | **172,260**, probe only |
 | busiest host CPU | 80% | 71% | 21% |
 | CPU per transaction | 99 µs | **2,133 µs** (21×) | 75 µs |
 
@@ -34,9 +34,32 @@ anything, at both tablet counts — a measurement, not a derivation, and it is w
 splits can find a passing rate however low it goes.
 
 At 8 tablets a conflicting workload shows **no visible CPU penalty** — 75 µs against 99 conflict-free is
-the same order. It is not evidence that conflicts are *cheaper*: that point ran at 181,091 tps against
+the same order. It is not evidence that conflicts are *cheaper*: that point committed 172,260 against
 518,727, a third of the rate, so it also carries less queueing per transaction. The defensible claim is
 that the 21× penalty is gone, not that the sign reverses.
+
+**The 8-tablet column is one 90-second probe that no hold has reproduced, so nothing in it is quotable yet.**
+`9c-ds5-split8` met at 172,260 and 252 ms p99, and the three 300 s holds that followed — offered
+181,031 / 167,621 / 155,204, so at and *below* the rate that passed — all returned 122,798–130,233 committed
+at a **29,900 ms** p99. A factor of 118 between a probe and a hold at the same rate, with a redeploy between
+them, and hold 1 was draining (`grow=-300/s`) while reading 29,900 ms. Until `hold8` resolves that, the
+8-tablet recovery is a candidate, not a result.
+
+**What *is* confirmed for a conflicting workload**, four `met=True` 300 s holds, all at the default split
+(`pre_split_tablets=0`, a different configuration from split8's 8):
+
+| conflicts | split | throughput | p99 |
+|---|---|---|---|
+| 0% | 120-way | 518,000 | 0.51 s |
+| 10% | default | 37,346 | 0.53 s |
+| 20% | default | 24,578 | 0.33 s |
+| 30% | default | 30,348 | 0.49 s |
+
+At the 120-way split no conflict share produced a hold at all — `9c-ds5` and `9c-ds10-chunk64` never got past
+probing and no probe at any rate met the conditions. So the statable result is: **at 120 tablets no
+conflicting workload meets a 1 s p99 at any offered rate; at the default split 10/20/30% all hold under
+0.55 s.** 20%'s 24,578 is a lower bound — its search stopped climbing at 32,400 while 30%'s reached 40,814,
+which is why it reads below 30%.
 
 **Why it is invisible without conflicts**, which is what made this hard to find: nothing performs a
 multi-key lookup when every key is new. One conflicting key makes the whole batch perform one.
