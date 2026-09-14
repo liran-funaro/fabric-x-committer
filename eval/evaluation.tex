@@ -225,14 +225,12 @@ between \num{1.2} and \SI{2.6}{\second}, against the \SI{23}{\milli\second} a wh
 not an effect of the table growing: across an eightfold growth at fixed batch width the insert moves by
 \SI{0.8}{\percent}.
 
-Why no rate can pass is arithmetic rather than contention: the commit's own service time exceeds the
-bound. A steady-state measurement at \num{96} tablets --- \num{15659} tps offered and fully retired, the
-in-flight count neither growing nor draining --- spends \SI{1.76}{\second} in the insert at \num{1.90}
-attempts, so \SI{3.35}{\second} inside one commit before any transaction waits for another; at a lower
-utilization the same quantity reads \SI{2.29}{\second}. That is a lower bound, since the measurement
-brackets the insert alone and leaves the distributed transaction's rollback and the retry loop outside it. A
-service time of two to three seconds cannot produce a one-second 99th-percentile at any offered rate,
-which is why lowering the rate removes the queueing term and nothing else.
+The commit itself, not the queue in front of it, is what exceeds the bound. At \num{96} tablets an offered
+\num{15659} tps is retired in full with a flat in-flight count, and there the insert takes
+\SI{1.76}{\second} at \num{1.90} attempts --- \SI{3.35}{\second} inside one commit. The same quantity falls to
+\SI{2.29}{\second} where the pipeline is nearly idle, so it is a cost that varies with load rather than a
+constant, but neither figure fits inside a second. Both are lower bounds on the commit, since the measurement
+brackets the insert alone and leaves the distributed transaction's rollback and the retry loop outside it.
 
 The layout, however, is decisive, and a sweep of it at one fixed workload --- \SI{5}{\percent} double
 spends throughout --- is the whole of the effect:
@@ -253,8 +251,11 @@ tablets & committed & sustained over \SI{300}{\second} \\
 The eight-tablet figure is a \SI{90}{\second} probe, and it met the bound at \SI{239}{\milli\second}; held
 for \SI{300}{\second} at the same offered rate it delivers \num{125000} tps at a \SI{25}{\second} mean, so it
 does not sustain. The other three rows are retirement rates under saturation, which a pipeline holds whatever
-its queue depth, and at none of them does any offered rate qualify however low. So the split is worth a
-factor of six on throughput and \emph{no} layout in this sweep sustains the bound under double spends --- while
+its queue depth. None of the three qualified at any rate measured, and those rates start at \num{25000} tps
+offered --- above what the pipeline retires --- so what they establish is that a conflicting workload past its
+own capacity misses the bound by two orders of magnitude, not that a rate below it would.
+So the split is worth a
+factor of six on throughput and no layout in this sweep sustains the bound under double spends --- while
 the \num{120}-way split is worth at least \num{2.4} times as much on a workload where nothing
 violates: \num{518000} tps, confirmed over \SI{300}{\second}, against the \num{213091} that a
 \SI{90}{\second} probe reached with pre-splitting disabled and did not hold. That is a
