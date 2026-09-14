@@ -2056,61 +2056,42 @@ either way, improving in the direction an aborted transaction should, since it s
 committed one performs. So the pipeline absorbs a doubled conflict share with no loss of retired throughput
 and no latency cost: the share selects which transactions fail and charges nothing for the failing.
 
-**ds30 ran, and the pre-registration failed on its latency half — which bounds the result.** Registered:
-rung 2 retires its full offered rate at a p99 at or below ~200 ms. Outcome, with one correction to my own
-registration first: I named 30,000 as rung 2 from the ds5 ladder, but ds30's rungs are 10,000/25,000/50,000/
-80,000, so rung 2 was 25,000.
+**ds30 ran to completion, and the boundary I recorded from its second rung is refuted by its third and
+fourth.** The full ladder, all four rungs fully retired at the generated share:
 
-| share | offered | finished | abort | p50 | mean | p99 | `db_insert` | attempts | keys | |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 20% | 25,000 | 24,909 | 18.10% | — | 140 ms | 195 ms | 11.8 ms | — | — | met |
-| 30% | 10,000 | 10,000 | 25.86% | 164 ms | 163 ms | 519 ms | 14.5 ms | 1.972 | 234 | met |
-| 30% | 25,000 | 25,091 | 25.84% | **130 ms** | **258 ms** | **3,565 ms** | **52.9 ms** | 1.962 | 226 | **missed** |
+| offered | finished | committed | abort | p50 | mean | p99 | `db_insert` | growth | |
+|---|---|---|---|---|---|---|---|---|---|
+| 10,000 | 10,000 | 7,414 | 25.86% | 164 ms | 163 ms | 519 ms | 14.5 ms | 0 | met |
+| 25,000 | 25,091 | 18,607 | 25.84% | 130 ms | **258 ms** | **3,565 ms** | **52.9 ms** | 0 | **missed** |
+| 50,000 | 50,000 | 37,092 | 25.82% | 143 ms | 150 ms | **199 ms** | 11.7 ms | **−6,800/s** | met |
+| 80,000 | 80,000 | 59,334 | 25.83% | 129 ms | 143 ms | **196 ms** | 11.2 ms | 0 | met |
 
-**The throughput half held exactly**: 25,091 of 25,000 retired, growth 0, and the abort share landed at 25.84%
-against 25.828% measured earlier — so the share is still bookkeeping for *throughput* at 30%. **The latency
-half failed by a factor of eighteen**, and not in the mean: the mean rose 1.8x while p99 rose 18x, so the ratio
-went from 1.4 — where it had sat on every rung of every share at this layout — to 13.8.
+**Three of four rates pass at 30%, and the failure is sandwiched between them.** So there is no boundary in
+rate: 25,000 is an excursion, not a knee. `db_insert` says the same thing more sharply — 14.5, then **52.9**,
+then 11.7, then 11.2 ms. A single rung four and a half times its neighbours on both sides.
 
-The diagnostic came with it, and it rules out the two cheapest explanations. `db_insert` had been flat at
-**11.6–15.3 ms across every rung of 5%, 10% and 20%**, independent of both rate and share; at 30% it reads
-14.5 ms at 10,000 offered and **52.9 ms at 25,000**. But **attempts per commit held at 1.96 and keys per call
-at ~230** across both rungs — so it is not extra retries and not wider batches. The same number of inserts, of
-the same width, each became 3.65 times more expensive.
+Two claims die here, and both were mine or made with me. **My pre-registered prediction** — full retirement at
+p99 ≤ ~200 ms — is now *satisfied* at 50,000 and 80,000 (199 and 196 ms) and violated only at the excursion, so
+what looked like a clean falsification was a falsification by an artefact. **And the boundary sentence I
+recorded** — "at 30% it is bookkeeping to 10,000 and fails by 25,000" — is withdrawn: the share is bookkeeping
+at 30% at every rate but one. A peer's prediction that 50,000 and 80,000 would also miss is falsified with it.
 
-And the distribution went bimodal rather than shifting: the **median fell**, 164 to 130 ms, while the mean rose
-to 258 and p99 to 3,565. Most transactions got *faster* and a minority got very slow. That is a different
-failure from the 96-tablet case, where the mean and the tail moved together.
+**What went wrong in my reasoning, since it is the fourth instance today**: I built a boundary on a single row
+in the same passage where I noted it was a single row and that a repeat was needed. Both were true and I
+published the claim anyway. The rule that survives is not "note the caveat" but **do not state a boundary a
+single measurement could invent** — the caveat did not stop the claim, and the next two rungs did.
 
-The tail is real rather than bucket resolution: 3,565 ms sits well inside the (3, 5] s bucket rather than at a
-boundary, and the mean moved 58% with it. Rung 1's 519 ms is the more marginal reading — near a boundary with
-an unmoved mean — so the two should not be treated as one phenomenon.
+**The excursion is unexplained and is now the open question.** Rung 3 drains at 6,800/s across 300 s, about two
+million transactions, so it entered carrying a backlog that neither rung 2's growth (0) nor its residence
+(mean 258 ms at 25,091/s implies ~6,500 in flight, not two million) accounts for. So the backlog formed between
+rung 2's window and rung 3's, in a settle, and rung 2's tail is the leading edge of whatever built it. What it
+is not: extra retries or wider batches, which held at 1.96 attempts and ~230 keys. A repeat of 25,000 is one
+rung and settles whether it reproduces.
 
-So the section's claim needs a boundary rather than a universal: **at twelve tablets the conflict share costs
-nothing in throughput up to 30%, and nothing in latency up to 20% at any rate measured; at 30% it holds to
-10,000 tps and the tail breaks the bound by 25,000, while the mean barely moves.**
-
-**One caveat the section must carry**: the failing rung is one measurement on a rate list that has since been
-superseded. A boundary quoted from a single row is thin, and repeating 25,000 costs one rung — which is why the
-re-run should repeat it rather than only bracket it at 15,000 and 30,000. That is a narrower claim than three ladders suggested and a more useful
-one, and it is exactly what the registration was for — had the prediction not been written down, three passing
-ladders would have made a fourth look like confirmation.
-
-**Not explained**: why each insert becomes 3.65x more expensive between 18% and 26% generated share, with
-retries and width both held. Contention between conflicting inserts on the same recent keys is the obvious
-candidate; it would be the tenth mechanism proposed today and needs its own evidence, not this row. **Correction to my own reading**: I recorded that
-share and rate were not separated by this batch. They are, by rows already in hand. Rate alone would need a
-threshold at or below 25,000, since it fails there — but 18.1% *passes* at 50,000 and 80,000, up to **3.2x the
-failing rate**, so rate alone is refuted. Share alone is refuted too, since 25.9% passes at 10,000. The failure
-therefore needs **both** a share above ~18% and a rate above 10,000: a boundary that is a curve in
-(share, rate), already bracketed on three sides.
-
-That makes the operator's sentence more useful than "20% is safe and 30% breaks": **up to 20% the share is
-bookkeeping at every rate measured, to 80,000; at 30% it is bookkeeping to 10,000 and fails by 25,000.** Two
-numbers rather than one. What would tighten it further is 20% above 80,000, or 30% at an intermediate rate —
-ds30's remaining 50,000 and 80,000 rungs only test whether the failure persists upward, which both readings
-already predict, so they confirm rather than separate. The 50,000 and 80,000 rungs of ds30 will say whether the
-tail keeps growing or plateaus, and `ds1`/`ds01`/`ds001`/`ds0001` bracket the other end of the axis.
+**Where that leaves the section**: the conflict share is bookkeeping at twelve tablets across 5%, 10%, 20% and
+30%, at every rate measured up to 100,000 — 95,123 tps at 190 ms, 90,491 at 187, 65,522 at 193, 59,334 at 196 —
+with one unreproduced excursion at 30% and 25,000 that is recorded but not built on. That is the claim three
+completed ladders and one repeat can carry.
 
 Rungs 2 and up only: rung 1 of every ladder is measured while the table is still splitting — two tablets three
 minutes after a bring-up — so its 408/409 ms belongs to a different layout and must not share a series with
