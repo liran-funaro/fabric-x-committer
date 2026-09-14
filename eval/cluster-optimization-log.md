@@ -2001,32 +2001,41 @@ second by 88, and the interval between is where the transition lives. On the set
 ms per tablet spans 1.20 to 18.4 — a factor of fifteen. `tabhold{12,24,48,64}` with splitting pinned off are
 what place it.
 
-**And splitting does not stop at 12, which puts an expiry date on the positive result.** This is 6f's, and the
-master's own flags settle it:
+**Splitting settles at 12, and the expiry date is one future step at a nameable size.** I first wrote that
+the count drifts continuously, having read the sampler's *array* column as the count. It is not: `ns_0`
+running climbs 3 to 12 over five minutes after a bring-up and is then flat at 12 indefinitely, while the array
+sits at 23 — twelve running plus eleven `Deleted` split parents awaiting the 60-second cleanup. So the layout
+is **stable at 12**, which is what the flags say it should be:
 
     tablet_split_low_phase_shard_count_per_node    1        -> low phase ends at 12 tablets (128 MiB each)
     tablet_split_high_phase_shard_count_per_node   24       -> high phase runs to 288 (10 GiB each)
     tablet_force_split_threshold_bytes             100 GiB
     enable_automatic_tablet_splitting              true     (set nowhere in this repo)
 
-So a table created without a split clause has the **same destination** as one created with 120 — 288 tablets
-on twelve servers — and merely starts further away. §6 already records `ns_0`, created with 120, holding 288
-after eleven hours of load. The no-split ladder ran about twenty minutes on a table that began at one tablet,
-and the 88/96/120 rows, whose inserts are 1.19-1.76 s, may be showing where a no-split table *ends up* rather
-than a different configuration at all.
+At 12 tablets and 1.81 GB of SST — about 151 MB each — nothing qualifies for the high phase, whose threshold
+is 10 GiB per tablet. The next split therefore needs roughly **120 GiB of table**, and then the high phase
+carries the count toward 288 on twelve servers, which is exactly where §6 records a table created with 120
+landing after eleven hours. So a no-split table has the same destination and merely starts further away, and
+the durability question is the sharp form rather than the vague one: not "the ladder measured a moving target"
+but "the layout is stable now and will step once, at a size we can name". The ladders write a few GB in twenty
+minutes, so **no measurement here has ever entered the high phase**, and whether the 14 ms insert survives it
+is unmeasured. The aged-table re-measurement is the experiment: one deployment, a soak to ~120 GiB, one
+300-second hold at 60,000, insert compared against 13.7 ms.
 
-If that is right, "disabling the pre-split buys the latency bound" is a statement about the first tens of
-minutes and possibly false of a day — the difference between a deployment recommendation and a measurement
-artefact, and the only thing here a reader would act on. **It is unmeasured.** Two ways to settle it, both
-cheap against what it is worth: re-measure one rung — 60,000 — after the table has aged an hour or two at
-load on the same deployment, and compare against 13.7 ms; or plot `db_insert` against `tablets.log`'s running
-count across everything left in the queue. If the two are uncorrelated below ~20 and correlated above, the
-cliff is a count effect and the advantage is temporary. If the insert stays flat as the count climbs past 88,
-then the count was never the variable and *how* a table reaches a count matters — which would be the more
-surprising result of the two. `9c-nosplit-ds10` is running now with the sampler on it, so the second
-comparison is being collected for free.
+**A third candidate for the rung-1 transient, and the best of the three.** Rung 1 of `9c-nosplit-ds10` ran
+from roughly 12:35 to 12:40, and the count climbed 3 to 12 across exactly that window; every later rung ran at
+a stable 12. So rung 1 is measured *while the table is actively splitting*, which costs real work and points
+the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 190. That displaces cold start
+as an explanation and is directly testable: `tabhold12` with splitting pinned off should show no rung-1
+transient at all. If it still does, cold start is back.
 
-
+**`tx_status` has not settled, and the insert writes both tables.** Across the same window its running count
+went 6, 8, 7, 11, 9, 11 — still short of its own 12. So of the two tables a commit touches, one has plateaued
+and one is mid-split, which is a live variable inside the measurement being quoted. It also shows why a
+running count needs several consecutive equal samples before it is called settled: 11, 9, 11 is a split in
+progress, not a plateau. (The sampler's `sst_gb` column was empty until it was fixed to read `on_disk_size`
+from the table *listing* — the per-table endpoint carries none — so the 13.5 GB figure quoted earlier came
+from the driver, not from here.)
 
 My first form of the rung-1 argument was circular and 6f caught it: I argued that fewer tablets should make
 the failure path cheaper, so rung 1 being *more* expensive rules the count out — but the reason to believe the
