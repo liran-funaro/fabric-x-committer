@@ -2492,10 +2492,20 @@ its mean moved 58%, so it has real mass; rung 1's 519 ms sits 7.8% into its buck
 may still be a quantile-placement artefact. The two are different in kind and folding them together would
 launder a solid result into an unresolved one.
 
-**What survives all of it, and is the strongest claim here.** Every rung after the first, across all four shares
-and offered rates from 25,000 to 100,000, reads p99 150-195 ms, mean 132-140, p50 125-128, ratio 1.13-1.40.
-**Latency is independent of conflict share and of rate** in that whole region — twelve rungs, four
-configurations — and that had been sitting in the table while three sessions argued about first rungs.
+**What survives, and is the strongest claim here — corrected.** I first wrote this as "every rung after the
+first, across all four shares … twelve rungs". Both numbers were wrong, and the error was the bad kind: `ds30`'s
+rung 2 **is** a rung after the first, and it read 3,565 ms, so stating four shares put the one contradicting
+measurement inside a range constructed to exclude it. 6f caught it.
+
+Counted properly: of the ten rungs after a first rung, **nine met and one missed**. The nine span **three**
+shares — 5%, 10% and 20% — at offered rates from 25,000 to 100,000, and read p99 **150-195 ms**, mean 132-140,
+p50 125-128, ratio 1.13-1.40. So **latency is independent of conflict share and of rate across that region**,
+and at 30% the independence ends somewhere between 10,000 and 25,000.
+
+The exclusion is the finding rather than a blemish on it: three flat shares and one that breaks is a cliff, and
+it is why the panel's 30% bar is ~10,000 against ~100,000 for the others. Stated as four shares it would have
+been a range with a counterexample inside it — which is the same failure as quoting a p99 whose own mean
+contradicts it, one level up.
 
 *(Superseded framing, kept for the retraction:)* **The conflict share barely matters once the pre-split is
 off.** Both no-split ladders ran four
