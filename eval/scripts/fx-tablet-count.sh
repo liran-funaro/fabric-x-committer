@@ -8,7 +8,12 @@
 # DURING a hold, and a ladder that assumes a fixed layout would be measuring a moving one.
 set -u
 M=https://10.241.64.10:5310
-echo "ts table tablets sst_bytes"
+# Counted BY STATE, because the master's tablets array is not the live count: a completed split leaves the
+# parent in it as `Deleted` alongside its two `Running` children. A fresh table read here showed 3 entries
+# for 2 running and 1 deleted -- exactly one split -- so a total-entry count overstates the layout, and it
+# overstates it more the more splitting has happened. `yb-admin list_tablets` reports running only, which is
+# why two methods disagreed by nearly twofold. Report running; keep the others for the split history.
+echo "ts table running deleted total sst_bytes"
 while true; do
   curl -sk -m 10 "$M/api/v1/tables" 2>/dev/null > /tmp/tc-tables.json || true
   python3 - "$M" <<'PY'
@@ -26,10 +31,13 @@ for t in d.get("user", []):
     out = subprocess.run(["curl", "-sk", "-m", "10", f"{M}/api/v1/table?id={t['uuid']}"],
                          capture_output=True, text=True).stdout
     try:
-        cnt = len(json.loads(out).get("tablets") or [])
+        tabs = json.loads(out).get("tablets") or []
+        run = sum(1 for x in tabs if x.get("state") == "Running")
+        dead = sum(1 for x in tabs if x.get("state") == "Deleted")
+        cnt = (run, dead, len(tabs))
     except Exception:
-        cnt = "-"
-    print(time.strftime("%H:%M:%S"), n, cnt, sst, flush=True)
+        cnt = ("-", "-", "-")
+    print(time.strftime("%H:%M:%S"), n, cnt[0], cnt[1], cnt[2], sst, flush=True)
 PY
   sleep 60
 done

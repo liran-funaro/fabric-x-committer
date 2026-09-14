@@ -560,13 +560,20 @@ EXPERIMENTS = [
     # measures a ceiling at a FIXED layout rather than one that could drift under a higher write rate.
     dict(id="9c-nosplit-ds5-hi", figure="conflict-nosplit", x=5, mode="curve",
          label="5% double spend, 23 tablets, ceiling",
+         # Pinned at 12, not 23: the master's `tablets` array includes `Deleted` split parents alongside
+         # the `Running` children, so a total-entry count overstates the live layout. Read by state on a
+         # fresh table: 2 Running + 1 Deleted for one completed split. The no-split table starts at ONE
+         # tablet and each split leaves one parent, so total = 2*running - 1, and the 23 totals observed
+         # give 12 running -- which matches `yb-admin list_tablets` exactly, and is also why splitting
+         # stopped there: 12 over twelve tablet servers is 1.0 per node, the low phase's own boundary.
+         # `SPLIT INTO N` creates N running tablets, so 12 is what reproduces the measured layout.
          # Top rung is 350,000, not 400,000, because the load generator's own ceiling on this arm is
          # ~400,000 without the deep buffer -- a miss at 400,000 could be the generator rather than the
          # committer, and an ambiguous top rung brackets nothing. If all three pass, the conflicting
          # ceiling is >=350,000 against 518,000 conflict-free, which is already the strong statement.
          rates=[150_000, 250_000, 350_000],
          vars=dict(shape(2, 0, backref=0.05),
-                   committer_database_table_pre_split_tablets=23,
+                   committer_database_table_pre_split_tablets=12,
                    yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
 
     # Conflicts with pre-splitting DISABLED, held below capacity -- the one configuration where a
@@ -628,7 +635,11 @@ EXPERIMENTS = [
       # can meet the bound there and `ladderlow` already covers 120 sub-capacity. 23 is included as the
       # control for the headline result: it separates "23 tablets" from "no SPLIT INTO clause", which the
       # no-split run cannot distinguish because splitting produced its 23 rather than the DDL.
-      for t in (23, 32, 48, 64)],
+      # 12 is the control -- the running count the no-split table settles at -- and 24/48/64 probe the
+      # interval above it. The insert is insensitive to the count from 1 up to 12 (it FELL 15.2 -> 13.6 ms
+      # while the count grew and the rate rose 6.7x), and costs 1,196 ms at 88, so the discontinuity is
+      # between 12 and 88 and these four span it. 88/96/120 only re-measure the flat slow side.
+      for t in (12, 24, 48, 64)],
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
