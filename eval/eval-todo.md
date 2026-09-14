@@ -98,9 +98,41 @@ Everything on record for this figure, before the rest of the sweep re-runs:
 | 300 B | **485,273** | 590 ms | new, replaces 408,000 |
 | 512 B | **384,727** | 543 ms | new, replaces 414,364 |
 | 1 KiB | **266,514** | 645 ms | new — gap closed; 7% under its best probe (285,353) |
-| 2 KiB | 155,936 | 547 ms | |
+| 2 KiB | **185,151** | 590 ms | new, replaces 155,936 (+19%) |
 | 3 KiB | — | — | not yet run (item 4) |
 | 4 KiB | — | — | **hold FAILED with `finished=0`, growth 25,902/s**; best probe 100,212 at 493 ms |
+
+### CPU and append utilisation cross near 3 KiB — with a prediction (23:25Z)
+
+The four confirmed holds carry two monotone trends in opposite directions:
+
+| bytes | tps | p99 | append % | busiest CPU % | MB/s | MB/s per append % |
+|---|---|---|---|---|---|---|
+| 300 | 485,273 | 590 ms | 20.1 | 78.5 | 145.6 | 7.2 |
+| 512 | 384,727 | 543 ms | 24.9 | 71.9 | 197.0 | 7.9 |
+| 1024 | 266,514 | 645 ms | 30.3 | 64.1 | 272.9 | 9.0 |
+| 2048 | 185,151 | 590 ms | 41.4 | 56.0 | 379.2 | 9.1 |
+
+CPU falls with size and append utilisation rises, and they cross at about **3 KiB** — which is exactly
+the point item 4 adds. MB/s per append-percent converges on 9.0–9.1 at the larger sizes, implying the
+append path tops out near **900 MB/s**.
+
+**But neither resource is saturated at any measured size.** At 2 KiB the busiest machine is at 56% and
+append at 41%, and the rate is still only 185,151. So the size ceiling is not a simple resource limit at
+any point measured so far, which matches what is already recorded about this pipeline: the limit is
+queueing rather than any one stage.
+
+**Prediction for 3 KiB, recorded before it runs.** Rate across the four points goes as roughly
+size^-0.53, so 1.5x the size from 2 KiB should give about 0.80x the rate:
+
+- **145,000–155,000 tps**, append **≈50%**, busiest CPU **≈50%** — i.e. the crossover point.
+- If append instead jumps toward 100% while the rate collapses below ~120,000, the append path is the
+  knee and the 900 MB/s estimate is wrong (too high).
+- If the rate comes in above 185,151 the whole size ordering is wrong and the sweep has a shape problem,
+  not a knee.
+
+Note 3 KiB has never been measured, so this is a genuine out-of-sample test of the scaling rather than a
+fit checked against its own data.
 
 **The re-measure restored monotonicity, which is the real reason item 3 mattered.** The old pair had
 300 B at 408,000 and 512 B at 414,364 — smaller transactions retiring *slower* than larger ones, which
