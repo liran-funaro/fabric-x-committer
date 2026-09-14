@@ -13,24 +13,33 @@ batches. `RUNNING.md` has how to run them.
 
 ## Queue
 
-Running unattended from `/data1/logs/fx-plan-14q-lf.sh`, in this order.
+Running unattended from `/data1/logs/fx-plan-14w-lf.sh`. Order is by what each batch decides for the
+document, not by what is interesting.
 
-**`insert_ns` goes first, because it can retire batches 2-6.** All of them exist to characterise a failure
-path whose cost the rewrite is meant to remove: if 5% double spends meet the bound at the 120-way split, the
-tablet axis has nothing left to explain, the 8-tablet anomaly stops mattering, "does a low rate qualify at
-120?" is answered by "every rate does", and the conflict-share sweep loses its subject. Measuring it first
-either prunes five batches or tells us they are still needed. See [2g](#2g-the-insert_ns-rewrite).
+**`insert_ns` is not first and is not queued**, and that holds whatever the sanction turns out to be: the
+rewrite changes the exact path every number measured today characterises, so **characterise the path, then
+change it**. Batches 4 and 7 measure a failure path the rewrite removes — run it first and they stop being
+possible, while the layout result, the share-independence and the 12-to-88 cliff lose their comparison
+basis. So nothing below waits on the sanction question.
 
 | # | batch | what it decides | state |
 |---|---|---|---|
-| 0 | **`insert_ns` A/B** | Whether the SQL rewrite makes the 120-way split meet the bound, and whether the conflict-free path regressed. **Retires 2-6 if it works.** | **next** |
-| 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | 5% and 10% done, 20% running |
-| 2 | `ladder8tab`, `hold8` | The 8-tablet anomaly, and whether the failure-path cost is per-tablet or per-key-per-tablet. | queued |
-| 3 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Fills figure 1c. | queued |
-| 4 | `tabhold` | The tablet axis at one fixed rate. **Run with automatic splitting disabled**, or the rows are starting values. | queued |
-| 5 | `ds1`…`ds0001` | Conflict share 1% down to 0.001%. | queued |
-| 6 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
-| 7 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Own arm, so it goes last. | queued |
+| 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **5%, 10%, 20% done; 30% finishing** |
+| 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | next |
+| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | queued |
+| 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
+| 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
+| 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
+| 7 | `tabhold` | The tablet axis at two fixed rates, 12/24/48/64. Splitting pinned via `cluster-nosplitting.yaml`. | queued |
+| 8 | `ds1`…`ds0001` | Conflict share 1% down to 0.001%. | queued |
+| 9 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
+| — | `insert_ns` A/B | Whether the rewrite makes the 120-way split meet the bound, and whether the conflict-free path regressed. | after 1-9 |
+
+**Result so far**: with pre-splitting off, a conflicting workload meets the bound at every rate and share
+tried — 95,122 tps at 5%, 90,491 at 10%, 100,000 offered met at 20%, all at 184-199 ms and ≤11% CPU, against
+20,300 tps and a censored tail at the 120-way split. No ceiling found. The one MISS in the series, ds30 at
+25,000, **did not reproduce**: 186 ms against 3,565 and an insert of 10.9 ms against 52.9, at the same rate
+and share with growth zero both times. So there is no demonstrated knee at 30%.
 
 ## SANCTIONED (2026-09-14, ~15:20): the user's own words, to this session
 
