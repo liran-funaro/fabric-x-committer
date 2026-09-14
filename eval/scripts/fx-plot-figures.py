@@ -1047,8 +1047,10 @@ def conflict_ladders(rows, path):
                 markersize=7, zorder=3, label=label)
         held = [(r["limit"], r.get("sc_waiting")) for r in rs if r.get("sc_waiting")]
         if held:
+            # No label: the figure legend collects handles from both axes, and labelling the same series
+            # twice listed every ladder twice.
             bx.plot([x for x, _ in held], [h for _, h in held], color=colour, linewidth=2,
-                    marker="o", markersize=7, zorder=3, label=label)
+                    marker="o", markersize=7, zorder=3)
 
     ax.set_xlabel("offered rate (tx/s)", color=INK2, fontsize=9)
     ax.set_ylabel("delivered (tx/s)", color=INK2, fontsize=9)
