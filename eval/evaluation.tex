@@ -236,35 +236,49 @@ The layout, however, is decisive, and a sweep of it at one fixed workload --- \S
 spends throughout --- is the whole of the effect:
 
 \begin{center}
-\begin{tabular}{rrl}
+\begin{tabular}{rrrrr}
 \toprule
-tablets & committed & sustained over \SI{300}{\second} \\
+tablets & committed & p99 & insert & busiest CPU \\
 \midrule
-  8 & \num{172260} & \num{125000}, at a \SI{25}{\second} mean \\
- 88 &  \num{27400} & --- \\
- 96 &  \num{20800} & --- \\
-120 &  \num{20300} & --- \\
+  8 & \num{172260}$^\dagger$ & \SI{239}{\milli\second} & --- & \SI{22}{\percent} \\
+ 12 & \textbf{\num{95123}} & \SI{190}{\milli\second} & \SI{13.6}{\milli\second} & \SI{11}{\percent} \\
+ 88 &  \num{27400} & --- & \SI{1.19}{\second} & \SI{71}{\percent} \\
+ 96 &  \num{20800} & --- & \SI{1.76}{\second} & \SI{34}{\percent} \\
+120 &  \num{20300} & --- & \SI{1.69}{\second} & \SI{71}{\percent} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The eight-tablet figure is a \SI{90}{\second} probe, and it met the bound at \SI{239}{\milli\second}; held
-for \SI{300}{\second} at the same offered rate it delivers \num{125000} tps at a \SI{25}{\second} mean, so it
-does not sustain. The other three rows are retirement rates under saturation, which a pipeline holds whatever
-its queue depth. None of the three qualified at any rate measured, and at \num{96} tablets those rates reach
-well below capacity: five rungs from \num{11313} to \num{21675} tps offered, each retiring what it was
-offered with a flat in-flight count, gave means from \SI{5.6}{\second} to \SI{8.6}{\second} --- the lowest of
-them at little more than half of capacity and still missing the bound more than fivefold. Across those rungs
-the insert falls monotonically with the rate, \SI{2.03}{\second} to \SI{1.62}{\second} as the offered rate
-halves, and flattens; fitting inside a second at \num{1.90} attempts would take \SI{0.53}{\second}. At
-\num{120} tablets no rate below \num{25000} has been attempted.
-So the split is worth a
-factor of six on throughput and no layout in this sweep sustains the bound under double spends --- while
-the \num{120}-way split is worth at least \num{2.4} times as much on a workload where nothing
-violates: \num{518000} tps, confirmed over \SI{300}{\second}, against the \num{213091} that a
-\SI{90}{\second} probe reached at twelve tablets and did not hold. That is a
-workload-dependent trade rather than a misconfiguration, and the smaller split moves the ceiling without
-recovering the latency.
+Twelve tablets is the deployment's own default, and it is the only layout that sustains the bound. Its figure
+is the top of an ascending ladder --- \num{15000}, \num{30000}, \num{60000} and \num{100000} tps offered, each
+held \SI{300}{\second} on one deployment, each arriving in full at a flat in-flight count --- and every rung
+met the bound, so the pipeline sustains \emph{at least} \num{95123} tps here: the ladder ran out of rungs
+rather than the pipeline out of capacity. p99 is \SI{190}{\milli\second} across the top three rungs and the busiest machine reaches only
+\SI{11}{\percent}. That is \num{4.7} times what the \num{120}-way split commits under the same workload, and
+the difference between meeting the bound and not.
+
+The insert column is the whole of the effect. At twelve tablets it costs \SIrange{13.6}{15.2}{\milli\second},
+and it does not move with load: the offered rate rises \num{6.7}-fold across that ladder and the insert
+\emph{falls}. Above eighty tablets the same step costs more than a second, and there it does move with load
+--- at \num{96} tablets it runs from \SI{1.62}{\second} to \SI{2.03}{\second} as the offered rate doubles.
+Since a commit makes \num{1.90} attempts on this workload, fitting inside a second needs the insert under
+\SI{0.53}{\second}, which the larger splits miss by a factor of three and the smaller ones by none.
+
+The eight-tablet row ($\dagger$) is a \SI{90}{\second} probe rather than a ladder; held \SI{300}{\second} at
+the same offered rate it delivered \num{125000} tps at a \SI{25}{\second} mean, so its rate is unconfirmed,
+and the twelve-tablet ladder passing \num{95123} at \SI{11}{\percent} CPU makes its \num{172260} plausible
+rather than anomalous. The three larger rows are retirement rates under saturation, which a pipeline holds
+whatever its queue depth; none qualified at any rate measured, and at \num{96} tablets those rates reach well
+below capacity --- five rungs from \num{11313} to \num{21675} tps offered, each retiring what it was offered
+at a flat in-flight count, gave means from \SI{5.6}{\second} to \SI{8.6}{\second}, the lowest at little more
+than half of capacity and still missing the bound more than fivefold. At \num{120} tablets no rate below
+\num{25000} has been attempted.
+
+The trade runs the other way on a workload that never violates: there the \num{120}-way split is worth at
+least \num{2.4} times as much, \num{518000} tps confirmed over \SI{300}{\second} against the \num{213091} a
+\SI{90}{\second} probe reached at twelve tablets and did not hold. So the split is a workload-dependent choice
+rather than a misconfiguration --- it buys write concurrency where nothing collides and costs a factor of
+\num{4.7} and the latency bound where things do.
 
 So the conflict figure is a property of the deployment's storage layout rather than of its conflict
 handling. This is why the figure is reported here rather than beside the published double-spend sweep ---
