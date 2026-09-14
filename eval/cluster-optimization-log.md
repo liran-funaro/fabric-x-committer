@@ -2338,6 +2338,28 @@ A 5% shortfall for twice the double-spend rate, against a 25x collapse at the 12
 stronger form of the result than either share alone, and a near-flat series across shares is the shape the
 published 9c panel has — the first time anything measured here has reproduced it.
 
+**The delivered conflict share falls short of the configured one, and the gap grows** (e0's observation,
+confirmed from the rows):
+
+| configured | delivered | ratio | gap |
+|---|---|---|---|
+| 5% | 4.88% | 0.975 | 0.12 pts |
+| 10% | 9.51% | 0.951 | 0.49 pts |
+| 20% | 18.10% | 0.905 | 1.90 pts |
+
+The direction matters more than the size: the axis **overstates** the conflict rate at high shares, so it
+*understates* the pipeline's tolerance rather than flattering it. A plausible mechanism is that a conflicting
+transaction is itself aborted, so the keys it would have created never commit, and a later reference naming one
+of them finds nothing to collide with — the reference pool is diluted by the abort rate it produces.
+
+The three ratios happen to fit `c(1 - c/2)` to three digits, and that is **not** recorded as a law: three
+points, and nothing accounts for the factor of two. It would be the sixth closed form proposed on one batch of
+points in this section.
+
+For the figure: both series plot the *configured* share, since `r["x"]` comes from the experiment definition and
+`measured_conflicts` is used only in the corner notes, while the hatched rejected portion of each bar is the
+*delivered* share. The two differ by 30% at the top of the sweep, so the axis label has to say which it is.
+
 **A pin written for one experiment silently invalidated another that reused its vars.** The durability test
 was queued carrying `--enable_automatic_tablet_splitting=false`, inherited from the `tabhold` points where
 pinning is the whole point. So a test whose *subject* is splitting could not split, and would have returned
