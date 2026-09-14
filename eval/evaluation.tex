@@ -195,50 +195,38 @@ deployment uses, a \SI{5}{\percent} double-spend share commits \SIrange{19929}{2
 the validator--committers' own counters. It cannot be driven past that: the generator sent
 \SIrange{21000}{22000}{} tps at every rung, held there by the sidecar's window, so beyond the lowest rung
 the offered rate never reaches the pipeline. What a conflicting workload costs, then, is a ceiling near
-\num{20300} tps, a factor of twenty-five below the \num{518000} the same pipeline sustains with none.\footnote{The
-load generator's own rate for the same rungs scatters from \num{18000} to \num{25273}, a spread of a third,
-because it measures status arrivals in a sixty-second window while several million transactions are queued
-ahead of them. Its mean, \num{20610}, agrees with the committers' counters; its variance is the queue's, not
-the pipeline's. Figures here are the committers'.}
+\num{20300} tps, a factor of twenty-five below the \num{518000} the same pipeline sustains with none.
 
-The cost is work done in the database rather than time spent queueing, and three measurements place it
-there. Under conflicts the busiest machine spends \emph{twenty-two times} the CPU per transaction that it
-spends without them, and no amount of queueing makes a transaction cost more
-CPU.\footnote{Busiest-host CPU per cent times its \num{64} threads, divided by transactions finished a
-second. That attributes a whole machine to one workload, so it is a comparison and not a per-transaction
-cost: the ratio is the claim, and the absolute figures behind it are \SI{2133}{\micro\second} against
-\SI{99}{\micro\second}.} The insert step of a commit takes \SI{1.72}{\second} a call at \num{1.91} calls a
-commit, the second call being a retry. And the same workload costs a fraction of that at a smaller tablet
-layout, which the sweep below quantifies --- so the penalty belongs to the layout rather than to conflicts.
+The cost is work done in the database rather than time spent queueing. Under conflicts the busiest machine
+spends \emph{twenty-two times} the CPU per transaction that it spends without them,\footnote{Busiest-host CPU
+per cent times its \num{64} threads, divided by transactions finished a second. That attributes a whole
+machine to one workload, so the ratio is the claim rather than the absolute figures behind it,
+\SI{2133}{\micro\second} against \SI{99}{\micro\second}.} and the insert step of a commit takes
+\SI{1.72}{\second} a call at \num{1.91} calls a commit, the second call being a retry.
 
-The mechanism is visible in the state database's own procedure. A batch of new keys is inserted blind and
-returns on success, performing no lookup at all. One key that already exists raises a uniqueness violation,
-and the handler then looks up \emph{every} key the batch carries to report which ones collided. The batch is
-then rolled back and retried, which is the second insert call. So a conflict-free workload never performs
-that lookup, and one conflicting key makes a whole batch perform it --- together with a rollback of a
-distributed transaction that has to reach every tablet the batch touched.
+The mechanism is in the state database's own procedure. A batch of new keys is inserted blind and returns on
+success, performing no lookup at all. One key that already exists raises a uniqueness violation, and the
+handler then looks up \emph{every} key the batch carries to report which ones collided; the batch is rolled
+back and retried, which is the second call. So a conflict-free workload never performs that lookup, one
+conflicting key makes a whole batch perform it, and the rollback reaches every tablet the batch touched. A
+failing attempt costs between \num{1.2} and \SI{2.6}{\second} against the \SI{23}{\milli\second} a clean
+commit takes.
 
-The failure path is what costs. Backing the clean attempt out of the insert histogram puts a failing attempt
-between \num{1.2} and \SI{2.6}{\second}, against the \SI{23}{\milli\second} a whole clean commit takes. It is
-not an effect of the table growing: across an eightfold growth at fixed batch width the insert moves by
-\SI{0.8}{\percent}.
+That cost exceeds the bound before any transaction waits for another. At a \num{96}-way pre-split an offered
+\num{15659} tps is retired in full at a flat in-flight count, and there the insert takes \SI{1.76}{\second} at
+\num{1.90} attempts --- \SI{3.35}{\second} inside one commit, or \SI{2.29}{\second} where the pipeline is
+nearly idle. At \num{1.90} attempts a commit, fitting inside a second needs the insert under
+\SI{0.53}{\second}.
 
-The commit itself, not the queue in front of it, is what exceeds the bound. At \num{96} tablets an offered
-\num{15659} tps is retired in full with a flat in-flight count, and there the insert takes
-\SI{1.76}{\second} at \num{1.90} attempts --- \SI{3.35}{\second} inside one commit. The same quantity falls to
-\SI{2.29}{\second} where the pipeline is nearly idle, so it is a cost that varies with load rather than a
-constant, but neither figure fits inside a second. Both are lower bounds on the commit, since the measurement
-brackets the insert alone and leaves the distributed transaction's rollback and the retry loop outside it.
-
-The layout, however, is decisive, and a sweep of it at one fixed workload --- \SI{5}{\percent} double
-spends throughout --- is the whole of the effect:
+The layout decides whether it does. A sweep at one fixed workload, \SI{5}{\percent} double spends throughout,
+where the column is the pre-split the table is \emph{created} with and the database raises the count as the
+table grows:
 
 \begin{center}
 \begin{tabular}{rrrrr}
 \toprule
 pre-split & committed & p99 & insert & busiest CPU \\
 \midrule
-  8 & \num{172260}$^\dagger$ & \SI{239}{\milli\second} & --- & \SI{22}{\percent} \\
 none & \textbf{\num{95123}} & \SI{190}{\milli\second} & \SI{13.6}{\milli\second} & \SI{11}{\percent} \\
  88 &  \num{27400} & --- & \SI{1.19}{\second} & \SI{71}{\percent} \\
  96 &  \num{20800} & --- & \SI{1.76}{\second} & \SI{34}{\percent} \\
@@ -247,45 +235,23 @@ none & \textbf{\num{95123}} & \SI{190}{\milli\second} & \SI{13.6}{\milli\second}
 \end{tabular}
 \end{center}
 
-The column is the pre-split the table is \emph{created} with, not a tablet count held for the run: YugabyteDB
-splits a table as it grows, so a table created without a split clause was measured at two tablets minutes after
-bring-up and twelve some twenty minutes later, and one created with \num{120} held \num{288} after eleven
-hours. Every row therefore names a starting point that drifts upward, which is what the setting controls and
-all the setting controls.
+Creating the table without a split clause is the only configuration that sustains the bound. An ascending
+ladder of \num{15000}, \num{30000}, \num{60000} and \num{100000} tps offered, each held \SI{300}{\second} and
+each arriving in full at a flat in-flight count, met the bound at every rung, so the pipeline sustains at
+least \num{95123} tps --- \num{4.7} times what the \num{120}-way split commits under the same workload. p99 is
+\SI{190}{\milli\second} across the top three rungs and the busiest machine reaches \SI{11}{\percent}.
 
-Creating the table without a split clause is the only configuration here that sustains the bound. Its figure
-is the top of an ascending ladder --- \num{15000}, \num{30000}, \num{60000} and \num{100000} tps offered, each
-held \SI{300}{\second} on one deployment, each arriving in full at a flat in-flight count --- and every rung
-met the bound, so the pipeline sustains \emph{at least} \num{95123} tps here: the ladder ran out of rungs
-rather than the pipeline out of capacity. p99 is \SI{190}{\milli\second} across the top three rungs and the busiest machine reaches only
-\SI{11}{\percent}. That is \num{4.7} times what the \num{120}-way split commits under the same workload, and
-the difference between meeting the bound and not.
+The insert column carries the effect. Without a pre-split it costs \SIrange{13.6}{15.2}{\milli\second} and does
+not rise with load: across that ladder the offered rate rises \num{6.7}-fold and the insert \emph{falls}. At a
+pre-split of eighty or more it costs over a second and does rise with load --- created with \num{96}, it runs
+\SI{1.62}{\second} to \SI{2.03}{\second} as the offered rate doubles. No offered rate met the bound at those
+splits: from \num{11313} to \num{21675} tps, each retired in full at a flat in-flight count, mean latency ran
+\SIrange{5.6}{8.6}{\second}.
 
-The insert column is the whole of the effect. Without a pre-split it costs
-\SIrange{13.6}{15.2}{\milli\second}, and it moves with neither load nor the splitting underneath it: across
-that ladder the offered rate rises \num{6.7}-fold, the table's own tablet count grows sixfold, and the insert
-\emph{falls} by a ninth. At a pre-split of eighty or more the same step costs over a second, and there it does
-move with load --- created with \num{96}, it runs \SI{1.62}{\second} to \SI{2.03}{\second} as the offered rate
-merely doubles. Two pressures that would each raise the cost, the rate and the splitting, and the no-pre-split
-figure went down: the insert is insensitive to the tablet count over that range rather than balanced within it.
-Since a commit makes \num{1.90} attempts on this workload, fitting inside a second needs the insert under
-\SI{0.53}{\second}, which the larger splits miss by a factor of three and the smaller ones by none.
-
-The eight-tablet row ($\dagger$) is a \SI{90}{\second} probe rather than a ladder; held \SI{300}{\second} at
-the same offered rate it delivered \num{125000} tps at a \SI{25}{\second} mean, so its rate is unconfirmed,
-and the no-pre-split ladder passing \num{95123} at \SI{11}{\percent} CPU makes its \num{172260} plausible
-rather than anomalous. The three larger rows are retirement rates under saturation, which a pipeline holds
-whatever its queue depth; none qualified at any rate measured, and at a \num{96}-way pre-split those rates reach well
-below capacity --- five rungs from \num{11313} to \num{21675} tps offered, each retiring what it was offered
-at a flat in-flight count, gave means from \SI{5.6}{\second} to \SI{8.6}{\second}, the lowest at little more
-than half of capacity and still missing the bound more than fivefold. At the \num{120}-way pre-split no rate below
-\num{25000} has been attempted.
-
-The trade runs the other way on a workload that never violates: there the \num{120}-way split is worth at
-least \num{2.4} times as much, \num{518000} tps confirmed over \SI{300}{\second} against the \num{213091} a
-\SI{90}{\second} probe reached without a pre-split and did not hold. So the split is a workload-dependent choice
-rather than a misconfiguration --- it buys write concurrency where nothing collides and costs a factor of
-\num{4.7} and the latency bound where things do.
+The trade runs the other way where nothing violates. There the \num{120}-way split is worth at least
+\num{2.4} times as much --- \num{518000} tps against \num{213091} without a pre-split --- so the split is a
+workload-dependent choice: it buys write concurrency where nothing collides and costs a factor of \num{4.7}
+and the latency bound where things do.
 
 So the conflict figure is a property of the deployment's storage layout rather than of its conflict
 handling. This is why the figure is reported here rather than beside the published double-spend sweep ---
@@ -593,10 +559,10 @@ of the no-pre-split ladders that rung reads high: the insert costs \SI{15.2}{\mi
 \SI{407}{\milli\second} against \SI{190}{\milli\second} --- a ratio to its own mean of \num{2.8} against
 \num{1.4}, so a tail that shrinks as the rate rises. A table is created with one tablet and the database
 splits it as it fills, so an obvious candidate is the splitting itself, which moves data across the same
-nodes the commit path writes to and does climb across exactly that first window. But a third ladder
-splits across its first rung just as visibly and shows no inflated tail at all
-(\SI{227}{\milli\second} against a \SI{163}{\milli\second} mean), so splitting alone does not account
-for it, and the two ladders that show the effect share an offered rate that the third does not. What
+nodes the commit path writes to and does climb across exactly that first window. A third ladder
+splits across its first rung and shows no inflated tail (\SI{227}{\milli\second} against a
+\SI{163}{\milli\second} mean), but it cannot separate the candidates: splitting is size-triggered, so
+that ladder's lower offered rate is itself why it had split less far by then. What
 matters here is not which explanation wins but that the reach is wider than these ladders: any point
 reported from a single rung on a fresh deployment carries whatever this is, and with no second rung to
 compare against it cannot be seen. The size sweep's probes are in that class. A ladder with the layout
