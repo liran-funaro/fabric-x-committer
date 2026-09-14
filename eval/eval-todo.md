@@ -73,7 +73,16 @@ like. The tablet sampler has no such marker, so its silence and its death are th
 watchdog covers that rather than editing a running loop.
 
 Layout on the orderer arm for the record: `ns_0` at 120 tablets, which is what `cluster-orderer.yaml`
-pre-splits.
+pre-splits, with leaders exactly even — 12 hosts, 10 each. So leader placement has now come back balanced
+at 8, 12 and 120 tablets; that hypothesis is closed.
+
+**One trap the watchdog itself walked into.** It stamped local time while every cluster log stamps UTC,
+and `monitor` is UTC while this workstation is IDT (+3). Its first alert therefore read `23:14
+UNREACHABLE` directly beneath a sampler log ending `20:14`, and the obvious reading — three hours of
+unattended run lost — was wrong: nothing had stopped, and the alert was a single transient ssh failure on
+a node with twelve days' uptime. The watchdog now stamps `date -u` and requires three consecutive failed
+polls before calling the node unreachable. Before treating any log here as stale, compare it against
+`ssh monitor date`, not local `date`.
 
 ### Correcting myself on bridges, and a prediction for the 250,000 repeats (19:30)
 
