@@ -256,6 +256,24 @@ EXPERIMENTS = [
     dict(id="9c-ds5-gap1m", figure="conflict-why", x=1000, label="5% double spend, 1M reference gap",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    loadgen_tx_reference_gap=1_000_000)),
+
+    # Raise the graph's limit rather than lower it, which is the prediction that separates a soft bound
+    # from a cliff.
+    #
+    # The cross-tier sampler shows the graph filling to its limit with work that is NOT blocked on keys:
+    # 500,000 admitted-and-unvalidated against 15-200 dependent. Over the limit `taskProcessing` sets its
+    # admission channel to nil, so its single select admits exactly one batch per validated batch -- the
+    # pipeline goes lock-step and throughput becomes batch over round trip, about 100 transactions in
+    # 25 ms, which is the 20,000 tps every conflict share reports. A conflict-free run never crosses the
+    # limit (179,000 in flight at 518,000 tps and 345 ms) and so never enters that regime; aborts add
+    # enough latency to cross it, and once crossed there is no way back.
+    #
+    # If that is right, a limit the run cannot reach restores normal throughput, and 100,000 -- the role
+    # default the published deployment used -- should be WORSE than 500,000 rather than better. The first
+    # half is this experiment; the second half already measured, at 14,364 tps against 20,000.
+    dict(id="9c-ds5-graph5m", figure="conflict-why", x=5000, label="5% double spend, 5M graph limit",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_coordinator_dep_graph_wait_tx_limit=5_000_000)),
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
