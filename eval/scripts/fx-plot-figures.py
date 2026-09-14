@@ -473,11 +473,20 @@ def figure9(rows, path):
                 drew_collapsed = True
                 top.bar(pp + offsets[0], total, width, facecolor="none", edgecolor=OURS,
                         linewidth=1.2, linestyle=":", zorder=3)
-                tail = r.get("lat_p99") or 0
+                # The p99 on these rows is usually the histogram's top bucket, which is the +Inf
+                # clamp and not a measurement -- printing it put "60 s" on the panel as though it had
+                # been observed. Past the clamp the mean is the only valid statistic (it is sum over
+                # count, so it survives), and on these rows it is LARGER than the clamped p99: 132 s
+                # against 60. So the label carries the mean and says so, rather than a percentile
+                # that has stopped being one.
+                tail = latency_ms(r)
+                if tail is None:
+                    stat = f"{(r.get('lat_mean') or 0):,.0f} s mean"
+                else:
+                    stat = f"{tail / 1000:,.1f} s" if tail < 10_000 else f"{tail / 1000:,.0f} s"
                 # Stacked rather than run together: a one-line label here is wider than the panel's
                 # own tick spacing and was clipped by the axis.
-                top.annotate(f"{total / 1000:,.0f}k\n{tail:,.1f} s" if tail < 10 else
-                             f"{total / 1000:,.0f}k\n{tail:,.0f} s",
+                top.annotate(f"{total / 1000:,.0f}k\n{stat}",
                              (pp + offsets[0], total), textcoords="offset points", xytext=(0, 2),
                              ha="center", fontsize=5.5, color=INK2)
             elif figure == "9c":
