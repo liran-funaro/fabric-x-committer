@@ -56,6 +56,24 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### The retracted 250,000 reaches no figure (checked, 2026-09-14)
+
+Worth recording because the prose was corrected and the figures were not, which is the usual way a
+retraction half-lands. `9c-nosplit-ds5-hi` carries `figure="conflict-nosplit"` and `x=5`, and:
+
+- Figure 9c draws the no-split series only for shares in `PAPER_DATA["9c"]` — `{0, 10, 20, 30}` — so
+  `x=5` is filtered out. Its `ns_failed` witness is gated on the same set.
+- `latency-throughput` selects by `series_name(r)`, which returns the `figure` field, and draws only
+  `curve` and `curve500`. `conflict-nosplit` is neither.
+
+Verified rather than reasoned: regenerating both figures with the nosplithi rows present leaves the
+rendered text byte-identical to the committed version (`pdftotext` diff empty). The PDFs' *bytes*
+change on every regeneration because of embedded timestamps, which is also why `figure9.pdf` and
+`latency-throughput.pdf` have shown as modified all session with no content change — do not read that
+as data movement.
+
+So the 5% no-split result lives only in prose, which is what the plotting code intends and comments.
+
 ### Verifying `enable_automatic_tablet_splitting` (done for `nosplithi`, 2026-09-14)
 
 Check the **master's own argv**, not `/varz`:
