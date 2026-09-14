@@ -2183,6 +2183,30 @@ the first probe at 30,000 (4.05 s) and descended instead of climbing, which is t
 below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
 five days, so the series cannot share an axis with current numbers until it is re-run.
 
+**A second free check: nominal rate against `sent_total` over elapsed time.** 6f's, and it is the first of the
+day's instrument findings that yields a *tool* rather than a caveat. `met` gates on `finished <= offered` at
+sample time, which says nothing about whether the rate held for the whole window — a rung that ramped, stalled,
+or straddled an interruption passes it. Dividing the generator's `sent_total` delta by the elapsed time between
+samples catches all three, from two fields already in every row:
+
+| offered | elapsed | sent delta | implied | verdict |
+|---|---|---|---|---|
+| 25,000 | 378 s | 9.34M | 24,728 | **OK, 1.1% low** |
+| 50,000 | 624 s | 5.57M | 8,924 | **inconsistent, 5.6x** |
+| 80,000 | 378 s | 30.26M | 80,114 | **OK, 0.14% high** |
+
+It flagged the 50,000 rung independently of the growth term that first condemned it, and — more useful — it
+**validates the failing rung**: 25,000 really was offered across its whole interval, so the 3,565 ms tail is a
+measurement rather than an artefact of a rate that never ran. The honest caveat on the middle row is that its
+624 s interval contains a redeploy, so a diluted average is *expected* for any post-redeploy rung and does not
+by itself condemn that rung's own window; it is the combination with the outstanding-count reading that puts it
+out.
+
+It also partly answers the asymmetry recorded above. A re-run only gives a clean within-deployment answer when
+every rung passes — the case where the question does not arise — but with this check a straddled ladder can be
+*detected* rather than inferred, so a re-run that misses somewhere still yields a usable verdict on the rungs
+before the miss. Weaker than one would like, and not nothing.
+
 **Read p99 against the mean, always — it separates "a burst hit some transactions" from "everything was
 slower", for free, from two columns already in every row.** This is the most reusable thing in this section and
 it arrived last, after a day of treating single p99 values as measurements. A tail event moves p99 while the
