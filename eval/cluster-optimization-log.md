@@ -2139,6 +2139,39 @@ directly. A disagreement inside either pair kills the rate story instead, which 
 both before either lands, since the superseded run's row costs nothing to read and answers the half of the
 question the re-run cannot.
 
+**Registered, then falsified within the hour — and the question inverts.** `ds30`'s rung 1 landed at 10,000
+(confirmed from its own row: finished 10,000, committed 7,414, abort 25.86%, p99 519 ms, mean 163 ms) and the
+prediction of a uniform shift like `ds20`'s is wrong:
+
+| ladder | share | rung 1 | p99 | mean | ratio | reading |
+|---|---|---|---|---|---|---|
+| ds5 | 5% | 15,000 | 408 ms | 148 ms | 2.76 | tail |
+| ds10 | 10% | 15,000 | 409 ms | 146 ms | 2.80 | tail |
+| ds20 | 20% | 10,000 | 227 ms | 163 ms | 1.39 | **no tail** |
+| ds30 | 30% | 10,000 | **519 ms** | 163 ms | **3.18** | tail |
+
+Two ladders at 10,000 disagree, 1.39 against 3.18, so **the effect is not rate-linked** — which is exactly the
+outcome registered as killing the rate story, and it removes the threshold between 10,000 and 15,000 that
+`tabhold12` was going to test. It is not share-linked either: 5%, 10% and 30% show tails and 20% does not, which
+is not monotone. **So `ds20` is the outlier and three of four first rungs are the norm** — the question was never
+"why do the first rungs have tails" but "why does one of them not".
+
+**And splitting has the wrong sign for that pair** (e0's): `ds30` shows a 519 ms tail against `ds20`'s 227 ms at
+the *same* offered rate while committing *less* data — 7,414 against 8,190 — so it fills slower and splits less.
+Splitting predicts the smaller transient there, not one twice the size.
+
+So the four tails read 407, 408, 227 and 519 ms, monotone in neither rate nor share, with the one mechanism that
+had evidence now pointing the wrong way on the one pair that isolates it. At one rung each, the honest reading is
+**noise rather than structure** — which is itself the argument for *excluding* rung 1 rather than explaining it.
+That is where this stops: five candidate mechanisms have now been proposed for it across three sessions (cold
+start, splitting, rate threshold, share, late-phase density) and none survives four ladders.
+
+**Nothing downstream depends on the resolution**, which is why stopping is safe. The document's threats paragraph
+claims only that the first rung after a bring-up is the weakest measurement in a ladder and that a single-rung
+point carries that cost invisibly — true under noise as much as under any mechanism, and the reason the
+size sweep's probes are flagged. The paired-ladder design remains the way to settle it if anyone wants to:
+agreement *within* a pair at one rate is the thing noise will not produce.
+
 **And the reproducibility problem underneath it, which is the more consequential half.** `ds20`'s observed rungs
 were 10,000 / 25,000 / 50,000 / 80,000 while `ds5`'s and `ds10`'s matched the definition — so the definitions
 changed after `ds20`'s driver had started, and the driver loads `EXPERIMENTS` once per batch at startup. Two
@@ -2370,6 +2403,7 @@ confirmed from the rows):
 | 5% | 4.88% | 0.975 | 0.12 pts |
 | 10% | 9.51% | 0.951 | 0.49 pts |
 | 20% | 18.10% | 0.905 | 1.90 pts |
+| 30% | 25.86% | 0.862 | 4.14 pts |
 
 The direction matters more than the size: the axis **overstates** the conflict rate at high shares, so it
 *understates* the pipeline's tolerance rather than flattering it. A plausible mechanism is that a conflicting
