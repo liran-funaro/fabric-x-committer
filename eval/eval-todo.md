@@ -20,12 +20,15 @@ rolls back and the Go retry loop re-runs it.
 |---|---|---|---|
 | throughput | 518,727 tps | 21,273 | **181,091** |
 | busiest host CPU | 80% | 71% | 21% |
-| CPU per transaction | 99 µs | **2,133 µs** (21×) | 75 µs (normal) |
+| CPU per transaction | 99 µs | **2,133 µs** (21×) | 75 µs |
 
 Plus, from the VC's own counters: insert latency **1.72 s per call at 1.91 calls per commit** — the retry
 loop, first attempt violating and second succeeding.
 
-At 8 tablets a conflicting workload costs *no more CPU per transaction than no conflicts at all*.
+At 8 tablets a conflicting workload shows **no visible CPU penalty** — 75 µs against 99 conflict-free is
+the same order. It is not evidence that conflicts are *cheaper*: that point ran at 181,091 tps against
+518,727, a third of the rate, so it also carries less queueing per transaction. The defensible claim is
+that the 21× penalty is gone, not that the sign reverses.
 
 **Why it is invisible without conflicts**, which is what made this hard to find: nothing performs a
 multi-key lookup when every key is new. One conflicting key makes the whole batch perform one.
@@ -52,7 +55,7 @@ admission limit as a cliff — `waiting-txs-limit: 5000000` is applied and the p
 | 1 | ~~Every 500-transaction-block measurement, again, with the fast block producer.~~ **Done, null result**: 528,545 tps at 10,000-transaction blocks against 531,455 before, 380,673 at 500 against 379,764. Preparation was not the ceiling. It also answers 1b: the large-block ladder did not move, so figure 1 was never generator-bound. The buffer was: 430,145 tps with a 2,000-block buffer. Original text below.<br><br>**Every 500-transaction-block measurement, again, with the fast block producer.** The old ladder measured the generator: its mock orderer prepared blocks on one goroutine at 0.75 ms each, capping it near 850 blocks a second. `fast-block-prepare` is now in the branch, the collection and the staged binary. Benchmarked here: preparation is a *per-transaction* cost, so it capped a transaction rate rather than a block rate — 775,500 tps at 500 a block and 777,500 at 10,000, on one goroutine of this workstation. The fix is 60x at 500 and 1,133x at 10,000. So **both** ladders need re-running, and if the cluster's generator prepares slower than this machine (2.10 GHz there), both were capped by it. | `curve`, `curve500`, `curve500hi`, `curve500top` | **ready, do first** |
 | 1b | **Do figures 1a and 1b need re-measuring too?** Their points were taken with the old block producer at 10,000-transaction blocks, where preparation cost 12.1 ms a block — 63% of one goroutine at 518,000 tps and **79% at 653,273**. Close enough to a single-goroutine ceiling to be suspect. #1's 10,000-block ladder answers it: if it now sustains more than 531,455 tps, the whole of figure 1 was generator-bound and needs re-running. | `9a-*`, `9b-*` | decided by 1 |
 | 2 | ~~Why double spends collapse.~~ **SOLVED — see the section below.** It is `insert_ns`'s exception handler: one conflicting key makes the whole batch look up every key it holds, which past YugabyteDB's batching threshold costs 1.72 s and a rollback. | `9c-ds5-*` | done |
-| 2a | **Tablet sweep at 5% conflicts**: 8, 16, 32, 64, 120. `tablets × keys` crosses at ~32,768 and a 500-transaction chunk carries ~1,000 keys, so the cliff should sit between 32 (32,000, under) and 64 (64,000, over). Turns a 9× observation into a threshold, and re-measures the constant on this version. | new | ready |
+| 2a | **Tablet sweep at 5% conflicts, plotted against `tablets × keys` rather than tablets.** The width that reaches `insert_ns` is not the graph's 500-transaction chunk — the VC re-batches, and the measured median is 152 transactions (~304 keys, n=14,682), which puts the crossing near **108** tablets, not 32. So 8/16/32/64 all sit under the threshold at that width and a sweep on tablets alone can show nothing while looking like a refutation. Worse, the width falls from ~300 to ~125 as the collapse sets in, so it moves with what is being measured. Record keys-per-insert at each point (`tx_per_db_batch` is already derived) and the sweep interprets itself either way. | new | ready |
 | 2b | **Conflict-share sweep**: 1%, 0.1%, 0.01%. P(a ~500-transaction batch holds a conflict) is 94%, 25%, 2.8%, so throughput should climb steeply below 1%. Tests "per batch, not per conflict" with no code change. | new | ready |
 | 2c | **Add `db_insert` to the driver's QUERIES** (`vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds`). Sampling only `db_commit` is what hid this for two days — 22.9 ms against 1.72 s for the same batch. | — | `fx-figures.py` owner |
 | 2d | **`chunk64` loose end**: 64 transactions is ~128 keys, so 128 × 120 = 15,360 is *under* the threshold and should have been fast, yet it gave 46,182 tps. `vcservice_batcher_input_queue_size` exists, so the VC probably re-batches and the graph chunk does not control the insert's key count. One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, settles it. | — | either |
