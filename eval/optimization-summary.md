@@ -146,20 +146,35 @@ measurement apparatus rather than with the committer's own optimizations.
 | Setting | Decision | Measured |
 |---|---|---|
 | Front end across all twelve nodes (`load-balance` plus cluster-wide certificate SANs) | fixed | a real defect — every connection sat on one tablet server — but worth no throughput on its own |
-| State table pre-split | **kept at 120 tablets**, ten per tablet server | see below |
+| State table pre-split | **120 tablets for a conflict-free workload; none for a conflicting one** | see below — this one reverses with the workload |
 
-**Pre-split is retained, deliberately.** It is worth **+35% on this evaluation's workload** — 486,941
-tps against 359,866 at 12 tablets — and every headline figure in these documents was measured with it
-on. Its cost is real but conditional: a multi-key lookup (`WHERE key = ANY($1)`) issues one storage
-read request per key instead of one per tablet, so a blind-write workload commits 13,160 tps at 120
-tablets against 314,336 at 12, a factor of 24. That cost is unobservable while every transaction only
-inserts fresh keys, because nothing then performs a multi-key lookup.
+**Pre-split is retained for a conflict-free workload, and must not be for a conflicting one.** This is
+the sharpest conditional recommendation in this document, so both halves are stated.
 
-What governs the cliff is not the tablet count but the **product of tablets and keys per lookup**,
-which has to stay under roughly 32,768 on this hardware. So the durable lever is the committed batch
-width, and the tablet count is not a lever at all: YugabyteDB splits as a table grows, and `ns_0`
-went from 120 tablets to 288 over eleven hours of load. Lowering the initial count postpones the
-cliff rather than removing it.
+*Keep it where nothing collides.* It is worth **+35%** — 486,941 tps against 359,866 at 12 tablets —
+and every headline figure in these documents was measured with it on.
+
+*Turn it off where anything does.* At 5% double spends the 120-way split commits ~20,300 tps and no
+offered rate meets a one-second p99; with no pre-split the same workload sustains **at least 95,123 tps
+at a 190 ms p99** with the busiest machine at 11%. That is **4.7× the throughput and the difference
+between meeting the latency bound and never meeting it.** The conflict share barely matters — 10%
+sustains 90,491 at 187 ms — so the choice is the layout, not the workload's collision rate. Against
+that, no pre-split costs at least 2.4× where nothing collides (518,000 against 213,091), which is the
+whole of the trade.
+
+**Two costs, one setting.** On multi-key *reads* a `WHERE key = ANY($1)` lookup issues one storage read
+per key rather than one per tablet once tablets × keys passes roughly 32,768, so a blind-write workload
+commits 13,160 tps at 120 tablets against 314,336 at 12 — a factor of 24. On the *insert* failure path
+the effect is separate and does not obey that threshold: the insert costs 13.6 ms with no pre-split
+against 1.19–1.76 s at 88–120, a factor of 116 at matched offered rate, and 301 keys × 88 tablets =
+26,488 is under the threshold while still costing 1.2 s. Both costs are invisible while every
+transaction inserts only fresh keys, because nothing then performs a lookup and nothing violates.
+
+**The tablet count is not a lever; the setting is.** YugabyteDB raises the count as a table grows —
+`ns_0` created with 120 held 288 after eleven hours, and created with no split clause it starts at one
+or two and settles around 23. So the setting chooses a starting point, and the durable lever on the read
+path is the committed batch width rather than the count. Any tablet-count sweep needs automatic
+splitting disabled or its rows are starting values.
 
 ## 5. gRPC flow control was the constraint, and raising it is worth 13%
 
