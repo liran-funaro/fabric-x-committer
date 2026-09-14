@@ -2112,7 +2112,29 @@ in the same passage where I noted it was a single row and that a repeat was need
 published the claim anyway. The rule that survives is not "note the caveat" but **do not state a boundary a
 single measurement could invent** — the caveat did not stop the claim, and the next two rungs did.
 
-**The excursion is unexplained, and my attempt to explain it used one of its own consequences.** I read rung
+**The excursion does not reproduce, and the repeat is as clean a refutation as this cluster can produce.**
+25,000 offered at 30% was re-run directly, and the two rows are the same workload to two parts in eighteen
+thousand:
+
+| | offered | finished | committed | abort | p50 | mean | p99 | `db_insert` | |
+|---|---|---|---|---|---|---|---|---|---|
+| original | 25,000 | 25,091 | 18,607 | 25.84% | 130 ms | 258 ms | **3,565 ms** | **52.9 ms** | missed |
+| repeat | 25,000 | 25,091 | **18,609** | 25.83% | 126 ms | 136 ms | **186 ms** | **10.9 ms** | met |
+
+`finished` is identical, committed differs by **two transactions**, and the abort share agrees to three
+figures — so the generator delivered the same work both times. The insert differs by a factor of **4.9** and
+the tail by **19**. Whatever produced the excursion was not the rate, the share, the layout setting or the
+workload, all four of which are held here by measurement rather than by assumption.
+
+So the last caveat on the positive result is closed: **there is no measured configuration at this pre-split, in
+any of the four shares or any of the rates, that fails the bound.** The 3,565 ms row stays in the record as an
+unexplained one-off — one rung of nineteen, refuted by a direct repeat — and nothing rests on it.
+
+The rung-1 story gets independent support from the same batch, too. The original ladder's first rung read
+519 ms at 10,000 offered; the re-run's first rung reads **199 ms at 15,000** — better latency at a higher rate,
+which is what a ladder measuring a table still climbing from one tablet would do.
+
+**What the excursion was, is still unknown, and my attempt to explain it used one of its own consequences.** I read rung
 3's −6,800/s as a drain of a backlog that rung 2 had built, making rung 2's tail its leading edge. The
 generator's own counters refute the causal direction. Outstanding is `sent − committed − aborted`:
 
