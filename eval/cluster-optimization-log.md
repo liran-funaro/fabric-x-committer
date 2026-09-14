@@ -1767,7 +1767,7 @@ exchange, which is the workload-dependent trade `fx-figures.py:591-598` anticipa
 runs at the last *passing* probe, which after a seventeen-step climb is the top of the climb. ds10's hold
 there no longer fit over 300 s — finished 96,545 against 102,770 offered — and the two step-downs then read
 `finished` **113,273** and **135,455** against 95,157 and 88,108 offered, so they were draining hold 1's
-backlog rather than measuring a rate. ds30's single `met=True` hold carries `inflight_growth` **−12,433/s`,
+backlog rather than measuring a rate. ds30's single `met=True` hold carries `inflight_growth` **−12,433/s**,
 the same artefact with the sign that flatters it. No hold has been attempted *below* capacity on this series,
 which is the experiment the figure needs: a fixed rate at roughly 75% of the passing probe, 300 s, fresh
 deployment, pre-splitting off.
