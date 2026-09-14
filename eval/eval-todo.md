@@ -33,8 +33,8 @@ count to **12** within five minutes and then stops, because the next step needs 
 table). So these ladders measured a stable 12-tablet layout — but a no-split table has the same destination as
 one created with 120 (288 on twelve servers, which §6 records after eleven hours), it just starts ~120 GiB
 away. Whether the 14 ms insert survives that step is **unmeasured**; `9c-nosplit-ds5-soak` is queued to force
-it. Measured growth is 0.875 GB per tablet per million transactions, so the crossing needs ~31 minutes at
-350,000 tps — a rate never yet attempted here, so the soak may need extending.
+it. Measured growth is 0.0146 GB per tablet per million transactions — ~685M transactions, ~180 GB of ledger —
+so the crossing needs ~31 minutes at 350,000 tps — a rate never yet attempted here, so the soak may need extending.
 
 **Why, in one controlled comparison.** Rung 1 against the 96-tablet row is matched on offered rate to within
 4%, on retired rate to within 4%, and on conflict share and gap exactly — one variable:

@@ -2191,6 +2191,21 @@ to the 10 GiB high-phase threshold is 9.6 GB per tablet:
 | 250,000 | 44 min |
 | 350,000 | **31 min** |
 
+The per-transaction restatement above was wrong by a factor of sixty on first writing — divided by
+transactions a *second* rather than by transactions a *minute* — which e0 caught. The **time** column is
+unaffected, since it scales the GB-per-minute slope by the rate ratio and is dimensionally right; only the
+per-transaction figure was off, and it is the one someone else would reuse. A second slip in the same check
+multiplied by the tablet count when the per-tablet slope already accounts for the split, giving 8,229M
+transactions against the true ~685M. Both are recorded because the arithmetic here is load-bearing: the same
+column decides how long a soak runs and whether it fits the volume.
+
+**And the binding constraint turns out to be disk, not time**, which rules out the obvious hedge. Crossing
+needs ~685M transactions and about 180 GB of ledger, against 514 GB free on the tightest volume — comfortable.
+Padding the hold to 125 minutes to cover the pessimistic 95,000 tps case would write about 2.6 billion
+transactions and ~690 GB, so the run would die on the disk floor having proved nothing: a **fourth** way to
+get an uninformative null, on top of the three already found here. Two bounded soaks with the count read
+between them is therefore strictly better than one long one, and that is what is queued.
+
 This matters because the aging test queued as `ds5-hi-age` runs after three 300-second rungs — fifteen minutes
 of load at an average 250,000, reaching about **3.3 GB per tablet, a third of the threshold**. The count stays
 12, no split happens, and the measurement reads "still 14 ms" while meaning "no split occurred". That is the
