@@ -1846,9 +1846,17 @@ each measured it once and disagreed.** Reads of `ns_0` on a table created with n
 
 | when | count | via |
 |---|---|---|
-| 3 minutes after bring-up | **2** | `yb-admin list_tablets ... 0` |
+| 3 minutes after bring-up | 2 | `yb-admin list_tablets ... 0` — see below |
 | ~26 minutes in, during the ds5 ladder | **12** | `yb-admin list_tablets ... 0` |
 | later, and holding | **23** | master `/api/v1/table` |
+
+**The 2 is probably not a data point.** With automatic splitting pinned off for the re-run, the count reads
+**12** twenty minutes after bring-up and stays there — so 12 is what the table is *created* with, one per tablet
+server, and the read of 2 at three minutes was most likely a partial view during creation rather than a stage
+the table passed through. The drift with splitting enabled is therefore **12 → 23**, not 2 → 12 → 23. The
+conclusion that the count is a function of time survives on the 12 → 23 leg; only its lower end was mine to get
+wrong, and it makes the rung-1 caveat weaker than I stated it — rung 1 spans some of 12 → 23, not a
+sixfold change.
 
 YugabyteDB splits a table as it grows, so all three are correct at the times they were taken; the apparent
 contradiction needed no explanation about leaders, replicas or hidden states. The trajectory even matches the
