@@ -1390,7 +1390,8 @@ average over only the batches that never conflicted, while the conflicting attem
 cost 1.7 s. The same missing observation was in `updateStates` and `insertTxStatus`. That is what supported
 "the database is fast" through three wrong explanations, and it is now fixed — the observations are
 deferred so every outcome counts, and a separate `vcservice_database_tx_batch_commit_conflict_latency_seconds`
-keeps the expensive path out of the common one's average. `insertStates` was always observed on a `defer`,
+keeps the expensive path out of the common one's average — **in the code; a `/metrics` read shows it is not
+on the binary these runs used**, which is why every per-attempt cost below is still blended. `insertStates` was always observed on a `defer`,
 which is the only reason the 1.7 s was visible at all.
 
 **The mechanism.** `insert_ns_<ns>` attempts a bulk insert, and on any existing key its
@@ -1399,25 +1400,79 @@ whole database transaction then rolls back and the batch is redone — which is 
 lookup is where the tablet split acts. The first attribution was the batching threshold of §6 — 349 keys x
 120 tablets = 41,880, over ~32,768, so one storage read per key — which predicted that **88 tablets would
 recover and 96 would not**. The boundary test refuted it for this path. At 88 tablets the in-window width is
-148 tx = 295 keys, so the product is 25,960, comfortably *under* the crossing where the lookup should batch
-into a single round trip of some 20 ms. The insert still costs **1.170 s**, and capacity is 27,670 tps,
+150.5 tx = 301 keys, so the product is 26,488, comfortably *under* the crossing where the lookup should batch
+into a single round trip of some 20 ms. The insert still costs **1.194 s**, and capacity is 27,670 tps,
 measured twice at two offered rates.
 
-What fits this path is continuous in the same product rather than stepped at a value of it:
+**What fits, and what these two points can actually separate.** The widths first, because the figure
+that circulated was wrong by the retry count. `vcservice_committed_transaction_total` over
+`..._insert_new_key_with_value_latency_seconds_count` is 84.2 transactions at 88 tablets, and that was read
+as the batch width. It is the width *divided by the attempts*: `insertStates` passes the whole namespace's
+new-write keys on every attempt (`service/vc/database.go:381`), and the retry loop rebuilds the batch minus
+only the transactions the previous attempt invalidated (`service/vc/committer.go:137`), so attempt two
+carries 95% of attempt one's keys rather than 56% of them. Per successful commit, over the 225 saturated
+intervals: **150.5 transactions — 316 keys on the first attempt, 301 on the second.**
 
-| tablets | keys/batch | keys x tablets | insert | µs per key-tablet | capacity |
-|---|---|---|---|---|---|
-| 120 | 349 | 41,880 | 1.690 s | 40.4 | 20,400 |
-| 88 | 308 | 27,104 | 1.211 s | 44.7 | 27,377 |
+So the width did not halve between the two tablet counts, and the discrimination rests on that. Both rows
+below count keys the same way, as twice the committed transactions per commit, which is attempt two's width;
+counting attempt one's instead scales both by the same 5% abort share and moves nothing:
 
-Within 10% on the constant, against a threshold model predicting two orders of magnitude between those rows.
-The 88-tablet row is from the VC counters over the saturated 30-second intervals of that run, agreeing across
-all six VCs to within 1% — and deliberately **not** from the whole run, because averaging the drains between
-probes with the probes themselves gives 21,595 tps and a width of 156, which is neither the capacity nor the
-saturated width. A drain at 2,000 tps occupies as much of a search as the measurements do, so any counter
-delta spanning more than one probe reports something in between.
-It also accounts for 8 tablets without a special case: 349 x 8 = 2,792 is a fourteenth of the work at 120,
-which is the order of the measured speed-up.
+| model fitted at 88 tablets | predicts 120 tablets | against 1.700 s measured |
+|---|---|---|
+| per tablet | 1.628 s | −4.2% |
+| per key x tablet | 1.893 s | +11.4% |
+| per key | 1.388 s | −18.3% |
+
+Per-tablet is the best of the three and per-key is refuted outright. But 301 keys against 350 is a 16%
+difference in width, and two points that close cannot separate the first two rows: the claim of "4% against
+98%" that briefly stood here came from the divided width, and on the real one the margin is 4% against 11%.
+
+**The discriminating test holds tablets fixed, and the data for it was already collected.** Across 384
+thirty-second intervals of the 88-tablet run the width moves from 287 to 535 keys on its own, as the search
+steps the offered rate. Regressing insert latency on it gives `1.009 s + 0.52 µs per key` with
+**R² = 0.038** — width explains 4% of the variance. By quintile:
+
+| keys per batch | insert | ms per key | ms per tablet |
+|---|---|---|---|
+| 287 | 1.141 s | 3.98 | 12.97 |
+| 300 | 1.195 s | 3.98 | 13.58 |
+| 312 | 1.238 s | 3.96 | 14.07 |
+| 346 | 1.285 s | 3.72 | 14.60 |
+| 535 | 1.303 s | 2.44 | 14.80 |
+
+1.9x the keys moves the insert by 14%. That is one tablet count, one run, one deployment, so it is not
+exposed to the day-to-day drift or the bring-up differences the cross-tablet comparison carries — which
+makes it the better reason to believe the cost is per-tablet. What it does not support is per-tablet
+*exactly*: ms per tablet still climbs 14% across the sweep, so a weak per-key term sits on top of a
+dominant fixed one, and the fixed one is what the model should be built on.
+
+**The threshold model is refuted for this path on its own evidence**, independent of the fitting above.
+301 keys x 88 tablets = 26,488 is *under* 32,768 and the insert costs 1.2 s; 350 x 120 = 42,000 is over it,
+and the two differ by 42%. A boundary worth a factor of 24 on §6's read path is not what a 42% step is made
+of. The 32,768 constant and the 93-tablet edge should be read as **refuted for the conflict path** rather
+than merely unconfirmed, with `tab88` as the refutation.
+
+**The failure path costs about 2.6 s, not the 1.2 s quoted above and everywhere else.**
+`..._insert_new_key_with_value_latency_seconds` is one histogram over both outcomes, and the conflict
+histogram that would separate them is not on the deployed binary — a `/metrics` read returns no such
+series. At 1.79 attempts per successful commit there are 0.79 failing attempts against one clean one, so
+backing the clean attempt out at 23–300 ms puts the failing attempt at **2.3–2.7 s**. Every per-attempt
+number in this section is blended in that direction. The *ratios* between tablet counts survive it, because
+the attempt mix holds within 4% across the sweep, but no absolute per-attempt cost here should be quoted
+until that histogram is deployed and read.
+
+**Two points, not four.** `db_insert` reached the driver's queries only for `tab88`, so the cross-tablet fit
+is two points. `tab96` is in flight — retiring roughly 22,000 tps against 20,400 at 120 tablets and 27,400
+at 88, so monotone in tablets so far — and `tab64` makes it four.
+
+The per-tablet reading also reprices the fix. If the handler's `key = ANY(_keys)` cannot prune tablets and
+pays a round trip to each regardless of how many keys it seeks, then `ON CONFLICT DO NOTHING ... RETURNING`
+does not shrink the fan-out, it **removes** it — together with the rollback, which must also reach every
+tablet the batch touched. That is a larger claim for the fix than the batching story made, and it still
+needs sanction.
+
+The 8-tablet point needs no special case under either reading: one round trip to each of 8 rather than 120
+is a fifteenth of the fan-out, which is the order of the measured speed-up.
 
 **This does not overturn §6's threshold result, and the difference is which query is being paid for.** That
 model was fitted to `queryVersionsIfPresent` on the blind-write workload and tested four for four, including
