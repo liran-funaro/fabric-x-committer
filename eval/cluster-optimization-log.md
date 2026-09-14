@@ -1806,6 +1806,11 @@ tablets moves from "unconfirmed" to refuted, and the 252 ms probe beside them is
 explanation. Quote the mean in overload regardless — bucket resolution above ten seconds is coarser than any
 claim worth making — and keep p99 for the region near the bound, where the buckets are milliseconds wide.
 
+The coarse set was the right trade and stays. Twenty-seven bounds against the role default's thousand equal
+widths costs 27 Prometheus series per histogram instead of 1000, and the only thing it gives up is reading
+exact tail values under overload — which is precisely what the day's work concluded nobody should do. A
+saturated p99 tells you which decade you are in and the mean tells you the rest.
+
 **What the 5M ladder shows is capacity, and nothing about load.** This claim was wrong three ways before
 it was right, so the sequence is recorded rather than just the conclusion: first the throughputs were
 withdrawn along with the latencies, then reinstated as evidence of rate-independence across a 16x range of
