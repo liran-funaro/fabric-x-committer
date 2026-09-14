@@ -2307,3 +2307,30 @@ fresh deployment or show the probe was the artefact, and both outcomes are worth
 `4 * DRAIN_RATE` floor) or, durably, a drain that parks at a fraction of the last measured throughput so
 no future workload can land on the default. The counter ratios above are unaffected: a backlog changes
 neither the keys in a batch nor the reads that batch provokes.
+
+## Audit results, so they are not re-run
+
+**Every quantitative claim in the evaluation's abstract, against `figures-orderer.jsonl` — all clean.**
+499,091 tps at a 447 ms median and 658 ms p99 is `e2e-shape-4s-hi` at 500,000 offered on a **300 s window**,
+fully retired with zero aborts and growth +133/s. Every rate below it arrived within 0.2%: 350,000 → 350,000,
+400,000 → 399,636, 450,000 → 450,182. Eight shards reach 500,000 against four shards' 499,091, 0.18% apart,
+and four shards hold the lower p99 at both matched rates — 658 against 754 ms at 500,000 and 547 against
+684 ms at 450,000. The busiest machine is `commit6` (four shards) and `commit5` (eight) at the top of each
+ladder and a router below it, which is what "the busiest machine is a validator--committer rather than any
+ordering component" rests on. Behind "no machine anywhere exceeds 82%" the true maxima are 80.5% and 81.6%,
+and the load generator reads 76.7% against a quoted 77%. And the 250,000 tps small-batch ceiling reads
+`blk_rate` **499.98** on `e2e-curve-small`, so "a block-rate limit near 500 blocks a second" is measured
+rather than inferred.
+
+**No plotted point in either arm mixes configurations within one x**, checked field by field across `vars`.
+On the committer arm this holds only after the reference-gap filter: panel 9c was drawing gap-1,000 rows at
+x=5 and x=10 alongside gap-300,000 rows at x=20 and x=30. Panel 9c is now one block producer per x — the old
+producer at x=0, the new one at 5 through 30 — and 9a and 9b are entirely on the old one; the cross-producer
+comparison inside 9c is sound because the producer change measured as a null result. On the orderer arm no
+field varies within any plotted point at all.
+
+**`curve500buf` does not contaminate figure 2.** It carries its own `figure` id, so the deeper-buffer ladder
+is not pooled with `curve500`. Its knee is 430,145 tps sustained over 300 s at a **209 ms median, 218 ms mean
+and 408 ms p99**, with the load generator at 21% and the busiest machine at 75%; 480,000 offered collapses to
+433,727 at 7,181 ms. Quote the median with its statistic named, since the p99 there is nearly double it.
+
