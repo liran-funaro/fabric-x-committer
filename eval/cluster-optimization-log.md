@@ -2171,21 +2171,28 @@ minutes, so **no measurement here has ever entered the high phase**, and whether
 is unmeasured. The aged-table re-measurement is the experiment: one deployment, a soak to ~120 GiB, one
 300-second hold at 60,000, insert compared against 13.7 ms.
 
-**A third candidate for the rung-1 transient — proposed here, then weakened by `ds20` an hour later.** Rung 1 of `9c-nosplit-ds10` ran
+**A third candidate for the rung-1 transient — proposed here, then tested against `ds20` inconclusively.** Rung 1 of `9c-nosplit-ds10` ran
 from roughly 12:35 to 12:40, and the count climbed 3 to 12 across exactly that window; every later rung ran at
 a stable 12. So rung 1 is measured *while the table is actively splitting*, which costs real work and points
-the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 190. That looked like it displaced cold start,
-and `ds20` then refuted it as a sufficient explanation: its rung 1 splits just as visibly — running climbs
-1 to 6 across the window with a 7→5 dip inside it — and shows **no inflated tail at all**, p99 227 ms against
-a 163 ms mean, a ratio of 1.39 where the other two read 2.8.
+the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 190. `ds20`'s rung 1 looked like a refutation
+— it splits just as visibly, running 1 to 6 with a 7→5 dip inside the window, and shows p99 227 ms against a
+163 ms mean, a ratio of 1.39 where the other two read 2.8 — and it is not one. **The comparison is
+confounded**, which 6f caught: splitting is size-triggered, so `ds20`'s lower offered rate (10,000 against
+15,000) is *why* its split progress reached only 6 of 12. Less rate and less splitting are not independent
+variables here, and a smaller tail under both is what the splitting hypothesis predicts rather than what
+contradicts it. I read a dose-response as a counterexample.
 
-So the rung-1 question is back to three candidates with no winner: cold start, splitting, and something
-specific to the rate. The caveat cuts both ways — the two ladders showing the effect share an offered rate of
-15,000 that `ds20` does not, so rate is not controlled between them, and 15,000 → 408 ms sits
-non-monotonically between 10,000 → 227 ms and 30,000 → 192 ms, which none of the three explains. A fourth
-mechanism suggests itself (the cost is in the dense *late* phase of splitting, which `ds10` reached inside its
-window and `ds20` did not) and is deliberately not adopted: that would be the sixth mechanism proposed on one
-point in this section, which is the pattern rather than the finding.
+What is a real argument is the **ratio**, because it is scale-free: 1.39 is exactly `ds5`'s *rung 2* value, a
+steady-state shape, so by shape `ds20`'s first rung looks settled while the other two look transient. But
+"inflated" is a within-ladder claim, so it needs `ds20`'s own rung 2 to mean anything: near 150-160 ms and 227
+is elevated ~1.4x, so the effect is present but weaker; near 220 ms and 227 is that ladder's steady state.
+
+So the question stands at three candidates with **no ranking**, since the ranking is what has kept moving:
+cold start, splitting, and something specific to 15,000 — which is where 408 ms sits non-monotonically between
+10,000 → 227 ms and 30,000 → 192 ms, unexplained by any of the three. A fourth mechanism suggests itself, the
+cost sitting in the dense *late* phase of splitting that `ds10` reached inside its window and `ds20` did not,
+and is deliberately **not** adopted: it would be the sixth proposed on one point in this section, and
+`tabhold12` makes it either free or unnecessary.
 
 `tabhold12` with splitting pinned off remains the discriminator, and it is now a better one than when it was
 queued: its rungs sit at 10,000-15,000, exactly the range in question, so it separates rate from splitting as
