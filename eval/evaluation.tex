@@ -579,10 +579,19 @@ rates around the knee on fresh deployments moves the boundary by less than the s
 knee is a property of the rate; the tail near it does grow with fill. Every rung records the fill and
 the tablet count it ran against.
 
-The first rung after a bring-up is the weakest measurement in any ladder. On two of the no-pre-split
-ladders it reads high --- an insert of \SI{15.2}{\milli\second} against
-\SIrange{13.6}{13.9}{\milli\second} at up to \num{6.7} times the rate, and a p99 of
-\SI{407}{\milli\second} against \SI{190}{\milli\second}, a tail that shrinks as the rate rises. Every
-rate reported here is therefore taken from a rung with another below it, never from a first rung alone.
+The first rung after a bring-up is more variable than the rungs above it, and not reliably slower. Across
+six of them the 99th percentile spans \SIrange{199}{519}{\milli\second}, a factor of \num{2.6}, where the
+rungs above them span \SIrange{150}{196}{\milli\second}, a factor of \num{1.31}: three of the six are
+elevated and three are not, and one conflict share produced \SI{519}{\milli\second} on one deployment and
+\SI{199}{\milli\second} on another. Three explanations were tried --- warm-up, the tablet splitting that
+runs across exactly that window, and sensitivity to the offered rate --- and each was refuted by a later
+rung, since a ladder whose first rung split just as visibly showed no elevation and the two rungs sharing
+an offered rate disagreed. So this is a spread rather than a bias, and its cause is not established here.
+
+That is a reason to distrust a lone rung, not to discard first rungs: dropping them would remove the
+points that happen to be high, which is a different act from excluding a known artefact. Every rate
+reported here is therefore taken from a rung with another below it --- never from a first rung alone ---
+and where only a single rung exists it could have landed anywhere in the wider band with nothing beside it
+to say which. The size sweep's probes are in that class.
 
 \end{document}
