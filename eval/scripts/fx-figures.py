@@ -484,6 +484,26 @@ EXPERIMENTS = [
     dict(id="9c-ds5-tab48", figure="conflict-why", x=48, label="5% double spend, 48 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=48)),
+    # The tablet axis, measured at a FIXED rate instead of by rate search -- because the rate searches
+    # cannot answer it. `db_insert` under conflicts is not a service time: at 96 tablets it reads 2.05 s
+    # in a saturated window and 1.33 s while draining, same deployment, same tablet count. The width moves
+    # with backlog depth too (a deeper queue makes the batcher pick up more per cycle, which is why 96
+    # saturated came out twice as wide as 88 at a LOWER throughput). So two probes sitting at unmatched
+    # distances above capacity differ in overload depth as well as tablets, and every cost law fitted to
+    # that mix has come out differently: across eight rows, per-tablet spreads 80%, per-key 46%,
+    # per-key-x-tablet 31%. The apparent 13.8 ms per tablet was three rows that happened to share a
+    # 300-350 key width, one of which was a drain window.
+    #
+    # 15,000 tps clears every capacity in the sweep -- 20,000 at 120 and 96, 27,400 at 88, more below --
+    # so the backlog stays near zero and the tablet count is the only difference. Each point carries a
+    # second rung at 10,000: one fixed rate cannot show that it is uncontaminated, two can, because a cost
+    # that is a service time gives the same answer at both and a queueing artefact does not. Rows record
+    # `inflight_growth`, so fit only where it is ~0 and this is checkable rather than assumed.
+    *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
+           label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
+           vars=dict(shape(2, 0, backref=0.05),
+                     committer_database_table_pre_split_tablets=t))
+      for t in (32, 48, 64, 88, 96, 120)],
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
@@ -1111,8 +1131,17 @@ def search(exp, settle, window):
                 break
             best = row
     else:
-        drain(exp)
+        # A descent step after a saturated step measures the PREVIOUS step's backlog, not its own rate,
+        # and no drain heuristic has survived a day of use: parked at a fixed rate it no-opped when the
+        # rate matched capacity, parked at a tenth of retirement it still leaves a tail that needs ~320 s
+        # to clear against a 90 s window. The 18,423 probe at 96 tablets is the demonstration -- it
+        # sustained its offered rate (grow -556/s) and still missed at a 7.3 s mean, because that mean was
+        # the previous rung draining. Nor can `grow` gate it: a queue pinned at its ceiling has zero
+        # derivative, so the tab88 rows at 8.6x capacity read -1,111/s and would pass any growth filter.
+        # A redeploy is the protocol this project already uses for holds and it has no heuristic in it.
         for _ in range(6):
+            if not deploy(exp):
+                break
             rate = int(rate * 0.85)
             row = measure(exp, rate, settle, window, "probe")
             if row is None:
@@ -1120,7 +1149,6 @@ def search(exp, settle, window):
             if row["met"]:
                 best = row
                 break
-            drain(exp)
     return best
 
 
@@ -1165,10 +1193,12 @@ def main():
                     if time.time() > deadline:
                         break
                     row = measure(exp, rate, settle, hold, "curve")
-                    # The ladder climbs past the knee, and everything after that point would
-                    # otherwise measure the queue the previous rate built.
-                    if row is not None and not row["met"]:
-                        drain(exp)
+                    # The ladder climbs past the knee, and everything after that point would otherwise
+                    # measure the queue the previous rate built. Redeployed rather than drained for the
+                    # reason given in search(): every drain heuristic tried has left a tail longer than
+                    # the next window, and a sustained-but-late rung is indistinguishable from a slow one.
+                    if row is not None and not row["met"] and not deploy(exp):
+                        break
                 continue
             best = search(exp, settle, window)
             if best is None:
