@@ -97,7 +97,7 @@ Everything on record for this figure, before the rest of the sweep re-runs:
 |---|---|---|---|
 | 300 B | **485,273** | 590 ms | new, replaces 408,000 |
 | 512 B | **384,727** | 543 ms | new, replaces 414,364 |
-| 1 KiB | — | — | **11 probes, no hold ever taken**; best probe 285,353 |
+| 1 KiB | **266,514** | 645 ms | new — gap closed; 7% under its best probe (285,353) |
 | 2 KiB | 155,936 | 547 ms | |
 | 3 KiB | — | — | not yet run (item 4) |
 | 4 KiB | — | — | **hold FAILED with `finished=0`, growth 25,902/s**; best probe 100,212 at 493 ms |
@@ -119,8 +119,9 @@ passed 416,111 yesterday and missed it today.
   retired at all, at a rate a probe had just passed at 493 ms. Watch whether this reproduces; if it does,
   the 4 KiB point has a probe and no hold, and the disk-bound knee item 4 wants to bracket sits between
   a confirmed 2 KiB and an unconfirmable 4 KiB.
-- **1 KiB**: eleven probes and no hold at all, so its best figure is a 90-second number where every other
-  row in the table is a 300-second one. Not comparable as it stands.
+- ~~**1 KiB**: eleven probes and no hold at all.~~ **Closed at 22:32Z**: a 300-second hold at 266,514 tps,
+  p99 645 ms, growth -114/s. It sits 7% below the best probe, which is the probe-optimism the driver
+  documents, and it keeps the figure monotone: 485,273 > 384,727 > 266,514 > 155,936.
 
 ### The orderer arm is genuinely end-to-end (verified 20:37Z), and the plan's IP map is inverted
 
