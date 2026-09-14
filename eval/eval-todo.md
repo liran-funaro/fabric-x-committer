@@ -96,11 +96,22 @@ Everything on record for this figure, before the rest of the sweep re-runs:
 | size | best confirmed hold | p99 | note |
 |---|---|---|---|
 | 300 B | **485,273** | 590 ms | new, replaces 408,000 |
-| 512 B | 414,364 | 690 ms | re-running now under `FX_REDO` |
+| 512 B | **384,727** | 543 ms | new, replaces 414,364 |
 | 1 KiB | — | — | **11 probes, no hold ever taken**; best probe 285,353 |
 | 2 KiB | 155,936 | 547 ms | |
 | 3 KiB | — | — | not yet run (item 4) |
 | 4 KiB | — | — | **hold FAILED with `finished=0`, growth 25,902/s**; best probe 100,212 at 493 ms |
+
+**The re-measure restored monotonicity, which is the real reason item 3 mattered.** The old pair had
+300 B at 408,000 and 512 B at 414,364 — smaller transactions retiring *slower* than larger ones, which
+is not a thing this pipeline can do and would have been drawn straight into figure 5 as a kink at the
+left-hand end. The new pair is 485,273 and 384,727, properly decreasing.
+
+The two points moved in opposite directions, and only one of them is a correction: 300 B rose 19%, which
+is the draining-backlog artefact item 3 identified, while 512 B fell 7% from 414,364 to 384,727, which is
+ordinary day-to-day drift (the recorded baseline moves 10–15%). Worth keeping in view when the knee is
+bracketed — a 7% band on each point is wide enough to matter between adjacent sizes, and the 512 B search
+passed 416,111 yesterday and missed it today.
 
 **Two entries Table 1 cannot be drawn from yet**, and neither is a rate that merely needs re-running:
 
