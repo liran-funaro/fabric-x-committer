@@ -56,6 +56,25 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### The tablet sampler died silently (20:03, caught 20:11 by luck)
+
+`fx-tablet-count.sh` stopped at 20:03:11 with no process left and no message, during the arm switch to
+`cluster-orderer.yaml`. Nothing flagged it; I found it while checking something else, eight minutes of
+the end-to-end size sweep already unrecorded.
+
+Restarted, and a watchdog now reports any of `fx-tablet-count.sh`, `fx-leader-skew.sh`,
+`fx-chain-then-ab.sh` or `fx-plan-14x-lf.sh` going missing, on transition only. Worth having for the
+rest of an unattended run: the A/B launcher and the chain are on that list too, and either dying quietly
+would strand the queue with nothing to say so.
+
+`fx-leader-skew.sh` survived and is the better-behaved of the two, because it emits a reason when it has
+no row — during this window it correctly said `master API unreadable`, which is what a redeploy looks
+like. The tablet sampler has no such marker, so its silence and its death are the same output. The
+watchdog covers that rather than editing a running loop.
+
+Layout on the orderer arm for the record: `ns_0` at 120 tablets, which is what `cluster-orderer.yaml`
+pre-splits.
+
 ### Correcting myself on bridges, and a prediction for the 250,000 repeats (19:30)
 
 Two commits ago I wrote that "bridge rungs reproduce" and that `nosplithi`'s 250,000 was the lone
