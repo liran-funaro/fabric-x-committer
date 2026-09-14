@@ -5,8 +5,49 @@ SPDX-License-Identifier: Apache-2.0
 -->
 # Evaluation work items
 
-Status 2026-09-14 11:30; the double-spend collapse is solved (see below) and the tablet sweep is closed without a cost law — the section does not need one. One arm can be up at a time and switching arms is a full bring-up
+Status 2026-09-14 12:20. **A conflicting workload now has a sub-second operating point**: with pre-splitting off, 5% double spends hold 28,537 tps at 192 ms over 300 s — see "First positive result" below. The cost law is still unknown and the section does not need one. One arm can be up at a time and switching arms is a full bring-up
 (~10 min), so the two tables are the two batches. `RUNNING.md` has how to run them.
+
+## First positive result: pre-splitting off meets the bound
+
+`9c-nosplit-ds5`, 300-second holds, verified from each row's own `vars` — `backref 0.05`,
+`reference_gap 300000`, `lookback 1000000`, `pre_split_tablets 0`, shape 2/0,
+`fast_block_prepare True`, abort 4.88%, `inflight_growth 0`, `finished` equal to `offered`:
+
+| offered | committed | p99 | mean | busiest CPU |
+|---|---|---|---|---|
+| 15,000 | 14,354 | 408 ms | 148 ms | 1.9% |
+| 30,000 | **28,537** | **192 ms** | 138 ms | 3.0% |
+
+28,537 clears the 120-way split's ~20,300 retirement rate, so **pre-splitting off wins on throughput and
+latency at once**. Two rungs left (60,000 and 100,000), so the ceiling is not bracketed; CPU at 3% says
+nothing is near a limit.
+
+**Why, in one controlled comparison.** Rung 1 against the 96-tablet row is matched on offered rate to within
+4%, on retired rate to within 4%, and on conflict share and gap exactly — one variable:
+
+| | offered | busiest CPU | µs/tx | insert | outcome |
+|---|---|---|---|---|---|
+| pre-split off | 15,000 | 1.9% | **79** | **15.2 ms** | meets, 408 ms p99 |
+| 96 tablets | 15,659 | 33.8% | 1,382 | 1,764 ms | misses, 6.9 s mean |
+| conflict-free, 120-way | 518,399 | 79.9% | 99 | — | meets |
+
+**17.5x on CPU per transaction and 116x on the insert, at matched load** — so the utilization objection to
+every earlier cost comparison does not apply here: load is held equal by construction. And at 79 µs against
+the conflict-free 99 µs, conflicts add no measurable CPU per transaction once pre-splitting is off. (Both
+µs/tx figures are busiest-host CPU times 64 threads over transactions finished, which attributes a whole
+machine to one workload; and the 99 µs row is at capacity while the 79 µs row is at 1.9% CPU, so the right
+claim is "no measurable addition", not that 79 is below 99.)
+
+**The retry frequency is unchanged**: 1.911 attempts per commit against 1.91 at the 120-way split, on batches
+**2.06x wider**. So the failure path is entered just as often on more keys and costs two orders of magnitude
+less. That refutes per-key cost outright — 239x apart, with the width moving the wrong way.
+
+**And the layout is 23 tablets**, read from the yb-master API (`/api/v1/tables`, then
+`/api/v1/table?id=<uuid>`, count `tablets`). 23 → 88 is a 3.8x layout change for a 79x cost change, so
+per-tablet is refuted too, by twenty-one. What is left is a **cliff between 23 and 88 tablets** that nothing
+has probed — `tabhold32` and `tabhold48` are the queue's two most valuable remaining points, worth more than
+`tabhold{88,96,120}`, which only re-measure the flat slow side.
 
 ## Watch this
 
@@ -15,7 +56,7 @@ is detail; this is the whole of what is outstanding.
 
 | | batch | what it decides | state |
 |---|---|---|---|
-| 1 | `nosplit` | **Figure 1c.** Whether a conflicting workload has any sub-second operating point. Ascending fixed-rate ladders with pre-splitting off, at the documented reference gap. | running |
+| 1 | `nosplit` | **Figure 1c.** Whether a conflicting workload has any sub-second operating point. Ascending fixed-rate ladders with pre-splitting off, at the documented reference gap. | **rungs 1–2 met**; 60k/100k to go |
 | 2 | `ladder8tab`, `hold8` | The 8-tablet anomaly: one probe at 172,260 / 252 ms against six holds in the 20–30 s band. | queued |
 | 3 | `ladderlow` | **Decides the section's conclusion.** Every gap-300,000 conflict row at the 120-way split was offered 25,000 tps or more, above its ~20,300 capacity — so it has never been given a sustainable rate, and "no rate qualifies however low" was never measured. Misses at 15,000 → the strong claim is earned; passes → pre-splitting costs capacity, not the bound. | queued, promote |
 | 4 | `tabhold` | The tablet axis at one fixed rate, which is the only way it can be asked (see 2a). | queued |
