@@ -56,6 +56,26 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### A prediction, recorded before the data (2026-09-14 18:02, bridge rung pending)
+
+`nosplithi`'s bridge rung failed at 250,000 after that rate had passed, and I retracted the number on
+the strength of it. `hold8nosplit` has just missed at 200,000 having met 150,000, so its bridge will
+repeat 150,000 on a fresh deployment within the next ten minutes. Writing down what each outcome means
+first, because after the fact either one can be told as a story:
+
+- **Bridge at 150,000 PASSES** → the bridge mechanism is sound, and 250,000 genuinely does not repeat.
+  The retraction stands as made and nothing here changes.
+- **Bridge at 150,000 FAILS** → two bridges in a row have failed at a rate that had just passed, which
+  makes the *bridge* the common factor rather than the rate. Then the 250,000 retraction is still
+  correct as a claim about what is established, but its cause is likely the post-collapse redeploy
+  rather than rate scatter — and `9c-nosplit250-rep1..3`, which each get their own bring-up rather than
+  a mid-batch redeploy, are the right way to settle it either way.
+
+The second outcome would also mean every bridge rung ever recorded is suspect as evidence about a rate,
+and the driver's own comment claims the opposite ("if it does not reproduce, the redeploy moved
+something and every rung after it is suspect") — which would be the correct reading of it, just not the
+one anybody has applied.
+
 ### The retracted 250,000 reaches no figure (checked, 2026-09-14)
 
 Worth recording because the prose was corrected and the figures were not, which is the usual way a
