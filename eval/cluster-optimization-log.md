@@ -1767,13 +1767,23 @@ committed 20,235 at `grow +4,100` and a 69.3 s mean. Capacity is ~20,300. So all
 workload past its own capacity, and "no offered rate qualifies however low" was never measured: what was
 measured is that a saturated conflicting workload misses the bound by two orders of magnitude.
 
-The service-time argument does not close the gap either, because its cleanest row is not clean. The 96-tablet
-measurement at 15,659 offered and fully retired has a **flat in-flight count of 103,160** — flat is not empty,
-the same trap as reading `grow` for saturation. Little's law on it gives 103,160/15,636 = 6.60 s against the
-6.94 s mean, so that residence is the descent's leftover backlog, and the 1.76 s insert inside it carries
-contention from those 103,160 transactions. The same quantity reads 1.325 s where the pipeline is nearly idle,
-24% lower, which is why 1.76 x 1.90 = 3.35 s is a cost under load rather than a service time and cannot carry
-a universal over all rates.
+**That finding is true of the 120-way split only, and I over-applied it.** At 96 tablets the descent reached
+**11,313 tps offered against a capacity of ~20,545** — little over half — and five rungs from 11,313 to 21,675
+each retired what they were offered at a flat in-flight count, giving means of 5.6 to 8.6 s. So at 96 tablets
+the negative is measured across five points spanning a factor of two in rate, not extrapolated.
+
+I had read those rows' in-flight counts as leftover backlog and that was wrong. **Little's law is an
+identity**: sustaining 10,727/s at a 5.63 s latency *requires* 60,435 in flight, so the count is the working
+set, not a queue to be blamed. The steady-state test is `finished` ≈ `offered` **together with** flat growth,
+and the two halves separate the cases cleanly — `tab88` fails the first half (250,000 offered against 27,672
+retired, so its flat growth is a pinned queue) while `tab96`'s low rungs pass both. Collapsing the test to
+growth alone is what produced both errors, mine and the one I corrected.
+
+What replaces the universal is a bounded extrapolation. Across those five rungs `db_insert` falls
+**monotonically** with the offered rate — 2.033, 1.850, 1.764, 1.724, 1.619 s as the rate halves from 21,675
+to 11,313 — and it is flattening. Fitting inside a second at 1.90 attempts needs **0.53 s**, a further
+threefold fall against a trend that gave 20% for the first halving. The 30,000 rung's 1.317 s is excluded: it
+is the deeply saturated one at growth +4,333 that has been anomalous all day.
 
 What settles it is `ladderlow` and `tabhold` at 10,000 and 15,000, which are the first sub-capacity rates the
 120-way split will have been offered. And the first `nosplit` rung shows the question is live rather than
