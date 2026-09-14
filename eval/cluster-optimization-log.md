@@ -2182,17 +2182,35 @@ confounded**, which 6f caught: splitting is size-triggered, so `ds20`'s lower of
 variables here, and a smaller tail under both is what the splitting hypothesis predicts rather than what
 contradicts it. I read a dose-response as a counterexample.
 
-What is a real argument is the **ratio**, because it is scale-free: 1.39 is exactly `ds5`'s *rung 2* value, a
-steady-state shape, so by shape `ds20`'s first rung looks settled while the other two look transient. But
-"inflated" is a within-ladder claim, so it needs `ds20`'s own rung 2 to mean anything: near 150-160 ms and 227
-is elevated ~1.4x, so the effect is present but weaker; near 220 ms and 227 is that ladder's steady state.
+`ds20`'s rung 2 then landed at 195 ms — between the two outcomes pre-registered for it — and **decomposing
+p99 against the mean separates the ladders qualitatively rather than by degree**:
 
-So the question stands at three candidates with **no ranking**, since the ranking is what has kept moving:
-cold start, splitting, and something specific to 15,000 — which is where 408 ms sits non-monotonically between
-10,000 → 227 ms and 30,000 → 192 ms, unexplained by any of the three. A fourth mechanism suggests itself, the
-cost sitting in the dense *late* phase of splitting that `ds10` reached inside its window and `ds20` did not,
-and is deliberately **not** adopted: it would be the sixth proposed on one point in this section, and
-`tabhold12` makes it either free or unnecessary.
+| ladder | r1 p99 | r2 p99 | p99 x | r1 mean | r2 mean | mean x |
+|---|---|---|---|---|---|---|
+| ds5 | 408 ms | 192 ms | **2.12** | 148 ms | 138 ms | 1.07 |
+| ds10 | 409 ms | 150 ms | **2.73** | 146 ms | 133 ms | 1.10 |
+| ds20 | 227 ms | 195 ms | 1.16 | 163 ms | 140 ms | 1.17 |
+
+`ds5` and `ds10`'s first rungs are **tail events**: p99 doubles or triples while the mean moves 7-10%, so a
+minority of transactions were hit hard. `ds20`'s moves p99 and the mean by the *same* 16%, which is not a tail
+signature but a uniformly slower rung, and a lower offered rate accounts for that with no transient at all.
+The ratio says it compactly: 1.39 at *both* of `ds20`'s rungs means the distribution's shape did not change
+between them, where `ds5` goes 2.76 to 1.39.
+
+**The decomposition is worth keeping as a test in its own right.** It separates "a burst hit some
+transactions" from "everything was slower", for free, from two numbers already in every row — and this section
+has been reading single p99 values all day where that distinction was available.
+
+It aligns with split progress across all three ladders: `ds5` and `ds10` reached the resting 12 inside their
+rung-1 windows and show the tail event, `ds20` was at 6 of 12 and shows none. Three points and a qualitative
+difference rather than a magnitude fit, so the late-phase version of the mechanism — cost concentrated where
+splits are dense — is recorded as supported rather than withheld.
+
+**The rate confound is untouched and still decisive**, so this is support and not a settlement: both
+tail-event rungs are at 15,000 and `ds20`'s at 10,000, so "15,000 produces a tail and 10,000 does not" remains
+available however arbitrary it looks. Three candidates stand, with splitting now ahead on evidence rather than
+on assertion. `tabhold12` separates them exactly — pinned layout, splitting off, rungs at both rates — so a
+pinned 15,000 rung with a 2.x p99/mean ratio means rate, and 1.4 means splitting.
 
 `tabhold12` with splitting pinned off remains the discriminator, and it is now a better one than when it was
 queued: its rungs sit at 10,000-15,000, exactly the range in question, so it separates rate from splitting as
