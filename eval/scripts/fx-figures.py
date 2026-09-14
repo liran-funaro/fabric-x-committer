@@ -481,6 +481,18 @@ EXPERIMENTS = [
     # commit and 48 should MISS at 1.19 s. That pair is the first conflicting operating point at a tablet
     # count anyone would run, which 64 and 160 cannot be -- both are predicted misses on a slope that
     # three points already fix.
+    # Four read-writes instead of two, at the default tablet count, because the tablet sweep cannot
+    # separate the two models that fit it. Keys per lookup barely moved across it -- 308 at 88 tablets,
+    # 310 at 96, 349 at 120 -- since tx_per_insert is transactions per insert CALL and the batch is
+    # inserted ~1.8 times, so a per-commit width of 154 tx is 86 per call, not a width that halved.
+    # Over those three points a fixed cost per tablet fits to 4.6% and a cost per key-tablet to 8.2%:
+    # from the 88-tablet row the latter predicts 1.85 s at 120 against 1.709 measured, which is a worse
+    # fit, not a refutation. Doubling the keys per transaction holds tablets fixed and moves the keys,
+    # and the two models then predict different numbers: per-tablet says db_insert stays near 1.71 s,
+    # per-key-tablet says it doubles to ~3.4 s. Recorded under its own figure name so it cannot land on
+    # the tablet axis of 1c as a second point at x=120.
+    dict(id="9c-ds5-rw4", figure="conflict-keys", x=120, label="5% double spend, 4 read-writes",
+         seed=15_000, vars=shape(4, 0, backref=0.05)),
     dict(id="9c-ds5-tab48", figure="conflict-why", x=48, label="5% double spend, 48 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=48)),
@@ -498,7 +510,20 @@ EXPERIMENTS = [
     # so the backlog stays near zero and the tablet count is the only difference. Each point carries a
     # second rung at 10,000: one fixed rate cannot show that it is uncontaminated, two can, because a cost
     # that is a service time gives the same answer at both and a queueing artefact does not. Rows record
-    # `inflight_growth`, so fit only where it is ~0 and this is checkable rather than assumed.
+    # `inflight_growth`, so fit only where it is ~0 -- with the caveat that growth alone is not enough,
+    # since a queue pinned at its ceiling also has zero derivative (the tab88 rows at 8.6x capacity read
+    # -1,111/s). Offered-against-retired plus mean latency is the gate.
+    #
+    # The per-point validity test, which is why there are two rungs and not one: `db_insert x attempts` is
+    # the commit's SERVICE time only if it is the same at both rates, because 10,000 sits at about half
+    # capacity and 15,000 at three quarters, so a queueing term cannot be equal at both. If a point's two
+    # rungs agree, that point's number can be quoted; if they move, the rate is still too high for it.
+    # Established already at 96 tablets, from the one probe that ran at grow exactly 0 (offered 15,659,
+    # finished 15,636, 77% of capacity): insert 1.764 s x 1.90 attempts = 3.35 s of service against a
+    # 6.94 s mean, so 3.35 s service and 3.59 s queue. 120 tablets agrees at 1.709 x 1.91 = 3.26 s. The
+    # bound therefore fails on service alone by more than 3x at both, which is a measurement rather than a
+    # derivation. At 32 tablets a pass needs the service term under 1 s, i.e. insert under ~0.53 s, so 32
+    # is the first point on the axis where the answer could be yes -- and it is listed first.
     *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
            label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
            vars=dict(shape(2, 0, backref=0.05),

@@ -25,6 +25,14 @@ rolls back and the Go retry loop re-runs it.
 Plus, from the VC's own counters: insert latency **1.72 s per call at 1.91 calls per commit** — the retry
 loop, first attempt violating and second succeeding.
 
+**And the latency bound fails on service time alone, which needs no queueing argument.** One tab96 probe
+ran at `inflight_growth` exactly 0 — offered 15,659, finished 15,636, 77% of capacity, 34% CPU — so its
+numbers are a service time and not a backlog: insert 1.764 s x 1.90 attempts = **3.35 s inside the commit**,
+against a 6.94 s mean. That splits the mean into 3.35 s of service and 3.59 s of queue. 120 tablets agrees
+at 1.709 x 1.91 = **3.26 s**. So the 1 s bound is missed by more than 3x before any transaction waits for
+anything, at both tablet counts — a measurement, not a derivation, and it is why no rate search at these
+splits can find a passing rate however low it goes.
+
 At 8 tablets a conflicting workload shows **no visible CPU penalty** — 75 µs against 99 conflict-free is
 the same order. It is not evidence that conflicts are *cheaper*: that point ran at 181,091 tps against
 518,727, a third of the rate, so it also carries less queueing per transaction. The defensible claim is
