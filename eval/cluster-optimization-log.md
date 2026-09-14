@@ -1792,6 +1792,41 @@ abort share, **p99 408 ms**, growth 0, busiest host **2% CPU** — verified from
 lookback 1,000,000, so it is the valid configuration. A conflicting workload does have a sub-second operating
 point at some layout, at a rate the 120-way split has never been given.
 
+**"Pre-splitting disabled" is ten tablets, measured, not the database's 8-per-tserver default.** Read off the
+running deployment with `yb-admin list_tablets ysql.yugabyte ns_0`: **10 tablets**, and `tx_status` likewise.
+That had to be checked before the layout axis could be read, because YugabyteDB's usual default is eight
+shards per tserver, which on twelve tservers would have been 96 — the same as the other arm — and the whole
+comparison would have been between two identical layouts. It is not. So the axis is 8, 10, 88, 96, 120
+tablets, and "no pre-split" is a point on it rather than a different kind of configuration.
+
+**The rate-matched pair, which is the strongest thing in the dataset.** Verified field by field:
+`committer_database_table_pre_split_tablets` is the *only* entry in `vars` that differs — reference gap,
+lookback, conflict share, shape, block producer and every other field identical.
+
+| | offered | finished | growth | cpu | µs/tx | `db_insert` | latency | |
+|---|---|---|---|---|---|---|---|---|
+| 10 tablets | 15,000 | 15,091 | 0 | 1.9% | 79 | **15.2 ms** | 408 ms p99 | met |
+| 96 tablets | 15,659 | 15,636 | 0 | 33.8% | 1,382 | **1,764 ms** | 6,935 ms mean | missed |
+
+Offered within 4.4%, retired within 3.6%, the same 4.88% abort share, both fully retiring at flat in-flight.
+**116x on the insert and 17.6x on CPU per transaction, from one variable.** This is immune to every confound
+raised against the tablet sweep — utilization, batch width, reference gap, table fill — because they are all
+held equal by construction rather than by argument. It also settles the load-dependence question by
+subordinating it: the load term is worth 20% across a halving of rate, against 116x here, so it is real and
+negligible beside the layout term it had been obscuring.
+
+Note it does **not** revive a per-tablet cost law: 15.2/10 = 1.52 ms per tablet against 1,764/96 = 18.4, a
+factor of twelve apart. `tabhold` at 32/48/64/88/96/120 on one fixed rate is what could settle that, and until
+it lands the mechanism stays open while the effect is established.
+
+**The ten-tablet ladder, in progress at 5% double spends:** 15,000 offered → 14,354 committed at 408 ms p99
+and 1.9% CPU; 30,000 → 28,537 at **192 ms** and 3%; 60,000 → 56,899 at **189 ms** and 7%. Latency is flat
+across a fourfold rate increase and the busiest machine is at 7%, so the ceiling is far above — 2.8x the
+120-way split's whole capacity already, on a workload that split cannot bring inside the bound at any rate
+tested. The 100,000 rung is still to come, and it bears on the eight-tablet anomaly: if ten tablets sustains
+near 100,000, the 172,260 tps eight-tablet probe stops looking like an outlier and its three failed holds
+become the thing needing an explanation.
+
 **The layout result that does hold, at one fixed workload.** Every row 5% double spends at gap 300,000, so the
 pre-split is the only variable:
 
