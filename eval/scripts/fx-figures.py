@@ -1228,7 +1228,14 @@ def measure(exp, rate, settle, window, kind):
            and finished <= (offered or 0) + max(200.0, (offered or 0) * TOLERANCE)
            and (offered or 0) >= rate * (1 - TOLERANCE)
            and p99 is not None and p99 <= SLO_P99
-           and (growth is None or growth <= rate * TOLERANCE)
+           # Two-sided, because a window that DRAINS is as unrepresentative as one that accumulates: the
+           # latency in it belongs to transactions offered earlier, at a different rate. The one-sided
+           # form admitted ds30's 50,000 rung as MET at grow -6,800/s -- 13.6% of the rate -- while the
+           # rung below it at 25,000 had failed, so the panel's 30% point would have been a drain and
+           # would have contradicted the miss beneath it. The arrival check does not catch this case: both
+           # the offered and finished rates read 50,000 and only the growth term reveals it. Every clean
+           # rung measured so far reports growth of exactly 0, so the two-sided bound costs nothing.
+           and (growth is None or abs(growth) <= rate * TOLERANCE)
            and (s.get("append_util") or 0) < 0.95)
 
     # `histogram_quantile` returns the top finite bucket boundary once the quantile falls in the +Inf
