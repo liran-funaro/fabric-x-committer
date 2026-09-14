@@ -232,6 +232,28 @@ EXPERIMENTS = [
     dict(id="9c-ds5-gdg", figure="conflict-why", x=0, label="5% double spend, global graph",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_coordinator_dep_graph_use_simple_manager=False)),
+
+    # The reference gap has to clear the DEPENDENCY GRAPH's window, not the latency one. The graph holds
+    # `wait-tx-limit` transactions -- 500,000 here, against the code default of 100,000 -- and a
+    # reference reaching back less than that names a key whose creating transaction is still inside the
+    # graph. That is a dependency to order, not a conflict to reject, and the sampler shows exactly what
+    # ordering them looks like: the graph pinned at 500,000, every graph stage under 3% utilisation, the
+    # database at 17-28 ms with 2 of 192 commit workers busy, and released batches down from ~300
+    # transactions to 72. Nothing saturated, everything waiting.
+    #
+    # Two ways to make a reference land on a committed key, and they should agree:
+    #   - lower the graph's window to the default the published run used;
+    #   - raise the gap past the window this deployment configures.
+    dict(id="9c-ds5-graph100k", figure="conflict-why", x=100, label="5% double spend, 100k graph limit",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_coordinator_dep_graph_wait_tx_limit=100_000)),
+    dict(id="9c-ds5-gap1m", figure="conflict-why", x=1000, label="5% double spend, 1M reference gap",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   loadgen_tx_reference_gap=1_000_000)),
+    # And the published topology: nine validator-committers on the nine database nodes that carry no
+    # master, against the six here. Tests whether the tier width is part of it independently.
+    dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05))),
     # The throughput-against-latency curve, in place of the paper's failure figure: a rate ladder rather
     # than a search, so there is no gate in it and every point after the first arrives warm. It is the
     # figure this evaluation was asked for and the one that exposed the block-size finding.
