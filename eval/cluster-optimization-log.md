@@ -2183,6 +2183,24 @@ the first probe at 30,000 (4.05 s) and descended instead of climbing, which is t
 below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
 five days, so the series cannot share an axis with current numbers until it is re-run.
 
+**The 20% share is now measured twice, on two deployments, and it reproduces.** `ds20`'s re-run finished all
+four unified rungs with no miss and no redeploy, so that share now has **eight clean rungs** — every one met,
+every one at growth exactly 0:
+
+| deployment | rungs (offered → p99) |
+|---|---|
+| A, 10,000 ladder | 10,000 → 227 ms · 25,000 → 195 · 50,000 → 194 · 80,000 → 193 |
+| B, 15,000 ladder | 15,000 → 263 ms · 30,000 → 179 · 60,000 → 184 · 100,000 → 193 |
+
+The six later rungs span **179-195 ms, an 8.9% spread**, against this cluster's own stated 8.8% repeatability —
+so the level reproduces across a full teardown and redeploy, which nothing else in this sweep had shown. It is
+the best-supported point in the conflict work: one share, two deployments, six rungs, a tenfold range of offered
+rate.
+
+Both first rungs are the elevated ones of their own ladders (227 and 263 ms), which is one more instance of the
+pattern closed above as noise, and at a third *f* value again — 15% here against 4.6%, 5.0% and 72%. Four
+scattered values across five first rungs is what the closure predicted.
+
 **A second free check: nominal rate against `sent_total` over elapsed time.** 6f's, and it is the first of the
 day's instrument findings that yields a *tool* rather than a caveat. `met` gates on `finished <= offered` at
 sample time, which says nothing about whether the rate held for the whole window — a rung that ramped, stalled,
