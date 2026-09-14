@@ -2107,24 +2107,35 @@ without any time localisation. The spatial one is the cheaper hypothesis and 6f 
 rather than adding a brief sub-phase to a five-minute process, and it removes the tension between "5% of
 transactions" and "splitting ran throughout" without an extra assumption.
 
-**Pre-registered, before `ds30` runs.** The two readings make *opposite* predictions about how *f* moves with
-the offered rate, which is the discriminator neither of us saw at first:
+**Pre-registered, and then corrected before the data landed — the rate it rests on was wrong.** The
+registration said `ds30`'s rung 1 runs at 60,000, six times `ds20`'s, which would have made *f* a clean
+discriminator: spatially *f* carries no rate term (concurrent splits ÷ tablet count) so it stays near 5%,
+temporally it rises with the write rate. That was taken from a *description* of the plan. The definitions read
+`[15000, 30000, 60000, 100000]` for all four shares, and the JSONL confirms `ds5` and `ds10` ran exactly that.
 
-| reading | *f* is | so across `ds20` rung 1 at 10,000 and `ds30` rung 1 at 60,000 |
-|---|---|---|
-| spatial | concurrent splits ÷ tablet count — no rate term | *f* stays near 5% |
-| temporal | a burst whose density follows the write rate | *f* rises with rate |
+So **`ds30`'s rung 1 is at 15,000, rate-matched to `ds5` and `ds10`**, and both readings predict the same thing
+there — same rate, same splitting. The test cannot discriminate them. What it does test is better than nothing
+and different: whether the tail event **reproduces** at 15,000 across a third independent conflict share.
 
-`ds30`'s first rung is at **six times** `ds20`'s, and its layout splits from one toward twelve unpinned like
-the others, so a third independent *f* near 5% across a sixfold rate spread supports the spatial reading
-directly. `tabhold12` cannot do this — with splitting off it tests only whether splitting matters at all — so
-the unpinned ladder is the better instrument here, which inverts the usual order. `ds20` rung 1 against rung 2
-is the same two-row arithmetic and needs nothing new.
+The revised registration, then: **`ds30` rung 1 should give *f* ≈ 5% under every reading currently alive.** An
+*f* near 70% would mean the effect is not rate-linked either, and all three candidates are in trouble at once —
+the most informative outcome available and the one to watch for.
 
-A **third outcome** is worth naming before the run, because neither of us listed it: *f* near 70% would put
-`ds30`'s rung 1 in the uniform-shift class with `ds20`'s, meaning the tail event tracks neither rate nor
-splitting but something the two 15,000-tps rungs share alone — which points back at the rate confound rather
-than at either mechanism. So the test has three distinguishable answers, not two.
+It also sharpens the rate confound into something clean and testable: 10,000 gave no tail (`ds20`, *f* = 72%),
+15,000 gave one twice (*f* = 4.6% and 5.0%). A third tail at 15,000 makes the effect look rate-linked with a
+threshold between 10,000 and 15,000 — and `tabhold12`'s rungs span exactly that gap, so the pinned ladder tests
+it directly.
+
+**And the reproducibility problem underneath it, which is the more consequential half.** `ds20`'s observed rungs
+were 10,000 / 25,000 / 50,000 / 80,000 while `ds5`'s and `ds10`'s matched the definition — so the definitions
+changed after `ds20`'s driver had started, and the driver loads `EXPERIMENTS` once per batch at startup. Two
+consequences. `ds20` is not rate-comparable to its siblings, so the four-share series had one member measured on
+a different ladder; e0 is re-running `ds20` and `ds30` under unified rates rather than papering over it in the
+caption, which is right, because the two lists share no rate at all and there is no common-rate subset to fall
+back on. And more generally: **the file a definition is read from is not necessarily the file a completed batch
+ran.** Any claim about what an experiment measured has to come from the row's own `vars` and `limit`, not from
+the current source — which is the same lesson as the `vars` check that caught the convoy, arriving from the
+other direction.
 
 Three of today's wrong readings would have been caught by this test alone: the censored p99s below, the
 single-bucket ones, and a 3.35 s service time quoted from a p99 whose mean said otherwise.
