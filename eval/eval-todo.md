@@ -45,73 +45,46 @@ at a **29,900 ms** p99. A factor of 118 between a probe and a hold at the same r
 them, and hold 1 was draining (`grow=-300/s`) while reading 29,900 ms. Until `hold8` resolves that, the
 8-tablet recovery is a candidate, not a result.
 
-**What *is* confirmed for a conflicting workload**, four `met=True` 300 s holds, all at the default split
-(`pre_split_tablets=0`, a different configuration from split8's 8):
+**The conflict series that matters is the one with pre-splitting *disabled*, and it is much better than any
+figure quoted so far.** `committer_database_table_pre_split_tablets: 0` means no pre-split; this inventory's
+default is **120** (`cluster.yaml:284`), the configuration that never qualifies — so this column must never be
+labelled "default". From `figures-ecdsa.jsonl`, the top probes of each series, all with `inflight_growth` 0
+and `finished` equal to `offered`:
 
-| conflicts | split | throughput | p99 |
-|---|---|---|---|
-| 0% | 120-way | 518,000 | 0.51 s |
-| 10% | default | 37,346 | 0.53 s |
-| 20% | default | 24,578 | 0.33 s |
-| 30% | default | 30,348 | 0.49 s |
+| conflicts | pre-split | offered | finished | committed | p99 | met |
+|---|---|---|---|---|---|---|
+| 10% | none | 102,770 | 102,727 | **92,958** | ~0.2 s | yes |
+| 30% | none | 102,770 | 102,909 | **76,353** | ~0.2 s | yes |
+| 5% | 8 | 181,031 | 181,091 | 172,260 | 0.24 s | yes |
+| 5/10/20/30% | 120 | any | — | 15,000–24,000 | censored | **never** |
 
-At the 120-way split no conflict share produced a hold at all — `9c-ds5` and `9c-ds10-chunk64` never got past
-probing and no probe at any rate met the conditions. So the statable result is: **at 120 tablets no
-conflicting workload meets a 1 s p99 at any offered rate; at the default split 10/20/30% all hold under
-0.55 s.** 20%'s 24,578 is a lower bound — its search stopped climbing at 32,400 while 30%'s reached 40,814,
-which is why it reads below 30%.
+Both no-pre-split series were **still climbing when the search ran out of `UP_STEPS`**, so 92,958 and 76,353
+are lower bounds rather than knees. Against the 120-way split at the same conflict shares that is ~4.6x on
+throughput and the difference between meeting the bound and never meeting it at any rate. So the statable
+finding is: **pre-splitting is what costs the SLO under conflicts**, and the 120-way split buys 2.9x
+conflict-free in exchange.
 
-**Why it is invisible without conflicts**, which is what made this hard to find: nothing performs a
-multi-key lookup when every key is new. One conflicting key makes the whole batch perform one.
+**No hold confirms any of it, and the reason is the driver, not the pipeline.** A hold runs at the last
+*passing* probe, which after a 17-step climb is the very top. At 102,770 over 300 s ds10 no longer fits
+(finished 96,545, grow +600), so hold 1 failed; holds 2 and 3 then read `finished` 113,273 and 135,455
+against 95,157 and 88,108 offered — they were draining hold 1's backlog, not measuring. ds30's one `met=True`
+hold has `inflight_growth` **−12,433/s**, so it is the same artifact and is not quotable either. **No hold has
+ever been attempted below capacity on this series**, which is the one experiment the document needs: a fixed
+70,000 tps / 300 s hold at 10% and 20%, and 60,000 at 30%, with pre-splitting off.
 
-**Why the database looked innocent for two days**: the driver samples
-`vcservice_database_tx_batch_commit_latency` — 22.9 ms — a span that *excludes* the insert.
-`..._commit_insert_new_key_with_value_latency` is 1.72 s. Two spans for one batch, 75× apart.
+`split0-ds20`'s 20,829 is junk rather than a low capacity: its search missed on the first probe at 30,000
+(4.05 s) and descended instead of climbing, which is why 20% reads far below both 10% and 30%. And every
+split0 row is 09-08/09-10, predating `fast_block_prepare`, so the series needs re-running before it shares an
+axis with current numbers.
 
-**The fix**: `INSERT ... ON CONFLICT DO NOTHING ... RETURNING` in place of the exception handler, which
-removes all three costs at once — with no `EXCEPTION` block there is no savepoint to roll back to, no
-full-batch lookup, and nothing for the outer transaction to abort, so the Go retry loop stops re-running
-the batch as well. Violating keys become requested-minus-returned, so
-the return value inverts and its unit tests change with it. Needs sanction — it is the commit path.
-
-**Instrument defects this hunt exposed**, all three of which produced plausible numbers:
-
-1. `db_commit` samples a span that *excludes* the insert — 22.9 ms against 1.72 s for the same batch. Three
-   sessions independently concluded "the database is healthy" from it. `db_insert` and
-   `db_insert_per_commit` are in the driver now.
-2. `FX_DRAIN_RATE` defaults to **20,000**, and the conflict workload's capacity is **20,235**. So the drain
-   parked the generator at the rate the pipeline could just retire, the backlog never fell, and the
-   give-up test fired at once — the log reads "draining: 1,830,000 in flight" and then *rises* to 3.34M.
-   Every latency from ladder5m rung 2 onward is the age of that backlog, not a cost of the workload:
-   23,004 tps × 148.8 s = 3.42M, which is the reported in-flight figure. Throughput survives this (a
-   saturated pipeline retires at capacity whatever the queue depth) but latency does not. `drain()` now
-   parks at a tenth of what the pipeline is retiring rather than at a fixed rate.
-3. The sampler `cd`'d into the Prometheus config directory once at startup; a bring-up deleted and
-   recreated it, leaving the process on an unlinked inode and the log full of dashes for 45 minutes
-   across live measurement.
-4. **The load generator's rate is not the pipeline's rate behind a deep queue.** Across the six ladder
-   rungs its `finished` scattered 18,000–25,273 (13% sd) while the validator-committers' own counters read
-   20,182–20,617 — flat within 2.1%. The generator measures status arrivals in a sixty-second window with
-   millions of transactions queued ahead of them, so its variance is the queue's. Its *mean* (20,610)
-   agrees with the committers', so it is unbiased and noisy rather than wrong. Quote the committers'
-   counters for any capacity behind a backlog; three separate explanations were built on the generator's
-   scatter before this was noticed, and all three were refuted by the next rung.
-5. **The search cannot probe below `seed x 0.85^6`, and says "no rate met" rather than "out of range".**
-   `search()` probes the seed and descends six steps on a miss, so 480,000 bottoms out at **181,031** — nine
-   times a conflict workload's ~20,400 tps capacity. Every one of the seven probes saturates, and the batch
-   reports the same thing it would report if no usable rate existed. That is where `9c-ds5`, `ds10`, `ds20`
-   and `ds30` went; 181,031 is the fingerprint in all four logs. It also means the one 8-tablet point that
-   ever passed was the *last* descent step, so that knee was never bracketed from above. A seed is now
-   chosen per batch, and **a seed carried over from a conflict-free shape is wrong by the size of the
-   collapse** — the audit that caught this found `tab88` (floor 94,286 against ~25,000 retired) already
-   running and `ds01` (floor 56,572) queued behind it.
-
-**Refuted along the way**, each on evidence: the nil-version insert path (the published generator shared
-it), the tablet pre-split as a *difference* from the published run (it had one too), the reference gap
-versus the graph window (the abort rate matches the configured share exactly, so references do land on
-committed keys), the dependency-graph manager choice (both managers collapse identically), and the graph's
-admission limit as a cliff — `waiting-txs-limit: 5000000` is applied and the population still pins at
-500,000, because the *sidecar's* 500,000 caps what can be outstanding at all.
+**p99 is censored in overload — use the mean there.** Bucket-boundary frequencies across both JSONL files:
+60,000 ms on 114 rows, 29,900 on 26, 44,850 on 10, 19,950 on 8, 14,950 on 8, 7,475 on 17. Those are
+Prometheus histogram bucket bounds (7,475 x 2 x 2 = 29,900; 14,950 x 3 = 44,850), and `histogram_quantile`
+returns the last finite boundary once the quantile passes the populated buckets. The proof: a ladder5m rung
+reports p99 = 60,000 ms with **mean = 69,334 ms**, and a mean above the 99th percentile is impossible. So the
+three 8-tablet holds "at 29,900 ms" are one bucket — state them as ">29.9 s", not as a 118x ratio against the
+252 ms probe. The SLO gate is unaffected (a censored p99 fails correctly); the reported values are what cannot
+be quoted. `mean` is sum/count and stays valid throughout.
 
 ## Committer arm (`inventory/cluster.yaml`)
 
