@@ -551,10 +551,20 @@ EXPERIMENTS = [
            label=f"{share:.0%} double spend, no pre-split", rates=rates,
            vars=dict(shape(2, 0, backref=share),
                      committer_database_table_pre_split_tablets=0))
-      for share, rates in ((0.05, [70_000, 100_000, 130_000]),
-                           (0.10, [70_000, 100_000, 130_000]),
-                           (0.20, [50_000, 70_000, 100_000]),
-                           (0.30, [60_000, 85_000, 110_000]))],
+      # Rungs start BELOW the 120-way split's 20,389 tps rather than near the old no-split figures,
+      # because those figures are not a prediction for this workload: `split0-ds10/20/30` ran at
+      # `loadgen_tx_reference_gap: 0` (the inventory default, predating the gap logic), so their
+      # references named keys whose creating transaction had not committed. The coordinator has to ORDER
+      # those -- a convoy -- rather than reject them, which is the measurement this file's own comment
+      # calls "a convoy instead of double spends". So 92,958 tps at 195 ms was the serialization path and
+      # says nothing about the insert failure path. These runs use gap 300,000 via shape(), which makes
+      # them the first real no-pre-split double-spend measurement and leaves their capacity genuinely
+      # unknown -- so the ladder brackets from under the worst known layout up to the convoy figures,
+      # instead of assuming the answer is near the top.
+      for share, rates in ((0.05, [15_000, 30_000, 60_000, 100_000]),
+                           (0.10, [15_000, 30_000, 60_000, 100_000]),
+                           (0.20, [10_000, 25_000, 50_000, 80_000]),
+                           (0.30, [10_000, 25_000, 50_000, 80_000]))],
     *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
            label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
            vars=dict(shape(2, 0, backref=0.05),
