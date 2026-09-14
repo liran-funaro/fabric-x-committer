@@ -1458,16 +1458,35 @@ def main():
             if not deploy(exp):
                 continue
             if exp.get("mode") == "curve":
+                passed = None
                 for rate in exp["rates"]:
                     if time.time() > deadline:
                         break
                     row = measure(exp, rate, settle, hold, "curve")
+                    if row is not None and row["met"]:
+                        passed = rate
+                        continue
                     # The ladder climbs past the knee, and everything after that point would otherwise
                     # measure the queue the previous rate built. Redeployed rather than drained for the
                     # reason given in search(): every drain heuristic tried has left a tail longer than
                     # the next window, and a sustained-but-late rung is indistinguishable from a slow one.
-                    if row is not None and not row["met"] and not deploy(exp):
+                    if not deploy(exp):
                         break
+                    # But a redeploy trades one confound for another: rungs after it run on a different
+                    # table from rungs before it, so a ladder that redeploys mid-way cannot tell a RATE
+                    # effect from a DEPLOYMENT effect. That is not hypothetical -- ds30 read pass, fail,
+                    # pass across 10,000 / 25,000 / 80,000, and the two passes sat on either side of a
+                    # redeploy, so the non-monotonicity was never demonstrated within one deployment and
+                    # three sessions reversed on it five times in ninety minutes.
+                    #
+                    # So repeat the last rate that PASSED on the new deployment. If it reproduces, the two
+                    # halves of the ladder are comparable and a later rung's result is its own; if it does
+                    # not, the redeploy moved something and every rung after it is suspect. One rung per
+                    # miss, and nothing at all on a ladder that never misses.
+                    if passed is not None:
+                        log(f"[{exp['id']}] bridging: repeating {passed:,} on the new deployment, so a "
+                            f"later rung is separable from the redeploy")
+                        measure(exp, passed, settle, hold, "bridge")
                 continue
             best = search(exp, settle, window)
             if best is None:
