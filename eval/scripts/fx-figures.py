@@ -370,6 +370,19 @@ EXPERIMENTS = [
     # refutes recovery. Note an explicit seed here is NOT overridable by FX_SEED, which only feeds BASE_SEED.
     dict(id="9c-ds01", figure="9c", x=0.1, label="0.1% double spend", seed=30_000,
          vars=shape(2, 0, backref=0.001)),
+    # Two shares below the sweep the TODO asked for, because 1% and 0.1% cannot bracket the thing the
+    # sweep is for. p99 is taken over VALID transactions, and a batch that hits the failure path drags
+    # its valid transactions through the retry with it -- so the share of BATCHES holding a conflict is
+    # what decides the tail, and at width ~175 that share is 1-(1-p)^175: 83% at p=1%, 16% at 0.1%,
+    # 1.7% at 0.01%, 0.18% at 0.001%. The bound is a 99th percentile, so it can absorb 1% of
+    # transactions and no more, which puts the crossing at ~0.006% -- between the last two. Without
+    # them the sweep returns three misses and locates nothing; with them it brackets the share at which
+    # this tablet layout becomes usable, which is the number an operator actually needs.
+    # Seeds are set from how much of the pipeline each share is expected to spend on retries.
+    dict(id="9c-ds001", figure="9c", x=0.01, label="0.01% double spend", seed=200_000,
+         vars=shape(2, 0, backref=0.0001)),
+    dict(id="9c-ds0001", figure="9c", x=0.001, label="0.001% double spend", seed=480_000,
+         vars=shape(2, 0, backref=0.00001)),
 
     # The claim the document needs and has never had: a 300-second hold at 8 tablets on a fresh
     # deployment. A probe met the bound there -- 181,031 offered, 172,150 and 172,112 committed in two
@@ -455,6 +468,16 @@ EXPERIMENTS = [
     dict(id="9c-ds5-split32", figure="conflict-why", x=32, label="5% double spend, 32 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=32)),
+    # 48 tablets, to bracket the bound rather than confirm the slope again. The failing lookup costs
+    # ~13.8 ms per tablet regardless of how many keys it seeks (1.212 s at 88, 1.317 at 96, 1.709 at 120,
+    # all within 3% of that constant while the width doubled), and it runs ~1.8 times per commit. So the
+    # 1 s bound sits at tablets x 13.8 ms x 1.8 = 1000, i.e. ~40 tablets: 32 should MEET at 0.79 s per
+    # commit and 48 should MISS at 1.19 s. That pair is the first conflicting operating point at a tablet
+    # count anyone would run, which 64 and 160 cannot be -- both are predicted misses on a slope that
+    # three points already fix.
+    dict(id="9c-ds5-tab48", figure="conflict-why", x=48, label="5% double spend, 48 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=48)),
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
