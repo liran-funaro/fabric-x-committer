@@ -3,10 +3,47 @@ Copyright IBM Corp. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 -->
-# Experiments still to run
+# Evaluation work items
 
-Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a full bring-up
+Status 2026-09-14 09:20; the double-spend collapse is solved, see below. One arm can be up at a time and switching arms is a full bring-up
 (~10 min), so the two tables are the two batches. `RUNNING.md` has how to run them.
+
+## Solved: why double spends collapse to ~20,000 tps
+
+A back-reference puts an existing key in a batch's new-writes. `insert_ns` inserts the batch blind and
+returns on success — **no lookup at all** — but on `unique_violation` its handler runs
+`key = ANY(_keys)` over *every* key in the batch. At ~1,000 keys against 120 tablets that is 120,000,
+past YugabyteDB's ~32,768 batching threshold, so it degrades to one storage read per key. The batch then
+rolls back and the Go retry loop re-runs it.
+
+| evidence | conflict-free | 5% conflicts, 120 tablets | 5% conflicts, 8 tablets |
+|---|---|---|---|
+| throughput | 518,727 tps | 21,273 | **181,091** |
+| busiest host CPU | 80% | 71% | 21% |
+| CPU per transaction | 99 µs | **2,133 µs** (21×) | 75 µs (normal) |
+
+Plus, from the VC's own counters: insert latency **1.72 s per call at 1.91 calls per commit** — the retry
+loop, first attempt violating and second succeeding.
+
+At 8 tablets a conflicting workload costs *no more CPU per transaction than no conflicts at all*.
+
+**Why it is invisible without conflicts**, which is what made this hard to find: nothing performs a
+multi-key lookup when every key is new. One conflicting key makes the whole batch perform one.
+
+**Why the database looked innocent for two days**: the driver samples
+`vcservice_database_tx_batch_commit_latency` — 22.9 ms — a span that *excludes* the insert.
+`..._commit_insert_new_key_with_value_latency` is 1.72 s. Two spans for one batch, 75× apart.
+
+**The fix**: `INSERT ... ON CONFLICT DO NOTHING ... RETURNING` in place of the exception handler, which
+removes both the full-batch lookup and the rollback. Violating keys become requested-minus-returned, so
+the return value inverts and its unit tests change with it. Needs sanction — it is the commit path.
+
+**Refuted along the way**, each on evidence: the nil-version insert path (the published generator shared
+it), the tablet pre-split as a *difference* from the published run (it had one too), the reference gap
+versus the graph window (the abort rate matches the configured share exactly, so references do land on
+committed keys), the dependency-graph manager choice (both managers collapse identically), and the graph's
+admission limit as a cliff — `waiting-txs-limit: 5000000` is applied and the population still pins at
+500,000, because the *sidecar's* 500,000 caps what can be outstanding at all.
 
 ## Committer arm (`inventory/cluster.yaml`)
 
@@ -14,7 +51,12 @@ Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a 
 |---|---|---|---|
 | 1 | ~~Every 500-transaction-block measurement, again, with the fast block producer.~~ **Done, null result**: 528,545 tps at 10,000-transaction blocks against 531,455 before, 380,673 at 500 against 379,764. Preparation was not the ceiling. It also answers 1b: the large-block ladder did not move, so figure 1 was never generator-bound. The buffer was: 430,145 tps with a 2,000-block buffer. Original text below.<br><br>**Every 500-transaction-block measurement, again, with the fast block producer.** The old ladder measured the generator: its mock orderer prepared blocks on one goroutine at 0.75 ms each, capping it near 850 blocks a second. `fast-block-prepare` is now in the branch, the collection and the staged binary. Benchmarked here: preparation is a *per-transaction* cost, so it capped a transaction rate rather than a block rate — 775,500 tps at 500 a block and 777,500 at 10,000, on one goroutine of this workstation. The fix is 60x at 500 and 1,133x at 10,000. So **both** ladders need re-running, and if the cluster's generator prepares slower than this machine (2.10 GHz there), both were capped by it. | `curve`, `curve500`, `curve500hi`, `curve500top` | **ready, do first** |
 | 1b | **Do figures 1a and 1b need re-measuring too?** Their points were taken with the old block producer at 10,000-transaction blocks, where preparation cost 12.1 ms a block — 63% of one goroutine at 518,000 tps and **79% at 653,273**. Close enough to a single-goroutine ceiling to be suspect. #1's 10,000-block ladder answers it: if it now sustains more than 531,455 tps, the whole of figure 1 was generator-bound and needs re-running. | `9a-*`, `9b-*` | decided by 1 |
-| 2 | **Why double spends collapse.** Near 20,000 tps at every conflict share, gap and scheme, against 518,000 conflict-free — rate-independent, with the busiest *database* node at 73% CPU, so neither the rate nor the coordinator. **Leading suspect: YugabyteDB's multi-key read batching.** `key = ANY(array)` batches only while tablets x keys-per-lookup stays under ~32,768; above it, one storage read per key. `validateNamespaceReads` passes every read key of a validation batch in one array, unchunked, so keys per lookup is thousands against 120 tablets. It is invisible conflict-free, because inserting fresh keys performs no multi-key lookup — a back-reference is the first thing that does. The same cliff took a blind-write workload from 314,336 to 13,160 tps. Three variants of one 5% point decide it: fewer tablets, a narrower chunk, or the global graph manager. | `9c-ds5-split8`, `9c-ds5-chunk64`, `9c-ds5-gdg` | ready, after 1 |
+| 2 | ~~Why double spends collapse.~~ **SOLVED — see the section below.** It is `insert_ns`'s exception handler: one conflicting key makes the whole batch look up every key it holds, which past YugabyteDB's batching threshold costs 1.72 s and a rollback. | `9c-ds5-*` | done |
+| 2a | **Tablet sweep at 5% conflicts**: 8, 16, 32, 64, 120. `tablets × keys` crosses at ~32,768 and a 500-transaction chunk carries ~1,000 keys, so the cliff should sit between 32 (32,000, under) and 64 (64,000, over). Turns a 9× observation into a threshold, and re-measures the constant on this version. | new | ready |
+| 2b | **Conflict-share sweep**: 1%, 0.1%, 0.01%. P(a ~500-transaction batch holds a conflict) is 94%, 25%, 2.8%, so throughput should climb steeply below 1%. Tests "per batch, not per conflict" with no code change. | new | ready |
+| 2c | **Add `db_insert` to the driver's QUERIES** (`vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds`). Sampling only `db_commit` is what hid this for two days — 22.9 ms against 1.72 s for the same batch. | — | `fx-figures.py` owner |
+| 2d | **`chunk64` loose end**: 64 transactions is ~128 keys, so 128 × 120 = 15,360 is *under* the threshold and should have been fast, yet it gave 46,182 tps. `vcservice_batcher_input_queue_size` exists, so the VC probably re-batches and the graph chunk does not control the insert's key count. One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, settles it. | — | either |
+| 2e | **A gauge for `SimpleManager.depFreeTxBatches`.** ~497,000 transactions are dep-free, released, and in none of the seven queues, so they can only be in that slice — which the code calls "deliberately unbounded" and which has no metric. | — | code |
 
 ## End-to-end arm (`inventory/cluster-orderer.yaml`)
 
@@ -29,7 +71,7 @@ Status at 2026-09-10 17:50. One arm can be up at a time and switching arms is a 
 
 | # | Item | Blocked on |
 |---|---|---|
-| 7 | **Restore the double-spend section.** Its two paragraphs are commented out, and figure 1c still draws the gap-0 rows — the panel is orphaned until #2 replaces them. | 2 |
+| 7 | **Figure 1c and its section.** No valid double-spend measurement exists at the deployment's own tablet count — every run but the 8-tablet one sits inside the collapsed regime, so the panel cannot be compared with the published Figure 9c. Either report the 8-tablet point and say plainly why the 120-tablet one is not a property of the pipeline, or wait for the `insert_ns` fix. | 2a, or the fix |
 | 8 | **Partly done.** The section no longer attributes the small-block ceiling to block preparation, which the re-measurement refuted: with preparation 1,133x cheaper both ladders landed where they were (528,545 and 380,673 tps). What it now says is what was measured — the bound is the generator's outstanding-work buffer, counted in *blocks*, so deepening it twentyfold moves the ceiling from ~400,000 to 430,145 tps at 209 ms. **Left**: whether figure 2 should carry the deeper-buffer ladder as its own series, which needs a decision on whether that buffer becomes part of the tuned setup. | decision |
 | 9 | **Update figure 5, Table 1 and the size section** with 300 B re-measured, 3 KiB added, and holds where they exist. | 3, 4, 5 |
 | 10 | ~~Name the paper's committer machines.~~ **Done**: the bullet now gives the three instance types and the EBS rating. | — |
