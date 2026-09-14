@@ -597,6 +597,15 @@ EXPERIMENTS = [
     # hold (FX_HOLD in the chain) rather than a ladder, and `tablets.log` records the running count every
     # 30 s so the crossing is observed rather than assumed. If the soak misses its rate the row says so and
     # the aged measurement is void -- which is visible, unlike a table that quietly never split.
+    #
+    # The soak is 45 minutes and EXTENDED IF NEEDED rather than padded, because the binding constraint is
+    # disk and not time. The crossing needs ~115 GB of state, but the ledger written to get there is larger:
+    # 651M transactions at ~262 B is ~170 GB against 514 GB free, which fits -- while padding the hold to
+    # 125 minutes "to be safe" would write 2.6B transactions and ~690 GB, and the run would die on the disk
+    # floor having proved nothing. So: run 45 minutes, read the count, and run a second soak if it is still
+    # 12. The highest rate ever sustained at this layout is 95,122 tps (ds5 rung 4, at 11% CPU with the
+    # ladder out of rungs), so 350,000 is a 3.7x extrapolation -- plausible on that headroom, not proven,
+    # and the crossing needs ~245,000 retired to happen inside 45 minutes.
     dict(id="9c-nosplit-ds5-soak", figure="conflict-nosplit", x=5, mode="curve",
          label="5% double spend, 12 tablets, soak to the split threshold",
          rates=[350_000],
