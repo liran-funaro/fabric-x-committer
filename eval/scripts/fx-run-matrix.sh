@@ -110,7 +110,7 @@ say "matrix: ${ONLY:-<everything>} -> $OUT   redo=${REDO:-<none>}"
 # The driver writes its own log. Callers redirect this script to $TAG.log, and when the driver used
 # that name too the two truncated each other.
 FX_ONLY=$ONLY FX_REDO=${REDO:-} FX_DEADLINE_HOURS=$HOURS FX_OUT=$OUT FX_INVENTORY=$INV \
-FX_MATRIX=$MATRIX FX_DEPLOY_PLAN=$PLAN \
+FX_MATRIX=$MATRIX FX_DEPLOY_PLAN=$PLAN FX_SKIP_DEPLOY=${SKIP_DEPLOY:-} \
   python3 ./fx-figures.py > "$LOGS/$TAG-driver.log" 2>&1
 grep -E "hold limit|no rate met|deadline|run done" "$LOGS/$TAG-driver.log" | tail -20
 say "MATRIX COMPLETE: $TAG"

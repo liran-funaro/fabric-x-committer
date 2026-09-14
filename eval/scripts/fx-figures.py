@@ -564,14 +564,39 @@ EXPERIMENTS = [
          # the `Running` children, so a total-entry count overstates the live layout. Read by state on a
          # fresh table: 2 Running + 1 Deleted for one completed split. The no-split table starts at ONE
          # tablet and each split leaves one parent, so total = 2*running - 1, and the 23 totals observed
-         # give 12 running -- which matches `yb-admin list_tablets` exactly, and is also why splitting
-         # stopped there: 12 over twelve tablet servers is 1.0 per node, the low phase's own boundary.
+         # give 12 running -- which matches `yb-admin list_tablets` exactly. 12 is where the LOW phase ends
+         # (1.0 per tablet server), not where splitting ends: above it the threshold rises to 10 GiB per
+         # tablet and the count can keep going to 24 per server, i.e. 288. So the table pauses at 12 until
+         # it holds ~120 GiB, and a no-split table has the same DESTINATION as one created with 120 -- a
+         # table created with 120 was found holding 288 after eleven hours -- it merely starts further
+         # away. That is why the ageing test below exists rather than being assumed away.
          # `SPLIT INTO N` creates N running tablets, so 12 is what reproduces the measured layout.
          # Top rung is 350,000, not 400,000, because the load generator's own ceiling on this arm is
          # ~400,000 without the deep buffer -- a miss at 400,000 could be the generator rather than the
          # committer, and an ambiguous top rung brackets nothing. If all three pass, the conflicting
          # ceiling is >=350,000 against 518,000 conflict-free, which is already the strong statement.
          rates=[150_000, 250_000, 350_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=12,
+                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+
+    # Does the no-split advantage survive the table AGEING? This is the question that decides whether the
+    # result is a deployment recommendation or a property of a young table. A no-split table starts at ONE
+    # tablet and splitting climbs with fill; the high phase runs to 24 per server, so 288 on twelve, which
+    # is where a table created with 120 was found after eleven hours. So a no-split table has the same
+    # destination and merely starts further from it. The ds5 ladder measured 13.6-15.2 ms inserts over
+    # twenty minutes from one tablet; if that becomes a second after a day, "pre-splitting off buys the
+    # bound" would hold for tens of minutes and mislead anyone who ran it for longer.
+    #
+    # Run with FX_SKIP_DEPLOY=1 IMMEDIATELY after 9c-nosplit-ds5-hi, on that deployment, so the table has
+    # carried three 300 s rungs at 150k-350k plus everything before them. Skipping the deploy is not an
+    # optimisation here, it is the experiment: the point is the age of the table. It also closes a trap --
+    # a missed rung inside a normal ladder triggers a redeploy, which would silently hand this measurement
+    # a fresh table and read as "still 14 ms, durable". SKIP_DEPLOY cannot redeploy, and it verifies the
+    # rendered shape before measuring, so a mismatched deployment is refused rather than measured.
+    dict(id="9c-nosplit-ds5-age", figure="conflict-nosplit", x=5, mode="curve",
+         label="5% double spend, 12 tablets, aged table",
+         rates=[150_000],
          vars=dict(shape(2, 0, backref=0.05),
                    committer_database_table_pre_split_tablets=12,
                    yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
