@@ -21,7 +21,7 @@ ORDERER=/data1/cluster/inventory/cluster-orderer.yaml
 say() { echo "### $(date +%H:%M:%S) $*"; }
 
 say "waiting for any driver already running"
-while pgrep -f "[f]x-figures.py" >/dev/null || pgrep -f "[a]nsible-playbook" >/dev/null; do sleep 60; done
+while pgrep -f "[f]x-figures.py" >/dev/null || pgrep -f "/[a]nsible-playbook " >/dev/null; do sleep 60; done
 say "cluster is free"
 
 # 1. Why the conflict workload collapses: three variants of one 5% point. Fewer tablets and a narrower

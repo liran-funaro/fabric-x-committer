@@ -51,7 +51,10 @@ say() { echo "### $(date +%H:%M:%S) $*"; }
 # One driver only, and no play of anyone else's in flight. Count fx-figures.py processes excluding
 # this script's own pid, so the pattern cannot match the shell running it.
 BUSY=$(pgrep -f "fx-figures.py" | grep -vc "^$$\$" || true)
-if [ "${BUSY:-0}" -gt 0 ] || pgrep -f "[a]nsible-playbook" >/dev/null; then
+# The play check matches the interpreter path, not the bare word: `pgrep -f "[a]nsible-playbook"` also
+# matches any watcher whose own command line quotes that literal, and one did -- a chain's wait loop sat
+# on a log watcher for four minutes believing a play was running.
+if [ "${BUSY:-0}" -gt 0 ] || pgrep -f "/[a]nsible-playbook " >/dev/null; then
   say "!! another driver or play is running; refusing to start a second"
   pgrep -af "fx-figures.py|[a]nsible-playbook" | head -3
   exit 1

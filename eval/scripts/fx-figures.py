@@ -157,6 +157,16 @@ DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
 # reporting a failure, and leaves the Fabric CA and the monitoring stack standing. `all` also works but
 # takes both down every point, which costs Prometheus history, flaps Grafana, and re-enrols the CA -- the
 # "Authentication failure" that killed a six-point size sweep.
+#
+# THE SEPARATOR IS LOAD-BEARING. Use colons, never commas. Each play in the teardown composes its own
+# group into the pattern as `{{ target_hosts }}:&<its group>`, and a comma binds looser than that
+# intersection: `a,b:&c` is a OR (b AND c), while `a:b:&c` is (a OR b) AND c. So `fabric_x,load_generators`
+# gave the monitoring play `load_generators:&monitoring`, which matched nothing, and gave the loadgen play
+# all 26 committer hosts instead of one -- every host then failed with "missing required arguments:
+# orderer_component_type" and the driver aborted two ladders having measured nothing.
+#
+# It is not the group name: `ansible-inventory --list` shows `fabric_x` and `fabric_x_committers`
+# resolving to the same 26 hosts, which is what proves the separator was the whole of it.
 TEARDOWN_HOSTS = os.environ.get(
     "FX_TEARDOWN_HOSTS",
     "fabric_x_committers:load_generators" if os.environ.get("FX_MATRIX") != "e2e"

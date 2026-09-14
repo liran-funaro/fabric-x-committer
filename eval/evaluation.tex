@@ -222,10 +222,16 @@ At \num{10000}-transaction blocks the median has a floor near \SI{125}{\milli\se
 fall with the rate, since nothing in a block moves until the block is cut (Fig.~\ref{fig:curve}). At
 500 transactions a block the floor is \SI{40}{\milli\second}, and \num{379764} tps holds at
 \SI{136}{\milli\second} median and \SI{235}{\milli\second} p99 --- about the median large blocks give
-at \num{10000} tps, at thirty-eight times the rate. That ladder stops there rather than at a ceiling:
-the nearest constraint at that rate is the load generator, whose block preparation caps its own block
-rate near 850 a second, or \num{425000} tps at this block size. What the committer sustains with
-500-transaction blocks is therefore not resolved here.
+at \num{10000} tps, at thirty-eight times the rate.
+
+That ladder stops where the load generator stops, not where the committer does, and the constraint is
+the interface between them rather than any cost inside either. What bounds the transactions the generator
+can have outstanding is a buffer counted in \emph{blocks}, so at 500 transactions a block it holds
+twenty times fewer transactions than at \num{10000} for the same rate. Deepening it twentyfold, to match
+in transactions, moves the small-block ceiling from \SIrange{396000}{400000}{} to \num{430145} tps
+sustained at a \SI{209}{\milli\second} median, where the generator plateaus at \SI{21}{\percent} of
+its cores. What the committer itself sustains at this block size is therefore still not resolved: every
+rung measured so far is a property of the instrument.
 
 \section*{Part II --- End to end, with a real ordering service}
 
