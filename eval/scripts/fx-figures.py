@@ -364,7 +364,7 @@ EXPERIMENTS = [
     dict(id="9c-ds1", figure="9c", x=1, label="1% double spend", seed=30_000,
          vars=shape(2, 0, backref=0.01)),
     # Seeded low deliberately: this point's capacity is what is being tested and the two hypotheses predict
-    # it six times apart. From 30,000 the search descends to 11,313 and can climb to 102,857, so one seed
+    # it six times apart. From 30,000 the search descends to 11,313 and can climb to 102,778, so one seed
     # brackets both a ~20,400 outcome and a ~100,000 one. At 150,000 the floor is 56,572 -- above the
     # pessimistic capacity, so the run could only ever have reported "no rate met" in exactly the case that
     # refutes recovery. Note an explicit seed here is NOT overridable by FX_SEED, which only feeds BASE_SEED.

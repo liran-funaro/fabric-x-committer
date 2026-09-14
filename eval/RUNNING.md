@@ -176,7 +176,24 @@ dict(id="9c-ds5", figure="9c", x=5, label="5% double spend", seed=BASE_SEED,
 ```
 
 `id` is what `ONLY` matches, `figure` and `x` are where the point lands in a plot, `seed` is the rate
-the search starts from, and `vars` are inventory variables for this point only. `shape()` builds the
+the search starts from, and `vars` are inventory variables for this point only.
+
+**Pick the seed for the shape, not for the last experiment.** The search descends `rate x 0.85` at most six
+times, so a seed can only ever probe down to `seed x 0.85^6` — and if the point's capacity is below that,
+every probe saturates and the batch reports **"no rate met"**, which is also what it reports when no usable
+rate exists. The two are indistinguishable in the log. `BASE_SEED` is 480,000, whose floor is 181,031; a
+conflicting workload here retires ~20,000, so four such batches returned a null result that said nothing
+about the workload. The seed also climbs `x1.08` up to sixteen times, so `seed x 1.08^16` is the ceiling:
+
+| seed | floor | ceiling | use for |
+|---|---|---|---|
+| 480,000 | 181,031 | — | conflict-free, ~500,000 tps |
+| 200,000 | 75,429 | 685,188 | the 8-tablet conflict knee, ~172,000 |
+| 30,000 | 11,313 | 102,778 | a 120-tablet conflict knee, ~20,000 — and wide enough to catch a recovery |
+
+Prefer a seed *below* the expected knee: the climb has sixteen steps and the descent six, so a low seed
+brackets far more than a high one. An explicit number in the dict is **not** overridable by `FX_SEED`,
+which only feeds `BASE_SEED`. `shape()` builds the
 workload: read-write count, blind-write count, invalid-signature share, back-reference rate (the
 double-spend share), block size. Then teach `fx-plot-figures.py` to draw the new `figure`, if it is
 not one it already draws.
