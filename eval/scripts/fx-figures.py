@@ -561,9 +561,15 @@ EXPERIMENTS = [
          label="5% double spend, 23 tablets, ceiling",
          # Pinned at 12, not 23: the master's `tablets` array includes `Deleted` split parents alongside
          # the `Running` children, so a total-entry count overstates the live layout. Read by state on a
-         # fresh table: 2 Running + 1 Deleted for one completed split. The no-split table starts at ONE
-         # tablet and each split leaves one parent, so total = 2*running - 1, and the 23 totals observed
-         # give 12 running -- which matches `yb-admin list_tablets` exactly. 12 is where the LOW phase ends
+         # fresh table: 2 Running + 1 Deleted for one completed split. 12 running is what the master
+         # reports when the array is filtered by state, and what `yb-admin list_tablets` reports when
+         # passed 0 -- two independent readings, which is why the pin is 12.
+         #
+         # An earlier revision of this comment derived 12 from the 23 totals via `total = 2*running - 1`.
+         # That formula is withdrawn: it assumes every split is complete and every parent still retained,
+         # neither of which holds generally, and it agreed with the reading here by coincidence of a
+         # particular history. The pin does not depend on it -- both direct readings stand on their own.
+         # 12 is where the LOW phase ends
          # (1.0 per tablet server), not where splitting ends: above it the threshold rises to 10 GiB per
          # tablet and the count can keep going to 24 per server, i.e. 288. So the table pauses at 12 until
          # it holds ~120 GiB, and a no-split table has the same DESTINATION as one created with 120 -- a
