@@ -1806,6 +1806,14 @@ tablets moves from "unconfirmed" to refuted, and the 252 ms probe beside them is
 explanation. Quote the mean in overload regardless — bucket resolution above ten seconds is coarser than any
 claim worth making — and keep p99 for the region near the bound, where the buckets are milliseconds wide.
 
+**Checked while there: the panels do not mix block producers within an x.** `fast_block_prepare` landed
+mid-sweep, so the same experiment id has rows on both producers, and `best_per_x` takes the highest
+throughput per x across configurations — which could have mixed them. After the reference-gap filter, panel
+9c is one producer per x (x=0 on the old, 5–30 on the new) and 9a and 9b are entirely on the old one. The
+cross-producer comparison inside 9c is sound anyway, since the producer change measured as a null result —
+528,545 tps against 531,455 at 10,000-transaction blocks and 380,673 against 379,764 at 500 — and the conflict
+points sit three orders of magnitude below any producer limit. No action; recorded so it is not re-checked.
+
 The coarse set was the right trade and stays. Twenty-seven bounds against the role default's thousand equal
 widths costs 27 Prometheus series per histogram instead of 1000, and the only thing it gives up is reading
 exact tail values under overload — which is precisely what the day's work concluded nobody should do. A
