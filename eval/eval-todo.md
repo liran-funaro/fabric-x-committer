@@ -56,6 +56,30 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### The orderer arm is genuinely end-to-end (verified 20:37Z), and the plan's IP map is inverted
+
+Checked rather than assumed, because a silent fall back to the mock orderer would produce committer-only
+numbers wearing an end-to-end label, and figure 5 and Table 1 are what this batch feeds:
+
+- 20 of 20 orderer machines have an `arma` process.
+- The live loadgen config contains **no** `mock-orderer` section at all and sets
+  `fault-tolerance-level: BFT`. Endpoints are not in the YAML; they come from
+  `latest-known-config-block-path`, which is why grepping the config for router IPs finds nothing.
+- The loadgen on .9 holds **16 established connections to each of the four routers** on 7050 with full
+  send queues — `broadcast-parallelism: 16`, actively broadcasting.
+
+**Warning for anyone using the Phase 3 plan document as a map: its component-to-IP assignment is
+inverted relative to the inventory that was actually built.**
+
+| component | plan document | `cluster-orderer.yaml` as built |
+|---|---|---|
+| assembler1-4 | .39–.42 | **.23–.26** |
+| router1-4 | .23–.26 | **.39–.42** |
+
+Batchers (.27–.34) and consenters (.35–.38) agree. I checked .23–.26 for broadcast traffic first, found
+none, and briefly took that as evidence the arm was not real — it was evidence that the plan's map is
+stale. The inventory is authoritative.
+
 ### The tablet sampler died silently (20:03, caught 20:11 by luck)
 
 `fx-tablet-count.sh` stopped at 20:03:11 with no process left and no message, during the arm switch to
