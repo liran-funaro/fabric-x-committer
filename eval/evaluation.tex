@@ -584,7 +584,19 @@ and no claim in this section rests on one.
 
 A ladder climbs on a single deployment, so rate and table fill rise together along it. Repeating the
 rates around the knee on fresh deployments moves the boundary by less than the spread above, so the
-knee is a property of the rate; the tail near it does grow with fill. Every rung records the fill it
-ran against.
+knee is a property of the rate; the tail near it does grow with fill. Every rung records the fill and
+the tablet count it ran against.
+
+The first rung after a bring-up is the weakest measurement in any ladder, and probably for a reason
+that is not warm-up. A table is created with one tablet and the database splits it as it fills, so the
+count climbs to its resting value over the first few minutes --- and splitting moves data across the
+same nodes the commit path writes to. On the no-pre-split ladders the count climbs across exactly the
+first rung's window and is level for every rung after it, and that rung is the one that reads high: the
+insert costs \SI{15.2}{\milli\second} against \SIrange{13.6}{13.9}{\milli\second} for rungs at up to
+\num{6.7} times the rate, and its p99 is \SI{407}{\milli\second} against \SI{190}{\milli\second}, a
+ratio to its own mean of \num{2.8} against \num{1.4}. The consequence reaches past those ladders: any
+point reported from a single rung on a fresh deployment carries the same cost, and with no second rung
+to compare against it cannot be seen. The size sweep's probes are in that class. A pinned-layout ladder,
+with splitting disabled, separates the two explanations and is not yet run.
 
 \end{document}
