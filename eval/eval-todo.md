@@ -8,6 +8,31 @@ SPDX-License-Identifier: Apache-2.0
 Status 2026-09-14 11:30; the double-spend collapse is solved (see below) and the tablet sweep is closed without a cost law — the section does not need one. One arm can be up at a time and switching arms is a full bring-up
 (~10 min), so the two tables are the two batches. `RUNNING.md` has how to run them.
 
+## Watch this
+
+The queue is `/data1/logs/fx-plan-14q-lf.sh`, running unattended in this order. Everything below the queue
+is detail; this is the whole of what is outstanding.
+
+| | batch | what it decides | state |
+|---|---|---|---|
+| 1 | `nosplit` | **Figure 1c.** Whether a conflicting workload has any sub-second operating point. Ascending fixed-rate ladders with pre-splitting off, at the documented reference gap. | running |
+| 2 | `ladder8tab`, `hold8` | The 8-tablet anomaly: one probe at 172,260 / 252 ms against six holds in the 20–30 s band. | queued |
+| 3 | `ladderlow` | The only uncontaminated latency for the 120-way split — every rung below its ~20,235 capacity. | queued |
+| 4 | `tabhold` | The tablet axis at one fixed rate, which is the only way it can be asked (see 2a). | queued |
+| 5 | `ds1`…`ds0001` | Conflict share from 1% down to 0.001%, at fixed layout. | queued |
+| 6 | `vc9` | The published tier width: nine validator--committers on the nine non-master database nodes. | queued |
+| 7 | size sweep | **Figure 5 and Table 1** — 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. The only end-to-end work left, and it needs its own arm. | queued last |
+
+**Document state.** The double-spend section is written and its numbers are current. Figure 1c draws one
+measured bar (0%) and four collapsed shares, which is what the measurement supports; batch 1 may add more.
+Figure 5 and Table 1 wait on batch 7. One thing needs a decision rather than a run: **whether the generator's
+deeper block buffer joins the tuned setup**, and so whether figure 2 carries that ladder as its own series
+(item 8).
+
+**Nothing is publishable from a rate search after a miss.** Every descent probe inherits the previous rung's
+backlog, so its latency is not its own — `tab96` returned "no rate met" from seven probes for that reason
+alone. This is why the queue is ladders and holds rather than searches.
+
 ## Solved: why double spends collapse to ~20,000 tps
 
 A back-reference puts an existing key in a batch's new-writes. `insert_ns` inserts the batch blind and
