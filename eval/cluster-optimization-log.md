@@ -1513,6 +1513,31 @@ per-batch cost law, including the per-tablet one recorded above, and any capacit
 one. Every row in the sweep was taken between 1.0x and 8.6x capacity, and there is **no unsaturated row at
 any tablet count** — the closest is a drain read, not a measurement.
 
+**Three variables move together in every probe, and one of them can now be eliminated.** Tablet count, batch
+width and utilization all differ between any two rows in this sweep, which is why three sessions have each
+fitted a law and had it refuted by the next batch — the 32,768 product, per-tablet, and per-key-x-tablet.
+`tab96`'s own four probes make the point without any cross-tablet comparison: at fixed tablets and a width
+held at 601-611 keys, `db_insert` still moves 2.316 -> 2.033 -> 1.850 s as the offered rate falls, so
+utilization alone is worth 20% at fixed width. And its first probe, the narrowest at 312 keys, is the
+*cheapest* at 1.317 s, so width and utilization are not even ordered the same way across the batch.
+
+The variable that is *not* responsible is table size. Over the 225 steady-width intervals of the 88-tablet
+run the table grew **8.8x**, from 637,012 rows to 5,595,519, at a fixed 300-305 keys per batch, and the
+insert moved **+0.8%**:
+
+| rows in table | insert | keys |
+|---|---|---|
+| 637,012 | 1.194 s | 301 |
+| 1,856,263 | 1.165 s | 300 |
+| 3,285,926 | 1.192 s | 305 |
+| 4,506,654 | 1.202 s | 303 |
+| 5,595,519 | 1.204 s | 301 |
+
+So the §9 fill control holds on the failure path as well as the conflict-free one, and a designed experiment
+does not need to control for how long the run has been going or how full the table is. That leaves tablets,
+width and utilization — and no row anywhere in the sweep holds two of them fixed across a change in the
+third, which is the whole reason nothing is identifiable.
+
 The fix is a design change rather than more points: run every tablet count at **the same offered rate, below
 every capacity in the sweep** — 15,000 tps clears 20,000 at 96 and 120 and 27,400 at 88 — for 300 s, and read
 width and insert in-window. That holds the backlog near zero at every point, so what differs between them is
