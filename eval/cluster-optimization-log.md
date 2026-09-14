@@ -2121,10 +2121,23 @@ The revised registration, then: **`ds30` rung 1 should give *f* ≈ 5% under eve
 *f* near 70% would mean the effect is not rate-linked either, and all three candidates are in trouble at once —
 the most informative outcome available and the one to watch for.
 
-It also sharpens the rate confound into something clean and testable: 10,000 gave no tail (`ds20`, *f* = 72%),
-15,000 gave one twice (*f* = 4.6% and 5.0%). A third tail at 15,000 makes the effect look rate-linked with a
-threshold between 10,000 and 15,000 — and `tabhold12`'s rungs span exactly that gap, so the pinned ladder tests
-it directly.
+It also sharpens the rate confound into something clean and testable, and the **superseded** `ds30` run
+contributes to it even though it cannot serve the registration. The old rate list was 10,000 / 25,000 / 50,000 /
+80,000 — verified directly from `ds20`'s four rows, which used it — so the old `ds30` rung 1 is at **10,000**,
+not the 15,000 the registration needs. Which makes it a *second* ladder at 10,000:
+
+| offered | ladders | *f* | reading |
+|---|---|---|---|
+| 10,000 | `ds20` | 72% | uniform shift |
+| 10,000 | `ds30` (superseded run) | **registered: ~70%** | — |
+| 15,000 | `ds5`, `ds10` | 4.6%, 5.0% | tail event |
+| 15,000 | `ds30` (re-run) | **registered: ~5%** | — |
+
+Two ladders at each rate, agreeing within their pair, would make the effect rate-linked with a threshold between
+10,000 and 15,000 — and `tabhold12`'s rungs span exactly that gap with the layout pinned, so it tests it
+directly. A disagreement inside either pair kills the rate story instead, which is equally useful. Registering
+both before either lands, since the superseded run's row costs nothing to read and answers the half of the
+question the re-run cannot.
 
 **And the reproducibility problem underneath it, which is the more consequential half.** `ds20`'s observed rungs
 were 10,000 / 25,000 / 50,000 / 80,000 while `ds5`'s and `ds10`'s matched the definition — so the definitions
