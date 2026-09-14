@@ -56,6 +56,43 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### Correcting myself on bridges, and a prediction for the 250,000 repeats (19:30)
+
+Two commits ago I wrote that "bridge rungs reproduce" and that `nosplithi`'s 250,000 was the lone
+outlier. With n=3 all three fitted that story. `ladder8tab` supplies a fourth and it does not:
+
+| bridge | rate | insert at the rung that passed | vs that ladder's flat baseline | reproduced? |
+|---|---|---|---|---|
+| `nosplithi` | 250,000 | 17.0 ms | +40% over 12.1 | **no** (261.6 ms) |
+| `hold8nosplit` | 150,000 | 14.0 ms | +5% over 13.1–13.4 | yes (13.7 ms) |
+| `hold8nosplit` | 150,000 | 14.0 ms | +5% | yes (13.4 ms) |
+| `ladder8tab` | 200,000 | 20.6 ms | +44% over 14.3 | **no** (327.6 ms) |
+
+So the rule is not "bridges reproduce". It is: **a top passing rung whose insert still sits on the flat
+baseline reproduces; one already elevated by about 40% does not.** That is 4 for 4, and it has a
+mechanism rather than being a curve fit — an elevated insert means the pipeline is already working
+harder at that rate, so the rung is marginal and repeating it is close to a coin flip. Note the bridge
+always repeats *the last rate that passed*, which is by construction the rate nearest the knee, so this
+is the common case and not an edge one.
+
+My earlier statement was an overgeneralisation from a sample where every case happened to agree. The
+250,000 retraction is unaffected — it was a claim about what is established — but its explanation
+changes from "unrepeatable scatter" to "marginal rate near a real ceiling", which is more useful and
+also more testable.
+
+**Prediction, recorded before `9c-nosplit250-rep1..3` run.** `nosplithi`'s 250,000 had an insert of
+17.0 ms against a 12.1 ms baseline, i.e. elevated, so the rule above puts it marginal rather than either
+sustainable or impossible. So:
+
+- Predicted: a **split outcome** across the three repeats — roughly one or two passing, not 3/3 either
+  way. If they pass, expect the insert around 17–21 ms, not 12–14.
+- 3/3 passing cleanly at 12–14 ms would refute the rule and mean `nosplithi`'s bridge failure needs
+  another explanation after all.
+- 0/3 would mean 250,000 is simply above the twelve-tablet ceiling, and `ladder8tab`'s clean 200,000
+  brackets it between 200,000 and 250,000.
+
+Any of the three is publishable; the point is that the rule commits to something in advance.
+
 ### `ladder8tab` is not an 8-tablet ladder, and that is the A/B's finding (18:45)
 
 Splitting is enabled on this arm (verified: the flag is absent on all three masters, and the count moved,
