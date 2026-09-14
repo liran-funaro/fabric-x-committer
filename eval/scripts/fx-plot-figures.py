@@ -144,6 +144,28 @@ PANELS = [
 ]
 
 
+# The reference gap the setup documents, and the only one a conflict point may be measured at. A
+# back-reference is a double spend only if the key it names is already committed; at a short gap the
+# referent is still in flight, so the dependency graph holds the pair and serialises it and the conflict
+# never reaches the insert path at all. That is a different mechanism wearing the same x axis, and it
+# reads HIGHER, so a panel that takes the best row per x silently prefers it: 9c's 5% bar drew 26,116 tps
+# from a gap-1,000 run over 21,273 from the documented one. Rows are dropped at load so both the reported
+# points and the collapsed ones are filtered by the same rule.
+REFERENCE_GAP = 300_000
+
+
+def documented_gap(row):
+    """True if this row's conflict share was measured at the documented reference gap.
+
+    Rows with no conflicts are unaffected -- with nothing to back-reference the gap does not apply, and
+    the earliest runs predate the parameter and record it as absent.
+    """
+    v = row.get("vars") or {}
+    if not (v.get("loadgen_key_backref_rate") or 0):
+        return True
+    return v.get("loadgen_tx_reference_gap") == REFERENCE_GAP
+
+
 def load(path):
     rows = []
     with open(path) as f:
@@ -151,7 +173,12 @@ def load(path):
             line = line.strip()
             if line:
                 rows.append(json.loads(line))
-    return rows
+    dropped = [r for r in rows if not documented_gap(r)]
+    if dropped:
+        gaps = sorted({(r.get("vars") or {}).get("loadgen_tx_reference_gap") for r in dropped})
+        print(f"  dropped {len(dropped)} conflict rows measured at gap {gaps} "
+              f"(documented gap is {REFERENCE_GAP:,})")
+    return [r for r in rows if documented_gap(r)]
 
 
 def throughput(row):
