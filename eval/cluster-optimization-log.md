@@ -2027,10 +2027,48 @@ either way, improving in the direction an aborted transaction should, since it s
 committed one performs. So the pipeline absorbs a doubled conflict share with no loss of retired throughput
 and no latency cost: the share selects which transactions fail and charges nothing for the failing.
 
-**Pre-registered for ds30, stated so it can fail:** rung 2 will retire its full 30,000 offered — `finished`
-within 0.5%, growth ≈ 0 — at a p99 at or below roughly 200 ms. Its ~22,260 committed follows arithmetically
-and is not the prediction. If `finished` falls short or the tail climbs, the share begins to cost something
-above 10% and that needs its own sentence.
+**ds30 ran, and the pre-registration failed on its latency half — which bounds the result.** Registered:
+rung 2 retires its full offered rate at a p99 at or below ~200 ms. Outcome, with one correction to my own
+registration first: I named 30,000 as rung 2 from the ds5 ladder, but ds30's rungs are 10,000/25,000/50,000/
+80,000, so rung 2 was 25,000.
+
+| share | offered | finished | abort | p50 | mean | p99 | `db_insert` | attempts | keys | |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 20% | 25,000 | 24,909 | 18.10% | — | 140 ms | 195 ms | 11.8 ms | — | — | met |
+| 30% | 10,000 | 10,000 | 25.86% | 164 ms | 163 ms | 519 ms | 14.5 ms | 1.972 | 234 | met |
+| 30% | 25,000 | 25,091 | 25.84% | **130 ms** | **258 ms** | **3,565 ms** | **52.9 ms** | 1.962 | 226 | **missed** |
+
+**The throughput half held exactly**: 25,091 of 25,000 retired, growth 0, and the abort share landed at 25.84%
+against 25.828% measured earlier — so the share is still bookkeeping for *throughput* at 30%. **The latency
+half failed by a factor of eighteen**, and not in the mean: the mean rose 1.8x while p99 rose 18x, so the ratio
+went from 1.4 — where it had sat on every rung of every share at this layout — to 13.8.
+
+The diagnostic came with it, and it rules out the two cheapest explanations. `db_insert` had been flat at
+**11.6–15.3 ms across every rung of 5%, 10% and 20%**, independent of both rate and share; at 30% it reads
+14.5 ms at 10,000 offered and **52.9 ms at 25,000**. But **attempts per commit held at 1.96 and keys per call
+at ~230** across both rungs — so it is not extra retries and not wider batches. The same number of inserts, of
+the same width, each became 3.65 times more expensive.
+
+And the distribution went bimodal rather than shifting: the **median fell**, 164 to 130 ms, while the mean rose
+to 258 and p99 to 3,565. Most transactions got *faster* and a minority got very slow. That is a different
+failure from the 96-tablet case, where the mean and the tail moved together.
+
+The tail is real rather than bucket resolution: 3,565 ms sits well inside the (3, 5] s bucket rather than at a
+boundary, and the mean moved 58% with it. Rung 1's 519 ms is the more marginal reading — near a boundary with
+an unmoved mean — so the two should not be treated as one phenomenon.
+
+So the section's claim needs a boundary rather than a universal: **at twelve tablets the conflict share costs
+nothing in throughput up to 30%, and nothing in latency up to 20%, but between 20% and 30% the tail breaks the
+bound while the mean barely moves.** That is a narrower claim than three ladders suggested and a more useful
+one, and it is exactly what the registration was for — had the prediction not been written down, three passing
+ladders would have made a fourth look like confirmation.
+
+**Not explained**: why each insert becomes 3.65x more expensive between 18% and 26% generated share, with
+retries and width both held. Contention between conflicting inserts on the same recent keys is the obvious
+candidate; it would be the tenth mechanism proposed today and needs its own evidence, not this row. Note also
+that share and rate are not separated here — the boundary is somewhere between 20% and 30% in share *or*
+between 10,000 and 25,000 in rate at 30%, and one batch cannot tell which. The 50,000 and 80,000 rungs of ds30 will say whether the
+tail keeps growing or plateaus, and `ds1`/`ds01`/`ds001`/`ds0001` bracket the other end of the axis.
 
 Rungs 2 and up only: rung 1 of every ladder is measured while the table is still splitting — two tablets three
 minutes after a bring-up — so its 408/409 ms belongs to a different layout and must not share a series with
