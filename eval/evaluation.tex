@@ -251,9 +251,13 @@ tablets & committed & sustained over \SI{300}{\second} \\
 The eight-tablet figure is a \SI{90}{\second} probe, and it met the bound at \SI{239}{\milli\second}; held
 for \SI{300}{\second} at the same offered rate it delivers \num{125000} tps at a \SI{25}{\second} mean, so it
 does not sustain. The other three rows are retirement rates under saturation, which a pipeline holds whatever
-its queue depth. None of the three qualified at any rate measured, and those rates start at \num{25000} tps
-offered --- above what the pipeline retires --- so what they establish is that a conflicting workload past its
-own capacity misses the bound by two orders of magnitude, not that a rate below it would.
+its queue depth. None of the three qualified at any rate measured, and at \num{96} tablets those rates reach
+well below capacity: five rungs from \num{11313} to \num{21675} tps offered, each retiring what it was
+offered with a flat in-flight count, gave means from \SI{5.6}{\second} to \SI{8.6}{\second} --- the lowest of
+them at little more than half of capacity and still missing the bound more than fivefold. Across those rungs
+the insert falls monotonically with the rate, \SI{2.03}{\second} to \SI{1.62}{\second} as the offered rate
+halves, and flattens; fitting inside a second at \num{1.90} attempts would take \SI{0.53}{\second}. At
+\num{120} tablets no rate below \num{25000} has been attempted.
 So the split is worth a
 factor of six on throughput and no layout in this sweep sustains the bound under double spends --- while
 the \num{120}-way split is worth at least \num{2.4} times as much on a workload where nothing
