@@ -131,7 +131,7 @@ collapses once it fills.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures-ecdsa/figure9.pdf}
-  \caption{Committer throughput against (a) transaction size, (b) invalid-signature share and (c) double-spend share, beside the SIGMOD'26 paper's Figure~9. Bars are throughput on the left axis; the marks above them are the 99th-percentile latency of the same measurement on the right axis, in that series' own colour. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share --- labelled with the share it measured only in (c), where what the generator produced differs from what was asked for; elsewhere it is the x value. Whiskers are the search's \SI{8}{\percent} step, one-sided. \emph{Not run} marks a condition never attempted at that configuration.}
+  \caption{Committer throughput against (a) transaction size, (b) invalid-signature share and (c) double-spend share, beside the SIGMOD'26 paper's Figure~9. Bars are throughput on the left axis; the marks above them are the 99th-percentile latency of the same measurement on the right axis, in that series' own colour. Throughput counts transactions finished, committed plus rejected, and the hatched part of a bar is the rejected share --- labelled with the share it measured only in (c), where what the generator produced differs from what was asked for; elsewhere it is the x value. Whiskers are the search's \SI{8}{\percent} step, one-sided, and are absent where a point is a fixed-rate hold rather than a search. Where this cluster has no bar, the reason is distinguished: \emph{no rate qualified} means the condition was measured at every rate attempted and none met the latency bound, \emph{not run} that it was never attempted at that configuration.}
   \label{fig:panels}
 \end{figure*}
 
@@ -189,8 +189,6 @@ Invalid signatures are close to free (Fig.~\ref{fig:panels}b): \num{518000} tps 
 \SI{8.8}{\percent} repeatability, so rejection costs nothing measurable in throughput. It is not the
 SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 
-% DRAFT for review -- numbers checked against figures-ecdsa.jsonl, awaiting the tablet sweep at 64/96/160
-% to firm up the threshold sentence. Everything here is measured; nothing is projected.
 Double spends are not free here, and what they cost is not conflict resolution. At the tablet layout this
 deployment uses, a \SI{5}{\percent} double-spend share commits \SIrange{19929}{20617}{} tps --- flat within
 \SI{3.4}{\percent} --- at every offered rate from \num{25000} to \num{500000}, a twentyfold range, read from
