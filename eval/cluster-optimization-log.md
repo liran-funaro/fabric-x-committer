@@ -1903,10 +1903,45 @@ different pre-splits, offered rates, block producers and days, with a spread of 
 it is **not negligible at the top of the axis**: a bar labelled 30% rejects 25.8%, so the axis has to carry
 what was generated, which is what `measured_conflicts` and the figure caption already do.
 
-Empirically `p(1 - p/2)` fits to 1.3% and `p/(1 + p/2)` to 1.0%, and both are within the data's own spread at
-5% and 10%. **No mechanism is proposed for either.** Five have already been retracted in this section, and a
-two-parameter family fitting four points is not evidence for one. What the numbers support is the practical
-statement: read the share off the measurement, never off the configuration.
+**`a = p(1 - p/2)` is derivable from the generator, and this is the one mechanism in this section worth
+proposing.** `slotKeys` (`loadgen/workload/tx_rand.go:139`) sets `newKeysRate = slotsPerTx - KeyBackrefRate`
+and takes `newKeys = min(slots, frontier(i+1) - frontier(i))`, so with two read-write slots a fraction `p` of
+transactions get one fresh key and one back-reference. That alone would abort exactly `p`. The correction is a
+feedback the code's own comment names — *"only writes advance committed state, but the frontier still counts
+every index it hands out"*: an aborted transaction's fresh key is rolled back, so its index was handed out and
+never committed. Conflicts leave holes, and a later reference landing in a hole finds no key, raises no
+`unique_violation`, and commits. Conflicts suppress conflicts. With `2 - p` indices handed out per transaction
+and `a` holes among them, `a = p(1 - a/(2 - p))`, whose fixed point is `a = p(2 - p)/2 = p(1 - p/2)`.
+
+| configured | derived | generated | residual |
+|---|---|---|---|
+| 5% | 4.875% | 4.876% | +0.02% |
+| 10% | 9.500% | 9.513% | +0.14% |
+| 20% | 18.000% | 18.089% | +0.49% |
+| 30% | 25.500% | 25.828% | +1.3% |
+
+**The derivation came after the curve was noticed, so the four-point agreement is not evidence for it.** Two
+things that are:
+
+1. **It contains no layout term, and the measurement has none.** At a configured 5% the generated share reads
+   4.878% at no pre-split, 4.876% at 8, 4.876% at 88, 4.874% at 96 and 4.876% at 120 — a spread of 0.017
+   percentage points across 84 rows, while committed throughput across those same configurations varies by a
+   factor of five. Nothing in `p(1 - p/2)` could have produced a layout dependence, and none is there.
+2. **The residuals are all positive and grow monotonically with `p`**, which is what a first-order treatment
+   should leave: the derivation assumes a reference meets at most one hole and that the hole fraction is
+   global rather than computed over the lookback window, and both approximations fail in the same direction as
+   `p` rises. Alternating signs would have refuted it.
+
+This workload also has no competing source of holes. The comment's "harmless wasted index" arises from
+*read-only* slots, and `shape(2, 0)` configures none — so the aborted-transaction rollback is the only hole
+former here, which is why the first-order treatment does as well as it does.
+
+**Not claimed:** that hole formation is the only contributor. Pre-genesis negative indices and within-window
+sampling collisions push the same way and are unquantified. The falsifiable prediction is that the effect
+vanishes if the frontier stops counting indices whose transaction aborted — a code change, measurable.
+
+The practical statement is unchanged and is what a reader needs: read the share off the measurement, never off
+the configuration. The derivation only means it is now predictable rather than merely reproducible.
 
 **At the no-pre-split setting the conflict share is bookkeeping, and the evidence for that is not the
 arithmetic it first looked like.** Rung 2 of each ladder, same offered rate and layout:
