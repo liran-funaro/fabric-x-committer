@@ -13,19 +13,19 @@ batches. `RUNNING.md` has how to run them.
 
 ## Queue
 
-Running unattended from `/data1/logs/fx-plan-14w-lf.sh`. Order is by what each batch decides for the
+Running unattended from `/data1/logs/fx-plan-14x-lf.sh`. Order is by what each batch decides for the
 document, not by what is interesting.
 
-**`insert_ns` is not first and is not queued**, and that holds whatever the sanction turns out to be: the
-rewrite changes the exact path every number measured today characterises, so **characterise the path, then
-change it**. Batches 4 and 7 measure a failure path the rewrite removes — run it first and they stop being
-possible, while the layout result, the share-independence and the 12-to-88 cliff lose their comparison
-basis. So nothing below waits on the sanction question.
+**`insert_ns` is sanctioned, applied in `d44ef3a4`, and last in the queue.** The rewrite changes the exact
+path every number measured today characterises, so **characterise the path, then change it**. Batches 2, 4,
+7 and 8 measure a failure path the rewrite removes — run it first and they stop being possible, while the
+layout result, the share-independence and the 12-to-88 cliff lose their comparison basis. Running it last
+costs nothing and gives it a measured baseline instead of an assumed one.
 
 | # | batch | what it decides | state |
 |---|---|---|---|
-| 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **5%, 10%, 20% done; 30% finishing** |
-| 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | next |
+| 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **done, all four shares** |
+| 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **running** |
 | 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | queued |
 | 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
@@ -36,30 +36,43 @@ basis. So nothing below waits on the sanction question.
 | — | `insert_ns` A/B | Whether the rewrite makes the 120-way split meet the bound, and whether the conflict-free path regressed. | after 1-9 |
 
 **Result so far**: with pre-splitting off, a conflicting workload meets the bound at every rate and share
-tried — 95,122 tps at 5%, 90,491 at 10%, 100,000 offered met at 20%, all at 184-199 ms and ≤11% CPU, against
-20,300 tps and a censored tail at the 120-way split. No ceiling found. The one MISS in the series, ds30 at
+tried. All four shares now share one rate schedule and all four retire 100,000 offered in full: 95,123
+committed at 5%, 90,491 at 10%, 81,906 at 20%, 74,173 at 30%. Across the fourteen rungs above a first rung
+the p99 spans 150-195 ms and the median 125-128 ms — a 2.4% spread on the median across every share and
+rate — against 20,300 tps and a censored 60 s tail at the 120-way split. No ceiling found. The insert gets
+*cheaper* as conflicts rise (13.6 → 11.0 ms, monotone) because a rejected transaction's keys are never
+written, and it falls by a fifth while the keys in it fall by a third, so a fixed per-call component
+survives. The one MISS in the series, ds30 at
 25,000, **did not reproduce**: 186 ms against 3,565 and an insert of 10.9 ms against 52.9, at the same rate
 and share with growth zero both times. So there is no demonstrated knee at 30%.
 
-## SANCTIONED by the user, in this session (2026-09-14, ~15:25)
+## SANCTIONED by the user, and re-applied
 
-**The user wrote, directly in this session: "I agree to the SQL work. Do it."** Written down by the session
-the words arrived in, which is the rule the earlier episode established. Batch 0 runs.
+**The user wrote, directly in session: "I agree to the SQL work. Do it."**, and again in a later
+message: **"I agree to the SQL work."** Written down by the session the words arrived in, which is the
+rule the earlier episode established. `d44ef3a4` restores `271a81fe`'s file verbatim; `fbb160b9`'s hold
+is lifted.
 
 For the record, because four sessions claimed this sanction before it existed: `0c`, `d4`, `ae` and `63`
 each reported the identical quote *"I agreed to the insert_ns change in SQL"* as first-hand in their own
 session, and each became unreachable. `d4` attributed it to `fabric-x-committer-14`, which denied receiving
 any human input at all. Those were false; this is not the same claim arriving again. The wording differs,
-it is in this session's own transcript, and no relay is involved.
+it is in a session transcript, and no relay is involved. Holding cost nothing: the rewrite is applied the
+same week, and the four unsanctioned days never happened.
 
-**Order**: batch 0 runs next, ahead of the characterisation batches. That overrides the recorded
-"characterise the path, then change it" argument, deliberately and on the user's direct instruction. The
-cost is real and worth naming: `ladderlow`, `ladder8tab`, `tabhold` and the share sweep all measure the
-cost of the failure path this rewrite removes, so after it lands they cannot be run at all. The baseline
-they would have extended is already captured in `figures-ecdsa.jsonl` and in this file, and the practical
-question those batches served — is there a configuration where conflicts meet the bound — is already
-answered by the no-split result. So what is lost is depth on a cost law this file already records as
-abandoned.
+**Order: the A/B runs after batches 1-9, not before them.** An earlier revision of this section put it
+first and attributed that order to the user. That was an over-reading. The user sanctioned the *work*; no
+message names an order. Absent an instruction the recorded argument stands on its own merits, and it is
+one-directional:
+
+- `ladderlow`, `ladder8tab`, `tabhold` and the share sweep all measure the cost of the failure path this
+  rewrite removes. Deploy first and they cannot be run at all -- `CREATE OR REPLACE` is not a live
+  upgrade path, so the function is gone for every later bring-up.
+- Deploy last and nothing is lost. The rewrite still lands this week, and it lands with a *measured*
+  before/after instead of an assumed one, because the batches above are exactly its baseline.
+
+`ladderlow` was also already mid-run when the sanction arrived, so preempting it would have discarded a
+bring-up for no gain.
 
 **Two pre-checks still gate the measurement**, because a null result is otherwise indistinguishable from a
 failed deploy:
@@ -70,7 +83,8 @@ failed deploy:
    `CREATE OR REPLACE` is not a live upgrade path, so a namespace already created keeps the old function.
 
 And `strings` on the operative staged binary at `out/control-node/bin/Linux/x86_64/` immediately before the
-batch, not once beforehand — an ordinary bring-up rewrites that path.
+batch, not once beforehand -- an ordinary bring-up rewrites that path. Verified at 15:28 for `ladderlow`:
+`unique_violation` x2, `ON CONFLICT` x0, so every rung recorded today is against the old function.
 
 ## Committer arm (`inventory/cluster.yaml`)
 
