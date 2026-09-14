@@ -56,7 +56,7 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
-### A prediction, recorded before the data (2026-09-14 18:02, bridge rung pending)
+### A prediction, and how it resolved (2026-09-14 18:02, settled 18:11)
 
 `nosplithi`'s bridge rung failed at 250,000 after that rate had passed, and I retracted the number on
 the strength of it. `hold8nosplit` has just missed at 200,000 having met 150,000, so its bridge will
@@ -70,6 +70,17 @@ first, because after the fact either one can be told as a story:
   correct as a claim about what is established, but its cause is likely the post-collapse redeploy
   rather than rate scatter — and `9c-nosplit250-rep1..3`, which each get their own bring-up rather than
   a mid-batch redeploy, are the right way to settle it either way.
+
+**Resolved: the bridge PASSED.** `hold8nosplit` repeated \num{150000} on its fresh deployment and met at
+p99 227 ms against the curve rung's 230 ms, with the insert at 13.7 ms. So a rate that is genuinely
+sustainable *does* reproduce across a post-collapse redeploy, to within 3 ms of tail. The bridge mechanism
+is sound, the first outcome above is what happened, and **the 250,000 retraction stands exactly as made** —
+its failure to reproduce is a property of that rate, not an artefact of the bridge.
+
+Honest caveat on the base rate: only **two** bridge rungs exist in the whole results file, because the
+mechanism is new. One reproduced tightly and one did not. That is enough to stop the "bridges always fail"
+explanation, and not enough to characterise the bridge itself. `9c-nosplit250-rep1..3` remain queued and
+remain the thing that settles 250,000, since each gets its own bring-up.
 
 The second outcome would also mean every bridge rung ever recorded is suspect as evidence about a rate,
 and the driver's own comment claims the opposite ("if it does not reproduce, the redeploy moved
