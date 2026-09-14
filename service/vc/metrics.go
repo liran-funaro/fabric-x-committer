@@ -211,8 +211,8 @@ func newVCServiceMetrics(q *queues) *perfMetrics {
 			Name:      "tx_batch_commit_insert_new_key_with_value_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
 				"inserting new keys with values, by outcome: success, conflict (a key already " +
-				"existed, so the insert raised unique_violation and the existing keys were read " +
-				"back) or error. The conflicting insert is the expensive one",
+				"existed, so ON CONFLICT DO NOTHING skipped it and returned the keys it did " +
+				"insert) or error",
 			Buckets: buckets,
 		}, commitStatusLabels),
 	}

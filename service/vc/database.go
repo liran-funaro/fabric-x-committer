@@ -388,9 +388,9 @@ func (d *database) insertTxStatus(
 func (d *database) insertStates(
 	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites,
 ) (conflicts namespaceToReads, err error) {
-	// Labelled because the two outcomes are different operations: a clean insert is one bulk write,
-	// while a colliding one raises unique_violation, discards the whole transaction and re-reads the
-	// offending keys. Averaging them reports a cost that neither path has.
+	// Labelled because the two outcomes are different operations: a clean insert writes every row,
+	// while a colliding one skips the offending rows and returns the inserted set for the caller to
+	// diff. Averaging them reports a cost that neither path has.
 	start := time.Now()
 	defer func() {
 		promutil.Observe(
