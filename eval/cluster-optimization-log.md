@@ -2519,8 +2519,30 @@ being a clean refutation): the miss triggered redeploy-on-miss, so 50,000 and 80
 the anomaly may belong to deployment A rather than to the rate. That ambiguity is created by the redeploy itself,
 which is the argument for the paired-ladder discipline.
 
-So what the section may say: **30% double spends held 80,000 tps at a 196 ms tail**, with one unexplained failure
-at 25,000 on an earlier deployment whose insert cost 4.5x both neighbours. No knee is drawn. The re-run puts
+**Read within deployments, the evidence has a sharper structure than "bracketed" (6f's).** Grouping the rungs
+by the table they ran on:
+
+    deployment A:  10,000 PASS,  25,000 FAIL      a two-rung ladder that fails at its top
+    deployment B:  50,000 (discard),  80,000 PASS   fresh table
+
+So "bracketed on both sides" was never available: within one deployment the evidence is a pass then a fail,
+which is the *shape* of a knee. What rules the knee out is not the bracketing but an argument from two clean
+rows elsewhere. `ds20` ran all four rungs on a **single** deployment with no miss and no redeploy — 10,000
+through 80,000, flat at 192-195 ms — so the flat ladder shape is achievable within one deployment at an 18%
+delivered share. And `ds30`'s deployment B reached 80,000 at a **26%** delivered share. Between them:
+
+**No pure function of share and rate can produce a failure at (26%, 25,000) while the same share clears
+80,000 sixteen minutes later.** So either the two deployments differ in something relevant, or one of the two
+measurements is wrong — and the 80,000 row is clean (growth exactly 0, insert 11.2 ms in line with `ds20`'s
+11.6-11.9) while the failing row's insert is 4.5x both neighbours. The parsimonious reading implicates
+deployment A.
+
+Table age does not separate them either: by its 25,000 rung deployment A had written ~10.5M transactions and B
+had ~15M by its 50,000, so **B was the older table at the point it passed**.
+
+So what the section may say: **30% double spends held 80,000 tps at a 196 ms tail**, with one unexplained
+failure at 25,000 on an earlier deployment whose insert cost 4.5x both neighbours. No knee is drawn, and no
+mechanism or boundary is offered. The re-run puts
 15,000 / 25,000 / 30,000 / 60,000 / 100,000 on **one** deployment — 6f's repeat rung included precisely because a
 single row was too thin to carry a caveat — and that settles it.
 
