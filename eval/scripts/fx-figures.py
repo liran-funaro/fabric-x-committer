@@ -144,6 +144,12 @@ BASE_SEED = int(os.environ.get("FX_SEED", "480000"))
 # committer-only arm needs; "setup" also rebuilds binaries, crypto and genesis blocks, which the
 # real-orderer arm does need. See deploy().
 DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
+# The groups a per-point redeploy tears down: the committers, the load generator, and on the
+# real-orderer arm the ordering service too. Never fabric_cas, never monitoring -- see deploy().
+TEARDOWN_HOSTS = os.environ.get(
+    "FX_TEARDOWN_HOSTS",
+    "fabric_x,load_generators" if os.environ.get("FX_MATRIX") != "e2e"
+    else "fabric_x,load_generators,fabric_x_orderers")
 # Measure on the deployment that is already running, rather than replacing it. The shape is still read
 # back and still has to match, so this cannot silently measure the wrong workload -- it only skips the
 # teardown. For an arm that is expensive or fragile to bring up, that is the difference between measuring
@@ -553,6 +559,21 @@ def make(target, extra_vars=False, timeout=3600):
     return r.returncode == 0
 
 
+def bringup():
+    """Stop, wipe, setup, gate on the crypto, start, init, gate on a committed rate.
+
+    The one sequence that works on the real-orderer arm, kept in fx-bringup.sh so the standalone
+    bring-up and a per-point redeploy cannot drift apart.
+    """
+    cmd = f"cd /data1/logs && EXTRA=1 INV={INVENTORY} ./fx-bringup.sh"
+    r = subprocess.run(cmd, shell=True, executable="/bin/bash",
+                       capture_output=True, text=True, timeout=7200)
+    if r.returncode != 0:
+        log(f"!! bring-up failed rc={r.returncode}")
+        log(r.stdout[-2500:])
+    return r.returncode == 0
+
+
 def set_rate(rate):
     return make(f"limit-rate LIMIT={rate}", timeout=900)
 
@@ -632,18 +653,31 @@ def deploy(exp):
         log(f"[{exp['id']}] measuring the running deployment as it stands, shape {shape}")
         return True
     log(f"[{exp['id']}] teardown + {DEPLOY_PLAN} + start: {exp['vars']}")
-    if not make("teardown", extra_vars=True):
+    # Everything that holds runtime state, and nothing that does not. An unfiltered teardown also takes
+    # the Fabric CA and the monitoring stack, which costs twice over: the CA's database goes while its
+    # admin MSP stays on disk, so the next `setup` presents a certificate the fresh registry never
+    # issued and stops at "Authentication failure" -- that killed a six-point size sweep on all six
+    # points; and Prometheus, Grafana, Loki and Alloy are destroyed and rebuilt around every single
+    # measurement, which discards the metric history a run is meant to leave behind and makes the
+    # dashboard flap for anyone watching.
+    if not make(f"teardown TARGET_HOSTS={TEARDOWN_HOSTS}", extra_vars=True):
         return False
     if DEPLOY_PLAN == "setup":
-        # No CA wipe here. `hard-wipe TARGET_HOSTS=fabric_cas` re-initialises the CA's key, which leaves
-        # every host holding an identity the new key did not sign; six bring-up attempts died on exactly
-        # that, with the assembler rejecting a genesis block whose org MSP could not verify itself. If a
-        # per-point redeploy on this arm ever needs the CA reset, it needs `hard-wipe TARGET_HOSTS=all`
-        # plus removal of the CA's own containers and state, so that nothing anywhere predates the new
-        # key -- see cluster-optimization-log.md section 5A.
-        if not make("setup", extra_vars=True, timeout=5400):
+        # A per-point redeploy on this arm is a full bring-up, and it has to be. `teardown` drops the
+        # Fabric CA's database while leaving the admin's enrolled MSP on disk, so the next `setup`
+        # presents a certificate the fresh registry never issued and crypto generation stops at
+        # "Authentication failure" -- which is exactly how a six-point size sweep failed on all six.
+        # Wiping only the CA is worse: it re-keys the CA while every host keeps an identity the new key
+        # did not sign, which killed six earlier bring-ups with an assembler rejecting a genesis block
+        # whose org MSP could not verify itself. Nothing anywhere may predate the new key.
+        #
+        # fx-bringup.sh is that sequence, already gated on the crypto and on a committed rate, so this
+        # calls it rather than growing a second copy of it here. EXTRA=1 makes it render this
+        # experiment's shape file instead of the inventory's defaults.
+        if not bringup():
             return False
-    elif not make("configs", extra_vars=True):
+        return True
+    if not make("configs", extra_vars=True):
         return False
     # Verify the artifact rather than the exit code: a shape that silently failed to apply would
     # otherwise be reported as a measurement of the shape that was asked for.

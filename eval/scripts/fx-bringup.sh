@@ -50,10 +50,18 @@ source /data1/cluster/bin/fx-env.sh
 cd "$FX_PROJECT" || exit 1
 INV=${INV:-/data1/cluster/inventory/cluster-orderer.yaml}
 ANS="$FX_PROJECT/.venv/bin/ansible"
+# EXTRA=1 renders with the shape file the measurement driver writes, so a bring-up can serve as one
+# experiment's per-point redeploy. Without it the inventory's own defaults are rendered, which is what a
+# standalone bring-up wants -- a stale shape file must never be picked up by accident.
+PB="$FX_PROJECT/.venv/bin/ansible-playbook"
+if [ "${EXTRA:-0}" = "1" ] && [ -f /data1/logs/exp-vars.yaml ]; then
+  PB="$PB --extra-vars @/data1/logs/exp-vars.yaml"
+  say_extra="with /data1/logs/exp-vars.yaml"
+fi
 say() { echo "=== $(date +%H:%M:%S) $*"; }
 
 if pgrep -f "[a]nsible-playbook" >/dev/null; then echo "!! a play is already running; refusing"; exit 1; fi
-say "inventory: $INV"
+say "inventory: $INV ${say_extra:-}"
 
 say "STOP everything first, so nothing survives holding pre-wipe state"
 ANSIBLE_INVENTORY=$INV make stop || echo "!! stop returned $?, continuing"
@@ -88,7 +96,7 @@ install -m 0750 -D /data1/bin-stage/committer /data1/bin-stage/loadgen \
   -t "$FX_PROJECT/out/control-node/bin/Linux/x86_64/" || echo "!! staging restore returned $?"
 
 say "setup"
-ANSIBLE_INVENTORY=$INV make setup || { echo "!! setup failed"; exit 1; }
+ANSIBLE_INVENTORY=$INV make setup ANSIBLE_PLAYBOOK="$PB" || { echo "!! setup failed"; exit 1; }
 
 say "gate: every certificate in every org tree"
 bad=0
@@ -104,7 +112,7 @@ done
 say "all certificates verify"
 
 say "start"
-ANSIBLE_INVENTORY=$INV make start || { echo "!! start failed"; exit 1; }
+ANSIBLE_INVENTORY=$INV make start ANSIBLE_PLAYBOOK="$PB" || { echo "!! start failed"; exit 1; }
 
 # The namespace does not exist yet, and on this arm the load generator cannot create it:
 # loadgen_generate_namespace is false because a namespace-creation TX writes to _meta, whose
@@ -119,7 +127,7 @@ ANSIBLE_INVENTORY=$INV make start || { echo "!! start failed"; exit 1; }
 # there being an ordering service anyway.
 if grep -q "orderer_component_type" "$INV"; then
   say "init: create the namespace via fxconfig (the loadgen cannot on this arm)"
-  ANSIBLE_INVENTORY=$INV make init || { echo "!! init failed"; exit 1; }
+  ANSIBLE_INVENTORY=$INV make init ANSIBLE_PLAYBOOK="$PB" || { echo "!! init failed"; exit 1; }
 else
   say "init: skipped, no ordering service in this inventory -- the loadgen creates the namespace"
 fi
