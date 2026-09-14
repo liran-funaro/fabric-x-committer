@@ -49,7 +49,7 @@ human input of any kind arrived in it** since the autonomous-run instruction hou
 was a background notification or a peer message, each carrying the explicit line that no human input has
 been received. So that report was not a relay of something real, and the sanction did not arrive through it.
 
-It is recorded here as reported rather than as established, because of how it arrived. The report came
+That report is recorded as reported rather than as established, because of how it arrived. It came
 from session `fabric-x-committer-d4`, which described it as "not relayed through anyone" while also
 placing the words in a *different* session — and which had started **four minutes** before writing this,
 so it cannot have been present for them. `fabric-x-committer-14` was asked directly and answered **no**;
