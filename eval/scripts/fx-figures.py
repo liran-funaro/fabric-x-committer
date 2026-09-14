@@ -274,6 +274,18 @@ EXPERIMENTS = [
     dict(id="9c-ds5-graph5m", figure="conflict-why", x=5000, label="5% double spend, 5M graph limit",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_coordinator_dep_graph_wait_tx_limit=5_000_000)),
+
+    # The same cliff avoided from the other side: cap what can be outstanding rather than raise what the
+    # graph will hold. The sidecar releases up to `waiting-txs-limit` transactions before it waits for
+    # status, and that limit is 500,000 -- exactly the graph's. So the inflow is free to fill the graph to
+    # its limit and tip it into lock-step. Hold the sidecar to 200,000 and the graph cannot reach 500,000,
+    # so it should stay pipelined without any more memory in the coordinator.
+    #
+    # If this and the 5,000,000 graph limit both restore throughput, the cliff is the mechanism and either
+    # value is a fix. If only one does, the difference says which side the pressure comes from.
+    dict(id="9c-ds5-sc200k", figure="conflict-why", x=200, label="5% double spend, 200k sidecar limit",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_sidecar_waiting_txs_limit=200_000)),
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
