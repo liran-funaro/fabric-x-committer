@@ -25,8 +25,8 @@ costs nothing and gives it a measured baseline instead of an assumed one.
 | # | batch | what it decides | state |
 |---|---|---|---|
 | 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **done, all four shares** |
-| 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **running** |
-| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | queued |
+| 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **done: misses at all five rungs, 2,500-20,000, none censored** |
+| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **running** |
 | 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
 | 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
@@ -45,6 +45,15 @@ written, and it falls by a fifth while the keys in it fall by a third, so a fixe
 survives. The one MISS in the series, ds30 at
 25,000, **did not reproduce**: 186 ms against 3,565 and an insert of 10.9 ms against 52.9, at the same rate
 and share with growth zero both times. So there is no demonstrated knee at 30%.
+
+`ladderlow` closes the other side, which had been an inference rather than a measurement: every one of
+the 120-way split's 70 rows was taken at or above its own capacity and several reported a p99 of exactly
+60,000 ms, the histogram's top bucket. Offered 2,500 / 5,000 / 10,000 / 15,000 / 20,000 it misses at all
+five, **uncensored at every rung**, and the two middle ones settle the mechanism: at 10,000 and 14,909
+offered it retires the offered rate exactly, in-flight growth is 0.00, the busiest host is at 0.4% — and
+p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of the 20,300 that layout
+commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
+offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
 ## SANCTIONED by the user, and re-applied
 
