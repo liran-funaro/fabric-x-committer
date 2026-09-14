@@ -45,37 +45,37 @@ at a **29,900 ms** p99. A factor of 118 between a probe and a hold at the same r
 them, and hold 1 was draining (`grow=-300/s`) while reading 29,900 ms. Until `hold8` resolves that, the
 8-tablet recovery is a candidate, not a result.
 
-**The conflict series that matters is the one with pre-splitting *disabled*, and it is much better than any
-figure quoted so far.** `committer_database_table_pre_split_tablets: 0` means no pre-split; this inventory's
-default is **120** (`cluster.yaml:284`), the configuration that never qualifies — so this column must never be
-labelled "default". From `figures-ecdsa.jsonl`, the top probes of each series, all with `inflight_growth` 0
-and `finished` equal to `offered`:
+**RETRACTED: the no-pre-split series is a different workload, not a different split.** `split0-ds10/20/30`
+were run with `loadgen_tx_reference_gap: 0` and a 10,000,000 lookback, against `300000` and `1,000,000` for
+every `9c-ds*` run. At gap 0 a back-reference points at a key generated immediately before it, so the referent
+is still in flight and the dependency graph serialises the pair instead of letting the conflict reach
+`insert_ns` as an existence violation. Those runs measure graph serialisation, not the insert failure path,
+and their 92,958 / 76,353 tps cannot be compared with the 120-way split's ~20,300. `fx-plot-figures.py:351`
+had already removed the series from panel 9c for exactly this reason ("every one of them was measured with the
+reference gap that made the workload a dependency convoy rather than a double spend") — I reintroduced the
+error by matching rows on rate instead of on configuration. **Check `loadgen_tx_reference_gap` before
+comparing any two conflict runs.** Note the gap is not uniform even within `9c-ds*`: `9c-ds5` and `9c-ds10`
+used 1,000 while `9c-ds20`, `9c-ds30` and every `tab*`/`split8` run used 300,000.
 
-| conflicts | pre-split | offered | finished | committed | p99 | met |
-|---|---|---|---|---|---|---|
-| 10% | none | 102,770 | 102,727 | **92,958** | ~0.2 s | yes |
-| 30% | none | 102,770 | 102,909 | **76,353** | ~0.2 s | yes |
-| 5% | 8 | 181,031 | 181,091 | 172,260 | 0.24 s | yes |
-| 5/10/20/30% | 120 | any | — | 15,000–24,000 | censored | **never** |
+**The layout result at one fixed workload**, which is what the document now carries. All rows 5% double
+spends, gap 300,000, so the only variable is the pre-split:
 
-Both no-pre-split series were **still climbing when the search ran out of `UP_STEPS`**, so 92,958 and 76,353
-are lower bounds rather than knees. Against the 120-way split at the same conflict shares that is ~4.6x on
-throughput and the difference between meeting the bound and never meeting it at any rate. So the statable
-finding is: **pre-splitting is what costs the SLO under conflicts**, and the 120-way split buys 2.9x
-conflict-free in exchange.
+| tablets | committed | meets 1 s? |
+|---|---|---|
+| 8 | 172,260 | yes, 239 ms — but a 90 s probe; its hold gave ~125,000 at >29.9 s |
+| 88 | 27,400 | no |
+| 96 | 20,800 | no |
+| 120 | 20,300 | no |
 
-**No hold confirms any of it, and the reason is the driver, not the pipeline.** A hold runs at the last
-*passing* probe, which after a 17-step climb is the very top. At 102,770 over 300 s ds10 no longer fits
-(finished 96,545, grow +600), so hold 1 failed; holds 2 and 3 then read `finished` 113,273 and 135,455
-against 95,157 and 88,108 offered — they were draining hold 1's backlog, not measuring. ds30's one `met=True`
-hold has `inflight_growth` **−12,433/s**, so it is the same artifact and is not quotable either. **No hold has
-ever been attempted below capacity on this series**, which is the one experiment the document needs: a fixed
-70,000 tps / 300 s hold at 10% and 20%, and 60,000 at 30%, with pre-splitting off.
+A factor of 8.4 end to end, 6 if the eight-tablet hold is used instead of its probe, and only the smallest
+split meets the bound at any offered rate. The three larger rows are retirement rates under saturation, which
+survive queue depth. **Still open**: a confirmed 300 s hold at 8 tablets, which is the one thing figure 1c
+needs — `hold8` in the chain.
 
-`split0-ds20`'s 20,829 is junk rather than a low capacity: its search missed on the first probe at 30,000
-(4.05 s) and descended instead of climbing, which is why 20% reads far below both 10% and 30%. And every
-split0 row is 09-08/09-10, predating `fast_block_prepare`, so the series needs re-running before it shares an
-axis with current numbers.
+The conflict-free side of the trade wants checking too: the "2.9x" in the document divides 518,000 by ~181,000,
+and that ~181,000 is `split0-ds0`, whose three holds all failed (155,273–202,000 at 19–44 s means). Its one
+met probe was 213,091 at 0.15 s, which would make the ratio 2.4x. It is also `tablets=0` rather than 8, so it
+is not the same layout as the table above.
 
 **p99 is censored in overload — use the mean there.** Bucket-boundary frequencies across both JSONL files:
 60,000 ms on 114 rows, 29,900 on 26, 44,850 on 10, 19,950 on 8, 14,950 on 8, 7,475 on 17. Those are
