@@ -551,6 +551,24 @@ EXPERIMENTS = [
     # bound therefore fails on service alone by more than 3x at both, which is a measurement rather than a
     # derivation. At 32 tablets a pass needs the service term under 1 s, i.e. insert under ~0.53 s, so 32
     # is the first point on the axis where the answer could be yes -- and it is listed first.
+    # The no-split ceiling, because the ladder below will end unbracketed. Rung 2 retired 28,537 tps at
+    # 192 ms with the busiest host at 3% CPU and the insert at 13.9 ms, so nothing is near a limit and the
+    # rungs at 60,000 and 100,000 should pass too. The conflict-free ceiling on this arm is 518,000: if the
+    # conflicting no-split ceiling lands anywhere near it, the 120-way pre-split is buying nothing for this
+    # workload on either axis, which is a much stronger statement than "no split is better at 30,000".
+    # Splitting is pinned off and the count set explicitly to the 23 the no-split table settles at, so this
+    # measures a ceiling at a FIXED layout rather than one that could drift under a higher write rate.
+    dict(id="9c-nosplit-ds5-hi", figure="conflict-nosplit", x=5, mode="curve",
+         label="5% double spend, 23 tablets, ceiling",
+         # Top rung is 350,000, not 400,000, because the load generator's own ceiling on this arm is
+         # ~400,000 without the deep buffer -- a miss at 400,000 could be the generator rather than the
+         # committer, and an ambiguous top rung brackets nothing. If all three pass, the conflicting
+         # ceiling is >=350,000 against 518,000 conflict-free, which is already the strong statement.
+         rates=[150_000, 250_000, 350_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=23,
+                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+
     # Conflicts with pre-splitting DISABLED, held below capacity -- the one configuration where a
     # conflicting workload meets the bound, and the section's only positive result. Already measured as
     # probes and never confirmed: `split0-ds10` climbed 17 steps from 30,000 to 102,727 offered with
@@ -602,7 +620,15 @@ EXPERIMENTS = [
            vars=dict(shape(2, 0, backref=0.05),
                      committer_database_table_pre_split_tablets=t,
                      yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"]))
-      for t in (32, 48, 64, 88, 96, 120)],
+      # Retargeted into the interval that is actually unprobed. The no-split layout settles at 23 tablets
+      # and its insert is 15.2 ms; 88 tablets costs 1,196 ms. That is a 3.8x change in layout for a 79x
+      # change in cost, so a linear per-tablet law under-predicts by twenty-one and is refuted the same way
+      # per-key was. What is left is a CLIFF somewhere between 23 and 88, which nothing has measured.
+      # 88, 96 and 120 only re-measure the flat slow side -- their service time is 2.3-3.4 s, so no rate
+      # can meet the bound there and `ladderlow` already covers 120 sub-capacity. 23 is included as the
+      # control for the headline result: it separates "23 tablets" from "no SPLIT INTO clause", which the
+      # no-split run cannot distinguish because splitting produced its 23 rather than the DDL.
+      for t in (23, 32, 48, 64)],
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
