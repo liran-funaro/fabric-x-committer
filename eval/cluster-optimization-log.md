@@ -1869,12 +1869,34 @@ though every numerical law fitted to it did not. It also confirms the service-ti
 side rather than by absence: 31 ms of service against a one-second bound is why this configuration meets it,
 where 3.29 s could not at any offered rate.
 
-**What is still unknown, and it decides whether this is a slope or a cliff:** the tablet count at
-`pre_split_tablets: 0`. YugabyteDB derives it from `ysql_num_shards_per_tserver` and the tserver count, so it
-is neither 1 nor 120 and nothing here records it. If it is ~48, then 48 to 88 tablets is a 1.8x change for a
-100x cost move and there is a cliff between them, which the sweep's own 8-versus-88 gap is consistent with.
-If it is much lower, the relationship may be closer to linear. One read of the table's tablet count settles
-it and should be recorded beside these rows.
+**The tablet count at `pre_split_tablets: 0` is 23, and it makes this a cliff.** Read from the yb-master's
+own API, which needs no credentials beyond the Prometheus CA already on the control node:
+`GET /api/v1/tables` for the uuid, then `GET /api/v1/table?id=<uuid>` and count the `tablets` array. `ns_0`
+and `tx_status` both hold 23. With that the sweep prices out:
+
+| tablets | insert | keys per call | ms per tablet | keys x tablets |
+|---|---|---|---|---|
+| **23** | **0.0152 s** | 356 | **0.66** | 8,188 |
+| 88 | 1.196 s | 168 | 13.59 | 14,784 |
+| 96 | 1.764 s | 172 | 18.38 | 16,512 |
+| 120 | 1.720 s | 184 | 14.33 | 22,080 |
+
+23 to 88 tablets is a **3.8x** change in the layout for a **79x** change in cost, so a linear per-tablet law
+under-predicts it by a factor of twenty-one, and ms per tablet spans 0.66 to 18.4 — a factor of twenty-eight
+across the sweep. **Per-tablet is refuted in the same form per-key was**, and by a wider margin. What is left
+is a cliff somewhere between 23 and 88 tablets, which the sweep's own gap between 8 and 88 already implied and
+which nothing between those two counts has ever probed.
+
+The product of keys and tablets is under 32,768 at **every** row including the slow ones, so §6's threshold
+explains none of this sweep. That is now three ways of saying the same thing, and the honest position is that
+the shape of the cost between 23 and 88 tablets is unmeasured rather than modelled. `9c-ds5-tabhold{32,48}`
+are the rungs that would place it, and they are already queued.
+
+One caveat on the count, and it is 6f's: `enable_automatic_tablet_splitting` is on by default and nothing here
+sets it, and this deployment has watched a table go from 120 tablets to 288 under eleven hours of load
+(§6). So 23 is where the no-split configuration *is*, not necessarily where it started, and a count per rung
+is the only version that also answers whether the layout drifts during a ladder. Rung 1's 15.2 ms insert is
+the baseline: if a later rung reads tens of milliseconds, that is the split moving rather than the rate.
 
 **Unexplained, and flagged rather than fitted:** the batches are wider at no pre-split (682 keys against
 350) even though the downstream is 108x faster, which is backwards for a batcher whose only floor is
