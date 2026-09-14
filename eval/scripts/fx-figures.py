@@ -146,10 +146,13 @@ BASE_SEED = int(os.environ.get("FX_SEED", "480000"))
 DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
 # The groups a per-point redeploy tears down: the committers, the load generator, and on the
 # real-orderer arm the ordering service too. Never fabric_cas, never monitoring -- see deploy().
-TEARDOWN_HOSTS = os.environ.get(
-    "FX_TEARDOWN_HOSTS",
-    "fabric_x,load_generators" if os.environ.get("FX_MATRIX") != "e2e"
-    else "fabric_x,load_generators,fabric_x_orderers")
+# `all`, because narrowing it does not work: the teardown play applies every role to whatever hosts the
+# pattern selects, so `fabric_x,load_generators` ran the ORDERER role against committer hosts and every
+# one of them failed with "missing required arguments: orderer_component_type". A whole-inventory teardown
+# does take the CA and the monitoring stack with it, which costs Prometheus history and flaps Grafana, but
+# it is what every measurement in this evaluation was taken with and it is correct. Narrowing needs the
+# play's own group intersections, not a host pattern.
+TEARDOWN_HOSTS = os.environ.get("FX_TEARDOWN_HOSTS", "all")
 # Measure on the deployment that is already running, rather than replacing it. The shape is still read
 # back and still has to match, so this cannot silently measure the wrong workload -- it only skips the
 # teardown. For an arm that is expensive or fragile to bring up, that is the difference between measuring
@@ -706,8 +709,15 @@ def deploy(exp):
     # points; and Prometheus, Grafana, Loki and Alloy are destroyed and rebuilt around every single
     # measurement, which discards the metric history a run is meant to leave behind and makes the
     # dashboard flap for anyone watching.
+    # Best effort, as it is in fx-bringup.sh. Teardown removes state that the `configs` and `start` below
+    # replace anyway, and it fails for reasons that do not matter: run seconds after a bring-up's gate
+    # passes it caught verifiers still initialising, reported failed=1 on every host, and aborted a whole
+    # ladder -- after which the batch queued behind it was refused by the one-driver guard, because the
+    # teardown it had given up on was still running. The same teardown succeeded a minute later. A failed
+    # `configs`, or a rendered shape that does not match, are still fatal below.
     if not make(f"teardown TARGET_HOSTS={TEARDOWN_HOSTS}", extra_vars=True):
-        return False
+        log(f"[{exp['id']}] teardown reported a failure; continuing, since configs and start replace "
+            f"what it removes")
     if DEPLOY_PLAN == "setup":
         # A per-point redeploy on this arm is a full bring-up, and it has to be. `teardown` drops the
         # Fabric CA's database while leaving the admin's enrolled MSP on disk, so the next `setup`

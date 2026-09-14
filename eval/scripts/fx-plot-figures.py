@@ -505,7 +505,9 @@ def series_name(row):
     same kind of measurement on different deployments -- so those are told apart by experiment id.
     """
     name = row.get("figure") or ""
-    if name != "shape":
+    # The conflict ladders are two runs of one figure that differ only in a configured limit, so like the
+    # shard ladders they are told apart by their label rather than by their figure name.
+    if name not in ("shape", "conflict-ladder"):
         return name
     # Keyed on the label, not the experiment id, so a ladder extended with higher rungs under a new
     # id joins the same curve instead of drawing a second one. The label names the configuration,
@@ -656,6 +658,13 @@ def latency_curve(rows, path):
                        if any(series_name(r) == n for r in rows)]
         for (name, label), colour in zip(sorted(ladders), (OURS, SMALL, PAPER_DARK, OURS_DARK)):
             off += series(rows, ax, name, colour, label, axis_ms)
+    elif MODE == "conflict":
+        # Two ladders of the same conflict workload at two admission limits. Ordered so the larger limit
+        # is drawn first and in the primary colour: it is the claim, and the other is the control.
+        names = sorted({series_name(r) for r in rows if r.get("figure") == "conflict-ladder"},
+                       key=lambda n: "5M" not in n)
+        for name, colour in zip(names, (OURS, SMALL)):
+            off += series(rows, ax, name, colour, name, axis_ms)
     else:
         off += series(rows, ax, "curve", OURS, "10,000-tx blocks", axis_ms)
         off += series(rows, ax, "curve500", SMALL, "500-tx blocks", axis_ms)
