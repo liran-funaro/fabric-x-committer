@@ -61,9 +61,10 @@ Eighteen machines, each two sockets of sixteen Intel Xeon Sapphire Rapids cores 
 \SI{2.10}{\giga\hertz} --- 64 hardware threads, \SI{16}{\mebi\byte} of L3 per socket --- with
 \SI{156}{\gibi\byte} of RAM, running three signature verifiers, one
 coordinator, one sidecar, one load generator, six validator--committers, twelve YugabyteDB tablet
-servers and three YugabyteDB masters. A nineteenth machine of the same class is the control node: it
-holds the certificate authority and the monitoring stack, and no component of the measured pipeline,
-so it is excluded from every count here. The six validator--committers and the three masters sit on nine
+servers and three YugabyteDB masters. A nineteenth machine is the control node, holding the
+certificate authority, the monitoring stack and the deployment orchestration, and no component of
+the measured pipeline; it is half the size of the others --- 32 threads and \SI{78}{\gibi\byte} ---
+and is excluded from every count here. The six validator--committers and the three masters sit on nine
 of the twelve database machines, and no machine runs both a validator--committer and a master.
 
 The coordinator tracks dependencies with the simple manager --- one map of keys to waiting
