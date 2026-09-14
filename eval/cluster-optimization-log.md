@@ -1461,9 +1461,42 @@ number in this section is blended in that direction. The *ratios* between tablet
 the attempt mix holds within 4% across the sweep, but no absolute per-attempt cost here should be quoted
 until that histogram is deployed and read.
 
-**Two points, not four.** `db_insert` reached the driver's queries only for `tab88`, so the cross-tablet fit
-is two points. `tab96` is in flight — retiring roughly 22,000 tps against 20,400 at 120 tablets and 27,400
-at 88, so monotone in tablets so far — and `tab64` makes it four.
+**`tab96` arrived and it does not fit, and the reason invalidates the comparison rather than the law.**
+Three probes descending from 30,000 all missed with the backlog still growing, so 96 tablets retires about
+20,000 tps — level with 120, where a per-tablet law predicts 88/96 x 27,400 = 25,100. Then the drain between
+probes gave the answer:
+
+| point | tx/s per VC | keys/batch | attempts | insert | ms per tablet | concurrent calls |
+|---|---|---|---|---|---|---|
+| 88 tablets, saturated | 4,567 | 301 | 1.79 | 1.194 s | 13.6 | 65 |
+| 96 tablets, saturated | 3,470 | 611 | 1.90 | 2.050 s | 21.4 | 44 |
+| **96 tablets, draining** | 300 | 513 | 1.73 | **1.325 s** | **13.8** | 2.7 |
+| 120 tablets, saturated | 3,400 | 350 | 1.91 | 1.690 s | 14.1 | 63 |
+
+The third row is the same tablet count and the same deployment as the second, at a width 19% narrower, and
+the insert is **55% cheaper** — landing exactly on the 13.6–14.2 ms per tablet the other rows fit. So
+`insert_..._latency` under conflicts is **not a per-batch service time**: it carries the queueing at the
+database, and how much depends on how far above capacity the probe sat.
+
+That confounds the whole cross-tablet fit. Both quantities it uses respond to backlog depth — a deeper queue
+makes the batcher pick up more per send cycle, which is why 96's saturated width is 611 keys against 88's
+301, twice as wide at a *lower* throughput. Two saturated probes at unmatched distance above capacity are
+therefore not comparable, and the 4% agreement between 88 and 120 is partly luck. Note also that 88
+saturated carries *more* concurrency than 96 saturated (65 calls against 44) at *less* latency, so plain
+queueing does not explain the 88 -> 96 drop either; something about 96 is genuinely worse and is not yet
+identified.
+
+**What survives, and what the sweep needs instead.** Surviving: the threshold model is refuted, now on three
+tablet counts with no step of the factor-of-24 kind anywhere; the failure path costs seconds; and 8 tablets
+is worth more than an order of magnitude. Not surviving: any per-batch cost law, including the per-tablet
+one recorded above, and any capacity prediction derived from one. The sweep has been measuring a mixture of
+tablet count and overload depth throughout.
+
+The fix is a design change rather than more points: run every tablet count at **the same offered rate, below
+every capacity in the sweep** — 15,000 tps clears 20,000 at 96 and 120 and 27,400 at 88 — for 300 s, and read
+width and insert in-window. That holds the backlog near zero at every point, so what differs between them is
+the tablet count. Any conclusion about how this path scales should wait for it. `db_insert` also reached the
+driver's queries only for `tab88`, so even the two-point version is thinner than it looks.
 
 The per-tablet reading also reprices the fix. If the handler's `key = ANY(_keys)` cannot prune tablets and
 pays a round trip to each regardless of how many keys it seeks, then `ON CONFLICT DO NOTHING ... RETURNING`
