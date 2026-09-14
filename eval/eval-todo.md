@@ -116,6 +116,50 @@ real. Only 60,000 is a clamp (quantile in `+Inf`), proven by a rung reporting p9
 failure**, so 8 tablets is refuted rather than unconfirmed, and its 252 ms probe is the anomaly. Use the mean
 in overload anyway; keep p99 for the region near the bound.
 
+## The conflict result, measured 2026-09-14
+
+**A conflicting workload does meet the one-second bound, and the layout is what decides it.** With
+`pre_split_tablets: 0`, a 5% double-spend workload at gap 300,000 holds **28,537 tps at a p99 of 192 ms**
+over 300 s, arrival exact, queue growth zero, busiest host at 3% CPU. Rung 1 at 15,000 gave 14,354 tps at
+408 ms. Both beat the 120-way split on *both* axes — it retires 20,300 and misses the bound by sixty
+seconds — so this is not a trade, it is strictly better at these rates.
+
+| | 120-way pre-split | no pre-split (settles at 23 tablets) |
+|---|---|---|
+| committed | 20,300 tps | **28,537** and still climbing |
+| p99 | 60,000 ms (the histogram's top bucket) | **192 ms** |
+| `db_insert` | 1,709 ms | **13.9 ms** |
+| attempts per commit | 1.91 | 1.904 |
+| width | 175 tx | 178 tx |
+| busiest CPU | 71% | 3% |
+
+**Attempts and width are identical to three digits while the insert falls 123x.** So the failure path is
+entered exactly as often and costs two orders of magnitude less: the pre-split controls the *fan-out of the
+failing lookup*, not how often it happens. That is the mechanism claim, and it no longer needs a cost law.
+
+**"No pre-split" is not one tablet — it is 23, reached by automatic splitting and then stable.** Omitting
+`SPLIT INTO` leaves YugabyteDB to choose, and it chose 5; automatic splitting (on by default, confirmed by
+reading `enable_automatic_tablet_splitting` from the running master) then took it 5 -> 15 -> 19 -> 23 in
+four minutes and stopped there. The stop is the phase boundary: splitting thresholds are set by tablets per
+NODE, and with twelve tablet servers the low phase covers up to twelve tablets at a **128 MiB** threshold
+while the high phase covers up to 288 at **10 GiB**. At 23 tablets the table is in the high phase with
+169 MB per tablet, so it stays. `eval/scripts/fx-tablet-count.sh` records this per run.
+
+Two consequences:
+
+1. **The winning configuration is ~23 tablets**, between the 8 that gave a fast probe and the 88 that did
+   not. The monotone reading holds: fewer tablets, cheaper fan-out.
+2. **It is the parsimonious explanation of the eight-tablet anomaly** — 172,260 tps at 239 ms on a 90 s
+   probe against six 300 s holds at ~30 s. Eight tablets is 0.67 per node, inside the low phase, so a hold
+   is long enough to split while a probe is not. `9c-ds5-hold8-nosplitting` is the controlled A/B: the same
+   six rates as `9c-ds5-ladder8tab`, differing only in `--enable_automatic_tablet_splitting=false`.
+
+**And the strong negative claim is not yet earned.** Of 70 gap-300,000 conflict rows at the 120-way split,
+the lowest rate ever offered is **25,000 tps** against its own ~20,300 capacity, and every one reports a
+censored p99. So "no rate meets the bound however low" was an extrapolation from rows that were all past
+capacity. `9c-ds5-ladderlow` (2,500 to 20,000) is promoted to the front of the queue for that reason: a
+miss at 15,000 from a clean start earns the claim, and a pass narrows it to capacity alone.
+
 ## Committer arm (`inventory/cluster.yaml`)
 
 | # | Experiment | ids | Status |

@@ -406,6 +406,27 @@ EXPERIMENTS = [
 
     # A ladder where capacity is high enough to bracket a knee. At 120 tablets capacity is under 25,000,
     # so every rung of the 5M ladder sat above it and measured the collapsed regime rather than a curve.
+    # The same eight tablets with automatic splitting PINNED OFF, as a twin rather than a replacement:
+    # `hold8` and `ladder8tab` keep the default policy so they stay comparable with the history, and this
+    # one changes exactly one thing. It is the decisive test of the eight-tablet anomaly -- 172,260 tps at
+    # 239 ms on a 90 s probe against six 300 s holds at ~30 s. Eight tablets over twelve tablet servers is
+    # 0.67 per node, inside splitting's LOW phase where the threshold is 128 MiB rather than 10 GiB, and a
+    # 90 s probe at that rate writes enough to cross it. So the probe plausibly measured 8 tablets while
+    # the holds measured 8 growing to N, and cost rises with tablet count on every reading we have.
+    #
+    # If these rungs sustain near 172,000, the anomaly is explained and the claim changes from "eight
+    # tablets is refuted" to "refuted at the default splitting policy" -- a materially different statement,
+    # and one an operator can act on. If they still collapse, splitting was never the explanation and the
+    # eight-tablet probe stands as unexplained. Ascending, so no rung inherits from the one before it.
+    dict(id="9c-ds5-hold8-nosplitting", figure="conflict-tablets", x=8, mode="curve",
+         label="5% double spend, 8 tablets, no auto-splitting",
+         # Deliberately the SAME rate list as `9c-ds5-ladder8tab`, so the pair differs in the splitting
+         # policy and nothing else. Mismatched rungs would leave the comparison arguing about interpolation.
+         rates=[25_000, 50_000, 100_000, 150_000, 200_000, 250_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=8,
+                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+
     dict(id="9c-ds5-ladder8tab", figure="conflict-ladder", x=8, mode="curve",
          label="5% double spend, 8 tablets",
          rates=[25000, 50000, 100000, 150000, 200000, 250000],
@@ -565,10 +586,22 @@ EXPERIMENTS = [
                            (0.10, [15_000, 30_000, 60_000, 100_000]),
                            (0.20, [10_000, 25_000, 50_000, 80_000]),
                            (0.30, [10_000, 25_000, 50_000, 80_000]))],
+    #
+    # Automatic tablet splitting is pinned OFF here, because otherwise the one variable this batch exists
+    # to fix is not fixed. It is on by default (read from the running master: `enable_automatic_tablet
+    # _splitting = true`), and it is not hypothetical -- with `pre_split_tablets: 0` the state table was
+    # observed going 15 -> 19 -> 23 tablets in two minutes at 15,000 tps, while its SST files grew 743 MB
+    # -> 1.19 GB. Splitting triggers on tablet SIZE in phases set by tablets per node: with twelve tablet
+    # servers the low phase holds up to twelve tablets at a 128 MiB threshold, the high phase up to 288 at
+    # 10 GiB. So a 300 s hold at these rates crosses the low threshold easily, and the configurations that
+    # drift are exactly the low ones -- which is also the parsimonious explanation of the eight-tablet
+    # anomaly: 239 ms on a 90 s probe and ~30 s on six 300 s holds is what measuring 8 tablets and then
+    # 8-growing-to-N would look like, given that cost rises with tablet count on every reading we have.
     *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
            label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
            vars=dict(shape(2, 0, backref=0.05),
-                     committer_database_table_pre_split_tablets=t))
+                     committer_database_table_pre_split_tablets=t,
+                     yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"]))
       for t in (32, 48, 64, 88, 96, 120)],
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
@@ -1092,7 +1125,11 @@ def measure(exp, rate, settle, window, kind):
     # -12,433/s. As a condition of `met` rather than a flag on the row, no such window can be reported as a
     # rate again -- which is also the root cause of the 300 B size point landing at 408,000.
     met = (finished is not None and finished >= rate * (1 - TOLERANCE)
-           and finished <= (offered or 0) * (1 + TOLERANCE)
+           # The allowance is proportional PLUS an absolute floor, because 2% of a low rung is nothing:
+           # 2% of 2,500 tps is 50, and rate-limiter jitter over a 300 s window is comfortably that
+           # (rung 1 here came in 91 tps over its 15,000). A draining queue overshoots by thousands --
+           # the rows that motivated this test ran 19% and 54% over -- so 200 tps of slack cannot hide one.
+           and finished <= (offered or 0) + max(200.0, (offered or 0) * TOLERANCE)
            and (offered or 0) >= rate * (1 - TOLERANCE)
            and p99 is not None and p99 <= SLO_P99
            and (growth is None or growth <= rate * TOLERANCE)
