@@ -1887,6 +1887,27 @@ tested. The 100,000 rung is still to come, and it bears on the eight-tablet anom
 near 100,000, the 172,260 tps eight-tablet probe stops looking like an outlier and its three failed holds
 become the thing needing an explanation.
 
+**The generated conflict share is not the configured one, and the gap grows with the share.** This is the
+check with real content, since the generator could produce a share other than the one it was asked for — and
+the panel's own comment records a case where 5% generated 2.6%. Every gap-300,000 row, grouped by setting:
+
+| configured | rows | generated | range | relative shortfall |
+|---|---|---|---|---|
+| 5% | 84 | 4.876% | 4.87–4.88% | 2.5% |
+| 10% | 9 | 9.513% | 9.51–9.52% | 4.9% |
+| 20% | 7 | 18.089% | 18.07–18.11% | 9.6% |
+| 30% | 7 | 25.828% | 25.81–25.85% | 13.9% |
+
+Two things follow. It is **deterministic** — three significant figures across 84 rows at 5%, spanning
+different pre-splits, offered rates, block producers and days, with a spread of one part in five hundred. And
+it is **not negligible at the top of the axis**: a bar labelled 30% rejects 25.8%, so the axis has to carry
+what was generated, which is what `measured_conflicts` and the figure caption already do.
+
+Empirically `p(1 - p/2)` fits to 1.3% and `p/(1 + p/2)` to 1.0%, and both are within the data's own spread at
+5% and 10%. **No mechanism is proposed for either.** Five have already been retracted in this section, and a
+two-parameter family fitting four points is not evidence for one. What the numbers support is the practical
+statement: read the share off the measurement, never off the configuration.
+
 **At the no-pre-split setting the conflict share is bookkeeping, and the evidence for that is not the
 arithmetic it first looked like.** Rung 2 of each ladder, same offered rate and layout:
 
