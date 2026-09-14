@@ -2096,8 +2096,23 @@ resolving. Temporally it is a burst covering some fifteen seconds of a three-hun
 splitting spanned those whole windows, so that would need something brief *within* splitting rather than
 splitting itself. Spatially it needs no burst at all: a transaction is delayed if it touches a tablet that is
 mid-split, and one or two concurrent splits across twelve tablets is 8-17% of transactions, the right order
-without any time localisation. Neither is adopted; both are checkable, because `tabhold12`'s pinned rung should
-reproduce *f* near 5% if the mechanism is the same one.
+without any time localisation. The spatial one is the cheaper hypothesis and 6f now prefers it too: it follows from the tablet structure
+rather than adding a brief sub-phase to a five-minute process, and it removes the tension between "5% of
+transactions" and "splitting ran throughout" without an extra assumption.
+
+**Pre-registered, before `ds30` runs.** The two readings make *opposite* predictions about how *f* moves with
+the offered rate, which is the discriminator neither of us saw at first:
+
+| reading | *f* is | so across `ds20` rung 1 at 10,000 and `ds30` rung 1 at 60,000 |
+|---|---|---|
+| spatial | concurrent splits ÷ tablet count — no rate term | *f* stays near 5% |
+| temporal | a burst whose density follows the write rate | *f* rises with rate |
+
+`ds30`'s first rung is at **six times** `ds20`'s, and its layout splits from one toward twelve unpinned like
+the others, so a third independent *f* near 5% across a sixfold rate spread supports the spatial reading
+directly. `tabhold12` cannot do this — with splitting off it tests only whether splitting matters at all — so
+the unpinned ladder is the better instrument here, which inverts the usual order. `ds20` rung 1 against rung 2
+is the same two-row arithmetic and needs nothing new.
 
 Three of today's wrong readings would have been caught by this test alone: the censored p99s below, the
 single-bucket ones, and a 3.35 s service time quoted from a p99 whose mean said otherwise.
