@@ -56,6 +56,34 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### Where the end-to-end ceiling actually sits (21:00Z, from 77 e2e rows)
+
+The plan's stated risk for this arm was "the orderer becomes the ceiling — likely, and it is the point of
+the experiment". Partial answer, and it is more interesting than a yes:
+
+**The routers are the busiest machine in 42 of 77 e2e rows** (router1–4 at 15/11/9/7), the committers in
+33 (commit6 21, commit5 11, commit10 1), the load generator in 2. But peak CPU runs the other way — the
+committers reach 82–84% where the routers top out at 65–74%. So the routers are *more often* the hottest
+machine while the committers still reach the higher peaks.
+
+It splits by transaction size, which is the useful part:
+
+| size | busiest at its confirmed hold | CPU there |
+|---|---|---|
+| 300 B | commit5 | 75–79% |
+| 512 B | commit6 | 79% |
+| 2 KiB | **router3** | **53%** |
+
+At small sizes the committer is still the hottest thing in the cluster and the routers sit behind it. By
+2 KiB the router takes over — and at only 53%, which means **neither side is saturated at 2 KiB**. So
+whatever limits the 2 KiB point at 155,936 tps is not CPU on either the ordering or the committing side,
+which is consistent with the disk-bound knee item 4 was queued to bracket and is direct evidence for it
+rather than an assumption.
+
+Caveat on the 42-of-77 count: it pools probes and failed rungs at every rate, so it says where heat
+concentrates across the whole explored space, not where it sits at the operating point. The per-size
+table is the one to quote.
+
 ### End-to-end size sweep: state going in, and one point with no valid hold (20:41Z)
 
 `e2e-size300` re-measured and it was worth doing: **485,273 tps at p99 590 ms**, against the old
