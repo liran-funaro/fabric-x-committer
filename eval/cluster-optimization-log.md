@@ -1903,7 +1903,14 @@ different pre-splits, offered rates, block producers and days, with a spread of 
 it is **not negligible at the top of the axis**: a bar labelled 30% rejects 25.8%, so the axis has to carry
 what was generated, which is what `measured_conflicts` and the figure caption already do.
 
-**`a = p(1 - p/2)` is derivable from the generator, and this is the one mechanism in this section worth
+**A rule for proposing mechanisms at all, since five in this section were retracted and the next one is
+below.** The five that died were each *fitted to the quantity they then explained*: a curve was drawn through
+the numbers and the numbers were offered as its confirmation. The one that survives was **derived from the
+code with a named causal chain, and then tested against a variable that was absent from the fit**. That is the
+test to apply to the next candidate, and it is cheap: ask what the proposed mechanism forbids, then look for
+that.
+
+**`a = p(1 - p/2)` is derivable from the generator, and it is the one mechanism in this section worth
 proposing.** `slotKeys` (`loadgen/workload/tx_rand.go:139`) sets `newKeysRate = slotsPerTx - KeyBackrefRate`
 and takes `newKeys = min(slots, frontier(i+1) - frontier(i))`, so with two read-write slots a fraction `p` of
 transactions get one fresh key and one back-reference. That alone would abort exactly `p`. The correction is a
@@ -1941,7 +1948,30 @@ sampling collisions push the same way and are unquantified. The falsifiable pred
 vanishes if the frontier stops counting indices whose transaction aborted — a code change, measurable.
 
 The practical statement is unchanged and is what a reader needs: read the share off the measurement, never off
-the configuration. The derivation only means it is now predictable rather than merely reproducible.
+the configuration. The derivation only means it is now predictable rather than merely reproducible — and it
+gives two things a future conflict experiment can use, neither needing a run.
+
+**It inverts, so a round share can be configured for.** `p = 1 - sqrt(1 - 2a)`, which round-trips to four
+decimals: configure 5.132% to measure 5%, 10.557% for 10%, 22.540% for 20%, 36.754% for 30%. Every point in
+this sweep was configured round and measured non-round; the reverse is available and matters most at the top,
+where configuring 30% misses by four percentage points.
+
+**And the reachable share saturates at 50%, whatever the shape.** The general form needs one term the two-slot
+case hides — an aborted transaction rolls back *all* its fresh keys, and it has `s - 1` of them, not one, so
+holes per transaction are `a(s - 1)`:
+
+    a = p(s - p) / (s + p(s - 2))          collapses to p(2 - p)/2 at s = 2
+
+At `p = 1` that is `(s - 1) / (2s - 2)` = **exactly 1/2 for every `s` >= 2**. More read-write slots buy more
+references per transaction and also more holes per abort, and the two cancel identically — so widening the
+shape is not a route to a higher share, which would have been a wasted experiment. The 50% is a property of
+the feedback rather than of the configuration: at one reference per transaction, half the references land in
+holes left by the other half's failures.
+
+Above `p = 1` the derivation does not apply, and the curve says so itself: `p(2 - p)/2` is symmetric about
+`p = 1`, predicting the same 49.5% at 0.9 and at 1.1. More references producing fewer conflicts is not
+physical, so the model's domain is visible in its own geometry. `config.go:128` gates only on
+`KeyBackrefRate > totalSlots`, so 1 < `p` <= 2 is configurable and unaccounted for.
 
 **At the no-pre-split setting the conflict share is bookkeeping, and the evidence for that is not the
 arithmetic it first looked like.** Rung 2 of each ladder, same offered rate and layout:
