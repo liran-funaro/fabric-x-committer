@@ -1396,11 +1396,44 @@ which is the only reason the 1.7 s was visible at all.
 **The mechanism.** `insert_ns_<ns>` attempts a bulk insert, and on any existing key its
 `EXCEPTION WHEN unique_violation` handler runs `key = ANY(_keys)` over *every* key in the batch. The
 whole database transaction then rolls back and the batch is redone — which is the 1.91 calls. That
-lookup is where the tablet split acts: 349 keys x 120 tablets = 41,939, over YugabyteDB's ~32,768
-batching threshold, so it issues one storage read per key. 349 reads at ~4 ms is 1.4 s against the
-measured 1.69 s. At 8 tablets it is 2,863, under the threshold, and the same workload runs
-124,181–130,233 tps. The predicted edge is 32,768/349 = **93 tablets**, which is the test that would
-falsify this: 88 should recover and 96 should not.
+lookup is where the tablet split acts. The first attribution was the batching threshold of §6 — 349 keys x
+120 tablets = 41,880, over ~32,768, so one storage read per key — which predicted that **88 tablets would
+recover and 96 would not**. The boundary test refuted it for this path. At 88 tablets the in-window width is
+148 tx = 295 keys, so the product is 25,960, comfortably *under* the crossing where the lookup should batch
+into a single round trip of some 20 ms. The insert still costs **1.170 s**, and capacity is 27,670 tps,
+measured twice at two offered rates.
+
+What fits this path is continuous in the same product rather than stepped at a value of it:
+
+| tablets | keys/batch | keys x tablets | insert | µs per key-tablet | capacity |
+|---|---|---|---|---|---|
+| 120 | 349 | 41,880 | 1.690 s | 40.4 | 20,400 |
+| 88 | 295 | 25,960 | 1.170 s | 45.1 | 27,670 |
+
+Within 6% on the constant, against a threshold model predicting two orders of magnitude between those rows.
+It also accounts for 8 tablets without a special case: 349 x 8 = 2,792 is a fourteenth of the work at 120,
+which is the order of the measured speed-up.
+
+**This does not overturn §6's threshold result, and the difference is which query is being paid for.** That
+model was fitted to `queryVersionsIfPresent` on the blind-write workload and tested four for four, including
+a pair straddling the boundary by 15%. Both can hold if the conflict path's cost is not dominated by
+batched-versus-unbatched reads at all — the exception handler also rolls the whole distributed transaction
+back, and an abort must reach every tablet the batch touched, which is continuous in tablet count with no
+threshold to cross. That is a hypothesis about *which* per-tablet work dominates, not a retraction of either
+measurement, and it predicts that the conflict path's cost should track tablets even at widths far below the
+crossing.
+
+Capacity then follows with one further term, and it is constant across both points:
+
+    throughput = (concurrent batches x width) / (calls per commit x insert latency)
+
+    120 tablets   20,400 x 1.91 x 1.690 / 175 = 376 batches = 63 per VC
+     88 tablets   27,670 x 1.78 x 1.170 / 148 = 389 batches = 65 per VC
+
+So the pipeline holds ~64 batches per validator-committer in flight whatever the tablet count, and capacity is
+set entirely by how long an insert attempt takes. **Recorded before that batch ran**: at 96 tablets, if width
+holds near 295 keys, insert ≈ 1.21 s and capacity ≈ 26,400 tps. Note it no longer separates the two models —
+96 was under the crossing too — so it tests only whether the per-key-tablet constant is constant.
 
 It is invisible on the headline workload because inserting only fresh keys never raises the exception,
 so nothing ever performs a multi-key lookup. A back-reference is the first thing that does.

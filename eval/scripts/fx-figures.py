@@ -353,6 +353,19 @@ EXPERIMENTS = [
     dict(id="9c-ds5-rep3", figure="conflict-repeat", x=3, mode="curve",
          label="5% double spend, repeat 3", rates=[100000], vars=shape(2, 0, backref=0.05)),
 
+    # Cost per failing batch, or number of failing batches? No tablet count can tell those apart, because
+    # both scale the same way with keys x tablets. The conflict share does: at ~179 transactions a batch,
+    # 5% means essentially every batch takes the unique_violation path, 1% means 94% of them, and 0.1% only
+    # a quarter. If the cost is per failing batch, throughput should recover roughly as the failing fraction
+    # falls -- near-linearly by 0.1%. If it does not, the cost is attached to something else.
+    #
+    # Seeds chosen for where each is expected to land: 0.1% should recover several fold, 1% should sit near
+    # the 5% figure.
+    dict(id="9c-ds1", figure="9c", x=1, label="1% double spend", seed=30_000,
+         vars=shape(2, 0, backref=0.01)),
+    dict(id="9c-ds01", figure="9c", x=0.1, label="0.1% double spend", seed=150_000,
+         vars=shape(2, 0, backref=0.001)),
+
     # The claim the document needs and has never had: a 300-second hold at 8 tablets on a fresh
     # deployment. A probe met the bound there -- 181,031 offered, 172,150 and 172,112 committed in two
     # independent windows, 239 and 252 ms p99, 21% CPU -- but no hold has reproduced it, and the three that
