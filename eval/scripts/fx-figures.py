@@ -46,6 +46,11 @@ OUT = os.environ.get(
     else "/data1/logs/figures.jsonl")
 VARS_FILE = "/data1/logs/exp-vars.yaml"
 
+# The top finite bucket of loadgen_valid_transaction_latency_seconds. Above it `histogram_quantile`
+# reports this number instead of a quantile. Hardcoded rather than queried because the bucket set is a
+# constant in the load generator's code, and asserted against below so a change cannot pass silently.
+P99_CEILING = float(os.environ.get("FX_P99_CEILING", "60.0"))
+
 WINDOW = "60s"
 # The paper keeps every reported point under a second of 99th percentile latency, and treats
 # that as the condition for the rate being usable rather than merely achievable.
@@ -481,18 +486,19 @@ EXPERIMENTS = [
     # commit and 48 should MISS at 1.19 s. That pair is the first conflicting operating point at a tablet
     # count anyone would run, which 64 and 160 cannot be -- both are predicted misses on a slope that
     # three points already fix.
-    # Four read-writes instead of two, at the default tablet count, because the tablet sweep cannot
-    # separate the two models that fit it. Keys per lookup barely moved across it -- 308 at 88 tablets,
-    # 310 at 96, 349 at 120 -- since tx_per_insert is transactions per insert CALL and the batch is
-    # inserted ~1.8 times, so a per-commit width of 154 tx is 86 per call, not a width that halved.
-    # Over those three points a fixed cost per tablet fits to 4.6% and a cost per key-tablet to 8.2%:
-    # from the 88-tablet row the latter predicts 1.85 s at 120 against 1.709 measured, which is a worse
-    # fit, not a refutation. Doubling the keys per transaction holds tablets fixed and moves the keys,
-    # and the two models then predict different numbers: per-tablet says db_insert stays near 1.71 s,
-    # per-key-tablet says it doubles to ~3.4 s. Recorded under its own figure name so it cannot land on
-    # the tablet axis of 1c as a second point at x=120.
-    dict(id="9c-ds5-rw4", figure="conflict-keys", x=120, label="5% double spend, 4 read-writes",
-         seed=15_000, vars=shape(4, 0, backref=0.05)),
+    # The other axis of the conflict cost: keys, at a fixed tablet count. It answers whether the failing
+    # lookup pays per tablet or per key, which the tablet sweep cannot, since a rate search cannot hold
+    # the width still -- the width moves with backlog depth, so probes at unmatched distances above
+    # capacity differ in overload as much as in shape. Hence fixed rates, like tabhold, and rates well
+    # under this shape's capacity: four read-writes is twice the keys per transaction, so capacity is
+    # near half of the ~20,400 the two-key shape sustains at this split, and 5,000/8,000 clear it.
+    #
+    # RUN IT AFTER tabhold, not before. Its premise is that a tablet law exists to be attributed to
+    # keys instead, and tabhold is what establishes whether there is one: the per-tablet fit is
+    # currently withdrawn, not confirmed. With no law on the tablet axis this point has nothing to
+    # separate. Two rungs so the rows can be shown uncontaminated rather than asserted to be.
+    dict(id="9c-ds5-rw4", figure="conflict-keys", x=120, mode="curve", rates=[5_000, 8_000],
+         label="5% double spend, 4 read-writes", vars=shape(4, 0, backref=0.05)),
     dict(id="9c-ds5-tab48", figure="conflict-why", x=48, label="5% double spend, 48 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=48)),
@@ -524,6 +530,31 @@ EXPERIMENTS = [
     # bound therefore fails on service alone by more than 3x at both, which is a measurement rather than a
     # derivation. At 32 tablets a pass needs the service term under 1 s, i.e. insert under ~0.53 s, so 32
     # is the first point on the axis where the answer could be yes -- and it is listed first.
+    # Conflicts with pre-splitting DISABLED, held below capacity -- the one configuration where a
+    # conflicting workload meets the bound, and the section's only positive result. Already measured as
+    # probes and never confirmed: `split0-ds10` climbed 17 steps from 30,000 to 102,727 offered with
+    # `inflight_growth` 0 at every rung, finished equal to offered, and a p99 pinned at 195-197 ms the
+    # whole way, committing 92,958 at the top; `split0-ds30` does the same to 76,352 at 192-195 ms. The
+    # climb ran out of UP_STEPS while still passing, so those are lower bounds and no ceiling was found.
+    #
+    # No hold has ever been attempted BELOW capacity on this series, which is why none confirms it: the
+    # driver holds at the last passing probe, which here was the top of the climb, so hold 1 failed at
+    # 102,727 and holds 2 and 3 inherited its backlog and read `finished` above `offered` -- draining, not
+    # measuring. ds30's one "met" hold has growth -12,433/s and is a drain artefact too.
+    #
+    # So these are fixed-rate ladders starting well under the known-passing probe: rung 1 is the
+    # confirmation the figure needs, and the rungs above it look for the ceiling the search never reached.
+    # Ascending, so a rung cannot inherit from the one before it. 5% is included because the 120-tablet
+    # series is 5% -- without it the comparison would cross two conflict shares as well as two layouts.
+    # These rows also all predate `fast_block_prepare`, so they need re-running before joining today's axis.
+    *[dict(id=f"9c-nosplit-ds{int(share * 100)}", figure="conflict-nosplit", x=share * 100, mode="curve",
+           label=f"{share:.0%} double spend, no pre-split", rates=rates,
+           vars=dict(shape(2, 0, backref=share),
+                     committer_database_table_pre_split_tablets=0))
+      for share, rates in ((0.05, [70_000, 100_000, 130_000]),
+                           (0.10, [70_000, 100_000, 130_000]),
+                           (0.20, [50_000, 70_000, 100_000]),
+                           (0.30, [60_000, 85_000, 110_000]))],
     *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
            label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
            vars=dict(shape(2, 0, backref=0.05),
@@ -1047,15 +1078,34 @@ def measure(exp, rate, settle, window, kind):
            and (growth is None or growth <= rate * TOLERANCE)
            and (s.get("append_util") or 0) < 0.95)
 
+    # `histogram_quantile` returns the top finite bucket boundary once the quantile falls in the +Inf
+    # bucket, so an overloaded row reports a LIMIT that reads exactly like a measurement -- 60,000 ms
+    # appears in 114 rows across the two results files. The independent proof is a mean above the 99th
+    # percentile, which is impossible: ladder5m's first rung reported p99 60,000 ms with a mean of 69,334.
+    #
+    # What is NOT censoring, checked against the histogram's own `le` set: 14,950 / 29,900 / 44,850 are
+    # INTERPOLATIONS inside the 10-15 s, 20-30 s and 30-45 s buckets, sitting near their tops. Coarse,
+    # because the buckets are 5-15 s wide up there, but real. That distinction decides a result: the six
+    # 8-tablet holds all read exactly 29,900 ms, so they genuinely ran at ~30 s rather than being clamped,
+    # and 8 tablets is a measured failure at those rates rather than an unknown.
+    #
+    # Recorded per row because a censored p99 still fails the SLO correctly, so nothing was mis-accepted,
+    # but nothing can be QUOTED from such a row either, and five of today's six defects were values that
+    # read as measurements while being limits. `lat_mean` is sum/count and stays valid, so mean is the
+    # statistic for overload and p99 only near the bound.
+    mean = s.get("lat_mean")
+    censored = (p99 is not None and p99 >= P99_CEILING) or (
+        p99 is not None and mean is not None and mean > p99)
     row = {"experiment": exp["id"], "figure": exp["figure"], "x": exp["x"],
            "label": exp["label"], "kind": kind, "limit": rate, "met": met,
            "finished": finished, "window": window, "at": time.time(),
-           "inflight_growth": growth, "vars": exp["vars"],
+           "inflight_growth": growth, "lat_p99_censored": censored, "vars": exp["vars"],
            **{k: s.get(k) for k in QUERIES if k != "cpu_busiest"},
            "cpu_busiest_host": s.get("cpu_busiest_host")}
     record(row)
     log(f"[{exp['id']}] {kind} limit={rate:,} finished={fmt(finished)} committed={fmt(committed)} "
-        f"abort={fmt(s.get('aborted'))} p99={fmt(ms(p99), 0)}ms mean={fmt(ms(s.get('lat_mean')), 0)}ms "
+        f"abort={fmt(s.get('aborted'))} p99={fmt(ms(p99), 0)}ms{'(CENSORED)' if censored else ''} "
+        f"mean={fmt(ms(mean), 0)}ms "
         f"grow={fmt(growth)}/s app={pct(s.get('append_util'))} cpu={pct(s.get('cpu_max'))} "
         f"({s.get('cpu_busiest_host') or '-'}) -> {'MET' if met else 'MISS'}")
     return row
