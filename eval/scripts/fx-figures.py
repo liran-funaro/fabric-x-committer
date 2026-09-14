@@ -146,13 +146,21 @@ BASE_SEED = int(os.environ.get("FX_SEED", "480000"))
 DEPLOY_PLAN = os.environ.get("FX_DEPLOY_PLAN", "configs")
 # The groups a per-point redeploy tears down: the committers, the load generator, and on the
 # real-orderer arm the ordering service too. Never fabric_cas, never monitoring -- see deploy().
-# `all`, because narrowing it does not work: the teardown play applies every role to whatever hosts the
-# pattern selects, so `fabric_x,load_generators` ran the ORDERER role against committer hosts and every
-# one of them failed with "missing required arguments: orderer_component_type". A whole-inventory teardown
-# does take the CA and the monitoring stack with it, which costs Prometheus history and flaps Grafana, but
-# it is what every measurement in this evaluation was taken with and it is correct. Narrowing needs the
-# play's own group intersections, not a host pattern.
-TEARDOWN_HOSTS = os.environ.get("FX_TEARDOWN_HOSTS", "all")
+# Narrowing DOES work, with colons rather than commas. Each teardown play selects with
+# `{{ target_hosts }}:&<its own group>`, and Ansible applies that intersection to the accumulated set
+# left to right: `a:b:&c` is (a or b) and c, while `a,b:&c` is a or (b and c). A comma therefore leaves
+# the first term unintersected, which is what put every committer host through the ORDERER role's
+# teardown and failed all 19 with "missing required arguments: orderer_component_type". Naming the
+# `fabric_x` parent instead of `fabric_x_committers` compounded it, since the parent spans both arms.
+#
+# Verified by hand against this inventory: `fabric_x_committers:load_generators` exits 0 with no host
+# reporting a failure, and leaves the Fabric CA and the monitoring stack standing. `all` also works but
+# takes both down every point, which costs Prometheus history, flaps Grafana, and re-enrols the CA -- the
+# "Authentication failure" that killed a six-point size sweep.
+TEARDOWN_HOSTS = os.environ.get(
+    "FX_TEARDOWN_HOSTS",
+    "fabric_x_committers:load_generators" if os.environ.get("FX_MATRIX") != "e2e"
+    else "fabric_x_committers:load_generators:fabric_x_orderers")
 # Measure on the deployment that is already running, rather than replacing it. The shape is still read
 # back and still has to match, so this cannot silently measure the wrong workload -- it only skips the
 # teardown. For an arm that is expensive or fragile to bring up, that is the difference between measuring
