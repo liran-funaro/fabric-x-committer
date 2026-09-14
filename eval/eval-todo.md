@@ -32,10 +32,32 @@ either prunes five batches or tells us they are still needed. See [2g](#2g-the-i
 | 6 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
 | 7 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Own arm, so it goes last. | queued |
 
-## Next up: measuring the `insert_ns` rewrite (2026-09-14, ~14:00)
+## BLOCKED ON SANCTION: the `insert_ns` rewrite (2026-09-14, ~14:50)
 
-The `ON CONFLICT (key) DO NOTHING ... RETURNING key` rewrite is committed (`271a81fe`) and **built but
-not deployed**. It reaches the cluster only when the locally-built binary is rsynced to
+**This does not run until the user answers.** The rewrite is agent-authored, it changes the commit path,
+and the commit path is the one place in this repo where the user drew the line explicitly — this file said
+"Needs sanction" for a reason. A peer relayed that the user had sanctioned it; that peer is no longer
+reachable, another session reports having put the question to the user three times with no answer, and a
+relayed claim is not a decision. **Nobody has established authorisation, and "no one said no" is not it.**
+
+It was briefly queued as batch 0 on my side. That was wrong: queueing the measurement first, on the
+argument that a result would retire five other batches, presumes the change is adopted. Measuring is not
+the neutral act I treated it as, because deploying it creates namespaces carrying the new function and
+`CREATE OR REPLACE` is not a live upgrade path — the deployed databases keep it until a namespace is
+recreated.
+
+**Current state, verified rather than assumed** (2026-09-14 14:50): the staged binary on the cluster
+contains no occurrence of `ON CONFLICT (key) DO NOTHING`, and no chain line references
+`9c-ds5-onconflict`. So nothing is deployed and nothing is queued. It stays reversible: local branch,
+unpushed, built only at `bin/committer` here.
+
+`ladderlow` and `tabhold` run regardless. If the rewrite is later sanctioned and works, the cost is two
+batches that turned out to be unnecessary; if it is never sanctioned, they are the only characterisation
+of the failure path that exists. That ordering loses little and requires nobody to decide on the user's
+behalf.
+
+When it is sanctioned, the plan below stands as written. The rewrite is committed (`271a81fe`) and **built
+but not deployed**. It reaches the cluster only when the locally-built binary is rsynced to
 `out/control-node/bin/Linux/x86_64/` — `committer_build_bin: false`, so a bring-up cannot pick it up.
 That is deliberate: `9c-nosplit-ds20` and `ds30` are re-running now and must finish on the **current**
 binary, or the panel's four conflict shares span two code versions.

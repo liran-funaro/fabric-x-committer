@@ -424,8 +424,7 @@ EXPERIMENTS = [
          # policy and nothing else. Mismatched rungs would leave the comparison arguing about interpolation.
          rates=[25_000, 50_000, 100_000, 150_000, 200_000, 250_000],
          vars=dict(shape(2, 0, backref=0.05),
-                   committer_database_table_pre_split_tablets=8,
-                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+                   committer_database_table_pre_split_tablets=8)),
 
     dict(id="9c-ds5-ladder8tab", figure="conflict-ladder", x=8, mode="curve",
          label="5% double spend, 8 tablets",
@@ -577,8 +576,7 @@ EXPERIMENTS = [
          # ceiling is >=350,000 against 518,000 conflict-free, which is already the strong statement.
          rates=[150_000, 250_000, 350_000],
          vars=dict(shape(2, 0, backref=0.05),
-                   committer_database_table_pre_split_tablets=12,
-                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+                   committer_database_table_pre_split_tablets=12)),
 
     # The A/B for `insert_ns`'s rewrite: `ON CONFLICT (key) DO NOTHING ... RETURNING key` in place of the
     # `EXCEPTION WHEN unique_violation` handler, with the violating set computed in the same statement as
@@ -705,8 +703,14 @@ EXPERIMENTS = [
                            (0.20, [15_000, 30_000, 60_000, 100_000]),
                            (0.30, [15_000, 25_000, 30_000, 60_000, 100_000]))],
     #
-    # Automatic tablet splitting is pinned OFF here, because otherwise the one variable this batch exists
-    # to fix is not fixed. It is on by default (read from the running master: `enable_automatic_tablet
+    # Automatic tablet splitting must be pinned OFF for this batch, and that is done by running it against
+    # `inventory/cluster-nosplitting.yaml` rather than by a var here. A `yugabyte_master_extra_flags` in an
+    # experiment's vars is a SILENT NO-OP: a per-experiment redeploy tears down
+    # `fabric_x_committers:load_generators` and nothing else, so the master is never restarted and never
+    # reads the flag. Only a batch bring-up restarts the database, and it reads the inventory. This was set
+    # here for two hours and would have produced a tablet sweep whose layout drifted under it while the
+    # comments claimed otherwise -- the same shape of defect as the search seed and the ageing pin.
+    # Otherwise the one variable this batch exists to fix is not fixed. It is on by default (read from the running master: `enable_automatic_tablet
     # _splitting = true`), and it is not hypothetical -- with `pre_split_tablets: 0` the state table was
     # observed going 15 -> 19 -> 23 tablets in two minutes at 15,000 tps, while its SST files grew 743 MB
     # -> 1.19 GB. Splitting triggers on tablet SIZE in phases set by tablets per node: with twelve tablet
@@ -718,8 +722,7 @@ EXPERIMENTS = [
     *[dict(id=f"9c-ds5-tabhold{t}", figure="conflict-tabhold", x=t, mode="curve",
            label=f"5% double spend, {t} tablets, fixed rate", rates=[10_000, 15_000],
            vars=dict(shape(2, 0, backref=0.05),
-                     committer_database_table_pre_split_tablets=t,
-                     yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"]))
+                     committer_database_table_pre_split_tablets=t))
       # Retargeted into the interval that is actually unprobed. The no-split layout settles at 23 tablets
       # and its insert is 15.2 ms; 88 tablets costs 1,196 ms. That is a 3.8x change in layout for a 79x
       # change in cost, so a linear per-tablet law under-predicts by twenty-one and is refuted the same way
