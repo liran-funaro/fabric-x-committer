@@ -1043,8 +1043,16 @@ def conflict_ladders(rows, path):
     for (label, rs), colour in zip(sorted(ladders.items()), (OURS, SMALL, PAPER_DARK)):
         rs = sorted(rs, key=lambda r: r["limit"])
         xs = [r["limit"] for r in rs]
-        ax.plot(xs, [throughput(r) or 0 for r in rs], color=colour, linewidth=2, marker="o",
-                markersize=7, zorder=3, label=label)
+        # The committers' own counter, not the generator's rate. Behind a queue this deep the two disagree
+        # by a third: the generator measures status arrivals in a sixty-second window with millions of
+        # transactions queued ahead of them, so its variance is the queue's while its mean is sound. Both
+        # are drawn -- the committers' solid, the generator's faint -- because the gap between them is
+        # itself the reason the figure quotes one and not the other.
+        ax.plot(xs, [r.get("vc_commit") or throughput(r) or 0 for r in rs], color=colour, linewidth=2,
+                marker="o", markersize=7, zorder=3, label=label)
+        # The generator's own rate is NOT drawn beside it. Against an axis that reaches the offered rate,
+        # 20,300 and the generator's 18,000-25,273 are the same pixel, so the line added clutter rather
+        # than the contrast it was meant to show. That belongs in prose, where the numbers can be read.
         held = [(r["limit"], r.get("sc_waiting")) for r in rs if r.get("sc_waiting")]
         if held:
             # No label: the figure legend collects handles from both axes, and labelling the same series
@@ -1053,7 +1061,7 @@ def conflict_ladders(rows, path):
                     marker="o", markersize=7, zorder=3)
 
     ax.set_xlabel("offered rate (tx/s)", color=INK2, fontsize=9)
-    ax.set_ylabel("delivered (tx/s)", color=INK2, fontsize=9)
+    ax.set_ylabel("committed (tx/s)", color=INK2, fontsize=9)
     bx.set_xlabel("offered rate (tx/s)", color=INK2, fontsize=9)
     bx.set_ylabel("transactions held by the graph", color=INK2, fontsize=9)
     for a in (ax, bx):
