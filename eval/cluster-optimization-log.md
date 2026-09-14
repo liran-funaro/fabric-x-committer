@@ -2088,6 +2088,28 @@ rung 2's window and rung 3's, in a settle, and rung 2's tail is the leading edge
 is not: extra retries or wider batches, which held at 1.96 attempts and ~230 keys. A repeat of 25,000 is one
 rung and settles whether it reproduces.
 
+**The insert cost is a function of the conflict share alone, and it falls as the share rises.** Matching on
+*offered* rate conflates this, because a higher share commits fewer rows at the same offered rate; matching on
+**committed** throughput separates them, and the structure is clean — every rung of every share except rung 1
+and the excursion:
+
+| generated share | committed range | `db_insert` | spread |
+|---|---|---|---|
+| 4.88% | 28,537 → 95,123 | 13.9, 13.7, 13.6 ms | 2% over 3.3x in rate |
+| 9.51% | 27,147 → 90,491 | 12.5, 12.4, 12.6 ms | 1.6% over 3.3x |
+| 18.10% | 20,401 → 65,522 | 11.8, 11.6, 11.9 ms | 2.6% over 3.2x |
+| 25.83% | 37,092 → 59,334 | 11.7, 11.2 ms | — |
+
+So within a share the insert is flat across a threefold change in throughput, and across shares it falls
+monotonically: **13.7, 12.5, 11.8, 11.4 ms — 18% cheaper at 26% conflicts than at 5%.** At matched committed
+rate the pairwise differences are −10.0%, −9.3% and −7.7%, all in the same direction.
+
+That is the opposite sign from any model in which conflicts cost something, and it is worth stating as a
+direction rather than a magnitude. **No mechanism proposed.** The obvious candidate — an aborted transaction
+writes no rows, so a higher share means less write work per batch — predicts ratios of 1.000, 0.951, 0.861,
+0.780 against observed 1.000, 0.912, 0.861, 0.836: exact at 18% and wrong at both ends, so it is at best
+partial. It would be the tenth mechanism proposed today and the measurement stands without one.
+
 **Where that leaves the section**: the conflict share is bookkeeping at twelve tablets across 5%, 10%, 20% and
 30%, at every rate measured up to 100,000 — 95,123 tps at 190 ms, 90,491 at 187, 65,522 at 193, 59,334 at 196 —
 with one unreproduced excursion at 30% and 25,000 that is recorded but not built on. That is the claim three
