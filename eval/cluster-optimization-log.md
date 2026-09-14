@@ -2470,7 +2470,28 @@ same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer u
 on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
 30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
 
-**The conflict share is bookkeeping to 20%, and 30% breaks.** The first version of this entry said the share
+**Retracted twenty minutes after recording it: 30% does not break — the 25,000 miss is an isolated
+anomaly.** `ds30`'s third rung landed at 50,000 and **met**, with everything back to normal:
+
+| offered | p99 | mean | p50 | insert | attempts | growth | met |
+|---|---|---|---|---|---|---|---|
+| 10,000 | 519 ms | 163 | 164 | 14.5 ms | 1.97 | 0 | yes |
+| 25,000 | **3,565 ms** | 258 | 130 | **52.9 ms** | 1.96 | 0 | **no** |
+| 50,000 | **199 ms** | 150 | 143 | **11.7 ms** | 1.95 | −6,800 | yes |
+
+So the failing rung is bracketed above and below by passing ones, and its insert of 52.9 ms is 4.5x both
+neighbours (14.5 and 11.7). A knee does not do that. Whatever the 25,000 rung was, it was a transient confined
+to one window — the same profile as the rung-1 tails, which is a fourth reason not to have built a bound on a
+single rung. 6f had already asked for a 25,000 repeat in the re-run on exactly this ground, before the 50,000
+rung landed.
+
+Note the growth column: −6,800/s at 50,000. The redeploy-on-miss fires after a failing rung, so that rung began
+on a fresh deployment, and a negative reading there is most likely the in-flight count settling from the health
+check rather than a real drain. Worth flagging because `met` gates on `finished ≤ offered` and on nothing about
+*negative* growth, so a settling window passes the gate — which is harmless here but is the mirror image of the
+draining-window problem the gate was built for.
+
+*(Superseded, kept for the retraction:)* **The conflict share is bookkeeping to 20%, and 30% breaks.** The first version of this entry said the share
 "barely matters", on 5% and 10% alone. 20% then held to 80,000 and **30% missed the bound at 25,000**, so the
 claim needs its bound:
 
@@ -2479,7 +2500,7 @@ claim needs its bound:
 | 5% | 100,000 offered | 190 ms | 11% |
 | 10% | 100,000 | 187 ms | 11% |
 | 20% | 80,000 | 193 ms | 10% |
-| 30% | **10,000** — misses at 25,000 | 519 ms → **3,565 ms** | 3% |
+| 30% | 50,000, with an isolated miss at 25,000 | 199 ms (3,565 at the miss) | 7% |
 
 **The boundary cannot be placed from this data.** It is either between 20% and 30% in share, or between 10,000
 and 25,000 in rate at 30%, and nothing here separates them; ds20's top rung was 80,000 and ds30's second was
