@@ -1812,24 +1812,42 @@ abort share, **p99 408 ms**, growth 0, busiest host **2% CPU** — verified from
 lookback 1,000,000, so it is the valid configuration. A conflicting workload does have a sub-second operating
 point at some layout, at a rate the 120-way split has never been given.
 
-**"Pre-splitting disabled" is twelve tablets — one per tablet server — and `yb-admin` will tell you ten.**
-`list_tablets` takes an optional `max_tablets` argument that **defaults to 10**, so the obvious invocation
-truncates and returns a plausible number with no warning:
+**The tablet count is not a property of the configuration — it is a function of time, and three sessions
+each measured it once and disagreed.** Reads of `ns_0` on a table created with no split clause:
+
+| when | count | via |
+|---|---|---|
+| 3 minutes after bring-up | **2** | `yb-admin list_tablets ... 0` |
+| ~26 minutes in, during the ds5 ladder | **12** | `yb-admin list_tablets ... 0` |
+| later, and holding | **23** | master `/api/v1/table` |
+
+YugabyteDB splits a table as it grows, so all three are correct at the times they were taken; the apparent
+contradiction needed no explanation about leaders, replicas or hidden states. The trajectory even matches the
+documented phase defaults — low phase is one tablet per server, **12** on twelve servers, at a 128 MiB
+threshold, and high phase runs to 24 per server at 10 GiB — so 12 is the boundary the table crossed rather
+than a resting point. The same is true at the other end of the axis: `ns_0` created with 120 held **288** after
+eleven hours.
+
+**So `committer_database_table_pre_split_tablets` names a starting point, not a layout,** and a figure column
+headed "tablets" is wrong wherever it is not qualified. The document now heads it "pre-split" and says the
+count drifts upward from it.
+
+That this did not corrupt the ds5 ladder is worth stating, because the count grew roughly sixfold *during*
+it: insert cost across the four rungs ran 15.2, 13.9, 13.7, 13.6 ms with attempts 1.911 → 1.907 and keys per
+call 356 → 355. It fell by a ninth while both the offered rate rose 6.7-fold and the table split underneath
+it. So in the 2-to-23 range the insert is insensitive to the count, which also locates the cliff: it is
+somewhere between roughly 23 and 88, not below.
+
+**A secondary trap found on the way: `yb-admin list_tablets` truncates at ten.**
+It takes an optional `max_tablets` argument that **defaults to 10**, so the obvious invocation truncates and
+returns a plausible number with no warning:
 
     yb-admin ... list_tablets ysql.yugabyte ns_0        ->  10   (truncated at the default)
     yb-admin ... list_tablets ysql.yugabyte ns_0 0      ->  12   (0 means max)
 
 Its own usage string says `[<max_tablets>] (default 10, set 0 for max)`, which is only visible if the command
-is run with no table and made to fail. Twelve, both for `ns_0` and `tx_status`, is one tablet per tablet
-server and is the count to use. A concurrent read of the master's `/api/v1/table` gave 23, which nothing
-reachable can now reproduce — no master answers on :5310 or :7000 from either the control node or a database
-node, with or without certs — and 23 exceeds the authoritative count, so it was most likely counting tablets
-in non-running states left by earlier bring-ups. The admin RPC is the arbiter.
-
-This had to be checked before the layout axis could be read, because YugabyteDB's usual default is eight
-shards per tablet server, which on twelve would have been 96 — the same as the other arm — and the whole
-comparison would have been between two identical layouts. It is not. So the axis is 8, 12, 88, 96, 120
-tablets, and "no pre-split" is a point on it rather than a different kind of configuration.
+is run with no table and made to fail. Pass `0` for the real count at that instant. This is what produced the
+"twelve tablets" reading above; the number was right for its moment and wrong as a label.
 
 **The rate-matched pair, which is the strongest thing in the dataset.** Verified field by field:
 `committer_database_table_pre_split_tablets` is the *only* entry in `vars` that differs — reference gap,
