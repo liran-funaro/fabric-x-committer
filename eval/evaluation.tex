@@ -243,6 +243,16 @@ each arriving in full at a flat in-flight count, met the bound at every rung, so
 least \num{95123} tps --- \num{4.7} times what the \num{120}-way split commits under the same workload. p99 is
 \SI{190}{\milli\second} across the top three rungs and the busiest machine reaches \SI{11}{\percent}.
 
+Taken higher at the same twelve-tablet layout, now pinned by disabling automatic splitting so it cannot
+drift, the same workload retires \num{250209} tps at \SI{243}{\milli\second} with the busiest machine at
+\SI{24}{\percent} --- and \num{350000} offered is past the knee. There the pipeline delivers only
+\num{173167} of the requested rate, the sidecar's waiting count rises from \num{24979} to \num{509153},
+the insert goes from \SI{17.0}{\milli\second} to \SI{264}{\milli\second}, and the tail reaches
+\SI{29.7}{\second}. The load generator sits at \SI{7.7}{\percent} CPU while delivering half of what it was
+asked for, so what limits it there is back-pressure from a full in-flight window rather than its own
+capacity. The conflicting ceiling at this layout is therefore bracketed between \num{250209} and
+\num{350000}, which is the first bracket any conflicting configuration in this section has had.
+
 The insert column carries the effect. Without a pre-split it costs \SIrange{13.6}{15.2}{\milli\second} and does
 not rise with load: across that ladder the offered rate rises \num{6.7}-fold and the insert \emph{falls}. At a
 pre-split of eighty or more it costs over a second and does rise with load --- created with \num{96}, it runs
