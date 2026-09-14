@@ -651,10 +651,18 @@ EXPERIMENTS = [
       # them the first real no-pre-split double-spend measurement and leaves their capacity genuinely
       # unknown -- so the ladder brackets from under the worst known layout up to the convoy figures,
       # instead of assuming the answer is near the top.
+      # All four shares share ONE rate list, which they did not at first and had to. `throughput()` counts
+      # transactions FINISHED -- committed plus rejected, the paper's own convention, since its Figure 9b
+      # shows throughput rising with the invalid share. So a panel series plots the top rung each share
+      # reached, and with 5%/10% topping out at 100,000 while 20%/30% topped out at 80,000 the series would
+      # have sloped down above 10% purely because of the ladder, not the pipeline. Every share has met every
+      # rung offered at ~190 ms and 10% CPU, so the decline would have been an artefact presented as a
+      # finding -- and the caption "highest rate tried, not a ceiling" invites exactly the question it
+      # cannot answer. One list, so a difference between shares is a difference in the system.
       for share, rates in ((0.05, [15_000, 30_000, 60_000, 100_000]),
                            (0.10, [15_000, 30_000, 60_000, 100_000]),
-                           (0.20, [10_000, 25_000, 50_000, 80_000]),
-                           (0.30, [10_000, 25_000, 50_000, 80_000]))],
+                           (0.20, [15_000, 30_000, 60_000, 100_000]),
+                           (0.30, [15_000, 30_000, 60_000, 100_000]))],
     #
     # Automatic tablet splitting is pinned OFF here, because otherwise the one variable this batch exists
     # to fix is not fixed. It is on by default (read from the running master: `enable_automatic_tablet
