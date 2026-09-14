@@ -1245,6 +1245,20 @@ def measure(exp, rate, settle, window, kind):
     if outstanding(s) is not None and outstanding(s0) is not None:
         growth = (outstanding(s) - outstanding(s0)) / window
 
+    # The rate averaged over the WINDOW, from the counter at each end of it, against `offered` which is a
+    # 60 s rate sampled at the window's close. The pair catches a rung that ramped, stalled, or straddled an
+    # interruption -- a rung can close at its nominal rate having spent much of the window somewhere else,
+    # and `met` would see nothing wrong. Measured on ds30: 24,728 against 25,000 nominal and 80,114 against
+    # 80,000, so a real rung tracks to ~1% and a bound of 20% cannot reject one.
+    #
+    # Bounded to the window deliberately. Taken between arbitrary samples the elapsed term would contain
+    # any redeploy that happened in between, so it would flag every post-redeploy rung -- including the
+    # bridge rung, whose whole purpose is to validate one. That form would reject exactly what it exists
+    # to check. s0 and s are the window's own endpoints, so a redeploy before it cannot dilute the average.
+    sent_window = None
+    if s.get("sent_total") is not None and s0.get("sent_total") is not None:
+        sent_window = (s["sent_total"] - s0["sent_total"]) / window
+
     # All four conditions, so that a reported point is one the cluster could hold: the rate
     # arrived, it was committed, the latency met the paper's bound, and nothing was accumulating
     # behind it.
@@ -1273,6 +1287,7 @@ def measure(exp, rate, settle, window, kind):
            # the offered and finished rates read 50,000 and only the growth term reveals it. Every clean
            # rung measured so far reports growth of exactly 0, so the two-sided bound costs nothing.
            and (growth is None or abs(growth) <= rate * TOLERANCE)
+           and (sent_window is None or abs(sent_window - rate) <= rate * 0.2)
            and (s.get("append_util") or 0) < 0.95)
 
     # `histogram_quantile` returns the top finite bucket boundary once the quantile falls in the +Inf
@@ -1296,7 +1311,8 @@ def measure(exp, rate, settle, window, kind):
     row = {"experiment": exp["id"], "figure": exp["figure"], "x": exp["x"],
            "label": exp["label"], "kind": kind, "limit": rate, "met": met,
            "finished": finished, "window": window, "at": time.time(),
-           "inflight_growth": growth, "lat_p99_censored": censored, "vars": exp["vars"],
+           "inflight_growth": growth, "lat_p99_censored": censored,
+           "sent_rate_window": sent_window, "vars": exp["vars"],
            **{k: s.get(k) for k in QUERIES if k != "cpu_busiest"},
            "cpu_busiest_host": s.get("cpu_busiest_host")}
     record(row)

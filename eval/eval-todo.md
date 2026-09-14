@@ -51,6 +51,15 @@ contains no occurrence of `ON CONFLICT (key) DO NOTHING`, and no chain line refe
 `9c-ds5-onconflict`. So nothing is deployed and nothing is queued. It stays reversible: local branch,
 unpushed, built only at `bin/committer` here.
 
+**And the ordering argument survives sanction, so it holds either way.** The rewrite changes the exact
+path that every result today characterises — the 120-way split's 1.7 s insert, the no-split ladders'
+13.6 ms, the 4.5x excursion at 30%, the share-independence to 20%, the 12-to-88 cliff. All of it is
+measured on the exception-handler version. Run the rewrite first and every later measurement sits on
+different code from everything before it: the layout result would need re-establishing or the section
+describes a system that no longer exists, and the share-independence and cliff lose their comparison basis
+unless the old-code runs are repeated. **Characterise the path, then change it** — reversed, the five
+batches it retires are five whose results can no longer be interpreted against those already in hand.
+
 `ladderlow` and `tabhold` run regardless. If the rewrite is later sanctioned and works, the cost is two
 batches that turned out to be unnecessary; if it is never sanctioned, they are the only characterisation
 of the failure path that exists. That ordering loses little and requires nobody to decide on the user's
