@@ -658,11 +658,18 @@ EXPERIMENTS = [
       # have sloped down above 10% purely because of the ladder, not the pipeline. Every share has met every
       # rung offered at ~190 ms and 10% CPU, so the decline would have been an artefact presented as a
       # finding -- and the caption "highest rate tried, not a ceiling" invites exactly the question it
-      # cannot answer. One list, so a difference between shares is a difference in the system.
+      # cannot answer. One list, so a difference between shares is a difference in the system -- with one
+      # deliberate exception at 30%, noted below.
+      # 30% carries one extra INTERIOR rung at 25,000: a direct repeat of the only failing measurement in
+      # the whole no-split series, where the tail went to 3,565 ms while the rate arrived in full, the queue
+      # stayed flat, CPU was 3%, the median IMPROVED to 130 ms, and the insert tripled to 52.9 ms at
+      # constant attempts and constant width. One measurement is thin to hang a section's caveat on. It
+      # cannot distort the panel, because `best_per_x` reports the highest rung that MET and this one sits
+      # between two rungs already in the list -- so it can only ever sharpen where the knee is.
       for share, rates in ((0.05, [15_000, 30_000, 60_000, 100_000]),
                            (0.10, [15_000, 30_000, 60_000, 100_000]),
                            (0.20, [15_000, 30_000, 60_000, 100_000]),
-                           (0.30, [15_000, 30_000, 60_000, 100_000]))],
+                           (0.30, [15_000, 25_000, 30_000, 60_000, 100_000]))],
     #
     # Automatic tablet splitting is pinned OFF here, because otherwise the one variable this batch exists
     # to fix is not fixed. It is on by default (read from the running master: `enable_automatic_tablet
