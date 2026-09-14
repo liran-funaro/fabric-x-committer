@@ -160,14 +160,26 @@ in overload anyway; keep p99 for the region near the bound.
 ## The conflict result, measured 2026-09-14
 
 **A conflicting workload does meet the one-second bound, and the layout is what decides it.** With
-`pre_split_tablets: 0`, a 5% double-spend workload at gap 300,000 holds **28,537 tps at a p99 of 192 ms**
-over 300 s, arrival exact, queue growth zero, busiest host at 3% CPU. Rung 1 at 15,000 gave 14,354 tps at
-408 ms. Both beat the 120-way split on *both* axes — it retires 20,300 and misses the bound by sixty
-seconds — so this is not a trade, it is strictly better at these rates.
+`pre_split_tablets: 0`, a 5% double-spend workload at gap 300,000 met the bound at **every rate offered**,
+in four consecutive 300 s holds:
+
+| offered | committed | p99 | mean | `db_insert` | attempts | keys | busiest CPU |
+|---|---|---|---|---|---|---|---|
+| 15,000 | 14,354 | 407 ms | 147 ms | 15.2 ms | 1.911 | 356 | 2% |
+| 30,000 | 28,536 | 192 ms | 137 ms | 13.9 ms | 1.904 | 357 | 3% |
+| 60,000 | 56,899 | 188 ms | 135 ms | 13.7 ms | 1.907 | 356 | 7% |
+| **100,000** | **95,122** | **190 ms** | 137 ms | 13.6 ms | 1.907 | 356 | 11% |
+
+Arrival was exact at every rung, queue growth zero, aborts 4.88% throughout. **The ceiling was never
+reached** — 11% CPU at 95,122 tps — so this is a lower bound, and `9c-nosplit-ds5-hi` brackets it at
+150k/250k/350k with the layout pinned. The 120-way split retires 20,300 and misses the bound by sixty
+seconds, so no pre-split is better on *both* axes at every rate measured, not a trade. Rung 1's 407 ms is a
+cold-start transient: its p99 is 2.8x its mean while every later rung is ~1.4x, and `db_insert` *falls*
+from 15.2 to 13.6 ms as the rate rises 6.7x.
 
 | | 120-way pre-split | no pre-split (settles at 23 tablets) |
 |---|---|---|
-| committed | 20,300 tps | **28,537** and still climbing |
+| committed | 20,300 tps | **95,122** and still climbing |
 | p99 | 60,000 ms (the histogram's top bucket) | **192 ms** |
 | `db_insert` | 1,709 ms | **13.9 ms** |
 | attempts per commit | 1.91 | 1.904 |
