@@ -173,6 +173,7 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 			return
 		case outQueue <- outBatch:
 			m.depFreeTxBatches = m.depFreeTxBatches[1:]
+			promutil.SubFromGauge(m.metrics.gdgDepFreeTxCount, len(outBatch))
 			continue
 		case batch := <-batchQueue:
 			depFree = m.processTxBatch(batch)
@@ -186,6 +187,7 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 		promutil.SetGauge(m.metrics.gdgWaitingTxCount, m.waitingTXs)
 		if len(depFree) > 0 {
 			m.depFreeTxBatches = append(m.depFreeTxBatches, depFree)
+			promutil.AddToGauge(m.metrics.gdgDepFreeTxCount, len(depFree))
 		}
 	}
 }

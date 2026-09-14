@@ -56,6 +56,15 @@ type perfMetrics struct {
 	// performance of outputFreedExistingTransactions()
 	gdgOutputFreedTxSeconds prometheus.Histogram
 
+	// gdgDepFreeTxCount counts transactions in SimpleManager.depFreeTxBatches -- released by the
+	// graph and waiting for the output channel to take them. That slice is deliberately unbounded,
+	// so it is the one place in the coordinator where work can pile up without any queue gauge
+	// showing it: a conflict hunt could account for every transaction in the seven queues and the
+	// graph's own maps and still be ~497,000 short. Maintained incrementally, like the two gauges
+	// below and above, because a slice has no length to sample on demand and summing it on every
+	// loop iteration would cost O(batches) on the hot path.
+	gdgDepFreeTxCount prometheus.Gauge
+
 	// dependentTxCount is not a queue either; it counts the transactions blocked on a dependency
 	// and is maintained incrementally, like gdgWaitingTxCount above, from
 	// globalDependencyManager.constructDependencyGraph and processValidatedTransactions,
@@ -83,6 +92,13 @@ func newPerformanceMetrics(p *monitoring.Provider, q *managerQueues) *perfMetric
 			Subsystem: subsystemGlobalDependencyGraph,
 			Name:      "size",
 			Help:      "Number of transactions held in the global dependency graph waiting to be processed",
+		}),
+		gdgDepFreeTxCount: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemGlobalDependencyGraph,
+			Name:      "dependency_free_tx_count",
+			Help: "Number of transactions released by the global dependency graph that the output " +
+				"channel has not taken yet",
 		}),
 		ldgTxProcessedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
