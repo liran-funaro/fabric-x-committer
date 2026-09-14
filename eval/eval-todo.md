@@ -103,7 +103,14 @@ Detail that does not fit a table row. One heading per task; the row links here.
 
 ### 2g: the `insert_ns` rewrite
 
-**Written and sanctioned.** `utils/statedb/create_namespace_tmpl.sql` now uses
+**Written. Sanction is not on record.** Two sessions put this change to the user as needing their say-so
+because it is the commit path, and neither has a reply: it was never mentioned to session 14 at all, and 6f
+reports the same. So the accurate status is *written, provenance unrecorded* — not approved and not a breach
+either, since the standing constraint was "don't publish anything, no PRs, no issues" and a commit on a local
+branch is not publishing. What it departs from is an undertaking the sessions gave, not an instruction the user
+gave. It is **built but not deployed**, so nothing measured so far is affected.
+
+`utils/statedb/create_namespace_tmpl.sql` now uses
 `ON CONFLICT (key) DO NOTHING ... RETURNING key`, with the violating set computed in the same statement as
 `_keys EXCEPT ALL inserted`. No Go changed and no contract changed — `insertStates` still consumes a
 violating-key array, and `commit()` already aborts on a non-empty result, so the abort this needs is existing
@@ -111,6 +118,18 @@ behaviour. `TestCommit/new_writes_with_violating` passes unchanged.
 
 It removes the full-batch `key = ANY(_keys)` storage read — the 1.2–2.6 s per failing attempt — and plpgsql's
 implicit subtransaction, which the old `EXCEPTION` block opened on every call including the conflict-free ones.
+
+**Reviewed, and the one behavioural change is safe for a structural reason rather than a documented contract.**
+`ON CONFLICT DO NOTHING` leaves the non-conflicting rows of a partially-conflicting batch inserted, where the
+`EXCEPTION` handler rolled the whole statement back. That state cannot become durable: `insertStates` writes
+inside the caller's `tx`, and `tx.Commit()` at `database.go:266` is reachable only when the conflict result is
+nil — the non-empty branch returns at 256 and the `defer rollBackFunc()` from 247 fires. A crash in between
+drops the connection and the server aborts the transaction. So recovery paths, which read *committed* state,
+cannot encounter a partially-applied batch, and the inference "these keys exist, therefore that batch
+committed" stays valid. The caller contract is belt; transaction scope is braces, and the braces do not depend
+on anyone remembering the contract. Also checked: `ON CONFLICT (key)` has its constraint from
+`key BYTEA NOT NULL PRIMARY KEY`, and `EXCEPT ALL` preserves multiplicity so a within-batch duplicate key is
+reported once rather than dropped.
 
 **What to run**, A/B on the same day, fresh deployment each:
 
