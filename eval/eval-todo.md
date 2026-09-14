@@ -56,6 +56,33 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### End-to-end size sweep: state going in, and one point with no valid hold (20:41Z)
+
+`e2e-size300` re-measured and it was worth doing: **485,273 tps at p99 590 ms**, against the old
+confirmed hold of 408,000 at 509 ms — a 19% rise. The old number was depressed exactly as item 3
+suspected: its probe at 480,000 had growth +2,111/s and missed, so the search stepped down to 408,000 and
+confirmed a rate the pipeline was never actually limited to.
+
+Everything on record for this figure, before the rest of the sweep re-runs:
+
+| size | best confirmed hold | p99 | note |
+|---|---|---|---|
+| 300 B | **485,273** | 590 ms | new, replaces 408,000 |
+| 512 B | 414,364 | 690 ms | re-running now under `FX_REDO` |
+| 1 KiB | — | — | **11 probes, no hold ever taken**; best probe 285,353 |
+| 2 KiB | 155,936 | 547 ms | |
+| 3 KiB | — | — | not yet run (item 4) |
+| 4 KiB | — | — | **hold FAILED with `finished=0`, growth 25,902/s**; best probe 100,212 at 493 ms |
+
+**Two entries Table 1 cannot be drawn from yet**, and neither is a rate that merely needs re-running:
+
+- **4 KiB**: the hold recorded `finished=0` with in-flight growing at 25,902/s. Not a slow hold — nothing
+  retired at all, at a rate a probe had just passed at 493 ms. Watch whether this reproduces; if it does,
+  the 4 KiB point has a probe and no hold, and the disk-bound knee item 4 wants to bracket sits between
+  a confirmed 2 KiB and an unconfirmable 4 KiB.
+- **1 KiB**: eleven probes and no hold at all, so its best figure is a 90-second number where every other
+  row in the table is a 300-second one. Not comparable as it stands.
+
 ### The orderer arm is genuinely end-to-end (verified 20:37Z), and the plan's IP map is inverted
 
 Checked rather than assumed, because a silent fall back to the mock orderer would produce committer-only
