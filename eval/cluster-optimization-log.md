@@ -2160,12 +2160,25 @@ minutes, so **no measurement here has ever entered the high phase**, and whether
 is unmeasured. The aged-table re-measurement is the experiment: one deployment, a soak to ~120 GiB, one
 300-second hold at 60,000, insert compared against 13.7 ms.
 
-**A third candidate for the rung-1 transient, and the best of the three.** Rung 1 of `9c-nosplit-ds10` ran
+**A third candidate for the rung-1 transient — proposed here, then weakened by `ds20` an hour later.** Rung 1 of `9c-nosplit-ds10` ran
 from roughly 12:35 to 12:40, and the count climbed 3 to 12 across exactly that window; every later rung ran at
 a stable 12. So rung 1 is measured *while the table is actively splitting*, which costs real work and points
-the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 190. That displaces cold start
-as an explanation and is directly testable: `tabhold12` with splitting pinned off should show no rung-1
-transient at all. If it still does, cold start is back.
+the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 190. That looked like it displaced cold start,
+and `ds20` then refuted it as a sufficient explanation: its rung 1 splits just as visibly — running climbs
+1 to 6 across the window with a 7→5 dip inside it — and shows **no inflated tail at all**, p99 227 ms against
+a 163 ms mean, a ratio of 1.39 where the other two read 2.8.
+
+So the rung-1 question is back to three candidates with no winner: cold start, splitting, and something
+specific to the rate. The caveat cuts both ways — the two ladders showing the effect share an offered rate of
+15,000 that `ds20` does not, so rate is not controlled between them, and 15,000 → 408 ms sits
+non-monotonically between 10,000 → 227 ms and 30,000 → 192 ms, which none of the three explains. A fourth
+mechanism suggests itself (the cost is in the dense *late* phase of splitting, which `ds10` reached inside its
+window and `ds20` did not) and is deliberately not adopted: that would be the sixth mechanism proposed on one
+point in this section, which is the pattern rather than the finding.
+
+`tabhold12` with splitting pinned off remains the discriminator, and it is now a better one than when it was
+queued: its rungs sit at 10,000-15,000, exactly the range in question, so it separates rate from splitting as
+well as splitting from warm-up.
 
 **Withdrawn: `tx_status` had not settled when I looked, and has since.** Both tables read 23 array / 12
 running from 12:44 onward. And the setting covers more than two: `${SPLIT_INTO_TABLETS}` appears in
