@@ -1887,6 +1887,34 @@ tested. The 100,000 rung is still to come, and it bears on the eight-tablet anom
 near 100,000, the 172,260 tps eight-tablet probe stops looking like an outlier and its three failed holds
 become the thing needing an explanation.
 
+**At the no-pre-split setting the conflict share is bookkeeping, and the evidence for that is not the
+arithmetic it first looked like.** Rung 2 of each ladder, same offered rate and layout:
+
+| | offered | finished | abort | committed | p99 | CPU |
+|---|---|---|---|---|---|---|
+| 5% | 30,000 | 30,000 | 4.88% | 28,537 | 192 ms | 3% |
+| 10% | 30,000 | 30,000 | 9.51% | 27,147 | 150 ms | 3% |
+
+`offered x (1 - share)` reproduces `committed` to the digit at both rungs, which looks like a law and is an
+**identity**: the share is defined as `aborted / finished`, and `finished = committed + aborted`, so the
+product is `finished - aborted` whenever `finished == offered`. The residual is exactly 0, not the three parts
+per million a rounded share suggests. It re-derives `committed` from `committed`.
+
+The content is in the two facts the identity assumes, and both are measured: **`finished` equals `offered` at
+both shares** — 30,000 of 30,000, retired in full — and **p99 did not degrade**, 192 ms to 150 ms at 3% CPU
+either way, improving in the direction an aborted transaction should, since it skips the commit work a
+committed one performs. So the pipeline absorbs a doubled conflict share with no loss of retired throughput
+and no latency cost: the share selects which transactions fail and charges nothing for the failing.
+
+**Pre-registered for ds30, stated so it can fail:** rung 2 will retire its full 30,000 offered — `finished`
+within 0.5%, growth ≈ 0 — at a p99 at or below roughly 200 ms. Its ~22,260 committed follows arithmetically
+and is not the prediction. If `finished` falls short or the tail climbs, the share begins to cost something
+above 10% and that needs its own sentence.
+
+Rungs 2 and up only: rung 1 of every ladder is measured while the table is still splitting — two tablets three
+minutes after a bring-up — so its 408/409 ms belongs to a different layout and must not share a series with
+the rest.
+
 **The layout result that does hold, at one fixed workload.** Every row 5% double spends at gap 300,000, so the
 pre-split is the only variable:
 
