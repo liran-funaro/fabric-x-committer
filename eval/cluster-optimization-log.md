@@ -1625,7 +1625,36 @@ transaction whose insert the exception had already rolled back — silently drop
 dependency graph should prevent such a batch forming, so it is unreachable rather than broken; `DO NOTHING`
 makes it correct instead of merely unreachable.
 
-It is still the commit path, so it needs sanction before anyone writes it.
+**Sanctioned and written (2026-09-14).** `utils/statedb/create_namespace_tmpl.sql` now uses
+`ON CONFLICT (key) DO NOTHING ... RETURNING key`, with the violating set computed in the same statement as
+`ARRAY(SELECT unnest(_keys) EXCEPT ALL SELECT unnest(inserted))`. No Go changed, and
+`TestCommit/new_writes_with_violating` — which drives the conflict path — passes unchanged, which is the
+contract claim above confirmed rather than asserted.
+
+Three semantics verified against Postgres 18 rather than assumed, on a batch of `A,B,C,D,A` where `B` and `D`
+already existed:
+
+    RETURNING key            ->  A, C          the keys INSERTED, not the ones that collided
+    _keys EXCEPT ALL ins     ->  B, D, A       both pre-existing keys, plus the duplicate's second copy
+    table afterwards         ->  A=n B=old C=n D=old
+
+The first is the one worth writing down, because the natural reading is the opposite: `ON CONFLICT (key)` is a
+conflict *target* naming the index, while `RETURNING key` yields one row per row actually **affected**, and a
+row skipped by `DO NOTHING` was never affected. The third is why the abort is *required* rather than tidy —
+`A` and `C` persist — so if `A` and `B` belonged to one transaction, committing would half-apply it.
+`DO NOTHING` also skips the intra-batch duplicate instead of erroring, unlike `DO UPDATE`, which is why the
+difference is `EXCEPT ALL` and not `EXCEPT`.
+
+**Two things still to verify, and neither is safe to assume given this section's record.** Whether
+YugabyteDB's `ON CONFLICT` *avoids* the per-key reads or merely relocates them — detecting a primary-key
+conflict requires reading something, and if it reads per key the cost moves rather than goes; one
+`EXPLAIN (ANALYZE, DIST)` at the real batch width reading `Storage Read Requests` settles it. And that the
+conflict-free path did not regress: it now materialises a `RETURNING` set and compares cardinalities where it
+returned `'{}'` after a bare INSERT, on a path that runs some 3,400 times a second at 518,000 tps.
+
+`CREATE OR REPLACE` is not a live upgrade path, which is worth stating separately: namespaces are created
+once, so a cluster already holding the old function keeps it until the namespace is recreated. Fine for these
+runs, which redeploy from scratch, and not fine for an upgrade.
 
 **What was wrong, and why it looked right.** Recorded with the same weight as the findings, because the
 failure mode all week has been confident mechanisms that did not survive contact: a log listing only
@@ -2428,7 +2457,48 @@ same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer u
 on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
 30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
 
-**The conflict share barely matters once the pre-split is off.** Both no-split ladders ran four
+**The conflict share is bookkeeping to 20%, and 30% breaks.** The first version of this entry said the share
+"barely matters", on 5% and 10% alone. 20% then held to 80,000 and **30% missed the bound at 25,000**, so the
+claim needs its bound:
+
+| share | every rung met to | p99 | busiest CPU |
+|---|---|---|---|
+| 5% | 100,000 offered | 190 ms | 11% |
+| 10% | 100,000 | 187 ms | 11% |
+| 20% | 80,000 | 193 ms | 10% |
+| 30% | **10,000** — misses at 25,000 | 519 ms → **3,565 ms** | 3% |
+
+**The boundary cannot be placed from this data.** It is either between 20% and 30% in share, or between 10,000
+and 25,000 in rate at 30%, and nothing here separates them; ds20's top rung was 80,000 and ds30's second was
+25,000, so the two ladders never meet. The re-run brackets it at 15,000 and 30,000, which is within a factor of
+two — enough to state where it is without a finer ladder.
+
+**The miss is a heavy tail, not saturation.** At 25,000 the rate arrived in full (finished 25,091), nothing
+queued, CPU was 3%, and the **median improved** — 164 ms to 130 — while the mean rose to 258 and p99 to 3,565.
+*f* against rung 1 as baseline is 95/3046 ≈ **3.1%**: about three transactions in a hundred delayed by some
+three seconds.
+
+**And `db_insert` rose 3.65x at constant attempts and constant width** — 14.5 ms to 52.9, with attempts per
+commit 1.972 → 1.962 and keys per call 234 → 226. So each failing lookup got *more expensive*, not more
+frequent. This is 6f's observation and it is the first time today that cost moved with **neither the layout nor
+the batch geometry**; every previous move was one of those two. A third axis, appearing only at the top of the
+share range, where nothing had been measured before. Same-key contention between concurrent failing inserts is
+the obvious candidate and is **not** adopted — it would be the tenth mechanism proposed today and needs its own
+evidence rather than a plausible story. Compare `ds20` at 50,000 and 80,000: insert 11.6 and 11.9 ms, p99 193
+and 192 — no such effect at the next share down.
+
+**Kept separate from the rung-1 tails, on 6f's discrimination.** Rung 2's 3,565 ms sits 28% into its bucket and
+its mean moved 58%, so it has real mass; rung 1's 519 ms sits 7.8% into its bucket with the mean unmoved, so it
+may still be a quantile-placement artefact. The two are different in kind and folding them together would
+launder a solid result into an unresolved one.
+
+**What survives all of it, and is the strongest claim here.** Every rung after the first, across all four shares
+and offered rates from 25,000 to 100,000, reads p99 150-195 ms, mean 132-140, p50 125-128, ratio 1.13-1.40.
+**Latency is independent of conflict share and of rate** in that whole region — twelve rungs, four
+configurations — and that had been sitting in the table while three sessions argued about first rungs.
+
+*(Superseded framing, kept for the retraction:)* **The conflict share barely matters once the pre-split is
+off.** Both no-split ladders ran four
 300-second rungs to 100,000 offered and every rung met the bound:
 
 | double spends | top committed | p99 | busiest CPU |
