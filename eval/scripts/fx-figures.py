@@ -580,26 +580,36 @@ EXPERIMENTS = [
                    committer_database_table_pre_split_tablets=12,
                    yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
 
-    # Does the no-split advantage survive the table AGEING? This is the question that decides whether the
-    # result is a deployment recommendation or a property of a young table. A no-split table starts at ONE
-    # tablet and splitting climbs with fill; the high phase runs to 24 per server, so 288 on twelve, which
-    # is where a table created with 120 was found after eleven hours. So a no-split table has the same
-    # destination and merely starts further from it. The ds5 ladder measured 13.6-15.2 ms inserts over
-    # twenty minutes from one tablet; if that becomes a second after a day, "pre-splitting off buys the
-    # bound" would hold for tens of minutes and mislead anyone who ran it for longer.
+    # Does the no-split advantage survive the table AGEING? This decides whether the result is a deployment
+    # recommendation or a property of a young table, and it is the one claim here a reader would act on.
     #
-    # Run with FX_SKIP_DEPLOY=1 IMMEDIATELY after 9c-nosplit-ds5-hi, on that deployment, so the table has
-    # carried three 300 s rungs at 150k-350k plus everything before them. Skipping the deploy is not an
-    # optimisation here, it is the experiment: the point is the age of the table. It also closes a trap --
-    # a missed rung inside a normal ladder triggers a redeploy, which would silently hand this measurement
-    # a fresh table and read as "still 14 ms, durable". SKIP_DEPLOY cannot redeploy, and it verifies the
-    # rendered shape before measuring, so a mismatched deployment is refused rather than measured.
+    # Two design errors were in the first version of this pair, both of which would have produced a
+    # confident null. First, they were pinned with splitting DISABLED -- which makes the test impossible by
+    # construction, since what is being tested is splitting resuming. Second, they could not reach the
+    # threshold: `ns_0` grows 0.049 GB per tablet per minute at 56,000 tps, so 0.875 GB per tablet per
+    # million transactions, and the 10 GiB high-phase threshold is 9.6 GB per tablet away from fresh. Three
+    # 300 s rungs averaging 250,000 tps is fifteen minutes and reaches ~3.3 GB per tablet -- a third of the
+    # way. It would have read "still 14 ms" and meant "no split happened", which is the same false
+    # reassurance the SKIP_DEPLOY guard exists to prevent, one layer up.
+    #
+    # So: splitting LEFT ON, the count pre-split to the 12 the no-split table settles at, and a soak long
+    # enough to cross. At 350,000 tps the crossing is ~31 minutes from fresh, so the soak runs a single long
+    # hold (FX_HOLD in the chain) rather than a ladder, and `tablets.log` records the running count every
+    # 30 s so the crossing is observed rather than assumed. If the soak misses its rate the row says so and
+    # the aged measurement is void -- which is visible, unlike a table that quietly never split.
+    dict(id="9c-nosplit-ds5-soak", figure="conflict-nosplit", x=5, mode="curve",
+         label="5% double spend, 12 tablets, soak to the split threshold",
+         rates=[350_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=12)),
+    # Then the same rate as `9c-nosplit-ds5-hi`'s first rung, on the soaked deployment, with FX_SKIP_DEPLOY.
+    # Same rate at two table ages, so rate sensitivity cannot be mistaken for ageing. Compare against
+    # ds5-hi's own 150,000 row and against the count in `tablets.log` at each.
     dict(id="9c-nosplit-ds5-age", figure="conflict-nosplit", x=5, mode="curve",
-         label="5% double spend, 12 tablets, aged table",
+         label="5% double spend, aged table past the split threshold",
          rates=[150_000],
          vars=dict(shape(2, 0, backref=0.05),
-                   committer_database_table_pre_split_tablets=12,
-                   yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
+                   committer_database_table_pre_split_tablets=12)),
 
     # Conflicts with pre-splitting DISABLED, held below capacity -- the one configuration where a
     # conflicting workload meets the bound, and the section's only positive result. Already measured as
