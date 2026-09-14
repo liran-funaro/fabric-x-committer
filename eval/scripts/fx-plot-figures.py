@@ -140,7 +140,9 @@ PANELS = [
      lambda x: f"{x}"),
     ("9b", "Invalid signatures", "invalid signatures (%)",
      lambda x: f"{x}%"),
-    ("9c", "Double spends", "double spends (%)", lambda x: f"{x}%"),
+    # Formatted through int() where integral: the conflict-nosplit rows carry x as a float, and
+    # "10.0%" beside "20.0%" is wide enough that this panel's tick labels overlap each other.
+    ("9c", "Double spends", "double spends (%)", lambda x: f"{x:g}%"),
 ]
 
 
@@ -365,6 +367,7 @@ def figure9(rows, path):
     fig.patch.set_facecolor(SURFACE)
 
     drew_collapsed = False
+    drew_nosplit = False
     for col, (figure, title, xlabel, xfmt) in enumerate(PANELS):
         data = best_per_x(rows, figure)
         paper = PAPER_DATA[figure]
@@ -384,7 +387,19 @@ def figure9(rows, path):
         # a claim the reader should be able to see the evidence for.
         weak = {x: r for x, r in collapsed_per_x(rows, figure).items()
                 if x not in data} if figure == "9c" else {}
-        xs = sorted(set(data) | set(paper) | set(weak))
+        # The second measured series, and the panel's actual finding: the same conflict shapes with
+        # pre-splitting disabled. It is a separate series rather than more rows under figure="9c"
+        # because best_per_x keeps the maximum throughput per x -- pooled, the no-split bar would
+        # silently REPLACE the collapsed 120-way bar at the same share and the panel would show the
+        # good number with the collapse erased. Both have to be visible; the contrast is the result.
+        # Restricted to the shares the paper also ran. 5% exists only because the tablet sweep used
+        # it, so it has no bar to be compared against and adding a fifth x squeezes the panel while
+        # putting a 95k bar on an axis the paper's 600k sets -- the finding becomes invisible exactly
+        # where the data is best. The 5% ladder is quoted in the text instead.
+        nosplit = {x: r for x, r in best_per_x(rows, "conflict-nosplit").items()
+                   if x in paper} if figure == "9c" else {}
+        drew_nosplit = drew_nosplit or bool(nosplit)
+        xs = sorted(set(data) | set(paper) | set(weak) | set(nosplit))
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
 
@@ -400,10 +415,17 @@ def figure9(rows, path):
         bottom.tick_params(colors=INK2, labelsize=8, length=0)
         top.set_title(f"({'abc'[col]}) {title.lower()}", color=INK, fontsize=10, pad=6, loc="left")
 
-        width, gap = 0.38, 0.012
-        offsets = (-width / 2 - gap, None, width / 2 + gap)
+        # Three slots only where a third series exists, so the other two panels keep the wider bars.
+        # Order is the categorical order: slot 1 ours, slot 3 no-split, slot 2 the paper -- which also
+        # puts this cluster's two configurations next to each other, since that pair is the comparison.
+        if nosplit:
+            width, gap = 0.26, 0.012
+            offsets = (-width - gap, 0.0, width + gap)
+        else:
+            width, gap = 0.38, 0.012
+            offsets = (-width / 2 - gap, None, width / 2 + gap)
 
-        def draw(xp, total, rejected, base, dark, dy=3):
+        def draw(xp, total, rejected, base, dark, dy=3, value=False):
             """One bar, with the rejected part of it drawn inside it.
 
             The paper breaks each of its 9b and 9c bars into total, valid and invalid; this draws the
@@ -417,6 +439,11 @@ def figure9(rows, path):
             against its own segment.
             """
             top.bar(xp, total, width, color=base, zorder=3)
+            # The no-split slot sits at 2.74:1 against the surface, under the 3:1 floor, so it carries
+            # a direct value label as its relief rather than relying on the fill being distinguishable.
+            if value:
+                top.annotate(f"{total / 1000:,.0f}k", (xp, total), textcoords="offset points",
+                             xytext=(0, 2), ha="center", fontsize=6, color=INK, zorder=7)
             if rejected:
                 top.bar(xp, rejected, width, color=dark, zorder=4, edgecolor=SURFACE,
                         linewidth=0.8, hatch="///")
@@ -454,11 +481,26 @@ def figure9(rows, path):
                              (pp + offsets[0], total), textcoords="offset points", xytext=(0, 2),
                              ha="center", fontsize=5.5, color=INK2)
             elif figure == "9c":
-                # Never attempted at this split, which is not the same as attempted and failed. The 5%
-                # collapse was taken as sufficient and the higher shares were only run at the default
-                # split, so saying "none" here would claim a measurement that does not exist.
-                top.annotate("not run", (pp + offsets[0], paper[x][0] * 1.06),
+                # Nothing to draw in this cluster's 120-way slot, and the two reasons are different
+                # claims. "not run" means never attempted -- the higher shares were only run at the
+                # other split, so saying "none" would assert a measurement that does not exist.
+                # "no rate qualified" means attempted and never passed at any rate, which is the 5%
+                # case: nineteen rows, none of which met the bound, and none of which even delivered
+                # its offered rate, so collapsed_per_x rightly refuses to draw one as a bar.
+                attempted = any(r.get("figure") == figure and r.get("x") == x for r in rows)
+                # Anchored to whichever bar is present at this x, since a share the paper never ran
+                # has no paper bar to sit above.
+                anchor = (paper[x][0] if x in paper else
+                          throughput(nosplit[x]) if x in nosplit else 0)
+                top.annotate("no rate qualified" if attempted else "not run",
+                             (pp + offsets[0], anchor * 1.06),
                              ha="center", va="bottom", fontsize=6.5, color=INK2, rotation=90)
+            if x in nosplit:
+                r = nosplit[x]
+                total = throughput(r)
+                # No whisker: these are fixed-rate holds, not a search, so the rate is what was offered
+                # rather than a knee resolved to a step -- there is no bracketing interval to draw.
+                draw(pp + offsets[1], total, r.get("aborted") or 0, SMALL, SMALL_DARK, value=True)
             if x in paper:
                 total, rejected, _ = paper[x]
                 draw(pp + offsets[2], total, rejected, PAPER, PAPER_DARK, dy=11)
@@ -473,6 +515,7 @@ def figure9(rows, path):
         # Room above the tallest bar for its value label and for the latency marks to clear it.
         top.set_ylim(top=1.22 * max([throughput(r) for r in data.values()] +
                                     [paper[x][0] for x in paper] +
+                                    [throughput(r) for r in nosplit.values()] +
                                     [throughput(r) for r in weak.values()]))
         if col == 0:
             top.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
@@ -488,6 +531,12 @@ def figure9(rows, path):
                 bottom.annotate(f"p99 >60 s\nmean {(data[x].get('lat_mean') or 0):,.0f} s",
                                 (pp, 0), xytext=(0, 14), textcoords="offset points", ha="center",
                                 fontsize=6, color=INK2)
+        ns_lat = [(pp, latency_ms(nosplit[x])) for pp, x in zip(pos, xs)
+                  if x in nosplit and latency_ms(nosplit[x])]
+        if ns_lat:
+            bottom.plot([pp for pp, _ in ns_lat], [v for _, v in ns_lat], color=SMALL, linewidth=1.6,
+                        marker="^", markersize=6, markerfacecolor=SURFACE, markeredgewidth=1.6,
+                        linestyle="-", zorder=6)
         lat = [(pp, paper[x][2] * 1000) for pp, x in zip(pos, xs)
                if x in paper and paper[x][2] is not None]
         if lat:
@@ -506,6 +555,8 @@ def figure9(rows, path):
     if drew_collapsed:
         legend.append(Patch(facecolor="none", edgecolor=OURS, linestyle=":",
                             label="measured, missed the latency bound"))
+    if drew_nosplit:
+        legend.append(Patch(color=SMALL, label="this cluster, pre-splitting off"))
     legend += [Patch(facecolor=OURS_DARK, hatch="///", edgecolor=SURFACE,
                     label="of which rejected"),
                Patch(color=PAPER, label="SIGMOD'26 paper"),
