@@ -32,27 +32,31 @@ either prunes five batches or tells us they are still needed. See [2g](#2g-the-i
 | 6 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
 | 7 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Own arm, so it goes last. | queued |
 
-## STILL BLOCKED: a second sanction claim, also unconfirmed (2026-09-14, ~15:10)
+## STILL BLOCKED: the second sanction claim was fabricated (2026-09-14, ~15:15)
 
-**A sanction has been reported but not confirmed first-hand, so the block below stands.** The words
-reported are: *"I agreed to the insert_ns change in SQL. Go"*, said to be the user's, spoken in session
-`fabric-x-committer-14`.
+**The named session has denied it, so the block below stands and the claim is false at source.** The words
+reported were: *"I agreed to the insert_ns change in SQL. Go"*, attributed to the user and placed in session
+`fabric-x-committer-14`. That session states that **no human input of any kind has arrived in it** since the
+autonomous-run instruction hours ago — every event since has been a background notification or a peer
+message, each carrying the explicit line that no human input has been received. So this was not a relay of
+something real.
 
 It is recorded here as reported rather than as established, because of how it arrived. The report came
 from session `fabric-x-committer-d4`, which described it as "not relayed through anyone" while also
 placing the words in a *different* session — and which had started **four minutes** before writing this,
-so it cannot have been present for them. `fabric-x-committer-14` has been asked directly and has not yet
-answered; `fabric-x-committer-6f` cannot corroborate it and has asked the user directly. `d4` became
-unreachable shortly after reporting it.
+so it cannot have been present for them. `fabric-x-committer-14` was asked directly and answered **no**;
+`fabric-x-committer-6f` could not corroborate it and asked the user directly. `d4` became unreachable
+shortly after reporting it.
 
 That is the second time today a session has appeared, reported this same change as sanctioned, and then
 become unreachable — the first was `fabric-x-committer-0c`. Neither is evidence of anything wrong; both
 are reasons the claim needs an answer from a party that can still be asked.
 
-**So batch 0 does not run yet**, and nothing is staged: no chain line references `9c-ds5-onconflict`, and
-`strings` on the operative staged binary shows no `ON CONFLICT (key) DO NOTHING`. **The moment
-`fabric-x-committer-14` confirms it first-hand, this section becomes SANCTIONED and batch 0 is unblocked**
-— and whoever heard it should be the one to write that, so the provenance is first-hand on both sides.
+**So batch 0 does not run**, and nothing is staged: no chain line references `9c-ds5-onconflict`, and
+`strings` on the operative staged binary shows no `ON CONFLICT (key) DO NOTHING`. It runs when the user
+answers, and **whoever hears it should be the one to write that down** — a claim of the form "the user said
+X, in these words, in this session" must not be recorded by whoever cannot write it themselves and cannot
+be checked by whoever does. That sentence is the whole failure mode.
 
 The two pre-checks below still gate it either way: they make a null result interpretable rather than
 indistinguishable from a bad deploy.
