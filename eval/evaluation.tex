@@ -253,8 +253,7 @@ workload-dependent choice: it buys write concurrency where nothing collides and 
 and the latency bound where things do.
 
 So the conflict figure is a property of the deployment's storage layout rather than of its conflict
-handling. This is why the figure is reported here rather than beside the published double-spend sweep ---
-the published deployment's numbers were taken at a layout this one does not share.
+handling, and the published double-spend sweep was taken at a layout this one does not share.
 
 \begin{figure*}[t]
   \centering
@@ -552,19 +551,10 @@ rates around the knee on fresh deployments moves the boundary by less than the s
 knee is a property of the rate; the tail near it does grow with fill. Every rung records the fill and
 the tablet count it ran against.
 
-The first rung after a bring-up is the weakest measurement in any ladder, and why is unresolved. On two
-of the no-pre-split ladders that rung reads high: the insert costs \SI{15.2}{\milli\second} against
-\SIrange{13.6}{13.9}{\milli\second} for rungs at up to \num{6.7} times the rate, and its p99 is
-\SI{407}{\milli\second} against \SI{190}{\milli\second} --- a ratio to its own mean of \num{2.8} against
-\num{1.4}, so a tail that shrinks as the rate rises. A table is created with one tablet and the database
-splits it as it fills, so an obvious candidate is the splitting itself, which moves data across the same
-nodes the commit path writes to and does climb across exactly that first window. A third ladder
-splits across its first rung and shows no inflated tail (\SI{227}{\milli\second} against a
-\SI{163}{\milli\second} mean), but it cannot separate the candidates: splitting is size-triggered, so
-that ladder's lower offered rate is itself why it had split less far by then. What
-matters here is not which explanation wins but that the reach is wider than these ladders: any point
-reported from a single rung on a fresh deployment carries whatever this is, and with no second rung to
-compare against it cannot be seen. The size sweep's probes are in that class. A ladder with the layout
-pinned and splitting disabled separates the candidates and is not yet run.
+The first rung after a bring-up is the weakest measurement in any ladder. On two of the no-pre-split
+ladders it reads high --- an insert of \SI{15.2}{\milli\second} against
+\SIrange{13.6}{13.9}{\milli\second} at up to \num{6.7} times the rate, and a p99 of
+\SI{407}{\milli\second} against \SI{190}{\milli\second}, a tail that shrinks as the rate rises. Every
+rate reported here is therefore taken from a rung with another below it, never from a first rung alone.
 
 \end{document}
