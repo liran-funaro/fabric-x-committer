@@ -56,6 +56,32 @@ p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of 
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
 
+### `ladder8tab` is not an 8-tablet ladder, and that is the A/B's finding (18:45)
+
+Splitting is enabled on this arm (verified: the flag is absent on all three masters, and the count moved,
+which is better evidence than the documented default). The table climbed **8 → 12 running four minutes
+into the run, before the first rung's measurement window**:
+
+    18:44:28  ns_0   8 running   8 total   0.90 GB
+    18:44:58  ns_0  12 running  16 total   1.07 GB
+
+That is the low phase firing at 128 MiB per tablet — 8 x 128 MiB is about 1 GB, which is where it went.
+At 25,000 tps the table crosses it in four minutes, so **every rung of `ladder8tab` is measured at 12
+tablets, not 8**. The label on that experiment is wrong for all but its first few minutes.
+
+So the A/B is not "8 tablets, splitting on vs off". It is **"12 tablets reached by splitting" vs "8
+tablets pinned"**, at identical rates. Still a valid comparison, and it reframes the original 8-tablet
+anomaly: a deployment created with 8 and left to split was never running at 8, so whatever was anomalous
+belongs to the splitting *activity* or to 12 tablets — not to the count 8.
+
+First rung agrees with the pinned arm: 25,000 met at 185 ms against 180 ms.
+
+Incidentally this kills the withdrawn `total = 2*running - 1` formula from a second direction: here
+total is 16 at 12 running, where the formula demands 23. Four of the eight tablets split, each leaving a
+Deleted parent, giving 12 running and 16 entries. Good that it is already withdrawn in `32210ed2`.
+
+Leaders on the split-to-12 table: 12 tablets, 12 distinct hosts, max 1 each — no skew here either.
+
 ### `hold8nosplit`: the first cleanly bracketed conflicting ceiling (done 18:27)
 
 Eight tablets, automatic splitting pinned off, 5% double spends:
