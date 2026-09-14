@@ -105,6 +105,18 @@ gate_live() {  # $1 = expected: onconflict|handler
 say "=== batch 0: insert_ns A/B, on top of a completed 14x queue ==="
 gate_live handler || say "(the pre-swap baseline was not the handler; note it and continue)"
 
+# Pre-check 1: does detecting a conflict read once, or once per key? Runs here because this is the one
+# guaranteed-quiet point in the chain -- the launcher has already waited for the queue to quiesce, and
+# EXPLAIN ANALYZE executes what it explains. It compares both SQL forms on its own 120-tablet table, so
+# it does not care which binary is deployed and one run answers it. Not a gate: if ON CONFLICT also
+# reads per key the A/B is still worth running, but its result would mean the cost moved rather than
+# went, and that has to be known before the numbers are read.
+say "pre-check 1: EXPLAIN (ANALYZE, DIST) at the real batch width"
+MONITOR=local ./fx-explain-insert.sh > /data1/logs/explain-insert.log 2>&1 &&
+  say "pre-check 1 written to /data1/logs/explain-insert.log" ||
+  say "!! pre-check 1 failed -- see /data1/logs/explain-insert.log"
+grep -E "Storage Read Requests|=== [ABC]:" /data1/logs/explain-insert.log 2>/dev/null | sed "s/^/    /"
+
 sql_variant onconflict || exit 1
 
 # A ladder rather than a search: if the rewrite works the capacity is unknown, and the old code
