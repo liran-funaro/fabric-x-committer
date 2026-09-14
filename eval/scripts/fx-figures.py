@@ -580,6 +580,40 @@ EXPERIMENTS = [
                    committer_database_table_pre_split_tablets=12,
                    yugabyte_master_extra_flags=["--enable_automatic_tablet_splitting=false"])),
 
+    # The A/B for `insert_ns`'s rewrite: `ON CONFLICT (key) DO NOTHING ... RETURNING key` in place of the
+    # `EXCEPTION WHEN unique_violation` handler, with the violating set computed in the same statement as
+    # `_keys EXCEPT ALL inserted`. No Go change and no contract change -- `insertStates` still consumes a
+    # violating-key array and `commit()` already aborts on a non-empty result.
+    #
+    # IDs carry `-onconflict` deliberately, because a row does not record which binary produced it. Reusing
+    # `9c-ds5` would put old-code and new-code rows under one id in the same results file, where
+    # `best_per_x` pools by `config_key` and would silently mix them -- and the vars are identical, so
+    # nothing would distinguish them but the timestamp.
+    #
+    # This is the measurement that can retire five queued batches. `tabhold`, the eight-tablet anomaly,
+    # `ladderlow` and the conflict-share sweep all exist to characterise a failure path whose cost this is
+    # meant to remove: if 5% double spends meet the bound at the 120-way split, none of them has a subject
+    # left. So it runs before them -- and after the two share re-runs, which must finish on the CURRENT
+    # binary or the panel's four shares span two code versions.
+    #
+    # A ladder rather than a search, because if the rewrite works the capacity is unknown: the old code
+    # retires 20,300 and the conflict-free ceiling on this arm is 518,000, so the rungs span both.
+    dict(id="9c-ds5-onconflict", figure="conflict-fix", x=5, mode="curve",
+         label="5% double spend, 120 tablets, ON CONFLICT",
+         rates=[20_000, 50_000, 100_000, 200_000, 400_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=120)),
+    # The regression side, and the one place the rewrite could cost something: the common path now
+    # materialises a RETURNING set and compares cardinalities where it returned '{}' after a bare INSERT,
+    # at ~3,400 calls a second per validator-committer. Read `db_commit` as well as `db_insert` here --
+    # `db_insert` wraps `insertStates` only, so a cost landing in the surrounding transaction would show
+    # in one and not the other.
+    dict(id="9c-ds0-onconflict", figure="conflict-fix", x=0, mode="curve",
+         label="0% double spend, 120 tablets, ON CONFLICT",
+         rates=[500_000],
+         vars=dict(shape(2, 0),
+                   committer_database_table_pre_split_tablets=120)),
+
     # Does the no-split advantage survive the table AGEING? This decides whether the result is a deployment
     # recommendation or a property of a young table, and it is the one claim here a reader would act on.
     #

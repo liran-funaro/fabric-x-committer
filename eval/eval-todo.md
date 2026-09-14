@@ -32,6 +32,39 @@ either prunes five batches or tells us they are still needed. See [2g](#2g-the-i
 | 6 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
 | 7 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Own arm, so it goes last. | queued |
 
+## Next up: measuring the `insert_ns` rewrite (2026-09-14, ~14:00)
+
+The `ON CONFLICT (key) DO NOTHING ... RETURNING key` rewrite is committed (`271a81fe`) and **built but
+not deployed**. It reaches the cluster only when the locally-built binary is rsynced to
+`out/control-node/bin/Linux/x86_64/` — `committer_build_bin: false`, so a bring-up cannot pick it up.
+That is deliberate: `9c-nosplit-ds20` and `ds30` are re-running now and must finish on the **current**
+binary, or the panel's four conflict shares span two code versions.
+
+**Order**: the two re-runs → stage the binary → the two checks below → `9c-ds5-onconflict` →
+`9c-ds0-onconflict` → then decide what survives. It goes ahead of `ladderlow`, `tabhold` and the share
+sweep, because all three exist to characterise a failure path this is meant to remove: if 5% double
+spends meet the bound at the 120-way split, none of them has a subject left. So it prunes five batches
+or proves they are needed, in 25 minutes.
+
+**Two checks before the ladder, so a null result is interpretable rather than looking like a bad deploy:**
+
+1. `EXPLAIN (ANALYZE, DIST)` at the real batch width (~350 keys), reading `Storage Read Requests`.
+   YugabyteDB must read *something* to detect a primary-key conflict; if it reads per key, the cost has
+   moved rather than gone and the ladder will show no improvement. Run it on a scratch table between
+   batches. This is also item 2d.
+2. `pg_get_functiondef` on `insert_ns_%` off the running database, grepped for `ON CONFLICT`.
+   `CREATE OR REPLACE` is not a live upgrade path — a namespace already created keeps the old function.
+   Bring-ups here do a full `hard-wipe` so the namespace is recreated, but confirm rather than assume.
+
+Experiment ids carry `-onconflict` because **a row does not record which binary produced it**. Reusing
+`9c-ds5` would put both code versions under one id, where `best_per_x` pools by `config_key` and the vars
+are identical, so nothing but the timestamp would tell them apart.
+
+Read `db_commit` as well as `db_insert` on the conflict-free regression: the common path now materialises
+a `RETURNING` set and compares cardinalities where it returned `'{}'` after a bare INSERT, at ~3,400 calls
+a second per validator-committer, and `db_insert` wraps `insertStates` only — a cost landing in the
+surrounding transaction shows in one and not the other.
+
 ## Committer arm (`inventory/cluster.yaml`)
 
 | # | Task | ids | State |
