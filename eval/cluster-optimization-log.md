@@ -1399,7 +1399,35 @@ falsify this: 88 should recover and 96 should not.
 It is invisible on the headline workload because inserting only fresh keys never raises the exception,
 so nothing ever performs a multi-key lookup. A back-reference is the first thing that does.
 
-**What was wrong, and why it looked right.**
+**The control that rules out table fill.** A workload that inserts millions of rows and slows down is
+supposed to be table fill, and that is the one alternative every other test above leaves standing. It
+does not survive its own control. Counter ratios are insensitive to a backlog, so the same
+validator-committer was sampled twice in the same run at two table sizes:
+
+| | table | width | calls/commit | insert | tps/VC |
+|---|---|---|---|---|---|
+| early | ~4.6M rows | 175 tx | 1.91 | **1.690 s** | 3,447 |
+| later | ~7.4M rows | 172 tx | 1.93 | **1.646 s** | 3,454 |
+
+The table grew **61%** and the insert cost moved 2.6%, downward — inside noise, and the wrong way for
+fill. So the cost is per-attempt work, not accumulated state: the number of unbatched reads an attempt
+issues, which is fixed by keys per batch and tablets and does not care how much data is already there.
+That is also what makes the 88-versus-96-tablet boundary a real test rather than a curiosity, since a
+fill-driven effect would move the edge as the run proceeds and a per-attempt one will not.
+
+**Why 349 keys is not a knob.** `service/vc` has **no maximum batch size at all** — only
+`MinTransactionBatchSize` (a floor, default 1) and `TimeoutForMinTransactionBatchSize` (5 s).
+`batchReceivedTransactionsAndForwardForProcessing` accumulates into `largerBatch` and sends on the floor
+or the timer, so with a floor of 1 it dispatches as soon as anything is queued and never reaches the
+timer under load. Batch width is therefore a *consequence* of the downstream service rate, not a
+setting. Capping it is a code change, and the narrower fix is the SQL: `INSERT ... ON CONFLICT DO NOTHING
+... RETURNING` identifies the offending keys without an exception, a full-batch lookup, or a rollback.
+That change is in the commit path and inverts the meaning of the function's return value, so it needs
+sanction before anyone writes it.
+
+**What was wrong, and why it looked right.** Recorded with the same weight as the findings, because the
+failure mode all week has been confident mechanisms that did not survive contact: a log listing only
+what stuck will get the graph limit re-proposed within the week.
 
 - *The nil-version insert path is unique to this generator.* It is not — the published run's generator
   also wrote no version on a conflicting key, so both take the same branch.
@@ -1420,12 +1448,38 @@ so nothing ever performs a multi-key lookup. A back-reference is the first thing
   code change rather than configuration — and it is the wrong lever, since 349 keys is what 175
   transactions of this shape cost.
 
-**One harness defect found on the way, which invalidates part of the evidence above.** `drain()` parks
-the generator at `FX_DRAIN_RATE`, default 20,000, and this workload's capacity is 20,235 — so the
-backlog never falls, and the guard's own `inflight >= previous` early return gives up after ~120 s with
-millions queued. In-flight *rose* 1,830,000 → 3,340,000 while the log read "draining". Only the first
-rung after a fresh deployment is clean; later rungs measure an inherited queue, and their means are that
-queue rather than a service time. "Flat in offered rate" is therefore not established — it needs
-`FX_DRAIN_RATE` well below capacity, or a drain that parks at a fraction of measured throughput instead
-of a fixed rate. The counter ratios above are unaffected: a backlog changes neither the keys in a batch
-nor the reads that batch provokes.
+Two readings, rather than mechanisms, are withdrawn with them, because they are what misdirected the
+search rather than merely being wrong:
+
+- *The database is idle.* Read from `commit_util` at 2–4 of 192 workers and `tx_batch_commit_latency` at
+  17–28 ms. Both were true and both were the wrong instrument: the VC's workers were blocked on a
+  tserver that was at 70–71% CPU, and the outer commit metric excludes the insert path that dominates it.
+- *Three rungs of the 5M ladder show throughput flat in offered rate* (50,000 → 23,004; 100,000 →
+  20,928; 200,000 → 17,121). Withdrawn under the drain defect below. Only rung 1 stands: 25,000 offered,
+  20,235 committed, on a fresh deployment.
+
+- *A column read of `tiers.log`.* The cross-tier sampler's `awk` collapses a row when any single metric
+  is absent, so positions shift silently and every column-wise reading of that file is unsafe. Numbers
+  quoted from it — including a graph population "flat at ~505,000" — are withdrawn in favour of direct
+  `/metrics` reads. The file remains useful as a continuous record; it is the parsing that is unsound.
+
+**One harness defect found on the way, which invalidates part of the evidence above.** It has three
+parts, and any one of them alone reads as a tuning nit:
+
+1. **The park rate is absolute.** `drain()` sets `FX_DRAIN_RATE`, default **20,000**, while this
+   workload retires **20,235**. A park rate is only a drain if it sits well below capacity, and nothing
+   checks that it does.
+2. **The early return then makes the failure silent.** `if inflight < 4 * DRAIN_RATE or (previous is not
+   None and inflight >= previous): return` — at capacity ≈ park rate the backlog cannot shrink, so the
+   second clause fires on the first comparison and the drain declares itself done after ~120 s. In-flight
+   *rose* 1,830,000 → 3,340,000 while the log read "draining". "Cannot drain" is reported as "drained".
+3. **The consequence is a rule, not an anecdote.** On any conflict ladder, **only rung 1 is quotable**,
+   because rung 1 alone starts from a fresh deployment. Every later rung measures an inherited queue and
+   its mean latency is that queue rather than a service time.
+
+So "throughput is flat in offered rate" is **not established** by this ladder, and three rungs that
+looked like evidence for it are withdrawn below. The fix is either `FX_DRAIN_RATE` well under capacity
+(2,000 here: 18,000/s net clears 3.3M in ~185 s, inside the four 60 s rounds and above the
+`4 * DRAIN_RATE` floor) or, durably, a drain that parks at a fraction of the last measured throughput so
+no future workload can land on the default. The counter ratios above are unaffected: a backlog changes
+neither the keys in a batch nor the reads that batch provokes.

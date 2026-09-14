@@ -325,6 +325,27 @@ EXPERIMENTS = [
     #
     # If this and the 5,000,000 graph limit both restore throughput, the cliff is the mechanism and either
     # value is a fix. If only one does, the difference says which side the pressure comes from.
+    # The only uncontaminated latency available for this workload. Every 120-tablet latency measured so
+    # far is a backlog's age rather than a cost: the drain parked at 20,000 against a capacity of 20,235,
+    # so rungs inherited millions of queued transactions and reported 148,836 ms, which at 23,000 tps is
+    # simply 3.4M in flight. The 8-tablet figures are no better -- a 90 s probe at 239 ms and a 300 s hold
+    # at 26 s. These rungs all sit BELOW the ~20,235 capacity, so with the drain fixed they measure what a
+    # double spend costs a transaction rather than what a queue costs it.
+    dict(id="9c-ds5-ladderlow", figure="conflict-ladder", x=120, mode="curve",
+         label="5% double spend, 120 tablets",
+         rates=[2500, 5000, 10000, 15000, 20000],
+         vars=shape(2, 0, backref=0.05)),
+
+    # One rung at 200,000 offered on a FRESH deployment, which is the only thing that separates fill from
+    # overload in the ladder's fourth rung. That rung retired 17,121 against ~21,000 at the three below it,
+    # and its fill was 43M committed rows against 7M at the first -- six times. At this deployment's
+    # 0.18 ms per million committed, fill alone predicts most of the decline, and a ladder raises rate and
+    # fill together so no rung within one ladder can tell them apart. Same rate, low fill: ~21,000 says the
+    # decline was fill, ~17,000 says it was the offered rate.
+    dict(id="9c-ds5-fresh200k", figure="conflict-fresh", x=200, mode="curve",
+         label="5% double spend, 200,000 offered on a fresh deployment",
+         rates=[200000], vars=shape(2, 0, backref=0.05)),
+
     # A ladder where capacity is high enough to bracket a knee. At 120 tablets capacity is under 25,000,
     # so every rung of the 5M ladder sat above it and measured the collapsed regime rather than a curve.
     dict(id="9c-ds5-ladder8tab", figure="conflict-ladder", x=8, mode="curve",
@@ -357,6 +378,9 @@ EXPERIMENTS = [
     dict(id="9c-ds5-tab64", figure="conflict-tablets", x=64, label="5% double spend, 64 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=64)),
+    dict(id="9c-ds5-tab88", figure="conflict-tablets", x=88, label="5% double spend, 88 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=88)),
     dict(id="9c-ds5-tab96", figure="conflict-tablets", x=96, label="5% double spend, 96 tablets",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_database_table_pre_split_tablets=96)),
@@ -960,7 +984,15 @@ def drain(exp, rounds=4):
     after the first reported the previous rung's backlog as its own latency -- 148,836 ms at 23,000 tps
     is a 3.4M queue, not a measurement. Set FX_DRAIN_RATE well under capacity for such a workload.
     """
-    if not set_rate(DRAIN_RATE):
+    # A tenth of what the pipeline is currently retiring, floored at 1,000, rather than a fixed rate.
+    # A fixed 20,000 cannot drain a workload whose capacity IS 20,235: the backlog never shrinks and the
+    # give-up test below then fires on the first comparison, abandoning the drain with millions queued.
+    # Measuring the served rate first makes the parked rate correct for any workload.
+    served = (sample().get("committed") or 0)
+    rate = max(1000, int(0.1 * served)) if served else DRAIN_RATE
+    if rate != DRAIN_RATE:
+        log(f"[{exp['id']}] draining at {rate:,} tx/s, a tenth of the {served:,.0f} being retired")
+    if not set_rate(rate):
         return
     previous, stalled = None, False
     for _ in range(rounds):
@@ -975,11 +1007,11 @@ def drain(exp, rounds=4):
         # non-improving sample is not enough: it fires on a single noisy reading, and when the drain rate
         # is near capacity it fires immediately and permanently, which is how a contaminated ladder
         # passes for a measured one.
-        if inflight < 4 * DRAIN_RATE:
+        if inflight < 4 * rate:
             return
         if previous is not None and inflight >= previous:
             if stalled:
-                log(f"[{exp['id']}] draining is not reducing the queue at {DRAIN_RATE:,} tx/s; "
+                log(f"[{exp['id']}] draining is not reducing the queue at {rate:,} tx/s; "
                     f"capacity is likely at or below that rate")
                 return
             stalled = True
