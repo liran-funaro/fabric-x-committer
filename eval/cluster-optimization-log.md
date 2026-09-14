@@ -1478,19 +1478,40 @@ the insert is **55% cheaper** — landing exactly on the 13.6–14.2 ms per tabl
 `insert_..._latency` under conflicts is **not a per-batch service time**: it carries the queueing at the
 database, and how much depends on how far above capacity the probe sat.
 
-That confounds the whole cross-tablet fit. Both quantities it uses respond to backlog depth — a deeper queue
-makes the batcher pick up more per send cycle, which is why 96's saturated width is 611 keys against 88's
-301, twice as wide at a *lower* throughput. Two saturated probes at unmatched distance above capacity are
-therefore not comparable, and the 4% agreement between 88 and 120 is partly luck. Note also that 88
-saturated carries *more* concurrency than 96 saturated (65 calls against 44) at *less* latency, so plain
-queueing does not explain the 88 -> 96 drop either; something about 96 is genuinely worse and is not yet
-identified.
+That confounds the cross-tablet fit, and reading the probes' offered rates shows how badly. The `tab88`
+batch inherited a 250,000 seed, so its four rows were taken at **5.3x to 8.6x capacity**:
+
+| batch | offered | retired | x capacity | grow | mean latency | backlog |
+|---|---|---|---|---|---|---|
+| tab88 | 250,000 | 27,672 | 8.6 | **−1,111/s** | 109.3 s | 3.18M |
+| tab88 | 212,500 | 27,673 | 7.3 | −111/s | 109.7 s | 3.19M |
+| tab88 | 180,625 | 24,906 | 6.2 | 1,222/s | 109.9 s | 3.20M |
+| tab96 | 30,000 | 28,537 | 1.4 | 4,333/s | 35.1 s | 0.73M |
+| tab96 | 25,500 | 21,793 | 1.2 | 1,444/s | 12.3 s | 0.26M |
+| tab96 | 21,675 | 19,544 | 1.0 | 667/s | 8.6 s | 0.18M |
+
+**So `grow` near zero is not a test for saturation** — it reads −1,111/s at 8.6x capacity, because the queue
+is pinned at a ceiling and a pinned queue has zero derivative. Any rule of the form "fit only rows whose
+in-flight growth is flat" selects *these* rows, the worst four available. Mean latency, or offered against
+retired, is what orders them, and by that measure every 88-tablet row carries a 3.2M backlog.
+
+It also refutes the obvious explanation for the widths, which was mine: a deeper queue does *not* make the
+batcher pick up more per cycle. The 88-tablet rows sit on a 3.2M backlog at 300 keys, while `tab96`'s 611-key
+rows sit on 0.73M — the deeper queue has the narrower batch, by a factor of two in each direction. What still
+differs between the two batches is the offered rate itself, 5-9x capacity against 1.0-1.4x, and nothing
+measured here says why that should set width. I am not proposing a mechanism for it; five have already been
+retracted in this section.
+
+Note also that 88 saturated carries *more* concurrency than 96 saturated (65 calls against 44) at *less*
+latency, so queueing inside the insert does not explain the 88 -> 96 drop either.
 
 **What survives, and what the sweep needs instead.** Surviving: the threshold model is refuted, now on three
 tablet counts with no step of the factor-of-24 kind anywhere; the failure path costs seconds; and 8 tablets
-is worth more than an order of magnitude. Not surviving: any per-batch cost law, including the per-tablet
-one recorded above, and any capacity prediction derived from one. The sweep has been measuring a mixture of
-tablet count and overload depth throughout.
+is worth more than an order of magnitude. Retirement rates survive too — a saturated pipeline retires at
+capacity whatever the queue depth — so 27,400 at 88 tablets and ~20,800 at 96 stand. Not surviving: any
+per-batch cost law, including the per-tablet one recorded above, and any capacity prediction derived from
+one. Every row in the sweep was taken between 1.0x and 8.6x capacity, and there is **no unsaturated row at
+any tablet count** — the closest is a drain read, not a measurement.
 
 The fix is a design change rather than more points: run every tablet count at **the same offered rate, below
 every capacity in the sweep** — 15,000 tps clears 20,000 at 96 and 120 and 27,400 at 88 — for 300 s, and read
