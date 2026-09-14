@@ -64,7 +64,14 @@ if pgrep -f "[a]nsible-playbook" >/dev/null; then echo "!! a play is already run
 say "inventory: $INV ${say_extra:-}"
 
 say "STOP everything first, so nothing survives holding pre-wipe state"
-ANSIBLE_INVENTORY=$INV make stop || echo "!! stop returned $?, continuing"
+# Everything except the monitoring stack. Prometheus's TSDB and Grafana's whole directory live on the
+# monitor host, and an unqualified stop-and-wipe destroys both at every bring-up: Grafana is then down for
+# ten minutes of each one, and Prometheus history cannot outlive a single experiment, so no dashboard can
+# ever compare two. Each wipe play selects `{{ target_hosts }}:&<its own group>`, so excluding the group
+# here makes the monitoring play's intersection empty and skips it, while every other component still
+# matches its own. The Fabric CA is a separate group on the same machine and is still torn down and
+# recreated, which lines 25-38 require.
+ANSIBLE_INVENTORY=$INV make stop TARGET_HOSTS='all:!monitoring' || echo "!! stop returned $?, continuing"
 ANSIBLE_INVENTORY=$INV "$ANS" all -m shell -a \
   'pkill -f "yb-master|yb-tserver|arma|committer|loadgen" 2>/dev/null; sleep 2; true' -b >/dev/null 2>&1
 say "confirming the database processes are gone"
@@ -78,7 +85,7 @@ podman unshare rm -rf /data1/fabric-x/fca-org1-db 2>/dev/null || rm -rf /data1/f
 rm -rf out/control-node/fetched out/control-node/config
 
 say "wipe the deploy volume"
-ANSIBLE_INVENTORY=$INV make hard-wipe TARGET_HOSTS=all || echo "!! hard-wipe returned $?, continuing"
+ANSIBLE_INVENTORY=$INV make hard-wipe TARGET_HOSTS='all:!monitoring' || echo "!! hard-wipe returned $?, continuing"
 say "wipe the database, whose data dirs are SIBLINGS of /data1/fabric-x and survive hard-wipe"
 ANSIBLE_INVENTORY=$INV "$ANS" all -m shell -a \
   'rm -rf /data1/yb-master /data1/yb-tserver /data2/yb-tserver /data2/fabric-x' -b >/dev/null 2>&1
