@@ -96,6 +96,14 @@ count grew sixfold during the ds5 ladder, the cliff sits between roughly **23 an
 **Also settled**: `yb-admin list_tablets` truncates at `max_tablets = 10` and exits 0, so any count of exactly
 10 from it is suspect. Pass `0`.
 
+**Audited and clean, so not worth re-checking**: every quantitative claim in the abstract against
+`figures-orderer.jsonl` — 499,091 at 447/658 ms is a 300 s window fully retired with zero aborts; every rate
+below it arrived within 0.2%; 8 shards 500,000 against 4 shards 499,091; four shards hold the lower p99 at
+both matched rates; the busiest machine is `commit6`/`commit5` at the top and a router below; 81.6% is the
+true maximum behind "no machine exceeds 82%"; and the 250,000 small-batch ceiling reads `blk_rate` **499.98**,
+so "a block-rate limit near 500 blocks a second" is measured rather than inferred. Also audited: no plotted
+point in either arm mixes configurations within an x, after the reference-gap filter.
+
 **Nothing is publishable from a rate search after a miss.** Every descent probe inherits the previous rung's
 backlog, so its latency is not its own — `tab96` returned "no rate met" from seven probes for that reason
 alone. This is why the queue is ladders and holds rather than searches.
