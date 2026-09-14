@@ -122,6 +122,7 @@ batch, not once beforehand -- an ordinary bring-up rewrites that path. Verified 
 | 2 | Find why double spends collapse. | `9c-ds5-*` | done |
 | 2a | Tablet sweep at 5% conflicts, to fit a cost law. | `9c-ds5-tab*` | closed, no law identifiable |
 | 2b | Conflict-share sweep at 1%, 0.1%, 0.01%. | `ds1`…`ds0001` | queued (batch 5) |
+| 2h | **The no-pre-split conflict-free ceiling.** The section's justification for keeping the 120-way split divided 518,000 by 213,091, which is a single MET probe never pushed higher — and `nosplithi` has now retired 250,209 with 5% conflicts, so the divisor is already falsified. Corrected to a one-sided bound in `74dd76e3`; closing it needs a conflict-free ladder at twelve tablets. | new | ready, needs the arm |
 | 2c | Add `db_insert` to the driver's `QUERIES`. | — | done |
 | 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, to close the `chunk64` loose end. | — | open, unowned |
 | 2e | Add a gauge for `SimpleManager.depFreeTxBatches`. | — | open, needs code |
