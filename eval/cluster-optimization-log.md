@@ -2173,13 +2173,20 @@ size sweep's probes are flagged. The paired-ladder design remains the way to set
 agreement *within* a pair at one rate is the thing noise will not produce.
 
 **And the reproducibility problem underneath it, which is the more consequential half.** `ds20`'s observed rungs
-were 10,000 / 25,000 / 50,000 / 80,000 while `ds5`'s and `ds10`'s matched the definition — so the definitions
-changed after `ds20`'s driver had started, and the driver loads `EXPERIMENTS` once per batch at startup. Two
+were 10,000 / 25,000 / 50,000 / 80,000 while `ds5`'s and `ds10`'s ran 15,000-based ones. The first explanation
+offered — that the file changed after `ds20`'s driver started — is **wrong**, and the log settles it: there is a
+single `=== figures run:` header, at 12:00:21, with all four shares beneath it. One invocation, one load of
+`EXPERIMENTS`, so all four ran from the same in-memory copy and the *per-share* rate difference was in that copy.
+The harmonised `[15000, 30000, 60000, 100000]` now in the file is a later edit that **never described this batch
+at all**. Two
 consequences. `ds20` is not rate-comparable to its siblings, so the four-share series had one member measured on
 a different ladder; e0 is re-running `ds20` and `ds30` under unified rates rather than papering over it in the
 caption, which is right, because the two lists share no rate at all and there is no common-rate subset to fall
-back on. And more generally: **the file a definition is read from is not necessarily the file a completed batch
-ran.** Any claim about what an experiment measured has to come from the row's own `vars` and `limit`, not from
+back on. And more generally, in the stronger form the log supports: **for a running batch the definition file is not
+the record — the rows are.** Reading the current file produced a rate that no rung in this batch would ever
+use, and it cost one wrong pre-registration. Anyone reconstructing this series later will make the same
+mistake unless the rows are treated as authoritative. Same family as reading the array column instead of the
+running count: an adjacent, plausible source that is not the one the measurement came from. Any claim about what an experiment measured has to come from the row's own `vars` and `limit`, not from
 the current source — which is the same lesson as the `vars` check that caught the convoy, arriving from the
 other direction.
 
