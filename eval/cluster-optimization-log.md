@@ -1478,7 +1478,34 @@ parts, and any one of them alone reads as a tuning nit:
    its mean latency is that queue rather than a service time.
 
 So "throughput is flat in offered rate" is **not established** by this ladder, and three rungs that
-looked like evidence for it are withdrawn below. The fix is either `FX_DRAIN_RATE` well under capacity
+looked like evidence for it are withdrawn below.
+
+**And the defect has a class, which is worth more than the instance.** Three harness faults in this
+investigation share one shape: *the run reports success while doing nothing*.
+
+1. `FX_ONLY` matches experiment ids by **prefix**, so a filter meant for one point silently selects its
+   neighbours — or, given the wrong prefix, nothing, and the matrix "completes".
+2. A batch runner that **discards exit codes** turns any failed step into a completed one. A narrowed
+   `make teardown` returned rc=2 on every point and raced two ladders to `MATRIX COMPLETE` in 18 seconds
+   having measured nothing.
+3. **An expanded assignment is not an assignment.** Bash recognises `VAR=value` at parse time, before
+   expansion, so `${4:+FX_DRAIN_RATE=$4}` is never a variable assignment — the expanded word becomes the
+   *command*:
+
+   ```
+   t() { A=1 ${2:+B=$2} printenv A B; }
+   t x 9   ->   B=9: command not found, rc=127     # printenv never runs
+   ```
+
+   Written literally as `FX_DRAIN_RATE=${4:-20000}` it works. A chain passing a drain rate that way to
+   five of seven batches would have exited 127 before starting a driver in each, and with (2) above the
+   log would have called them done in seconds — the whole tablet axis, silently.
+
+The common cost is the same: these are the only failures that cost days rather than minutes, because a
+failure that announces itself is fixed in the next command. The drain defect above cost four rungs; the
+assignment one would have cost five batches. **Gate on the artifact, not the exit code** — a rendered
+config read back, a row count in the results file, a `--list-hosts` before trusting a host pattern — and
+echo the inputs a run was given, because an input silently dropped is indistinguishable from success. The fix is either `FX_DRAIN_RATE` well under capacity
 (2,000 here: 18,000/s net clears 3.3M in ~185 s, inside the four 60 s rounds and above the
 `4 * DRAIN_RATE` floor) or, durably, a drain that parks at a fraction of the last measured throughput so
 no future workload can land on the default. The counter ratios above are unaffected: a backlog changes
