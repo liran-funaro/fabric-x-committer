@@ -1408,9 +1408,14 @@ What fits this path is continuous in the same product rather than stepped at a v
 | tablets | keys/batch | keys x tablets | insert | µs per key-tablet | capacity |
 |---|---|---|---|---|---|
 | 120 | 349 | 41,880 | 1.690 s | 40.4 | 20,400 |
-| 88 | 295 | 25,960 | 1.170 s | 45.1 | 27,670 |
+| 88 | 308 | 27,104 | 1.211 s | 44.7 | 27,377 |
 
-Within 6% on the constant, against a threshold model predicting two orders of magnitude between those rows.
+Within 10% on the constant, against a threshold model predicting two orders of magnitude between those rows.
+The 88-tablet row is from the VC counters over the saturated 30-second intervals of that run, agreeing across
+all six VCs to within 1% — and deliberately **not** from the whole run, because averaging the drains between
+probes with the probes themselves gives 21,595 tps and a width of 156, which is neither the capacity nor the
+saturated width. A drain at 2,000 tps occupies as much of a search as the measurements do, so any counter
+delta spanning more than one probe reports something in between.
 It also accounts for 8 tablets without a special case: 349 x 8 = 2,792 is a fourteenth of the work at 120,
 which is the order of the measured speed-up.
 
