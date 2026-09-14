@@ -28,7 +28,7 @@ costs nothing and gives it a measured baseline instead of an assumed one.
 | 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **done: misses at all five rungs, 2,500-20,000, none censored** |
 | 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **done, but inconclusive above 150,000 — see 2i** |
 | 3b | `nosplit250-rep1..3` | Whether 250,000 holds at twelve tablets from a fresh deployment. Three bring-ups, three readings. | queued, ahead of the A/B |
-| 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
+| 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | **`hold8nosplit` done and clean; `ladder8tab` running** |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
 | 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
 | 7 | `tabhold` | The tablet axis at two fixed rates, 12/24/48/64. Splitting pinned via `cluster-nosplitting.yaml`. | queued |
@@ -55,6 +55,35 @@ offered it retires the offered rate exactly, in-flight growth is 0.00, the busie
 p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of the 20,300 that layout
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
+
+### `hold8nosplit`: the first cleanly bracketed conflicting ceiling (done 18:27)
+
+Eight tablets, automatic splitting pinned off, 5% double spends:
+
+| offered | verdict | p99 | note |
+|---|---|---|---|
+| 25,000 | met | 180 ms | |
+| 50,000 | met | 181 ms | |
+| 100,000 | met | 184 ms | |
+| 150,000 | met | 230 ms | |
+| 150,000 | met | 227 ms | bridge, deployment 2 |
+| 150,000 | met | 230 ms | bridge, deployment 3 |
+| 200,000 | miss | 29,900 ms | delivered 125,455 |
+| 250,000 | miss | 29,900 ms | delivered 133,091 |
+
+**Ceiling bracketed between 150,000 and 200,000**, with the top passing rung confirmed on three separate
+deployments at 230 / 227 / 230 ms. That is the first conflicting ceiling in this section that is both
+bracketed and reproduced. p99 is flat at 180–184 ms across a fourfold rate range below it.
+
+Two negative results from the same run, recorded so they are not re-proposed:
+
+- **Bridge rungs reproduce.** Three exist now: the two here met within 3 ms of the curve rung they
+  repeat, and only `nosplithi`'s 250,000 did not. So the bridge is not systematically pessimistic and the
+  250,000 retraction rests on the rate, not the mechanism.
+- **Leader skew is not the explanation.** `fx-leader-skew.sh` was built for it and the answer is no: all
+  three fresh 8-tablet tables came back with 8 tablets on 8 distinct hosts, max 1 leader each, stable
+  under load and across 20 GB of growth. The sampler stays for the twelve-tablet repeats, but the
+  hypothesis it was written for has failed at this layout.
 
 ### A prediction, and how it resolved (2026-09-14 18:02, settled 18:11)
 
