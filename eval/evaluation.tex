@@ -267,7 +267,12 @@ in-flight count. Across the fourteen rungs above a first rung the 99th percentil
 the rate: at this layout a
 transaction that will be rejected costs what one that will commit costs, and sextupling the offered rate
 does not move the tail. Against the same workload at the \num{120}-way split, where no rate qualifies at
-all, that is the whole of the effect sitting in one query.\footnote{One rung of one ladder is an
+all, that is the whole of the effect sitting in one query. The insert in fact gets \emph{cheaper} as
+conflicts rise --- \SIrange{13.6}{11.0}{\milli\second} from \SI{5}{\percent} to \SI{30}{\percent},
+monotone --- which is the opposite of the expected direction and follows from the same place: a rejected
+transaction's keys are never written, so a higher rejected share leaves less work in the batch. It falls
+by a fifth while the keys in it fall by a third, so the cost is sub-linear in the key count and a fixed
+per-call component survives.\footnote{One rung of one ladder is an
 exception, and it did not reproduce: at \SI{30}{\percent}, \num{25000} offered missed the bound with a
 \SI{3.6}{\second} tail and an insert \num{4.5} times its neighbours'. Its generator delivered its nominal
 rate to \SI{1.1}{\percent}, so the failure was a real measurement rather than an instrument fault --- but
