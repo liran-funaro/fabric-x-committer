@@ -1684,8 +1684,28 @@ parts, and any one of them alone reads as a tuning nit:
 So "throughput is flat in offered rate" is **not established** by this ladder, and three rungs that
 looked like evidence for it are withdrawn below.
 
-**And the defect has a class, which is worth more than the instance.** Three harness faults in this
-investigation share one shape: *the run reports success while doing nothing*.
+**And the defect has a class, which is worth more than the instance.** By the end of this investigation
+**eight** faults shared one shape: *the tool reports success while doing part of the job, and its output
+falls in the range a real answer would*. That last clause is what made every one of them expensive. A tool
+that returns nothing, or an obvious sentinel, is caught in minutes; a tool that returns 10 tablets on a
+twelve-server cluster, or a p99 of 29,900 ms, or a drain that says it is draining, is written into a document.
+Three of the eight were each independently believed by three sessions.
+
+The eight, in the order they were found: `FX_ONLY` matching ids by prefix; a runner discarding exit codes;
+`${4:+VAR=$4}` becoming a command word rather than an assignment; `drain()` declaring itself drained at a park
+rate equal to capacity; `histogram_quantile` returning 99% of a bucket width as though it were a measurement;
+`search()`'s seed floor at `seed x 0.85^6`, reporting "no rate met" where it means "never probed low enough";
+a plot script keying on `r["id"]` where the rows carry `r["experiment"]`; and `yb-admin list_tablets` silently
+truncating at `max_tablets = 10`. Two more belong to it in spirit — a sampler left on an unlinked inode by a
+bring-up, logging nothing for 45 minutes while its process stayed alive, and `inflight_growth` reading flat on
+a queue pinned at its ceiling.
+
+The generalisation worth keeping is not "check the exit code". It is that **a plausible number is the failure
+mode**, so the defence has to be a quantity the fault cannot fake: an artifact read back, a count compared
+against something independently known, or a precondition asserted before the measurement rather than inferred
+after it. Three of the eight passed every check that looked only at the tool's own report of itself.
+
+The first three below are recorded in detail because they were the first found, not because they are the worst.
 
 1. `FX_ONLY` matches experiment ids by **prefix**, so a filter meant for one point silently selects its
    neighbours — or, given the wrong prefix, nothing, and the matrix "completes".
