@@ -5,23 +5,36 @@ SPDX-License-Identifier: Apache-2.0
 -->
 # Evaluation work items
 
-Status 2026-09-14 12:20. **A conflicting workload now has a sub-second operating point**: with pre-splitting off, 5% double spends hold 28,537 tps at 192 ms over 300 s — see "First positive result" below. The cost law is still unknown and the section does not need one. One arm can be up at a time and switching arms is a full bring-up
-(~10 min), so the two tables are the two batches. `RUNNING.md` has how to run them.
+Status 2026-09-14 13:00. **A conflicting workload has a sub-second operating point, and the conflict share
+barely matters.** With pre-splitting off, both 5% and 10% double spends sustain ~90,000 tps at ~190 ms over
+300 s. One arm can be up at a time and switching arms is a full bring-up (~10 min), so the two tables are the
+two batches. `RUNNING.md` has how to run them.
 
 ## First positive result: pre-splitting off meets the bound
 
-`9c-nosplit-ds5`, 300-second holds, verified from each row's own `vars` — `backref 0.05`,
-`reference_gap 300000`, `lookback 1000000`, `pre_split_tablets 0`, shape 2/0,
-`fast_block_prepare True`, abort 4.88%, `inflight_growth 0`, `finished` equal to `offered`:
+Two complete ladders, four 300-second holds each, every rung met. Verified from each row's own `vars` —
+`reference_gap 300000`, `lookback 1000000`, `pre_split_tablets 0`, shape 2/0, `fast_block_prepare True`,
+`inflight_growth 0`, `finished` equal to `offered`, abort matching the configured share:
 
-| offered | committed | p99 | mean | busiest CPU |
-|---|---|---|---|---|
-| 15,000 | 14,354 | 408 ms | 148 ms | 1.9% |
-| 30,000 | **28,537** | **192 ms** | 138 ms | 3.0% |
+| double spends | top committed | p99 | busiest CPU |
+|---|---|---|---|
+| 5% | **95,122** | 190 ms | 11% |
+| 10% | **90,491** | 187 ms | 11% |
 
-28,537 clears the 120-way split's ~20,300 retirement rate, so **pre-splitting off wins on throughput and
-latency at once**. Two rungs left (60,000 and 100,000), so the ceiling is not bracketed; CPU at 3% says
-nothing is near a limit.
+Both ladders **ran out of rungs while passing**, so these are lower bounds, not ceilings. Against the 120-way
+split's ~20,300 — which never meets the bound at any offered rate — that is 4.7x on throughput *and* the
+difference between meeting the bound and not. And a 5% shortfall for twice the double-spend rate, against a
+25x collapse at the 120-way split, so **the share is not what costs**: a near-flat series across shares is
+also the shape the published 9c panel has, which nothing measured here had reproduced before. ds20 and ds30
+are running.
+
+**Caveat with an expiry date.** `pre_split_tablets: 0` creates **one** tablet; splitting raises the running
+count to **12** within five minutes and then stops, because the next step needs 10 GiB per tablet (~120 GiB of
+table). So these ladders measured a stable 12-tablet layout — but a no-split table has the same destination as
+one created with 120 (288 on twelve servers, which §6 records after eleven hours), it just starts ~120 GiB
+away. Whether the 14 ms insert survives that step is **unmeasured**; `9c-nosplit-ds5-soak` is queued to force
+it. Measured growth is 0.875 GB per tablet per million transactions, so the crossing needs ~31 minutes at
+350,000 tps — a rate never yet attempted here, so the soak may need extending.
 
 **Why, in one controlled comparison.** Rung 1 against the 96-tablet row is matched on offered rate to within
 4%, on retired rate to within 4%, and on conflict share and gap exactly — one variable:
