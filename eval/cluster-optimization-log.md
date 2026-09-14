@@ -2081,12 +2081,39 @@ in the same passage where I noted it was a single row and that a repeat was need
 published the claim anyway. The rule that survives is not "note the caveat" but **do not state a boundary a
 single measurement could invent** — the caveat did not stop the claim, and the next two rungs did.
 
-**The excursion is unexplained and is now the open question.** Rung 3 drains at 6,800/s across 300 s, about two
-million transactions, so it entered carrying a backlog that neither rung 2's growth (0) nor its residence
-(mean 258 ms at 25,091/s implies ~6,500 in flight, not two million) accounts for. So the backlog formed between
-rung 2's window and rung 3's, in a settle, and rung 2's tail is the leading edge of whatever built it. What it
-is not: extra retries or wider batches, which held at 1.96 attempts and ~230 keys. A repeat of 25,000 is one
-rung and settles whether it reproduces.
+**The excursion is unexplained, and my attempt to explain it used one of its own consequences.** I read rung
+3's −6,800/s as a drain of a backlog that rung 2 had built, making rung 2's tail its leading edge. The
+generator's own counters refute the causal direction. Outstanding is `sent − committed − aborted`:
+
+| offered | sent | committed + aborted | outstanding at window end | growth |
+|---|---|---|---|---|
+| 10,000 | 3,774,050 | 3,774,050 | **0** | 0 |
+| 25,000 | 13,114,050 | 13,114,050 | **0** | 0 |
+| 50,000 | 18,684,026 | 18,674,026 | **10,000** | −6,800/s |
+| 80,000 | 48,944,026 | 48,934,026 | **10,000** | 0 |
+
+**Rung 2 ended with outstanding at zero.** It was not carrying a backlog, so nothing about rung 3 can be its
+cause or its evidence. The ~2 million is real — `growth` is `(end − start)/window`, so −6,800/s across 300 s
+does mean about 2.05M outstanding at rung 3's window *start*, cleared during it — but that transient formed
+during the 75-second settle **after** the redeploy which rung 2's own miss triggered. It is downstream of the
+anomaly, not upstream. Using it as an explanation inverted cause and effect.
+
+So the excursion stands unexplained, with retries and width both excluded (1.96 attempts, ~230 keys), and there
+is **no reason to expect a repeat to come back clean** — which is the opposite of what I said. A direct repeat
+of 25,000 is what settles it.
+
+**Two artefacts to carry, both from the same design decision.** The harness never restarts the load generator,
+so its counters persist across a committer teardown — `sent_total` rises monotonically straight through the
+redeploy at 13:46:09. Consequently:
+
+1. **Transactions sent while the committer is down can never commit**, because the ledger they would land in is
+   wiped. They stay in `sent_total` forever, leaving a **permanent positive offset** in outstanding for every
+   later rung — +10,000 here, identical on rungs 3 and 4, which is the signature of an offset rather than a
+   queue. An in-flight figure from a rung after a mid-batch redeploy is not comparable with one from a fresh
+   batch.
+2. **`growth` is a window average, not a rate**, so a large negative value means a transient was cleared inside
+   the window rather than that a steady drain is under way. After a redeploy it is dominated by the settle's
+   catch-up, and it says nothing about the rate being measured.
 
 **The insert cost is a function of the conflict share alone, and it falls as the share rises.** Matching on
 *offered* rate conflates this, because a higher share commits fewer rows at the same offered rate; matching on
