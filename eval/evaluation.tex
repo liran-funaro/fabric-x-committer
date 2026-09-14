@@ -259,11 +259,12 @@ than a configuration to be tuned away.
 
 A sweep of the conflict share at twelve tablets says the same thing from the other side: what costs is that
 query, not the conflicts. \SI{5}{\percent}, \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent}
-double spends were each run as an ascending ladder of \SI{300}{\second} holds, and every rung of every
-ladder met the bound --- to \num{100000} transactions a second offered at the two lower shares and
-\num{80000} at the two higher, each arriving in full at a flat in-flight count. Across the nine rungs after
-a first rung the 99th percentile spans \SIrange{150}{199}{\milli\second} and the median
-\SIrange{125}{143}{\milli\second}, with no trend in either the share or the rate: at this layout a
+double spends were each run as an ascending ladder of \SI{300}{\second} holds, and every share met the
+bound at every rung up to \num{100000} transactions a second offered, each arriving in full at a flat
+in-flight count. Across the fourteen rungs above a first rung the 99th percentile spans
+\SIrange{150}{195}{\milli\second} and the median \SIrange{125}{128}{\milli\second} --- a
+\SI{2.4}{\percent} spread on the median across all four shares --- with no trend in either the share or
+the rate: at this layout a
 transaction that will be rejected costs what one that will commit costs, and sextupling the offered rate
 does not move the tail. Against the same workload at the \num{120}-way split, where no rate qualifies at
 all, that is the whole of the effect sitting in one query.\footnote{One rung of one ladder is an
