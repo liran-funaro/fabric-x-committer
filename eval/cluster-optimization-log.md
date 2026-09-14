@@ -1943,6 +1943,30 @@ This workload also has no competing source of holes. The comment's "harmless was
 *read-only* slots, and `shape(2, 0)` configures none — so the aborted-transaction rollback is the only hole
 former here, which is why the first-order treatment does as well as it does.
 
+**Pre-registered, before the batch runs: `9c-ds5-rw4` should abort 4.817%, not 4.876%.** This is the test the
+derivation deserves, because slot count is a variable absent from every fit made to it. Expanding the general
+form for small `p` gives `a ~= p(1 - p(s-1)/s)`, so at fixed `p` the shortfall *grows* with slot count even
+though the `p = 1` ceiling does not move:
+
+    s = 2, p = 0.05:  0.05 x 1.95 / 2.00           = 4.875%   (measured 4.876% over 84 rows)
+    s = 4, p = 0.05:  0.05 x 3.95 / (4 + 0.10)     = 4.817%   (predicted)
+
+A 1.2% relative separation against a measurement spread of 0.017 pp — 0.35% relative — so roughly three and a
+half times the noise, resolvable in a single rung. Per the residual pattern at `s = 2` the observed value
+should land slightly *above* the derived one, so **4.82-4.84%**.
+
+Checked before registering, because three claims died today to unchecked configuration: `9c-ds5-rw4` is
+`shape(4, 0, backref=0.05)`, and `shape()` sets gap 300,000 and a 1,000,000-key lookback for any non-zero
+backref — identical to every `s = 2` row, with `loadgen_read_write_tx_keys` the only difference. The window
+covers fewer *transactions* at four slots, since the frontier advances twice as fast, but holes are uniform in
+index space so the hole density it sees is unchanged and the derivation is unaffected.
+
+Three ways it can fail, each more informative than confirmation: **4.876%** says slot count does not enter and
+the `s - 1` term is wrong; **below 4.80%** says the shortfall is steeper in `s` than first order; **far off
+either** says hole formation is a coincidence that happened to fit `s = 2`. Note the batch was queued to test a
+*cost* law whose premise — that a tablet law exists to attribute keys to — is the one three sessions have now
+had refuted, so this share prediction may be the more useful half of it.
+
 **Not claimed:** that hole formation is the only contributor. Pre-genesis negative indices and within-window
 sampling collisions push the same way and are unquantified. The falsifiable prediction is that the effect
 vanishes if the frontier stops counting indices whose transaction aborted — a code change, measurable.
@@ -2157,7 +2181,7 @@ from that rung rather than an inference from the count having climbed across it 
 not depend on `tabhold12` returning.
 
 **What a soak would cost, measured rather than guessed.** With SST size in the sampler, `ns_0` grows
-**0.049 GB per tablet per minute** at 56,000 tps — **0.875 GB per tablet per million transactions**. From 0.4
+**0.049 GB per tablet per minute** at 56,000 tps — **0.0146 GB per tablet per million transactions**. From 0.4
 to the 10 GiB high-phase threshold is 9.6 GB per tablet:
 
 | offered | time to the next split |
