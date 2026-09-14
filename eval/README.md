@@ -11,14 +11,36 @@ not product documentation, which is what [`../docs/`](../docs/) holds. The gener
 setting does is [`../docs/performance-tuning.md`](../docs/performance-tuning.md) — these notes say what
 actually moved.
 
-| document | what it holds |
-|---|---|
-| [`RUNNING.md`](RUNNING.md) | how to run every experiment here, step by step: which arm, how to bring it up, what a measured point is, and how the figures and the PDF are produced |
-| [`cluster-optimization-log.md`](cluster-optimization-log.md) | how the deployment went from 80,000 to 500,000 tps sustained, what the evidence for each change was, and which changes bought nothing |
-| [`optimization-config.md`](optimization-config.md) | the assembled configuration that produced the figures, parameter by parameter |
-| [`optimization-summary.md`](optimization-summary.md) | what each change was worth |
-| [`optimization-issues.md`](optimization-issues.md) | the issues the evaluation filed, and the ones it still needs to |
-| [`paper-figures.md`](paper-figures.md) | the Fabric-X paper's committer figures recreated, with every caveat and confound found in doing it |
+## Which document a thing goes in
+
+Each document has one job, and the second column is as binding as the first. A fact in the wrong document
+is worse than a fact left out: the publication picks up methodology it should not carry, and the task list
+becomes something nobody can act on. **If in doubt it goes in
+[`cluster-optimization-log.md`](cluster-optimization-log.md)** — that is the only document with no exclusions.
+
+| document | holds | never holds |
+|---|---|---|
+| [`evaluation.tex`](evaluation.tex) | **results only.** What the deployment achieves: throughput, latency, CPU, what each setting is worth, and the setup needed to read them | how a number was arrived at, what went wrong on the way, retracted claims, instrument defects, anything unresolved, anything about the harness |
+| [`eval-todo.md`](eval-todo.md) | **tasks only.** What still needs running or writing, in priority order, with the one line each needs to be actionable | findings, result tables, measurements, narrative, anything already done |
+| [`cluster-optimization-log.md`](cluster-optimization-log.md) | **every finding, accumulated, including the dead ends.** Evidence, retractions, refuted mechanisms, instrument defects, and what each was worth | nothing — this is the record, and a wrong turn removed from it will be taken again |
+| [`optimization-summary.md`](optimization-summary.md) | **the optimizations worth preserving,** summarised for someone who will apply them and was not here | the reasoning that produced them, or anything superseded |
+| [`optimization-config.md`](optimization-config.md) | the assembled configuration that produced the figures, parameter by parameter | why a parameter has its value |
+| [`optimization-issues.md`](optimization-issues.md) | the issues the evaluation filed, and the ones it still needs to | anything not destined for a tracker |
+| [`paper-figures.md`](paper-figures.md) | the Fabric-X paper's committer figures recreated, and the caveats specific to comparing against a published number | findings that are not about the comparison |
+| [`RUNNING.md`](RUNNING.md) | how to run every experiment: which arm, how to bring it up, what counts as a measured point, how the figures and the PDF are produced | results |
+| [`session-handoff.md`](session-handoff.md) | what an incoming session needs that is true only right now: what is running, what is half-done, which clock the logs use | anything durable, which belongs in the log |
+
+Nothing else belongs in this directory. A draft of something that has a home is a second copy of it, and the
+copies diverge: `abstract.md` was a draft of the abstract now inside `evaluation.tex`, and by the time anyone
+compared them it said the committer tier was eighteen machines against the inventory's nineteen. Draft in
+place.
+
+Two consequences worth stating, because both were got wrong:
+
+- A measurement that has been **retracted** stays in the log with its refutation, and comes out of the
+  publication, the summary and the task list entirely.
+- A **result** goes in the publication; the *check* that established it goes in the log. "Fully retired at a
+  flat in-flight count" is a result. "Which of two counting methods was right" is not.
 
 ## Figures
 
