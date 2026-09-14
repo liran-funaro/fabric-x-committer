@@ -15,8 +15,15 @@ batches. `RUNNING.md` has how to run them.
 
 Running unattended from `/data1/logs/fx-plan-14q-lf.sh`, in this order.
 
+**`insert_ns` goes first, because it can retire batches 2-6.** All of them exist to characterise a failure
+path whose cost the rewrite is meant to remove: if 5% double spends meet the bound at the 120-way split, the
+tablet axis has nothing left to explain, the 8-tablet anomaly stops mattering, "does a low rate qualify at
+120?" is answered by "every rate does", and the conflict-share sweep loses its subject. Measuring it first
+either prunes five batches or tells us they are still needed. See [2g](#2g-the-insert_ns-rewrite).
+
 | # | batch | what it decides | state |
 |---|---|---|---|
+| 0 | **`insert_ns` A/B** | Whether the SQL rewrite makes the 120-way split meet the bound, and whether the conflict-free path regressed. **Retires 2-6 if it works.** | **next** |
 | 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | 5% and 10% done, 20% running |
 | 2 | `ladder8tab`, `hold8` | The 8-tablet anomaly, and whether the failure-path cost is per-tablet or per-key-per-tablet. | queued |
 | 3 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Fills figure 1c. | queued |
@@ -37,6 +44,7 @@ Running unattended from `/data1/logs/fx-plan-14q-lf.sh`, in this order.
 | 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, to close the `chunk64` loose end. | — | open, unowned |
 | 2e | Add a gauge for `SimpleManager.depFreeTxBatches`. | — | open, needs code |
 | 2f | Re-run the tablet axis with automatic splitting disabled. | `tabhold*` | queued (batch 4) |
+| 2g | **First in the queue.** Measure the `insert_ns` rewrite: 5% at the 120-way split, plus the conflict-free hold as a regression check. [ctx](#2g-the-insert_ns-rewrite) | new | ready, needs the arm |
 
 ## End-to-end arm (`inventory/cluster-orderer.yaml`)
 
@@ -55,6 +63,36 @@ Running unattended from `/data1/logs/fx-plan-14q-lf.sh`, in this order.
 | 8 | Decide whether the deeper generator block buffer joins the tuned setup, and so whether figure 2 carries that ladder as a series. | a decision, not a run |
 | 9 | Update figure 5, Table 1 and the size section. | batches 7 (#3, #4, #5) |
 | 10 | Re-run the `split0` conflict series at the documented reference gap before it shares an axis with current numbers. | batch 1 supersedes it |
+
+## Task context
+
+Detail that does not fit a table row. One heading per task; the row links here.
+
+### 2g: the `insert_ns` rewrite
+
+**Written and sanctioned.** `utils/statedb/create_namespace_tmpl.sql` now uses
+`ON CONFLICT (key) DO NOTHING ... RETURNING key`, with the violating set computed in the same statement as
+`_keys EXCEPT ALL inserted`. No Go changed and no contract changed — `insertStates` still consumes a
+violating-key array, and `commit()` already aborts on a non-empty result, so the abort this needs is existing
+behaviour. `TestCommit/new_writes_with_violating` passes unchanged.
+
+It removes the full-batch `key = ANY(_keys)` storage read — the 1.2–2.6 s per failing attempt — and plpgsql's
+implicit subtransaction, which the old `EXCEPTION` block opened on every call including the conflict-free ones.
+
+**What to run**, A/B on the same day, fresh deployment each:
+
+1. 5% double spends at the 120-way pre-split — the configuration that currently never meets the bound at any
+   offered rate. Does it now?
+2. The conflict-free 518,000 hold, as a regression check: the common path now materialises a `RETURNING` set
+   and compares cardinalities where it returned `'{}'` after a bare INSERT, and it runs ~3,400 times a second.
+
+Read `db_insert`, `db_insert_per_commit` and the p99/mean pair on both.
+
+**Verify rather than assume**, twice. Whether YugabyteDB's `ON CONFLICT` avoids the per-key reads or merely
+relocates them — it must read something to detect a primary-key conflict, so one `EXPLAIN (ANALYZE, DIST)` at
+the real batch width reading `Storage Read Requests` settles it, which is task 2d's check. And note
+`CREATE OR REPLACE` is not a live upgrade path: namespaces are created once, so a cluster holding the old
+function keeps it until the namespace is recreated. Fine here, since every point redeploys.
 
 ## Not scheduled
 

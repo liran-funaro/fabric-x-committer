@@ -116,7 +116,7 @@ To optimize performance and minimize network round-trips, the VC service relies 
 | `insert_tx_status`                  | Stores transaction statuses in bulk. On a primary key violation (duplicate `tx_id`), it returns the violating `tx_id`.                                                    |
 | `validate_reads_ns_${NAMESPACE_ID}` | Performs MVCC validation for a batch of reads within a specific namespace. It returns the indices of keys whose committed version differs from the passed version.         |
 | `update_ns_${NAMESPACE_ID}`         | Updates existing keys within a namespace with new values and versions.                                                                                                  |
-| `insert_ns_${NAMESPACE_ID}`         | Inserts new key-value pairs into a namespace. If a key already exists (violating the primary key constraint), it returns the keys that caused the violation.                 |
+| `insert_ns_${NAMESPACE_ID}`         | Inserts new key-value pairs into a namespace via `ON CONFLICT DO NOTHING`, and returns the keys that already existed. The non-conflicting rows of a partially-conflicting batch **are** inserted, so a non-empty result obliges the caller to abort the database transaction. |
 
 Note: `${NAMESPACE_ID}` is a placeholder that is replaced with the actual namespace ID at runtime to invoke the correct procedure for a given data partition.
 
@@ -269,8 +269,10 @@ type statesToBeCommitted struct {
 `update_ns_${NAMESPACE_ID}` procedure, while `newWrites` are processed by the `insert_ns_${NAMESPACE_ID}` procedure. Concurrently, 
 the transaction statuses from the `batchStatus` are recorded in the `tx_status` table using the `insert_tx_status` stored procedure. 
 Both `insert_ns_${NAMESPACE_ID}` (for `newWrites`) and `insert_tx_status` can return violating states due to primary key constraint violations.
-If this happens, the writes and/or statuses for the corresponding transactions are removed from the batch, their statuses are updated 
-(e.g., to reflect a duplicate), and the commit is retried with the modified, smaller batch. This retry loop continues until the commit succeeds.
+If this happens, the database transaction is aborted, the writes and/or statuses for the corresponding transactions are removed from the batch,
+their statuses are updated (e.g., to reflect a duplicate), and the commit is retried with the modified, smaller batch. This retry loop continues
+until the commit succeeds. The abort is required rather than tidy: `insert_ns_${NAMESPACE_ID}` inserts the non-conflicting rows of a batch it
+reports on, so committing after a non-empty result would apply part of a transaction whose other key collided.
 
 **e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
 back to the Coordinator, completing the workflow for the transaction batch.

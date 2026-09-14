@@ -21,7 +21,7 @@ becomes something nobody can act on. **If in doubt it goes in
 | document | holds | never holds |
 |---|---|---|
 | [`evaluation.tex`](evaluation.tex) | **results only.** What the deployment achieves: throughput, latency, CPU, what each setting is worth, and the setup needed to read them | how a number was arrived at, what went wrong on the way, retracted claims, instrument defects, anything unresolved, anything about the harness |
-| [`eval-todo.md`](eval-todo.md) | **tasks only.** What still needs running or writing, in priority order, with the one line each needs to be actionable | findings, result tables, measurements, narrative, anything already done |
+| [`eval-todo.md`](eval-todo.md) | **tasks only.** What still needs running or writing, in priority order, with the one line each needs to be actionable. A task needing more than that keeps its detail under *Task context* at the bottom and links to it, so the tables stay scannable | findings, result tables, measurements, narrative, anything already done |
 | [`cluster-optimization-log.md`](cluster-optimization-log.md) | **every finding, accumulated, including the dead ends.** Evidence, retractions, refuted mechanisms, instrument defects, and what each was worth | nothing — this is the record, and a wrong turn removed from it will be taken again |
 | [`optimization-summary.md`](optimization-summary.md) | **the optimizations worth preserving,** summarised for someone who will apply them and was not here | the reasoning that produced them, or anything superseded |
 | [`optimization-config.md`](optimization-config.md) | the assembled configuration that produced the figures, parameter by parameter | why a parameter has its value |
