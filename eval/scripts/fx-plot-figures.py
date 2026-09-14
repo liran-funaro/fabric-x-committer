@@ -903,6 +903,108 @@ def summary(rows):
     return "\n".join(out)
 
 
+# The measured median width of a database insert batch, over 14,682 samples of the collapse: 152
+# transactions, which at two read-writes is ~304 keys. Used only for points measured before the driver
+# recorded the width per row, and those are drawn hollow so an assumed x is never mistaken for a measured
+# one. The width matters because it is half of the product that crosses YugabyteDB's threshold, and it is
+# not the coordinator's chunk size -- the validator-committer re-batches, so a 500-transaction chunk
+# arrives as ~150.
+ASSUMED_KEYS_PER_INSERT = 304
+BATCHING_THRESHOLD = 32_768
+
+
+def conflict_threshold(rows, path):
+    """Throughput and per-transaction CPU against tablets x keys per insert.
+
+    The panel that makes the mechanism visible without prose. YugabyteDB batches a multi-key lookup per
+    tablet only while tablets x keys stays under about 32,768, and issues one storage read per key above
+    it. If that threshold is what the conflict workload runs into, throughput falls and CPU per transaction
+    rises as the product crosses it -- and the crossing is a property of the product, not of the tablet
+    count, which is why x is the product. Plotting against tablets alone hid this: at ~304 keys an insert,
+    8, 16, 32 and 64 tablets all sit on the same side of the threshold.
+
+    CPU per transaction is the discriminator between a cost and a queue. A queue cannot make a transaction
+    cost twenty times the CPU; only work can.
+    """
+    # One variable. Every experiment that also moved the graph limit, the chunk size, the sidecar window or
+    # the manager sits at the same x as the plain 120-tablet point, and drawing them together would put a
+    # column of unrelated configurations where the tablet comparison belongs -- their spread would read as
+    # scatter in the tablet effect. Those runs answered other questions and are reported elsewhere.
+    CONFOUNDS = ("committer_coordinator_dep_graph_wait_tx_limit",
+                 "committer_coordinator_dep_graph_chunk_size",
+                 "committer_coordinator_dep_graph_use_simple_manager",
+                 "committer_sidecar_waiting_txs_limit")
+    pts = []
+    for r in rows:
+        v = r.get("vars") or {}
+        if not v.get("loadgen_key_backref_rate"):
+            continue
+        if any(k in v for k in CONFOUNDS):
+            continue
+        tps = throughput(r)
+        if not tps:
+            continue
+        tablets = v.get("committer_database_table_pre_split_tablets", 120)
+        measured = r.get("tx_per_insert")
+        keys = 2 * measured if measured else ASSUMED_KEYS_PER_INSERT
+        cpu_us = (r.get("cpu_max") or 0) * 64 / tps * 1e6
+        pts.append(dict(x=tablets * keys, tps=tps, cpu=cpu_us, tablets=tablets,
+                        measured=bool(measured)))
+    if not pts:
+        print("no conflict rows with a tablet count yet")
+        return
+
+    fig, ax = plt.subplots(figsize=(7.2, 3.4))
+    fig.patch.set_facecolor(SURFACE)
+    style(ax)
+    bx = ax.twinx()
+    bx.grid(False)
+    bx.set_facecolor("none")
+    for side in ("top", "left"):
+        bx.spines[side].set_visible(False)
+    bx.spines["right"].set_color(GRID)
+    bx.tick_params(colors=INK2, labelsize=8, length=0)
+
+    ax.axvline(BATCHING_THRESHOLD, color=INK2, linewidth=1, linestyle=":", zorder=2)
+    ax.annotate(f"batching threshold, {BATCHING_THRESHOLD:,} keys x tablets",
+                (BATCHING_THRESHOLD, 0.97), xycoords=("data", "axes fraction"),
+                textcoords="offset points", xytext=(-5, 0), rotation=90, ha="right", va="top",
+                fontsize=7, color=INK2)
+
+    pts.sort(key=lambda p: p["x"])
+    for p in pts:
+        face = OURS if p["measured"] else SURFACE
+        ax.plot([p["x"]], [p["tps"]], marker="o", markersize=9, color=OURS, markerfacecolor=face,
+                markeredgewidth=2, linestyle="none", zorder=4)
+        bx.plot([p["x"]], [p["cpu"]], marker="s", markersize=8, color=PAPER,
+                markerfacecolor=face if p["measured"] else SURFACE, markeredgewidth=2,
+                linestyle="none", zorder=4)
+        ax.annotate(f"{p['tablets']:g}", (p["x"], p["tps"]), textcoords="offset points",
+                    xytext=(0, 11), ha="center", fontsize=7, color=INK2)
+    ax.plot([p["x"] for p in pts], [p["tps"] for p in pts], color=OURS, linewidth=1.5, zorder=3)
+    bx.plot([p["x"] for p in pts], [p["cpu"] for p in pts], color=PAPER, linewidth=1.5,
+            linestyle="--", zorder=3)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    bx.set_yscale("log")
+    ax.set_xlabel("tablets x keys per insert (log scale)", color=INK2, fontsize=9)
+    ax.set_ylabel("throughput (tx/s)", color=INK2, fontsize=9)
+    bx.set_ylabel("CPU per transaction (us)", color=INK2, fontsize=9)
+    ax.yaxis.set_major_formatter(FuncFormatter(thousands))
+    legend = [Line2D([], [], color=OURS, marker="o", markersize=9, linewidth=1.5,
+                     label="throughput (left)"),
+              Line2D([], [], color=PAPER, marker="s", markersize=8, linewidth=1.5, linestyle="--",
+                     label="CPU per transaction (right)"),
+              Line2D([], [], color=INK2, marker="o", markersize=9, markerfacecolor=SURFACE,
+                     markeredgewidth=2, linestyle="none",
+                     label=f"hollow: insert width assumed at {ASSUMED_KEYS_PER_INSERT} keys, not recorded")]
+    fig.legend(handles=legend, frameon=False, fontsize=7.5, labelcolor=INK2, loc="upper center",
+               bbox_to_anchor=(0.5, 1.03), ncol=2)
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
+    save(fig, path)
+
+
 def conflict_ladders(rows, path):
     """The two double-spend ladders: delivered against offered, and the graph population beside it.
 
@@ -978,6 +1080,7 @@ def main():
         # latency curve is the familiar view -- what it costs to run at a rate -- and the cliff panels are
         # the causal one: delivered against offered, beside the graph population that explains the gap.
         conflict_ladders(rows, os.path.join(OUTDIR, "conflict-ladders.png"))
+        conflict_threshold(rows, os.path.join(OUTDIR, "conflict-threshold.png"))
         latency_curve(rows, os.path.join(OUTDIR, "conflict-latency.png"))
         table(rows, os.path.join(OUTDIR, "figures-table.md"))
         return
