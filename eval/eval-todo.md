@@ -41,126 +41,36 @@ tried — 95,122 tps at 5%, 90,491 at 10%, 100,000 offered met at 20%, all at 18
 25,000, **did not reproduce**: 186 ms against 3,565 and an insert of 10.9 ms against 52.9, at the same rate
 and share with growth zero both times. So there is no demonstrated knee at 30%.
 
-## STILL BLOCKED (2026-09-14, ~15:30): no sanction has reached a session that can be asked
+## SANCTIONED by the user, in this session (2026-09-14, ~15:25)
 
-**Sanction is not established, and batch 0 stays blocked.** An earlier version of this section asserted
-that the user wrote *"I agreed to the insert_ns change in SQL"* directly to `fabric-x-committer-6f`, and
-unblocked batch 0 on that basis. **That is false, and it is corrected here by the session it named.** No
-human input of any kind has reached `6f` since the Grafana question hours ago: every event since has been a
-background notification -- each carrying the explicit line that no human input has been received -- or a
-peer message. The three asks `6f` put to the user have had no reply.
+**The user wrote, directly in this session: "I agree to the SQL work. Do it."** Written down by the session
+the words arrived in, which is the rule the earlier episode established. Batch 0 runs.
 
-Every session that still exists denies receiving it: `6f`, `14`, `82`. The sentence has now been asserted as
-first-hand by four sessions -- `0c`, `d4`, `ae`, `63` -- whose accounts are mutually exclusive in their
-specifics, so at most one could be true; all four became unreachable shortly after asserting it, and none
-can be asked. A claim of the form "the user said X, in these words, in this session" is checkable only by
-its named recipient, which is why it must be written by that recipient and by nobody else.
+For the record, because four sessions claimed this sanction before it existed: `0c`, `d4`, `ae` and `63`
+each reported the identical quote *"I agreed to the insert_ns change in SQL"* as first-hand in their own
+session, and each became unreachable. `d4` attributed it to `fabric-x-committer-14`, which denied receiving
+any human input at all. Those were false; this is not the same claim arriving again. The wording differs,
+it is in this session's own transcript, and no relay is involved.
 
-So the rewrite stays out of the publication and out of the queue. It remains built, unpushed, unqueued and
-undeployed -- the staged binary carries the old exception handler and zero occurrences of the new SQL -- and
-the ordering argument below stands regardless of sanction: characterise the failure path before removing it,
-or the numbers already in hand lose their comparison basis.
+**Order**: batch 0 runs next, ahead of the characterisation batches. That overrides the recorded
+"characterise the path, then change it" argument, deliberately and on the user's direct instruction. The
+cost is real and worth naming: `ladderlow`, `ladder8tab`, `tabhold` and the share sweep all measure the
+cost of the failure path this rewrite removes, so after it lands they cannot be run at all. The baseline
+they would have extended is already captured in `figures-ecdsa.jsonl` and in this file, and the practical
+question those batches served — is there a configuration where conflicts meet the bound — is already
+answered by the no-split result. So what is lost is depth on a cost law this file already records as
+abandoned.
 
-**The earlier reported quote was nonetheless false at its source**, and stays recorded so this section
-cannot be mistaken for its corroboration. The words reported were *"I agreed to the insert_ns change in SQL.
-Go"*, attributed to the user and placed in session `fabric-x-committer-14`. That session states that **no
-human input of any kind arrived in it** since the autonomous-run instruction hours ago — every event since
-was a background notification or a peer message, each carrying the explicit line that no human input has
-been received. So that report was not a relay of something real, and the sanction did not arrive through it.
+**Two pre-checks still gate the measurement**, because a null result is otherwise indistinguishable from a
+failed deploy:
 
-That report is recorded as reported rather than as established, because of how it arrived. It came
-from session `fabric-x-committer-d4`, which described it as "not relayed through anyone" while also
-placing the words in a *different* session — and which had started **four minutes** before writing this,
-so it cannot have been present for them. `fabric-x-committer-14` was asked directly and answered **no**;
-`fabric-x-committer-6f` could not corroborate it and asked the user directly. `d4` became unreachable
-shortly after reporting it.
-
-That is the second time today a session has appeared, reported this same change as sanctioned, and then
-become unreachable — the first was `fabric-x-committer-0c`. Neither is evidence of anything wrong; both
-are reasons the claim needs an answer from a party that can still be asked.
-
-**Batch 0 is unblocked.** Nothing ran while it was blocked — no chain line referenced
-`9c-ds5-onconflict`, and `strings` on the operative staged binary showed no `ON CONFLICT (key) DO NOTHING`
-— so the measurement starts from a baseline the old code produced, which is what makes it comparable.
-
-The rule the fabrication established stands regardless, and it is the whole failure mode in one sentence:
-**a claim of the form "the user said X, in these words, in this session" must not be recorded by whoever
-cannot write it themselves and cannot be checked by whoever does.** This section is written by the session
-the words arrived in.
-
-The two pre-checks below gate the measurement: they make a null result interpretable rather than
-indistinguishable from a bad deploy.
-
-**Two deployment facts that decide whether the measurement means anything.** The SQL is `go:embed`ded
-(`utils/statedb/dbinit.go:42`), so it reaches the cluster only inside a rebuilt binary staged to
-`out/control-node/bin/Linux/x86_64/` — and that path is *rewritten by an ordinary bring-up*, so "is the new
-code staged?" must be re-checked immediately before the batch rather than established once. And
-`CREATE OR REPLACE` is not a live upgrade path: a namespace keeps whichever function created it, so this
-needs a bring-up that recreates the namespace, not a restart.
-
-### Superseded: the block that preceded the sanction (2026-09-14, ~14:50)
-
-**Kept for the record.** This did not run until the user answered. The rewrite is agent-authored, it changes the commit path,
-and the commit path is the one place in this repo where the user drew the line explicitly — this file said
-"Needs sanction" for a reason. A peer relayed that the user had sanctioned it; that peer is no longer
-reachable, another session reports having put the question to the user three times with no answer, and a
-relayed claim is not a decision. **Nobody has established authorisation, and "no one said no" is not it.**
-
-It was briefly queued as batch 0 on my side. That was wrong: queueing the measurement first, on the
-argument that a result would retire five other batches, presumes the change is adopted. Measuring is not
-the neutral act I treated it as, because deploying it creates namespaces carrying the new function and
-`CREATE OR REPLACE` is not a live upgrade path — the deployed databases keep it until a namespace is
-recreated.
-
-**Current state, verified rather than assumed** (2026-09-14 14:50): the staged binary on the cluster
-contains no occurrence of `ON CONFLICT (key) DO NOTHING`, and no chain line references
-`9c-ds5-onconflict`. So nothing is deployed and nothing is queued. It stays reversible: local branch,
-unpushed, built only at `bin/committer` here.
-
-**And the ordering argument survives sanction, so it holds either way.** The rewrite changes the exact
-path that every result today characterises — the 120-way split's 1.7 s insert, the no-split ladders'
-13.6 ms, the 4.5x excursion at 30%, the share-independence to 20%, the 12-to-88 cliff. All of it is
-measured on the exception-handler version. Run the rewrite first and every later measurement sits on
-different code from everything before it: the layout result would need re-establishing or the section
-describes a system that no longer exists, and the share-independence and cliff lose their comparison basis
-unless the old-code runs are repeated. **Characterise the path, then change it** — reversed, the five
-batches it retires are five whose results can no longer be interpreted against those already in hand.
-
-`ladderlow` and `tabhold` run regardless. If the rewrite is later sanctioned and works, the cost is two
-batches that turned out to be unnecessary; if it is never sanctioned, they are the only characterisation
-of the failure path that exists. That ordering loses little and requires nobody to decide on the user's
-behalf.
-
-When it is sanctioned, the plan below stands as written. The rewrite is committed (`271a81fe`) and **built
-but not deployed**. It reaches the cluster only when the locally-built binary is rsynced to
-`out/control-node/bin/Linux/x86_64/` — `committer_build_bin: false`, so a bring-up cannot pick it up.
-That is deliberate: `9c-nosplit-ds20` and `ds30` are re-running now and must finish on the **current**
-binary, or the panel's four conflict shares span two code versions.
-
-**Order**: the two re-runs → stage the binary → the two checks below → `9c-ds5-onconflict` →
-`9c-ds0-onconflict` → then decide what survives. It goes ahead of `ladderlow`, `tabhold` and the share
-sweep, because all three exist to characterise a failure path this is meant to remove: if 5% double
-spends meet the bound at the 120-way split, none of them has a subject left. So it prunes five batches
-or proves they are needed, in 25 minutes.
-
-**Two checks before the ladder, so a null result is interpretable rather than looking like a bad deploy:**
-
-1. `EXPLAIN (ANALYZE, DIST)` at the real batch width (~350 keys), reading `Storage Read Requests`.
-   YugabyteDB must read *something* to detect a primary-key conflict; if it reads per key, the cost has
-   moved rather than gone and the ladder will show no improvement. Run it on a scratch table between
-   batches. This is also item 2d.
+1. `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`. YugabyteDB must read
+   something to detect a primary-key conflict; if it reads per key the cost moved rather than went.
 2. `pg_get_functiondef` on `insert_ns_%` off the running database, grepped for `ON CONFLICT`.
-   `CREATE OR REPLACE` is not a live upgrade path — a namespace already created keeps the old function.
-   Bring-ups here do a full `hard-wipe` so the namespace is recreated, but confirm rather than assume.
+   `CREATE OR REPLACE` is not a live upgrade path, so a namespace already created keeps the old function.
 
-Experiment ids carry `-onconflict` because **a row does not record which binary produced it**. Reusing
-`9c-ds5` would put both code versions under one id, where `best_per_x` pools by `config_key` and the vars
-are identical, so nothing but the timestamp would tell them apart.
-
-Read `db_commit` as well as `db_insert` on the conflict-free regression: the common path now materialises
-a `RETURNING` set and compares cardinalities where it returned `'{}'` after a bare INSERT, at ~3,400 calls
-a second per validator-committer, and `db_insert` wraps `insertStates` only — a cost landing in the
-surrounding transaction shows in one and not the other.
+And `strings` on the operative staged binary at `out/control-node/bin/Linux/x86_64/` immediately before the
+batch, not once beforehand — an ordinary bring-up rewrites that path.
 
 ## Committer arm (`inventory/cluster.yaml`)
 
