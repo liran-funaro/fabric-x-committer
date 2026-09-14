@@ -441,9 +441,16 @@ def figure9(rows, path):
             top.bar(xp, total, width, color=base, zorder=3)
             # The no-split slot sits at 2.74:1 against the surface, under the 3:1 floor, so it carries
             # a direct value label as its relief rather than relying on the fill being distinguishable.
+            #
+            # Labelled with a floor, because every rung of every no-split ladder passed: the bar is the
+            # TOP RUNG OFFERED, not a knee, and the top rung differs by share (100k at 5% and 10%, 80k
+            # at 20%, 110k at 30%). Drawn bare, those heights are the rung schedule and a reader would
+            # read 20% as slower than 10%. The whisker convention cannot say this -- it means "one
+            # search step above" -- and the bound here is open.
             if value:
-                top.annotate(f"{total / 1000:,.0f}k", (xp, total), textcoords="offset points",
-                             xytext=(0, 2), ha="center", fontsize=6, color=INK, zorder=7)
+                top.annotate(f"$\\geq$ {total / 1000:,.0f}k", (xp, total),
+                             textcoords="offset points", xytext=(0, 2), ha="center",
+                             fontsize=6, color=INK, zorder=7)
             if rejected:
                 top.bar(xp, rejected, width, color=dark, zorder=4, edgecolor=SURFACE,
                         linewidth=0.8, hatch="///")
