@@ -1898,7 +1898,11 @@ is a cliff somewhere between 23 and 88 tablets, which the sweep's own gap betwee
 which nothing between those two counts has ever probed.
 
 The product of keys and tablets is under 32,768 at **every** row including the slow ones, so §6's threshold
-explains none of this sweep. That is now three ways of saying the same thing, and the honest position is that
+explains none of this sweep. Nor does a smooth function of the product: from 23 tablets to 88 it rises only
+1.8x (356 x 23 = 8,188 against 168 x 88 = 14,784) while the cost rises 79x, so a product model
+under-predicts by a factor of forty-four. That is not a refutation of monotonicity — both quantities do rise
+— but it leaves any product law needing to be steeply superlinear over a 1.8x interval, which is a
+discontinuity described in other words. That is now three ways of saying the same thing, and the honest position is that
 the shape of the cost between 23 and 88 tablets is unmeasured rather than modelled. `9c-ds5-tabhold{32,48}`
 are the rungs that would place it, and they are already queued.
 
@@ -1907,6 +1911,26 @@ sets it, and this deployment has watched a table go from 120 tablets to 288 unde
 (§6). So 23 is where the no-split configuration *is*, not necessarily where it started, and a count per rung
 is the only version that also answers whether the layout drifts during a ladder. Rung 1's 15.2 ms insert is
 the baseline: if a later rung reads tens of milliseconds, that is the split moving rather than the rate.
+
+**Two instrument notes from the same pair of rungs.**
+
+*The first rung after a deployment has an inflated tail.* Rung 1's p99 was **2.8x** its mean (408 ms against
+148 ms); rung 2's was 1.4x (192 against 138) at **double** the offered rate. A tail that shrinks when the rate
+doubles is a start-of-hold transient, not a property of the rate, so the first rung of any curve carries
+warm-up in its p99 and the mean is the statistic to read there. This matters more than it looks: the rungs
+that follow a fresh deployment are the ones this evaluation has been treating as cleanest, and they are
+exactly the ones affected. It is harmless where both rungs pass and would be misleading where only the first
+one runs.
+
+*The tablet count cannot be read from the tserver's metrics.* `metric_type="tablet"` on
+`/prometheus-metrics` is rolled **up** per table — the series carry `table_id`, `table_name` and
+`namespace_name` but no `tablet_id` — so a distinct count of tablet ids returns zero rather than the count.
+Recorded so nobody spends the attempt again; the master API above is the route that works.
+
+*And the count is stable across the ladder, so far.* Between rungs 1 and 2 the insert went **down**, 15.2 ms
+to 13.9 ms, at double the rate, with keys per call (356 against 357) and attempts per commit (1.911 against
+1.904) identical to three digits. Auto-splitting is therefore not moving this configuration over the first
+ten minutes. Split thresholds are size-driven and the table keeps growing, so rung 4 is the real test.
 
 **Unexplained, and flagged rather than fitted:** the batches are wider at no pre-split (682 keys against
 350) even though the downstream is 108x faster, which is backwards for a batcher whose only floor is
