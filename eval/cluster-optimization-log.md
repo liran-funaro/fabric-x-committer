@@ -2089,7 +2089,14 @@ p99 to sit inside the delayed group at all, and 5% clears that.
 `ds20` the same formula returns *f* = 23/32 = **72%**: near unity means the whole distribution moved, which is
 the uniform-shift case restated, so the test does not need a separate rule for "is there a tail at all". The
 three ladders read 5%, 5% and 72% — and `ds20` is the **null control** the other two lacked, since it shows
-what the test returns when nothing bursty happened.
+what the test returns when nothing bursty happened. Note the separation: *f* distinguishes the two
+regimes by more than an order of magnitude where the p99/mean ratio distinguished them by a factor of two,
+from the same two columns.
+
+**The statistic reports its own inapplicability**, which is a property worth stating rather than a caveat to
+bury. *f* is a fraction only while the delayed group is a minority and p99 falls inside it; above roughly
+20-30% it stops meaning "this share was affected" and starts meaning "the tail-event model does not apply
+here". `ds20`'s 72% is the second reading, not a claim that 72% of its transactions were delayed.
 
 What 5% of *transactions* localises is open, and the two readings differ in a way worth stating rather than
 resolving. Temporally it is a burst covering some fifteen seconds of a three-hundred-second window — but
@@ -2113,6 +2120,11 @@ the others, so a third independent *f* near 5% across a sixfold rate spread supp
 directly. `tabhold12` cannot do this — with splitting off it tests only whether splitting matters at all — so
 the unpinned ladder is the better instrument here, which inverts the usual order. `ds20` rung 1 against rung 2
 is the same two-row arithmetic and needs nothing new.
+
+A **third outcome** is worth naming before the run, because neither of us listed it: *f* near 70% would put
+`ds30`'s rung 1 in the uniform-shift class with `ds20`'s, meaning the tail event tracks neither rate nor
+splitting but something the two 15,000-tps rungs share alone — which points back at the rate confound rather
+than at either mechanism. So the test has three distinguishable answers, not two.
 
 Three of today's wrong readings would have been caught by this test alone: the censored p99s below, the
 single-bucket ones, and a 3.35 s service time quoted from a p99 whose mean said otherwise.
