@@ -189,13 +189,13 @@ SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 % DRAFT for review -- numbers checked against figures-ecdsa.jsonl, awaiting the tablet sweep at 64/96/160
 % to firm up the threshold sentence. Everything here is measured; nothing is projected.
 Double spends are not free here, and what they cost is not conflict resolution. At the tablet layout this
-deployment uses, a \SI{5}{\percent} double-spend share commits \SIrange{20182}{20617}{} tps --- flat within
-\SI{2.1}{\percent} --- at every offered rate from \num{25000} to \num{400000}, read from the
-validator--committers' own counters. It cannot be driven past that: the generator sent
+deployment uses, a \SI{5}{\percent} double-spend share commits \SIrange{19929}{20617}{} tps --- flat within
+\SI{3.4}{\percent} --- at every offered rate from \num{25000} to \num{500000}, a twentyfold range, read from
+the validator--committers' own counters. It cannot be driven past that: the generator sent
 \SIrange{21000}{22000}{} tps at every rung, held there by the sidecar's window, so beyond the lowest rung
 the offered rate never reaches the pipeline. What a conflicting workload costs, then, is a ceiling near
-\num{20400} tps, a factor of twenty-five below the \num{518000} the same pipeline sustains with none.\footnote{The
-load generator's own rate for the same rungs scatters from \num{17121} to \num{24041}, a spread of a third,
+\num{20300} tps, a factor of twenty-five below the \num{518000} the same pipeline sustains with none.\footnote{The
+load generator's own rate for the same rungs scatters from \num{18000} to \num{25273}, a spread of a third,
 because it measures status arrivals in a sixty-second window while several million transactions are queued
 ahead of them. Its mean, \num{20610}, agrees with the committers' counters; its variance is the queue's, not
 the pipeline's. Figures here are the committers'.}
