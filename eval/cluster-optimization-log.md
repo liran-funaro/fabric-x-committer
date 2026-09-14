@@ -2085,6 +2085,12 @@ excess is *f* times it, so *f* ≈ mean excess ÷ p99 excess (6f's): `ds5` gives
 13/259 ≈ **5.0%**, two independent ladders agreeing. The estimate self-checks, since it needs *f* above 1% for
 p99 to sit inside the delayed group at all, and 5% clears that.
 
+**One number both detects and sizes**, which is what makes it worth reaching for by default. Applied to
+`ds20` the same formula returns *f* = 23/32 = **72%**: near unity means the whole distribution moved, which is
+the uniform-shift case restated, so the test does not need a separate rule for "is there a tail at all". The
+three ladders read 5%, 5% and 72% — and `ds20` is the **null control** the other two lacked, since it shows
+what the test returns when nothing bursty happened.
+
 What 5% of *transactions* localises is open, and the two readings differ in a way worth stating rather than
 resolving. Temporally it is a burst covering some fifteen seconds of a three-hundred-second window — but
 splitting spanned those whole windows, so that would need something brief *within* splitting rather than
