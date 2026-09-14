@@ -1741,29 +1741,42 @@ At 120 tablets a conflicting transaction costs **22 times** what a conflict-free
 tablets it costs the same as one — 74 µs against 99. The work is not inherent to conflicts; it is the
 unbatched lookup, and it disappears when the lookup stays batched.
 
-**With pre-splitting disabled, a conflicting workload passes the bound at 92,958 tps.** This is the positive
-result the section was missing, and it was in `figures-ecdsa.jsonl` — the file figure 1 is drawn from — the
-whole time. Three sessions had been reading `figures.jsonl` instead, which holds a different run of the same
-experiment ids on the same seed ladder, so rows matched by limit rather than by file appeared to contradict
-each other. Top probe of each series, `inflight_growth` 0 and `finished` equal to `offered` in every case:
+**Retracted within the hour: the no-pre-split series is a different workload, not a different split.** The
+claim was that `split0-ds10` commits 92,958 tps at ~0.2 s with pre-splitting off, against ~20,300 at the
+120-way split, so pre-splitting costs 4.6x and the bound. The configurations are not comparable:
 
-| conflicts | pre-split | offered | finished | committed | p99 | met |
-|---|---|---|---|---|---|---|
-| 10% | none | 102,770 | 102,727 | **92,958** | ~0.2 s | yes |
-| 30% | none | 102,770 | 102,909 | **76,353** | ~0.2 s | yes |
-| 5% | 8 | 181,031 | 181,091 | 172,260 | 0.24 s | yes |
-| 5 / 10 / 20 / 30% | 120 | any rate | — | 15,000–24,000 | censored | **never** |
+| series | reference gap | lookback | tablets |
+|---|---|---|---|
+| `split0-ds10/20/30` | **0** | 10,000,000 | 0 |
+| `9c-ds5`, `9c-ds10` | 1,000 | 1,000,000 | 120 |
+| `9c-ds20`, `9c-ds30`, all `tab*`, `split8` | 300,000 | 1,000,000 | 0–120 |
 
-Both no-pre-split series were still passing when the search exhausted its `UP_STEPS`, so those are lower
-bounds and not knees. Against the 120-way split at the same conflict shares that is **4.6x on throughput and
-the difference between meeting the bound and never meeting it at any offered rate**. The mechanism claim does
-not need a cost law: pre-splitting is what costs the SLO under conflicts, and it buys 2.9x conflict-free in
-exchange, which is the workload-dependent trade `fx-figures.py:591-598` anticipated.
+At gap 0 a back-reference names a key generated immediately before it, so the referent is still in flight and
+the dependency graph holds the pair and serialises it — the conflict never reaches `insert_ns` as an existence
+violation at all. Those runs measure graph serialisation; the `9c-ds*` runs measure the insert failure path.
+Two mechanisms, one axis. `fx-plot-figures.py:351` had already removed the series from panel 9c on exactly this
+ground, recorded there as "every one of them was measured with the reference gap that made the workload a
+dependency convoy rather than a double spend", and the error came back because rows were matched on offered
+rate rather than on configuration. It is the [[compare-like-for-like-before-blaming-a-stage]] failure with the
+workload in place of the build. **The gap is not uniform even inside `9c-ds*`**, so it has to be read off
+`vars` for both sides of any conflict comparison.
 
-`committer_database_table_pre_split_tablets: 0` disables pre-splitting; **this inventory's default is 120**
-(`cluster.yaml:284`). Naming that column "default split" would tell a reader the opposite of the finding.
+**The layout result that does hold, at one fixed workload.** Every row 5% double spends at gap 300,000, so the
+pre-split is the only variable:
 
-**None of the holds on that series are quotable, in either direction, and the cause is the driver.** A hold
+| tablets | committed | meets 1 s? |
+|---|---|---|
+| 8 | 172,260 | yes, at 239 ms |
+| 88 | 27,400 | no |
+| 96 | 20,800 | no |
+| 120 | 20,300 | no |
+
+A factor of 8.4 end to end, and only the smallest split meets the bound at any offered rate. The eight-tablet
+row is a 90-second probe whose 300-second hold delivered ~125,000 at a censored p99, so the factor is bounded
+below at 6; the other three are retirement rates under saturation, which hold whatever the queue depth. This is
+what the document carries.
+
+**For the record, none of the `split0` holds were quotable in either direction anyway, and the cause was the driver.** A hold
 runs at the last *passing* probe, which after a seventeen-step climb is the top of the climb. ds10's hold
 there no longer fit over 300 s — finished 96,545 against 102,770 offered — and the two step-downs then read
 `finished` **113,273** and **135,455** against 95,157 and 88,108 offered, so they were draining hold 1's
