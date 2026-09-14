@@ -212,8 +212,8 @@ of \num{120} commits \num{172260} tps at \SI{239}{\milli\second}, with per-trans
 \SI{75}{\micro\second}: for the ninety seconds that probe runs the penalty is absent rather
 than reduced.\footnote{That rate is a
 \SI{90}{\second} probe. Its \SI{300}{\second} hold delivered about \num{125000} tps with a
-\SI{26}{\second} mean, so the rate is unconfirmed at eight tablets; the \SI{300}{\second} figures below
-are not.}
+\SI{26}{\second} mean, so the rate is not sustained at eight tablets; the sweep below gives the
+\SI{300}{\second} figure.}
 
 The mechanism is visible in the state database's own procedure. A batch of new keys is inserted blind and
 returns on success, performing no lookup at all. One key that already exists raises a uniqueness violation,
@@ -240,25 +240,26 @@ The layout, however, is decisive, and a sweep of it at one fixed workload --- \S
 spends throughout --- is the whole of the effect:
 
 \begin{center}
-\begin{tabular}{rrr}
+\begin{tabular}{rrl}
 \toprule
-tablets & committed & meets \SI{1}{\second}? \\
+tablets & committed & sustained over \SI{300}{\second} \\
 \midrule
-  8 & \num{172260} & yes, at \SI{239}{\milli\second} \\
- 88 &  \num{27400} & no \\
- 96 &  \num{20800} & no \\
-120 &  \num{20300} & no \\
+  8 & \num{172260} & \num{125000}, at a \SI{25}{\second} mean \\
+ 88 &  \num{27400} & --- \\
+ 96 &  \num{20800} & --- \\
+120 &  \num{20300} & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-A factor of \num{8.4} between the two ends, and only the smallest split meets the bound at all --- at the
-other three no offered rate qualifies, however low.\footnote{The eight-tablet row is the
-\SI{90}{\second} probe above, so the factor is bounded below by the \num{125000} tps its hold delivered,
-which is still a factor of \num{6}. The other three rows are retirement rates under saturation, which a
-pipeline holds whatever its queue depth.} Against that, the \num{120}-way split is worth \num{2.9} times
-as much on a conflict-free workload, so it is a workload-dependent trade rather than a misconfiguration:
-pre-splitting buys write concurrency where nothing violates and costs the latency bound where things do.
+The eight-tablet figure is a \SI{90}{\second} probe, and it met the bound at \SI{239}{\milli\second}; held
+for \SI{300}{\second} at the same offered rate it delivers \num{125000} tps at a \SI{25}{\second} mean, so it
+does not sustain. The other three rows are retirement rates under saturation, which a pipeline holds whatever
+its queue depth, and at none of them does any offered rate qualify however low. So the split is worth a
+factor of six on throughput and \emph{no} layout in this sweep sustains the bound under double spends --- while
+the \num{120}-way split is worth \num{2.9} times as much on a workload where nothing violates. That is a
+workload-dependent trade rather than a misconfiguration, and the smaller split moves the ceiling without
+recovering the latency.
 
 So the conflict figure is a property of the deployment's storage layout rather than of its conflict
 handling. This is why the figure is reported here rather than beside the published double-spend sweep ---
