@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -440,4 +441,19 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, tt.expectedTxStatuses)
 		})
 	}
+
+	// The "new writes with violating" case drives the rejected commit path, which used to return
+	// before its observation. Both labels must have been observed: unlabelled, or observed only on
+	// success, tx_batch_commit_latency reports the clean commits alone and calls the database healthy.
+	dbMetrics := env.dbEnv.DB.metrics
+	require.Positive(t, commitLatency(t, dbMetrics, commitConflict))
+	require.Positive(t, commitLatency(t, dbMetrics, commitSuccess))
+}
+
+// commitLatency returns the mean latency the commit histogram recorded under one outcome label.
+func commitLatency(t *testing.T, m *perfMetrics, status string) float64 {
+	t.Helper()
+	child, ok := m.databaseTxBatchCommitLatencySeconds.WithLabelValues(status).(prometheus.Metric)
+	require.True(t, ok)
+	return test.GetMetricValue(t, child)
 }

@@ -217,11 +217,23 @@ func (d *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servi
 }
 
 // commit commits the writes to the database.
-func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
-	start := time.Now()
+func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (res *commitResult, err error) {
 	if states.empty() {
 		return nil, nil
 	}
+
+	// Deferred so that every outcome is counted, and labelled so that they are not counted together.
+	// A batch whose insert hits a write conflict returns early below; while that path skipped the
+	// observation entirely this histogram read 22.9 ms -- the mean over only the commits that never
+	// conflicted -- while the conflicting attempts on those same batches cost 1.7 s, which is why the
+	// database looked healthy throughout the conflict collapse.
+	start := time.Now()
+	defer func() {
+		promutil.Observe(
+			d.metrics.databaseTxBatchCommitLatencySeconds.WithLabelValues(commitStatus(res, err)),
+			time.Since(start),
+		)
+	}()
 
 	// We want to commit all the writes to all namespaces or none at all,
 	// so we use a database transaction. Otherwise, the failure and recovery
@@ -234,12 +246,13 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer rollBackFunc()
 
-	res, err := d.writeStatesByGroup(ctx, tx, states)
+	res, err = d.writeStatesByGroup(ctx, tx, states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write states: %w", err)
 	}
 	if res != nil {
-		// rollback
+		// The batch is rejected, so it is rolled back and retried by the caller. The deferred
+		// observation above labels this attempt duplicate or conflict, not success.
 		return res, nil
 	}
 
@@ -251,7 +264,6 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	}
 
 	err = tx.Commit(ctx)
-	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
 	}
@@ -321,11 +333,22 @@ func (d *database) insertTxStatus(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
-) ([]TxID /* duplicates */, error) {
-	start := time.Now()
+) (duplicateTxs []TxID, err error) {
 	if states.batchStatus == nil || len(states.batchStatus.Status) == 0 {
 		return nil, nil
 	}
+
+	// Deferred so a failed read is counted too, and started after the guard above so that an empty
+	// batch does not enter the histogram as a near-zero sample.
+	start := time.Now()
+	defer func() {
+		promutil.Observe(
+			d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds.WithLabelValues(
+				stageStatus(err, len(duplicateTxs) > 0, commitDuplicate),
+			),
+			time.Since(start),
+		)
+	}()
 
 	numEntries := len(states.batchStatus.Status)
 	ids := make([][]byte, 0, numEntries)
@@ -351,31 +374,34 @@ func (d *database) insertTxStatus(
 		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLStmt, err)
 	}
 	if len(duplicates) == 0 {
-		promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 		return nil, nil
 	}
 
-	duplicateTxs := make([]TxID, len(duplicates))
+	duplicateTxs = make([]TxID, len(duplicates))
 	for i, v := range duplicates {
 		duplicateTxs[i] = TxID(v)
 	}
 	logger.Debugf("Total number of duplicate txs: %d", len(duplicateTxs))
-	promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicateTxs, nil
 }
 
 func (d *database) insertStates(
 	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites,
-) (namespaceToReads /* conflicts */, error) {
+) (conflicts namespaceToReads, err error) {
+	// Labelled because the two outcomes are different operations: a clean insert is one bulk write,
+	// while a colliding one raises unique_violation, discards the whole transaction and re-reads the
+	// offending keys. Averaging them reports a cost that neither path has.
 	start := time.Now()
 	defer func() {
 		promutil.Observe(
-			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
+			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds.WithLabelValues(
+				stageStatus(err, len(conflicts) > 0, commitConflict),
+			),
 			time.Since(start),
 		)
 	}()
 
-	conflicts := make(namespaceToReads)
+	conflicts = make(namespaceToReads)
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
@@ -405,6 +431,10 @@ func (d *database) insertStates(
 
 func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
 	start := time.Now()
+	defer func() {
+		promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
+	}()
+
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
@@ -416,8 +446,6 @@ func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites names
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
 		}
 	}
-	promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
-
 	return nil
 }
 
@@ -575,4 +603,35 @@ func readTwoItems[T1, T2 any](r pgx.Rows) (items1 []T1, items2 []T2, err error) 
 func readArrayResult[T any](r pgx.Row) (res []T, err error) {
 	err = r.Scan(&res)
 	return res, errors.Wrap(err, "failed while scanning a row")
+}
+
+// commitStatus labels a commit attempt by how it ended, for the latency histogram. A rejected
+// attempt is rolled back and retried by the caller, so it never shares a cost with a clean commit:
+// duplicates are a SELECT of the already-committed transaction IDs, while conflicts are a
+// constraint violation that discards the transaction and re-reads the colliding keys.
+func commitStatus(res *commitResult, err error) string {
+	switch {
+	case err != nil:
+		return commitError
+	case res == nil:
+		return commitSuccess
+	case len(res.duplicates) > 0:
+		return commitDuplicate
+	default:
+		return commitConflict
+	}
+}
+
+// stageStatus labels one stage of a commit attempt by how it ended. What a rejection means differs
+// by stage -- an already-committed transaction ID in the status insert, an already-existing key in
+// the state insert -- so the caller names it.
+func stageStatus(err error, rejected bool, rejectedStatus string) string {
+	switch {
+	case err != nil:
+		return commitError
+	case rejected:
+		return rejectedStatus
+	default:
+		return commitSuccess
+	}
 }

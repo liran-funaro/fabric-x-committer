@@ -24,9 +24,26 @@ const (
 
 	nameInputQueueSize        = "input_queue_size"
 	nameTxBatchLatencySeconds = "tx_batch_latency_seconds"
+
+	// How a commit attempt ended. A rejected attempt is rolled back and retried by the caller and
+	// costs orders of magnitude more than a clean one -- seconds against milliseconds once keys
+	// collide -- so one unlabelled series is the mean of two unrelated operations and describes
+	// neither. Duplicates are kept apart from conflicts because they are a cheap SELECT of the
+	// offending transaction IDs, not the expensive constraint violation.
+	commitSuccess   = "success"
+	commitDuplicate = "duplicate"
+	commitConflict  = "conflict"
+	commitError     = "error"
 )
 
-var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
+// The last two buckets exist for the rejected attempts: a batch that violates the unique
+// constraint is rolled back and its keys re-read, which measures 1.2-1.7 s, so a ceiling of 1 s
+// put every one of them in +Inf and left the tail unquantifiable.
+// Shared so the label name is written once. The doc generator inlines a slice declared this way,
+// which it cannot do for a bare constant inside the literal.
+var commitStatusLabels = []string{"status"}
+
+var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 5}
 
 type perfMetrics struct {
 	*monitoring.Provider
@@ -54,10 +71,10 @@ type perfMetrics struct {
 
 	databaseTxBatchValidationLatencySeconds                  prometheus.Histogram
 	databaseTxBatchQueryVersionLatencySeconds                prometheus.Histogram
-	databaseTxBatchCommitLatencySeconds                      prometheus.Histogram
-	databaseTxBatchCommitTxsStatusLatencySeconds             prometheus.Histogram
+	databaseTxBatchCommitLatencySeconds                      *prometheus.HistogramVec
+	databaseTxBatchCommitTxsStatusLatencySeconds             *prometheus.HistogramVec
 	databaseTxBatchCommitUpdateLatencySeconds                prometheus.Histogram
-	databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds prometheus.Histogram
+	databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds *prometheus.HistogramVec
 }
 
 func newVCServiceMetrics(q *queues) *perfMetrics {
@@ -161,20 +178,25 @@ func newVCServiceMetrics(q *queues) *perfMetrics {
 			Help:      "The latency of the database querying version for keys in a batch of transactions",
 			Buckets:   buckets,
 		}),
-		databaseTxBatchCommitLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
+		databaseTxBatchCommitLatencySeconds: p.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
 			Name:      "tx_batch_commit_latency_seconds",
-			Help:      "The latency of the database committing a batch of transactions",
-			Buckets:   buckets,
-		}),
-		databaseTxBatchCommitTxsStatusLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
+			Help: "The latency of the database committing a batch of transactions, by how the attempt " +
+				"ended: success, duplicate (the batch carried already-committed transaction IDs), " +
+				"conflict (it carried already-existing keys) or error. A rejected attempt is rolled " +
+				"back and retried, and costs far more than a clean one",
+			Buckets: buckets,
+		}, commitStatusLabels),
+		databaseTxBatchCommitTxsStatusLatencySeconds: p.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
 			Name:      "tx_batch_commit_txs_status_latency_seconds",
-			Help:      "The latency of the database committing a batch of transactions and updating their status",
-			Buckets:   buckets,
-		}),
+			Help: "The latency of the database committing a batch of transactions and updating their " +
+				"status, by outcome: success, duplicate (some transaction IDs were already committed, " +
+				"so their IDs are read back) or error",
+			Buckets: buckets,
+		}, commitStatusLabels),
 		databaseTxBatchCommitUpdateLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
@@ -183,13 +205,15 @@ func newVCServiceMetrics(q *queues) *perfMetrics {
 				"updating existing keys",
 			Buckets: buckets,
 		}),
-		databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
+		databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds: p.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
 			Name:      "tx_batch_commit_insert_new_key_with_value_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
-				"inserting new keys with values",
+				"inserting new keys with values, by outcome: success, conflict (a key already " +
+				"existed, so the insert raised unique_violation and the existing keys were read " +
+				"back) or error. The conflicting insert is the expensive one",
 			Buckets: buckets,
-		}),
+		}, commitStatusLabels),
 	}
 }
