@@ -1521,18 +1521,41 @@ The common cost is the same: these are the only failures that cost days rather t
 failure that announces itself is fixed in the next command. The drain defect cost four rungs; the
 assignment one would have cost five batches.
 
-**What can be said about the conflict workload today, and what cannot.** At saturation the same 5%
-double-spend workload drains **20,235 tps at 120 tablets** and **124,181–181,091 at 8**. That is a
-capacity contrast and it is solid. What does not exist yet, at either tablet count, is an
-**SLO-satisfying operating point**: nobody has measured a rate at which this workload holds under a
-second. The 120-tablet rungs past the first inherited multi-million backlogs, so their 148–154 s means are
-queue depth rather than service time; the 8-tablet numbers come from holds offered above capacity at a
-26 s mean, which is a legitimate measurement of peak drain rate and not a rate the system sustains.
+**What can be said about the conflict workload today, and what cannot.** The tablet count moves this
+workload by an order of magnitude, and the cost per transaction says where it goes. Basis:
+busiest-host CPU% x 64 threads / **finished** transactions a second, where finished is committed plus
+aborted — the same convention the throughput figures use, and it has to be stated, since the same 8-tablet
+row on committed instead reads 78 µs rather than 74.
 
-That is why no figure is drawn from these rows. Plotting a contaminated line against a saturated one
-invites the gap to be read as architecture when part of it is measurement state, and an axis raised to
-fit 26-to-154-second latencies would present them as operating points. The figure waits for ladders whose
-drains converge — `FX_DRAIN_RATE` well under capacity — at both tablet counts. The fix is either `FX_DRAIN_RATE` well under capacity
+| | offered | finished | busiest CPU | CPU per transaction |
+|---|---|---|---|---|
+| conflict-free | — | 518,727 | 80% | **99 µs** |
+| 5% conflicts, 120 tablets | 25,000 | 21,273 | 71% | **2,136 µs** |
+| 5% conflicts, 8 tablets | 181,031 | 181,091 | 21% | **74 µs** |
+
+At 120 tablets a conflicting transaction costs **22 times** what a conflict-free one does, and at 8
+tablets it costs the same as one — 74 µs against 99. The work is not inherent to conflicts; it is the
+unbatched lookup, and it disappears when the lookup stays batched.
+
+**One 90-second probe met the SLO at 8 tablets, and no 300-second hold has reproduced it.** The row:
+
+    [9c-ds5-split8] probe limit=181,031 finished=181,091 committed=172,260 abort=8,831
+                    p99=239ms mean=171ms grow=0/s app=6% cpu=21% -> MET
+
+172,260 tps committed at **239 ms p99**, 171 ms mean, 21% CPU, zero in-flight growth — comfortably inside
+the one-second bound, on a conflicting workload. It appears twice in the logs, at 19:41 and 01:23,
+identical to the digit, which makes it one measurement recorded twice rather than two agreeing runs.
+
+The three holds that followed, offered 155,204–181,031, returned 122,798–130,233 committed at 25–26 s
+means. By this project's own discipline that leaves the rate **unconfirmed, not disproven** — and the
+likely reason is the one recorded in §8: each of those holds followed a probe above the knee and inherited
+its queue.
+
+So no figure is drawn from these rows. A probe that meets against holds that miss, and a contaminated line
+against a saturated one, invites a reader to read measurement state as architecture; an axis raised to fit
+25-second means would present them as operating points. The figure waits for ladders whose drains converge
+— `FX_DRAIN_RATE` well under capacity — at both tablet counts. Those either confirm 172,260 at 239 ms on a
+fresh deployment or show the probe was the artefact, and both outcomes are worth reporting. The fix is either `FX_DRAIN_RATE` well under capacity
 (2,000 here: 18,000/s net clears 3.3M in ~185 s, inside the four 60 s rounds and above the
 `4 * DRAIN_RATE` floor) or, durably, a drain that parks at a fraction of the last measured throughput so
 no future workload can land on the default. The counter ratios above are unaffected: a backlog changes

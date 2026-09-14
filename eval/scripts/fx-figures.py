@@ -336,15 +336,22 @@ EXPERIMENTS = [
          rates=[2500, 5000, 10000, 15000, 20000],
          vars=shape(2, 0, backref=0.05)),
 
-    # One rung at 200,000 offered on a FRESH deployment, which is the only thing that separates fill from
-    # overload in the ladder's fourth rung. That rung retired 17,121 against ~21,000 at the three below it,
-    # and its fill was 43M committed rows against 7M at the first -- six times. At this deployment's
-    # 0.18 ms per million committed, fill alone predicts most of the decline, and a ladder raises rate and
-    # fill together so no rung within one ladder can tell them apart. Same rate, low fill: ~21,000 says the
-    # decline was fill, ~17,000 says it was the offered rate.
-    dict(id="9c-ds5-fresh200k", figure="conflict-fresh", x=200, mode="curve",
-         label="5% double spend, 200,000 offered on a fresh deployment",
-         rates=[200000], vars=shape(2, 0, backref=0.05)),
+    # The same measurement three times, because nothing else in this panel can be interpreted without it.
+    # The five ladder rungs delivered 21,273 / 24,182 / 22,000 / 18,000 / 25,273 with no trend in the
+    # offered rate and no trend in fill -- the fullest table gave the highest throughput. That is a spread
+    # of a third of the mean against the 8.8% repeatability everything else here is held to, and it refutes
+    # both explanations offered for it (fill, and capacity eroding under overload).
+    #
+    # Until the spread is a number, a tablet sweep cannot be read: tab88 against tab96 differing by less
+    # than about a third would be indistinguishable from scatter. Three fresh deployments at one rate turn
+    # the puzzle into an interval. Identical vars, so the plotting pools them and the spread is what it
+    # pools.
+    dict(id="9c-ds5-rep1", figure="conflict-repeat", x=1, mode="curve",
+         label="5% double spend, repeat 1", rates=[100000], vars=shape(2, 0, backref=0.05)),
+    dict(id="9c-ds5-rep2", figure="conflict-repeat", x=2, mode="curve",
+         label="5% double spend, repeat 2", rates=[100000], vars=shape(2, 0, backref=0.05)),
+    dict(id="9c-ds5-rep3", figure="conflict-repeat", x=3, mode="curve",
+         label="5% double spend, repeat 3", rates=[100000], vars=shape(2, 0, backref=0.05)),
 
     # A ladder where capacity is high enough to bracket a knee. At 120 tablets capacity is under 25,000,
     # so every rung of the 5M ladder sat above it and measured the collapsed regime rather than a curve.
