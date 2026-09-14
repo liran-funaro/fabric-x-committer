@@ -26,7 +26,8 @@ costs nothing and gives it a measured baseline instead of an assumed one.
 |---|---|---|---|
 | 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **done, all four shares** |
 | 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **done: misses at all five rungs, 2,500-20,000, none censored** |
-| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **running; splitting verified off on all three masters** |
+| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **done, but inconclusive above 150,000 — see 2i** |
+| 3b | `nosplit250-rep1..3` | Whether 250,000 holds at twelve tablets from a fresh deployment. Three bring-ups, three readings. | queued, ahead of the A/B |
 | 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
 | 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
@@ -122,6 +123,7 @@ batch, not once beforehand -- an ordinary bring-up rewrites that path. Verified 
 | 2 | Find why double spends collapse. | `9c-ds5-*` | done |
 | 2a | Tablet sweep at 5% conflicts, to fit a cost law. | `9c-ds5-tab*` | closed, no law identifiable |
 | 2b | Conflict-share sweep at 1%, 0.1%, 0.01%. | `ds1`…`ds0001` | queued (batch 5) |
+| 2i | **Does 250,000 hold at twelve tablets?** `nosplithi` read 250,000 as MET (243 ms, insert 17.0 ms) then, after its 350,000 miss and a redeploy, its bridge rung read the same rate as MISSED (29.6 s, insert 262 ms). The redeploy was genuine — mvcc reset 10.5M → 3.2M and the deployment logged idle at 283 tx/s — so this is one rate disagreeing across deployments, not a drain artefact. Retracted from the document in `b054a57f`; the section now claims 150,000. Three fresh-deployment repeats queued as batch 3b. | `9c-nosplit250-rep1..3` | queued |
 | 2h | **The no-pre-split conflict-free ceiling.** The section's justification for keeping the 120-way split divided 518,000 by 213,091, which is a single MET probe never pushed higher — and `nosplithi` has now retired 250,209 with 5% conflicts, so the divisor is already falsified. Corrected to a one-sided bound in `74dd76e3`; closing it needs a conflict-free ladder at twelve tablets. | new | ready, needs the arm |
 | 2c | Add `db_insert` to the driver's `QUERIES`. | — | done |
 | 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, to close the `chunk64` loose end. | — | open, unowned |

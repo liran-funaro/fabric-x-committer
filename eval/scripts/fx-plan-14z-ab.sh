@@ -117,6 +117,15 @@ MONITOR=local ./fx-explain-insert.sh > /data1/logs/explain-insert.log 2>&1 &&
   say "!! pre-check 1 failed -- see /data1/logs/explain-insert.log"
 grep -E "Storage Read Requests|=== [ABC]:" /data1/logs/explain-insert.log 2>/dev/null | sed "s/^/    /"
 
+# BEFORE the swap: settle whether 250,000 holds at twelve tablets. nosplithi read pass then fail on that
+# one rate across a redeploy, with the insert at 17.0 ms and 262 ms respectively, and the ladder's bridge
+# rung caught it. Three batches, each with its own bring-up, so three independent fresh-deployment
+# readings. This cannot move after the swap: it measures the failure path the rewrite removes.
+run nosplit250a 9c-nosplit250-rep1 $NS 20000
+run nosplit250b 9c-nosplit250-rep2 $NS 20000
+run nosplit250c 9c-nosplit250-rep3 $NS 20000
+say "=== 250k repeats done; the swap follows and ends this measurement permanently ==="
+
 sql_variant onconflict || exit 1
 
 # A ladder rather than a search: if the rewrite works the capacity is unknown, and the old code

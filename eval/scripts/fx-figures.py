@@ -584,6 +584,29 @@ EXPERIMENTS = [
          vars=dict(shape(2, 0, backref=0.05),
                    committer_database_table_pre_split_tablets=12)),
 
+    # 250,000 read pass on one deployment and fail on the next, and the difference is not marginal: the
+    # insert was 17.0 ms in the rung that met and 262 ms in the repeat, at the same rate and the same
+    # rendered shape, with mvcc resetting 10.5M -> 3.2M across the redeploy so the second really was a
+    # fresh table rather than an undrained one. The ladder's own bridge rung is what caught it.
+    #
+    # One rung cannot say which reading is the workload and which is the deployment, and the last time a
+    # single-rung anomaly at this layout was argued rather than repeated, three sessions reversed on it five
+    # times in ninety minutes and one repeat settled it in twenty-five minutes. So: three separate batches,
+    # each of which begins with its own bring-up, giving three independent fresh-deployment readings of the
+    # one rate in question. Identical vars to `9c-nosplit-ds5-hi` so the readings pool with its rungs.
+    #
+    # This has to run BEFORE the insert_ns swap. It is a measurement of the failure path the rewrite
+    # removes, and CREATE OR REPLACE is not a live upgrade path, so after the swap it cannot be taken at all.
+    dict(id="9c-nosplit250-rep1", figure="conflict-nosplit250", x=1, mode="curve",
+         label="5% double spend, 12 tablets, 250k repeat 1", rates=[250_000],
+         vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
+    dict(id="9c-nosplit250-rep2", figure="conflict-nosplit250", x=2, mode="curve",
+         label="5% double spend, 12 tablets, 250k repeat 2", rates=[250_000],
+         vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
+    dict(id="9c-nosplit250-rep3", figure="conflict-nosplit250", x=3, mode="curve",
+         label="5% double spend, 12 tablets, 250k repeat 3", rates=[250_000],
+         vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
+
     # The A/B for `insert_ns`'s rewrite: `ON CONFLICT (key) DO NOTHING ... RETURNING key` in place of the
     # `EXCEPTION WHEN unique_violation` handler, with the violating set computed in the same statement as
     # `_keys EXCEPT ALL inserted`. No Go change and no contract change -- `insertStates` still consumes a
