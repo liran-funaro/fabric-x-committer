@@ -96,7 +96,7 @@ func newPerformanceMetrics(p *monitoring.Provider, q *managerQueues) *perfMetric
 		gdgDepFreeTxCount: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemGlobalDependencyGraph,
-			Name:      "dependency_free_tx_count",
+			Name:      "dependency_free_size",
 			Help: "Number of transactions released by the global dependency graph that the output " +
 				"channel has not taken yet",
 		}),

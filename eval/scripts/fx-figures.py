@@ -1072,7 +1072,17 @@ def measure(exp, rate, settle, window, kind):
     # All four conditions, so that a reported point is one the cluster could hold: the rate
     # arrived, it was committed, the latency met the paper's bound, and nothing was accumulating
     # behind it.
+    # Finishing MORE than was offered is arithmetically impossible in steady state, so it is a definitive
+    # statement that the window measured a backlog draining rather than the rate. It is a cleaner flag than
+    # growth (a queue pinned at its ceiling has zero derivative) or mean latency (which needs a threshold),
+    # and it was the defect behind every hold in this dataset: the driver holds at the last PASSING probe,
+    # which after a 17-rung climb is the top of the climb -- a rate that clears 90 s and not 300 s -- so
+    # hold 1 fails and the step-downs below it measure hold 1's backlog. Rows show it plainly:
+    # offered 95,157 / finished 113,273, offered 88,108 / finished 135,455, and a "met" hold at growth
+    # -12,433/s. As a condition of `met` rather than a flag on the row, no such window can be reported as a
+    # rate again -- which is also the root cause of the 300 B size point landing at 408,000.
     met = (finished is not None and finished >= rate * (1 - TOLERANCE)
+           and finished <= (offered or 0) * (1 + TOLERANCE)
            and (offered or 0) >= rate * (1 - TOLERANCE)
            and p99 is not None and p99 <= SLO_P99
            and (growth is None or growth <= rate * TOLERANCE)
