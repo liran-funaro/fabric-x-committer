@@ -26,7 +26,7 @@ costs nothing and gives it a measured baseline instead of an assumed one.
 |---|---|---|---|
 | 1 | `nosplit` | Whether a conflicting workload has any sub-second operating point, at 5/10/20/30%. | **done, all four shares** |
 | 2 | `ladderlow` | Whether the 120-way split misses the bound at a *sustainable* rate. Its 70 existing rows are all past capacity. | **done: misses at all five rungs, 2,500-20,000, none censored** |
-| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **running** |
+| 3 | `nosplithi` | The no-split ceiling, which four ladders left unfound at 100,000. Layout pinned. | **running; splitting verified off on all three masters** |
 | 4 | `hold8nosplit`, `ladder8tab` | The 8-tablet anomaly as an A/B on automatic splitting alone: identical rates, one flag apart. | queued |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
 | 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
@@ -54,6 +54,25 @@ offered it retires the offered rate exactly, in-flight growth is 0.00, the busie
 p99 is 13.6 s and 14.5 s. Nothing is queueing. At the bottom rung, an eighth of the 20,300 that layout
 commits, the insert already costs 1.71 s against 13.6 ms at twelve tablets, and an eightfold rise in
 offered rate moves it only to 2.88 s: load is a factor of 1.7 where the layout is 126.
+
+### Verifying `enable_automatic_tablet_splitting` (done for `nosplithi`, 2026-09-14)
+
+Check the **master's own argv**, not `/varz`:
+
+    ssh 10.241.64.10 'pgrep -af yb-master | head -1' | tr ' ' '\n' | grep enable_automatic_tablet_splitting
+
+All three masters (.10/.11/.12) carry `--enable_automatic_tablet_splitting=false` under
+`cluster-nosplitting.yaml`, so the inventory route works where `yugabyte_master_extra_flags` in an
+experiment's vars was a silent no-op.
+
+`curl -sk https://10.241.64.<m>:5310/api/v1/varz` returned an **empty body**, not an error, on all three
+— so the documented check reads as "flag absent" rather than "check failed", which is the worse of the
+two ways to be wrong. The masters run `--webserver_redirect_http_to_https=true` behind their own CA;
+argv needs none of that and is what the process is actually running.
+
+Unrelated but adjacent: `pgrep -c yb-tserver` reports 0 on a healthy host. The database runs under
+`tmux`, so the match needs `-f`, and the definitive liveness check is a ysql round trip on 5320 rather
+than any pgrep.
 
 ## SANCTIONED by the user, and re-applied
 
