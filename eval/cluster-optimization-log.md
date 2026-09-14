@@ -2473,7 +2473,36 @@ same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer u
 on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
 30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
 
-**Retracted, then un-retracted: the row the retraction rested on is invalid.** The sequence is recorded because
+**Settled on clean rows, after two reversals of mine — and the answer needs a caveat neither reversal had.**
+`ds30`'s fourth rung landed at 80,000 with growth **exactly 0** and met at 196 ms, so there is no knee. The
+positions I held in sequence were: knee at 30% (on 10,000 pass + 25,000 fail); no knee (on the 50,000 row); knee
+again (once that row proved to be draining); and now no knee, on a row that is clean. The final one is the only
+one resting on a valid measurement above the failure.
+
+| offered | p99 | insert | growth | verdict |
+|---|---|---|---|---|
+| 10,000 | 519 ms | 14.5 ms | 0 | met, clean — deployment A |
+| 25,000 | **3,565 ms** | **52.9 ms** | 0 | **missed**, clean — deployment A |
+| 50,000 | 199 ms | 11.7 ms | −6,800 (13.6%) | **discard — draining** |
+| 80,000 | 196 ms | 11.2 ms | 0 | met, clean — deployment B |
+
+**But the miss and the passes above it are on different deployments** (e0's, and the point that keeps this from
+being a clean refutation): the miss triggered redeploy-on-miss, so 50,000 and 80,000 ran on a fresh table while
+10,000 and 25,000 shared the original. So the non-monotonicity is not demonstrated *within* one deployment, and
+the anomaly may belong to deployment A rather than to the rate. That ambiguity is created by the redeploy itself,
+which is the argument for the paired-ladder discipline.
+
+So what the section may say: **30% double spends held 80,000 tps at a 196 ms tail**, with one unexplained failure
+at 25,000 on an earlier deployment whose insert cost 4.5x both neighbours. No knee is drawn. The re-run puts
+15,000 / 25,000 / 30,000 / 60,000 / 100,000 on **one** deployment — 6f's repeat rung included precisely because a
+single row was too thin to carry a caveat — and that settles it.
+
+Three sessions handed each other a shape for this series and took it back five times in ninety minutes. The
+common cause is not carelessness but a design property: **one rung is one measurement, and a ladder that
+redeploys on a miss cannot distinguish a rate effect from a deployment effect.**
+
+*(Superseded, kept for the retraction:)* **Retracted, then un-retracted: the row the retraction rested on is
+invalid.** The sequence is recorded because
 the mistake is instructive. I recorded a knee at 30% between 10,000 and 25,000; `ds30`'s third rung came back
 `met=True` at 50,000 with p99 199 ms, so I withdrew it as an isolated anomaly; that row is **not a valid
 measurement**. Its `inflight_growth` is **−6,800/s — 13.6% of its own rate** — so the window retired 56,800/s
@@ -2532,7 +2561,7 @@ claim needs its bound:
 | 5% | 100,000 offered | 190 ms | 11% |
 | 10% | 100,000 | 187 ms | 11% |
 | 20% | 80,000 | 193 ms | 10% |
-| 30% | **10,000** — fails at 25,000; no valid rung above | 519 ms → **3,565 ms** | 3% |
+| 30% | 80,000, with an unexplained miss at 25,000 on an earlier deployment | 196 ms | 10% |
 
 **The boundary cannot be placed from this data.** It is either between 20% and 30% in share, or between 10,000
 and 25,000 in rate at 30%, and nothing here separates them; ds20's top rung was 80,000 and ds30's second was
