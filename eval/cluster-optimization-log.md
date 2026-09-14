@@ -2334,3 +2334,34 @@ is not pooled with `curve500`. Its knee is 430,145 tps sustained over 300 s at a
 and 408 ms p99**, with the load generator at 21% and the busiest machine at 75%; 480,000 offered collapses to
 433,727 at 7,181 ms. Quote the median with its statistic named, since the p99 there is nearly double it.
 
+## What `db_insert` actually spans, from the source
+
+`databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds` wraps `insertStates` only
+(`service/vc/database.go:381`), so it covers three things: the blind `INSERT`, the **plpgsql savepoint
+rollback** — `insert_ns_*` has an `EXCEPTION WHEN unique_violation` block, so the failed statement is undone
+before the handler runs — and the handler's `key = ANY(_keys)` lookup.
+
+It does **not** cover the outer distributed transaction's rollback: `commit()` returns early on `res != nil`
+and its deferred `rollBackFunc` fires *after* `insertStates` has returned. Nor does it cover the retry loop in
+`commitTransactions`. **So the true cost per commit is higher than `attempts x db_insert`, not lower**, and
+every figure derived from that product is a lower bound. It is also why `tx_per_insert` reports width divided
+by attempts: there is one observation per attempt, not per commit.
+
+The conflict-free case is the control that puts the cost on the failure path rather than on the write itself —
+the same `INSERT` to the same ~120 tablets sustains 518,000 tps when nothing violates. That leaves the
+savepoint rollback and the handler's lookup as the two candidates, and **no measurement yet separates them**.
+`hold8` is the experiment that can: at 8 tablets there are ~38 keys per tablet against ~2.5 at 120, so a flat
+per-tablet cost predicts 0.11 s while a cost growing with keys-per-tablet predicts more.
+
+## Two loose ends with no owner
+
+**`chunk64`.** Sixty-four transactions is ~128 keys, so 128 x 120 = 15,360 sits *under* the batching threshold
+and the point should have been fast. It gave 46,182 tps. `vcservice_batcher_input_queue_size` exists, so the
+validator--committer probably re-batches and the dependency-graph chunk does not control the insert's key
+count at all. One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, settles
+it.
+
+**`SimpleManager.depFreeTxBatches` has no gauge.** About 497,000 transactions are dependency-free, released,
+and in none of the seven queues that are instrumented, so they can only be in that slice — which the code
+itself calls "deliberately unbounded" and which nothing measures.
+
