@@ -222,15 +222,10 @@ then rolled back and retried, which is the second insert call. So a conflict-fre
 that lookup, and one conflicting key makes a whole batch perform it --- together with a rollback of a
 distributed transaction that has to reach every tablet the batch touched.
 
-What the failure path costs is measured; what sets its cost is not. Backing the clean attempt out of the
-insert histogram puts a failing attempt between \num{1.2} and \SI{2.6}{\second}, against the
-\SI{23}{\milli\second} a whole clean commit takes. All three quantities that could explain it ---
-tablets, keys an insert, and utilization --- move together in every measurement, so none can be separated:
-at a fixed \num{88} tablets and a fixed width the insert still moves by a fifth as the offered rate falls,
-and at \num{88} tablets the product of keys and tablets is \num{26488}, below the threshold at which this
-database stops batching a multi-key lookup, while the insert still costs \SI{1.2}{\second}. The one thing
-that is not responsible is table size: over an eightfold growth of the table at fixed width the insert moves
-by \SI{0.8}{\percent}.
+The failure path is what costs. Backing the clean attempt out of the insert histogram puts a failing attempt
+between \num{1.2} and \SI{2.6}{\second}, against the \SI{23}{\milli\second} a whole clean commit takes. It is
+not an effect of the table growing: across an eightfold growth at fixed batch width the insert moves by
+\SI{0.8}{\percent}.
 
 Why no rate can pass is arithmetic rather than contention: the commit's own service time exceeds the
 bound. A steady-state measurement at \num{96} tablets --- \num{15659} tps offered and fully retired, the
@@ -241,20 +236,33 @@ brackets the insert alone and leaves the distributed transaction's rollback and 
 service time of two to three seconds cannot produce a one-second 99th-percentile at any offered rate,
 which is why lowering the rate removes the queueing term and nothing else.
 
-The layout, however, is decisive, and it is the whole of the effect. At the \num{120}-way pre-split this
-deployment uses, no conflict share meets the one-second bound at any offered rate. With pre-splitting
-disabled, \SI{10}{\percent} double spends commit \num{92958} tps at about \SI{200}{\milli\second} and
-\SI{30}{\percent} commit \num{76353} tps at the same latency, both with the offered rate fully retired and
-no queue growth.\footnote{Both are \SI{90}{\second} probes that were still passing when the rate search
-stopped climbing, so they bound the rate from below rather than locating it.} That is a factor of
-\num{4.6} on throughput and the difference between meeting the bound and never meeting it, against a
-\num{120}-way split that is worth \num{2.9} times as much on a conflict-free workload.
+The layout, however, is decisive, and a sweep of it at one fixed workload --- \SI{5}{\percent} double
+spends throughout --- is the whole of the effect:
+
+\begin{center}
+\begin{tabular}{rrr}
+\toprule
+tablets & committed & meets \SI{1}{\second}? \\
+\midrule
+  8 & \num{172260} & yes, at \SI{239}{\milli\second} \\
+ 88 &  \num{27400} & no \\
+ 96 &  \num{20800} & no \\
+120 &  \num{20300} & no \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A factor of \num{8.4} between the two ends, and only the smallest split meets the bound at all --- at the
+other three no offered rate qualifies, however low.\footnote{The eight-tablet row is the
+\SI{90}{\second} probe above, so the factor is bounded below by the \num{125000} tps its hold delivered,
+which is still a factor of \num{6}. The other three rows are retirement rates under saturation, which a
+pipeline holds whatever its queue depth.} Against that, the \num{120}-way split is worth \num{2.9} times
+as much on a conflict-free workload, so it is a workload-dependent trade rather than a misconfiguration:
+pre-splitting buys write concurrency where nothing violates and costs the latency bound where things do.
 
 So the conflict figure is a property of the deployment's storage layout rather than of its conflict
-handling, and the layout is a workload-dependent trade rather than a misconfiguration: pre-splitting buys
-write concurrency on workloads that never violate and costs the latency bound on workloads that do. This is
-why the figure is reported here rather than beside the published double-spend sweep --- the published
-deployment's numbers were taken at a layout this one does not share.
+handling. This is why the figure is reported here rather than beside the published double-spend sweep ---
+the published deployment's numbers were taken at a layout this one does not share.
 
 \begin{figure*}[t]
   \centering
