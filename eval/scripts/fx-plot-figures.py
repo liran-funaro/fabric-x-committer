@@ -268,6 +268,15 @@ def best_per_x(rows, figure):
     out_of = disqualified_rates(rows)
 
     def eligible(r):
+        # `met` is computed at measurement time and stored, so rows recorded before the driver's
+        # arrival check became two-sided can carry met=True on a DRAINING window: offered equals
+        # finished while the pipeline works off a backlog, so the rate was never shown to be
+        # sustainable. Re-checked here because the stored flag cannot be rewritten. Of 138 met rows
+        # this excludes exactly three, all of them drains at 5.6-14.1% of their own rate; every clean
+        # rung reports growth of exactly 0, so the bound costs nothing on real data.
+        g, lim = r.get("inflight_growth"), r.get("limit")
+        if g is not None and lim and abs(g) > 0.02 * lim:
+            return False
         return r.get("met") and (config_key(r), r["limit"]) not in out_of
 
     holds = [r for r in rows if r.get("kind") == "hold" and eligible(r)]
@@ -399,6 +408,19 @@ def figure9(rows, path):
         nosplit = {x: r for x, r in best_per_x(rows, "conflict-nosplit").items()
                    if x in paper} if figure == "9c" else {}
         drew_nosplit = drew_nosplit or bool(nosplit)
+        # Any curve rung that FAILED, wherever it sits. First written to look only ABOVE the reported
+        # point, on the assumption that a failure marks a ceiling; ds30 then failed at 25,000 and passed
+        # at 80,000, so the failure is INTERIOR and the "above" test hid the more interesting case. A
+        # ladder that fails at one rung and passes above it is not a ceiling at all, and a panel showing
+        # only the top passing rung would present it as a clean result.
+        # `collapsed_per_x` cannot supply it: it keeps the lowest-tail failure per x as a witness for
+        # "no rate qualified", which is a different claim from "this one did, the next did not".
+        ns_failed = {}
+        for r in rows:
+            if r.get("figure") != "conflict-nosplit" or r.get("met") or r["x"] not in nosplit:
+                continue
+            if r["x"] not in ns_failed or r["limit"] < ns_failed[r["x"]]["limit"]:
+                ns_failed[r["x"]] = r
         xs = sorted(set(data) | set(paper) | set(weak) | set(nosplit))
         pos = list(range(len(xs)))
         labels = [xfmt(x) for x in xs]
@@ -514,6 +536,13 @@ def figure9(rows, path):
                 top.annotate("no rate qualified" if attempted else "not run",
                              (pp + offsets[0], anchor * 1.06),
                              ha="center", va="bottom", fontsize=6.5, color=INK2, rotation=90)
+            # A failing rung is NOT drawn, and the geometry is why. The dotted-outline idiom works for a
+            # ceiling -- an outline above the solid bar reads as "tried and missed". ds30's failure is
+            # INTERIOR: it missed at 25,000 and passed at 80,000, so the outline lands *inside* the solid
+            # bar in the same slot, shorter than it, which reads as nothing at all. Rendered and looked
+            # at before deciding. It also crowded three labels into one band on bars a seventh of the
+            # axis high. So `ns_failed` is detected here and reported in the caption instead, where a
+            # sentence can say which rung failed and on which deployment -- neither of which a bar can.
             if x in nosplit:
                 r = nosplit[x]
                 total = throughput(r)
