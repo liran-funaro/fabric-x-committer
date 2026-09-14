@@ -41,6 +41,22 @@ multi-key lookup when every key is new. One conflicting key makes the whole batc
 removes both the full-batch lookup and the rollback. Violating keys become requested-minus-returned, so
 the return value inverts and its unit tests change with it. Needs sanction — it is the commit path.
 
+**Instrument defects this hunt exposed**, all three of which produced plausible numbers:
+
+1. `db_commit` samples a span that *excludes* the insert — 22.9 ms against 1.72 s for the same batch. Three
+   sessions independently concluded "the database is healthy" from it. `db_insert` and
+   `db_insert_per_commit` are in the driver now.
+2. `FX_DRAIN_RATE` defaults to **20,000**, and the conflict workload's capacity is **20,235**. So the drain
+   parked the generator at the rate the pipeline could just retire, the backlog never fell, and the
+   give-up test fired at once — the log reads "draining: 1,830,000 in flight" and then *rises* to 3.34M.
+   Every latency from ladder5m rung 2 onward is the age of that backlog, not a cost of the workload:
+   23,004 tps × 148.8 s = 3.42M, which is the reported in-flight figure. Throughput survives this (a
+   saturated pipeline retires at capacity whatever the queue depth) but latency does not. `drain()` now
+   parks at a tenth of what the pipeline is retiring rather than at a fixed rate.
+3. The sampler `cd`'d into the Prometheus config directory once at startup; a bring-up deleted and
+   recreated it, leaving the process on an unlinked inode and the log full of dashes for 45 minutes
+   across live measurement.
+
 **Refuted along the way**, each on evidence: the nil-version insert path (the published generator shared
 it), the tablet pre-split as a *difference* from the published run (it had one too), the reference gap
 versus the graph window (the abort rate matches the configured share exactly, so references do land on

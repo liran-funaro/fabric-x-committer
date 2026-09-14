@@ -189,10 +189,10 @@ SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 % DRAFT for review -- numbers checked against figures-ecdsa.jsonl, awaiting the tablet sweep at 64/96/160
 % to firm up the threshold sentence. Everything here is measured; nothing is projected.
 Double spends are not free here, and what they cost is not conflict resolution. At the tablet layout this
-deployment uses, no offered rate between \num{25000} and \num{500000} tps qualified at a
-\SI{5}{\percent} double-spend share: every rung delivered \SIrange{21000}{24000}{} tps with a mean latency
-near \SI{150}{\second}, so the figure is flat rather than sloped and the pipeline's conflict ceiling is
-around \num{22000} tps --- a factor of twenty-four below the \num{518000} it sustains with none.
+deployment uses, a \SI{5}{\percent} double-spend share retires \SIrange{21000}{24000}{} tps whatever it is
+offered --- \num{25000}, \num{50000} and \num{100000} tps all arrive at the same place, so the ceiling is a
+capacity and not a knee, and it sits around \num{22000} tps: a factor of twenty-four below the
+\num{518000} the same pipeline sustains with no conflicts. None of those rates arrived in full.
 
 The cost is a database read amplification, and three measurements place it there rather than in conflict
 handling. Per transaction, the busiest machine spends \SI{2133}{\micro\second} of CPU under conflicts
