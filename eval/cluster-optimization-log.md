@@ -1790,15 +1790,21 @@ the first probe at 30,000 (4.05 s) and descended instead of climbing, which is t
 below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
 five days, so the series cannot share an axis with current numbers until it is re-run.
 
-**p99 is censored in overload, so quote the mean there.** Bucket-boundary frequencies across both files:
-60,000 ms on 114 rows, 29,900 on 26, 7,475 on 17, 44,850 on 10, 19,950 on 8, 14,950 on 8. Those are
-Prometheus histogram bucket bounds — 7,475 x 4 = 29,900 and 14,950 x 3 = 44,850 — and `histogram_quantile`
-returns the last finite boundary once the quantile passes the populated buckets. The proof is a ladder5m rung
-reporting p99 = 60,000 ms with a **mean of 69,334 ms**: a mean above the 99th percentile is impossible for
-any distribution. So the three 8-tablet holds "at 29,900 ms" are one bucket and must be written ">29.9 s";
-the 118x ratio against the 252 ms probe is bucket resolution, not a measured factor. The SLO gate is
-unaffected, since a censored p99 is far above one second and fails correctly. `mean` is sum over count and
-stays valid throughout, which makes it the statistic for overload and p99 the statistic only near the bound.
+**p99 clamps at 60,000 ms only; everything below it is bucket resolution.** The first version of this
+paragraph called every repeated value a clamp — 60,000 ms on 114 rows, 29,900 on 26, 7,475 on 17, 44,850 on
+10, 19,950 on 8, 14,950 on 8 — and that was too wide. The histogram's actual `le` set is 2 ms through 10 s,
+then 15, 20, 30, 45 and 60 s, so 29,900 = 20,000 + 10,000 x 0.99 is exactly what `histogram_quantile` returns
+by linear interpolation when **every** observation lands in the 20-30 s bucket. Coarse, but a measurement.
+
+Only the 60,000 rows are clamps, where the quantile sits in `+Inf`, and the proof there stands: a ladder5m
+rung reports p99 = 60,000 ms with a **mean of 69,334 ms**, and a mean above the 99th percentile is impossible
+for any distribution.
+
+The narrowing inverts what the wide claim implied about the eight-tablet holds. All six read 29,900 with means
+of 25-26 s, so they are a **measured failure at sustained rates** rather than an unreadable number: eight
+tablets moves from "unconfirmed" to refuted, and the 252 ms probe beside them is the anomaly needing an
+explanation. Quote the mean in overload regardless — bucket resolution above ten seconds is coarser than any
+claim worth making — and keep p99 for the region near the bound, where the buckets are milliseconds wide.
 
 **What the 5M ladder shows is capacity, and nothing about load.** This claim was wrong three ways before
 it was right, so the sequence is recorded rather than just the conclusion: first the throughputs were

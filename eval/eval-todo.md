@@ -41,9 +41,10 @@ that the 21× penalty is gone, not that the sign reverses.
 **The 8-tablet column is one 90-second probe that no hold has reproduced, so nothing in it is quotable yet.**
 `9c-ds5-split8` met at 172,260 and 252 ms p99, and the three 300 s holds that followed — offered
 181,031 / 167,621 / 155,204, so at and *below* the rate that passed — all returned 122,798–130,233 committed
-at a **29,900 ms** p99. A factor of 118 between a probe and a hold at the same rate, with a redeploy between
-them, and hold 1 was draining (`grow=-300/s`) while reading 29,900 ms. Until `hold8` resolves that, the
-8-tablet recovery is a candidate, not a result.
+at a **29,900 ms** p99 with 25-26 s means. Those are real to bucket resolution, not clamps (see the p99 note
+below), so the holds are a **measured failure** and the 8-tablet recovery is refuted at sustained rates rather
+than merely unconfirmed. What is left unexplained is the probe: 172,260 at 252 ms, with a redeploy before the
+first hold and that hold draining (`grow=-300/s`) while reading 29,900 ms. `hold8` still runs for that.
 
 **RETRACTED: the no-pre-split series is a different workload, not a different split.** `split0-ds10/20/30`
 were run with `loadgen_tx_reference_gap: 0` and a 10,000,000 lookback, against `300000` and `1,000,000` for
@@ -77,14 +78,13 @@ and that ~181,000 is `split0-ds0`, whose three holds all failed (155,273–202,0
 met probe was 213,091 at 0.15 s, which would make the ratio 2.4x. It is also `tablets=0` rather than 8, so it
 is not the same layout as the table above.
 
-**p99 is censored in overload — use the mean there.** Bucket-boundary frequencies across both JSONL files:
-60,000 ms on 114 rows, 29,900 on 26, 44,850 on 10, 19,950 on 8, 14,950 on 8, 7,475 on 17. Those are
-Prometheus histogram bucket bounds (7,475 x 2 x 2 = 29,900; 14,950 x 3 = 44,850), and `histogram_quantile`
-returns the last finite boundary once the quantile passes the populated buckets. The proof: a ladder5m rung
-reports p99 = 60,000 ms with **mean = 69,334 ms**, and a mean above the 99th percentile is impossible. So the
-three 8-tablet holds "at 29,900 ms" are one bucket — state them as ">29.9 s", not as a 118x ratio against the
-252 ms probe. The SLO gate is unaffected (a censored p99 fails correctly); the reported values are what cannot
-be quoted. `mean` is sum/count and stays valid throughout.
+**p99 clamps at 60,000 ms only — below that it is bucket resolution, not censoring.** I first called every
+repeated value a clamp; the `le` set is 2 ms–10 s, then 15, 20, 30, 45, 60 s, so 29,900 = 20,000 + 10,000 x
+0.99 is what `histogram_quantile` interpolates when every observation lands in the 20–30 s bucket. Coarse but
+real. Only 60,000 is a clamp (quantile in `+Inf`), proven by a rung reporting p99 60,000 ms with a **mean of
+69,334 ms**. This inverts the 8-tablet reading: all six holds at 29,900 with 25–26 s means are a **measured
+failure**, so 8 tablets is refuted rather than unconfirmed, and its 252 ms probe is the anomaly. Use the mean
+in overload anyway; keep p99 for the region near the bound.
 
 ## Committer arm (`inventory/cluster.yaml`)
 
