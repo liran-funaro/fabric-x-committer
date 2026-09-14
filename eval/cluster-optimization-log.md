@@ -1741,6 +1741,52 @@ At 120 tablets a conflicting transaction costs **22 times** what a conflict-free
 tablets it costs the same as one — 74 µs against 99. The work is not inherent to conflicts; it is the
 unbatched lookup, and it disappears when the lookup stays batched.
 
+**With pre-splitting disabled, a conflicting workload passes the bound at 92,958 tps.** This is the positive
+result the section was missing, and it was in `figures-ecdsa.jsonl` — the file figure 1 is drawn from — the
+whole time. Three sessions had been reading `figures.jsonl` instead, which holds a different run of the same
+experiment ids on the same seed ladder, so rows matched by limit rather than by file appeared to contradict
+each other. Top probe of each series, `inflight_growth` 0 and `finished` equal to `offered` in every case:
+
+| conflicts | pre-split | offered | finished | committed | p99 | met |
+|---|---|---|---|---|---|---|
+| 10% | none | 102,770 | 102,727 | **92,958** | ~0.2 s | yes |
+| 30% | none | 102,770 | 102,909 | **76,353** | ~0.2 s | yes |
+| 5% | 8 | 181,031 | 181,091 | 172,260 | 0.24 s | yes |
+| 5 / 10 / 20 / 30% | 120 | any rate | — | 15,000–24,000 | censored | **never** |
+
+Both no-pre-split series were still passing when the search exhausted its `UP_STEPS`, so those are lower
+bounds and not knees. Against the 120-way split at the same conflict shares that is **4.6x on throughput and
+the difference between meeting the bound and never meeting it at any offered rate**. The mechanism claim does
+not need a cost law: pre-splitting is what costs the SLO under conflicts, and it buys 2.9x conflict-free in
+exchange, which is the workload-dependent trade `fx-figures.py:591-598` anticipated.
+
+`committer_database_table_pre_split_tablets: 0` disables pre-splitting; **this inventory's default is 120**
+(`cluster.yaml:284`). Naming that column "default split" would tell a reader the opposite of the finding.
+
+**None of the holds on that series are quotable, in either direction, and the cause is the driver.** A hold
+runs at the last *passing* probe, which after a seventeen-step climb is the top of the climb. ds10's hold
+there no longer fit over 300 s — finished 96,545 against 102,770 offered — and the two step-downs then read
+`finished` **113,273** and **135,455** against 95,157 and 88,108 offered, so they were draining hold 1's
+backlog rather than measuring a rate. ds30's single `met=True` hold carries `inflight_growth` **−12,433/s`,
+the same artefact with the sign that flatters it. No hold has been attempted *below* capacity on this series,
+which is the experiment the figure needs: a fixed rate at roughly 75% of the passing probe, 300 s, fresh
+deployment, pre-splitting off.
+
+Two further cautions on those rows. `split0-ds20`'s 20,829 tps is not a low capacity — its search missed on
+the first probe at 30,000 (4.05 s) and descended instead of climbing, which is the entire reason 20% reads
+below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
+five days, so the series cannot share an axis with current numbers until it is re-run.
+
+**p99 is censored in overload, so quote the mean there.** Bucket-boundary frequencies across both files:
+60,000 ms on 114 rows, 29,900 on 26, 7,475 on 17, 44,850 on 10, 19,950 on 8, 14,950 on 8. Those are
+Prometheus histogram bucket bounds — 7,475 x 4 = 29,900 and 14,950 x 3 = 44,850 — and `histogram_quantile`
+returns the last finite boundary once the quantile passes the populated buckets. The proof is a ladder5m rung
+reporting p99 = 60,000 ms with a **mean of 69,334 ms**: a mean above the 99th percentile is impossible for
+any distribution. So the three 8-tablet holds "at 29,900 ms" are one bucket and must be written ">29.9 s";
+the 118x ratio against the 252 ms probe is bucket resolution, not a measured factor. The SLO gate is
+unaffected, since a censored p99 is far above one second and fails correctly. `mean` is sum over count and
+stays valid throughout, which makes it the statistic for overload and p99 the statistic only near the bound.
+
 **What the 5M ladder shows is capacity, and nothing about load.** This claim was wrong three ways before
 it was right, so the sequence is recorded rather than just the conclusion: first the throughputs were
 withdrawn along with the latencies, then reinstated as evidence of rate-independence across a 16x range of
