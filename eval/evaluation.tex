@@ -257,6 +257,22 @@ without a pre-split --- so reducing it to buy conflict tolerance would give up t
 panel. The \num{120}-way split stays, and the conflict figure stands as a limitation of this deployment rather
 than a configuration to be tuned away.
 
+A sweep of the conflict share at twelve tablets says the same thing from the other side: what costs is that
+query, not the conflicts. \SI{5}{\percent}, \SI{10}{\percent}, \SI{20}{\percent} and \SI{30}{\percent}
+double spends were each run as an ascending ladder of \SI{300}{\second} holds, and every rung of every
+ladder met the bound --- to \num{100000} transactions a second offered at the two lower shares and
+\num{80000} at the two higher, each arriving in full at a flat in-flight count. Across the nine rungs after
+a first rung the 99th percentile spans \SIrange{150}{199}{\milli\second} and the median
+\SIrange{125}{143}{\milli\second}, with no trend in either the share or the rate: at this layout a
+transaction that will be rejected costs what one that will commit costs, and sextupling the offered rate
+does not move the tail. Against the same workload at the \num{120}-way split, where no rate qualifies at
+all, that is the whole of the effect sitting in one query.\footnote{One rung is an exception: at
+\SI{30}{\percent}, \num{25000} offered missed the bound with a \SI{3.6}{\second} tail and an insert
+\num{4.5} times its neighbours', while \num{10000} below it and \num{80000} above it both met. Its
+generator delivered its nominal rate to \SI{1.1}{\percent}, so the failure is a real measurement; but the
+rungs above it ran on a later deployment, so it is neither bracketed nor explained. No pure function of
+share and rate accounts for it, since the same share cleared \num{80000} sixteen minutes later.}
+
 That makes the layout sweep a diagnosis rather than a recommendation, and a useful one: it localises the cost
 to a single query. The insert's fast path performs no lookup at all --- it inserts the batch blind and returns.
 Only the failure path reads, and it reads \emph{every} key the batch carries, \numrange{301}{356} of them at
