@@ -1436,9 +1436,19 @@ Capacity then follows with one further term, and it is constant across both poin
      88 tablets   27,670 x 1.78 x 1.170 / 148 = 389 batches = 65 per VC
 
 So the pipeline holds ~64 batches per validator-committer in flight whatever the tablet count, and capacity is
-set entirely by how long an insert attempt takes. **Recorded before that batch ran**: at 96 tablets, if width
-holds near 295 keys, insert ≈ 1.21 s and capacity ≈ 26,400 tps. Note it no longer separates the two models —
-96 was under the crossing too — so it tests only whether the per-key-tablet constant is constant.
+set entirely by how long an insert attempt takes. **Recorded before that batch ran**, and revised once from the
+corrected 88-tablet row while still ahead of the data: at 96 tablets, if the width holds near 308 keys, the
+product is 29,568, so insert ≈ **1.32 s** and capacity ≈ **25,000 tps**. It no longer separates the two models
+— 96 was under the crossing too — so it tests only whether the per-key-tablet constant is constant.
+
+That batch is also the first at a high tablet count that *can* certify an operating rate, because it is
+seeded at 30,000 rather than 250,000. A rate search descends x0.85 six times, so its floor is 0.377 of the
+seed: from 250,000 that floor is 94,286, three and a half times the capacity, and every probe saturates and
+misses on latency while the batch reports "no rate met" having established nothing. From 30,000 the floor is
+11,313 and the knee is bracketed in two or three probes. Seeds carried over from the conflict-free shape,
+where 480,000 was right, are nine times wrong for a workload that retires 27,000 — which is the same class of
+fault as the drain default: nothing errors, the log fills with plausible probe lines, and the run certifies
+nothing.
 
 It is invisible on the headline workload because inserting only fresh keys never raises the exception,
 so nothing ever performs a multi-key lookup. A back-reference is the first thing that does.
