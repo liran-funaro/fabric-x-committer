@@ -2144,6 +2144,31 @@ same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer u
 on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
 30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
 
+**The conflict share barely matters once the pre-split is off.** Both no-split ladders ran four
+300-second rungs to 100,000 offered and every rung met the bound:
+
+| double spends | top committed | p99 | busiest CPU |
+|---|---|---|---|
+| 5% | 95,122 | 190 ms | 11% |
+| 10% | 90,491 | 187 ms | 11% |
+
+A 5% shortfall for twice the double-spend rate, against a 25x collapse at the 120-way split. That is a
+stronger form of the result than either share alone, and a near-flat series across shares is the shape the
+published 9c panel has — the first time anything measured here has reproduced it.
+
+**A pin written for one experiment silently invalidated another that reused its vars.** The durability test
+was queued carrying `--enable_automatic_tablet_splitting=false`, inherited from the `tabhold` points where
+pinning is the whole point. So a test whose *subject* is splitting could not split, and would have returned
+"still 14 ms" from a table that was never going to move. This is the same fault class as the drain rate that
+matched capacity and the `FX_ONLY` prefix that matched nothing: **an instrument that answers a different
+question than the one asked, and reports success either way.** The rule it adds to the three-clause one is
+narrow and worth stating: when a test's subject is a mechanism, re-read the flags that disable that mechanism
+before reusing a vars block that was written for a different point.
+
+It was caught by arithmetic rather than by inspection, which is the reusable part: checking whether the soak
+was *long enough* is what surfaced that it could never have worked at any length. A sizing calculation is a
+cheap way to find an impossible experiment, because an impossible one usually fails the sizing too.
+
 **And if splitting is what contaminates a first rung, the contamination is general.** Every first rung on a
 fresh deployment is suspect, not only these — which includes the single-rung points in the size sweep, where
 there is no second rung to compare against, so the contamination is invisible rather than merely present.
