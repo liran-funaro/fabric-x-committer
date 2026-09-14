@@ -1819,6 +1819,48 @@ widths costs 27 Prometheus series per histogram instead of 1000, and the only th
 exact tail values under overload — which is precisely what the day's work concluded nobody should do. A
 saturated p99 tells you which decade you are in and the mean tells you the rest.
 
+**The controlled comparison the tablet sweep could never produce, and it settles the mechanism.**
+`9c-nosplit-ds5` rung 1 is a 300-second hold at the documented gap with pre-splitting disabled, and reading
+the VC counters through its window against the 120-tablet numbers isolates the variable that the sweep kept
+confounding:
+
+| | keys/batch | attempts | insert | service time | µs per key |
+|---|---|---|---|---|---|
+| no pre-split | **682** | 1.91 | **0.016 s** | **31 ms** | 23 |
+| 120 tablets | 350 | 1.91 | 1.720 s | 3.29 s | 4,914 |
+| 96 tablets | 350 | 1.90 | 1.760 s | 3.34 s | 5,029 |
+
+Same workload, same 4.88% abort share, and the **same 1.91 attempts per commit** — so the retry loop runs
+just as often and the failure path is entered just as often. The batches are **1.95x wider**. And the insert
+costs **108 times less**.
+
+That resolves what the two-point fits could not:
+
+- **Per-key is refuted outright.** The per-key cost is 209x apart between the rows, and the width moved in
+  the *wrong direction* — wider batches, cheaper inserts. No monotone function of keys produces that.
+- **Utilization cannot carry it.** Measured at fixed tablets, utilization is worth 20-55% (1.325 s draining
+  against 2.050 s saturated at 96 tablets). It is not worth 10,800%.
+- **The retry frequency is not the variable**, since 1.91 is identical across all three rows. Whatever the
+  handler's `key = ANY(_keys)` and the rollback cost, they cost it per tablet touched.
+
+So the failure path's cost is set by the tablet layout, and the earlier per-tablet *direction* survives even
+though every numerical law fitted to it did not. It also confirms the service-time argument from its own
+side rather than by absence: 31 ms of service against a one-second bound is why this configuration meets it,
+where 3.29 s could not at any offered rate.
+
+**What is still unknown, and it decides whether this is a slope or a cliff:** the tablet count at
+`pre_split_tablets: 0`. YugabyteDB derives it from `ysql_num_shards_per_tserver` and the tserver count, so it
+is neither 1 nor 120 and nothing here records it. If it is ~48, then 48 to 88 tablets is a 1.8x change for a
+100x cost move and there is a cliff between them, which the sweep's own 8-versus-88 gap is consistent with.
+If it is much lower, the relationship may be closer to linear. One read of the table's tablet count settles
+it and should be recorded beside these rows.
+
+**Unexplained, and flagged rather than fitted:** the batches are wider at no pre-split (682 keys against
+350) even though the downstream is 108x faster, which is backwards for a batcher whose only floor is
+`MinTransactionBatchSize: 1` and which should therefore accumulate *less* per send cycle when the service
+below it is quick. Five mechanisms have already been retracted in this section; this one is recorded as an
+observation.
+
 **What the 5M ladder shows is capacity, and nothing about load.** This claim was wrong three ways before
 it was right, so the sequence is recorded rather than just the conclusion: first the throughputs were
 withdrawn along with the latencies, then reinstated as evidence of rate-independence across a 16x range of
