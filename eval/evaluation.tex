@@ -244,14 +244,21 @@ least \num{95123} tps --- \num{4.7} times what the \num{120}-way split commits u
 \SI{190}{\milli\second} across the top three rungs and the busiest machine reaches \SI{11}{\percent}.
 
 Taken higher at the same twelve-tablet layout, now pinned by disabling automatic splitting so it cannot
-drift, the same workload retires \num{250209} tps at \SI{243}{\milli\second} with the busiest machine at
-\SI{24}{\percent} --- and \num{350000} offered is past the knee. There the pipeline delivers only
-\num{173167} of the requested rate, the sidecar's waiting count rises from \num{24979} to \num{509153},
-the insert goes from \SI{17.0}{\milli\second} to \SI{264}{\milli\second}, and the tail reaches
-\SI{29.7}{\second}. The load generator sits at \SI{7.7}{\percent} CPU while delivering half of what it was
-asked for, so what limits it there is back-pressure from a full in-flight window rather than its own
-capacity. The conflicting ceiling at this layout is therefore bracketed between \num{250209} and
-\num{350000}, which is the first bracket any conflicting configuration in this section has had.
+drift, \num{150000} tps offered is retired in full at \SI{199}{\milli\second} with the busiest machine at
+\SI{16}{\percent}. Above that the picture is not yet settled and we report it as such. On one deployment
+\num{250000} was retired at \SI{243}{\milli\second}; the ladder then missed at \num{350000}, and the
+repeat of \num{250000} on the fresh deployment that followed missed too --- \SI{29.6}{\second} at the same
+rate and the same generated shape, with the insert at \SI{262}{\milli\second} against
+\SI{17.0}{\milli\second} in the rung that passed. Two readings of one rate that differ by a factor of
+\num{15} in the insert are not a measurement of a ceiling, so what this section claims at twelve tablets is
+\num{150000}, and the ceiling above it remains open.
+
+The failing rungs do say something about \emph{how} it fails. Asked for \num{350000} the pipeline delivers
+\num{173167}, while the load generator sits at \SI{7.7}{\percent} CPU --- so past the knee the generator is
+throttled by back-pressure from a full in-flight window rather than by its own capacity, which is the
+confound this ladder's top rung was chosen to avoid. The batch narrows with it, from \num{171} to
+\num{122} transactions per insert, so the collapse arrives as smaller batches paying a far higher
+per-batch cost rather than as larger ones.
 
 The insert column carries the effect. Without a pre-split it costs \SIrange{13.6}{15.2}{\milli\second} and does
 not rise with load: across that ladder the offered rate rises \num{6.7}-fold and the insert \emph{falls}. At a
