@@ -43,6 +43,11 @@ OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "."
 # two answer different questions, so they get a figure each.
 MODE = sys.argv[3] if len(sys.argv) > 3 else ""
 E2E = MODE.startswith("e2e")
+# "conflict" draws the paired double-spend ladders: what the pipeline delivers against what it was
+# offered, beside the graph population that explains it. Its own mode because it is the only figure here
+# whose x axis is the OFFERED rate rather than the delivered one -- a cliff is invisible on a plot that
+# uses delivered throughput for x, since both axes then collapse together.
+CONFLICT = MODE == "conflict"
 E2E_LADDER = "shape" if MODE == "e2e" else "curve"
 # Figure 7a at four parties: 280,000 tps at one shard, 414,000 at two, 430,000 at four, at about 0.6 s
 # latency with 300 B transactions. This arm runs FOUR shards -- sixteen batchers, two to a machine -- so
@@ -74,6 +79,13 @@ PAPER_DARK = "#8f3714"  # slot 2, stepped down: the rejected share of the paper'
 # so it is where the plot stops drawing and starts naming.
 LAT_FLOOR_MS = 1000 if E2E else 400
 SLO_CEILING_MS = 1000
+if CONFLICT:
+    # The conflict ladders need a different frame. Their whole point is a regime whose median is tens of
+    # seconds, so a 1,000 ms cap would push most of one series into the corner note and leave the figure
+    # showing only the series that behaved. 30 s contains both; the one-second bound is drawn as a line
+    # instead, so what qualifies is still visible.
+    LAT_FLOOR_MS = 30_000
+    SLO_CEILING_MS = 30_000
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRID = "#e6e5e1"
@@ -696,6 +708,11 @@ def latency_curve(rows, path):
 
     ax.set_ylim(0, axis_ms)
     ax.set_xlim(left=0)
+    if CONFLICT:
+        # What a reported point has to meet, drawn because this figure's axis reaches far past it.
+        ax.axhline(1000, color=INK2, linewidth=1, linestyle=":", zorder=2)
+        ax.annotate("one-second bound", (0.01, 1000), xycoords=("axes fraction", "data"),
+                    textcoords="offset points", xytext=(0, 4), fontsize=7, color=INK2)
     # What the axis cuts off is named rather than drawn, which is the point of cutting it: the region
     # worth reading is 40-400 ms and these points would own the plot if the axis reached them. One
     # block of text, not a label per point -- the off-scale rungs are within a few percent of each
@@ -886,10 +903,84 @@ def summary(rows):
     return "\n".join(out)
 
 
+def conflict_ladders(rows, path):
+    """The two double-spend ladders: delivered against offered, and the graph population beside it.
+
+    Two panels because the result is a claim about cause. The left panel shows what the pipeline delivers
+    as the offered rate rises; the right shows how many transactions the dependency graph is holding at
+    the same rungs. A cliff appears as the left curve leaving the diagonal exactly where the right curve
+    reaches its limit, and the paired ladders differ only in that limit -- so the two panels together say
+    "throughput stopped because admission stopped", which neither says alone.
+
+    The graph population is read from the sidecar's waiting-transaction gauge, which tracks it one for one:
+    both count transactions handed to the coordinator and not yet finished, and a cross-tier sample showed
+    them equal to within 500 out of 500,000.
+    """
+    ladders = {}
+    for r in rows:
+        if r.get("figure") != "conflict-ladder" or r.get("kind") != "curve":
+            continue
+        ladders.setdefault(r.get("label") or r.get("experiment"), []).append(r)
+    if not ladders:
+        print("no conflict-ladder data yet")
+        return
+
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(7.2, 3.2))
+    fig.patch.set_facecolor(SURFACE)
+    for a in (ax, bx):
+        style(a)
+        a.grid(True, axis="x", color=GRID, linewidth=0.8)
+
+    # The diagonal is what a pipeline that keeps up looks like, so the eye needs no legend entry to read
+    # the gap: every point below it is work that was offered and not delivered.
+    top = max(r["limit"] for rs in ladders.values() for r in rs)
+    ax.plot([0, top], [0, top], color=INK2, linewidth=1, linestyle=":", zorder=1)
+    ax.annotate("delivered = offered", (top, top), textcoords="offset points", xytext=(-4, -12),
+                ha="right", fontsize=7, color=INK2)
+
+    for (label, rs), colour in zip(sorted(ladders.items()), (OURS, SMALL, PAPER_DARK)):
+        rs = sorted(rs, key=lambda r: r["limit"])
+        xs = [r["limit"] for r in rs]
+        ax.plot(xs, [throughput(r) or 0 for r in rs], color=colour, linewidth=2, marker="o",
+                markersize=7, zorder=3, label=label)
+        held = [(r["limit"], r.get("sc_waiting")) for r in rs if r.get("sc_waiting")]
+        if held:
+            bx.plot([x for x, _ in held], [h for _, h in held], color=colour, linewidth=2,
+                    marker="o", markersize=7, zorder=3, label=label)
+
+    ax.set_xlabel("offered rate (tx/s)", color=INK2, fontsize=9)
+    ax.set_ylabel("delivered (tx/s)", color=INK2, fontsize=9)
+    bx.set_xlabel("offered rate (tx/s)", color=INK2, fontsize=9)
+    bx.set_ylabel("transactions held by the graph", color=INK2, fontsize=9)
+    for a in (ax, bx):
+        a.xaxis.set_major_formatter(FuncFormatter(thousands))
+        a.yaxis.set_major_formatter(FuncFormatter(thousands))
+        a.set_xlim(left=0)
+        a.set_ylim(bottom=0)
+    # The limit each ladder was given, drawn where it bites. A horizontal line is the whole explanation of
+    # the left panel, so it belongs on the right one rather than in prose.
+    for lim, colour in ((500_000, OURS), (5_000_000, SMALL)):
+        if any(abs((r.get("vars") or {}).get("committer_coordinator_dep_graph_wait_tx_limit", 500_000)
+                   - lim) < 1 for rs in ladders.values() for r in rs):
+            bx.axhline(lim, color=colour, linewidth=1, linestyle="--", zorder=2)
+    fig.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper center",
+               bbox_to_anchor=(0.5, 1.02), ncol=2)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    save(fig, path)
+
+
 def main():
     rows = load(SRC)
     print(f"{len(rows)} rows from {SRC}")
     print(summary(rows))
+    if CONFLICT:
+        # Two figures, because the ladders answer two questions and one plot cannot hold both. The paired
+        # latency curve is the familiar view -- what it costs to run at a rate -- and the cliff panels are
+        # the causal one: delivered against offered, beside the graph population that explains the gap.
+        conflict_ladders(rows, os.path.join(OUTDIR, "conflict-ladders.png"))
+        latency_curve(rows, os.path.join(OUTDIR, "conflict-latency.png"))
+        table(rows, os.path.join(OUTDIR, "figures-table.md"))
+        return
     if not E2E:
         figure9(rows, os.path.join(OUTDIR, "figure9.png"))
     latency_curve(rows, os.path.join(OUTDIR, "latency-throughput.png"))
