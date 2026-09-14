@@ -353,6 +353,15 @@ EXPERIMENTS = [
     dict(id="9c-ds5-rep3", figure="conflict-repeat", x=3, mode="curve",
          label="5% double spend, repeat 3", rates=[100000], vars=shape(2, 0, backref=0.05)),
 
+    # The claim the document needs and has never had: a 300-second hold at 8 tablets on a fresh
+    # deployment. A probe met the bound there -- 181,031 offered, 172,150 and 172,112 committed in two
+    # independent windows, 239 and 252 ms p99, 21% CPU -- but no hold has reproduced it, and the three that
+    # followed inherited queues from probes above the knee. Seeded at 200,000 so the descent lands near
+    # 170,000 rather than bottoming out at the 181,031 the default seed cannot go below.
+    dict(id="9c-ds5-hold8", figure="conflict-tablets", x=8, label="5% double spend, 8 tablets, held",
+         seed=200_000, vars=dict(shape(2, 0, backref=0.05),
+                                 committer_database_table_pre_split_tablets=8)),
+
     # A ladder where capacity is high enough to bracket a knee. At 120 tablets capacity is under 25,000,
     # so every rung of the 5M ladder sat above it and measured the collapsed regime rather than a curve.
     dict(id="9c-ds5-ladder8tab", figure="conflict-ladder", x=8, mode="curve",

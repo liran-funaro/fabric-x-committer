@@ -1427,9 +1427,23 @@ fill-driven effect would move the edge as the run proceeds and a per-attempt one
 or the timer, so with a floor of 1 it dispatches as soon as anything is queued and never reaches the
 timer under load. Batch width is therefore a *consequence* of the downstream service rate, not a
 setting. Capping it is a code change, and the narrower fix is the SQL: `INSERT ... ON CONFLICT DO NOTHING
-... RETURNING` identifies the offending keys without an exception, a full-batch lookup, or a rollback.
-That change is in the commit path and inverts the meaning of the function's return value, so it needs
-sanction before anyone writes it.
+... RETURNING` identifies the offending keys without an exception and without a lookup over every key in
+the batch.
+
+Three things about that fix, since its cost is what decides whether it is worth proposing. It does **not**
+change the function's contract: computing the violating set in the same statement, as an anti-join between
+the unnested input and the returned keys, leaves `insert_ns` returning violating keys exactly as it does
+now, so `insertStates`, the retry loop and the existing tests are untouched. It introduces **no new
+write-then-revert**: the conflict path already runs `defer rollBackFunc()` over the whole transaction
+(`database.go:243`, taken at the early return two lines below), so partial inserts are discarded today by
+the same rollback, for the same reason — no new mechanism and no new tombstones. And it fixes a latent
+correctness bug rather than only a performance one: if a batch ever holds two writes to the same new key,
+today's handler finds neither in the table, returns an empty violating set, and the caller commits a
+transaction whose insert the exception had already rolled back — silently dropping both writes. The
+dependency graph should prevent such a batch forming, so it is unreachable rather than broken; `DO NOTHING`
+makes it correct instead of merely unreachable.
+
+It is still the commit path, so it needs sanction before anyone writes it.
 
 **What was wrong, and why it looked right.** Recorded with the same weight as the findings, because the
 failure mode all week has been confident mechanisms that did not survive contact: a log listing only
