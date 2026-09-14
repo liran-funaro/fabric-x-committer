@@ -1832,11 +1832,21 @@ eleven hours.
 headed "tablets" is wrong wherever it is not qualified. The document now heads it "pre-split" and says the
 count drifts upward from it.
 
+**Every row of the tablet axis carries this, not just the nosplit one.** The 88, 96 and 120 rows were each
+measured at some unknown count *above* their label, differing by row and by how long the run had been going —
+`ns_0` created with 120 sitting at 288 after eleven hours is the scale of it. That does not weaken the layout
+result, which is a comparison of settings and is what an operator actually chooses; it means **the only clean
+tablet axis obtainable from this deployment is a pinned one**, with automatic splitting disabled. Unpinned,
+`tabhold` cannot do the job it was designed for and would produce six more starting-value labels.
+
 That this did not corrupt the ds5 ladder is worth stating, because the count grew roughly sixfold *during*
 it: insert cost across the four rungs ran 15.2, 13.9, 13.7, 13.6 ms with attempts 1.911 → 1.907 and keys per
 call 356 → 355. It fell by a ninth while both the offered rate rose 6.7-fold and the table split underneath
-it. So in the 2-to-23 range the insert is insensitive to the count, which also locates the cliff: it is
-somewhere between roughly 23 and 88, not below.
+it. Both of those push the cost *up* if either matters — at a 96-way pre-split a mere doubling of rate moves
+the insert 1.62 → 2.03 s — so two upward pressures produced a downward ninth. That is insensitivity rather
+than cancellation, and it brackets the cliff **above 23** rather than merely "not below": the crossing sits
+between roughly 23 and 88, which makes `tabhold`'s 32 and 48 rungs the informative ones and 96 and 120
+confirmatory.
 
 **A secondary trap found on the way: `yb-admin list_tablets` truncates at ten.**
 It takes an optional `max_tablets` argument that **defaults to 10**, so the obvious invocation truncates and
