@@ -2206,6 +2206,25 @@ the first probe at 30,000 (4.05 s) and descended instead of climbing, which is t
 below both 10% and 30%. And every `split0` row is from 09-08 and 09-10, predating `fast_block_prepare` by
 five days, so the series cannot share an axis with current numbers until it is re-run.
 
+**The (30%, 25,000) anomaly did not reproduce, so it belonged to its deployment.** 6f's repeat rung — asked for
+on the grounds that a repeat of a failing point is worth more than two neighbours of it — came back **met at
+186 ms** where the original missed at 3,565 ms. Same share, same offered rate, a later deployment:
+
+| | offered | p99 | insert | verdict |
+|---|---|---|---|---|
+| deployment A | 25,000 | **3,565 ms** | 52.9 ms | missed |
+| re-run | 25,000 | **186 ms** | — | met |
+
+Its first rung agrees: 15,000 gave 199 ms against deployment A's 519 ms at 10,000. So the parsimonious reading
+recorded earlier is confirmed — the failure was a property of that deployment, not of the share or the rate, and
+no pure function of the two ever accounted for it. The section's footnote resolves to a one-off on a table that
+no longer exists.
+
+Worth noting what settled it and what did not. Five mechanisms were proposed for that rung across three sessions
+and none was needed; one repeat at the failing point answered it in twenty-five minutes. That is the third time
+today the cheap measurement beat the explanation, and the pattern is now explicit enough to state as a rule:
+**when a single rung is anomalous, repeat the rung before theorising about it.**
+
 **The 20% share is now measured twice, on two deployments, and it reproduces.** `ds20`'s re-run finished all
 four unified rungs with no miss and no redeploy, so that share now has **eight clean rungs** — every one met,
 every one at growth exactly 0:
