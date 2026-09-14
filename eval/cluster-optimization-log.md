@@ -2470,8 +2470,37 @@ same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer u
 on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
 30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
 
-**Retracted twenty minutes after recording it: 30% does not break — the 25,000 miss is an isolated
-anomaly.** `ds30`'s third rung landed at 50,000 and **met**, with everything back to normal:
+**Retracted, then un-retracted: the row the retraction rested on is invalid.** The sequence is recorded because
+the mistake is instructive. I recorded a knee at 30% between 10,000 and 25,000; `ds30`'s third rung came back
+`met=True` at 50,000 with p99 199 ms, so I withdrew it as an isolated anomaly; that row is **not a valid
+measurement**. Its `inflight_growth` is **−6,800/s — 13.6% of its own rate** — so the window retired 56,800/s
+against 50,000 offered by working off a backlog, and 50,000 was never shown to be sustainable. I read the
+negative value as the in-flight count settling after the redeploy; e0 read it as a drain, and 13.6% is far too
+large for settling.
+
+So the knee stands on the only valid rungs available: **10,000 passes, 25,000 fails, and there is no valid rung
+above.**
+
+| offered | p99 | mean | p50 | insert | attempts | growth | verdict |
+|---|---|---|---|---|---|---|---|
+| 10,000 | 519 ms | 163 | 164 | 14.5 ms | 1.97 | 0 | met |
+| 25,000 | **3,565 ms** | 258 | 130 | **52.9 ms** | 1.96 | 0 | **missed** |
+| 50,000 | 199 ms | 150 | 143 | 11.7 ms | 1.95 | **−6,800** | **discard — draining** |
+
+**The gate that let it through was one-sided**, which is the reusable part. The arrival check added this morning
+compares offered against finished — both read 50,000 here, so the drain appeared only in the growth term, and
+that term was bounded above (`growth <= rate * TOLERANCE`) and not below, permitting arbitrarily negative
+growth. Now two-sided. Every clean rung today reports growth of exactly 0, so the bound costs nothing on real
+data and correctly rejects both this row and `ladder5m`'s +4,100 accumulating rung.
+
+**And it would have produced a figure contradicting itself.** `best_per_x` reports the highest rung that met, so
+this row would have become the panel's 30% point at 50,000 — directly above a rung at 25,000 that the same
+series shows failing. A figure asserting a passing rate higher than one it also shows failing is worse than
+either error alone. Note the fix does not rewrite the stored row: `met` was computed at measurement time and is
+`true` in the JSONL, so until the re-run supersedes it the row must be excluded by filtering on
+`abs(inflight_growth) <= 0.02 * limit`.
+
+*(Superseded, kept for the retraction:)* **30% does not break — the 25,000 miss is an isolated anomaly.** `ds30`'s third rung landed at 50,000 and **met**, with everything back to normal:
 
 | offered | p99 | mean | p50 | insert | attempts | growth | met |
 |---|---|---|---|---|---|---|---|
@@ -2500,7 +2529,7 @@ claim needs its bound:
 | 5% | 100,000 offered | 190 ms | 11% |
 | 10% | 100,000 | 187 ms | 11% |
 | 20% | 80,000 | 193 ms | 10% |
-| 30% | 50,000, with an isolated miss at 25,000 | 199 ms (3,565 at the miss) | 7% |
+| 30% | **10,000** — fails at 25,000; no valid rung above | 519 ms → **3,565 ms** | 3% |
 
 **The boundary cannot be placed from this data.** It is either between 20% and 30% in share, or between 10,000
 and 25,000 in rate at 30%, and nothing here separates them; ds20's top rung was 80,000 and ds30's second was
