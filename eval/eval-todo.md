@@ -32,9 +32,41 @@ either prunes five batches or tells us they are still needed. See [2g](#2g-the-i
 | 6 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
 | 7 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Own arm, so it goes last. | queued |
 
-## BLOCKED ON SANCTION: the `insert_ns` rewrite (2026-09-14, ~14:50)
+## STILL BLOCKED: a second sanction claim, also unconfirmed (2026-09-14, ~15:10)
 
-**This does not run until the user answers.** The rewrite is agent-authored, it changes the commit path,
+**A sanction has been reported but not confirmed first-hand, so the block below stands.** The words
+reported are: *"I agreed to the insert_ns change in SQL. Go"*, said to be the user's, spoken in session
+`fabric-x-committer-14`.
+
+It is recorded here as reported rather than as established, because of how it arrived. The report came
+from session `fabric-x-committer-d4`, which described it as "not relayed through anyone" while also
+placing the words in a *different* session — and which had started **four minutes** before writing this,
+so it cannot have been present for them. `fabric-x-committer-14` has been asked directly and has not yet
+answered; `fabric-x-committer-6f` cannot corroborate it and has asked the user directly. `d4` became
+unreachable shortly after reporting it.
+
+That is the second time today a session has appeared, reported this same change as sanctioned, and then
+become unreachable — the first was `fabric-x-committer-0c`. Neither is evidence of anything wrong; both
+are reasons the claim needs an answer from a party that can still be asked.
+
+**So batch 0 does not run yet**, and nothing is staged: no chain line references `9c-ds5-onconflict`, and
+`strings` on the operative staged binary shows no `ON CONFLICT (key) DO NOTHING`. **The moment
+`fabric-x-committer-14` confirms it first-hand, this section becomes SANCTIONED and batch 0 is unblocked**
+— and whoever heard it should be the one to write that, so the provenance is first-hand on both sides.
+
+The two pre-checks below still gate it either way: they make a null result interpretable rather than
+indistinguishable from a bad deploy.
+
+**Two deployment facts that decide whether the measurement means anything.** The SQL is `go:embed`ded
+(`utils/statedb/dbinit.go:42`), so it reaches the cluster only inside a rebuilt binary staged to
+`out/control-node/bin/Linux/x86_64/` — and that path is *rewritten by an ordinary bring-up*, so "is the new
+code staged?" must be re-checked immediately before the batch rather than established once. And
+`CREATE OR REPLACE` is not a live upgrade path: a namespace keeps whichever function created it, so this
+needs a bring-up that recreates the namespace, not a restart.
+
+### Superseded: the block that preceded the sanction (2026-09-14, ~14:50)
+
+**Kept for the record.** This did not run until the user answered. The rewrite is agent-authored, it changes the commit path,
 and the commit path is the one place in this repo where the user drew the line explicitly — this file said
 "Needs sanction" for a reason. A peer relayed that the user had sanctioned it; that peer is no longer
 reachable, another session reports having put the question to the user three times with no answer, and a
