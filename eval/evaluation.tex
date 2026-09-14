@@ -250,13 +250,22 @@ pre-split of eighty or more it costs over a second and does rise with load --- c
 splits: from \num{11313} to \num{21675} tps, each retired in full at a flat in-flight count, mean latency ran
 \SIrange{5.6}{8.6}{\second}.
 
-The trade runs the other way where nothing violates. There the \num{120}-way split is worth at least
-\num{2.4} times as much --- \num{518000} tps sustained against a \num{213091} peak without a pre-split --- so the split is a
-workload-dependent choice: it buys write concurrency where nothing collides and costs a factor of \num{4.7}
-and the latency bound where things do.
+**But the smaller split is not an option here**, because the trade runs the other way where nothing violates,
+and that is where every other figure in this evaluation sits. The \num{120}-way split is worth at least
+\num{2.4} times as much on a conflict-free workload --- \num{518000} tps sustained against a \num{213091} peak
+without a pre-split --- so reducing it to buy conflict tolerance would give up the headline result to fix a
+panel. The \num{120}-way split stays, and the conflict figure stands as a limitation of this deployment rather
+than a configuration to be tuned away.
 
-So the conflict figure is a property of the deployment's storage layout rather than of its conflict
-handling, and the published double-spend sweep was taken at a layout this one does not share.
+That makes the layout sweep a diagnosis rather than a recommendation, and a useful one: it localises the cost
+to a single query. The insert's fast path performs no lookup at all --- it inserts the batch blind and returns.
+Only the failure path reads, and it reads \emph{every} key the batch carries, \numrange{301}{356} of them at
+the widths measured here, in one predicate. That query costs \SIrange{1.2}{2.6}{\second} at the
+\num{120}-way split and \SI{13.6}{\milli\second} at twelve tablets, a factor near a hundred, on batches of the
+same width. Why it is so sensitive to the split is not established here. What the localisation does establish
+is where a fix has to go: narrowing that one lookup, or removing it, are changes to a query that runs
+\emph{only} when a conflict occurs, so neither costs the conflict-free ceiling anything --- unlike widening
+the tablets underneath it, which costs the ceiling everything.
 
 \begin{figure*}[t]
   \centering
