@@ -286,6 +286,22 @@ EXPERIMENTS = [
     dict(id="9c-ds5-sc200k", figure="conflict-why", x=200, label="5% double spend, 200k sidecar limit",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_sidecar_waiting_txs_limit=200_000)),
+
+    # A ladder rather than a search, at the limit the run cannot reach. A search reports one number and
+    # steps down from any failure, which is the wrong instrument for a cliff: what matters is the rate at
+    # which the graph's population crosses its limit, and whether throughput falls off a step there or
+    # bends like a knee. Every rung is a measurement, so the shape is visible either way.
+    dict(id="9c-ds5-ladder5m", figure="conflict-ladder", x=5000, mode="curve",
+         label="5% double spend, 5M graph limit",
+         rates=[25000, 50000, 100000, 200000, 300000, 400000, 500000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_coordinator_dep_graph_wait_tx_limit=5_000_000)),
+    # The same ladder at the limit in use, so the two curves can be read against each other. If the cliff
+    # is real this one steps down where its population reaches 500,000 and the other does not.
+    dict(id="9c-ds5-ladder500k", figure="conflict-ladder", x=500, mode="curve",
+         label="5% double spend, 500k graph limit",
+         rates=[25000, 50000, 100000, 200000, 300000, 400000, 500000],
+         vars=shape(2, 0, backref=0.05)),
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
