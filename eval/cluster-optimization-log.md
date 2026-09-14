@@ -2550,6 +2550,21 @@ Three sessions handed each other a shape for this series and took it back five t
 common cause is not carelessness but a design property: **one rung is one measurement, and a ladder that
 redeploys on a miss cannot distinguish a rate effect from a deployment effect.**
 
+**And it was fixable rather than merely recordable.** Redeploy-on-miss was introduced this morning to stop
+backlog inheritance and bought this ambiguity in exchange. On a miss the loop now redeploys *and repeats the
+last rate that passed* — a `kind="bridge"` rung. If the bridge reproduces the original result the two halves of
+the ladder are comparable and a later rung's result is its own; if it does not, the redeploy moved something and
+every rung after it is suspect. Traced against `ds30`'s own pattern, the sequence that would have settled the
+last ninety minutes is:
+
+    15,000 MET · 25,000 MISS · redeploy · 15,000 bridge · 30,000 MET · 60,000 MET · 100,000 MET
+
+It costs one rung per miss and nothing on a ladder that never misses, which is every no-split ladder but one.
+A bridge cannot win a panel point, since `best_per_x` takes the highest throughput per x and a bridge repeats a
+rate below the ladder's top. It also resolves an asymmetry worth naming: before it, the only ladder shape that
+gave a clean within-deployment answer was one where every rung passed — precisely the case where the question
+never arises.
+
 *(Superseded, kept for the retraction:)* **Retracted, then un-retracted: the row the retraction rested on is
 invalid.** The sequence is recorded because
 the mistake is instructive. I recorded a knee at 30% between 10,000 and 25,000; `ds30`'s third rung came back
