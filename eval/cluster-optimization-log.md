@@ -1850,13 +1850,36 @@ each measured it once and disagreed.** Reads of `ns_0` on a table created with n
 | ~26 minutes in, during the ds5 ladder | **12** | `yb-admin list_tablets ... 0` |
 | later, and holding | **23** | master `/api/v1/table` |
 
-**The 2 is probably not a data point.** With automatic splitting pinned off for the re-run, the count reads
-**12** twenty minutes after bring-up and stays there — so 12 is what the table is *created* with, one per tablet
-server, and the read of 2 at three minutes was most likely a partial view during creation rather than a stage
-the table passed through. The drift with splitting enabled is therefore **12 → 23**, not 2 → 12 → 23. The
-conclusion that the count is a function of time survives on the 12 → 23 leg; only its lower end was mine to get
-wrong, and it makes the rung-1 caveat weaker than I stated it — rung 1 spans some of 12 → 23, not a
-sixfold change.
+**Retracted, then restored: creation is ONE tablet, and the three readings are one climb seen at three
+instants.** I briefly recorded that 12 was the creation count, on a single read twenty minutes into a re-run
+that I believed had splitting pinned off. Both halves were wrong. A minute-by-minute log of the re-run's own
+table settles it:
+
+    14:12:41   ns_0  120 / 120   0.00 GB    leftover from the prior 120-way table
+    14:16:42   ns_0    1 /   1   0.00 GB    fresh table, created with ONE tablet
+    14:17:42   ns_0    1 /   1   0.09 GB    writing, still one tablet
+    14:18:42   ns_0    5 /   4   0.21 GB
+    14:22:42   ns_0   15 /   8   0.68 GB    still climbing
+
+A table sitting at 1/1 while 0.09 GB is written to it is not a partial view of a twelve-tablet creation. So the
+climb is **1 → 12 running**, my read of 2 at three minutes was a genuine early point on it, and the 12 I read
+later is the *settled* count rather than the initial one.
+
+That also resolves the 12-versus-23 disagreement differently and better than I did: the two numbers are **one
+state seen two ways** — the master's `tablets` array holds 23 including non-running entries, of which 12 are
+running, and `yb-admin list_tablets` reports the running ones. Neither read was stale and neither counted a
+different population by mistake.
+
+**And the re-run is not pinned.** Its count climbs exactly as the originals' did, and its rows still carry
+`committer_database_table_pre_split_tablets = 0`. I had attributed a "splitting is pinned off" comment in the
+driver to the nosplit block; it sits after that block and belongs to the batches that follow it — `ds5-hi` and
+`tabhold`. So the re-run is **directly comparable** to the originals, and the confound I warned about applies to
+those two pinned batches instead.
+
+Two things therefore stand at full strength rather than weakened. **The rung-1 caveat**: rung 1 spans 1 → 12+,
+a twelvefold layout change, so excluding its 408/409 ms readings is well founded. And **the insensitivity
+result**: the tablet count grew about twelvefold during the ds5 ladder while `db_insert` fell 15.2 → 13.6 ms,
+which is the strong form of the bracket rather than the 1.9x version my error would have reduced it to.
 
 YugabyteDB splits a table as it grows, so all three are correct at the times they were taken; the apparent
 contradiction needed no explanation about leaders, replicas or hidden states. The trajectory even matches the
