@@ -253,6 +253,17 @@ rate and the same generated shape, with the insert at \SI{262}{\milli\second} ag
 \num{15} in the insert are not a measurement of a ceiling, so what this section claims at twelve tablets is
 \num{150000}, and the ceiling above it remains open.
 
+A pair of ladders one flag apart puts a lower bound on how many tablets this workload needs. Created with
+eight and with automatic splitting pinned off, it meets the bound to \num{150000} --- confirmed on three
+separate deployments at \SIrange{227}{230}{\milli\second} --- and misses at \num{200000}, delivering
+\num{125455} of it with the insert at \SI{323}{\milli\second}. Created with eight and left to split, the
+table crosses the \SI{128}{\mebi\byte} low-phase threshold about four minutes in and runs the rest of the
+ladder at twelve: there \num{200000} is retired in full at \SI{268}{\milli\second} with the insert at
+\SI{20.6}{\milli\second} and the busiest machine at \SI{24}{\percent}. Eight tablets and twelve agree to
+within \SI{8}{\milli\second} at every rate up to \num{150000} and then diverge completely, so between
+those two rates the layout stops being sufficient --- and it is the count that matters, the splitting only
+mattering in that it produced twelve.
+
 The failing rungs do say something about \emph{how} it fails. Asked for \num{350000} the pipeline delivers
 \num{173167}, while the load generator sits at \SI{7.7}{\percent} CPU --- so past the knee the generator is
 throttled by back-pressure from a full in-flight window rather than by its own capacity, which is the
