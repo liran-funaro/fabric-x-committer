@@ -56,6 +56,13 @@ the return value inverts and its unit tests change with it. Needs sanction — i
 3. The sampler `cd`'d into the Prometheus config directory once at startup; a bring-up deleted and
    recreated it, leaving the process on an unlinked inode and the log full of dashes for 45 minutes
    across live measurement.
+4. **The load generator's rate is not the pipeline's rate behind a deep queue.** Across the six ladder
+   rungs its `finished` scattered 18,000–25,273 (13% sd) while the validator-committers' own counters read
+   20,182–20,617 — flat within 2.1%. The generator measures status arrivals in a sixty-second window with
+   millions of transactions queued ahead of them, so its variance is the queue's. Its *mean* (20,610)
+   agrees with the committers', so it is unbiased and noisy rather than wrong. Quote the committers'
+   counters for any capacity behind a backlog; three separate explanations were built on the generator's
+   scatter before this was noticed, and all three were refuted by the next rung.
 
 **Refuted along the way**, each on evidence: the nil-version insert path (the published generator shared
 it), the tablet pre-split as a *difference* from the published run (it had one too), the reference gap

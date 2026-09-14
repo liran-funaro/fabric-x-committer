@@ -189,14 +189,16 @@ SIGMOD'26 \SI{10}{\percent} \emph{gain} either.
 % DRAFT for review -- numbers checked against figures-ecdsa.jsonl, awaiting the tablet sweep at 64/96/160
 % to firm up the threshold sentence. Everything here is measured; nothing is projected.
 Double spends are not free here, and what they cost is not conflict resolution. At the tablet layout this
-deployment uses, a \SI{5}{\percent} double-spend share retires about \num{22000} tps and cannot be driven
-past it. Offered \num{25000}, \num{50000}, \num{100000}, \num{200000} and \num{300000} tps it delivered
-\numlist{21273;24182;22000;18000;25273} --- a mean of \num{22145}, with no trend in the offered rate and a
-spread of a third of the mean, which is wider than the \SI{8.8}{\percent} repeatability this section holds
-elsewhere. Above the lowest rung the offered rate is not what reaches the pipeline in any case: the
-generator sent \SIrange{21000}{22000}{} tps at every one of them, held there by the sidecar's own window. So
-what the ladder shows is a capacity that absorbs whatever is aimed at it, and that capacity is a factor of
-twenty-four below the \num{518000} the same pipeline sustains with no conflicts.
+deployment uses, a \SI{5}{\percent} double-spend share commits \SIrange{20182}{20617}{} tps --- flat within
+\SI{2.1}{\percent} --- at every offered rate from \num{25000} to \num{400000}, read from the
+validator--committers' own counters. It cannot be driven past that: the generator sent
+\SIrange{21000}{22000}{} tps at every rung, held there by the sidecar's window, so beyond the lowest rung
+the offered rate never reaches the pipeline. What a conflicting workload costs, then, is a ceiling near
+\num{20400} tps, a factor of twenty-five below the \num{518000} the same pipeline sustains with none.\footnote{The
+load generator's own rate for the same rungs scatters from \num{17121} to \num{24041}, a spread of a third,
+because it measures status arrivals in a sixty-second window while several million transactions are queued
+ahead of them. Its mean, \num{20610}, agrees with the committers' counters; its variance is the queue's, not
+the pipeline's. Figures here are the committers'.}
 
 The cost is a database read amplification, and three measurements place it there rather than in conflict
 handling. Per transaction, the busiest machine spends \SI{2133}{\micro\second} of CPU under conflicts
