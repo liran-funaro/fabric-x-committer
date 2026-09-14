@@ -304,6 +304,31 @@ EXPERIMENTS = [
     #
     # If this and the 5,000,000 graph limit both restore throughput, the cliff is the mechanism and either
     # value is a fix. If only one does, the difference says which side the pressure comes from.
+    # The tablet sweep, which turns a 9x observation into a threshold prediction.
+    #
+    # CPU per transaction on the busiest host is what separates a cost from a queueing artefact:
+    # conflict-free runs 99 us/tx, 5% conflicts at 120 tablets runs 2,133 us/tx, and 5% conflicts at 8
+    # tablets runs 75 us/tx -- no more than no conflicts at all. So the cost is real and it is tablet
+    # dependent.
+    #
+    # `insert_ns` inserts the batch blind and returns on success, doing no lookup; only its
+    # `unique_violation` handler runs `key = ANY(_keys)` over EVERY key in the batch. That is why a
+    # conflict-free run never trips it and one conflicting key makes a whole batch pay. YugabyteDB
+    # batches such a lookup per tablet only while tablets x keys stays under about 32,768, and a
+    # 500-transaction chunk carries ~1,000 keys -- so the cliff should sit between 32 tablets (32,000,
+    # just under) and 64 (64,000, over).
+    #
+    # Prediction: 8, 16 and 32 fast and near conflict-free CPU per transaction; 64 and 120 collapsed. If
+    # 32 collapses too, the threshold constant is wrong on this version and needs re-measuring.
+    dict(id="9c-ds5-tab16", figure="conflict-tablets", x=16, label="5% double spend, 16 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=16)),
+    dict(id="9c-ds5-tab32", figure="conflict-tablets", x=32, label="5% double spend, 32 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=32)),
+    dict(id="9c-ds5-tab64", figure="conflict-tablets", x=64, label="5% double spend, 64 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=64)),
     dict(id="9c-ds5-sc200k", figure="conflict-why", x=200, label="5% double spend, 200k sidecar limit",
          seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
                                    committer_sidecar_waiting_txs_limit=200_000)),
@@ -323,6 +348,21 @@ EXPERIMENTS = [
          label="5% double spend, 500k graph limit",
          rates=[25000, 50000, 100000, 200000, 300000, 400000, 500000],
          vars=shape(2, 0, backref=0.05)),
+    # The tablet layout, laddered. The single-variable A/B already says this is the knob: 5% double
+    # spend drains 20,235 tps on the default layout and 124,181-130,233 with eight pre-split tablets,
+    # under the same 500,000 sidecar window, so no window explains the difference. What the A/B does
+    # not give is an operating point -- both split8 holds were offered 155,000-181,000 and drained
+    # while overloaded, at 26 s mean latency. This ladder finds the rate the split layout sustains
+    # with latency that means something.
+    dict(id="9c-ds5-split8-ladder", figure="conflict-ladder", x=8, mode="curve",
+         label="5% double spend, 8 tablets",
+         rates=[25000, 50000, 100000, 150000, 200000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=8)),
+    # A third point on the tablet axis, so the claim is a trend and not one lucky value of eight.
+    dict(id="9c-ds5-split32", figure="conflict-why", x=32, label="5% double spend, 32 tablets",
+         seed=BASE_SEED, vars=dict(shape(2, 0, backref=0.05),
+                                   committer_database_table_pre_split_tablets=32)),
     # And the published topology: nine validator-committers on the nine database nodes that carry no
     # master, against the six here. Tests whether the tier width is part of it independently.
     dict(id="9c-ds5-vc9", figure="conflict-why", x=9, label="5% double spend, 9 validator-committers",
