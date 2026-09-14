@@ -2078,13 +2078,41 @@ the right way — its insert is 15.2 ms against 13.6 and its p99 407 ms against 
 as an explanation and is directly testable: `tabhold12` with splitting pinned off should show no rung-1
 transient at all. If it still does, cold start is back.
 
-**`tx_status` has not settled, and the insert writes both tables.** Across the same window its running count
-went 6, 8, 7, 11, 9, 11 — still short of its own 12. So of the two tables a commit touches, one has plateaued
-and one is mid-split, which is a live variable inside the measurement being quoted. It also shows why a
-running count needs several consecutive equal samples before it is called settled: 11, 9, 11 is a split in
-progress, not a plateau. (The sampler's `sst_gb` column was empty until it was fixed to read `on_disk_size`
-from the table *listing* — the per-table endpoint carries none — so the 13.5 GB figure quoted earlier came
-from the driver, not from here.)
+**Withdrawn: `tx_status` had not settled when I looked, and has since.** Both tables read 23 array / 12
+running from 12:44 onward. And the setting covers more than two: `${SPLIT_INTO_TABLETS}` appears in
+`utils/statedb/create_namespace_tmpl.sql:22` and in `init_database_tmpl.sql` at **both 13 and 28**, so three
+tables are pre-split by it and `tabhold12` pins all of them.
+
+**A running count can fall, and the dips are an instrument.** `tx_status` went 3→2, 4→3 and 8→7 on
+consecutive samples. Not a merge — YugabyteDB has none — presumably a parent leaving `Running` before both
+children enter it, or an inconsistent snapshot. Either way a dip means **splitting is active right now**,
+which turns the count from a label into a live marker of the concurrent workload. Two dips fall inside
+`9c-nosplit-ds10`'s rung-1 window, at 12:36:27 and 12:37:27, so the splitting hypothesis has direct evidence
+from that rung rather than an inference from the count having climbed across it — and an instrument that does
+not depend on `tabhold12` returning.
+
+**What a soak would cost, measured rather than guessed.** With SST size in the sampler, `ns_0` grows
+**0.049 GB per tablet per minute** at 56,000 tps — **0.875 GB per tablet per million transactions**. From 0.4
+to the 10 GiB high-phase threshold is 9.6 GB per tablet:
+
+| offered | time to the next split |
+|---|---|
+| 56,000 | 196 min |
+| 150,000 | 73 min |
+| 250,000 | 44 min |
+| 350,000 | **31 min** |
+
+This matters because the aging test queued as `ds5-hi-age` runs after three 300-second rungs — fifteen minutes
+of load at an average 250,000, reaching about **3.3 GB per tablet, a third of the threshold**. The count stays
+12, no split happens, and the measurement reads "still 14 ms" while meaning "no split occurred". That is the
+same false reassurance the `SKIP_DEPLOY` guard was built to prevent, one layer up. The fix is to gate the soak
+on the observation rather than on a duration: `tablets.log` reports the running count and GB per tablet every
+30 seconds, so a soak can run until the count steps off 12 and hold the comparison rung only then.
+
+**And if splitting is what contaminates a first rung, the contamination is general.** Every first rung on a
+fresh deployment is suspect, not only these — which includes the single-rung points in the size sweep, where
+there is no second rung to compare against, so the contamination is invisible rather than merely present.
+That is 6f's, and it survives the change of mechanism from cold start to splitting.
 
 My first form of the rung-1 argument was circular and 6f caught it: I argued that fewer tablets should make
 the failure path cheaper, so rung 1 being *more* expensive rules the count out — but the reason to believe the
