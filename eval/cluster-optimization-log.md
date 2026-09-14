@@ -1501,11 +1501,38 @@ investigation share one shape: *the run reports success while doing nothing*.
    five of seven batches would have exited 127 before starting a driver in each, and with (2) above the
    log would have called them done in seconds — the whole tablet axis, silently.
 
+The drain defect above belongs to the same class, and it is the instructive member of it, because it
+defeats the first two defences. `drain()` echoed `draining: 3,380,000 in flight` on every round: it
+reported its input and its state faithfully, and still declared success while doing nothing. Nothing
+compared the park rate against capacity.
+
+So the rule has three clauses, and the third is the one that would have caught every fault here:
+
+- **Gate on the artifact, not the exit code** — a rendered config read back, a row count in the results
+  file, a `--list-hosts` before trusting a host pattern.
+- **Echo the inputs a run was given**, because an input silently dropped is indistinguishable from
+  success. The `redo=<none>` line exists because three ladders were lost to an `FX_REDO` the wrapper
+  overrode with an empty string.
+- **Assert the precondition the step depends on.** A drain that cannot drain should refuse, not return.
+  A park rate at or above capacity is not a slow drain, it is a hold, and the code can know that before it
+  waits four minutes to find out.
+
 The common cost is the same: these are the only failures that cost days rather than minutes, because a
-failure that announces itself is fixed in the next command. The drain defect above cost four rungs; the
-assignment one would have cost five batches. **Gate on the artifact, not the exit code** — a rendered
-config read back, a row count in the results file, a `--list-hosts` before trusting a host pattern — and
-echo the inputs a run was given, because an input silently dropped is indistinguishable from success. The fix is either `FX_DRAIN_RATE` well under capacity
+failure that announces itself is fixed in the next command. The drain defect cost four rungs; the
+assignment one would have cost five batches.
+
+**What can be said about the conflict workload today, and what cannot.** At saturation the same 5%
+double-spend workload drains **20,235 tps at 120 tablets** and **124,181–181,091 at 8**. That is a
+capacity contrast and it is solid. What does not exist yet, at either tablet count, is an
+**SLO-satisfying operating point**: nobody has measured a rate at which this workload holds under a
+second. The 120-tablet rungs past the first inherited multi-million backlogs, so their 148–154 s means are
+queue depth rather than service time; the 8-tablet numbers come from holds offered above capacity at a
+26 s mean, which is a legitimate measurement of peak drain rate and not a rate the system sustains.
+
+That is why no figure is drawn from these rows. Plotting a contaminated line against a saturated one
+invites the gap to be read as architecture when part of it is measurement state, and an axis raised to
+fit 26-to-154-second latencies would present them as operating points. The figure waits for ladders whose
+drains converge — `FX_DRAIN_RATE` well under capacity — at both tablet counts. The fix is either `FX_DRAIN_RATE` well under capacity
 (2,000 here: 18,000/s net clears 3.3M in ~185 s, inside the four 60 s rounds and above the
 `4 * DRAIN_RATE` floor) or, durably, a drain that parks at a fraction of the last measured throughput so
 no future workload can land on the default. The counter ratios above are unaffected: a backlog changes
