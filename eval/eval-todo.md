@@ -99,8 +99,43 @@ Everything on record for this figure, before the rest of the sweep re-runs:
 | 512 B | **384,727** | 543 ms | new, replaces 414,364 |
 | 1 KiB | **266,514** | 645 ms | new — gap closed; 7% under its best probe (285,353) |
 | 2 KiB | **185,151** | 590 ms | new, replaces 155,936 (+19%) |
-| 3 KiB | — | — | not yet run (item 4) |
+| 3 KiB | **135,086** | 522 ms | new — the knee is between 2 and 3 KiB |
 | 4 KiB | — | — | **hold FAILED with `finished=0`, growth 25,902/s**; best probe 100,212 at 493 ms |
+
+### The 3 KiB prediction was wrong, and the miss located the knee (00:30Z)
+
+I predicted 145,000–155,000 tps with append and CPU near 50%. Actual: **135,086 tps, append 44.1%, CPU
+52.5%**. The CPU figure was right, append was a little high, and **the rate — the quantity that mattered
+— came in below my range.** Scoring it plainly: the central estimate missed by 7–15%.
+
+It missed because the scaling exponent broke at exactly the step I was extrapolating across:
+
+| step | MB/s | growth | rate exponent |
+|---|---|---|---|
+| 300 → 512 | 145.6 → 197.0 | +35.3% | −0.43 |
+| 512 → 1024 | 197.0 → 272.9 | +38.5% | −0.53 |
+| 1024 → 2048 | 272.9 → 379.2 | +38.9% | −0.53 |
+| **2048 → 3072** | **379.2 → 415.0** | **+9.4%** | **−0.78** |
+
+Three consecutive steps add 35–39% of byte throughput; the fourth adds 9.4%. **The knee item 4 was queued
+to bracket is between 2 and 3 KiB.** That is the result, and my failed extrapolation is how it was found —
+a stable-exponent fit over-predicts the rate precisely where the curve steepens.
+
+**My falsification criteria were the wrong ones, which is the lesson worth keeping.** I set them for
+"append utilisation jumps toward 100%" and "the size ordering inverts". Neither happened, so by my own
+stated tests the model survived — while its central prediction failed. The knee announced itself in the
+*second difference* of byte throughput, which I had not thought to watch. Writing down a prediction is
+only half of it; the tests have to be able to catch the way the thing actually breaks.
+
+**And the 900 MB/s append ceiling is refuted in effect.** It assumed append utilisation would scale to
+100%. It will not: byte throughput is flattening at ~415 MB/s with append at 44% and the busiest CPU at
+52%. So **the knee is not a resource-utilisation limit on either axis** — both sit near half — which again
+matches this pipeline being queueing-limited rather than stage-limited. Latency even *improved* across the
+knee, 590 → 522 ms, so it is not a latency wall either.
+
+Consequence for item 4: the knee is bracketed, but calling it "the disk-bound knee" is not supported. It
+should be described as a byte-throughput ceiling near 415 MB/s of unknown origin, with disk utilisation
+explicitly ruled out at 44%.
 
 ### CPU and append utilisation cross near 3 KiB — with a prediction (23:25Z)
 
