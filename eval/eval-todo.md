@@ -11,6 +11,38 @@ Tasks only. Findings live in `cluster-optimization-log.md`, the tunings worth ke
 One arm can be up at a time and switching arms is a full bring-up (~10 min), so the two arms are two
 batches. `RUNNING.md` has how to run them.
 
+## DATA LOSS: the monitor was reprovisioned (discovered 2026-09-22)
+
+`/data1` on the monitor is an empty root-owned directory, `vdb` and `vdc` are unformatted, nothing is
+mounted, and the host has been up eleven minutes. So `/data1/logs`, `/data1/cluster`,
+`/data1/collections` and `/data1/fabric-x` are all gone, along with every process that was running.
+Rebuilding means the plan file's Phase 1 onward, not a restart.
+
+**What survived, because it was committed:** `eval/figures-ecdsa.jsonl` has ladderlow complete (5 rows)
+and nosplithi complete (4 rows). `eval/figures-orderer.jsonl` is the pre-sweep copy from 2026-09-10.
+
+**What was lost, and what it supports:**
+
+| lost | rows | document claims left unsupported |
+|---|---|---|
+| `hold8nosplit` rungs 2–8 | 7 of 8 | eight tablets meeting 150,000 at 230/227/230 ms; missing 200,000 with 125,455 delivered and insert 323 ms |
+| `ladder8tab` entirely | 7 of 7 | twelve tablets retiring 200,000 at 268 ms with insert 20.6 ms |
+| e2e size sweep re-measure | all | 300 B 485,273 · 512 B 384,727 · 1 KiB 266,514 · 2 KiB 185,151 · 3 KiB 135,086 |
+
+**The affected passage is the paragraph added in `7b87e7f7`** ("Eight tablets is not enough for this
+workload; twelve is"). Its numbers are recorded in that commit message and in the tables above, so they
+are not lost as *values* — but they cannot be re-plotted or re-derived, and a claim whose rows are absent
+should not sit in the document unmarked. Either re-run both arms or mark the paragraph pending.
+
+Also gone with it: the knee between 2 and 3 KiB, the append/CPU crossover, and the 900 MB/s estimate's
+refutation. Those conclusions are recorded in `aba029eb` and `1ae6f651`; their rows are not.
+
+**The lesson, and it is the actionable part:** the driver writes results only to `/data1/logs` on the
+monitor, and they reach the repo only when someone commits them by hand. Everything measured between the
+last commit of a results file and a reprovision is lost. The three batches lost here ran for about four
+hours. A results file should be synced into the repo at every batch boundary, not at the end of a
+session — the chain script is the natural place for it.
+
 ## Queue
 
 Running unattended from `/data1/logs/fx-plan-14x-lf.sh`. Order is by what each batch decides for the
