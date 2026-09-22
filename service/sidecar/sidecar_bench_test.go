@@ -29,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -114,26 +113,6 @@ func runSidecarE2E(b *testing.B, blockSize int) {
 	b.StopTimer()
 
 	test.ReportTxPerSecond(b)
-}
-
-// benchTxProfile is the workload every sidecar benchmark maps. It differs from
-// workload.DefaultProfile in the one way that decides which path through the sidecar is measured:
-// the default policy uses signature.NoScheme, which leaves each transaction with a nil endorsement
-// per namespace, and the sidecar rejects those with MALFORMED_MISSING_SIGNATURE before it ever
-// builds a TxWithRef. A benchmark on that workload measures the rejection path — it sends the
-// coordinator bare status refs instead of marshalling transaction content, and skips the accepted
-// TX bookkeeping entirely — so it reports a throughput the commit path cannot reach.
-//
-// EDDSA is the cheapest scheme to generate whose transactions the sidecar accepts. The scheme only
-// has to be present: the sidecar checks that each namespace carries a non-empty endorsement and
-// leaves verifying it to the signature verifier, which has the policy context to know what the
-// namespace's rule requires.
-func benchTxProfile() *workload.Profile {
-	profile := workload.DefaultProfile(1)
-	profile.Policy.NamespacePolicies[workload.DefaultGeneratedNamespaceID] = &workload.Policy{
-		Scheme: signature.Eddsa,
-	}
-	return profile
 }
 
 // sidecarBenchEnv is the sidecar under test together with the two stubbed peers around it.
