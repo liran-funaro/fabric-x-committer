@@ -91,7 +91,10 @@ func benchmarkBlockRate(b *testing.B, artifactsPath string, txCount int, inPlace
 
 // benchBlock builds one block of txCount serialized envelopes of 300 bytes each, the transaction size
 // the evaluation generates. With the fast path it also carries the data hash, which is the work the
-// adapter's mapper stage does one stage ahead of the orderer.
+// adapter's mapper stage does one stage ahead of the orderer. The benchmark matrix drives both
+// shapes from one builder, so the two cases stay byte-identical apart from the data hash under test.
+//
+//nolint:revive // flag-parameter: one builder keeps the two cases byte-identical.
 func benchBlock(txCount int, withDataHash bool) *common.Block {
 	data := make([][]byte, txCount)
 	for i := range data {
