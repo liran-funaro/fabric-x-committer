@@ -186,10 +186,10 @@ func BenchmarkInFlightBlocksWindow(b *testing.B) {
 				b.Fatal("the registered block must be tracked")
 			}
 		}
-		if blocks.first() == nil {
+		if blocks.nextBlockToCommit() == nil {
 			b.Fatal("the window must not be empty")
 		}
-		blocks.dropFirst()
+		blocks.dropCommittedBlock()
 	}
 	b.StopTimer()
 }
