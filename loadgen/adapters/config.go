@@ -45,18 +45,5 @@ type (
 		// end-to-end latency grows past anything the latency histogram can represent. Set it to
 		// a small multiple of the sidecar's waiting-txs-limit to make saturation observable.
 		OutBlockCapacity int `mapstructure:"out-block-capacity"`
-		// FastBlockPrepare moves the cost of hashing a block's data off the embedded mock orderer's
-		// single block-preparing goroutine and onto the goroutine that assembles the block, and stops
-		// that orderer from deep-cloning a block this adapter built for it alone.
-		//
-		// It changes what limits the generator, not what the committer receives: the blocks delivered
-		// are identical. Worth turning on when the generator is the ceiling, which is what small
-		// blocks make it -- at 500 transactions a block, preparation costs 0.75 ms and caps the
-		// generator near 850 blocks a second, where the same 0.75 ms is spread over twenty times as
-		// many transactions in a 10,000-transaction block.
-		//
-		// Off by default, so a measurement taken with it is not silently compared against one taken
-		// without it.
-		FastBlockPrepare bool `mapstructure:"fast-block-prepare"`
 	}
 )

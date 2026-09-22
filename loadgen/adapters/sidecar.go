@@ -11,10 +11,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 )
@@ -51,7 +49,9 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		// what it says: the number of blocks buffered.
 		BlockSize:        1,
 		OutBlockCapacity: c.config.OutBlockCapacity,
-		PrepareInPlace:   c.config.FastBlockPrepare,
+		// This adapter builds a block per batch and never touches it again, and MapToOrdererBlock
+		// leaves the data hash in its header, so the orderer needs neither a clone nor a rehash.
+		PrepareInPlace: true,
 	})
 	if err != nil {
 		return err
@@ -75,32 +75,13 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	})
 	g.Go(func() error {
 		return sendBlocks(
-			gCtx, &c.commonAdapter, txStream, c.blockMapper(),
+			gCtx, &c.commonAdapter, txStream, workload.MapToOrdererBlock,
 			func(fabricBlock *common.Block) error {
 				return orderer.SubmitBlock(gCtx, fabricBlock)
 			},
 		)
 	})
 	return errors.Wrap(g.Wait(), "workload done")
-}
-
-// blockMapper returns the mapper that assembles a block from a batch of transactions.
-//
-// With FastBlockPrepare it also hashes the block's data, which is the work this moves. The hash covers
-// the block's own data and nothing else, so unlike the block number and the previous hash it does not
-// depend on the chain and does not have to be computed in chain order -- and this mapper already runs
-// on its own goroutine, one stage ahead of the orderer, doing almost nothing: the transactions arrive
-// already serialized, so assembling a block is building a slice of them.
-func (c *SidecarAdapter) blockMapper() func(uint64, []*servicepb.LoadGenTx) *common.Block {
-	if !c.config.FastBlockPrepare {
-		return workload.MapToOrdererBlock
-	}
-	return func(blockNum uint64, txs []*servicepb.LoadGenTx) *common.Block {
-		block := workload.MapToOrdererBlock(blockNum, txs)
-		// The orderer overwrites the number when it chains the block, and reads the hash back out.
-		block.Header.DataHash = protoutil.ComputeBlockDataHash(block.Data)
-		return block
-	}
 }
 
 // Supports specify which phases an adapter supports.

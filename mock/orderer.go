@@ -47,18 +47,10 @@ type (
 		BlockTimeout     time.Duration         `mapstructure:"block-timeout"`
 		OutBlockCapacity int                   `mapstructure:"out-block-capacity"`
 		PayloadCacheSize int                   `mapstructure:"payload-cache-size"`
-		// PrepareInPlace declares that blocks submitted with SubmitBlock belong to this orderer: it
-		// writes their header and metadata into the block it was given instead of into a deep clone,
-		// and takes the data hash from the header the submitter already filled in rather than
-		// recomputing it.
-		//
-		// Both are only safe when the submitter builds a block per call and does not touch it again.
-		// Together they are what stops block preparation, which runs on one goroutine, from being the
-		// limit on how fast blocks can be served: the clone and the hash are the whole cost of
-		// preparing a block, 0.70 ms of 0.75 ms for 500 transactions, while numbering, chaining and
-		// signing it are 0.05 ms.
-		//
-		// It does not apply to the genesis and config blocks, which may be shared.
+		// PrepareInPlace declares that blocks submitted with SubmitBlock belong to this orderer, so it
+		// writes their header into the block it was given and reuses the data hash the submitter
+		// filled in. Only safe when the submitter builds a block per call and never touches it again.
+		// Does not apply to the genesis and config blocks, which may be shared.
 		PrepareInPlace          bool                          `mapstructure:"prepare-in-place"`
 		ArtifactsPath           string                        `mapstructure:"artifacts-path"`
 		GenesisBlockPath        string                        `mapstructure:"genesis-block-path"`
