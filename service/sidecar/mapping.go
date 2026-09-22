@@ -50,7 +50,7 @@ type (
 	//
 	// The slabs do not become collectable when the mapper is dropped: the result's messages live
 	// inside them, so each backing array stays alive as long as anything holds one of its elements,
-	// and a StreamAllTransactions subscriber can hold a TX past the block's commit. Each array is
+	// and a StreamBlocks subscriber can hold a TX past the block's commit. Each array is
 	// bounded by the block size and holds only message headers — a TX's namespaces, keys and values
 	// are separately allocated and were always retained this way — so the cost is one block's
 	// unused slots, not something that grows. What dropping the mapper does release is dedup and
@@ -63,14 +63,19 @@ type (
 		txIDDedup *txIDDedup
 		txIDs     []string
 
-		// One entry per message rather than per accepted TX, so a parse worker can write to its own
-		// index without coordinating with the others (see parseMessages). A rejected message's
-		// entry is left however far parsing got, and nothing reads it. Nothing may copy an element
-		// out of these — they are proto messages, and only their addresses are ever handed on —
-		// which go vet's copylocks check enforces.
-		refSlab       []committerpb.TxRef
-		txWithRefSlab []servicepb.TxWithRef
-		txSlab        []applicationpb.Tx
+		// refs and txWithRefs back every TxRef and TxWithRef the block needs, and txSlab the
+		// decoded transactions, one entry per message, allocated once for the block instead of once
+		// per transaction. Mapping is on the path that decides how fast the sidecar allocates, and
+		// these were three of its allocations per transaction. Nothing may copy an element out of
+		// them — they are proto messages, and only their addresses are ever handed on — which go
+		// vet's copylocks check enforces.
+		//
+		// One entry per message rather than per accepted TX is also what lets a parse worker write
+		// to its own index without coordinating with the others (see parseMessages). A rejected
+		// message's entry is left however far parsing got, and nothing reads it.
+		refs       []committerpb.TxRef
+		txWithRefs []servicepb.TxWithRef
+		txSlab     []applicationpb.Tx
 	}
 
 	// parsedMessage is what mapping can settle about one message of a block without looking at any
@@ -95,7 +100,7 @@ type (
 		txStatus     []committerpb.Status
 		pendingCount atomic.Int32
 
-		// Fields for StreamAllTransactions support
+		// Fields for StreamBlocks support
 		blockNumber uint64                 // Block number
 		txs         []*servicepb.TxWithRef // Transaction content (from coordinatorBatch.Txs)
 	}
@@ -166,15 +171,15 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 				blockNumber: blockNumber,
 			},
 		},
-		txIDDedup:     dedup,
-		txIDs:         make([]string, 0, txCount),
-		refSlab:       make([]committerpb.TxRef, txCount),
-		txWithRefSlab: make([]servicepb.TxWithRef, txCount),
-		txSlab:        make([]applicationpb.Tx, txCount),
+		txIDDedup:  dedup,
+		txIDs:      make([]string, 0, txCount),
+		refs:       make([]committerpb.TxRef, txCount),
+		txWithRefs: make([]servicepb.TxWithRef, txCount),
+		txSlab:     make([]applicationpb.Tx, txCount),
 	}
 	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
-	parsed := parseMessages(blockNumber, block.Data.Data, mapper.refSlab, mapper.txSlab)
+	parsed := parseMessages(blockNumber, block.Data.Data, mapper.refs, mapper.txSlab)
 	for msgIndex := range parsed {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		if err := mapper.applyParsedMessage(&parsed[msgIndex]); err != nil {
@@ -431,7 +436,7 @@ func (m *blockMapper) prepareTx(
 	if idAlreadyExists, err := m.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
-	txWithRef := &m.txWithRefSlab[ref.TxNum]
+	txWithRef := &m.txWithRefs[ref.TxNum]
 	txWithRef.Ref = ref
 	txWithRef.Content = tx
 	m.withStatus.txs[ref.TxNum] = txWithRef
@@ -447,8 +452,8 @@ func (m *blockMapper) rejectTx(ref *committerpb.TxRef, status committerpb.Status
 		return err
 	}
 	m.block.Rejected = append(m.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	m.txWithRefSlab[ref.TxNum].Ref = ref
-	m.withStatus.txs[ref.TxNum] = &m.txWithRefSlab[ref.TxNum]
+	m.txWithRefs[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -467,8 +472,8 @@ func (m *blockMapper) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	m.txWithRefSlab[ref.TxNum].Ref = ref
-	m.withStatus.txs[ref.TxNum] = &m.txWithRefSlab[ref.TxNum]
+	m.txWithRefs[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }
@@ -708,9 +713,9 @@ func checkKeys(ns *applicationpb.TxNamespace) committerpb.Status {
 	}
 
 	if keyCount > maxKeysForPairwiseCheck {
-		uniqueKeys := make(map[string]any, keyCount)
+		uniqueKeys := make(map[string]struct{}, keyCount)
 		for i := range keyCount {
-			uniqueKeys[string(nsKey(ns, i))] = nil
+			uniqueKeys[string(nsKey(ns, i))] = struct{}{}
 		}
 		if len(uniqueKeys) != keyCount {
 			return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
