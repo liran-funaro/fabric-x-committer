@@ -1136,7 +1136,12 @@ def bringup():
     The one sequence that works on the real-orderer arm, kept in fx-bringup.sh so the standalone
     bring-up and a per-point redeploy cannot drift apart.
     """
-    cmd = f"cd /data1/logs && EXTRA=1 INV={INVENTORY} ./fx-bringup.sh"
+    # The script's directory, not a fixed one. This was "cd /data1/logs", which is where the scripts
+    # used to live; moving them to /data1/scripts made every per-point bring-up fail with rc=127, and
+    # the driver reports that as "bring-up failed" without saying the script was simply absent. Six
+    # points were lost to it in one run.
+    here = os.path.dirname(os.path.abspath(__file__))
+    cmd = f"cd {here} && EXTRA=1 INV={INVENTORY} ./fx-bringup.sh"
     r = subprocess.run(cmd, shell=True, executable="/bin/bash",
                        capture_output=True, text=True, timeout=7200)
     if r.returncode != 0:
