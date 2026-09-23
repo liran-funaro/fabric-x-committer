@@ -17,7 +17,12 @@
 set -u
 cd /data1/scripts || exit 1
 say() { echo "### $(date -u +%H:%M:%SZ) $*"; }
-idle() { while pgrep -f "[f]x-figures.py" >/dev/null || pgrep -f "/[a]nsible-playbook " >/dev/null; do sleep 30; done; }
+# Also waits on fx-run-matrix.sh, not just the driver and the playbook. Between a bring-up
+# finishing and fx-figures.py starting, those two are both absent for a few seconds -- long
+# enough for a waiting chain to swap the staged binary out from under a batch that is about to
+# measure with it.
+idle() { while pgrep -f "[f]x-figures.py" >/dev/null || pgrep -f "[f]x-run-matrix" >/dev/null \
+                || pgrep -f "/[a]nsible-playbook " >/dev/null; do sleep 30; done; }
 
 C=/data1/cluster/inventory/cluster.yaml
 

@@ -601,6 +601,27 @@ EXPERIMENTS = [
          label="5% double spend, 12 tablets, 250k repeat 3", rates=[250_000],
          vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
 
+    # Does the dependency graph's admission cap participate in the slow regime at twelve tablets?
+    #
+    # 250,000 at this layout has two stable operating points, reproduced twice each: one retiring the
+    # rate at a 26 ms commit with the graph at 16,000-19,000, and one retiring ~171,000 at a 270 ms
+    # commit with the graph pinned at exactly its 500,000 limit. Attempts per commit is 1.0 in both and
+    # the slow run's batches are NARROWER, so neither the retry path nor a fan-out threshold explains it.
+    #
+    # The existing 20,000,000 test ruled the cap out AT THE 120-WAY PRE-SPLIT, where capacity is ~20,300
+    # and the insert costs 1.7 s -- there the graph is full because in-flight equals throughput times
+    # latency, an effect. It says nothing about this layout. Three repeats, because one reading cannot
+    # distinguish a cap that participates from a coin flip that happened to land the same way: if all
+    # three retire 250,000 the cap is part of the collapse, and if they still split it is not.
+    #
+    # Identical to 9c-nosplit250-rep* except for the limit, so the pair is a one-variable comparison.
+    *[dict(id=f"9c-nosplit250-cap-rep{i}", figure="conflict-nosplit250cap", x=i, mode="curve",
+           label=f"5% double spend, 12 tablets, 250k, 40x graph limit, repeat {i}", rates=[250_000],
+           vars=dict(shape(2, 0, backref=0.05),
+                     committer_database_table_pre_split_tablets=12,
+                     committer_coordinator_dep_graph_wait_tx_limit=20_000_000))
+      for i in (1, 2, 3)],
+
     # The A/B for `insert_ns`'s rewrite: `ON CONFLICT (key) DO NOTHING ... RETURNING key` in place of the
     # `EXCEPTION WHEN unique_violation` handler, with the violating set computed in the same statement as
     # `_keys EXCEPT ALL inserted`. No Go change and no contract change -- `insertStates` still consumes a
