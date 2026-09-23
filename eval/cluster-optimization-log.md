@@ -3381,6 +3381,60 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### The graph's admission cap is not the lever, and the bimodality is now n=6 (2026-09-23)
+
+Batch 2k: the three 250,000 repeats again, identical to 3b's except
+`committer_coordinator_dep_graph_wait_tx_limit` raised from 500,000 to 20,000,000 -- the one candidate
+left after leader placement, table size, tablet count, retries and the database's own conflict handling
+had each been ruled out. The slow regime pins the graph at exactly 500,000 and the fast one sits at
+16,000-19,000, so the cap coinciding with the collapse was the last thing that looked causal.
+
+| | cap 500,000 (3b) | cap 20,000,000 (2k) |
+|---|---|---|
+| MET | rep2, rep3 | rep2 |
+| MISS | rep1 | rep1, rep3 |
+
+**Three of six at one rate, and the cap changes nothing.** 2 of 3 against 1 of 3 is noise at n=3, and the
+direct observation settles it beyond the tally: with the cap at 20,000,000 the graph still settles at
+**495,053-508,305 and crosses 500,000 freely**. That occupancy was never a clamp -- it is where this
+pipeline's dependency graph sits in the slow regime, and the default cap simply happens to be the same
+number.
+
+**Pooled across both cap settings, the two regimes are tight and disjoint:**
+
+| | MET (n=3) | MISS (n=3) |
+|---|---|---|
+| finished | 250,000 exactly | 172,182 - 187,636 |
+| committed | 237,807 / 237,808 / 237,809 | 163,785 - 178,490 |
+| p99 | 240 - 244 ms | 19.7 - 29.2 s |
+| `db_insert` | 16.7 - 16.9 ms | 243 - 259 ms |
+| transactions per insert | ~174 | ~120 |
+| graph size | ~18,000 | ~500,000 |
+| busiest CPU | 24 - 26% | 35 - 36% |
+
+Three independent fast readings agree on committed throughput to within **two transactions per second**.
+Nothing in this evaluation reproduces that tightly, and it is the strongest evidence that these are two
+operating points rather than a distribution around a marginal rate.
+
+**One candidate died here that a single rung had supported.** After 2k's rep1 missed, the reading on offer
+was that a wider admission window *hurts* -- more work admitted, deeper backlog, the slow regime. Rep2 met
+the rate at 240 ms with the same wide window, so that account is wrong too. It is recorded because it was
+briefly the most attractive explanation available and one rung was enough to make it look established.
+
+**And a methodological asymmetry, stated because it turned out to matter less than expected.** 3b ran each
+repeat as its own batch, so each got a full bring-up; 2k ran all three inside one batch, sharing tablet
+servers, caches and compaction state and differing only by per-experiment redeploy. That made 2k's
+readings less independent by construction -- and both regimes still appeared *within* 2k's single
+deployment. So which regime a run lands in is not a property of the bring-up, which is a stronger result
+than the cap test itself: whatever decides it operates per redeploy, inside a live cluster.
+
+**What is left.** Every mechanism proposed for the slow regime has now been refuted: the graph's cap,
+leader placement, table size, tablet count, the committer's retry path, `insert_ns`'s violating-key
+lookup, the database's conflict resolution, expiry and abort cleanup. The surviving account is the one the
+conflict section already carries -- per-key storage reads on lookups that hit -- and the measurement that
+would confirm it is task 2l, the read-validation latency that is exported, queried by the sampler, and
+empty in every row on record.
+
 ### The 250,000 disagreement is two stable regimes, and the graph's cap is in the slow one (2026-09-23)
 
 Rep2 retired 250,000 in full -- 250,000 offered, 237,807 committed at a 4.88% abort share, growth 0,

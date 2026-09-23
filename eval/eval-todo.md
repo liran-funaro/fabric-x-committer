@@ -63,7 +63,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | 2g | **Order is free: the swap is reversible.** Both binaries are staged (`/data1/bin-stage` baseline, `/data1/bin-stage-rewrite`), and every bring-up recreates namespaces, so it can run before or after the characterisation batches. `fx-plan-24b-ab.sh` swaps, gates on the binary AND on `pg_get_functiondef`, runs both sides, and restores the baseline. Measure the `insert_ns` rewrite: 5% at the 120-way split, plus the conflict-free hold as a regression check. **`eval/workspace` already carries the rewrite, so a baseline bring-up must build with `d44ef3a4` reverted.** [ctx](#2g-the-insert_ns-rewrite) | new | ready |
 | 2h | Close the no-pre-split **conflict-free** ceiling with a ladder at twelve tablets. The kept-pre-split case currently rests on a one-sided bound. [ctx](#2h-the-no-pre-split-conflict-free-ceiling) | new | ready, needs the arm |
 | 2i | ~~Settle whether 250,000 holds at twelve tablets.~~ **Done:** 2 of 3 MET at 242-244 ms; the configuration is bistable, and the bridge rule is weakened to a probability. See the log. | `9c-nosplit250-rep1..3` | done |
-| 2k | **Does the graph's admission cap participate in the slow regime?** Repeat 250,000 at twelve tablets with `committer_coordinator_dep_graph_wait_tx_limit` raised 40x. The slow regime pins the graph at exactly 500,000 while the fast one sits at 18,000; the existing 20M test ruled the cap out at the 120-way split, a different regime. [ctx](#2k-the-graph-cap-at-twelve-tablets) | new | ready, cheap |
+| 2k | ~~Does the graph's admission cap participate in the slow regime?~~ **Done: no.** 1 of 3 MET with the cap at 20M against 2 of 3 at 500,000, and the graph settles at 495-508k with the cap raised, crossing 500,000 freely. Pooled n=6, two disjoint clusters. | `9c-nosplit250-cap-rep1..3` | done |
 
 ## End-to-end arm (`inventory/cluster-orderer.yaml`)
 
@@ -82,7 +82,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | 9 | Update figure 5, Table 1 and the size section. | batch 5 |
 | 10 | Re-run or withdraw the eight-tablet paragraph added in `7b87e7f7`, whose rows were lost with the monitor. [ctx](#10-the-eight-tablet-paragraph) | batch 4 |
 | 11 | Sync the results file into the repo at every batch boundary, from the chain script. Four hours of rows were lost to a reprovision because they were only on the monitor. | — |
-| 12 | Revise the twelve-tablet conflicting claim, which still says 150,000. 250,000 is now retired on two of three fresh deployments at 242-244 ms, but the configuration is bistable at that rate, so the number alone would mislead either way. [ctx](#12-what-to-claim-for-a-bistable-rate) | 2k, which decides whether the cap is part of it |
+| 12 | Revise the twelve-tablet conflicting claim, which still says 150,000. **Unblocked: 2k is done and the cap is not the lever**, so there is no setting to name -- 250,000 holds 3 of 6 fresh readings at 240-244 ms and misses the other 3 at 19.7-29.2 s. Write it as a bistable configuration, not a ceiling. [ctx](#12-what-to-claim-for-a-bistable-rate) | nothing — ready to write |
 
 ## Not scheduled
 
