@@ -74,6 +74,36 @@ say "STOP everything first, so nothing survives holding pre-wipe state"
 ANSIBLE_INVENTORY=$INV make stop TARGET_HOSTS='all:!monitoring' || echo "!! stop returned $?, continuing"
 ANSIBLE_INVENTORY=$INV "$ANS" all -m shell -a \
   'pkill -f "yb-master|yb-tserver|arma|committer|loadgen" 2>/dev/null; sleep 2; true' -b >/dev/null 2>&1
+# The orderer tier needs its own kill, verified. The pkill above lists "arma" and sends its output to
+# /dev/null, so a kill that does not happen is invisible -- and on 2026-09-23 it did not happen: after a
+# stop-wipe-setup-start, every router, consenter and assembler was still the process from the PREVIOUS
+# bring-up, retrying to reconnect 75 times while holding pre-wipe certificates. The symptom is not a
+# crash: `make init` fails with "failed to broadcast transaction: got error 500", because the router
+# cannot reach batchers whose crypto was reissued under it.
+#
+# tmux sessions go too. The components run under tmux in bin mode, and a surviving session is what lets a
+# stale process outlive a stop. Scoped to the orderer machines by address, so the control node's own
+# sessions and the database's on the committer hosts are left to the steps that own them.
+if [ "${INV##*/}" != "cluster.yaml" ] && [ "${INV##*/}" != "cluster-nosplitting.yaml" ]; then
+  say "killing the orderer tier explicitly, and verifying it"
+  for h in $(seq 23 42); do
+    timeout 8 ssh -o StrictHostKeyChecking=no -o BatchMode=yes "vpcuser@10.241.64.$h" \
+      'pkill -9 -f "arma " 2>/dev/null; tmux kill-server 2>/dev/null; true' >/dev/null 2>&1
+  done
+  LEFT=0
+  for h in $(seq 23 42); do
+    n=$(timeout 8 ssh -o StrictHostKeyChecking=no -o BatchMode=yes "vpcuser@10.241.64.$h" \
+        'pgrep -c arma 2>/dev/null || echo 0' 2>/dev/null)
+    [ "${n:-0}" -gt 0 ] && LEFT=$((LEFT+1))
+  done
+  if [ "$LEFT" != "0" ]; then
+    echo "!! $LEFT orderer machine(s) still run arma after the kill; not continuing -- a stale orderer"
+    echo "!! holds pre-wipe crypto and init will fail with a broadcast 500 rather than anything obvious"
+    exit 1
+  fi
+  say "no arma process survives on any of the twenty orderer machines"
+fi
+
 say "confirming the database processes are gone"
 ANSIBLE_INVENTORY=$INV "$ANS" all -m shell -a 'pgrep -c "yb-master|yb-tserver" || true' 2>&1 |
   grep -oE "^[0-9]+$" | sort -u | tr '\n' ' ' | xargs -I{} echo "    remaining per host: {}"
