@@ -3123,6 +3123,51 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### ARM 3 settles it: the rewrite costs 60x on the insert with no conflicts at all (2026-09-23)
+
+The regression arm, paired same-day with ARM 1 on the cluster rebuilt this morning. Conflict-free
+workload, 120-way pre-split, the only difference from ARM 1 being the binary.
+
+| | offered | finished | `db_insert` | tx per insert | attempts | p99 |
+|---|---|---|---|---|---|---|
+| ARM 1, baseline | 559,872 | **559,636** | **79.1 ms** | 368 | 1.00 | 687 ms |
+| ARM 3, rewrite | 500,000 | **22,727** | **4,719 ms** | 271 | 1.0002 | **censored, 60 s** |
+
+**Zero conflicts, zero aborts, and throughput falls 24.6x while the insert rises 60x.** This is the
+conflict-free path -- the one every headline figure in these documents is measured on -- so the rewrite
+is not a trade at any exchange rate. It must not ship, and the question of whether it helps a conflicting
+workload is moot.
+
+**It also identifies the mechanism, which the conflict arm could only hint at.** Pre-check 1 asked whether
+`ON CONFLICT` *avoids* the per-key reads or merely relocates them, on the grounds that the database must
+read something to detect a primary-key collision. The answer is that it relocates them, and onto the worst
+possible place: the old form paid a full-batch `key = ANY(_keys)` lookup only on the rare failing attempt,
+while `ON CONFLICT (key) DO NOTHING ... RETURNING key` pays conflict detection on **every row of every
+insert**, whether anything collides or not. At zero per cent conflicts the old code's failure path is
+never entered at all, and that is exactly where the rewrite is most expensive.
+
+The three measurements are mutually consistent, with the cost tracking keys per call rather than conflicts:
+
+| | conflicts | keys per insert call | `db_insert` |
+|---|---|---|---|
+| baseline, clean | 0% | ~736 | **79 ms** |
+| rewrite, clean | 0% | ~542 | **4,719 ms** |
+| rewrite, 5% | 5% | ~164 | 2,802 ms |
+
+The rewrite is 60x the baseline at a *smaller* key count, and within the rewrite the cost grows with the
+count. Nothing here depends on conflicts.
+
+**What this retires, and what it does not.** It retires the rewrite, `9c-ds5-onconflict`'s ladder as a
+candidate fix, and the premise that the `EXCEPTION WHEN unique_violation` handler was costing this
+workload anything -- at gap 300,000 that handler is never reached. It does **not** change the conflict
+collapse itself, whose cause remains the read-batching cliff on lookups that hit, with the tablet layout
+as the only lever and the conditional recommendation in `optimization-summary.md` unchanged.
+
+**And it makes one earlier decision look better than it did at the time.** The A/B was nearly run without
+a same-day baseline arm, against `9c-ds0`'s 518,000 from 2026-09-10. Against that figure this result would
+still have been unmistakable -- 22,727 is not a drift artefact -- but ARM 1 is what makes the 60x insert
+comparison possible at all, since the 09-10 rows predate `db_insert` being collected and carry 0.0 for it.
+
 ### YugabyteDB resolves no write-write conflicts: the write-path hypothesis is refuted (2026-09-23)
 
 The largest open item in the conflict section has been "turn on YugabyteDB's conflict and retry metrics,

@@ -26,7 +26,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | 7 | `tabhold` | The tablet axis at two fixed rates, 12/24/48/64. Splitting pinned via `cluster-nosplitting.yaml`. | queued |
 | 8 | `ds1`…`ds0001` | Conflict share 1% down to 0.001%. | queued |
 | 9 | `vc9` | Nine validator--committers on the nine non-master database nodes. | queued |
-| — | `insert_ns` A/B | Whether the rewrite makes the 120-way split meet the bound, and whether the conflict-free path regressed. [ctx](#2g-the-insert_ns-rewrite) | after 1-9 |
+| — | ~~`insert_ns` A/B~~ | **Done, and the rewrite is dead:** the conflict-free path falls 559,636 -> 22,727 with the insert 79 ms -> 4,719 ms at zero conflicts. `ON CONFLICT` pays conflict detection per row on every insert. Do not ship `d44ef3a4`. | done |
 
 ## Committer arm (`inventory/cluster.yaml`)
 
