@@ -80,7 +80,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 |---|---|---|
 | 7 | Draw figure 1c's collapsed bars from a point that delivered its rate. | nothing — batch 3's rows exist |
 | 8 | Decide whether the deeper generator block buffer joins the tuned setup, and so whether figure 2 carries that ladder as a series. | a decision, not a run |
-| 9 | Update figure 5, Table 1 and the size section. | batch 5 |
+| 9 | Update figure 5, Table 1 and the size section. **Rows are in: all six points measured 09-23/24 from confirmed holds, figure redrawn.** Writing is what remains, plus the 3 KiB repeat now running. | nothing — ready to write |
 | 10 | Re-run or withdraw the eight-tablet paragraph added in `7b87e7f7`, whose rows were lost with the monitor. [ctx](#10-the-eight-tablet-paragraph) | batch 4 |
 | 11 | Sync the results file into the repo at every batch boundary, from the chain script. Four hours of rows were lost to a reprovision because they were only on the monitor. | — |
 | 12 | Revise the twelve-tablet conflicting claim, which still says 150,000. **Unblocked: 2k is done and the cap is not the lever**, so there is no setting to name -- 250,000 holds 3 of 6 fresh readings at 240-244 ms and misses the other 3 at 19.7-29.2 s. Write it as a bistable configuration, not a ceiling. [ctx](#12-what-to-claim-for-a-bistable-rate) | nothing — ready to write |

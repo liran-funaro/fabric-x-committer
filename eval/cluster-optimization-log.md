@@ -3406,6 +3406,45 @@ second layout and the cliff is located to within one doubling.
 `tablets.log` records the running count every 60 s and `graph.jsonl` records `db_insert_ms` every 30 s,
 so the crossing and the insert are both observed rather than inferred.
 
+### The size sweep, complete and on one day, with one anomaly (2026-09-23/24)
+
+All six points of `figures-e2e/size-throughput.pdf` re-measured after the fleet rebuild, each from a
+confirmed 300-second hold on its own fresh deployment, all within twelve hours on one cluster. That
+matters more than any single value: the figure previously mixed 09-09 rows with prose from 09-22, and
+this cluster's baseline moves 10-15% between days.
+
+| size | tps | p99 | MB/s | MB/s step |
+|---|---|---|---|---|
+| 300 B | 480,182 | 577 ms | 144.1 | — |
+| 512 B | 412,182 | 732 ms | 211.0 | +46% |
+| 1 KiB | 263,748 | 638 ms | 270.1 | +28% |
+| 2 KiB | 184,524 | 521 ms | 377.9 | +40% |
+| **3 KiB** | **114,872** | 495 ms | **352.9** | **-7%** |
+| 4 KiB | 102,494 | 490 ms | **419.8** | +19% |
+
+Throughput decreases strictly with size, which the old data did not: 09-09 had 300 B at 408,000 and
+512 B at 414,364, smaller transactions retiring slower, and that would have been drawn as a kink.
+
+**Two points gained a confirmed hold for the first time.** 1 KiB had eleven probes and none, and 4 KiB's
+previous attempt recorded `finished=0` with in-flight growing 25,902/s. Both hold cleanly now, 4 KiB at
+102,494 and p99 490 ms, so the figure no longer has to interpolate or apologise for either.
+
+**A correction to what this document said hours ago.** With five points in hand it recorded that byte
+throughput "peaks at 2 KiB and falls into 3 KiB", against the 09-22 series which had it rising to
+415.0 MB/s. The sixth point refutes both readings: 4 KiB delivers **419.8 MB/s**, the highest of all six.
+So byte throughput does not turn over at 2 KiB, and 3 KiB is a **dip between two higher neighbours**
+rather than the start of a decline. Writing the shape down from five of six points was premature.
+
+**So 3 KiB is the anomaly, and it is being repeated rather than explained.** 09-22 measured it at 135,086
+tps and 415.0 MB/s, which sits neatly between 2 KiB and 4 KiB and makes the curve monotone; today's
+114,872 is 15% lower, at the edge of the recorded daily band. The likeliest reading is that today's point
+is the outlier. That is a guess, and the cheapest thing that settles it is another hold, which is running.
+
+**Latency falls with size across the whole sweep** -- 577, 732, 638, 521, 490 ms -- so nothing here is a
+latency wall, and the busiest machine is a router from 1 KiB upward at 45-56%. The 3 KiB search makes the
+constraint explicit: offered 187,200 it retired 146,207, offered 159,120 it retired 144,452, offered
+135,252 it retired 127,212, all with p99 under 700 ms. It is delivery that binds, not latency and not CPU.
+
 ### Task 2d answered: the cliff is per-key storage reads, and the tablet count is 400x (2026-09-23)
 
 One `EXPLAIN (ANALYZE, DIST)` on its own probe table, the real batch width (355 keys, 18 of them already
