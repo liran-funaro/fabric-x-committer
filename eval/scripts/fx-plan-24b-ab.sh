@@ -26,6 +26,27 @@ idle() { while pgrep -f "[f]x-figures.py" >/dev/null || pgrep -f "[f]x-run-matri
 
 C=/data1/cluster/inventory/cluster.yaml
 
+# --- ARM 1, on the BASELINE binary: the conflict-free hold, TODAY. --------------------------------
+# This arm exists because of a methodological trap, not for completeness. The rewrite's regression test
+# is "does the conflict-free path still do ~500,000", and 9c-ds0's recorded holds are 518,000 / 529,818
+# / 541,273 / 544,364 -- a 5% spread across days, on a cluster whose baseline is recorded as moving
+# 10-15% between days. A 5% regression from materialising the RETURNING set would therefore be
+# indistinguishable from drift if the comparison crossed days, and this cluster was rebuilt from bare
+# metal this morning. REDO because it already has met rows and would otherwise be skipped.
+#
+# The conflict SIDE gets no same-day baseline arm, deliberately: that baseline is "no offered rate meets
+# the bound at the 120-way split", established over 70 rows plus ladderlow's five uncensored sub-capacity
+# rungs, and the effect being looked for is 20,300 against a possible 100,000+. Day drift cannot reach
+# across that. Spending a bring-up to re-confirm it would cost an hour to tighten a comparison that is
+# already an order of magnitude clear.
+idle
+say "ARM 1 (baseline binary): conflict-free hold, same day"
+EA=$(strings /data1/bin-stage/committer | grep -c "EXCEPT ALL")
+if [ "$EA" != "0" ]; then say "!! expected the BASELINE staged (EXCEPT ALL=0), found $EA; aborting"; exit 1; fi
+if TAG=dsbase0 ONLY='9c-ds0$' REDO=9c-ds0 OUT=/data1/logs/figures-ecdsa.jsonl SCHEME=ECDSA HOURS=4 \
+   INV=$C FX_DRAIN_RATE=20000 ./fx-run-matrix.sh > /data1/logs/dsbase0.log 2>&1
+then say "dsbase0 done"; else say "dsbase0 FAILED rc=$? -- see /data1/logs/dsbase0.log"; fi
+
 idle
 say "staging the REWRITE binaries"
 mkdir -p /data1/bin-stage.baseline
@@ -54,6 +75,7 @@ run() { idle; say "$1"
 # Prediction on record before this runs (log section 10): db_insert falls from ~1.7 s to tens of ms and
 # the bound is met far above 20,300. Falsifier: db_insert still in the hundreds of ms means the
 # full-batch lookup was not the cost and the write-path hypothesis takes over.
+say "ARM 2 (rewrite binary): 5% double spends at the 120-way split"
 run dsfix5 9c-ds5-onconflict $C 20000
 
 # Gate on what the DATABASE holds, not on what was staged. The binary check proves which SQL text was
@@ -77,6 +99,7 @@ fi
 # ~3,400 calls a second per validator-committer. Read db_commit as well as db_insert: db_insert wraps
 # insertStates only, so a cost landing in the surrounding transaction shows in one and not the other.
 # Falsifier for "this is a fix rather than a trade": anything below ~500,000 here.
+say "ARM 3 (rewrite binary): the conflict-free hold, to pair with ARM 1"
 run dsfix0 9c-ds0-onconflict $C 20000
 
 # Swap the baseline back, verified, so the remaining characterisation batches are unaffected.
