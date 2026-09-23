@@ -101,6 +101,24 @@ QUERIES = {
     "query_version_ms": ("1000 * sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_sum[60s]))"
                          " / sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_count[60s]))"),
     "query_version_s":  "sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_count[60s]))",
+    # Waiting rather than working. Nothing measured on the tablet servers' RocksDB counters
+    # distinguishes the two regimes -- intents-DB seeks per transaction are 15-17 in both and
+    # stalls are zero -- so if the insert is 24x slower while the database does proportional
+    # work, the time is queueing somewhere. These are the queues it could be sitting in: the
+    # tserver's inbound RPC queue, the PgClientService queue the committer's SQL arrives on,
+    # the Raft apply queue, and YugabyteDB's transaction wait queue.
+    "rpc_queue_ms":      ("1000 * sum(rate(rpc_incoming_queue_time_sum[60s]))"
+                          " / sum(rate(rpc_incoming_queue_time_count[60s]))"),
+    "pg_rpcs_queued":    "sum(rpcs_in_queue_yb_tserver_PgClientService)",
+    "ts_rpcs_queued":    "sum(rpcs_in_queue_yb_tserver_TabletServerService)",
+    "op_apply_queue_ms": ("1000 * sum(rate(op_apply_queue_time_sum[60s]))"
+                          " / sum(rate(op_apply_queue_time_count[60s]))"),
+    "op_apply_queued":   "sum(op_apply_queue_length)",
+    "wait_queue_ms":     ("1000 * sum(rate(total_wait_queue_time_sum[60s]))"
+                          " / sum(rate(total_wait_queue_time_count[60s]))"),
+    "log_append_ms":     ("1000 * sum(rate(log_append_latency_sum[60s]))"
+                          " / sum(rate(log_append_latency_count[60s]))"),
+    "follower_lag_ms":   "max(follower_lag_ms)",
     "yb_conflicts_s":    "sum(rate(transaction_conflicts[60s]))",
     "yb_confl_res_ms":   ("1000 * sum(rate(conflict_resolution_latency_sum[60s]))"
                           " / sum(rate(conflict_resolution_latency_count[60s]))"),
