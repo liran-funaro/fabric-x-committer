@@ -93,6 +93,14 @@ QUERIES = {
     # to the batch, its cost is the same fan-out story as the insert's lookup; if it is not entered at
     # all (count stays 0, so these read NaN), the database is not resolving write conflicts and the
     # cost is entirely on the committer's side of the wire.
+    # The version lookup on keys that may already exist -- queryVersionsIfPresent, database.go:163 --
+    # which is the READ the per-key-read account blames, and which nothing has ever sampled. Its sibling
+    # validation_ms (validateReads, database.go:144) measures 1-5 ms in every condition including the
+    # collapsed ones, so if this one is also milliseconds then the whole read path is cheap and the
+    # seconds are in the write path.
+    "query_version_ms": ("1000 * sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_sum[60s]))"
+                         " / sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_count[60s]))"),
+    "query_version_s":  "sum(rate(vcservice_database_tx_batch_query_version_latency_seconds_count[60s]))",
     "yb_conflicts_s":    "sum(rate(transaction_conflicts[60s]))",
     "yb_confl_res_ms":   ("1000 * sum(rate(conflict_resolution_latency_sum[60s]))"
                           " / sum(rate(conflict_resolution_latency_count[60s]))"),

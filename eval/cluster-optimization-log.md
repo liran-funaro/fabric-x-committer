@@ -3381,6 +3381,52 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### Read validation is 1-5 ms everywhere: the cost is in the WRITE path (2026-09-23)
+
+Task 2l, answered from data already on disk. The stated falsifier was: *seconds of read validation means
+the insert queues behind per-key reads; milliseconds means the cost is inside the write path.*
+
+`vcservice_database_tx_batch_validation_latency_seconds` wraps `validateReads` (`service/vc/database.go:144`)
+-- the static-SQL call that checks every read key and version for a namespace and returns the conflicting
+indices. Sampled every 30 s:
+
+| condition | validation | `db_commit` | committed |
+|---|---|---|---|
+| clean, baseline binary, 120 tablets | 4.35 - 4.67 ms | 105 - 108 ms | 480,000 |
+| 5% conflicts, rewrite, 120 tablets | **1.96 - 1.99 ms** | **2,760 - 2,902 ms** | 12,600 |
+| 5% conflicts, 12 tablets, SLOW regime | **1.22 - 1.24 ms** | **258 - 260 ms** | 175,000 |
+| 5% conflicts, 12 tablets, FAST regime | **1.15 - 1.16 ms** | **26.3 ms** | 237,800 |
+
+**Read validation is one to five milliseconds in every condition, including both collapsed ones.** So the
+insert is not queueing behind it, and the per-key-read account -- the last surviving explanation, carried
+in this document as "the insert is a bystander queueing behind per-key storage reads" -- is refuted on its
+own stated test.
+
+The two regimes make the point sharpest: validation is **identical** between them, 1.15 against 1.22 ms,
+while commit differs tenfold, 26.3 against 259 ms. Whatever separates them is entirely in the write path.
+Note also that validation is *highest* on the clean path at 4.4 ms, simply because it validates 368-transaction
+batches against ~120 -- it scales with batch width, not with conflicts.
+
+**A correction to what this document said one entry ago.** It recorded that
+`vcservice_database_tx_batch_validation_latency_seconds` "reads empty in every row ever recorded, so the
+read-validation cost has never been quantified". That was wrong, and wrong in a way worth naming: the
+metric was being read from the *driver's* result rows in `figures-ecdsa.jsonl`, which never carried it. The
+sampler has been writing it to `graph.jsonl` on every run for as long as the sampler has existed. The
+measurement was not missing, nobody had looked in the right file -- which is the second time today a
+conclusion rested on reading the wrong artifact, after the same mistake mixed clock times across days.
+
+**Where that leaves the mechanism.** The write path is `insert_ns` for fresh keys, `update_ns` for
+existing ones, the `tx_status` insert, and the outer distributed transaction. `db_insert` wraps
+`insertStates` only, and it is the metric carrying the seconds, so the bulk INSERT of *new* keys is where
+the time goes -- on a workload whose inserts are fresh keys exactly like the clean workload's.
+
+The next hypothesis, and the reason the sampler just gained two more queries: in the slow regime there are
+~3M transactions in flight against ~18,000 in the fast one, so YugabyteDB is holding orders of magnitude
+more **provisional records** (intents). Intent accumulation makes every write more expensive, which
+deepens the backlog, which is self-sustaining -- and it would be decided in the first minute, which is
+where the regimes are decided. `query_version_ms` (`queryVersionsIfPresent`, `database.go:163`) is now
+sampled too, to close the read path completely rather than leave one of its two calls unmeasured.
+
 ### The graph's admission cap is not the lever, and the bimodality is now n=6 (2026-09-23)
 
 Batch 2k: the three 250,000 repeats again, identical to 3b's except
