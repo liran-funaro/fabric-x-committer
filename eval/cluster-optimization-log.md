@@ -3123,6 +3123,53 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### Batch 3b complete: 250,000 holds two times in three, and the bridge rule needed weakening (2026-09-23)
+
+| | verdict | finished | committed | `db_insert` | p99 | tx per insert | graph |
+|---|---|---|---|---|---|---|---|
+| rep1 | MISS | 176,545 | 167,940 | 259 ms | 29.2 s | 121.2 | capped, 500,000 |
+| rep2 | **MET** | 250,000 | 237,807 | 16.9 ms | 244 ms | 174.5 | 16-19k |
+| rep3 | **MET** | 250,000 | 237,808 | 16.7 ms | 242 ms | 173.3 | ~18.8k |
+
+**The rate is attainable, and the earlier retraction was still right.** `b054a57f` withdrew 250,000 on
+the grounds that it had failed to reproduce, and pulled the section back to 150,000. That was correct
+about what was *established* -- one MET and one MISS establish nothing -- but the rate itself is real:
+two fresh deployments retired it in full at a 242-244 ms p99. What cannot be claimed is that it holds
+reliably, and that distinction is the result rather than a caveat on it.
+
+**The fast regime is tighter than the cluster's own day-to-day drift.** 237,807 against 237,808
+committed, 16.9 against 16.7 ms, 244 against 242 ms. A deployment either lands in this regime and lands
+almost exactly on it, or lands in the slow one 15x away. There is no continuum between them, which is
+what makes "two regimes" the right description and "scatter around a marginal rate" the wrong one.
+
+**The prediction on record holds, on both halves.** It committed in advance to a split outcome -- "one
+or two passing, not 3/3 either way" -- and to an insert of 17-21 ms if the passes came. Result: 2 of 3,
+inserts 16.7 and 16.9 ms, at the edge of that band. Worth noting because the same document records five
+stage-cost predictions failing in one night; this one was made from a rule rather than from a model of
+the stage.
+
+**But the rule that generated it was too strong, and 3b is what weakens it.** The rule was stated as 4
+for 4: *a top passing rung whose insert sits on its ladder's flat baseline reproduces; one already
+elevated by about 40% does not.* `nosplithi`'s 250,000 rung was elevated -- 17.0 ms against that ladder's
+12.1 ms flat baseline -- and it duly failed its bridge. On the strength of that the rule said it would
+not reproduce. **It reproduced twice in three.**
+
+So "does not reproduce" was an overreach from four single trials, and the two-regime picture says what
+the rule was really detecting. Inside the fast regime the insert climbs gently with rate, 12.1 ms at the
+low rungs to ~17 ms at 250,000. That climb is the distance to the tipping point, not a cost in itself: a
+rung whose insert is already elevated is near the edge, so a fresh deployment at that rate is a Bernoulli
+trial rather than a determinate pass or fail. Restated:
+
+> An elevated top rung is **near the tipping point between the two regimes, and reproduces with
+> probability well below one** -- measured here at 2 of 3. A rung on the flat baseline is far from the
+> edge and reproduces reliably.
+
+That keeps everything the rule got right, including its four original cases, and stops it predicting
+determinism it never had the trials to support. It also means a **single** reading at such a rate cannot
+establish a ceiling in either direction -- a lone MET may be the fast regime and a lone MISS the slow
+one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
+methodological consequence for the whole matrix, not just this rate.
+
 ### The 250,000 disagreement is two stable regimes, and the graph's cap is in the slow one (2026-09-23)
 
 Rep2 retired 250,000 in full -- 250,000 offered, 237,807 committed at a 4.88% abort share, growth 0,
