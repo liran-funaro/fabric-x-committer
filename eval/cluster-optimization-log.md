@@ -3071,6 +3071,38 @@ recommendation divides 518,000 by 213,091, and a task row argued the divisor was
 divisor. The divisor is weak for the separate reason that 213,091 is a single MET probe never pushed
 higher, which is a one-sided bound and what task 2h exists to close.
 
+### The 250,000 repeats: rep1 misses, and its insert matches the failing reading (2026-09-23)
+
+First of the three fresh-deployment repeats queued as batch 3b, taken after the fleet rebuild. Every
+precondition verified before it ran rather than assumed: `--enable_automatic_tablet_splitting=false` on
+all three masters read from their own argv, 12 tablets running and 0 deleted, and -- the one that was
+never sampled when the disagreement happened -- **leaders on 12 distinct hosts, max 1 each**, recorded
+inside the measurement window.
+
+| | offered | finished | committed | aborts | growth | `db_insert` |
+|---|---|---|---|---|---|---|
+| original, MET | 250,000 | — | — | — | — | **17.0 ms** |
+| original, MISSED | 250,000 | — | — | — | — | **262 ms** |
+| **rep1** | 250,000 | **176,545** | 167,940 | 4.9% | −733 | **259 ms** |
+
+Rep1 misses, and it lands on the *failing* reading's insert to within 1% -- 259 against 262 ms -- not
+within a factor of fifteen of the passing one's 17.0 ms. The abort share is the configured 4.9%, and
+growth is negative, so this is a rate the pipeline could not retire rather than a backlog artefact.
+
+**Leader skew is now refuted for this rate as well**, which is what the sampler was built for: the
+deployment that missed had perfectly even leader placement, so an uneven spread cannot be what separates
+a passing 250,000 from a failing one. Two reps remain; one reading cannot yet distinguish "250,000 is
+above the twelve-tablet ceiling" from "this rate is marginal", which is exactly what the recorded
+prediction commits to.
+
+**Instrument note: the master API goes blind when the workload is heaviest.** `fx-leader-skew.sh` logged
+`master API unreadable` for three consecutive minutes at the saturated end of the run, and a direct
+`curl` to `:5310` from the control node returned `000` in the same window while every `yb-master` and
+`yb-tserver` process was alive and `:5310` was listening. It answered 200 with 102 KB minutes later. So
+the blackout is the master's webserver starving under load, not the cluster failing -- and it removes
+leader data exactly where it matters most. The tablet sampler's silence in the same window says nothing
+at all, which is the defect already recorded against it.
+
 ### The retracted 250,000 reaches no figure (checked, 2026-09-14)
 
 Worth recording because the prose was corrected and the figures were not, which is the usual way a
