@@ -33,7 +33,8 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | # | Task | ids | State |
 |---|---|---|---|
 | 2b | Conflict-share sweep at 1%, 0.1%, 0.01%. | `ds1`…`ds0001` | queued (batch 8) |
-| 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, to close the `chunk64` loose end. | — | open, unowned |
+| 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`. `fx-explain-insert.sql` runs on its own 120-tablet table, so it needs only a measurement-free gap. | — | ready, cheap |
+| 2l | **Quantify read validation on a conflict workload.** `vcservice_database_tx_batch_validation_latency_seconds` reads empty in every row ever recorded, so the one cost that distinguishes a conflict workload from a clean one has never been measured. Seconds there means the insert queues behind per-key reads; milliseconds means the cost is in the write path. [ctx](#2l-the-unmeasured-validation-cost) | new | ready, needs a conflict run |
 | 2f | Re-run the tablet axis with automatic splitting disabled. | `tabhold*` | queued (batch 7) |
 | 2g | **Order is free: the swap is reversible.** Both binaries are staged (`/data1/bin-stage` baseline, `/data1/bin-stage-rewrite`), and every bring-up recreates namespaces, so it can run before or after the characterisation batches. `fx-plan-24b-ab.sh` swaps, gates on the binary AND on `pg_get_functiondef`, runs both sides, and restores the baseline. Measure the `insert_ns` rewrite: 5% at the 120-way split, plus the conflict-free hold as a regression check. **`eval/workspace` already carries the rewrite, so a baseline bring-up must build with `d44ef3a4` reverted.** [ctx](#2g-the-insert_ns-rewrite) | new | ready |
 | 2h | Close the no-pre-split **conflict-free** ceiling with a ladder at twelve tablets. The kept-pre-split case currently rests on a one-sided bound. [ctx](#2h-the-no-pre-split-conflict-free-ceiling) | new | ready, needs the arm |
@@ -145,3 +146,16 @@ slow regime, the claim is 250,000 with a named setting; if it does not, the hone
 holds about two times in three, which belongs in the text as a property of the configuration rather than
 as a ceiling. Do not update the figure until that is decided -- an axis cannot show a bimodal outcome,
 and plotting the mean of two regimes would invent a rate the deployment never runs at.
+
+### 2l: the unmeasured validation cost
+
+Every conflict-handling explanation is now refuted: the committer's retry path (attempts 1.0), the
+`insert_ns` violating-key lookup (never entered at gap 300,000), and the database's own conflict
+resolution (`transaction_conflicts` 0/s across 82 samples, resolution path never entered). What remains
+is that a back-referenced workload issues multi-key lookups on keys that *hit*, which is the read-batching
+cliff, and that the insert queues behind them rather than being slow itself.
+
+`vcservice_database_tx_batch_validation_latency_seconds` is already in `fx-graph-sampler.py`'s queries and
+already exported, but every recorded row has it empty, so nobody has looked. Read it beside `db_insert` on
+a conflict run at both tablet counts. Seconds of validation with seconds of insert supports the queueing
+account; milliseconds of validation refutes it and puts the cost inside the write path.

@@ -3123,6 +3123,57 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### YugabyteDB resolves no write-write conflicts: the write-path hypothesis is refuted (2026-09-23)
+
+The largest open item in the conflict section has been "turn on YugabyteDB's conflict and retry metrics,
+which this evaluation never scraped", and the hypothesis behind it: *two transactions writing a
+referenced key are a write-write conflict inside the database, resolved by its own retries and invisible
+to the committer's instrumentation.* The metrics turn out to have been scraped all along -- the
+collection's yugabyte jobs cover `/prometheus-metrics` on every tserver, master and ysql endpoint -- so
+this needed a query, not an instrumentation change.
+
+Sampled every 30 s across the whole of ARM 2's window: 5% double spends, 120-way pre-split, ~12,000
+committed per second, 82 samples.
+
+| metric | reading across the window |
+|---|---|
+| `transaction_conflicts` | **0.00 / s, every sample** |
+| `conflict_resolution_latency_count` | **0 -- the ratio reads NaN, so the path is never entered** |
+| `conflict_resolution_num_keys_scanned` | **NaN, same reason** |
+| `expired_transactions` | 0.00 / s |
+| `aborted_transactions_pending_cleanup` | 0 |
+| `vcservice_mvcc_conflict_total` | **571-611 / s** |
+
+**The database resolves no write-write conflicts in this workload at all**, and the committer's own MVCC
+validation accounts for every conflict there is: 571-611 per second against ~12,000 committed is the
+configured 5%. So the hypothesis is refuted, and refuted in the cheapest possible way -- the evidence was
+already in Prometheus.
+
+That closes the list of places the seconds could be hiding as *conflict handling*:
+
+| where a conflict could cost seconds | ruled out by |
+|---|---|
+| the committer's retry of a pruned batch | `db_insert_per_commit` = 1.0, and the rewrite removed the retry without helping |
+| `insert_ns`'s violating-key lookup | never entered at this reference gap; the rewrite optimised it and lost capacity |
+| the database's own conflict resolution | `transaction_conflicts` 0/s, resolution path never entered |
+| the database's transaction expiry or abort cleanup | both 0 across the window |
+
+**So the cost is not conflict handling. It is what a workload with back-references does to the database
+even when nothing conflicts inside it.** The one workload difference between the clean path (a 55 ms
+insert at 480,000 tps) and this one (a 2.8 s insert at 12,000) is that 5% of transactions read a key that
+already exists, which the validator must look up -- and a multi-key lookup on keys that *hit* is exactly
+the read-batching cliff this document already measures at 24x. The insert is then a bystander: it queues
+behind per-key storage reads on tservers co-located with the validator--committers, which is consistent
+with the 59-66% CPU there and with the flat retirement rate across a twentyfold offered range.
+
+**The measurement that would confirm it is one this evaluation has never recorded**, which is why this is
+stated as the surviving candidate rather than the answer:
+`vcservice_database_tx_batch_validation_latency_seconds` is in the sampler's query set but reads empty in
+every row, so the read-validation cost has never actually been quantified on a conflict workload. Take it
+on the next conflict run -- if validation is seconds while the insert is seconds, the insert is queueing
+behind the reads; if validation is milliseconds, the cost is inside the write path after all and
+something other than conflict resolution is doing it.
+
 ### The insert_ns rewrite is not the fix, and it costs about half the conflicting capacity (2026-09-23)
 
 ARM 2 of the A/B: 5% double spends at the 120-way pre-split, on the rewrite, verified live on the
