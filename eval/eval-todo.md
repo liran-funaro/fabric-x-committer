@@ -93,9 +93,9 @@ deploy:
 2. `pg_get_functiondef` on `insert_ns_%` off the running database, grepped for `ON CONFLICT`.
    `CREATE OR REPLACE` is not a live upgrade path, so a namespace already created keeps the old function.
 3. `strings` on the staged binary at `out/control-node/bin/Linux/x86_64/` immediately before the batch, not
-   once beforehand — an ordinary bring-up rewrites that path. Discriminate on **`unique_violation` (2 = old,
-   0 = rewrite)** and **`EXCEPT ALL` (0 = old, >=1 = rewrite)**. Do *not* use `ON CONFLICT`: it reads 3 in
-   both binaries, from `init_database_tmpl.sql` and a metrics help string.
+   once beforehand — an ordinary bring-up rewrites that path. Discriminate on **`EXCEPT ALL`: 0 = old, 2 = rewrite** --
+   the only present/absent test. `unique_violation` reads 2 against 1, not 2 against 0, because
+   `init_database_tmpl.sql` has its own handler. Do *not* use `ON CONFLICT`: it reads 3 in both binaries.
 
 ### 2h: the no-pre-split conflict-free ceiling
 

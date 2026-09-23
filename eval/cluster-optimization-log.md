@@ -3408,18 +3408,24 @@ The recorded pre-check for which `insert_ns` a staged binary carries was "`uniqu
 `ON CONFLICT` x0". Only the first half discriminates. Built both variants from the same tree and ran
 `strings` on each:
 
-| | `unique_violation` | `EXCEPT ALL` | `ON CONFLICT` |
+| | `EXCEPT ALL` | `unique_violation` | `ON CONFLICT` |
 |---|---|---|---|
-| old, `EXCEPTION WHEN unique_violation` | 2 | 0 | **3** |
-| rewrite, `ON CONFLICT ... EXCEPT ALL` | 0 | >=1 | **3** |
+| old, `EXCEPTION WHEN unique_violation` | **0** | 2 | 3 |
+| rewrite, `ON CONFLICT ... EXCEPT ALL` | **2** | 1 | 3 |
 
 `ON CONFLICT` reads 3 either way: `utils/statedb/init_database_tmpl.sql` uses it twice for unrelated
 seed inserts, and `service/vc/metrics.go` mentions it in a metric's help text. So a rewrite binary
 passes the documented check as "old", which is the direction that silently destroys a baseline rather
-than failing loudly. Use `unique_violation` and `EXCEPT ALL`.
+than failing loudly.
 
-No past result is affected: every earlier reading also recorded `unique_violation` x2, which is the
-half that is sound, so those rungs were against the old function for a correct reason.
+**`EXCEPT ALL` is the only present/absent test; `unique_violation` differs by one, not to zero.** The
+same `init_database_tmpl.sql` has its own `EXCEPTION WHEN unique_violation` at line 46, so that string
+survives in the rewrite binary too -- 2 against 1, not 2 against 0. A check written as "0 = rewrite"
+therefore reads a correct rewrite binary as neither variant. Both variants were built from one tree and
+`strings`-ed to get the table above, rather than reasoning from the diff.
+
+No past result is affected: every earlier reading also recorded `unique_violation` x2, which does
+distinguish the old function, so those rungs were against it for a correct reason.
 
 ## 14. What the matrix has already covered
 

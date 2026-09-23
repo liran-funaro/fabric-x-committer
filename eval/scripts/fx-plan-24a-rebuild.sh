@@ -8,10 +8,11 @@
 # CREATE OR REPLACE is not a live upgrade path, so after the swap they cannot be taken at all.
 #
 # THE BINARY STAGED BEFORE THIS CHAIN IS THE BASELINE ONE. Verified on the control node:
-#   strings out/control-node/bin/Linux/x86_64/committer | grep -c unique_violation   -> 2
-#   strings out/control-node/bin/Linux/x86_64/committer | grep -c "EXCEPT ALL"       -> 0
-# Do NOT discriminate on "ON CONFLICT": it reads 3 in both variants, from init_database_tmpl.sql
-# and a metrics help string, so a rewrite binary passes as "old" and silently voids the baseline.
+#   strings out/control-node/bin/Linux/x86_64/committer | grep -c "EXCEPT ALL"       -> 0  (2 if rewrite)
+#   strings out/control-node/bin/Linux/x86_64/committer | grep -c unique_violation   -> 2  (1 if rewrite)
+# EXCEPT ALL is the present/absent test. unique_violation goes 2 -> 1 and not 2 -> 0, because
+# init_database_tmpl.sql carries its own handler. Do NOT discriminate on "ON CONFLICT": it reads 3 in
+# both variants, so a rewrite binary passes as "old" and silently voids the baseline.
 set -u
 cd /data1/scripts || exit 1
 say() { echo "### $(date -u +%H:%M:%SZ) $*"; }
