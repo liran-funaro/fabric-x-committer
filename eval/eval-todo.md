@@ -12,6 +12,30 @@ running, which clock a log uses — is in `session-handoff.md`.
 One arm can be up at a time and switching arms is a full bring-up (~10 min), so the two arms are two
 batches. `RUNNING.md` has how to run them.
 
+## DECISION WAITING: revert `d44ef3a4`?
+
+The `insert_ns` `ON CONFLICT` rewrite is measured and it is a severe regression, not a fix. On the
+**conflict-free** path at the 120-way pre-split, same day and same cluster, binary the only difference:
+
+| | finished | `db_insert` | p99 |
+|---|---|---|---|
+| baseline | **559,636** | **79 ms** | 687 ms |
+| rewrite (`d44ef3a4`) | **22,727** | **4,719 ms** | censored, 60 s |
+
+Zero conflicts, zero aborts, 24.6x less throughput, 60x the insert. `ON CONFLICT (key) DO NOTHING ...
+RETURNING key` pays conflict detection on every row of every insert, where the old `EXCEPTION WHEN
+unique_violation` handler paid its full-batch lookup only on a rare failing attempt -- and at 0% conflicts
+that attempt never happens.
+
+**`d44ef3a4` is still on `eval/workspace`, which is the branch the cluster deploys from.** It has not been
+reverted: it is a sanctioned commit, and reverting it is the owner's call rather than something to do
+while the evidence is a few hours old. The hazard is not live in the meantime -- every binary staged at
+`/data1/bin-stage` is the baseline (`EXCEPT ALL` = 0, `unique_violation` = 2), and the baseline binaries
+were built from a worktree with this commit reverted -- but a `make setup` that rebuilds from the branch
+on the control node would ship it.
+
+Detail in `cluster-optimization-log.md`, section "ARM 3 settles it".
+
 ## Queue
 
 Order is by what each batch decides for the document, not by what is interesting. Completed batches and
