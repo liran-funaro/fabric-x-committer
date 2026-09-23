@@ -3478,6 +3478,34 @@ And `strings` on the operative staged binary at `out/control-node/bin/Linux/x86_
 batch, not once beforehand -- an ordinary bring-up rewrites that path. Verified at 15:28 for `ladderlow`:
 `unique_violation` x2, `ON CONFLICT` x0, so every rung recorded today is against the old function.
 
+### The swap is reversible in this harness, so the ordering was never forced (2026-09-23)
+
+Every version of the ordering argument -- this section's, `eval-todo.md`'s, and the comment on
+`9c-ds5-onconflict` in `fx-figures.py`, which argues the *opposite* order -- rests on one premise:
+`CREATE OR REPLACE` is not a live upgrade path, so once the rewrite is deployed the baseline batches
+"cannot be taken at all". That premise is true of a live cluster and **false of this harness.**
+
+`fx-bringup.sh` wipes every database data directory and gates on nothing surviving, so namespaces are
+recreated from scratch on the next bring-up and the function that lands is whichever binary sits in
+`/data1/bin-stage`. Both variants are now staged and each is identifiable from its own bytes:
+
+| path | variant | `EXCEPT ALL` |
+|---|---|---|
+| `/data1/bin-stage` | baseline, `EXCEPTION WHEN unique_violation` | 0 |
+| `/data1/bin-stage-rewrite` | the rewrite, `ON CONFLICT ... EXCEPT ALL` | 2 |
+
+So the swap is an `install` in either direction and the A/B can run at any point in the queue, with the
+characterisation batches taken before or after it. What the premise does still forbid is the thing it was
+really protecting against: a *partial* upgrade, where a namespace that survived a wipe keeps the old
+function while the new binary sits on disk. That is why `fx-plan-24b-ab.sh` gates twice -- once on the
+staged binary's `EXCEPT ALL` count, and once on `pg_get_functiondef` over the live `insert_ns%` functions
+after the bring-up, which is the only check that reads what the database actually holds.
+
+Neither recorded order was wrong about its own reasoning; both were answering a question that the
+harness does not pose. The A/B is worth running early on its own merits, because it is the measurement
+that decides whether the conflict collapse has a fix that keeps the 120-way pre-split's +35% on the
+conflict-free path -- and the batches it would have pre-empted lose nothing by running after it.
+
 ### Why it runs after the batches that characterise the path it removes
 
 **`insert_ns` is sanctioned, applied in `d44ef3a4`, and last in the queue.** The rewrite changes the exact
