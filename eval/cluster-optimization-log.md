@@ -3381,6 +3381,56 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### Intent volume is not the mechanism, and the intents-DB read path looks saturated (2026-09-23)
+
+`ladder8tab` supplied both regimes while the sampler was live, so the comparison needed no extra run:
+its 200,000 rung (MISS, retiring 131,455, insert 337 ms) against its 150,000 bridge (MET, retiring
+150,000, insert 14.2 ms), twelve tablet servers, `ns_0` only, counters differenced over each
+measurement window.
+
+| per second | slow (200,000) | fast (150,000) | ratio |
+|---|---|---|---|
+| intents-DB seeks | 2,072,321 | 2,145,067 | **0.97** |
+| intents-DB bytes read | 412 MB | 411 MB | **1.00** |
+| intents-DB bytes written | 645 KB | 609 KB | 1.06 |
+| `intentsdb_rocksdb_stall_micros` | **0** | **0** | — |
+| intents-DB compaction | 0 | 700 us | — |
+
+**The intents DB is worked identically hard in both regimes while the insert is 24x slower in one of
+them.** So the hypothesis this sampler was built for -- that the slow regime holds two orders of
+magnitude more provisional records, making every write dearer -- is refuted. Not by a subtle margin:
+seeks agree to 3%, bytes read to 0.3%, and stalls are zero on both the intents and the regular DB in
+every sample.
+
+**What it hands over is more useful than what it refuted.** Normalise by throughput and the two regimes
+are nearly the same workload per transaction -- **16.6 intents-DB seeks per committed transaction in the
+slow regime against 15.0 in the fast one** -- while the *absolute* rate is pinned at ~2.1M seeks and
+~411 MB read per second in both. A resource doing identical total work at two very different latencies is
+the signature of **saturation**, and the arithmetic fits: 10% more seeks per transaction at a fixed seek
+ceiling should cost about 10% of throughput, and throughput fell 12%, 142,685 to 125,046.
+
+On that reading the 24x latency is not work getting slower, it is a queue forming once demand passes the
+ceiling -- which is what the whole slow regime looks like, including retirement that *falls* as offered
+rate rises.
+
+**What that reading must still explain, and currently does not.** If capacity at twelve tablets were a
+fixed ~150,000-175,000 set by an intents-DB read ceiling, 250,000 could never be met -- and it was met
+three times out of six, retiring 250,000 in full at a 240 ms p99 and a 17 ms insert. A hard ceiling and a
+coin flip are not the same shape. Two ways out, both testable:
+
+- The ceiling is a property of the **table's history**, not the tablet count. `ladder8tab`'s table reached
+  twelve tablets by splitting and carries four deleted parents (12 running, 16 total), where the 250,000
+  repeats were pre-split to twelve. A split table's SST layout could cost more seeks per read, which would
+  give the two configurations different ceilings and make comparing their capacities invalid.
+- The ceiling moves with something else entirely, and 2.1M seeks per second is merely where this workload
+  happens to sit rather than a limit.
+
+The measurement that separates them is the same differencing on a **250,000 repeat in each regime**, which
+`fx-plan-24e-intents.sh` is running now: same pre-split-12 table, both outcomes, intents counters on both.
+If the fast and slow reps there also agree on seeks per second, the ceiling is real and the pre-split table
+simply sits further below it; if the slow rep shows markedly more seeks per transaction, the seek cost is
+what moves and the table history is a red herring.
+
 ### The intents DB is not scraped, and it is read 670 times more than it is written (2026-09-23)
 
 With the read path cheap and every conflict-handling explanation refuted, the write path is what is
