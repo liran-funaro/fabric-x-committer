@@ -3677,6 +3677,25 @@ explicitly ruled out at 44%.
 
 ## 12. Apparatus defects, and the results lost with the monitor
 
+### Killing a chain does not kill what it started, and a killed chain leaves its binary swap behind
+
+Three times in one session, stopping a supervising script left its work running: the batch chain's
+`fx-run-matrix.sh` survived the chain, the supervisor's `fx-plan-24d-lowfix.sh` survived the supervisor,
+and that script's own `fx-run-matrix.sh` survived it in turn -- each reparented and carrying on. Twice
+that was useful, because a batch mid-measurement finished rather than being thrown away. Once it was not:
+the sub-capacity ladder had already staged the **rewrite** binary as its first act, and killing it skipped
+the restore at its end, leaving `/data1/bin-stage` holding the variant that must not be measured.
+
+Two practical consequences, both of which cost minutes here:
+
+- **Kill by recorded PID, down the tree, and check what is left.** `pgrep -cf` for the driver, the matrix
+  wrapper *and* `ansible-playbook` after every kill; an orphaned play keeps running and will collide with
+  the next chain's first task.
+- **A script that swaps a binary must be assumed to have swapped it.** The supervisor had deterministic
+  recovery for exactly this, restoring from `/data1/bin-stage.baseline` and re-verifying -- and it never
+  ran, because the thing that was killed was the supervisor. Verify the staged artifact by hand after any
+  interrupted chain: `EXCEPT ALL` = 0 and `unique_violation` = 2 for the baseline.
+
 ### The tablet sampler died silently (20:03, caught 20:11 by luck)
 
 `fx-tablet-count.sh` stopped at 20:03:11 with no process left and no message, during the arm switch to
