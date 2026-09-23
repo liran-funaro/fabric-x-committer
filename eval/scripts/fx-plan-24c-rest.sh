@@ -73,9 +73,12 @@ run capreps "9c-nosplit250-cap-rep1,9c-nosplit250-cap-rep2,9c-nosplit250-cap-rep
 run ladder8tab 9c-ds5-ladder8tab $C
 
 # --- batch 6: does the no-split advantage survive the table ageing? ------------------------------
-# Splitting deliberately LEFT ON ($C): splitting resuming IS the measurement. A single 45-minute hold,
-# sized from 0.875 GB per tablet per million transactions against a 9.6 GB threshold.
-FX_HOLD=2700 run soak 9c-nosplit-ds5-soak $C 20000
+# Splitting deliberately LEFT ON ($C): splitting resuming IS the measurement. An 80-minute hold, re-sized
+# against batch 3b's measured rates: 45 minutes needed ~245,000 tps retired, and this layout retires
+# 237,808 in the fast regime and ~171,000 in the slow one, so the old sizing missed the crossing in both.
+# The rate also drops 350,000 -> 250,000: offering above the tipping region lands in the slow regime and
+# grows the table SLOWER.
+FX_HOLD=4800 run soak 9c-nosplit-ds5-soak $C 20000
 # Same rate on the soaked deployment without redeploying -- a redeploy would hand it a fresh table
 # and read as "still 14 ms, durable", which is the trap runskip exists to close.
 runskip ds5age 9c-nosplit-ds5-age $C 20000

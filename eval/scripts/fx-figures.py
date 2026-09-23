@@ -682,9 +682,20 @@ EXPERIMENTS = [
     # 12. The highest rate ever sustained at this layout is 95,122 tps (ds5 rung 4, at 11% CPU with the
     # ladder out of rungs), so 350,000 is a 3.7x extrapolation -- plausible on that headroom, not proven,
     # and the crossing needs ~245,000 retired to happen inside 45 minutes.
+    # RE-SIZED 2026-09-23 against batch 3b's measured rates, because as written this could not reach its
+    # own threshold. 45 minutes needs ~245,000 tps RETIRED (9.6 GB per tablet at 0.049 GB/tablet/min per
+    # 56,000 tps). 3b measured what this layout actually retires at 250,000 offered: 237,808 committed in
+    # the fast regime and ~171,000 in the slow one, which cross at 46.2 and 64.2 minutes. So a 45-minute
+    # hold misses the crossing in BOTH regimes and would have reported "still 12 tablets, layout stable"
+    # as a confident null.
+    #
+    # Offering 350,000 made it worse rather than better. It is above the tipping region, so it lands in
+    # the slow regime and retires ~171,000 -- LESS table growth than offering the rate the layout can
+    # actually hold. Offered 250,000 with an 80-minute hold (FX_HOLD=4800 in the chain) covers the fast
+    # regime with 34 minutes of margin and the slow one with 16.
     dict(id="9c-nosplit-ds5-soak", figure="conflict-nosplit", x=5, mode="curve",
          label="5% double spend, 12 tablets, soak to the split threshold",
-         rates=[350_000],
+         rates=[250_000],
          vars=dict(shape(2, 0, backref=0.05),
                    committer_database_table_pre_split_tablets=12)),
     # Then the same rate as `9c-nosplit-ds5-hi`'s first rung, on the soaked deployment, with FX_SKIP_DEPLOY.
