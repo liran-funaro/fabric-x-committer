@@ -76,6 +76,25 @@ QUERIES = {
     # takes Prometheus and the window's series with it seconds after the hold ends.
     "db_commit_ms":    (f"1000 * sum(rate(vcservice_database_tx_batch_commit_latency_seconds_sum[{W}]))"
                         f" / sum(rate(vcservice_database_tx_batch_commit_latency_seconds_count[{W}]))"),
+    # YugabyteDB's OWN conflict counters, and the committer's. These were listed for months as the
+    # thing to turn on next, and they were already being scraped -- the collection's yugabyte scrape
+    # jobs cover /prometheus-metrics on every tserver, master and ysql endpoint. Nobody had queried
+    # them. They are the falsifier for the write-path hypothesis: two transactions writing a
+    # referenced key are a write-write conflict INSIDE the database, resolved by its own retries and
+    # invisible to anything the committer records.
+    #
+    # num_keys_scanned is the one that discriminates. If conflict resolution scans keys in proportion
+    # to the batch, its cost is the same fan-out story as the insert's lookup; if it is not entered at
+    # all (count stays 0, so these read NaN), the database is not resolving write conflicts and the
+    # cost is entirely on the committer's side of the wire.
+    "yb_conflicts_s":    "sum(rate(transaction_conflicts[60s]))",
+    "yb_confl_res_ms":   ("1000 * sum(rate(conflict_resolution_latency_sum[60s]))"
+                          " / sum(rate(conflict_resolution_latency_count[60s]))"),
+    "yb_keys_scanned":   ("sum(rate(conflict_resolution_num_keys_scanned_sum[60s]))"
+                          " / sum(rate(conflict_resolution_num_keys_scanned_count[60s]))"),
+    "yb_expired_s":      "sum(rate(expired_transactions[60s]))",
+    "yb_pending_abort":  "sum(aborted_transactions_pending_cleanup)",
+    "vc_mvcc_confl_s":   "sum(rate(vcservice_mvcc_conflict_total[60s]))",
     "committed_total": "sum(loadgen_transaction_committed_total)",
     "validation_ms":   (f"1000 * sum(rate(vcservice_database_tx_batch_validation_latency_seconds_sum[{W}]))"
                         f" / sum(rate(vcservice_database_tx_batch_validation_latency_seconds_count[{W}]))"),
