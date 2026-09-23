@@ -3491,6 +3491,7 @@ which reads 8 running / 0 deleted / 8 total until 11:23 and 12 running / 4 delet
 | 150,000 | 14.6 ms | 178.7 | 214 ms | MET |
 | **200,000** | **337.2 ms** | **115.7** | 29.9 s | **MISS** |
 | bridge, 150,000 | 14.2 ms | 177.6 | 236 ms | MET |
+| **250,000** | **442.4 ms** | **112.2** | 44.9 s | **MISS** |
 
 **Ceiling bracketed 150,000-200,000, with the top passing rung reproduced on its own fresh deployment**
 -- the same bracket `hold8nosplit` found at eight pinned tablets, from the other side of the splitting
@@ -3512,6 +3513,15 @@ rule's other half holds too: 150,000's insert is 14.6 ms, on the baseline, and i
 
 So the gentle rise inside the fast regime is distance to the tipping point, measured. That was an
 inference when the rule was weakened this morning; it is now three ladders' worth of evidence.
+
+**The slow regime gets worse the harder it is driven, which is not how saturation behaves.** The two
+missing rungs retire *less* the more they are offered -- 131,455 at 200,000 and 97,455 at 250,000 -- while
+the insert climbs 337 to 442 ms and the batch width falls 116 to 112. A saturated stage retires a flat
+rate whatever it is offered, which is what the 120-way split does (18,000-25,273 across 25,000 to
+500,000, and the rewrite's 10,545-12,364 across 20,000 to 400,000). Retirement that *falls* with offered
+rate is a feedback loop instead: more offered means a deeper backlog, a narrower batch, a dearer insert
+and less throughput, which deepens the backlog again. That is the same loop the fast-to-slow transition
+needs, observed here inside the slow regime rather than at its edge.
 
 ### The graph's admission cap is not the lever, and the bimodality is now n=6 (2026-09-23)
 
