@@ -3381,6 +3381,54 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### The intents DB is not scraped, and it is read 670 times more than it is written (2026-09-23)
+
+With the read path cheap and every conflict-handling explanation refuted, the write path is what is
+left. The slow regime differs from the fast one by two orders of magnitude of in-flight transactions --
+~3M against ~18,000 -- and therefore by two orders of magnitude of **provisional records**, which
+YugabyteDB keeps in a separate RocksDB instance, the intents DB. Every write has to seek that DB to
+check for a conflicting intent, so its size is a per-write cost.
+
+**These metrics exist and Prometheus does not have them.** The tablet server exposes **682** metric
+names on `:5340/prometheus-metrics`, of which **124** are `intentsdb_*`, and Prometheus holds **none**
+of them -- its `__name__` list has 2,769 entries and zero matching "intent". So the earlier statement
+that YugabyteDB's metrics "were already being scraped" was right about the conflict counters
+(`transaction_conflicts`, `conflict_resolution_*`) and wrong in general: the collection's scrape config
+keeps a far narrower set than the tserver emits. `fx-intents-sampler.py` polls all twelve tablet
+servers directly, which needs no scrape-config change and no Prometheus restart while a measurement is
+in flight.
+
+First readings, taken in a **fast** condition (`ladder8tab` at 150,000, met at 214 ms), summed over the
+twelve servers for the state table alone:
+
+| | ns_0 |
+|---|---|
+| `intentsdb_rocksdb_stall_micros` | **0** |
+| `regulardb_rocksdb_stall_micros` | **0** |
+| `intentsdb_rocksdb_number_db_seek` | 1.98 billion |
+| intents DB bytes read | 380 GB |
+| intents DB bytes written | 567 MB |
+
+**No RocksDB write stalls on either DB**, which kills the sub-hypothesis that writers are being stalled
+outright -- at least in this condition. What the numbers do show is a **670:1 read-to-write ratio on the
+intents DB**: it is barely written and enormously read, which is the per-write intent check rather than
+intent accumulation as such.
+
+The comparison that matters is the same counters in the slow regime, which `fx-plan-24e-intents.sh`
+takes: the three 250,000 repeats again, with REDO since 3b left confirmed rows, three of them because
+the outcome is a coin flip at 3 of 6.
+
+**Two instrument errors found while building this, both of the same kind -- reading the wrong field.**
+The first version summed the value at the end of each line, which is the **timestamp**: every counter
+came back as the same enormous number, 1.34e14, and it was obvious only because all nine agreed exactly.
+The line format is `name{labels} VALUE TIMESTAMP_MS`. The second polled `10.241.64.13-24` on the
+assumption that twelve tablet servers followed the twelve `commit` hostnames; they are at **.10-.21**,
+so that sampled nine real servers plus the monitor at .22 and two machines with nothing on the port, and
+reported "9 hosts answering" as if three were merely slow. Probed rather than assumed now. The same
+mistake also produced an earlier claim in this session that `.10` is a dedicated master -- it is
+`commit1`, running a master, a tablet server and a validator--committer, and it looked master-only
+because it was probed during a wipe.
+
 ### Read validation is 1-5 ms everywhere: the cost is in the WRITE path (2026-09-23)
 
 Task 2l, answered from data already on disk. The stated falsifier was: *seconds of read validation means

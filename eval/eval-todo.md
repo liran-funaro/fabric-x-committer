@@ -57,7 +57,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | # | Task | ids | State |
 |---|---|---|---|
 | 2b | Conflict-share sweep at 1%, 0.1%, 0.01%. | `ds1`…`ds0001` | queued (batch 8) |
-| 2m | **Test intent accumulation as the regime switch.** The slow regime holds ~3M transactions in flight against ~18,000 in the fast one, so YugabyteDB carries orders of magnitude more provisional records; intents make every write dearer, which deepens the backlog, which is self-sustaining and decided in the first minute. Enumerate YugabyteDB's intent metrics and sample them across both regimes. | new | ready, read-only |
+| 2m | **Test intent accumulation as the regime switch.** Sampler written and running (`fx-intents-sampler.py`, polls all twelve tservers directly since Prometheus scrapes no `intentsdb_*`). Fast-regime baseline taken: no RocksDB stalls, 670:1 read-to-write on the intents DB. Needs the slow-regime half, which `fx-plan-24e-intents.sh` takes. | `9c-nosplit250-rep1..3` with REDO | sampler live, comparison queued |
 | 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`. `fx-explain-insert.sql` runs on its own 120-tablet table, so it needs only a measurement-free gap. | — | ready, cheap |
 | 2l | ~~Quantify read validation on a conflict workload.~~ **Done: 1-5 ms in every condition**, identical across the two regimes (1.15 vs 1.22 ms) while commit differs tenfold. The cost is in the write path. The data was already in `graph.jsonl`; the earlier "never measured" was reading the driver's rows instead. | — | done |
 | 2f | Re-run the tablet axis with automatic splitting disabled. | `tabhold*` | queued (batch 7) |
