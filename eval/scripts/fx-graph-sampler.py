@@ -41,6 +41,12 @@ QUERIES = {
     "add_batch_util":  f"sum(rate({GDG}_add_tx_batch_to_graph_seconds_sum[{W}]))",
     "detector_util":   f"sum(rate({GDG}_update_dependency_detector_seconds_sum[{W}]))",
     "graph_size":      f"sum({GDG}_size)",
+    # The released-but-not-yet-taken slice. It is deliberately unbounded and was the coordinator's one
+    # blind spot: a conflict hunt could account for every transaction in the seven instrumented queues
+    # and the graph's own maps and still be ~497,000 short. The gauge has existed for a while --
+    # maintained incrementally in SimpleManager because a slice has no length to sample on demand --
+    # and nothing was querying it.
+    "dep_free_size":   f"sum({GDG}_dependency_free_size)",
     "in_queue":        f"sum({GDG}_input_tx_batch_queue_size)",
     "dependent_queue": "sum(coordinator_dependency_graph_dependent_transactions_queue_size)",
     "tx_processed":    f"sum(rate({GDG}_tx_processed_total[{W}]))",

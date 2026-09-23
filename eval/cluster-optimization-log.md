@@ -3123,6 +3123,63 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### The 250,000 disagreement is two stable regimes, and the graph's cap is in the slow one (2026-09-23)
+
+Rep2 retired 250,000 in full -- 250,000 offered, 237,807 committed at a 4.88% abort share, growth 0,
+p99 244 ms -- having taken the same bring-up, the same pinned layout and the same even leader placement
+as rep1, which missed it. So the pair reproduces the original disagreement exactly, and the insert
+reproduces with it:
+
+| | verdict | finished | `db_insert` | attempts/commit | tx per insert | p99 |
+|---|---|---|---|---|---|---|
+| original | MET | — | 17.0 ms | — | — | 243 ms |
+| original | MISSED | — | 262 ms | — | — | 29.6 s |
+| **rep1** | MISS | 176,545 | **259 ms** | **1.0** | **121.2** | 29.2 s |
+| **rep2** | MET | 250,000 | **16.9 ms** | **1.0** | **174.5** | 244 ms |
+
+Two readings each side, 15x apart in insert cost, at one rate and one layout. This is not scatter, and
+three things it is not:
+
+- **Not extra attempts.** `db_insert_per_commit` is **1.0 in both**. The failing run never takes the
+  retry path at all, so the failure-path cost that dominates the 120-way split's collapse is absent
+  here: at `tx-reference-gap: 0` these conflicts are read-write back-references caught by MVCC
+  validation, not insert key collisions.
+- **Not wider batches crossing a fan-out threshold.** The failing run's batches are **narrower**, 121
+  against 175 transactions, so per transaction the insert is 22x slower -- 2.14 ms against 0.097 ms.
+  Fewer keys per lookup, more cost per key.
+- **Not leader skew, table size or tablet count**, all of which were even or equal across the pair.
+
+**What does separate them is the state of the pipeline, and the sampler's series shows it arriving
+during ramp-up rather than developing.** Rep1's first measured sample already has the dependency graph
+at 234,128, pinned to 500,346 thirty seconds later -- its admission limit -- with commit latency already
+248 ms at 13,164 committed. Rep2's graph never passes ~19,000 and its commit latency sits at 25.4-27.1 ms
+for the whole window.
+
+| | graph size | `db_commit` | committed | busiest CPU |
+|---|---|---|---|---|
+| rep1, every sample after ramp | **500,000 (capped)** | 270-282 ms | ~171,000 | commit1, 35-37% |
+| rep2, every sample after ramp | **16,000-19,000** | 25.4-27.1 ms | ~237,800 | commit5, 23-25% |
+
+So at 250,000 offered this configuration has **two stable operating points**: one that retires the rate
+at 26 ms, and one that saturates the graph's admission limit, runs the insert 15x slower and retires
+~171,000 -- which, being below the offered rate, is self-sustaining. Nothing is saturated in either;
+CPU is higher in the *fast* regime on a per-transaction basis. Which one a deployment lands in is decided
+in the first minute.
+
+**This refines rather than contradicts the earlier ruling on the graph limit.** That test raised
+`committer_coordinator_dep_graph_wait_tx_limit` from 500,000 to 20,000,000 and read the same ~20,700 tps,
+which established the cap is not the cause **at the 120-way pre-split with a ~20,300 capacity** -- where
+the insert costs 1.7 s and the graph is full because in-flight equals throughput times latency. It says
+nothing about twelve tablets at 250,000, where the insert is 17 ms in the fast regime and the graph's cap
+coincides exactly with the slow one. Whether the cap participates here is open, and the experiment is
+cheap: repeat 250,000 at twelve tablets with the limit raised 40x. If it then retires the rate on every
+attempt, the cap is part of the collapse; if it still flips, it is not.
+
+The prediction recorded before these ran said a split outcome, one or two of three passing, on the
+grounds that the rung's insert was already 40% above its ladder's flat baseline. At 1 of 2 it is holding
+so far, and rep3 decides the count -- but the more useful result is that the two outcomes are not noise
+around one number, they are two regimes with a 15x gap and no overlap.
+
 ### The 250,000 repeats: rep1 misses, and its insert matches the failing reading (2026-09-23)
 
 First of the three fresh-deployment repeats queued as batch 3b, taken after the fleet rebuild. Every
@@ -3600,6 +3657,11 @@ validator--committer probably re-batches and the dependency-graph chunk does not
 count at all. One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, settles
 it.
 
-**`SimpleManager.depFreeTxBatches` has no gauge.** About 497,000 transactions are dependency-free, released,
-and in none of the seven queues that are instrumented, so they can only be in that slice — which the code
-itself calls "deliberately unbounded" and which nothing measures.
+**`SimpleManager.depFreeTxBatches` has a gauge, and nothing was reading it.** ~~No gauge.~~ Closed
+2026-09-23: `coordinator_global_dependency_graph_dependency_free_size` is defined at
+`service/coordinator/dependencygraph/metrics.go:66`, incremented at `simple.go:190` and decremented at
+`simple.go:176` -- maintained incrementally because a slice has no length to sample on demand -- and
+`drain_test.go:369` already asserts it drains to zero. The task list still carried it as "open, needs
+code" and the sampler never queried it, so the ~497,000 transactions that were unaccounted for were
+measurable the whole time. Now in `fx-graph-sampler.py` as `dep_free_size`; verified exported by the
+running binary.

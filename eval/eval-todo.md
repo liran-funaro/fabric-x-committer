@@ -34,11 +34,11 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 |---|---|---|---|
 | 2b | Conflict-share sweep at 1%, 0.1%, 0.01%. | `ds1`…`ds0001` | queued (batch 8) |
 | 2d | One `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading `Storage Read Requests`, to close the `chunk64` loose end. | — | open, unowned |
-| 2e | Add a gauge for `SimpleManager.depFreeTxBatches`. | — | open, needs code |
 | 2f | Re-run the tablet axis with automatic splitting disabled. | `tabhold*` | queued (batch 7) |
 | 2g | **Order is free: the swap is reversible.** Both binaries are staged (`/data1/bin-stage` baseline, `/data1/bin-stage-rewrite`), and every bring-up recreates namespaces, so it can run before or after the characterisation batches. `fx-plan-24b-ab.sh` swaps, gates on the binary AND on `pg_get_functiondef`, runs both sides, and restores the baseline. Measure the `insert_ns` rewrite: 5% at the 120-way split, plus the conflict-free hold as a regression check. **`eval/workspace` already carries the rewrite, so a baseline bring-up must build with `d44ef3a4` reverted.** [ctx](#2g-the-insert_ns-rewrite) | new | ready |
 | 2h | Close the no-pre-split **conflict-free** ceiling with a ladder at twelve tablets. The kept-pre-split case currently rests on a one-sided bound. [ctx](#2h-the-no-pre-split-conflict-free-ceiling) | new | ready, needs the arm |
-| 2i | Settle whether 250,000 holds at twelve tablets. [ctx](#3b-the-250000-repeats) | `9c-nosplit250-rep1..3` | queued (batch 3b) |
+| 2i | Settle whether 250,000 holds at twelve tablets. [ctx](#3b-the-250000-repeats) | `9c-nosplit250-rep1..3` | rep1 MISS, rep2 MET — two regimes, not scatter |
+| 2k | **Does the graph's admission cap participate in the slow regime?** Repeat 250,000 at twelve tablets with `committer_coordinator_dep_graph_wait_tx_limit` raised 40x. The slow regime pins the graph at exactly 500,000 while the fast one sits at 18,000; the existing 20M test ruled the cap out at the 120-way split, a different regime. [ctx](#2k-the-graph-cap-at-twelve-tablets) | new | ready, cheap |
 
 ## End-to-end arm (`inventory/cluster-orderer.yaml`)
 
@@ -123,3 +123,13 @@ values.
 The paragraph added in `7b87e7f7` ("Eight tablets is not enough for this workload; twelve is") rests on
 `hold8nosplit` rungs 2-8 and all of `ladder8tab`, both lost with the monitor. Either re-run both or mark the
 paragraph pending — a claim whose rows are absent should not sit in the document unmarked.
+
+### 2k: the graph cap at twelve tablets
+
+The 20,000,000 test that ruled the cap out was taken at the 120-way pre-split, where capacity is ~20,300
+and the insert costs 1.7 s -- there the graph is full because in-flight equals throughput times latency,
+which is an effect. At twelve tablets and 250,000 offered the insert is 17 ms in the fast regime, and the
+slow regime pins the graph at exactly its 500,000 limit while the fast one sits at 16,000-19,000. Same
+rate, same layout, no overlap. Raise the limit 40x and repeat 250,000 three times: if it retires the rate
+every time, the cap participates in the collapse; if it still flips, it does not and the bistability is
+elsewhere.
