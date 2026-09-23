@@ -27,11 +27,23 @@ fi
 while pgrep -f "[f]x-plan-24b" >/dev/null; do sleep 30; done
 while busy; do sleep 30; done
 
+# If the A/B exited early after its swap -- a failed gate, a killed run -- the rewrite is still staged and
+# batches 4-9 would measure the path the rewrite removes, which makes them meaningless. Recover rather
+# than stall: /data1/bin-stage.baseline is a byte copy taken before the swap, so restoring from it is
+# deterministic rather than a guess, and it is re-verified afterwards. Refuse only if that fails too,
+# because at that point the staged binary's provenance is genuinely unknown.
 EA=$(strings /data1/bin-stage/committer | grep -c "EXCEPT ALL")
 if [ "$EA" != "0" ]; then
-  say "!! the A/B did not restore the baseline (EXCEPT ALL=$EA). NOT starting the rest: batches 4-9"
-  say "!! measure the failure path the rewrite removes and would be meaningless against the rewrite."
-  say "!! restore with: install -m 0750 /data1/bin-stage.baseline/{committer,loadgen} /data1/bin-stage/"
+  say "!! the A/B left EXCEPT ALL=$EA staged; restoring the baseline from /data1/bin-stage.baseline"
+  if [ -f /data1/bin-stage.baseline/committer ]; then
+    install -m 0750 /data1/bin-stage.baseline/committer /data1/bin-stage.baseline/loadgen /data1/bin-stage/
+    EA=$(strings /data1/bin-stage/committer | grep -c "EXCEPT ALL")
+  fi
+fi
+if [ "$EA" != "0" ]; then
+  say "!! could not put the baseline back (EXCEPT ALL=$EA). NOT starting batches 4-9: they measure the"
+  say "!! failure path the rewrite removes and would be meaningless against the rewrite."
+  say "!! the workstation holds both variants; re-stage from there."
   exit 1
 fi
 say "baseline confirmed staged (EXCEPT ALL=0); starting batches 2k and 4-9"
