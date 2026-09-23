@@ -57,6 +57,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | 9 | Update figure 5, Table 1 and the size section. | batch 5 |
 | 10 | Re-run or withdraw the eight-tablet paragraph added in `7b87e7f7`, whose rows were lost with the monitor. [ctx](#10-the-eight-tablet-paragraph) | batch 4 |
 | 11 | Sync the results file into the repo at every batch boundary, from the chain script. Four hours of rows were lost to a reprovision because they were only on the monitor. | — |
+| 12 | Revise the twelve-tablet conflicting claim, which still says 150,000. 250,000 is now retired on two of three fresh deployments at 242-244 ms, but the configuration is bistable at that rate, so the number alone would mislead either way. [ctx](#12-what-to-claim-for-a-bistable-rate) | 2k, which decides whether the cap is part of it |
 
 ## Not scheduled
 
@@ -133,3 +134,14 @@ slow regime pins the graph at exactly its 500,000 limit while the fast one sits 
 rate, same layout, no overlap. Raise the limit 40x and repeat 250,000 three times: if it retires the rate
 every time, the cap participates in the collapse; if it still flips, it does not and the bistability is
 elsewhere.
+
+### 12: what to claim for a bistable rate
+
+`b054a57f` pulled this back to 150,000 when 250,000 failed to reproduce, and that was right about what
+was established. Batch 3b now has 250,000 retired in full twice at 242-244 ms and missed once at 29.2 s,
+with no continuum between the two -- so neither "250,000" nor "150,000" describes the configuration on
+its own. What the publication can carry depends on 2k: if raising the graph's admission limit removes the
+slow regime, the claim is 250,000 with a named setting; if it does not, the honest claim is a rate that
+holds about two times in three, which belongs in the text as a property of the configuration rather than
+as a ceiling. Do not update the figure until that is decided -- an axis cannot show a bimodal outcome,
+and plotting the mean of two regimes would invent a rate the deployment never runs at.
