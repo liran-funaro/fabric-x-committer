@@ -3071,6 +3071,58 @@ recommendation divides 518,000 by 213,091, and a task row argued the divisor was
 divisor. The divisor is weak for the separate reason that 213,091 is a single MET probe never pushed
 higher, which is a one-sided bound and what task 2h exists to close.
 
+### A prediction for the insert_ns A/B, and the arithmetic behind it (recorded 2026-09-23, before the run)
+
+The six unexplained seconds may not need a new mechanism. Read against the commit path's source, the
+failing insert's own measured cost accounts for them, and the missing step was arithmetic rather than a
+further candidate.
+
+`commitTransactions` (`service/vc/committer.go:95`) rebuilds the whole batch and retries after pruning
+the offending transactions, and says so: *"we can only retry twice. Once for attempting to insert
+existing keys, and once for attempting to reuse transaction IDs."* So a batch containing at least one
+conflict pays attempt 1 in full and then a clean attempt 2, which is exactly the 1.9 attempts per commit
+already measured.
+
+The share that matters is therefore **per batch, not per transaction**, and at this batch width the two
+are nothing alike:
+
+| per-tx conflict share | batches with >=1 conflict, at ~377 tx |
+|---|---|
+| 0.75% | **94%** |
+| 5% | >99.9% |
+
+At 0.75% -- the share in the 2,000 tps window whose ~6 s mean is the section's largest open number --
+94% of batches take the failure path. With `db_insert` measured at 1.71-2.88 s per failing attempt at
+the 120-way split, one failing attempt plus one clean one lands on several seconds per commit with no
+queue anywhere, which is precisely the shape recorded: seconds of latency, flat across a fivefold rate
+change, 6-25% CPU. Nothing needs to be serialised or blocked for this to happen.
+
+**So the prediction, before the A/B runs.** The rewrite deletes the full-batch `key = ANY(_keys)` lookup
+that the failure path pays. If that lookup is the cost:
+
+- At the **120-way pre-split with 5% double spends**, `db_insert` falls from ~1.7 s to tens of
+  milliseconds, and the workload meets the one-second bound at rates far above its current ~20,300 --
+  plausibly at or above the twelve-tablet no-split numbers, since the layout would stop mattering.
+- The **conflict-free hold stays at ~500,000**, because the common path gains only a `RETURNING` set and
+  a cardinality comparison.
+
+**Falsifiers, stated so the outcome can disagree.** If `db_insert` at 120 tablets with the rewrite stays
+in the hundreds of milliseconds, the lookup was not the cost and the untested write-path hypothesis
+takes over -- two transactions writing a referenced key are a write-write conflict *inside* YugabyteDB,
+resolved by its own retries and invisible to the committer's instrumentation. If the conflict-free hold
+regresses below ~500,000, materialising `RETURNING` costs the common path and the rewrite is a trade
+rather than a fix.
+
+**And this resolves what looked like counter-evidence.** The `chunk64` test was read as refuting the
+threshold explanation: narrowing the coordinator's chunk to ~212 keys per array, under the ~273 a 120-way
+split allows, bought 1.6x rather than the tablet split's 2x and 340x. But the loose end recorded against
+`chunk64` says why that was never a test of this: `vcservice_batcher_input_queue_size` exists, so the
+validator--committer re-batches and **the dependency-graph chunk does not control the insert's key count
+at all.** It narrowed the read-validation array, which was already cheap at 2.2-3.2 ms, and left the
+insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real batch width, reading
+`Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
+document rather than a loose end.
+
 ### The 250,000 repeats: rep1 misses, and its insert matches the failing reading (2026-09-23)
 
 First of the three fresh-deployment repeats queued as batch 3b, taken after the fleet rebuild. Every
