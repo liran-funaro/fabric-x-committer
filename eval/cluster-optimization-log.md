@@ -3406,6 +3406,43 @@ second layout and the cliff is located to within one doubling.
 `tablets.log` records the running count every 60 s and `graph.jsonl` records `db_insert_ms` every 30 s,
 so the crossing and the insert are both observed rather than inferred.
 
+### The 4 KiB point holds now, which unsettles the paper's disk-saturation claim (2026-09-24)
+
+`evaluation.tex`'s size section explains the old 4 KiB failure as the assembler's disk running out:
+
+> the assemblers at that point are writing 527-546 MB/s to their data volume, against the 529 MiB/s
+> sequential write Table~\ref{tab:disk} measures on these machines: the device is saturated
+
+and builds a two-regime conclusion on it -- limited per transaction below 2 KiB, limited per byte by one
+component's disk at 4 KiB, with the SIGMOD'26 bandwidth-bound model finally applying.
+
+**Today 4 KiB holds cleanly, and nothing is saturated.** The confirmed hold is 102,494 tps at p99 490 ms,
+and the append utilisation reported through its search is **39-45%**, with the busiest machine a router at
+45-53%. 102,494 x 4,096 is 419.8 MB/s of envelope bytes, well under the 529 MiB/s the disk benchmark
+gives. The old reading had the point plateauing at 113,000-123,000 tps and failing its hold; today it
+retires 102,494 and passes.
+
+So one of three things is true, and the document cannot yet say which:
+
+- the disk was genuinely the limit then and something changed -- the fleet was rebuilt from bare metal
+  between the two measurements, so the volumes are freshly formatted and unfragmented;
+- the 527-546 MB/s figure included write amplification that the envelope-byte arithmetic does not, and
+  the two numbers were never comparable;
+- or the old point failed for the reason its row actually recorded -- `finished=0` with in-flight growing
+  25,902/s -- which is a pipeline that never started rather than a disk that ran out, and the disk
+  explanation was fitted to a failure that had a simpler cause.
+
+The third is the most likely and the least flattering, because that `finished=0` row is in this
+document's own task list as an unexplained failure, and the section reasoned from the *plateau* around it
+rather than from the failure itself.
+
+**What this means for the write-up:** the size section's headline numbers need replacing anyway -- the
+300 B byte rate moves from 122 to 144 MB/s, and the paragraph explaining the 512 B / 300 B inversion can
+go, because today's sweep decreases strictly. But the two-regime conclusion is a claim about mechanism,
+and it should not be re-asserted with new numbers until the assembler's actual write rate is measured at
+4 KiB on this cluster. The per-doubling factor also changes: 0.640, 0.700 and 0.555 across the three clean
+doublings today, against the 0.76 the section quotes.
+
 ### The size sweep, complete and on one day, with one anomaly (2026-09-23/24)
 
 All six points of `figures-e2e/size-throughput.pdf` re-measured after the fleet rebuild, each from a
