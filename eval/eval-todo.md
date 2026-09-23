@@ -44,7 +44,7 @@ their results are in `cluster-optimization-log.md` sections 9-11.
 | # | batch | what it decides | state |
 |---|---|---|---|
 | 3b | `nosplit250-rep1..3` | Whether 250,000 holds at twelve tablets from a fresh deployment. Three bring-ups, three readings. [ctx](#3b-the-250000-repeats) | queued, ahead of the A/B |
-| 4 | `ladder8tab` | Finish the pinned-vs-splitting A/B at identical rates; `hold8nosplit` is done. | queued |
+| 4 | ~~`ladder8tab`~~ | **Done:** ceiling 150,000-200,000, bridge reproduced at 236 ms. The two regimes appear at 200,000 as well, insert 14.6 -> 337 ms across the tipping point. | done |
 | 5 | size sweep | 300 B re-measured, 3 KiB added, holds for 1 KiB and 4 KiB. Figure 5 and Table 1 have no current data. | queued |
 | 6 | `soak` + `ds5age` | Whether the no-split advantage survives the table crossing the 10 GiB split threshold. | queued |
 | 7 | `tabhold` | The tablet axis at two fixed rates, 12/24/48/64. Splitting pinned via `cluster-nosplitting.yaml`. | queued |

@@ -3475,6 +3475,44 @@ deepens the backlog, which is self-sustaining -- and it would be decided in the 
 where the regimes are decided. `query_version_ms` (`queryVersionsIfPresent`, `database.go:163`) is now
 sampled too, to close the read path completely rather than leave one of its two calls unmeasured.
 
+### Batch 4 (`ladder8tab`): the two regimes appear at 200,000 too, and the bridge rule holds (2026-09-23)
+
+The twin of `hold8nosplit`, re-run after its rows were lost with the fleet. Splitting left on, so the
+table is 8 tablets for its first four minutes and 12 thereafter -- confirmed again from `tablets.log`,
+which reads 8 running / 0 deleted / 8 total until 11:23 and 12 running / 4 deleted / **16 total** from
+11:24, four parents having split. Every measured rung is therefore at twelve tablets, and the
+`total = 2*running - 1` formula stays withdrawn: it demands 23.
+
+| rung | `db_insert` | transactions per insert | p99 | verdict |
+|---|---|---|---|---|
+| 25,000 | 13.5 ms | 180.8 | 186 ms | MET |
+| 50,000 | 13.9 ms | 180.0 | 182 ms | MET |
+| 100,000 | 14.1 ms | 179.4 | 187 ms | MET |
+| 150,000 | 14.6 ms | 178.7 | 214 ms | MET |
+| **200,000** | **337.2 ms** | **115.7** | 29.9 s | **MISS** |
+| bridge, 150,000 | 14.2 ms | 177.6 | 236 ms | MET |
+
+**Ceiling bracketed 150,000-200,000, with the top passing rung reproduced on its own fresh deployment**
+-- the same bracket `hold8nosplit` found at eight pinned tablets, from the other side of the splitting
+policy.
+
+**The two regimes are not a property of 250,000.** Here they are at 200,000, on a table that reached
+twelve tablets by splitting rather than by being pre-split, and the signature is the one already
+recorded: the insert rises *gently* with rate inside the fast regime -- 13.5, 13.9, 14.1, 14.6 ms across
+a sixfold rate increase -- and then jumps **23x** to 337 ms, while the batch width collapses from ~179
+transactions per insert call to 116. Compare the 250,000 pair: ~17 ms and ~174 against ~250 ms and ~120.
+Two rates, two tablet histories, one structure.
+
+**And the run whose rows were lost is now explained rather than merely re-measured.** That run recorded
+200,000 as MET at 268 ms with an insert of 20.6 ms, and its bridge failed. 20.6 ms is 44% above this
+ladder's flat baseline, which is what the bridge rule calls elevated -- so by the restated rule that rung
+was near the tipping point and a repeat was a coin flip. This re-run landed on the other side of it. The
+rule's other half holds too: 150,000's insert is 14.6 ms, on the baseline, and its bridge reproduced at
+14.2 ms.
+
+So the gentle rise inside the fast regime is distance to the tipping point, measured. That was an
+inference when the rule was weakened this morning; it is now three ladders' worth of evidence.
+
 ### The graph's admission cap is not the lever, and the bimodality is now n=6 (2026-09-23)
 
 Batch 2k: the three 250,000 repeats again, identical to 3b's except
