@@ -3123,6 +3123,43 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### The A/B's same-day clean baseline, and why the knees cannot be the comparison (2026-09-23)
+
+ARM 1 of the `insert_ns` A/B: `9c-ds0` re-run on the **baseline** binary, on the cluster rebuilt this
+morning, to give the rewrite's regression test a same-day partner instead of a number from 2026-09-10.
+
+| | 09-10 | 09-23 |
+|---|---|---|
+| confirmed hold | 518,000 at p99 447 ms | **559,636 at p99 687 ms** |
+| probes MET | 480,000 / 518,400 / 559,872 | 480,000 / 518,400 / 559,872 |
+| first probe to miss | 604,661 (553,091, p99 5.29 s) | 604,661 (582,727, p99 4.96 s) |
+| `db_insert` at 480k / 518k / 560k | not collected | **55.0 / 61.2 / 72.4 ms** |
+| `db_insert` at the hold | not collected | **79.1 ms** |
+
+**The arm was worth its bring-up on the first number alone.** Today's clean knee is 559,636 against the
+recorded 518,000 -- 8% higher. Had the rewrite been compared against the older figure, a result of
+545,000 would have read as an improvement while being a 3% regression against the cluster it actually
+ran on.
+
+**But the knees cannot carry the comparison, and this is the limit to state before the result arrives
+rather than after.** 559,872 is the rung this document already records as a coin flip: three passes and
+two failures for the clean shape alone, including one failure in a 300 s hold at a rate its own probe had
+just met. Today it passed. ARM 3 may stop at 518,400 for that reason and nothing else. So a single
+knee-against-knee pair cannot resolve a difference smaller than the ~8% the rung's own bimodality spans,
+and reading one would repeat the error batch 3b just diagnosed at 250,000: quoting a regime as a limit.
+
+**What can be compared is the insert at matched offered rates.** Both arms probe 480,000, 518,400 and
+559,872, and `db_insert` is now collected, so the rewrite's cost on the common path is three paired
+readings against 55.0, 61.2 and 72.4 ms rather than one knee against another. That is the measurement
+that answers whether materialising a `RETURNING` set costs the conflict-free path anything, at ~3,400
+calls a second per validator--committer -- and it is tight where the knee is bimodal. Read `db_commit`
+beside it: `db_insert` wraps `insertStates` only, so a cost landing in the surrounding transaction shows
+in one and not the other.
+
+Incidental, and useful for its own sake: the clean-path insert climbs with rate -- 55.0, 61.2, 72.4, and
+96.9 ms at the rate that misses -- so it is a load-sensitive cost even with nothing conflicting, which is
+the control the conflict measurements never had.
+
 ### Batch 3b complete: 250,000 holds two times in three, and the bridge rule needed weakening (2026-09-23)
 
 | | verdict | finished | committed | `db_insert` | p99 | tx per insert | graph |
