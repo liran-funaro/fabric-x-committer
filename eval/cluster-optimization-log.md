@@ -3123,6 +3123,84 @@ insert's array untouched. Task 2d -- one `EXPLAIN (ANALYZE, DIST)` at the real b
 `Storage Read Requests` -- is what actually decides it, and it is now the cheapest open question in this
 document rather than a loose end.
 
+### The insert_ns rewrite is not the fix, and it costs about half the conflicting capacity (2026-09-23)
+
+ARM 2 of the A/B: 5% double spends at the 120-way pre-split, on the rewrite, verified live on the
+namespace under test (`insert_ns_0 rewrite=true old=false`, read from `pg_get_functiondef` rather than
+inferred from the staged binary). Five rungs, all MISS, and the retirement rate is flat across a twentyfold
+range of offered rate:
+
+| offered | 20,000 | 50,000 | 100,000 | 200,000 | 400,000 |
+|---|---|---|---|---|---|
+| finished | 12,727 | 10,545 | 10,909 | 11,818 | 12,364 |
+| `db_insert` | 2.80 s | 2.91 s | — | — | — |
+| busiest CPU | 62% | 62% | 64% | 65% | 66% |
+
+**Capacity is ~11,700 against the baseline's ~20,000-25,000 at the same layout and the same workload** --
+verified like-for-like rather than assumed: `ladderlow` and `ladder5m` carry `pre_split_tablets: None`,
+which inherits `cluster.yaml`'s 120, so all three ladders ran at 120 tablets, 2 read-writes, backref
+0.05, gap 300,000 and lookback 1,000,000. The factor of about two exceeds the 10-15% the cluster's
+baseline drifts between days.
+
+**The prediction recorded before the run is falsified, and its falsifier fired exactly as stated.** It
+predicted `db_insert` falling from ~1.7 s to tens of milliseconds; the falsifier was "still in the
+hundreds of milliseconds, and the write-path hypothesis takes over". It did not fall at all: 2.80 and
+2.91 s against the baseline's 1.71-2.88 s.
+
+**The reason was in the data before the prediction was written, which is the part worth keeping.**
+`db_insert_per_commit` is 1.0 in every 250,000-repeat row and 1.0 here. At `tx-reference-gap: 300000` the
+double spends are caught by **MVCC read validation**, so `insert_ns`'s violating-key branch is never
+entered -- and the rewrite's entire subject is the cost of that branch. It optimised a path this workload
+does not take. The 1.7-2.9 s is the cost of a *successful* bulk insert fanning out over 120 tablets.
+
+**What the rewrite did do, and why it still lost.** Compared at one offered rate, 20,000:
+
+| | baseline | rewrite |
+|---|---|---|
+| finished | 18,182 | **12,727** |
+| `db_insert` | 2,878 ms | 2,802 ms |
+| attempts per commit | **1.91** | **1.00** |
+| transactions per insert call | **161.9** | **82.1** |
+| busiest CPU | 59% | 62% |
+
+It removed the retry, which is exactly what it was designed to do -- 1.91 attempts to 1.00 -- and still
+retired 30% less, because the batch width halved. Each insert call carries 82 transactions instead of 162
+at the same ~2.8 s per call, so the pipeline issues more calls of the same cost. Slow inserts starve the
+batcher, the batcher sends narrower batches, and narrower batches make the per-transaction cost worse
+again. Same CPU for 30% less throughput is about 1.5x the CPU per committed transaction.
+
+**One comparison in that table is not available, and the log already knows why.** The baseline's
+`db_commit` reads 16-31 ms against an insert of 1.7-2.9 s, because the conflicting attempts returned
+early and skipped the observation -- the defect recorded under "A metric observed only on success lies".
+The rewrite's `db_commit` (2,812 ms, ~= its insert) is a whole-path number because there are no early
+returns left. So baseline and rewrite `db_commit` cannot be set against each other; `db_insert` can.
+
+**And a correction to something this document says about the collapse.** "Nothing is saturated -- 6-25%
+CPU at every rate" is true at low rates (8% at 2,500 offered) and not at the capacity boundary: the
+busiest host runs 59-66% at 20,000 and above, on machines that co-locate a tablet server with a
+validator--committer. So the database is burning substantial CPU per transaction there. That does not
+restore "a capacity limit" as the explanation -- 60% is not saturation, and the flat retirement rate
+across a twentyfold offered range is not what a CPU ceiling looks like -- but the sentence as written
+overstates how idle the cluster is where it matters.
+
+**Where this leaves the conflict problem.** The `insert_ns` rewrite is not a fix and should not ship on
+this evidence: it is neutral on the insert's latency, negative on capacity, and the path it optimises is
+not entered at this reference gap. The tablet layout remains the only lever, and the conditional
+recommendation in `optimization-summary.md` stands unchanged -- pre-split for a conflict-free workload,
+no pre-split where anything collides. Two questions are now sharper than before:
+
+- **Does `ON CONFLICT` relocate the per-key reads rather than removing them?** Task 2d's single
+  `EXPLAIN (ANALYZE, DIST)` reading `Storage Read Requests` decides it, and `fx-explain-insert.sql` runs
+  on its own 120-tablet table so it can be taken without touching `ns_0`.
+- **Is the batch-width collapse the mechanism or a symptom?** 368 transactions per insert on the clean
+  path, 162 with conflicts on the old code, 82 with conflicts on the rewrite. The width is measured, its
+  cause is not.
+
+The one thing ARM 2 cannot settle is whether the rewrite is *worse* at a rate where nothing queues: every
+one of its rungs is over capacity and censored, and `ladderlow`'s baseline readings are sub-capacity and
+uncensored. `9c-ds5-onconflict-low` repeats `ladderlow`'s own four rates on the rewrite for exactly that
+comparison.
+
 ### The A/B's same-day clean baseline, and why the knees cannot be the comparison (2026-09-23)
 
 ARM 1 of the `insert_ns` A/B: `9c-ds0` re-run on the **baseline** binary, on the cluster rebuilt this
