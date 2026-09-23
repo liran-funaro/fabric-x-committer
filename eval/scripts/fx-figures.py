@@ -645,6 +645,23 @@ EXPERIMENTS = [
          rates=[20_000, 50_000, 100_000, 200_000, 400_000],
          vars=dict(shape(2, 0, backref=0.05),
                    committer_database_table_pre_split_tablets=120)),
+    # The rewrite at ladderlow's OWN rates, which is the only like-for-like comparison available.
+    #
+    # `9c-ds5-onconflict` starts at 20,000 because it was written assuming the rewrite works, and with
+    # capacity at ~12,700 every one of its rungs is over capacity and censored. A censored rung cannot be
+    # compared with ladderlow's UNCENSORED sub-capacity readings -- 1.707 s at 2,500, 1.969 at 5,000,
+    # 2.220 at 10,000, 2.540 at 15,000 -- and those four are the baseline the rewrite has to be judged
+    # against. Same four rates, same shape, same layout, one code change apart.
+    #
+    # This is the measurement that separates "the rewrite changed nothing" from "the rewrite helped and
+    # the ladder was simply offered too much": if the insert is still ~1.7-2.5 s at 2,500 offered, where
+    # nothing queues, the ON CONFLICT rewrite is not what costs the seconds.
+    dict(id="9c-ds5-onconflict-low", figure="conflict-fix", x=5, mode="curve",
+         label="5% double spend, 120 tablets, ON CONFLICT, sub-capacity rates",
+         rates=[2_500, 5_000, 10_000, 15_000],
+         vars=dict(shape(2, 0, backref=0.05),
+                   committer_database_table_pre_split_tablets=120)),
+
     # The regression side, and the one place the rewrite could cost something: the common path now
     # materialises a RETURNING set and compares cardinalities where it returned '{}' after a bare INSERT,
     # at ~3,400 calls a second per validator-committer. Read `db_commit` as well as `db_insert` here --

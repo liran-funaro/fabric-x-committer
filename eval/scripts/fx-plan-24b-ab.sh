@@ -76,7 +76,7 @@ run() { idle; say "$1"
 # the bound is met far above 20,300. Falsifier: db_insert still in the hundreds of ms means the
 # full-batch lookup was not the cost and the write-path hypothesis takes over.
 say "ARM 2 (rewrite binary): 5% double spends at the 120-way split"
-run dsfix5 9c-ds5-onconflict $C 20000
+run dsfix5 '9c-ds5-onconflict$' $C 20000   # anchored: 9c-ds5-onconflict-low shares the prefix
 
 # Gate on what the DATABASE holds, not on what was staged. The binary check proves which SQL text was
 # shipped; this proves which function the namespace actually got, and they can differ -- CREATE OR
@@ -104,7 +104,7 @@ fi
 # insertStates only, so a cost landing in the surrounding transaction shows in one and not the other.
 # Falsifier for "this is a fix rather than a trade": anything below ~500,000 here.
 say "ARM 3 (rewrite binary): the conflict-free hold, to pair with ARM 1"
-run dsfix0 9c-ds0-onconflict $C 20000
+run dsfix0 '9c-ds0-onconflict$' $C 20000
 
 # Swap the baseline back, verified, so the remaining characterisation batches are unaffected.
 idle
