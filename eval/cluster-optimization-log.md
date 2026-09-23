@@ -3381,6 +3381,50 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### The time is not inside the tablet server, by every counter it exposes (2026-09-23)
+
+Rep1 of the intents batch also killed the saturation reading from an hour earlier. On a **pre-split**
+twelve-tablet table in the slow regime the intents DB does 2,890,963 seeks and 571 MB of reads per
+second, against `ladder8tab`'s 2.07-2.15M and 411-412 MB/s. Forty per cent more, so ~2.1M seeks per
+second was never a ceiling. What is invariant is **seeks per committed transaction: 15.0, 16.6, 16.9
+across two regimes and two table histories** -- the intents-DB read load tracks work done. An effect,
+not a constraint, and the hypothesis I had put forward one entry earlier is wrong.
+
+So nothing the database *does* separates the regimes, and the next question is whether something it
+*waits on* does. The tablet server's own counters say no:
+
+| slow regime, rep2's window | reading |
+|---|---|
+| `rpc_incoming_queue_time` | **18-22 us** |
+| `log_append_latency` | **~10 us** |
+| `op_apply_queue_time` | **0** |
+| `rpcs_in_queue_yb_tserver_PgClientService` | **0** |
+| `rpcs_in_queue_yb_tserver_TabletServerService` | 0-11 |
+| intents/regular DB stalls | 0 |
+
+**Nothing is queueing anywhere inside the tablet server, and nothing it measures takes more than
+microseconds** -- while the committer observes its commit rise from 27 ms to 300 ms inside this very
+window, captured live: 27.3, 27.3, 74.4, 231.7, 290.7 ms across five consecutive samples as throughput
+fell from 211,865 to ~150,000.
+
+**A unit error nearly turned that into a finding, and is worth recording.** These queries multiplied by
+1,000 on the assumption of seconds. YugabyteDB's latency histograms are in **microseconds**, so the
+first readings printed a 20-second RPC queue and a 10-second Raft log append on a cluster that was
+committing at 27 ms. The implausibility is what caught it; the tablet server's own JSON endpoint reports
+`rpc_incoming_queue_time` mean 18.14 and `log_append_latency` mean 10.2, which settles the unit against
+ground truth rather than by argument. The committer's own metrics do carry `_seconds` and the Prometheus
+convention, so the two families need opposite treatment -- which is exactly the trap.
+
+**Where this leaves the hunt.** The remaining locus is between the committer's SQL call and the tablet
+server's work: the ysql backend that executes `insert_ns`, or the client-server path. It is not the
+connection pool, because `beginTx` acquires the connection before `insertStates` and `db_insert` wraps
+`insertStates` alone, so pool waiting would appear as `db_commit` minus `db_insert` -- and those are
+near-equal in every row.
+
+The instrument for that is ysql-side rather than tserver-side, and YugabyteDB has one this evaluation has
+never used: **Active Session History**, which samples what each session is waiting on. `pg_stat_statements`
+is the other. Both are read-only queries against the database, so neither needs a deployment change.
+
 ### Intent volume is not the mechanism, and the intents-DB read path looks saturated (2026-09-23)
 
 `ladder8tab` supplied both regimes while the sampler was live, so the comparison needed no extra run:

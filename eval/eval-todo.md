@@ -172,6 +172,22 @@ holds about two times in three, which belongs in the text as a property of the c
 as a ceiling. Do not update the figure until that is decided -- an axis cannot show a bimodal outcome,
 and plotting the mean of two regimes would invent a rate the deployment never runs at.
 
+### 2n: where the insert's time actually goes
+
+Everything measurable from the committer and the tablet server is now accounted for, and none of it
+explains the 24x insert. Not conflict handling (committer retry path, `insert_ns`'s violating-key branch,
+YugabyteDB's conflict resolution, expiry, abort cleanup), not read validation (1-5 ms), not intent volume
+(seeks per transaction 15-17 in both regimes), not RocksDB stalls (zero), not the graph's admission cap,
+and not queueing inside the tablet server (RPC queue 18-22 us, log append ~10 us, apply queue 0, queue
+depths 0). The connection pool is excluded too: `beginTx` acquires before `insertStates`, which is all
+`db_insert` wraps, so pool waiting would show as `db_commit` minus `db_insert` and those are near-equal.
+
+What is left is the ysql backend executing `insert_ns`, or the path between it and the client. Use
+**Active Session History** -- `yb_active_session_history`, which samples each session's wait event -- and
+`pg_stat_statements`, both read-only queries needing no deployment change. Take them in both regimes: the
+fast one is available on demand at 150,000 via `9c-nosplit150-fast`, and the slow one appears at 250,000
+about two times in three.
+
 ### 2l: the unmeasured validation cost
 
 Every conflict-handling explanation is now refuted: the committer's retry path (attempts 1.0), the

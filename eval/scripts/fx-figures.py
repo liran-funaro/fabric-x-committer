@@ -601,6 +601,18 @@ EXPERIMENTS = [
          label="5% double spend, 12 tablets, 250k repeat 3", rates=[250_000],
          vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
 
+    # A guaranteed FAST reference at twelve tablets, for comparing queue metrics against the slow
+    # regime without waiting on a coin flip.
+    #
+    # 250,000 lands fast only about a third of the time, so pairing a fast and a slow reading at that
+    # rate costs an unpredictable number of bring-ups. 150,000 is far enough below the tipping point to
+    # be reliable -- ladder8tab met it twice, at 214 and 236 ms, and the 250,000 fast regime retires
+    # 237,808 -- so this gives the fast half of the pair on demand. Same vars as
+    # 9c-nosplit250-rep*, one rate lower, which is the only difference.
+    dict(id="9c-nosplit150-fast", figure="conflict-nosplit", x=5, mode="curve",
+         label="5% double spend, 12 tablets, 150k fast reference", rates=[150_000],
+         vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
+
     # Does the dependency graph's admission cap participate in the slow regime at twelve tablets?
     #
     # 250,000 at this layout has two stable operating points, reproduced twice each: one retiring the

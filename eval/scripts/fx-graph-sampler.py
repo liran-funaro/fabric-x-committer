@@ -107,17 +107,21 @@ QUERIES = {
     # work, the time is queueing somewhere. These are the queues it could be sitting in: the
     # tserver's inbound RPC queue, the PgClientService queue the committer's SQL arrives on,
     # the Raft apply queue, and YugabyteDB's transaction wait queue.
-    "rpc_queue_ms":      ("1000 * sum(rate(rpc_incoming_queue_time_sum[60s]))"
-                          " / sum(rate(rpc_incoming_queue_time_count[60s]))"),
+    # DIVIDED by 1,000, not multiplied: YugabyteDB's latency metrics are in MICROSECONDS, while
+    # the committer's carry a _seconds suffix and the Prometheus convention with it. Getting this
+    # backwards turned a 10.6 ms Raft log append into "10,600 ms" on a cluster that was
+    # committing at 27 ms, which is the only reason it was caught.
+    "rpc_queue_ms":      ("sum(rate(rpc_incoming_queue_time_sum[60s]))"
+                          " / sum(rate(rpc_incoming_queue_time_count[60s])) / 1000"),
     "pg_rpcs_queued":    "sum(rpcs_in_queue_yb_tserver_PgClientService)",
     "ts_rpcs_queued":    "sum(rpcs_in_queue_yb_tserver_TabletServerService)",
-    "op_apply_queue_ms": ("1000 * sum(rate(op_apply_queue_time_sum[60s]))"
-                          " / sum(rate(op_apply_queue_time_count[60s]))"),
+    "op_apply_queue_ms": ("sum(rate(op_apply_queue_time_sum[60s]))"
+                          " / sum(rate(op_apply_queue_time_count[60s])) / 1000"),
     "op_apply_queued":   "sum(op_apply_queue_length)",
-    "wait_queue_ms":     ("1000 * sum(rate(total_wait_queue_time_sum[60s]))"
-                          " / sum(rate(total_wait_queue_time_count[60s]))"),
-    "log_append_ms":     ("1000 * sum(rate(log_append_latency_sum[60s]))"
-                          " / sum(rate(log_append_latency_count[60s]))"),
+    "wait_queue_ms":     ("sum(rate(total_wait_queue_time_sum[60s]))"
+                          " / sum(rate(total_wait_queue_time_count[60s])) / 1000"),
+    "log_append_ms":     ("sum(rate(log_append_latency_sum[60s]))"
+                          " / sum(rate(log_append_latency_count[60s])) / 1000"),
     "follower_lag_ms":   "max(follower_lag_ms)",
     "yb_conflicts_s":    "sum(rate(transaction_conflicts[60s]))",
     "yb_confl_res_ms":   ("1000 * sum(rate(conflict_resolution_latency_sum[60s]))"
