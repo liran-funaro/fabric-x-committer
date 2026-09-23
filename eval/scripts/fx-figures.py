@@ -1014,9 +1014,16 @@ if os.environ.get("FX_MATRIX") == "e2e":
 # The e2e stages need different inventories (4-shard vs 8-shard) and different shared configs
 # (block size), so they cannot all run under one deployment. FX_ONLY picks the rows that match the
 # deployment that is actually up: a comma-separated list of ids or id prefixes.
+#
+# A pattern ending in "$" is ANCHORED and matches that id exactly. Without it every pattern is a
+# prefix, and the share ids are prefixes of each other -- "9c-ds1" also selects "9c-ds10", which is a
+# different conflict share and a batch nobody asked for. A selector that silently widens is the same
+# defect as an unanchored -bench pattern, and it costs a bring-up to notice.
 ONLY = [p for p in os.environ.get("FX_ONLY", "").split(",") if p]
 if ONLY:
-    EXPERIMENTS = [e for e in EXPERIMENTS if any(e["id"].startswith(p) for p in ONLY)]
+    def _selected(eid):
+        return any(eid == p[:-1] if p.endswith("$") else eid.startswith(p) for p in ONLY)
+    EXPERIMENTS = [e for e in EXPERIMENTS if _selected(e["id"])]
     if not EXPERIMENTS:
         sys.exit(f"FX_ONLY={os.environ['FX_ONLY']} matched no experiment")
 

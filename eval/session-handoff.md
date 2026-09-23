@@ -232,7 +232,8 @@ the verified set and should be re-read rather than trusted.
    tier and the disk at 60% of its ceiling. Recorded as unexplained rather than attributed.
 5. **Optional:** a second load generator would separate the generator from the pipeline at the E2E
    knee (§3). No spare machine without taking one from the committer.
-6. `eval/eval-todo.md` is the working scratch file; delete it when the work closes out.
+6. `eval/eval-todo.md` is the task list, not a scratch file: tasks only, findings to
+   `cluster-optimization-log.md`. It drifted into a log once and had to be split back out.
 
 ### How to resume
 
