@@ -3381,6 +3381,44 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### Task 2d answered: the cliff is per-key storage reads, and the tablet count is 400x (2026-09-23)
+
+One `EXPLAIN (ANALYZE, DIST)` on its own probe table, the real batch width (355 keys, 18 of them already
+present), run at both layouts. `Storage Read Requests` is the number that matters.
+
+| plan | 120 tablets | 12 tablets |
+|---|---|---|
+| A -- the old handler's `key = ANY(_keys)` | **355 requests, 841 ms** | **1 request, 2.1 ms** |
+| B -- the rewrite's `ON CONFLICT ... RETURNING` | **355 requests, 840 ms** | **1 request, 6.7 ms** |
+| C -- control, `key = ANY()` at 18 keys | 1 request, 1.0 ms | 1 request, 0.9 ms |
+
+**At 120 tablets the database issues one storage read request per key. At 12 it issues one for the whole
+batch.** 355 x 120 = 42,600, above the ~32,768 the batching holds to; 355 x 12 = 4,260, below it. Same
+statement, same keys, **400x** the execution time from the layout alone. The threshold this document has
+carried as an inference from throughput is now measured at the storage-request level.
+
+That settles several things at once:
+
+- **The 120-way split's conflict collapse.** Inserts of 1.7-2.8 s are 355+ round trips, not a slow write.
+- **Why the rewrite was catastrophic.** A and B cost the *same* at the same key count -- 841 against
+  840 ms -- so `ON CONFLICT` never avoided the reads. What changed is *when they are paid*: the old form
+  reads only on a failing attempt, and at 0% conflicts that attempt never happens, while `ON CONFLICT`
+  reads on every insert. Hence a 60x insert on a conflict-free workload.
+- **Why dropping the pre-split fixes a conflicting workload.** Twelve tablets keeps the same lookup under
+  the threshold.
+- **Why the conflict-free path is fast even at 120 tablets.** A bare INSERT performs no lookup at all, so
+  there is nothing to fan out. The cliff needs a read, which needs a key that already exists.
+
+**And it does not explain the twelve-tablet bistability.** At 12 tablets both forms are cheap, 2.1 and
+6.7 ms, so the fast regime's 17 ms insert is about right and the slow regime's 250 ms is not this
+mechanism. Two distinct phenomena have been sharing one section: the layout cliff, now explained, and the
+bistable collapse at twelve tablets, still open. Worth separating in the write-up, since a reader who
+takes "no pre-split under conflicts" away from the cliff result will still meet the bistability there.
+
+Incidental but useful: at twelve tablets `ON CONFLICT` is still about three times dearer than the bare
+lookup, 6.7 against 2.1 ms. The rewrite is worse everywhere; below the threshold it is merely worse
+rather than fatal.
+
 ### The time is not inside the tablet server, by every counter it exposes (2026-09-23)
 
 Rep1 of the intents batch also killed the saturation reading from an hour earlier. On a **pre-split**
