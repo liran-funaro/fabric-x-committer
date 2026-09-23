@@ -87,9 +87,13 @@ YSQL=$(ssh -o StrictHostKeyChecking=no 10.241.64.10 'ls /data1/fabric-x/yugabyte
 if [ -n "$YSQL" ]; then
   DEF=$(ssh -o StrictHostKeyChecking=no 10.241.64.10 \
         "$YSQL -h 10.241.64.10 -p 5320 -U yugabyte -d yugabyte -At -c \
-        \"select count(*) from pg_proc p, pg_get_functiondef(p.oid) d where p.proname like 'insert_ns%' and d like '%EXCEPT ALL%'\"" 2>/dev/null)
-  say "deployed insert_ns functions containing EXCEPT ALL: ${DEF:-<query failed>}"
-  [ "${DEF:-0}" = "0" ] && say "!! WARNING: the live function is the OLD one -- dsfix5's rows are not the rewrite"
+        \"select (pg_get_functiondef(p.oid) like '%EXCEPT ALL%')::text from pg_proc p where p.proname = 'insert_ns_0'\"" 2>/dev/null)
+  say "live insert_ns_0 is the rewrite: ${DEF:-<query failed or namespace absent>}"
+  # insert_ns_0 SPECIFICALLY, not `like 'insert_ns%'`. The four system namespaces -- _checkpoint,
+  # _config, _meta, _snapshot -- are created at bring-up and would already carry the rewrite, so a
+  # count over the pattern reads healthy even when the namespace under test carries the old function,
+  # which is the only one whose rows are the measurement.
+  [ "${DEF:-f}" != "true" ] && say "!! WARNING: insert_ns_0 is NOT the rewrite -- dsfix5's rows do not measure it"
 else
   say "!! could not locate ysqlsh; deployed-function check SKIPPED"
 fi
