@@ -101,7 +101,31 @@ if [ "${INV##*/}" != "cluster.yaml" ] && [ "${INV##*/}" != "cluster-nosplitting.
     echo "!! holds pre-wipe crypto and init will fail with a broadcast 500 rather than anything obvious"
     exit 1
   fi
-  say "no arma process survives on any of the twenty orderer machines"
+  # And the deploy directory, for the same reason the kill is needed: the wipe does not reach these
+  # machines either. On 2026-09-23 the third bring-up transferred fresh certificates into an
+  # assembler1 directory dating from the FIRST one, and the assembler then panicked with
+  # "certificate mismatch: ... differs from the shared configuration TLS certificate" -- because it
+  # had opened the block store left behind at /data1/fabric-x/assembler1/data/store, built against
+  # crypto that no longer existed. New certificates over an old ledger is not a clean state.
+  say "wiping the orderer deploy directories, which the wipe play also misses"
+  for h in $(seq 23 42); do
+    timeout 10 ssh -o StrictHostKeyChecking=no -o BatchMode=yes "vpcuser@10.241.64.$h" \
+      'rm -rf /data1/fabric-x/router* /data1/fabric-x/batcher* /data1/fabric-x/consenter* \
+              /data1/fabric-x/assembler* /data2/fabric-x 2>/dev/null; true' >/dev/null 2>&1
+  done
+  LEFT=0
+  for h in $(seq 23 42); do
+    n=$(timeout 8 ssh -o StrictHostKeyChecking=no -o BatchMode=yes "vpcuser@10.241.64.$h" \
+        'ls -d /data1/fabric-x/router* /data1/fabric-x/batcher* /data1/fabric-x/consenter* \
+               /data1/fabric-x/assembler* 2>/dev/null | wc -l' 2>/dev/null)
+    [ "${n:-0}" -gt 0 ] && LEFT=$((LEFT+1))
+  done
+  if [ "$LEFT" != "0" ]; then
+    echo "!! $LEFT orderer machine(s) still hold a deploy directory; not continuing -- a surviving"
+    echo "!! ledger panics the component with a certificate mismatch against the shared config"
+    exit 1
+  fi
+  say "no orderer deploy directory survives; node-exporter is left alone deliberately"
 fi
 
 say "confirming the database processes are gone"
