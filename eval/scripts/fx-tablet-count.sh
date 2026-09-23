@@ -19,10 +19,17 @@ while true; do
   python3 - "$M" <<'PY'
 import json, subprocess, sys, time
 M = sys.argv[1]
+# Emit a REASON when there is no row, the way fx-leader-skew.sh does. Silence and death used to be
+# the same output here: this sampler died mid-run and nothing said so for eight minutes, because a
+# loop producing nothing looks exactly like a cluster with no table yet.
+def note(why):
+    print(time.strftime("%H:%M:%S"), "--", why, flush=True)
+    sys.exit()
 try:
     d = json.load(open("/tmp/tc-tables.json"))
 except Exception:
-    sys.exit()
+    note("master API unreadable (bring-up, redeploy, or master down)")
+rows = 0
 for t in d.get("user", []):
     n = t.get("table_name") or ""
     if not n.startswith("ns_") or n.startswith("ns__"):
@@ -38,6 +45,9 @@ for t in d.get("user", []):
     except Exception:
         cnt = ("-", "-", "-")
     print(time.strftime("%H:%M:%S"), n, cnt[0], cnt[1], cnt[2], sst, flush=True)
+    rows += 1
+if not rows:
+    note("no ns_ table present")
 PY
   sleep 60
 done
