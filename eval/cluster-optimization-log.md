@@ -3381,6 +3381,31 @@ establish a ceiling in either direction -- a lone MET may be the fast regime and
 one -- so any ceiling quoted from one hold near a tipping point is a regime, not a limit. That is a
 methodological consequence for the whole matrix, not just this rate.
 
+### A prediction for the soak, from the measured threshold (recorded before it runs, 2026-09-23)
+
+The soak holds 250,000 for eighty minutes at twelve tablets with automatic splitting left **on**, because
+splitting resuming is what it measures. Today's `EXPLAIN` gives that a sharp test it was not designed for.
+
+The batching limit is tablets x keys < ~32,768, and the real batch carries about 356 keys (roughly 178
+transactions at two read-write keys each). So the cliff sits at **32,768 / 356 = 92 tablets**. Splitting
+doubles: 12 -> 24 -> 48 -> 96.
+
+- **24 tablets is 8,544** -- far under the limit. So the first split should cost the insert **nothing**.
+- **48 is 17,088** -- still under.
+- **96 is 34,176** -- over. That is where the insert should jump by roughly the factor measured today.
+
+Sizing says only the first split is reachable here: from fresh, a tablet needs ~9.6 GB and grows at
+0.049 GB per minute per 56,000 tps, so at ~237,000 committed the first split lands around 46 minutes,
+inside the eighty-minute hold.
+
+**So the prediction is: one split, 12 -> 24, and a flat insert across it.** If the insert jumps at 24
+tablets, the threshold model from today's `EXPLAIN` is wrong and the tablet count is costing something
+other than read fan-out. If the table reaches 96 and the insert jumps there, the model is confirmed at a
+second layout and the cliff is located to within one doubling.
+
+`tablets.log` records the running count every 60 s and `graph.jsonl` records `db_insert_ms` every 30 s,
+so the crossing and the insert are both observed rather than inferred.
+
 ### Task 2d answered: the cliff is per-key storage reads, and the tablet count is 400x (2026-09-23)
 
 One `EXPLAIN (ANALYZE, DIST)` on its own probe table, the real batch width (355 keys, 18 of them already
