@@ -601,6 +601,27 @@ EXPERIMENTS = [
          label="5% double spend, 12 tablets, 250k repeat 3", rates=[250_000],
          vars=dict(shape(2, 0, backref=0.05), committer_database_table_pre_split_tablets=12)),
 
+    # 3 KiB at explicit rates, because the rate search cannot reach this point's real ceiling.
+    #
+    # The search steps by 0.85 and judges a rung MET only when it retires what it was offered. At 3 KiB
+    # the pipeline retires 128,000-132,000 whatever it is offered -- 130,721 at 187,200, 132,112 at
+    # 159,120, 128,241 at 135,252 -- so every rung above that band misses on delivery, and the step from
+    # 135,252 lands on 114,964, straight past it. Two independent searches both reported 114,964, which
+    # is reproducible and still 12% below what the arm sustains.
+    #
+    # That is what produced the sweep's one non-monotone point: 114,872 is 352.9 MB/s, a dip between
+    # 2 KiB's 377.9 and 4 KiB's 419.8, while 128,000-131,000 would be 394-403 MB/s and monotone.
+    #
+    # Explicit rates, so each is held rather than searched for, and the ceiling is bracketed instead of
+    # stepped over.
+    *[dict(id=f"e2e-size3072-fine{r//1000}", figure="size-fine", x=3072, mode="curve",
+           label=f"3 KiB at {r:,} offered", rates=[r],
+           # 1435, not 3072: the envelope is 202 bytes plus twice the value, so 202 + 2*1435 = 3072.
+           # Copied from e2e-size3072 rather than derived, because the wrong key here would not fail --
+           # it would silently measure the default transaction size and look like a 3 KiB result.
+           vars=dict(shape(2, 0), loadgen_read_write_tx_val_size=1435))
+      for r in (120_000, 126_000, 132_000)],
+
     # A guaranteed FAST reference at twelve tablets, for comparing queue metrics against the slow
     # regime without waiting on a coin flip.
     #
