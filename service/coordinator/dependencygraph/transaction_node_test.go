@@ -60,6 +60,46 @@ func TestTransactionNodeApplicationNamespace(t *testing.T) {
 	require.Contains(t, txNode.rwKeys.readsOnly, metaKey)
 }
 
+// TestTransactionNodeMetaWriteSupersedesRead requires that a namespace lifecycle transaction does not
+// contribute the same composite key as both a writer and a reader of itself.
+//
+// Every non-system namespace in a transaction gets a reads-only dependency on _meta:<ns>, and a
+// lifecycle transaction changing that namespace's policy writes precisely that key through the _meta
+// namespace. Contributed twice, the simple manager queues the transaction behind the running group its
+// own write created and never releases it. Per-namespace duplicate-key validation cannot see this,
+// because the two contributions come from two different namespaces of the same transaction.
+func TestTransactionNodeMetaWriteSupersedesRead(t *testing.T) {
+	t.Parallel()
+	txNode := newTransactionNode(createNamespaceLifecycleTxForTest(nsID1ForTest, []byte("k")))
+
+	metaKey := constructCompositeKey(committerpb.MetaNamespaceID, []byte(nsID1ForTest))
+	require.Contains(t, txNode.rwKeys.readsAndWrites, metaKey,
+		"the lifecycle write of the namespace's _meta entry must be kept")
+	require.NotContains(t, txNode.rwKeys.readsOnly, metaKey,
+		"the same transaction must not also read the _meta key it writes")
+}
+
+// createNamespaceLifecycleTxForTest builds the transaction shape that reproduces the self-dependency:
+// a read-write on ns through the _meta namespace, which is how a policy change is expressed, plus a
+// blind write inside ns itself.
+func createNamespaceLifecycleTxForTest(nsID string, key []byte) *servicepb.TxWithRef {
+	return &servicepb.TxWithRef{
+		Ref: committerpb.NewTxRef(uuid.New().String(), 0, 0),
+		Content: &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{
+				{
+					NsId:       committerpb.MetaNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{Key: []byte(nsID)}},
+				},
+				{
+					NsId:        nsID,
+					BlindWrites: []*applicationpb.Write{{Key: key}},
+				},
+			},
+		},
+	}
+}
+
 func TestTransactionNode(t *testing.T) {
 	t.Parallel()
 

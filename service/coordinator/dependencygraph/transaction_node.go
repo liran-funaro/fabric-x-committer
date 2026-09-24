@@ -53,6 +53,12 @@ type (
 		dependentTxs utils.SyncMap[*TransactionNode, any]
 		rwKeys       readWriteKeys
 
+		// inDependencyGraph is false for a transaction the coordinator rejected before the graph
+		// saw it. Such a transaction is sent straight to the vcservice and still returns on the
+		// validated stream, so a manager that counted it would release a waiting slot that was
+		// never taken and drive its waiting count below zero.
+		inDependencyGraph bool
+
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
 		waitingKeys      []*waiting
@@ -76,8 +82,9 @@ func newTransactionNode(tx *servicepb.TxWithRef) *TransactionNode {
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
-		VerifierTx: tx,
-		rwKeys:     readAndWriteKeys(tx.Content.Namespaces),
+		VerifierTx:        tx,
+		rwKeys:            readAndWriteKeys(tx.Content.Namespaces),
+		inDependencyGraph: true,
 	}
 }
 
@@ -154,6 +161,18 @@ func (n *TransactionNode) isDependencyFree() bool {
 func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) readWriteKeys {
 	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string //nolint:prealloc
 
+	// A namespace this transaction writes through _meta must not also get the reads-only dependency
+	// on _meta:<ns> added below, or one transaction contributes the same composite key as both a
+	// writer and a reader of itself. The simple manager then queues it behind the running group its
+	// own write created and never releases it. Per-namespace duplicate-key validation cannot catch
+	// this, because the two contributions come from two different namespaces of the same transaction.
+	//
+	// Dropping the read loses no dependency: for a key in readsAndWrites, getDependenciesOf() reads
+	// the read-only, write-only AND read-write maps, a superset of what a readsOnly key consults, and
+	// addWaitingTx() registers it where both later readers and later writers of that key look. A
+	// transaction that writes a key already depends on everything a reader of it would.
+	metaWrites := namespacesWrittenThroughMeta(txNamespaces)
+
 	for _, ns := range txNamespaces {
 		// To establish a clear dependency between namespace lifecycle transactions (involving creating,
 		// updating, or deleting namespaces) and normal transactions (updating states within a namespace),
@@ -172,7 +191,7 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) readWriteKeys {
 		// for all previously submitted transactions to be processed before submitting a config block, and
 		// waits for that block to comnitted before sending new transactions. Therefore, we do not need to
 		// track dependencies between meta-namespace and configuration transactions.
-		if !committerpb.IsSystemNamespace(ns.NsId) {
+		if !committerpb.IsSystemNamespace(ns.NsId) && !metaWrites[ns.NsId] {
 			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId)))
 		}
 
@@ -194,6 +213,28 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) readWriteKeys {
 		writesOnly:     writeOnlyKeys,
 		readsAndWrites: readAndWriteKeys,
 	}
+}
+
+// namespacesWrittenThroughMeta returns the namespace IDs whose _meta entry this transaction writes,
+// which is how a namespace lifecycle transaction changes a namespace's policy. It returns nil for
+// every transaction that does not carry the _meta namespace at all, which is the common case.
+func namespacesWrittenThroughMeta(txNamespaces []*applicationpb.TxNamespace) map[string]bool {
+	var written map[string]bool
+	for _, ns := range txNamespaces {
+		if ns.NsId != committerpb.MetaNamespaceID {
+			continue
+		}
+		if written == nil {
+			written = make(map[string]bool, len(ns.ReadWrites)+len(ns.BlindWrites))
+		}
+		for _, rw := range ns.ReadWrites {
+			written[string(rw.Key)] = true
+		}
+		for _, w := range ns.BlindWrites {
+			written[string(w.Key)] = true
+		}
+	}
+	return written
 }
 
 func (rw *readWriteKeys) size() int {
