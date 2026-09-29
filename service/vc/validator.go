@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -39,6 +40,10 @@ type validatedTransactions struct {
 	readToTxIDs           readToTransactions
 	invalidTxStatus       map[TxID]committerpb.Status
 	txIDToHeight          transactionIDToHeight
+	checkpoint            *checkpointTx
+	// checkpointFeedback is set only for HOLD or HALT.
+	// The committer forwards it unchanged in the status batch.
+	checkpointFeedback *servicepb.CheckpointFeedback
 }
 
 func (v *validatedTransactions) Debug() {
@@ -113,6 +118,7 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 			readToTxIDs:           prepTx.readToTxIDs,
 			invalidTxStatus:       prepTx.invalidTxIDStatus,
 			txIDToHeight:          prepTx.txIDToHeight,
+			checkpoint:            prepTx.checkpoint,
 		}
 		if err := vTxs.invalidateTxsOnReadConflicts(nsToReadConflicts); err != nil {
 			return err
@@ -124,6 +130,10 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 		// and no snapshot database or record is created.
 		if err := db.rejectSnapshotIfPriorNotCheckpointed(ctx, vTxs); err != nil {
 			return fmt.Errorf("failed to gate snapshot before commit: %w", err)
+		}
+
+		if err := db.rejectCheckpointIfNotVerified(ctx, vTxs); err != nil {
+			return fmt.Errorf("failed to verify checkpoint before commit: %w", err)
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
@@ -193,6 +203,10 @@ func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status committerp
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)
 		delete(v.newWrites, tID)
+		// A rejected checkpoint must not advance its snapshot on a commit retry.
+		if v.checkpoint != nil && v.checkpoint.txID == tID {
+			v.checkpoint = nil
+		}
 		v.invalidTxStatus[tID] = status
 	}
 }

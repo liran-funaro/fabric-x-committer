@@ -141,11 +141,13 @@ func (c *transactionCommitter) commitTransactions(
 			newWrites:    groupWritesByNamespace(vTx.newWrites),
 			batchStatus:  prepareStatusForCommit(vTx),
 			txIDToHeight: vTx.txIDToHeight,
+			checkpoint:   vTx.checkpoint,
 		}
 
+		// Stop on ErrNonRetryable: retrying cannot repair an inconsistent snapshot record.
 		res, retryErr := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*commitResult, error) {
 			return db.commit(ctx, info)
-		})
+		}, retry.ErrNonRetryable)
 		if retryErr != nil {
 			return nil, retryErr
 		}
@@ -161,6 +163,7 @@ func (c *transactionCommitter) commitTransactions(
 			if err := c.setCorrectStatusForDuplicateTxID(ctx, db, info.batchStatus, info.txIDToHeight); err != nil {
 				return nil, fmt.Errorf("failed to set correct status for duplicate txs: %w", err)
 			}
+			info.batchStatus.CheckpointFeedback = vTx.checkpointFeedback
 			return info.batchStatus, nil
 		}
 
