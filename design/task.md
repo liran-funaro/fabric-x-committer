@@ -5,21 +5,42 @@ Senthil takes pruning (block store) and bootstrapping / backup-of-clone-to-file.
 
 ## Context already in the tree
 
-- Divergence is *detected* today. The snapshot hasher (`service/snapshothasher/`, one
-  instance alongside any number of VCs, discovering work from the durable `_snapshot`
-  record rather than from a notification) hashes the snapshot clone; a mismatch against
-  the checkpoint TX's hash produces `CheckpointFeedback.HALT`
-  (`api/servicepb/common.proto:48`) with both hashes in `reason`. The committer stops and
-  the clone is a frozen, immutable copy of the diverging state.
+- Divergence is *detected* today, in two steps. The snapshot hasher
+  (`service/snapshothasher/`, one instance alongside any number of VCs, discovering work
+  from the durable `_snapshot` record rather than from a notification) hashes the clone and
+  stores the result on that record. The VC then verifies each `_checkpoint` TX against it
+  before the TX commits (`rejectCheckpointIfNotVerified`, `service/vc/checkpoint.go:48`).
+  A mismatch drops the checkpoint write, records both hashes in `SnapshotState.error`
+  (`haltOnCheckpointDivergence`, `service/vc/checkpoint.go:146`), and returns
+  `CheckpointFeedback.HALT` (`api/servicepb/common.proto:48`) with the same text in
+  `reason`. The sidecar then stops block intake with a non-retryable error
+  (`processCheckpointFeedback`, `service/sidecar/relay.go:418`), and the clone is a
+  frozen, immutable copy of the diverging state.
+- The state DB is ahead of the clone when the committer halts. The sidecar drains only
+  around the snapshot TX itself (`submitSnapshotBlock`, `service/sidecar/relay.go:225`), so
+  intake keeps running until the checkpoint TX arrives, and the state DB holds every block
+  between the two.
+- A clone holds the state just before its snapshot TX. It is created before the snapshot
+  TX's batch commits (`service/vc/committer.go:133`), so it contains the regular
+  transactions of the snapshot's own block but neither the snapshot TX's `tx_status` row
+  nor its `_snapshot` record.
+- A hash still computing is not a divergence. A checkpoint that arrives first gets
+  `CheckpointFeedback.HOLD`, and the sidecar re-submits it every
+  `checkpoint-hold-retry-interval` (default 1m). A checkpoint naming no snapshot, or a
+  snapshot other than the latest, is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY` and
+  never halts: `_checkpoint` is client-submittable.
 - Only the **root** hash is persisted (`committerpb.SnapshotState.hash`). Per-table
   digests are computed and discarded — see the explicit phase-2 `NOTE` at
   `service/snapshothasher/hasher.go:87`.
 - Hashed set (`listHashedTables`): every user namespace `ns_<id>` from `ns__meta`, plus
   `ns__config`, `ns__meta`, `tx_status`, `ns__checkpoint`. `metadata` and `ns__snapshot`
-  are excluded. Rows are folded in primary-key order as `len(k)||k||len(v)||v`, plus an 8-byte
-  big-endian version for namespace rows; table
-  digests are combined in a fixed order (fixed system tables, then `ns__meta` registry
-  order).
+  are excluded. Rows are folded in primary-key order as `len(k)||k||len(v)||v`, plus an
+  8-byte big-endian version for namespace rows; table digests are combined in a fixed order
+  (fixed system tables, then `ns__meta` registry order).
+- A checkpoint is keyed by the snapshot's block number alone (`servicepb.CheckpointKey`,
+  `api/servicepb/checkpoint_key.go`), and the clone is named after it
+  (`snapshot_<block>`). Both the comparison point and the clone are therefore identified
+  by one block number.
 
 So detection exists. What is missing is **localization** and **repair**.
 
@@ -36,9 +57,9 @@ So detection exists. What is missing is **localization** and **repair**.
    its bucket digests and the root from the per-table digests, which is why the
    localization data measures within noise of today's single fold.
 4. K is carried by the snapshot TX. The `_snapshot` namespace, marker-only today
-   (`Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`, `service/sidecar/mapping.go:507`), gains
+   (`Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`, `service/sidecar/mapping.go:581`), gains
    exactly one write holding K, shaped like the `_checkpoint` case one branch below; the
-   preparer (`service/vc/preparer.go:192`) copies it into the `SnapshotState` it
+   preparer (`service/vc/preparer.go:194`) copies it into the `SnapshotState` it
    synthesizes. K's permitted range is a constant in code, and a submitter may size K
    within that range from its own row-count estimate.
 5. Every persisted digest set carries K and a format version in its header, so a clone or a
@@ -58,7 +79,7 @@ So detection exists. What is missing is **localization** and **repair**.
 
 ## R2 — Compare tool (`ledgerutil compare` analogue)
 
-- Inputs: two snapshot sources at the **same** checkpoint height — the local clone,
+- Inputs: two snapshot sources at the **same** snapshot block — the local clone,
   another org's clone, or a backup file. Backup-to-file comes from the bootstrapping
   task; treat it as a dependency, not a deliverable here.
 - Exchange digests / subtree hashes, not full state: bandwidth proportional to the
@@ -85,8 +106,8 @@ cut. The modes differ in which clone, and in what happens before the replay.
   fixed before the replay — at the cost of re-consuming a full snapshot interval of load.
 - **Patch**: restore from the latest (diverging) clone, replace the buckets R2 identified
   with the peer's rows, verify, and only then re-consume the blocks committed after that
-  clone's cut. The replay window is bounded by how late the hasher noticed the snapshot
-  rather than by the snapshot interval.
+  clone's cut. The replay window runs from the snapshot to its checkpoint, not over a full
+  snapshot interval.
 - **Reset**: drop the state DB and rebuild by replaying the ledger from genesis (or from
   the bootstrap snapshot).
 - The repair unit is the bucket, not the row. A divergent bucket's whole key range is
@@ -105,8 +126,18 @@ cut. The modes differ in which clone, and in what happens before the replay.
   there is no writer to cut around.
 - The sidecar and coordinator must resume from the restored clone's cut rather than from
   their pre-repair progress. Even a patch discards committed state: the state DB sits ahead
-  of the clone by however long the hasher took to notice the snapshot (`PollInterval`,
-  default 1m — at 100k tps, ~6M transactions).
+  of the clone by every block between the snapshot and the checkpoint that halted it. The
+  checkpoint's position in the ledger sizes that window, not `PollInterval`.
+- Replay starts at the snapshot's own block, not the block after it. The restored clone
+  holds that block's regular transactions but not its snapshot TX; the regular ones replay
+  as duplicates, which the VC already resolves to their original status.
+- Before replay, the repair frees the name `snapshot_<block>` of every clone the replay will
+  pass, keeping each clone as evidence under another name. The restored state has no
+  `tx_status` row for those snapshot TXs, so the VC treats each re-delivered one as a first
+  submission and creates its clone (`service/vc/database_snapshot.go:230`). It reuses any
+  database already holding the name (`service/vc/database_snapshot.go:262`). For the
+  diverging snapshot, that rehashes the unrepaired clone, and the replayed checkpoint
+  halts again on the same mismatch.
 - All three: offline admin CLI, run with the committer stopped, idempotent / re-runnable,
   and ending in a verified hash. A repair that is not verified is not done.
 - The blocks needed for replay must be at or after the ledger's pruned start block; fail
@@ -114,11 +145,13 @@ cut. The modes differ in which clone, and in what happens before the replay.
 
 ## R5 — Clone lifecycle (dependency, flagged)
 
-We need an admin API to delete a clone (not in the tree yet), plus documented guidance to
-retain the last known-good one. Rollback is only "immediate" while that clone still exists
-locally, and the admin is the one who decides: keep it, back it up and delete it, or delete
-it outright. Backup files are produced on demand only — a joining org or a divergence — not
-routinely.
+We need the clone-deletion admin API implemented, plus documented guidance to retain the
+last known-good one. The RPC is declared — `SidecarService.DeleteDBCloneForSnapshot`, keyed
+by snapshot TX ID, in `fabric-x-common` — but the committer answers it with `UNIMPLEMENTED`
+(`TestDeleteDBCloneForSnapshotUnimplemented`, `service/sidecar/sidecar_test.go:909`).
+Rollback is only "immediate" while that clone still exists locally, and the admin is the one
+who decides: keep it, back it up and delete it, or delete it outright. Backup files are
+produced on demand only — a joining org or a divergence — not routinely.
 
 ## Decisions taken, and what they rule out
 
