@@ -1,6 +1,7 @@
-# Task 3 — Divergence detection & repair (snapshot/checkpoint EPIC, phase 2)
+# Task 3 — State Divergence Localization and Repair (snapshot/checkpoint EPIC, phase 2)
 
-Owner per the phase-2 split with Senthil: Liran takes the divergence check + fix.
+Owner per the phase-2 split with Senthil: Liran takes State Divergence Localization and Repair
+(SDLR), the divergence check and fix.
 Senthil takes pruning (block store) and bootstrapping / backup-of-clone-to-file.
 
 ## Context already in the tree
@@ -9,12 +10,12 @@ Senthil takes pruning (block store) and bootstrapping / backup-of-clone-to-file.
   (`service/snapshothasher/`, one instance alongside any number of VCs, discovering work
   from the durable `_snapshot` record rather than from a notification) hashes the clone and
   stores the result on that record. The VC then verifies each `_checkpoint` TX against it
-  before the TX commits (`rejectCheckpointIfNotVerified`, `service/vc/checkpoint.go:48`).
+  before the TX commits (`rejectCheckpointIfNotVerified`, `service/vc/checkpoint.go:45`).
   A mismatch drops the checkpoint write, records both hashes in `SnapshotState.error`
-  (`haltOnCheckpointDivergence`, `service/vc/checkpoint.go:146`), and returns
+  (`haltOnCheckpointDivergence`, `service/vc/checkpoint.go:117`), and returns
   `CheckpointFeedback.HALT` (`api/servicepb/common.proto:48`) with the same text in
   `reason`. The sidecar then stops block intake with a non-retryable error
-  (`processCheckpointFeedback`, `service/sidecar/relay.go:418`), and the clone is a
+  (`processCheckpointFeedback`, `service/sidecar/relay.go:446`), and the clone is a
   frozen, immutable copy of the diverging state.
 - The state DB is ahead of the clone when the committer halts. The sidecar drains only
   around the snapshot TX itself (`submitSnapshotBlock`, `service/sidecar/relay.go:225`), so
@@ -27,8 +28,12 @@ Senthil takes pruning (block store) and bootstrapping / backup-of-clone-to-file.
 - A hash still computing is not a divergence. A checkpoint that arrives first gets
   `CheckpointFeedback.HOLD`, and the sidecar re-submits it every
   `checkpoint-hold-retry-interval` (default 1m). A checkpoint naming no snapshot, or a
-  snapshot other than the latest, is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY` and
-  never halts: `_checkpoint` is client-submittable.
+  snapshot other than the latest, or one already `CHECKPOINTED` or `ABORTED`, is rejected
+  with `REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT` and never halts: `_checkpoint` is
+  client-submittable.
+- A snapshot can be closed without comparing its hash. A `_checkpoint` write whose value is
+  the exact string `abort` (`servicepb.CheckpointAbortValue`) moves the snapshot to `ABORTED`.
+  An abort is never a verified checkpoint, so rollback never restores an `ABORTED` clone.
 - Only the **root** hash is persisted (`committerpb.SnapshotState.hash`). Per-table
   digests are computed and discarded — see the explicit phase-2 `NOTE` at
   `service/snapshothasher/hasher.go:87`.
@@ -64,7 +69,7 @@ So detection exists. What is missing is **localization** and **repair**.
    within that range from its own row-count estimate.
 5. Every persisted digest set carries K and a format version in its header, so a clone or a
    backup file is interpretable on its own. The clone is created before its own `_snapshot`
-   record commits (`service/vc/database_snapshot.go:245`), so K is reachable nowhere else.
+   record commits (`service/vc/database_snapshot.go:229`), so K is reachable nowhere else.
 6. The persisted digests are excluded from the hashed set and are deleted with their clone.
    Hashing them would fold each snapshot's digest into the next; tying them to the clone
    puts them under R5's clone-deletion API instead of a second retention policy.
@@ -134,8 +139,8 @@ cut. The modes differ in which clone, and in what happens before the replay.
 - Before replay, the repair frees the name `snapshot_<block>` of every clone the replay will
   pass, keeping each clone as evidence under another name. The restored state has no
   `tx_status` row for those snapshot TXs, so the VC treats each re-delivered one as a first
-  submission and creates its clone (`service/vc/database_snapshot.go:230`). It reuses any
-  database already holding the name (`service/vc/database_snapshot.go:262`). For the
+  submission and creates its clone (`service/vc/database_snapshot.go:214`). It reuses any
+  database already holding the name (`service/vc/database_snapshot.go:246`). For the
   diverging snapshot, that rehashes the unrepaired clone, and the replayed checkpoint
   halts again on the same mismatch.
 - All three: offline admin CLI, run with the committer stopped, idempotent / re-runnable,
@@ -145,13 +150,23 @@ cut. The modes differ in which clone, and in what happens before the replay.
 
 ## R5 — Clone lifecycle (dependency, flagged)
 
-We need the clone-deletion admin API implemented, plus documented guidance to retain the
-last known-good one. The RPC is declared — `SidecarService.DeleteDBCloneForSnapshot`, keyed
-by snapshot TX ID, in `fabric-x-common` — but the committer answers it with `UNIMPLEMENTED`
-(`TestDeleteDBCloneForSnapshotUnimplemented`, `service/sidecar/sidecar_test.go:909`).
-Rollback is only "immediate" while that clone still exists locally, and the admin is the one
-who decides: keep it, back it up and delete it, or delete it outright. Backup files are
-produced on demand only — a joining org or a divergence — not routinely.
+Clones are listed and deleted with `committer db clone list` and `committer db clone delete`
+(#826, #903). Delete works on the state database directly, and refuses a snapshot that is not
+`CHECKPOINTED` or `ABORTED`. No command restores from a clone. Rollback is only "immediate"
+while the last `CHECKPOINTED` clone still exists locally, and the admin decides: keep it, back
+it up and delete it, or delete it outright. Backup files are produced on demand only — a
+joining org or a divergence — not routinely.
+
+What SDLR still needs from the clone lifecycle:
+
+- Documented guidance to keep the last `CHECKPOINTED` clone until the next snapshot is
+  checkpointed. `db clone delete` accepts any `CHECKPOINTED` clone, so nothing stops an admin
+  from deleting the one rollback needs.
+- Tracking for evidence clones. A halt leaves the diverging snapshot's status unchanged, so
+  `db clone delete` already refuses its clone. But repair renames clones as evidence, then
+  restores, which discards the `_snapshot` records that named them. `db clone delete` only
+  deletes a clone some record names, so the repair command must record its evidence clones
+  and be the one that deletes them.
 
 ## Decisions taken, and what they rule out
 
