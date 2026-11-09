@@ -78,26 +78,39 @@ So detection exists. What is missing is **localization** and **repair**.
    preparer (`service/vc/preparer.go:194`) copies it into the `SnapshotState` it
    synthesizes. K's permitted range is a constant in code, at most 16 (see 2), and a
    submitter may size K within that range from its own row-count estimate.
-5. Every persisted digest set carries K and a format version in its header, so a clone or a
-   backup file is interpretable on its own. The clone is created before its own `_snapshot`
-   record commits (`service/vc/database_snapshot.go:229`), so K is reachable nowhere else.
-6. The persisted digests are excluded from the hashed set and are deleted with their clone.
+5. The digests live in the source state DB, not in a file. The hasher writes them in the
+   same transaction that moves the record to COMPLETED, so a committed root always has its
+   digests. `committer db divergence export` reads them and writes the digest file that is
+   sent to a peer. The file is a transfer format, never the stored copy.
+6. Every digest set carries K and a format version, in the DB and in the exported file's
+   header, so either is interpretable on its own. The clone is created before its own
+   `_snapshot` record commits (`service/vc/database_snapshot.go:229`), so K is reachable
+   nowhere else.
+7. The persisted digests are excluded from the hashed set and are deleted with their clone.
    Hashing them would fold each snapshot's digest into the next; tying them to the clone
    puts them under `committer db clone delete` (R5) instead of a second retention policy.
-7. Digests are deterministic and content-only: identical content ⇒ identical digests,
+8. Digests are deterministic and content-only: identical content ⇒ identical digests,
    regardless of table-completion order, page size, worker count, or node count.
-8. Digests are recomputable offline by a tool with no running committer, from a clone, a
+9. Digests are recomputable offline by a tool with no running committer, from a clone, a
    backup file, or the state DB itself — the committer is halted exactly when this is
    needed, and with no writer there is no cut to take.
-9. Computing the digests must not disturb a live cluster: reuse the existing bounded keyset
-   pagination and worker limits, adding no concurrent read load beyond the configured
-   limits.
+10. Computing the digests must not disturb a live cluster: reuse the existing bounded keyset
+    pagination and worker limits, adding no concurrent read load beyond the configured
+    limits.
 
 ## R2 — Compare tool (`ledgerutil compare` analogue)
 
-- Inputs: two snapshot sources at the **same** snapshot block — the local clone,
-  another org's clone, or a backup file. Backup-to-file comes from the bootstrapping
-  task; treat it as a dependency, not a deliverable here.
+- Every SDLR command is under `committer db divergence`, next to the existing `db init`
+  and `db clone` commands: `export`, `compare`, `export-rows`, `report` and
+  `repair {patch,rollback,reset}`. Each one reads the state DB, like the rest of
+  `committer db`.
+- Compare takes one input: the peer's exported digest file. The local digests come from
+  the state DB, never from a file, so an operator cannot compare against a stale or wrong
+  local export. Compare refuses a peer file whose snapshot block, K or format version
+  differs from the local record.
+- Inputs that are not digests — the local clone, or a backup file — are snapshot sources
+  for recomputing digests (R1.9). Backup-to-file comes from the bootstrapping task; treat
+  it as a dependency, not a deliverable here.
 - Exchange digests / subtree hashes, not full state: bandwidth proportional to the
   divergence, not to the database.
 - Output both classes, both are needed:
@@ -229,10 +242,11 @@ What SDLR still needs from the clone lifecycle:
 1. How does the tool obtain the peer's digests — a committer API, or strictly out-of-band
    backup files? This decides whether R2 is a pure CLI or a service change. Two-sided
    compare puts a human in the loop while the committer is halted, which argues for a file.
-2. Where do the persisted digests live? A table in the source state DB (needs a new
-   `listHashedTables` exclusion and writes 2^K rows per table per snapshot), a blob on the
-   `_snapshot` record (read on every scheduler poll — too hot), or a file beside the clone
-   (tool-friendly, but the hasher is one movable instance, so durability and discovery
-   become ours).
+2. Which DB structure holds the digests? R1.5 settles that they are in the state DB. A
+   new table keyed by (snapshot, table, bucket) needs a `listHashedTables` exclusion and
+   writes up to 2^K rows per table per snapshot. A blob on the `_snapshot` record avoids
+   the table, but `SnapshotStateManager.List` decodes every record (`committer db clone
+   list`), and the scheduler reads the latest record on every poll, so ~100 MB per record
+   would be read far more often than it is used.
 3. Does rollback need coordinated multi-org action, or is each org independent once the bug
    is fixed?
