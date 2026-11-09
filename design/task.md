@@ -72,12 +72,27 @@ So detection exists. What is missing is **localization** and **repair**.
 3. Each row is folded exactly once, into its bucket. The per-table digest is derived from
    its bucket digests and the root from the per-table digests, which is why the
    localization data measures within noise of today's single fold.
-4. K is carried by the snapshot TX. The `_snapshot` namespace, marker-only today
-   (`Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`, `service/sidecar/mapping.go:581`), gains
-   exactly one write holding K, shaped like the `_checkpoint` case one branch below; the
-   preparer (`service/vc/preparer.go:194`) copies it into the `SnapshotState` it
-   synthesizes. K's permitted range is a constant in code, at most 16 (see 2), and a
-   submitter may size K within that range from its own row-count estimate.
+4. K is carried by the snapshot TX as its single read-write, exactly the shape the
+   `_checkpoint` namespace already requires (`service/sidecar/mapping.go:590`): one
+   read-write with a nil version, no reads-only, no blind writes. Its key is `bucket-bits`
+   and its value one byte holding K. The `_snapshot` namespace is marker-only today
+   (`Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`, `service/sidecar/mapping.go:581`), and its
+   form check changes to require that read-write.
+   - The read-write is never applied. The preparer replaces the `_snapshot` namespace with
+     the record it synthesizes and skips the TX's own writes (`service/vc/preparer.go:194`,
+     `:205`), so no snapshot overwrites the previous one's K. The preparer copies K into a
+     new `SnapshotState` field.
+   - The clone step rebuilds the record from scratch (`service/vc/database_snapshot.go:235`)
+     and must copy K forward. Every later update decodes and edits the existing record, so
+     K survives those.
+   - The coordinator puts the read-write's key into its dependency graph
+     (`service/coordinator/dependencygraph/transaction_node.go:187`), so every snapshot TX
+     depends on the one before. That costs nothing: the sidecar drains before and after
+     each snapshot TX, so two are never in flight together.
+   - K is endorsed: the namespace signature covers its read-writes, so
+     `SnapshotEndorsement` covers K.
+   - K's permitted range is a constant in code, at most 16 (see 2), and a submitter may
+     size K within that range from its own row-count estimate.
 5. The digests live in the source state DB, not in a file. The hasher writes them in the
    same transaction that moves the record to COMPLETED, so a committed root always has its
    digests. `committer db divergence export` reads them and writes the digest file that is
