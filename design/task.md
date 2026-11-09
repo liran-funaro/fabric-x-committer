@@ -58,6 +58,17 @@ So detection exists. What is missing is **localization** and **repair**.
 2. A bucket is a contiguous key range — the rows whose key shares its first K bits, so a
    table holds at most 2^K buckets. The bucket level is flat: a bucket digest is compared
    directly and never descended into.
+   - `tx_status` takes the first 2K bits instead. Its keys are TX IDs, which are hex text:
+     each byte is one of 16 characters, so K bits carry only K/2 bits of entropy. With K=16,
+     two million TX IDs fill 256 of the 65,536 buckets at K bits, and all 65,536 at 2K bits
+     (at most 57 rows each, against a mean of 30.5).
+   - The bucket number never decreases in primary-key order. That is what lets one hasher
+     stay live and makes each bucket a contiguous range. A raw-byte prefix has this property
+     by construction; any other bucket function must keep it.
+   - Hex-decoding the TX ID before taking the prefix is ruled out by the same property. The
+     committer accepts any non-empty TX ID, so decoded and raw prefixes would mix and break
+     key order. With 2K raw bits, a non-hex ID only lands in a sparser bucket.
+   - Bucket numbers are `uint32`, so 2K ≤ 32 and K ≤ 16.
 3. Each row is folded exactly once, into its bucket. The per-table digest is derived from
    its bucket digests and the root from the per-table digests, which is why the
    localization data measures within noise of today's single fold.
@@ -65,14 +76,14 @@ So detection exists. What is missing is **localization** and **repair**.
    (`Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`, `service/sidecar/mapping.go:581`), gains
    exactly one write holding K, shaped like the `_checkpoint` case one branch below; the
    preparer (`service/vc/preparer.go:194`) copies it into the `SnapshotState` it
-   synthesizes. K's permitted range is a constant in code, and a submitter may size K
-   within that range from its own row-count estimate.
+   synthesizes. K's permitted range is a constant in code, at most 16 (see 2), and a
+   submitter may size K within that range from its own row-count estimate.
 5. Every persisted digest set carries K and a format version in its header, so a clone or a
    backup file is interpretable on its own. The clone is created before its own `_snapshot`
    record commits (`service/vc/database_snapshot.go:229`), so K is reachable nowhere else.
 6. The persisted digests are excluded from the hashed set and are deleted with their clone.
    Hashing them would fold each snapshot's digest into the next; tying them to the clone
-   puts them under R5's clone-deletion API instead of a second retention policy.
+   puts them under `committer db clone delete` (R5) instead of a second retention policy.
 7. Digests are deterministic and content-only: identical content ⇒ identical digests,
    regardless of table-completion order, page size, worker count, or node count.
 8. Digests are recomputable offline by a tool with no running committer, from a clone, a
@@ -136,6 +147,15 @@ cut. The modes differ in which clone, and in what happens before the replay.
 - Replay starts at the snapshot's own block, not the block after it. The restored clone
   holds that block's regular transactions but not its snapshot TX; the regular ones replay
   as duplicates, which the VC already resolves to their original status.
+- The repair rolls back the sidecar's block store to the block before the restored clone's
+  snapshot block. The block store holds each block with its per-TX statuses, starts from
+  its own height (`service/sidecar/block_store.go:71`), and skips any block below it
+  (`service/sidecar/block_store.go:90`). Without the rollback, replayed blocks keep their
+  pre-repair statuses and the block store disagrees with the repaired state.
+  fabric-x-common already has `blkstorage.Rollback`, and `blkstorage.ResetBlockStore` for
+  reset.
+- The troubleshoot report (R3) must be written before the repair. Rolling back the block
+  store discards the pre-repair statuses the report reads.
 - Before replay, the repair frees the name `snapshot_<block>` of every clone the replay will
   pass, keeping each clone as evidence under another name. The restored state has no
   `tx_status` row for those snapshot TXs, so the VC treats each re-delivered one as a first
