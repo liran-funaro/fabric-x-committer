@@ -160,11 +160,20 @@ cut. The modes differ in which clone, and in what happens before the replay.
   repaired.
 - A patch verifies before it replays. Recompute the digests of the repaired buckets, re-fold
   them with R1's persisted digests for every untouched bucket into the table digest and the
-  root, and confirm the root now matches the peer's — all at the clone's cut, which is the
-  only height where the comparison is defined. Replaying forward first leaves nothing to
-  compare against.
-- Rollback and reset re-validate at the next snapshot, by full rehash. Both change every
-  table below the restored height, so no persisted bucket digest survives them.
+  root, and confirm the root now matches the checkpoint hash — all at the clone's cut, which
+  is the only height the checkpoint attests to. The checkpoint was endorsed by a majority, so
+  this proves the repair is correct, not merely that it agrees with one peer. A peer that
+  sent wrong rows produces a patch that fails here, before anything is replayed.
+- The halt must record the checkpoint hash as a field, because the patch verifies against it
+  offline. Today `haltOnCheckpointDivergence` (`service/vc/checkpoint.go:117`) writes both
+  hashes only into `SnapshotState.error`. fabric-x-common already defines
+  `SnapshotState.checkpoint_hash` for this, and nothing in the committer sets it yet.
+- Every repair is then verified again by the existing checkpoint path. The halted checkpoint
+  has no `tx_status` row, so the VC re-verifies it when replay re-delivers it, against the
+  hash of the snapshot it just recreated. A wrong repair halts again; a right one commits.
+- Rollback and reset are verified at that replayed checkpoint, by full rehash. Both change
+  every table below the restored height, so no persisted bucket digest survives them, but
+  they do not have to wait for a later snapshot.
 - Re-validation reads the repaired state DB directly, taking no fresh clone. A clone exists
   to give a consistent cut of a live cluster; the committer is stopped for a repair, so
   there is no writer to cut around.
@@ -192,7 +201,8 @@ cut. The modes differ in which clone, and in what happens before the replay.
   diverging snapshot, that rehashes the unrepaired clone, and the replayed checkpoint
   halts again on the same mismatch.
 - All three: offline admin CLI, run with the committer stopped, idempotent / re-runnable,
-  and ending in a verified hash. A repair that is not verified is not done.
+  and ending in a hash that matches the endorsed checkpoint. A repair that is not verified
+  is not done.
 - The blocks needed for replay must be at or after the ledger's pruned start block; fail
   loudly when they have been pruned.
 
@@ -239,10 +249,11 @@ What SDLR still needs from the clone lifecycle:
 - **The root hash is re-derived rather than held byte-identical.** Determinism was the
   actual requirement. Folding every row a second time to preserve today's encoding measured
   +110% on the hash step; deriving the root from the bucket digests measured within noise.
-- **Patch is offered, at a cost to reproducibility.** It replays the least, but the state it
-  produces is no longer the deterministic result of replaying the ledger, and it presumes a
-  peer whose rows are known to be correct — which two orgs alone cannot establish. Rollback
-  and reset rebuild from the ledger and carry neither cost.
+- **Patch is offered, and it does not trust the peer.** The repaired root is checked against
+  the checkpoint the endorsers signed, so wrong rows from a peer fail the repair instead of
+  committing. Its remaining cost is that the state at the snapshot block came from the
+  peer's rows, not from replaying the ledger; the hash proves it equals the attested state.
+  Operators who need the state rebuilt from the ledger itself use rollback or reset.
 - **The format version guards R4 across time, not across orgs.** A rollback rehashes an
   older clone, and an algorithm change since must fail loudly rather than read as a
   divergence.
