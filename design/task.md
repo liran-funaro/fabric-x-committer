@@ -146,8 +146,9 @@ Every repair restores the state DB from a clone and re-consumes the ledger from 
 cut. The modes differ in which clone, and in what happens before the replay.
 
 - **Rollback**: restore from the previous validated clone, then re-consume every block since
-  its cut. Needs no diff and no peer — the ledger is authoritative and the bug is presumed
-  fixed before the replay — at the cost of re-consuming a full snapshot interval of load.
+  its cut. Needs no diff and no peer, at the cost of re-consuming a full snapshot interval of
+  load. The replay runs the same committer code that diverged, so it is not trusted to be
+  correct: it is verified against the checkpoint like every other mode.
 - **Patch**: restore from the latest (diverging) clone, replace the buckets R2 identified
   with the peer's rows, verify, and only then re-consume the blocks committed after that
   clone's cut. The replay window runs from the snapshot to its checkpoint, not over a full
@@ -249,11 +250,12 @@ What SDLR still needs from the clone lifecycle:
 - **The root hash is re-derived rather than held byte-identical.** Determinism was the
   actual requirement. Folding every row a second time to preserve today's encoding measured
   +110% on the hash step; deriving the root from the bucket digests measured within noise.
-- **Patch is offered, and it does not trust the peer.** The repaired root is checked against
-  the checkpoint the endorsers signed, so wrong rows from a peer fail the repair instead of
-  committing. Its remaining cost is that the state at the snapshot block came from the
-  peer's rows, not from replaying the ledger; the hash proves it equals the attested state.
-  Operators who need the state rebuilt from the ledger itself use rollback or reset.
+- **No repair mode is trusted on its own; the checkpoint proves each one.** Patch may receive
+  wrong rows from the peer. Rollback and reset replay the ledger through the same code that
+  diverged, so an unfixed bug, or a divergence that did not come from the ledger, reproduces
+  the same wrong state. All three end by matching the checkpoint the endorsers signed, and a
+  failed match halts again. Replaying the ledger proves nothing the checkpoint does not, so
+  the modes differ only in cost: how much they replay, and whether they need a peer.
 - **The format version guards R4 across time, not across orgs.** A rollback rehashes an
   older clone, and an algorithm change since must fail loudly rather than read as a
   divergence.
